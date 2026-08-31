@@ -1811,9 +1811,92 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
             : _workspace(wide),
       };
 
-  Widget _mobileTableContent() => Column(
+  Widget _mobileTableContent() => _boardScaffold(
+    view: TaskMobileList(
+      board: _board!,
+      rows: _rows,
+      onSelected: _selectTask,
+      onAddTask: _board!.can('create_task') ? _addTaskToGroup : null,
+    ),
+    trailing: _pagination(),
+  );
+
+  Widget _kanbanContent() {
+    final board = _board!;
+    return _boardScaffold(
+      view: TaskKanbanView(
+        board: board,
+        field: _kanbanField,
+        buckets: TaskKanbanBuckets.forField(_kanbanField, board, _owners),
+        rows: _rows,
+        groupCounts: _groupCounts,
+        owners: _owners,
+        hiddenColumns: _configuration.hiddenColumns,
+        onMove: _kanbanMove,
+      ),
+    );
+  }
+
+  Widget _calendarContent() => _boardScaffold(
+    view: TaskCalendarView(
+      month: _calendarMonth,
+      rows: _rows,
+      omitted: _omitted,
+      onMove: _calendarMove,
+      onMonthChanged: _changeCalendarMonth,
+    ),
+  );
+
+  Widget _timelineContent() => _boardScaffold(
+    view: TaskTimelineView(
+      month: _timelineMonth,
+      rows: _rows,
+      omitted: _omitted,
+      onMove: _timelineMove,
+      onMonthChanged: _changeTimelineMonth,
+    ),
+  );
+
+  Widget _workloadContent() => _boardScaffold(
+    view: TaskWorkloadView(
+      month: _workloadMonth,
+      window: _workloadWindowFor(_workloadMonth),
+      rows: _workloadRows,
+      onMonthChanged: _changeWorkloadMonth,
+    ),
+  );
+
+  /// Every presentation's content area: the chrome (`_boardControls()`,
+  /// plus an optional filters panel), and the presentation's own [view].
+  ///
+  /// [minViewHeight], when given, wraps [view] in a `ConstrainedBox` floor
+  /// it can never be pushed under, however tall the chrome above wraps to
+  /// at a narrow pane (Task 15) — the earlier regression this guards
+  /// against squeezed `TaskTable` to a 64px viewport that silently dropped
+  /// rows out of view. `_workspace()` is the one caller that passes it,
+  /// because it is the one place this was ever actually reported broken
+  /// (`board_desktop.png`/`conflict_desktop.png`, a wide window with a
+  /// narrow content pane). Kanban/Calendar/Timeline/Workload deliberately
+  /// do NOT get a floor here: measured, a floor on top of THIS chrome at a
+  /// truly narrow 375px screen — where three bars plus Kanban's extra
+  /// "Group by" row can legitimately need more height wrapped than a short
+  /// phone viewport has at all — turns "shrinks to whatever's left, same
+  /// as it always could" into a hard `RenderFlex` overflow. `Expanded`
+  /// alone never errors that way; it just clamps to 0, exactly the
+  /// pre-existing behaviour every one of these four views already had
+  /// before this fix touched anything, and no report exists of it dropping
+  /// data the way `TaskTable` did. Widening this floor to all five is a
+  /// real, separate piece of work (each view's own true minimum content
+  /// size, and where the extra height should come from on a short phone),
+  /// not a same-pattern copy-paste — flagged rather than guessed at here.
+  Widget _boardScaffold({
+    required Widget view,
+    Widget? trailing,
+    double? minViewHeight,
+    double? paneWidth,
+  }) => Column(
     children: [
-      _boardControls(),
+      _boardControls(paneWidth: paneWidth),
       if (_showFilters)
         SizedBox(
           height: 330,
@@ -1826,134 +1909,16 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
           ),
         ),
       Expanded(
-        child: TaskMobileList(
-          board: _board!,
-          rows: _rows,
-          onSelected: _selectTask,
-          onAddTask: _board!.can('create_task') ? _addTaskToGroup : null,
-        ),
+        child: minViewHeight == null
+            ? view
+            : ConstrainedBox(
+                constraints: BoxConstraints(minHeight: minViewHeight),
+                child: view,
+              ),
       ),
-      _pagination(),
+      ?trailing,
     ],
   );
-
-  Widget _kanbanContent() {
-    final board = _board!;
-    return Column(
-      children: [
-        _boardControls(),
-        if (_showFilters)
-          SizedBox(
-            height: 330,
-            child: TaskFiltersPanel(
-              board: board,
-              configuration: _configuration,
-              people: _people,
-              onChanged: _changeConfiguration,
-              onClose: () => setState(() => _showFilters = false),
-            ),
-          ),
-        Expanded(
-          child: TaskKanbanView(
-            board: board,
-            field: _kanbanField,
-            buckets: TaskKanbanBuckets.forField(_kanbanField, board, _owners),
-            rows: _rows,
-            groupCounts: _groupCounts,
-            owners: _owners,
-            hiddenColumns: _configuration.hiddenColumns,
-            onMove: _kanbanMove,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _calendarContent() {
-    final board = _board!;
-    return Column(
-      children: [
-        _boardControls(),
-        if (_showFilters)
-          SizedBox(
-            height: 330,
-            child: TaskFiltersPanel(
-              board: board,
-              configuration: _configuration,
-              people: _people,
-              onChanged: _changeConfiguration,
-              onClose: () => setState(() => _showFilters = false),
-            ),
-          ),
-        Expanded(
-          child: TaskCalendarView(
-            month: _calendarMonth,
-            rows: _rows,
-            omitted: _omitted,
-            onMove: _calendarMove,
-            onMonthChanged: _changeCalendarMonth,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _timelineContent() {
-    final board = _board!;
-    return Column(
-      children: [
-        _boardControls(),
-        if (_showFilters)
-          SizedBox(
-            height: 330,
-            child: TaskFiltersPanel(
-              board: board,
-              configuration: _configuration,
-              people: _people,
-              onChanged: _changeConfiguration,
-              onClose: () => setState(() => _showFilters = false),
-            ),
-          ),
-        Expanded(
-          child: TaskTimelineView(
-            month: _timelineMonth,
-            rows: _rows,
-            omitted: _omitted,
-            onMove: _timelineMove,
-            onMonthChanged: _changeTimelineMonth,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _workloadContent() {
-    final board = _board!;
-    return Column(
-      children: [
-        _boardControls(),
-        if (_showFilters)
-          SizedBox(
-            height: 330,
-            child: TaskFiltersPanel(
-              board: board,
-              configuration: _configuration,
-              people: _people,
-              onChanged: _changeConfiguration,
-              onClose: () => setState(() => _showFilters = false),
-            ),
-          ),
-        Expanded(
-          child: TaskWorkloadView(
-            month: _workloadMonth,
-            window: _workloadWindowFor(_workloadMonth),
-            rows: _workloadRows,
-            onMonthChanged: _changeWorkloadMonth,
-          ),
-        ),
-      ],
-    );
-  }
 
   /// Switches the active view's presentation. Kanban additionally needs a
   /// `window` (`bucket_field` + the current field's buckets) and a matching
@@ -2332,18 +2297,54 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
               : null,
         );
 
-  Widget _boardControls() {
+  /// The three chrome strips above every presentation — saved views, the
+  /// presentation switcher, and this totals/filters/actions row — wrap onto
+  /// more lines when THEIR OWN space is narrow, never merely because the
+  /// window is. `LayoutBuilder` measures the real pane once here and passes
+  /// it down as `width`, rather than each bar reading `MediaQuery` for
+  /// itself (see `TaskPresentationBar.width` for the full account of why
+  /// that changed and how the starvation risk it used to dodge is closed
+  /// instead — a `ConstrainedBox` floor around `TaskTable` in
+  /// `_workspace()`).
+  ///
+  /// This row specifically had NO narrow-width branch at all before Task
+  /// 15 — it always scrolled — which is what actually clipped in
+  /// `board_desktop.png`/`conflict_desktop.png` (1440px window, ~823px
+  /// pane: `MediaQuery` would have said "wide" here too, so even restoring
+  /// it to the other two bars' old pattern would not have fixed this one).
+  /// [paneWidth], when given, is what `TaskViewsBar`/`TaskPresentationBar`/
+  /// `_actionsRow` measure "narrow" against, instead of `MediaQuery` (Task
+  /// 15 — see `TaskPresentationBar.width` for the full account). `null`
+  /// (every caller except `_workspace()`) falls back to `MediaQuery`,
+  /// which is the CORRECT width for them: none of those callers sit beside
+  /// a sibling pane that can squeeze this column's real width below the
+  /// window's. Deliberately NOT this method's own `LayoutBuilder` — an
+  /// earlier version wrapped this whole method in one, and a widget-level
+  /// test relying on a fixed, short `pump()` count (not `pumpAndSettle()`)
+  /// to land inside a specific debounce/poll race window started failing:
+  /// one more `LayoutBuilder` in the tree is one more build pass some of
+  /// that fixed pump budget goes to, silently changing how much real
+  /// (virtual) time had actually elapsed by the same pump count. Reading
+  /// [paneWidth] from `_workspace()`'s OWN, pre-existing `LayoutBuilder`
+  /// instead avoids adding a build boundary at all.
+  Widget _boardControls({double? paneWidth}) {
     final statusNames = <String?, String>{
       for (final status in _board?.statuses ?? const <TaskStatusOption>[])
         status.id: status.name,
       null: 'No status',
     };
+    // This State's own `context`, not a new `Builder`/`LayoutBuilder` — see
+    // the doc comment above for why an extra build boundary here is not
+    // free. `_boardControls()` only ever runs synchronously inside this
+    // State's own `build()` call tree, so `context` is always valid here.
+    final width = paneWidth ?? MediaQuery.sizeOf(context).width;
     return Column(
       key: const ValueKey('task-board-controls'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (_views.isNotEmpty)
           TaskViewsBar(
+            width: width,
             views: _views,
             activeViewId: _activeViewId,
             canCreatePersonal: _canCreatePersonalView,
@@ -2355,86 +2356,140 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
             onDelete: _deleteView,
           ),
         TaskPresentationBar(
+          width: width,
           presentation: _configuration.presentation,
           kanbanField: _kanbanField,
           onPresentationChanged: _changePresentation,
           onKanbanFieldChanged: _changeKanbanField,
         ),
-        Material(
-          color: Theme.of(context).colorScheme.surfaceContainerLowest,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              child: Row(
-                children: [
-                  Text('$_total ${_total == 1 ? 'task' : 'tasks'}'),
-                  for (final summary in _statusSummaries) ...[
-                    const SizedBox(width: 8),
-                    Chip(
-                      visualDensity: VisualDensity.compact,
-                      label: Text(
-                        '${statusNames[summary.statusOptionId] ?? 'Status'} ${summary.count}',
-                      ),
-                    ),
-                  ],
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    onPressed: () =>
-                        setState(() => _showFilters = !_showFilters),
-                    icon: const Icon(Icons.filter_list),
-                    label: const Text('Filters'),
-                  ),
-                  if (_board case final board?) ...[
-                    if (board.can('update') ||
-                        board.can('archive') ||
-                        board.can('restore') ||
-                        board.can('manage_structure') ||
-                        board.can('manage_members')) ...[
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: _openAdministration,
-                        icon: const Icon(Icons.settings_outlined),
-                        label: const Text('Admin'),
-                      ),
-                    ],
-                    if (board.can('duplicate')) ...[
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: _openDuplicate,
-                        icon: const Icon(Icons.copy_all_outlined),
-                        label: const Text('Duplicate'),
-                      ),
-                    ],
-                    if (_activeViewId != null &&
-                        (board.can('import') ||
-                            board.can('export') ||
-                            board.can('archive_manifest'))) ...[
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: _openTransfer,
-                        icon: const Icon(Icons.import_export),
-                        label: const Text('Transfer'),
-                      ),
-                    ],
-                  ],
-                  if (_viewDirty) ...[
-                    const SizedBox(width: 8),
-                    const Text('Unsaved view changes'),
-                  ],
-                ],
-              ),
-            ),
+        _actionsRow(width, statusNames),
+      ],
+    );
+  }
+
+  /// This row is chrome (a task count, status chips, and action buttons),
+  /// not data, so it always wraps rather than ever clipping behind an
+  /// un-affordanced horizontal scroll (Task 15) — unconditionally, no
+  /// narrow-width breakpoint to calibrate: `Wrap` already renders as one
+  /// line whenever its content fits the space it is actually given, at
+  /// ANY pane width, which is exactly what a breakpoint here was trying
+  /// (and, at the reported pane width of ~823px against a 700px
+  /// breakpoint tuned for `TaskPresentationBar`'s narrower five-tab
+  /// content, failing) to approximate.
+  ///
+  /// `board.can('update')`/`manage_structure`/`manage_members`/
+  /// `duplicate`/`import`/`export`/`archive_manifest` — the five secondary
+  /// actions those permissions unlock (Admin, Duplicate, Transfer) —
+  /// collapse into ONE overflow button rather than up to three separate
+  /// `OutlinedButton`s. Not primarily a space-saving trick: it turns out to
+  /// be one (removing up to three wide buttons is what keeps this row's
+  /// wrapped height from starving the view below it on a 375px phone with
+  /// every permission granted — the same board fixture these goldens
+  /// already use), but the actual reason is that these three are
+  /// board-administration actions a reader reaches for far less often than
+  /// Filters, which stays its own always-visible button.
+  /// Below this, the per-status chips are dropped from this row entirely —
+  /// each is a legitimate summary a reader can still get from the status
+  /// column or `TaskFiltersPanel`, and at a genuinely narrow width they
+  /// were the single biggest, most variable (0-N chips) contributor to how
+  /// many lines this row wraps onto — see `_actionsRow`.
+  static const _statusChipsBreakpoint = 700.0;
+
+  Widget _actionsRow(double width, Map<String?, String> statusNames) {
+    final board = _board!;
+    final secondaryActions = <PopupMenuEntry<VoidCallback>>[
+      if (board.can('update') ||
+          board.can('archive') ||
+          board.can('restore') ||
+          board.can('manage_structure') ||
+          board.can('manage_members'))
+        PopupMenuItem<VoidCallback>(
+          value: _openAdministration,
+          child: const ListTile(
+            leading: Icon(Icons.settings_outlined),
+            title: Text('Admin'),
           ),
         ),
-      ],
+      if (board.can('duplicate'))
+        PopupMenuItem<VoidCallback>(
+          value: _openDuplicate,
+          child: const ListTile(
+            leading: Icon(Icons.copy_all_outlined),
+            title: Text('Duplicate'),
+          ),
+        ),
+      if (_activeViewId != null &&
+          (board.can('import') ||
+              board.can('export') ||
+              board.can('archive_manifest')))
+        PopupMenuItem<VoidCallback>(
+          value: _openTransfer,
+          child: const ListTile(
+            leading: Icon(Icons.import_export),
+            title: Text('Transfer'),
+          ),
+        ),
+    ];
+    final items = <Widget>[
+      Text('$_total ${_total == 1 ? 'task' : 'tasks'}'),
+      if (width >= _statusChipsBreakpoint)
+        for (final summary in _statusSummaries)
+          Chip(
+            visualDensity: VisualDensity.compact,
+            label: Text(
+              '${statusNames[summary.statusOptionId] ?? 'Status'} ${summary.count}',
+            ),
+          ),
+      OutlinedButton.icon(
+        onPressed: () => setState(() => _showFilters = !_showFilters),
+        icon: const Icon(Icons.filter_list),
+        label: const Text('Filters'),
+      ),
+      if (secondaryActions.isNotEmpty)
+        PopupMenuButton<VoidCallback>(
+          key: const ValueKey('board-secondary-actions'),
+          tooltip: 'More board actions',
+          icon: const Icon(Icons.more_horiz),
+          itemBuilder: (_) => secondaryActions,
+          onSelected: (action) => action(),
+        ),
+      if (_viewDirty) const Text('Unsaved view changes'),
+    ];
+    return Material(
+      color: Theme.of(context).colorScheme.surfaceContainerLowest,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: items,
+        ),
+      ),
     );
   }
 
   Widget _workspace(bool wide) => LayoutBuilder(
     builder: (context, constraints) {
       final showDirectory = wide && constraints.maxWidth >= 1100;
-      final showDetail = _detailOpen && constraints.maxWidth >= 800;
+      // Task 15: was 800. Below ~1100, reserving the detail panel's default
+      // 390px (+16px divider) leaves a content pane under 700px — exactly
+      // the width `TaskPresentationBar`/`TaskViewsBar` treat as narrow and
+      // wrap onto multiple lines. Measured: at a 394px pane (an 800px
+      // window, `_detailOpen`'s true-by-default value reserving an empty
+      // detail panel for nothing selected), that wrapped chrome starved
+      // `TaskTable` enough to silently lose rows out of an EDITING draft —
+      // the exact regression this file's own `ConstrainedBox` floor exists
+      // to guard against, just not something a fixed-height floor alone
+      // can fix: nothing can promise a table a floor the SIBLING chrome
+      // above it has already spent. 1100 matches `showDirectory`'s own bar
+      // (a 3-pane-or-detail layout needs the same real room either way)
+      // and keeps a comfortable margin above 700 for the default 390px
+      // detail width; a detail panel manually resized toward its 640px
+      // maximum can still re-enter the same danger zone at the widths this
+      // guards — a real, narrower residual case, flagged rather than
+      // silently accepted (task-15 report).
+      final showDetail = _detailOpen && constraints.maxWidth >= 1100;
       if (_detailOpen && !showDetail && _detail != null) {
         return TaskDetailPanel(
           task: _detail,
@@ -2448,6 +2503,18 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
           onClose: () => setState(() => _detailOpen = false),
         );
       }
+      // The actual width the middle column — chrome and `TaskTable` alike —
+      // has to work with, once the board directory and detail panel (each
+      // real siblings in the `Row` below, not merely visual insets) take
+      // their share of `constraints.maxWidth`. Board_desktop.png/
+      // conflict_desktop.png (1440px window, ~823px pane once the
+      // default-open detail panel reserves ~406px) is exactly the gap
+      // between this number and `MediaQuery`'s own width — see
+      // `TaskPresentationBar.width` (Task 15).
+      final contentPaneWidth =
+          constraints.maxWidth -
+          (showDirectory ? 211 : 0) -
+          (showDetail ? _detailWidth + 16 : 0);
       return Row(
         children: [
           if (showDirectory) ...[
@@ -2477,53 +2544,39 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
             const VerticalDivider(width: 1),
           ],
           Expanded(
-            child: Column(
-              children: [
-                _boardControls(),
-                if (_showFilters)
-                  SizedBox(
-                    height: 330,
-                    child: TaskFiltersPanel(
-                      board: _board!,
-                      configuration: _configuration,
-                      people: _people,
-                      onChanged: _changeConfiguration,
-                      onClose: () => setState(() => _showFilters = false),
-                    ),
-                  ),
-                Expanded(
-                  child: TaskTable(
-                    board: _board!,
-                    rows: _rows,
-                    selectedTaskId: _selectedTaskId,
-                    onSelected: _selectTask,
-                    onTitleChanged: _rename,
-                    onCoreChanged: _saveCore,
-                    onCustomChanged: _saveCustom,
-                    onBulkChanged: _bulk,
-                    bulkBusy: _bulkBusy,
-                    interactionLocked: _bulkBusy,
-                    owners: _owners,
-                    people: _people,
-                    configuration: _configuration,
-                    groupCounts: _groupCounts,
-                    onDraftChanged: _draftChanged,
-                    onAddTask: _board!.can('create_task')
-                        ? _addTaskToGroup
-                        : null,
-                    onSelectionChanged: (count) => _announce(
-                      count == 0
-                          ? 'Selection cleared.'
-                          : '$count tasks selected.',
-                    ),
-                    onSelectionCleared: () => setState(() {
-                      _selectedTaskId = null;
-                      _detailOpen = false;
-                    }),
-                  ),
+            child: _boardScaffold(
+              view: TaskTable(
+                board: _board!,
+                rows: _rows,
+                selectedTaskId: _selectedTaskId,
+                onSelected: _selectTask,
+                onTitleChanged: _rename,
+                onCoreChanged: _saveCore,
+                onCustomChanged: _saveCustom,
+                onBulkChanged: _bulk,
+                bulkBusy: _bulkBusy,
+                interactionLocked: _bulkBusy,
+                owners: _owners,
+                people: _people,
+                configuration: _configuration,
+                groupCounts: _groupCounts,
+                onDraftChanged: _draftChanged,
+                onAddTask: _board!.can('create_task')
+                    ? _addTaskToGroup
+                    : null,
+                onSelectionChanged: (count) => _announce(
+                  count == 0
+                      ? 'Selection cleared.'
+                      : '$count tasks selected.',
                 ),
-                _pagination(),
-              ],
+                onSelectionCleared: () => setState(() {
+                  _selectedTaskId = null;
+                  _detailOpen = false;
+                }),
+              ),
+              trailing: _pagination(),
+              minViewHeight: 280,
+              paneWidth: contentPaneWidth,
             ),
           ),
           if (showDetail)

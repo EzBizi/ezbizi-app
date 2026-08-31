@@ -14,6 +14,7 @@ class TaskViewsBar extends StatelessWidget {
     required this.onSave,
     required this.onDuplicate,
     required this.onDelete,
+    this.width,
   });
 
   final List<TaskViewDefinition> views;
@@ -26,6 +27,12 @@ class TaskViewsBar extends StatelessWidget {
   final ValueChanged<TaskViewDefinition> onDuplicate;
   final ValueChanged<TaskViewDefinition> onDelete;
 
+  /// The actual width THIS bar has to work with — see
+  /// `TaskPresentationBar.width` for the full account of why this is a
+  /// caller-supplied measurement now, not `MediaQuery`. `null` (any caller
+  /// with no sibling pane squeezing it) falls back to `MediaQuery`.
+  final double? width;
+
   TaskViewDefinition? get _active {
     for (final view in views) {
       if (view.id == activeViewId) return view;
@@ -34,12 +41,9 @@ class TaskViewsBar extends StatelessWidget {
   }
 
   /// Same breakpoint as `TaskPresentationBar`, the bar directly below this
-  /// one — the two are meant to break together, not at different widths.
-  /// Read from `MediaQuery`, not this bar's own local constraint: see
-  /// `TaskPresentationBar._narrowBreakpoint` for why (a sibling detail panel
-  /// can squeeze this bar's own width well below 700 on a screen nowhere
-  /// near narrow, and wrapping would cost height the table below cannot
-  /// spare).
+  /// one — the two are meant to break together, not at different widths,
+  /// and now against the same caller-supplied `width` too (Task 15
+  /// correction — see `TaskPresentationBar._narrowBreakpoint`).
   static const _narrowBreakpoint = 700.0;
 
   List<Widget> _viewChips() => [
@@ -109,7 +113,7 @@ class TaskViewsBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final active = _active;
-    final narrow = MediaQuery.sizeOf(context).width < _narrowBreakpoint;
+    final narrow = (width ?? MediaQuery.sizeOf(context).width) < _narrowBreakpoint;
     return Material(
       color: Theme.of(context).colorScheme.surface,
       child: narrow ? _wrapped(active) : _scrolled(active),

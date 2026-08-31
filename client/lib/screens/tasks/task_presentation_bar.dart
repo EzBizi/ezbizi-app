@@ -24,12 +24,22 @@ class TaskPresentationBar extends StatelessWidget {
     required this.onPresentationChanged,
     required this.onKanbanFieldChanged,
     this.availablePresentations,
+    this.width,
   });
 
   final TaskPresentation presentation;
   final TaskKanbanField kanbanField;
   final ValueChanged<TaskPresentation> onPresentationChanged;
   final ValueChanged<TaskKanbanField> onKanbanFieldChanged;
+
+  /// The actual width THIS bar has to work with, measured by the caller's
+  /// own `LayoutBuilder` (see `TasksScreen._boardControls()`) rather than
+  /// read from `MediaQuery` here. `null` (every caller that has no sibling
+  /// pane squeezing it — My Tasks' presentation bar today) falls back to
+  /// `MediaQuery`, unchanged. See the breakpoint doc below for why a caller
+  /// that DOES sit beside a detail panel or board directory must supply
+  /// this explicitly instead.
+  final double? width;
 
   /// Restricts which tabs this bar offers. `null` (the default, every
   /// existing board caller) shows all five, unchanged. Task 14's cross-board
@@ -48,16 +58,28 @@ class TaskPresentationBar extends StatelessWidget {
 
   /// Below this the tabs never fit five-wide (measured: five chips clip mid-
   /// element at 375px with no scroll affordance). Matches the breakpoint
-  /// `TaskKanbanView` already uses for its own narrow-width chip selector —
-  /// and, deliberately, matches it against `MediaQuery`'s width rather than
-  /// this bar's own local constraint. This bar can be squeezed well below
-  /// 700px on a genuinely wide screen (the detail panel alone reserves
-  /// ~390px), and wrapping five icon+label chips onto three lines there
-  /// nearly triples this bar's height with nothing above it to absorb the
-  /// difference — starving the table below of the room its own rows need.
-  /// The screen's own `mobile` flag already uses this same width for the
-  /// same reason (Ruling: chrome reacts to the SCREEN being narrow, not to
-  /// a sibling panel eating its share of a screen that isn't).
+  /// `TaskKanbanView` already uses for its own narrow-width chip selector.
+  ///
+  /// Task 15 correction: this used to compare against `MediaQuery`'s WINDOW
+  /// width instead of `width` (this bar's own available space), specifically
+  /// to dodge a real regression — a detail panel reserving ~390px squeezed
+  /// this bar to well under 700px on a screen nowhere near narrow, wrapping
+  /// five icon+label chips onto three lines and starving the table below of
+  /// the room its rows need. Dodging it that way traded a silent, uncaught
+  /// regression for a silent, uncaught clip: at 1440px window / ~823px pane
+  /// (`board_desktop.png`, `conflict_desktop.png`), `MediaQuery` saw 1440,
+  /// never wrapped, and the actions row below this one — which had no wrap
+  /// branch at all — clipped mid-chip at the pane's own edge. Neither goldens
+  /// nor `MediaQuery`-width tests can catch a narrow-PANE-in-a-wide-WINDOW
+  /// case; only a caller that actually measures its own space can.
+  ///
+  /// The real fix is in `TasksScreen._boardControls()`: a `LayoutBuilder`
+  /// measures the true pane width once and passes it down as `width`, so
+  /// this bar wraps exactly when its own space — not the window — needs it.
+  /// The starvation risk that `MediaQuery` was dodging is closed at the
+  /// other end instead: `TaskTable` now sits in a `ConstrainedBox` with a
+  /// 280px floor it can never be pushed under, however tall the chrome
+  /// above it grows (see `TasksScreen._workspace()`).
   static const _narrowBreakpoint = 700.0;
 
   List<Widget> _tabChips() => [
@@ -99,7 +121,7 @@ class TaskPresentationBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final narrow = MediaQuery.sizeOf(context).width < _narrowBreakpoint;
+    final narrow = (width ?? MediaQuery.sizeOf(context).width) < _narrowBreakpoint;
     return Material(
       color: scheme.surface,
       child: narrow ? _wrapped(context) : _scrolled(context),

@@ -99,11 +99,16 @@ void main() {
       expect(find.byType(TaskViewsBar), findsOneWidget);
       expect(find.byType(TaskPresentationBar), findsOneWidget);
 
-      // Exactly one horizontal scroller remains in the chrome container at
-      // this width: the status-summary strip (data — a variable number of
-      // status pills — not chrome), which this round does not touch. If a
-      // new offender is added between the two bars, or either bar regains
-      // its scroll, this count moves off 1 and the test fails.
+      // Zero horizontal scrollers in the chrome container at this width
+      // (Task 15 correction). The status-summary/actions strip — task
+      // count, status pills, Filters, and the board-secondary-actions
+      // overflow menu — was previously exempted here as "data", but a
+      // variable number of status pills is exactly as much chrome as the
+      // presentation tabs above it: none of it is wide because the
+      // content demands it, all of it wraps instead of clipping behind an
+      // un-affordanced scroll now. If a new offender is added to this
+      // container, or any bar regains a horizontal scroll at this width,
+      // this count moves off 0 and the test fails.
       final horizontalScrollers = find.descendant(
         of: chrome,
         matching: find.byWidgetPredicate(
@@ -113,7 +118,7 @@ void main() {
               (widget is ListView && widget.scrollDirection == Axis.horizontal),
         ),
       );
-      expect(horizontalScrollers, findsOneWidget);
+      expect(horizontalScrollers, findsNothing);
 
       // The five presentation tabs and the saved view are still reachable —
       // wrapping, not clipping.
