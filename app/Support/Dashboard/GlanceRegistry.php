@@ -35,7 +35,7 @@ class GlanceRegistry
      * @var string[]
      */
     public const ORDER = [
-        'tasks', 'hr', 'customers', 'jobs', 'inspection', 'marketing',
+        'tasks', 'hr', 'customers', 'jobs', 'scheduling', 'inspection', 'marketing',
         'web_management', 'phone', 'fleet_management', 'inventory',
         'services', 'leads', 'reviews', 'business_profile', 'email', 'automations',
         'monitoring',
@@ -58,6 +58,10 @@ class GlanceRegistry
         'monitoring' => [
             'label' => 'Monitoring',
             'sentence' => 'Monitoring will show who is online and on which device here. Open the Monitoring tab for the roster.',
+        ],
+        'scheduling' => [
+            'label' => 'Scheduling',
+            'sentence' => 'Scheduling will show what is booked here once the Schedule tab is live.',
         ],
     ];
 
