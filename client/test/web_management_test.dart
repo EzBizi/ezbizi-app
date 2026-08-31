@@ -160,6 +160,18 @@ void main() {
     expect(find.textContaining('[ezbizi_phone]'), findsOneWidget);
   });
 
+  /// The plugin download must point at the directory, not at our own box.
+  ///
+  /// `/web/plugin` builds a zip from whatever release is deployed, so it lags
+  /// every plugin release: Jose downloaded 1.0.0 from a button sitting beside a
+  /// panel that described 1.0.2. wordpress.org serves the stable tag and is
+  /// current the moment an SVN release lands.
+  test('the plugin comes from wordpress.org, not from us', () {
+    expect(pluginDownloadUrl.host, 'downloads.wordpress.org');
+    expect(pluginDownloadUrl.scheme, 'https');
+    expect(pluginDownloadUrl.path, contains('ezbizi'));
+  });
+
   /// The pasted snippet must carry an ABSOLUTE url.
   ///
   /// It shipped relative — `src="/api/v1/web/ezbizi.js"` — because the

@@ -156,6 +156,50 @@ git reset -q HEAD -- <your paths>          # ← STEP 8. Not optional. See below
 scripts/index-landmines.sh                 # must read 0 stale, 0 live
 ```
 
+**BEFORE ANY OF THAT: `git commit -- <paths>` is the safe everyday form, and it
+is one word different from the dangerous one.**
+
+```bash
+git add -- StartUp.md && git commit -m "..."     # ← commits the WHOLE INDEX
+git commit -m "..." -- StartUp.md                 # ← commits ONLY that path
+```
+
+`git add` stages one file. `git commit` then commits **everything staged**,
+including whatever fifteen other sessions left in the shared index. The pathspec
+form builds the commit from HEAD plus those paths only and ignores the rest of
+the index entirely.
+
+Proven, not assumed: with a staged deletion of `victim.txt` sitting in the index,
+`git commit -- keep.txt` produced a one-file commit and `victim.txt` survived in
+HEAD.
+
+**This is not hypothetical and it is not rare.** On 2026-08-31 a commit intended
+to add 25 lines to this file committed **16 files and 1190 deletions**, destroying
+two finished Phone features — two controllers, two models, both migrations, both
+test suites, and 122 lines of routing — because the shared index held stale
+deletion entries. It was written by the session that spends its day telling
+everyone else to run `index-landmines.sh` first, and that session did not run it.
+That is the point: a rule you have to remember fails exactly when you are busy,
+and the person most familiar with it is not exempt.
+
+The pathspec form removes the failure mode instead of asking you to notice it.
+
+It does **not** disarm landmines that are already there — those stale entries stay
+staged for whoever commits next without a pathspec. Clearing them is still
+`index-landmines.sh` plus `git reset -q HEAD -- <paths>`. But you can no longer
+fire somebody else's.
+
+**And check what you actually committed, every time:**
+
+```bash
+git show --stat HEAD
+```
+
+A stale blob does not change WHICH files appear in your commit — it changes how
+many lines. The commit above would have read *16 files, 1190 deletions* to an
+author who meant to change a word count. One line of output, read once, catches
+every instance of this.
+
 **Step 8 is not tidying — it disarms a revert your own commit just created.**
 The private index leaves the SHARED `.git/index` untouched, which is the whole
 point of it. So that index still holds every one of your paths at its
@@ -824,6 +868,31 @@ independent sweeps agree the whole population was two occurrences, both in
 matters, because a test that misreads a line ending goes red and somebody
 investigates, whereas the WordPress plugin would quietly render the wrong thing
 on a customer's page forever.
+
+### A count is not a set: two changes in opposite directions look like one
+
+The sharpest measurement failure of 2026-08-31 was the one where the NUMBER WAS
+CORRECT.
+
+A session merged main to pick up a fix, and their failing-test count went 17 to
+16. The merge had fixed one red and introduced another — a table arriving without
+its retention policy. Net movement: one, in the direction that looks like
+progress. Had they reported "16 red, all known" without reading the list, they
+would have handed the deploy desk a green-looking number concealing a fresh
+failure, and it would have been believed, because the desk had asked for exactly
+that number.
+
+Every other bad measurement that day was a wrong number, and a wrong number can
+be caught by re-measuring. This one cannot: re-running gives 16 again. **Only the
+LIST shows it**, because the count is a lossy projection and the loss is
+precisely the part that changed.
+
+So when you report a suite's state after ANY change to the tree, report what is
+in it, not how many. And when you receive a count that moved by one after a
+change that could plausibly move it in both directions, ask for the list before
+you believe the direction.
+
+Found by the session it happened to, who read the list anyway.
 
 ### An upper bound is not a gate: floor anything whose scope is DERIVED
 

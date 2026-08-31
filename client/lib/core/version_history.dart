@@ -8,7 +8,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
-      version: '0.0.0123',
+      version: '0.0.0124',
       date: '31 Aug 2026',
       items: [
         'Scheduling: set how many jobs you can take, per time slot, per day, '
@@ -27,6 +27,16 @@ class VersionHistory {
             'numbers are what you are set up to take - booked jobs are not '
             'counted yet, and the screen says so rather than implying the '
             'week is empty.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0123',
+      date: '31 Aug 2026',
+      items: [
+        'Web Management: "Get the plugin" now fetches the current version from '
+            'wordpress.org. It used to hand you whatever copy this server was '
+            'built with, which could be older than the one the page was '
+            'describing.',
       ],
     ),
     VersionRelease(
