@@ -6,11 +6,24 @@
 #
 # ── why ──────────────────────────────────────────────────────────
 #
-# Fifteen sessions share one `.git/index`. A session stages a path, someone
-# else commits that path, and the first session's staged entry is now a
-# SNAPSHOT OF THE PAST sitting in the index — so the next bare `git commit`
-# by anybody re-applies it, silently reverting work that has already landed,
-# under a message about something else entirely.
+# Fifteen sessions share one `.git/index`. Any entry in it is a SNAPSHOT OF THE
+# PAST the moment HEAD moves past that path — so the next bare `git commit` by
+# anybody re-applies it, silently reverting work that has already landed, under
+# a message about something else entirely.
+#
+# IT DOES NOT TAKE TWO SESSIONS. This header used to say one session stages a
+# path and another commits it, which made it sound occasional and like somebody
+# else's doing. It is mechanical, and you do it to yourself:
+#
+#   A private-index commit leaves the SHARED index untouched — which is the
+#   whole point of it. So the shared index still holds that path's pre-commit
+#   blob, and the instant `update-ref` moves HEAD, that untouched entry becomes
+#   an armed revert of the commit you just made.
+#
+# Observed on a five-line comment-only commit: clean before, `+0 -5` against
+# itself after, with nobody having staged anything. Every careful private-index
+# commit leaves one behind for every path it touches. Run this AFTER committing,
+# not only before.
 #
 # Three of these appeared on 2026-08-28 alone:
 #

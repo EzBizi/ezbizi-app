@@ -150,7 +150,28 @@ TREE=$(git write-tree)
 git diff-tree -p "$BASE" "$TREE" -- <your paths>    # ← READ THE HUNKS. Not the stat.
 COMMIT=$(git commit-tree "$TREE" -p "$BASE" -F msg)
 git update-ref refs/heads/main "$COMMIT" "$BASE"     # fails if main moved
+
+unset GIT_INDEX_FILE
+git reset -q HEAD -- <your paths>          # ← STEP 8. Not optional. See below.
+scripts/index-landmines.sh                 # must read 0 stale, 0 live
 ```
+
+**Step 8 is not tidying — it disarms a revert your own commit just created.**
+The private index leaves the SHARED `.git/index` untouched, which is the whole
+point of it. So that index still holds every one of your paths at its
+*pre-commit* blob, and the instant `update-ref` moves HEAD those untouched
+entries become an armed revert **of the commit you just made**. The next bare
+`git commit` by any session re-applies them, under a message about something
+else.
+
+It does not take two sessions and it is not bad luck. Observed on a five-line,
+comment-only commit: `index-landmines.sh` read `0 stale, 0 live` before, and
+`+0 -5` against that very file after, with nobody having staged anything.
+Every careful private-index commit leaves one behind for every path it touches.
+
+`git reset` writes the index and never the working tree. Its "Unstaged changes
+after reset:" output lists every path where worktree and index differ repo-wide,
+not what it touched — ignore it and let the landmines script confirm instead.
 
 **Read hunks, not a stat, and read them against the tree you are about to commit.**
 Every other check here counts files; only this one shows you *whose lines* they
