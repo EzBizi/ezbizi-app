@@ -115,6 +115,7 @@ use App\Http\Controllers\Api\Tasks\TaskViewsController;
 use App\Http\Controllers\Api\Tasks\TaskWatchPreferencesController;
 use App\Http\Controllers\Api\TimeClockController;
 use App\Http\Controllers\Api\Training\GuidesController as TrainingGuidesController;
+use App\Http\Controllers\Api\Training\TestsController as TrainingTestsController;
 use App\Http\Controllers\Api\TwoFactorController;
 use App\Http\Controllers\Api\UiStringsController;
 use App\Http\Controllers\Api\VehicleAssignmentsController;
@@ -635,14 +636,15 @@ Route::prefix('v1')
         Route::delete('services/labels/{id}', [ServiceLabelsController::class, 'destroy']);
         Route::apiResource('services', ServicesController::class);
 
-        // Training — guides people read, and (later tasks) the tests they
-        // take and who has been given which. `view`/`monitor`/`manage`/
-        // `assign` are the module's four permissions; this task only wires
-        // the guide itself. List applies the same place-scope engine as
-        // Inventory and Services — see GuidesController::index. Later tasks
-        // add tests, assignments and progress/results routes to this same
-        // block.
+        // Training — guides people read, the tests they take, and (later
+        // tasks) who has been given which. `view`/`monitor`/`manage`/
+        // `assign` are the module's four permissions; these two tasks wire
+        // the guide and the test. List applies the same place-scope engine
+        // as Inventory and Services — see GuidesController::index and
+        // TestsController::index. Later tasks add assignments and
+        // progress/results routes to this same block.
         Route::apiResource('training/guides', TrainingGuidesController::class);
+        Route::apiResource('training/tests', TrainingTestsController::class);
 
         // ── The shape of the business (§3) ───────────────────────
         //
