@@ -110,6 +110,17 @@ void main() {
     // If it fails again, check whether the count moved BETWEEN the baseline
     // commit and now -- if it did, somebody added a colour and the fix is in
     // their file.
+    // TO REPRODUCE THIS NUMBER OUTSIDE THE TEST, count MATCHES across ALL of
+    // lib/ including its top level:
+    //
+    //   git grep -h -o -E "Color\(0x|Colors\.[a-z]" main     //     -- 'client/lib' ':(exclude)client/lib/core/theme.dart' | wc -l
+    //
+    // A glob of `client/lib/**/*.dart` gives 78, because `**/` requires at least
+    // one directory segment and silently skips lib/main.dart, which holds two.
+    // Two sessions hit that same artefact within an hour and one of them nearly
+    // filed it as the ratchet having slack -- which would have invited somebody
+    // to "correct" 80 down to 78 and turn the gate red for everybody. A wrong
+    // number measured twice by the same broken method reads like corroboration.
     const baseline = 80;
 
     test('no new hardcoded colours outside theme.dart', () {
