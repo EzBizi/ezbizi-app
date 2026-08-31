@@ -32,7 +32,8 @@ class SettingsPane extends StatelessWidget {
     super.key,
     required this.title,
     required this.subtitle,
-    required this.children,
+    this.children = const [],
+    this.body,
     this.error,
     this.onRetry,
     this.trailing,
@@ -42,7 +43,18 @@ class SettingsPane extends StatelessWidget {
 
   final String title;
   final String subtitle;
+
+  /// A scrolling body, for a pane that is one column of sections.
   final List<Widget> children;
+
+  /// A body that manages its own height and scrolling, for a pane that is a
+  /// LIST BESIDE A DETAIL.
+  ///
+  /// The default body is a ListView, and two independently scrolling columns
+  /// cannot live inside one — they would be laid out with unbounded height and
+  /// throw. So a split pane replaces the body rather than filling it, and
+  /// takes responsibility for scrolling each side itself.
+  final Widget? body;
 
   /// The failure to show, or null. Paired with [onRetry] it draws the control.
   final String? error;
@@ -108,10 +120,12 @@ class SettingsPane extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-            children: children,
-          ),
+          child:
+              body ??
+              ListView(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                children: children,
+              ),
         ),
         ?footer,
       ],

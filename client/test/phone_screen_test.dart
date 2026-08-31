@@ -402,6 +402,9 @@ void main() {
       );
 
       await openNumbers(tester);
+      // Import moved behind its own segment: it is a job you do once, and
+      // it used to sit above the lines you open Numbers to look at.
+      await _tap(tester, find.textContaining('Import'));
 
       expect(find.text('EZBZ · +15612323929'), findsOneWidget);
       expect(find.text('Bar · +19737820956'), findsOneWidget);
@@ -428,6 +431,9 @@ void main() {
       );
 
       await openNumbers(tester);
+      // Import moved behind its own segment: it is a job you do once, and
+      // it used to sit above the lines you open Numbers to look at.
+      await _tap(tester, find.textContaining('Import'));
 
       await tester.tap(find.byKey(const ValueKey('import:PN2')));
       await tester.pumpAndSettle();
@@ -438,6 +444,109 @@ void main() {
       expect(sent!['sids'], ['PN2']);
       expect(sent!['scope_type'], 'company');
       expect(sent!['scope_id'], 'co-1');
+    });
+
+    const twoLines = [
+      {
+        'id': 'n-1',
+        'e164': '+15612323929',
+        'label': 'EZBZ',
+        'record': true,
+        'transcribe': false,
+        'after_hours': 'voicemail',
+        'ring_group_id': null,
+      },
+      {
+        'id': 'n-2',
+        'e164': '+13057242199',
+        'label': 'Old fax',
+        'record': false,
+        'transcribe': false,
+        'after_hours': 'voicemail',
+        'ring_group_id': null,
+      },
+    ];
+
+    /// Opening a line used to REPLACE the pane.
+    ///
+    /// You lost the list while editing, could not see the line above the one
+    /// you were changing, and came back to the top of the list rather than to
+    /// where you had been. This asserts both halves: the list is still there
+    /// AND the form arrived. Checking only the form would pass on the old
+    /// behaviour, which is what it is here to catch.
+    testWidgets('opening a line keeps the list beside it', (tester) async {
+      await _pump(
+        tester,
+        size: const Size(1280, 900),
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        numbers: twoLines,
+      );
+
+      await openNumbers(tester);
+      await _tap(tester, find.text('Edit').first);
+
+      expect(
+        find.widgetWithText(TextField, 'What this line is called'),
+        findsOneWidget,
+        reason: 'the form did not open',
+      );
+
+      expect(
+        find.textContaining('Old fax'),
+        findsWidgets,
+        reason: 'the other line vanished, so the form replaced the list again',
+      );
+    });
+
+    /// Below 600 there is not room for two columns, so the form pushes over
+    /// the list and has to carry a way back. A split that quietly kept half a
+    /// list on a phone would be worse than the stacking it replaced.
+    testWidgets('on a narrow pane the form takes over and offers Back', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        size: const Size(560, 900),
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        numbers: twoLines,
+      );
+
+      await openNumbers(tester);
+      await _tap(tester, find.text('Edit').first);
+
+      expect(
+        find.widgetWithText(TextField, 'What this line is called'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Old fax'),
+        findsNothing,
+        reason: 'both columns were drawn in a width that cannot hold them',
+      );
+      expect(find.byTooltip('Back to the lines'), findsOneWidget);
+    });
+
+    /// Five controls exist in both Numbers and General. Jose chose to keep
+    /// both editors, so they cannot be allowed to look like the only place a
+    /// value lives — somebody who changes one, then finds the old value in the
+    /// other, concludes the save failed.
+    testWidgets('a field that also exists in General says so in place', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        size: const Size(1280, 900),
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        numbers: twoLines,
+      );
+
+      await openNumbers(tester);
+      await _tap(tester, find.text('Edit').first);
+
+      expect(find.textContaining('Also on General'), findsWidgets);
     });
 
     testWidgets('a line with no ring group says calls go to voicemail', (tester) async {
