@@ -214,6 +214,28 @@ serious.** Phone's decision, and it does not generalise — deliberately:
 **Default toward the claim you would rather be wrong about.** Same field shape,
 opposite safe default, because one is an accusation and the other is a promise.
 
+**Every gallery is 3 desktop options and 3 mobile options — and the mobile ones are
+DESIGNED FOR MOBILE, not the desktop layout narrowed.** Jose's instruction, and it
+corrects a habit: every "at 375px" drawn before this was a desktop layout squeezed.
+Choosing a desktop layout does **not** choose the phone one; they can be completely
+different designs, because they are different users in different situations.
+
+> *Your account* is the worked example. Desktop answers **"show me everything about my
+> account"** — which is why a two-column layout with the facts always visible is right
+> there. A phone user came to change **one thing** — a photo, a number, two-factor after
+> a prompt — and a long form answers that badly: you scroll past nine things you did not
+> come for to reach the one you did. So the phone version is rows that each open one
+> screen, and the read-only facts drop to the bottom. On desktop they cost nothing
+> because they sit in space that was empty anyway; on a phone every one of them is
+> between you and the thing you opened the app to do.
+
+**A phone-only constraint that has no desktop equivalent: the keyboard covers half the
+screen.** A single Save at the end of a long form sits *behind the keyboard exactly
+while you type*, and "two changes not saved" is invisible at the moment it matters
+most. One-job-per-screen avoids it entirely by putting Save in the bar; a single
+scrolling form has to pin its footer above the keyboard, which is possible and is one
+more thing to get right.
+
 **Never express a state by fading the element that carries text.** Transparency attacks
 legibility directly, and it always bites hardest in the state where legibility matters
 most — dragging, disabled, loading, pending. Express it with elevation, an outline, a
