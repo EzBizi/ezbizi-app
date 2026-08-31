@@ -141,6 +141,11 @@ EOF
     echo
     echo "  And a bare commit right now would PUBLISH these, unfinished:"
     echo "$ADDED" | sed 's/^/       /'
+    echo
+    echo "  If these are YOURS and you are about to commit them deliberately, this is"
+    echo "  the expected reading, and \"0 stale\" above is your all-clear. The script"
+    echo "  cannot tell intent from exposure. What it is warning about is the window:"
+    echo "  anybody else committing while these sit here publishes them for you."
     MIGS=$(echo "$ADDED" | grep -c '^database/migrations/' || true)
     if [ "${MIGS:-0}" -gt 0 ]; then
       echo

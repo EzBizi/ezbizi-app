@@ -153,7 +153,16 @@ wins:
 DB_DATABASE=ezbizi_testing_<yourmodule> vendor/bin/phpunit --filter=<YourTest>
 ```
 
-One module went 107 errors → 112/112 on this alone.
+One module went 107 errors → 112/112 on this alone. Another went 153 → 17 the
+same week, after reading this file.
+
+**The collision does not look like a collision.** It looks like *you* broke the
+tenant boundary — the red lands in `TenantIsolation`, `TimeClock`, `Tasks` and
+`Web Management` at once, which reads as a fleet-wide security failure rather
+than as two runners sharing a schema. That is the most alarming possible false
+signal, and it points at the one thing you would most want to be wrong about. If
+a run suddenly says you have broken tenancy everywhere, re-run it on your own
+schema **before** you believe it.
 
 **That prefix works for the test runner and nowhere else.** It names a *schema*
 only because `phpunit.xml:26` pins `DB_CONNECTION=mysql`. Everywhere else `.env`
@@ -175,3 +184,34 @@ in the repo root, untracked and — until this was written — unignored, one
 
 Committing safely on this shared tree is **not** temporary and lives in
 `StartUp.md` §4. Who owns which files is in `docs/MODULE-OWNERS.md`.
+
+---
+
+## 5 · A green suite does not prove the sandbox matches production
+
+Until 2026-08-31 the deploy gate shipped its sandbox copy with `git archive`,
+which runs on the Windows machine, where `core.autocrlf=true` — and applies it.
+**1791 of 2131 files differed from what production receives**, 430 KB of pure CR,
+on every deploy the gate had ever run. Production is fed by `git push` and checks
+out on the box, in LF.
+
+Fixed in `b0a4c4e`. The lesson outlived the bug: 2500 tests ran green for months
+against a tree production never receives, because **PHP does not care about line
+endings**. The suite was not confirming the trees matched; it was demonstrating
+that almost nothing in it can tell.
+
+**On Windows this still bites you locally.** Your checkout has CRLF on disk, so
+any assertion anchored with `$` fails on a file that is correct in git:
+
+```
+/^Stable tag:\s*(\S+)$/m   against "Stable tag: 1.0.2
+"  ->  0
+                            against "Stable tag: 1.0.2
+"    ->  1
+```
+
+Known live instance: `WebManagementTest::test_the_plugin_downloads_as_a_zip_...`
+fails on every Windows checkout and passes on the Linux gate. It is a false red
+— the zip production serves is LF and correct. `?$` would fix the test;
+`wordpress-plugin/ezbizi/` and `tests/Feature/Web/` belong to Web Management, so
+it wants that module's owner rather than whoever trips over it next.
