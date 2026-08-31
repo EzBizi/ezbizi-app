@@ -489,13 +489,21 @@ class TaskTimelineBar extends StatelessWidget {
   final TaskRow task;
   final bool dragging;
 
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final body = Container(
+  // The bar itself, always at full opacity — the label lives inside it, and
+  // transparency must never be how a state is shown on the element carrying
+  // text (see the class-level rationale below). "In motion" is signalled by
+  // a 2px outline plus a touch of elevation instead of a faded fill; at 50%
+  // alpha the fill used to composite to roughly #7FD6F7, putting white text
+  // on it at ~1.6:1 contrast right when a user most needed to read it.
+  Widget _bar(ColorScheme scheme, {required bool marked}) => Material(
+    color: Colors.transparent,
+    elevation: marked ? 3 : 0,
+    borderRadius: BorderRadius.circular(6),
+    child: Container(
       decoration: BoxDecoration(
-        color: scheme.primary.withValues(alpha: dragging ? 0.5 : 1),
+        color: scheme.primary,
         borderRadius: BorderRadius.circular(6),
+        border: marked ? Border.all(color: scheme.primary, width: 2) : null,
       ),
       alignment: Alignment.centerLeft,
       padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -509,7 +517,27 @@ class TaskTimelineBar extends StatelessWidget {
           fontWeight: FontWeight.w600,
         ),
       ),
-    );
+    ),
+  );
+
+  // The placeholder left in the bar's own slot while a floating copy
+  // follows the pointer. It carries no text — the floating copy is what
+  // tells the user which task they are holding — so dimming this one costs
+  // nothing.
+  Widget _ghost(ColorScheme scheme) => Opacity(
+    opacity: 0.3,
+    child: Container(
+      decoration: BoxDecoration(
+        color: scheme.primary,
+        borderRadius: BorderRadius.circular(6),
+      ),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final body = _bar(scheme, marked: dragging);
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -526,9 +554,12 @@ class TaskTimelineBar extends StatelessWidget {
             data: _TimelineDrag(task, _TimelineDragKind.whole),
             feedback: Material(
               color: Colors.transparent,
-              child: SizedBox(width: 140, child: body),
+              child: SizedBox(
+                width: 140,
+                child: _bar(scheme, marked: true),
+              ),
             ),
-            childWhenDragging: Opacity(opacity: 0.3, child: body),
+            childWhenDragging: _ghost(scheme),
             child: body,
           ),
         ),

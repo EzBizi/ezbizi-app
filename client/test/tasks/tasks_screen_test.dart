@@ -43,6 +43,49 @@ void main() {
     expect(find.byType(Dialog), findsNothing);
   });
 
+  testWidgets(
+    'the access-refusal sentence has non-zero horizontal padding',
+    (tester) async {
+      tester.view.physicalSize = const Size(375, 812);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final api = ApiClient(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/v1/tasks/boards') {
+            return _json(<String, Object?>{
+              'message': 'Tasks are not available for this view.',
+            }, 403);
+          }
+          return _json(<String, Object?>{'message': 'Unexpected request'}, 500);
+        }),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: EzBiziTheme.light(),
+          home: Scaffold(
+            body: TasksScreen(api: api, session: Session(api)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final sentence = find.text('This task board is unavailable.');
+      expect(sentence, findsOneWidget);
+
+      final padding = tester.widget<Padding>(
+        find.ancestor(of: sentence, matching: find.byType(Padding)).first,
+      );
+      expect(padding.padding.horizontal, greaterThan(0));
+
+      // Not stranded below a void either — it renders directly under the
+      // title bar's chip row, the same top-aligned placement every sibling
+      // screen uses, rather than centered in the remaining height.
+      final sentenceTop = tester.getTopLeft(sentence).dy;
+      expect(sentenceTop, lessThan(300));
+    },
+  );
+
   testWidgets('detail separator is keyboard operable', (tester) async {
     var delta = 0.0;
     await tester.pumpWidget(

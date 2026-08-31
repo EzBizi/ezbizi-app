@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
@@ -203,6 +204,77 @@ void main() {
         // swapped the two fields to make them valid on its own.
         expect(sentStart, DateTime.utc(2026, 9, 20));
         expect(sentDue, isNull);
+      },
+    );
+
+    testWidgets(
+      'the dragging bar keeps its label at full opacity — no alpha on the '
+      'text-bearing element',
+      (tester) async {
+        tester.view.physicalSize = const Size(1400, 800);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        // Holds the move "in flight" so the bar renders in its
+        // dragging=true state (server request pending) long enough to
+        // inspect it, instead of settling straight through it.
+        final pending = Completer<String?>();
+
+        await tester.pumpWidget(
+          _harness(
+            month: DateTime.utc(2026, 9),
+            rows: [_bothDates],
+            onMove: (task, {startOn, dueOn}) => pending.future,
+          ),
+        );
+
+        final gesture = await tester.startGesture(
+          tester.getCenter(
+            find.byKey(const ValueKey('timeline-bar-body-task-1')),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 50));
+        await gesture.moveTo(
+          tester.getCenter(
+            find.byKey(const ValueKey('timeline-day-task-1-2026-09-20')),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 50));
+        await gesture.up();
+        await tester.pump();
+
+        // Mid-move: the row's bar is now rendering with dragging=true.
+        final label = find.text('Measure opening');
+        expect(label, findsOneWidget);
+
+        // No ancestor Opacity below full sits between the label and the
+        // root — the old bug wrapped the whole bar (label included) in a
+        // 0.5-alpha fill.
+        expect(
+          find.ancestor(
+            of: label,
+            matching: find.byWidgetPredicate(
+              (widget) => widget is Opacity && widget.opacity < 1.0,
+            ),
+          ),
+          findsNothing,
+        );
+
+        // The fill behind the label is the plain, full-alpha primary color
+        // — not `withValues(alpha: 0.5)` composited down to near-unreadable
+        // against white text.
+        final scheme = Theme.of(tester.element(label)).colorScheme;
+        final container = tester
+            .widgetList<Container>(
+              find.ancestor(of: label, matching: find.byType(Container)),
+            )
+            .firstWhere((c) => c.decoration is BoxDecoration);
+        final decoration = container.decoration! as BoxDecoration;
+        expect(decoration.color, scheme.primary);
+
+        pending.complete(null);
+        await tester.pumpAndSettle();
       },
     );
   });

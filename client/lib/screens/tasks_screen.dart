@@ -1401,7 +1401,25 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
               error: _error,
               onRetry: _loadDirectory,
               child: _unavailable
-                  ? const Center(child: Text('This task board is unavailable.'))
+                  ? const Align(
+                      alignment: Alignment.topLeft,
+                      // The refusal sentence is the entire payload of this
+                      // screen — it does not sit inside a Center the way a
+                      // short status message elsewhere might. Center both
+                      // starved it of the left/right margin every sibling
+                      // screen gives its content (directory_mobile ~16-20,
+                      // detail_mobile 20, board_mobile 16) AND stranded it
+                      // in the middle of the remaining height, leaving a
+                      // void between the chip row above and the sentence.
+                      // Top-left, padded like those siblings, puts it where
+                      // a user's eye actually lands: directly under the
+                      // chip row, flush with everything else on this
+                      // screen.
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(20, 16, 16, 16),
+                        child: Text('This task board is unavailable.'),
+                      ),
+                    )
                   : Column(
                       children: [
                         if (_conflict)
@@ -1947,6 +1965,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       null: 'No status',
     };
     return Column(
+      key: const ValueKey('task-board-controls'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (_views.isNotEmpty)
