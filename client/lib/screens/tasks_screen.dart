@@ -71,13 +71,16 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   bool _showDirectory = false;
   bool _unavailable = false;
   // House rule 4: the client shows the SERVER's refusal sentence, never its
-  // own. `_evict` is called from ~30 sites across every kind of access loss
-  // (403, 404, revoked reach mid-poll, etc.) and each carries whatever
-  // sentence `Refusal.php` wrote for that specific case — this is what the
-  // refusal screen renders. The fallback below covers only the sites that
-  // pass `null` on purpose (a local decision with no server response to
-  // quote, e.g. a stale search result the user already navigated away
-  // from).
+  // own. `_evict` is called from every kind of access loss (403, 404,
+  // revoked reach mid-poll, etc.) across every screen and flow that can
+  // discover a board is gone — including quick search, which used to
+  // throw its `result.message` away before calling this with `null`. As
+  // of this fix every call site forwards the server's own sentence; none
+  // currently passes `null` on purpose. The fallback below stays only
+  // because the type is `String?` and a future call site with genuinely
+  // nothing to quote (there is no such site today) should still render
+  // something instead of a blank screen — it is not, right now, load-
+  // bearing for any real refusal.
   String? _unavailableMessage;
   bool _conflict = false;
   String? _announcement;
@@ -1859,7 +1862,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
                   key: ValueKey('task-search-$_privacyGeneration'),
                   api: _tasks,
                   onOpen: _openSearchResult,
-                  onUnavailable: () => _evict(null),
+                  onUnavailable: _evict,
                 ),
               );
               final actions = Row(

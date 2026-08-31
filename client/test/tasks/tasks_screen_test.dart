@@ -120,15 +120,17 @@ void main() {
   );
 
   testWidgets(
-    'an eviction with no server message falls back to the client sentence',
+    'a board refusal surfaced through quick search shows the SERVER '
+    "sentence, not the client's",
     (tester) async {
-      // `ApiResponse.message` always synthesizes a fallback string for a
-      // response with no `message` field (`'Something went wrong (HTTP
-      // …)'`), so the network path never actually produces a null message.
-      // The only real `null` comes from a handful of local UI decisions —
-      // quick search discovering its result is gone is one of them
-      // (`onUnavailable: () => _evict(null)` in `_titleBar`) — so this
-      // drives that path end-to-end rather than faking the eviction.
+      // Regression test for the version of this fix that shipped with
+      // `TaskQuickSearch.onUnavailable` typed as a bare `VoidCallback`: it
+      // discarded `result.message` and called `_evict(null)`, so a board
+      // refusal reached through search rendered the client's hardcoded
+      // fallback instead of `Refusal.php`'s sentence — house rule 4,
+      // violated one layer above `_evict` itself. `onUnavailable` is now
+      // `ValueChanged<String?>`, matching every other `onUnavailable` in
+      // `lib/screens/tasks/`, and forwards `result.message`.
       final api = ApiClient(
         client: MockClient((request) async {
           if (request.url.path == '/api/v1/tasks/boards') {
@@ -162,16 +164,29 @@ void main() {
       await tester.pump(const Duration(milliseconds: 350));
       await tester.pumpAndSettle();
 
-      // The 403's own sentence is discarded by design at this call site —
-      // `_evict(null)`, not `_evict(result.message)` — so the client's
-      // fallback renders, not the server's "Search is not available…"
-      expect(find.text('This task board is unavailable.'), findsOneWidget);
       expect(
         find.text('Search is not available for this view.'),
-        findsNothing,
+        findsOneWidget,
       );
+      expect(find.text('This task board is unavailable.'), findsNothing);
     },
   );
+
+  // No test exercises the client's hardcoded fallback string as reached
+  // through a real refusal. Every `_evict`/`onUnavailable` call site in
+  // `lib/screens/tasks/` — traced exhaustively, all ~34 of them — forwards
+  // `result.message` from `TaskApiUnavailable`, which is built in
+  // `TaskApi._decode` from `ApiResponse.message`. That getter is
+  // `body['message'] as String? ?? 'Something went wrong (HTTP
+  // $statusCode).'` — it cannot itself return `null`, so nothing built on
+  // top of it can either. Constructing a mock response with no `message`
+  // field does not produce the client's fallback string; it produces
+  // that generic HTTP-reason string instead, which is a different (real,
+  // but unrelated) fallback one layer further down. A test asserting the
+  // client sentence appears for "no server message" would therefore be
+  // exercising a code path that cannot occur today, which is the same
+  // failure mode being fixed here: a passing test that certifies
+  // something the code doesn't actually do.
 
   testWidgets('detail separator is keyboard operable', (tester) async {
     var delta = 0.0;
