@@ -1,5 +1,3 @@
-import 'dart:io' show Platform;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -13,7 +11,7 @@ class SpecsReader {
   static const MethodChannel _channel = MethodChannel('com.ezbizi.app/monitoring_specs');
 
   Future<Map<String, dynamic>?> read() async {
-    if (!Platform.isWindows) return null;
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.windows) return null;
     try {
       final result = await _channel.invokeMapMethod<String, dynamic>('readSpecs');
       return (result == null || result.isEmpty) ? null : result;

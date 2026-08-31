@@ -4,6 +4,7 @@
 #include <winternl.h>
 #include <wlanapi.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 
@@ -68,8 +69,10 @@ EncodableMap ReadSpecs() {
                               &opcode) == ERROR_SUCCESS &&
           attr && attr->isState == wlan_interface_state_connected) {
         const auto& ssid = attr->wlanAssociationAttributes.dot11Ssid;
+        size_t ssid_len = std::min(static_cast<size_t>(ssid.uSSIDLength),
+                                    sizeof(ssid.ucSSID));
         m[EncodableValue("wifi_ssid")] = EncodableValue(std::string(
-            reinterpret_cast<const char*>(ssid.ucSSID), ssid.uSSIDLength));
+            reinterpret_cast<const char*>(ssid.ucSSID), ssid_len));
         int quality =
             static_cast<int>(attr->wlanAssociationAttributes.wlanSignalQuality);
         m[EncodableValue("wifi_signal_dbm")] =

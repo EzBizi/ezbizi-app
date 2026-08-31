@@ -39,7 +39,7 @@ target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
 # depends on. See win32_window.cpp.
 target_link_libraries(${BINARY_NAME} PRIVATE "shell32.lib")
 # WLAN API, for the Wi-Fi SSID/signal reads in monitoring_specs.cpp.
-target_link_libraries(${BINARY_NAME} PRIVATE wlanapi)
+target_link_libraries(${BINARY_NAME} PRIVATE "wlanapi.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.

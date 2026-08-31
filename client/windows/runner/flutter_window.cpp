@@ -45,6 +45,7 @@ void FlutterWindow::OnDestroy() {
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
+  monitoring_specs_channel_ = nullptr;
 
   Win32Window::OnDestroy();
 }
