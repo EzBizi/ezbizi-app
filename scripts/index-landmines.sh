@@ -127,6 +127,28 @@ if [ "$live" -gt 0 ]; then
   A live entry is somebody's staged work. Do NOT clear it to tidy the index —
   ask them. No clearing command is printed while one is present, deliberately.
 EOF
+
+  # A live entry is dangerous in the OPPOSITE direction from a stale one, and
+  # the warning above only covers half of it. Stale entries make you LOSE
+  # somebody's landed work. Live ones make you PUBLISH somebody's unfinished
+  # work — under whatever message you were writing, from a tree they were still
+  # editing.
+  #
+  # A migration is the sharp case: it ships on the next deploy and runs against
+  # production before anybody reviews it. Named separately for that reason.
+  ADDED=$(git diff --cached --name-only --diff-filter=A HEAD 2>/dev/null)
+  if [ -n "$ADDED" ]; then
+    echo
+    echo "  And a bare commit right now would PUBLISH these, unfinished:"
+    echo "$ADDED" | sed 's/^/       /'
+    MIGS=$(echo "$ADDED" | grep -c '^database/migrations/' || true)
+    if [ "${MIGS:-0}" -gt 0 ]; then
+      echo
+      echo "  ** $MIGS of those is a MIGRATION. ** It would run against production on"
+      echo "     the next deploy, before anybody reviewed it. Tell whoever staged it"
+      echo "     to work in a worktree: ./scripts/session-worktree.sh <module>"
+    fi
+  fi
   exit 1
 fi
 
