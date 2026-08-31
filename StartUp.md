@@ -884,6 +884,22 @@ matters, because a test that misreads a line ending goes red and somebody
 investigates, whereas the WordPress plugin would quietly render the wrong thing
 on a customer's page forever.
 
+### PHP's default 128M dies partway through a large filter
+
+`php -d memory_limit=1G vendor/bin/phpunit --filter=...` for anything broad. The
+default 128M runs a few hundred tests and then dies inside PHPUnit's result
+cache, which reads as the suite breaking rather than as running out of room.
+
+Combined with the schema rule, the full incantation is:
+
+```bash
+DB_DATABASE=ezbizi_testing_<yourmodule> php -d memory_limit=1G vendor/bin/phpunit
+```
+
+Also delete `.phpunit.result.cache` if a run dies oddly — it grows until it takes
+the process down with it, and the deploy gate removes it before every run for
+exactly that reason.
+
 ### A count is not a set: two changes in opposite directions look like one
 
 The sharpest measurement failure of 2026-08-31 was the one where the NUMBER WAS
