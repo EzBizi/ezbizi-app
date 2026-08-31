@@ -90,7 +90,19 @@ final class HrGlance implements Glance
             $inFlight = $this->onboardingsInFlight->resolve($user, []);
             $stalled = $this->invitationsStalled->resolve($user, []);
             $starters = $this->startersAndLeavers->resolve($user, [
-                'since' => $period->startsOn,
+                // ->utc(), because startsOn is a wall clock in the VIEW timezone
+                // and `created_at` is UTC. A Carbon binds as its own local
+                // string with no conversion, so a UTC-5 organization compared
+                // UTC timestamps against Eastern strings and the bound sat five
+                // hours EARLY — pulling in starters from about 19:00 the
+                // previous evening. Seven sibling glances already convert;
+                // JobsGlance:107 carries the rule. This one did not.
+                //
+                // Note the direction: this is a lower bound only, so it
+                // OVER-COUNTS. CallReport's version of the same defect was a
+                // two-sided whereBetween binding late and DROPPING evening
+                // calls. A test written for one will not catch the other.
+                'since' => $period->startsOn->copy()->utc(),
             ]);
             // Forward window of its own — not the dashboard period.
             $certifications = $this->expiringCertifications->resolve($user, []);
