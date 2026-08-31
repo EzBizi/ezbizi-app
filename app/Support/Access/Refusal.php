@@ -352,4 +352,28 @@ final class Refusal
             .'schedule, make it a task of its own instead of a subtask.'
         );
     }
+
+    /**
+     * A task's `start_on` would land after its own `due_on` (design spec §8;
+     * task-12 brief, fix round 1).
+     *
+     * Not a §4 reach failure, same shape as [dependencyCycle] and
+     * [recurrenceOnSubtask] — the actor holds `tasks.edit` and stands over
+     * the board perfectly well. What is refused is the shape of the two
+     * dates together, which is why `TaskWriter::applyUpdate` is the only
+     * place that can catch it: a `PATCH` may carry just one of the two
+     * fields, so checking the request in isolation misses the case where an
+     * incoming `start_on` lands after an EXISTING, untouched `due_on` (or
+     * the other way around) — only the writer holds the merged, final
+     * state to compare. Clearing either date is unaffected; a task with
+     * only one date, or neither, has nothing to compare and is always
+     * allowed.
+     */
+    public static function startAfterDue(): Response
+    {
+        return Response::deny(
+            'The start date cannot be after the due date. Move the due date out to match, '
+            .'or pick an earlier start date.'
+        );
+    }
 }

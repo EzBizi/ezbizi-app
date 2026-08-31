@@ -220,7 +220,102 @@ class TasksApiTest extends TestCase
         $this->assertNull($child->fresh()->archived_at);
     }
 
-    private function createTask(string $title, ?string $parentId = null, ?string $dueOn = null): Task
+    /**
+     * `start_on` after `due_on` (design spec §8; task-12 brief, fix round 1).
+     * `TaskWriter::applyUpdate` checks the MERGED state — existing value plus
+     * incoming change — because a PATCH may carry only one of the two dates.
+     * A lone `start_on` here lands after the task's EXISTING, untouched
+     * `due_on`, which validating the request in isolation would miss.
+     */
+    public function test_start_on_after_an_existing_due_on_is_refused(): void
+    {
+        $task = $this->createTask('Install the unit', dueOn: '2026-09-10');
+
+        $response = $this->patchJson("/api/v1/tasks/{$task->id}", [
+            'expected_version' => $task->version,
+            'start_on' => '2026-09-15',
+        ])->assertUnprocessable()->assertJsonValidationErrors('start_on');
+        $this->assertStringContainsString(
+            'start date cannot be after the due date',
+            (string) $response->json('errors.start_on.0'),
+        );
+
+        $this->enterTenant();
+        $fresh = $task->fresh();
+        // Not a swap and not a silent write — the row is exactly as it was.
+        $this->assertNull($fresh->start_on);
+        $this->assertSame('2026-09-10', $fresh->due_on->format('Y-m-d'));
+        $this->assertSame($task->version, $fresh->version);
+    }
+
+    /** Same rule, the other field: `due_on` before an existing `start_on`. */
+    public function test_due_on_before_an_existing_start_on_is_refused(): void
+    {
+        $task = $this->createTask('Install the unit', startOn: '2026-09-10');
+
+        $response = $this->patchJson("/api/v1/tasks/{$task->id}", [
+            'expected_version' => $task->version,
+            'due_on' => '2026-09-05',
+        ])->assertUnprocessable()->assertJsonValidationErrors('due_on');
+        $this->assertStringContainsString(
+            'start date cannot be after the due date',
+            (string) $response->json('errors.due_on.0'),
+        );
+
+        $this->enterTenant();
+        $fresh = $task->fresh();
+        $this->assertSame('2026-09-10', $fresh->start_on->format('Y-m-d'));
+        $this->assertNull($fresh->due_on);
+        $this->assertSame($task->version, $fresh->version);
+    }
+
+    /** Both dates in one PATCH, wrong order — refused before either is saved. */
+    public function test_setting_both_dates_at_once_in_an_invalid_order_is_refused(): void
+    {
+        $task = $this->createTask('Install the unit');
+
+        $this->patchJson("/api/v1/tasks/{$task->id}", [
+            'expected_version' => $task->version,
+            'start_on' => '2026-09-15',
+            'due_on' => '2026-09-10',
+        ])->assertUnprocessable()->assertJsonValidationErrors('start_on');
+
+        $this->enterTenant();
+        $fresh = $task->fresh();
+        $this->assertNull($fresh->start_on);
+        $this->assertNull($fresh->due_on);
+        $this->assertSame($task->version, $fresh->version);
+    }
+
+    /** Both dates in one PATCH, valid order — this is the whole-bar drag's write. */
+    public function test_setting_both_dates_at_once_in_a_valid_order_succeeds(): void
+    {
+        $task = $this->createTask('Install the unit');
+
+        $task = $this->patchTask($task, ['start_on' => '2026-09-05', 'due_on' => '2026-09-10']);
+
+        $this->assertSame('2026-09-05', $task->start_on->format('Y-m-d'));
+        $this->assertSame('2026-09-10', $task->due_on->format('Y-m-d'));
+    }
+
+    /**
+     * Clearing either date must stay allowed — a task with only one date, or
+     * neither, has nothing to compare and is always valid (it is also a
+     * render state Timeline's marker case depends on).
+     */
+    public function test_clearing_either_date_is_allowed(): void
+    {
+        $task = $this->createTask('Install the unit', dueOn: '2026-09-10', startOn: '2026-09-05');
+
+        $task = $this->patchTask($task, ['start_on' => null]);
+        $this->assertNull($task->start_on);
+        $this->assertSame('2026-09-10', $task->due_on->format('Y-m-d'));
+
+        $task = $this->patchTask($task, ['due_on' => null]);
+        $this->assertNull($task->due_on);
+    }
+
+    private function createTask(string $title, ?string $parentId = null, ?string $dueOn = null, ?string $startOn = null): Task
     {
         $payload = [
             'title' => $title,
@@ -233,6 +328,9 @@ class TasksApiTest extends TestCase
         }
         if ($dueOn !== null) {
             $payload['due_on'] = $dueOn;
+        }
+        if ($startOn !== null) {
+            $payload['start_on'] = $startOn;
         }
         $id = $this->postJson("/api/v1/tasks/boards/{$this->board->id}/tasks", $payload)
             ->assertCreated()->json('data.id');

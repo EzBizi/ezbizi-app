@@ -508,6 +508,19 @@ final class TaskWriter
                 $eventKeys[] = 'task.due_date_changed';
             }
         }
+        // Checked against the MERGED state — $task->start_on/due_on above,
+        // not the request in isolation — because a PATCH may carry only one
+        // of the two fields (design spec §8; task-12 brief, fix round 1): a
+        // lone incoming `start_on` has to be compared against whatever
+        // `due_on` already sits on the row, and the writer is the only place
+        // that has both. Clearing either date (setting it null) can never
+        // trip this — there is nothing to compare it against.
+        if ((array_key_exists('start_on', $attributes) || array_key_exists('due_on', $attributes))
+            && $task->start_on !== null && $task->due_on !== null
+            && $task->start_on->gt($task->due_on)) {
+            $dateField = array_key_exists('start_on', $attributes) ? 'start_on' : 'due_on';
+            throw ValidationException::withMessages([$dateField => (string) Refusal::startAfterDue()->message()]);
+        }
         if (array_key_exists('group_id', $attributes)) {
             if ($task->parent_task_id !== null) {
                 throw ValidationException::withMessages(['group_id' => 'A subtask inherits its parent group.']);
