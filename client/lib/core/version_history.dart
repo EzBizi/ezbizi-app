@@ -8,6 +8,22 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0120',
+      date: '31 Aug 2026',
+      items: [
+        'You can delete your own account from the account screen. It erases '
+            'your name, email and personal details and signs you out on every '
+            'device, and it asks for your password and the word DELETE first - '
+            'being signed in is not enough for something that cannot be undone.',
+        'The work stays with the organization. Jobs, customers and records you '
+            'touched keep their history; what was yours is removed from them.',
+        'The only administrator of an organization cannot delete their account, '
+            'because that would leave the business with nobody able to run it. '
+            'The screen says so, and says to make somebody else an '
+            'administrator first.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0119',
       date: '31 Aug 2026',
       items: [
