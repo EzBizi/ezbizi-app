@@ -8,6 +8,7 @@ use App\Models\Franchise;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\Access\Refusal;
+use App\Support\Access\ScopeReach;
 use Illuminate\Auth\Access\Response;
 
 /**
@@ -38,76 +39,152 @@ use Illuminate\Auth\Access\Response;
  * `mayAssignTo` asks the question the User model already answers for every
  * other §4 decision: is every place the assignee holds one the assigner
  * `canActOnCompany`/`canActOnFranchise`/`canActOnOrganization`? Nothing here
- * re-derives reach — every branch below delegates to those three methods,
- * which is the same discipline `Refusal`'s own docblock names as the trap
- * (R6): a second home for §4 is a second place for it to disagree with the
- * first.
+ * re-derives that per-place answer — [covers] delegates to
+ * `ScopeReach::coversAssignment`, the ONE place in this codebase that already
+ * routes an `Assignment`'s scope type to the right one of those three methods
+ * (onboarding itself goes through it — `HrOnboardingsController`,
+ * `HrPeopleController` — as do `NotificationDispatcher::audienceFor` and
+ * `AutomationsController::maySeeSubjectOf`). An earlier version of this class
+ * re-implemented that same three-way dispatch by hand; `ScopeReach`'s own
+ * docblock names avoiding exactly that copy as its reason for existing, and a
+ * §4 tightening made there would otherwise have left Training assigning under
+ * the old rule, silently. Nothing here re-derives PLACE reach either way —
+ * `Refusal`'s own docblock names a second home for §4 as the trap (R6).
  *
- * An assignee with NO assignment at all is the one case those three methods
- * cannot answer on their own — there is no place to ask about. The
- * conservative reading used everywhere else this comes up
+ * An assignee with NO assignment at all is the one case `ScopeReach` cannot
+ * answer on its own — there is no place to ask about. The conservative
+ * reading used everywhere else this comes up
  * (`NotificationDispatcher::audienceFor`'s own docblock, `ScopeReach`'s
  * organization branch) is that "no narrower place" means the organization, so
  * only somebody who reaches the whole organization may assign to somebody
  * unplaced.
  *
- * ── The role case ──────────────────────────────────────────────────
+ * ── mayAssignTo and explain share ONE source of truth ─────────────
+ *
+ * [mayAssignTo] (a bool) and [explain] (a sentence) used to be two separate
+ * walks over the assignee's assignments, asking the same question two
+ * different ways — which is exactly the shape that drifts. It did: review
+ * found that `mayAssignTo` refuses an INACTIVE assignee, but the old
+ * `explain` never checked that at all, walked straight to "every assignment
+ * is covered" (true — inactivity has nothing to do with place), and fell
+ * through to `Response::allow()`. `AssignmentWriter::authorizeUser` calls
+ * `explain(...)->authorize()` only once `mayAssignTo` has already said no,
+ * and `authorize()` on an ALLOW is a no-op — so the write proceeded for an
+ * assignee `mayAssignTo` had just refused. Fail OPEN, not fail closed.
+ *
+ * Fixed by deleting the second copy of the question rather than patching the
+ * missing branch: [refusalForAssignee] is now the only place that decides,
+ * returning `null` (allowed) or the `Response` naming why not, and both
+ * [mayAssignTo] and [explain] only read its answer. There is no longer a
+ * bool-shaped and a sentence-shaped version of the same fact to keep in
+ * step — they cannot disagree because there is only one of them.
+ *
+ * ── The role case — organization reach, always ─────────────────────
  *
  * Roles are organization-GLOBAL (Role's own docblock) — a role has no place of
- * its own, and its members can be spread across every franchise the tenant
- * has. "Checked the same way against the role's scope" means the role's scope
- * IS the set of places its CURRENT members hold, asked with the identical
- * per-place check `mayAssignTo` already makes for one person — not a second,
- * looser rule for roles. A role with no current holder is the same "nothing
- * to check reach against" case a single unplaced assignee is, and gets the
- * same conservative answer: only organization-wide reach may target it,
- * because the very next member added could be anybody in the tenant and there
- * is no re-check when that happens (decision 1: a role assignment is one row,
- * read-time union, never expanded — the same property that makes adding
- * somebody to a role hand them the training with no sync job is what makes an
- * empty role's current membership tell an assigner nothing about who will
- * hold it next).
+ * its own, and a role assignment (decision 1: one row, never expanded, read
+ * at Learn time via `LearnController::assignedQuery`'s union) is never
+ * re-checked when membership changes.
+ *
+ * An earlier version of this method asked the question per CURRENT member —
+ * "is every place a current holder stands one the assigner reaches" — with an
+ * empty role answered conservatively (organization reach only) and anything
+ * with at least one member answered by walking them. Review found the two-
+ * step hole that shape leaves open: a Riverside supervisor legitimately
+ * assigns to a role whose only member today is at Riverside; a Northgate
+ * hire is given that role tomorrow; the Riverside supervisor's mandatory
+ * training is now sitting on a Northgate crew member's list, and nothing
+ * re-runs the check when the membership changed to make that true. The old
+ * rule was also backwards on its own terms — it trusted a ONE-member role
+ * (thinner evidence, since membership can turn over fastest right where it
+ * is smallest) more than an EMPTY one, when both carry identical exposure to
+ * whoever the role picks up next.
+ *
+ * Assigning to a role is a promise about EVERYONE WHO WILL EVER HOLD IT, not
+ * about who holds it today — decision 1 is exactly what makes that durable
+ * rather than a snapshot. A promise that wide is an organization-level act,
+ * full stop, whatever the role's membership looks like right now. So
+ * [mayAssignToRole] asks one question and nothing about membership:
+ * `canActOnOrganization`. Ruled by the reviewer (task-9 round 2); recorded
+ * here and in `docs/superpowers/specs/2026-08-28-training-module-design.md`
+ * §5, which is where "checked the same way against the role's scope" had
+ * previously lived as the only account of this decision.
  */
 final class AssignmentReach
 {
     /** Every place the assignee holds is one the assigner may act on. */
     public static function mayAssignTo(User $assigner, User $assignee): bool
     {
-        if (! $assignee->is_active || $assignee->organization_id !== $assigner->organization_id) {
-            return false;
-        }
-
-        return self::coversEveryAssignment($assigner, $assignee->assignments);
+        return self::refusalForAssignee($assigner, $assignee) === null;
     }
 
-    /** The same question asked of everybody who currently holds a role. */
+    /**
+     * A role assignment is an organization-level act regardless of who
+     * currently holds the role — see this class's own docblock, "The role
+     * case — organization reach, always".
+     */
     public static function mayAssignToRole(User $assigner, Role $role): bool
     {
-        if ($role->organization_id !== $assigner->organization_id) {
-            return false;
-        }
-
-        $members = $role->users()->with('assignments')->get();
-
-        if ($members->isEmpty()) {
-            return $assigner->canActOnOrganization($assigner->organization);
-        }
-
-        return $members->every(fn (User $member) => self::mayAssignTo($assigner, $member));
+        return $role->organization_id === $assigner->organization_id
+            && $assigner->canActOnOrganization($assigner->organization);
     }
 
     /**
      * Why `mayAssignTo` said no, as a sentence via {@see Refusal} — never a
      * section number, a class name, or the word "immutable" (§4's own house
      * style). Called only after `mayAssignTo` has already returned false;
-     * this does not re-decide anything, it walks the same assignments a
-     * second time to name the one place that failed, for the human being
-     * refused.
+     * reads [refusalForAssignee]'s answer rather than re-deriving it, which
+     * is what guarantees this can never disagree with `mayAssignTo` — see
+     * this class's own docblock, "mayAssignTo and explain share ONE source
+     * of truth".
      */
     public static function explain(User $assigner, User $assignee): Response
     {
-        $act = "assign training to {$assignee->name}";
+        return self::refusalForAssignee($assigner, $assignee) ?? Response::allow();
+    }
 
+    /**
+     * {@see explain}, for a role — always the organization-level sentence,
+     * since [mayAssignToRole] only ever refuses for that one reason (a
+     * different organization is answered `Response::denyAsNotFound()`-style
+     * by `Role::findOrFail` never finding a cross-tenant id in the first
+     * place, before this is ever reached).
+     */
+    public static function explainRole(User $assigner, Role $role): Response
+    {
+        return Refusal::noReach(
+            $assigner,
+            Refusal::AT_ORGANIZATION,
+            "assign training to the {$role->name} role",
+            $assigner->organization->name,
+        );
+    }
+
+    /**
+     * The single source of truth [mayAssignTo] and [explain] both read —
+     * `null` means allowed, a `Response` names why not. See this class's own
+     * docblock, "mayAssignTo and explain share ONE source of truth", for why
+     * this exists rather than a bool-returning and a Response-returning
+     * version of the identical walk.
+     */
+    private static function refusalForAssignee(User $assigner, User $assignee): ?Response
+    {
+        if (! $assignee->is_active) {
+            return Response::deny(
+                "{$assignee->name}'s account is not active, so there is nothing to assign training to."
+            );
+        }
+
+        if ($assignee->organization_id !== $assigner->organization_id) {
+            // Defensive only: every real caller resolves the assignee via
+            // `User::findOrFail`, which is tenant-scoped (`BelongsToTenant`)
+            // — a cross-organization id never reaches here through the real
+            // write path. Kept so this method is correct even if that ever
+            // stops being true.
+            return Response::denyAsNotFound();
+        }
+
+        $act = "assign training to {$assignee->name}";
         $assignments = $assignee->assignments;
 
         if ($assignments->isEmpty()) {
@@ -122,34 +199,7 @@ final class AssignmentReach
             }
         }
 
-        // mayAssignTo already said yes for every assignment — nothing to
-        // explain. Unreachable in practice; explain() is only ever called
-        // once mayAssignTo has returned false.
-        return Response::allow();
-    }
-
-    /** {@see explain}, for a role. */
-    public static function explainRole(User $assigner, Role $role): Response
-    {
-        $act = "assign training to the {$role->name} role";
-
-        $members = $role->users()->with('assignments')->get();
-
-        if ($members->isEmpty()) {
-            return Refusal::noReach($assigner, Refusal::AT_ORGANIZATION, $act, $assigner->organization->name);
-        }
-
-        foreach ($members as $member) {
-            foreach ($member->assignments as $assignment) {
-                $refusal = self::refusalFor($assigner, $assignment, $act);
-
-                if ($refusal !== null) {
-                    return $refusal;
-                }
-            }
-        }
-
-        return Response::allow();
+        return null;
     }
 
     private static function refusalFor(User $assigner, Assignment $assignment, string $act): ?Response
@@ -180,30 +230,13 @@ final class AssignmentReach
         };
     }
 
-    /** @param  \Illuminate\Support\Collection<int, Assignment>  $assignments */
-    private static function coversEveryAssignment(User $assigner, $assignments): bool
-    {
-        if ($assignments->isEmpty()) {
-            return $assigner->canActOnOrganization($assigner->organization);
-        }
-
-        foreach ($assignments as $assignment) {
-            if (! self::covers($assigner, $assignment)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
+    /**
+     * Delegates to `ScopeReach::coversAssignment` — see this class's own
+     * docblock on why re-implementing the scope-type dispatch here a second
+     * time was the defect, not merely a style choice.
+     */
     private static function covers(User $assigner, Assignment $assignment): bool
     {
-        return match ($assignment->scopeType()) {
-            Assignment::SCOPE_ORGANIZATION => $assigner->canActOnOrganization($assigner->organization),
-            Assignment::SCOPE_COMPANY => ($company = Company::find($assignment->assigned_company_id)) !== null
-                && $assigner->canActOnCompany($company),
-            Assignment::SCOPE_FRANCHISE => ($franchise = Franchise::find($assignment->assigned_franchise_id)) !== null
-                && $assigner->canActOnFranchise($franchise),
-        };
+        return app(ScopeReach::class)->coversAssignment($assigner, $assignment);
     }
 }

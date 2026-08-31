@@ -4,8 +4,6 @@ namespace App\Http\Controllers\Api\Training;
 
 use App\Http\Controllers\Api\Controller;
 use App\Models\TrainingAssignment;
-use App\Models\User;
-use App\Support\Access\Refusal;
 use App\Support\Training\AssignmentWriter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,11 +15,16 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * Gated on `training.assign` — the fourth of the module's four permissions
  * (TrainingGuidePolicy's docblock: "monitor sees other people's results,
- * manage writes the guides and the tests, assign gives one to somebody").
- * Reach is bounded by `App\Support\Training\AssignmentReach`, asked through
- * the one write path this controller shares with the automation engine's
- * `training.assign` action (`ActionRunner::assignTraining`) — see
- * `AssignmentWriter`'s own docblock for why that sharing is the point.
+ * manage writes the guides and the tests, assign gives one to somebody") —
+ * and reach-bounded (`App\Support\Training\AssignmentReach`). Both checks
+ * live in `AssignmentWriter::create`, not here: this controller used to
+ * carry its own copy of the permission check, which review (task-9 round 2)
+ * found meant `training.assign` was enforced on THIS path only — a rule
+ * using the `training.assign` automation action ran with no permission
+ * check at all. Removed rather than kept alongside `AssignmentWriter`'s,
+ * so there is exactly one gate on the one write path this controller
+ * shares with `ActionRunner::assignTraining` — see `AssignmentWriter`'s own
+ * docblock.
  *
  * No listing, updating or deleting here — the brief scopes this task to
  * GIVING training, and a role assignment is never expanded into per-user
@@ -35,8 +38,6 @@ class AssignmentsController extends Controller
     /** POST /api/v1/training/assignments */
     public function store(Request $request): JsonResponse
     {
-        $this->authorizeAssigner($request->user());
-
         $input = $request->validate([
             // Presence/absence — not "exactly one" — is checked here; the
             // XOR itself is AssignmentWriter's, so the controller and the
@@ -51,14 +52,14 @@ class AssignmentsController extends Controller
 
         $assignment = $this->writer->create($request->user(), $input);
 
-        return response()->json(['data' => $this->present($assignment)], Response::HTTP_CREATED);
-    }
+        // 200 for a repeat that resolved to the row that already existed
+        // (AssignmentWriter::create's own docblock, "a repeat assignment
+        // updates in place, never a second row"), 201 only for a genuine
+        // insert — Eloquent's own `wasRecentlyCreated` already means
+        // exactly this, so no second flag has to travel with the model.
+        $status = $assignment->wasRecentlyCreated ? Response::HTTP_CREATED : Response::HTTP_OK;
 
-    private function authorizeAssigner(User $user): void
-    {
-        if (! $user->hasPermission('training.assign')) {
-            Refusal::permission('assign training')->authorize();
-        }
+        return response()->json(['data' => $this->present($assignment)], $status);
     }
 
     /** @return array<string, mixed> */

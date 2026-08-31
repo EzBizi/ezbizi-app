@@ -151,6 +151,17 @@ presented"* — and cites §4 rather than anything HR-specific, so it applies he
 unchanged. A Riverside supervisor with `training.assign` may not pile mandatory training
 onto Northgate's crew.
 
+**A role target is bounded by ORGANIZATION reach, always — not by its current
+members.** (Ruled task-9, round 2, after a review found the hole an earlier,
+per-member version left open.) A role assignment is one row, never re-checked
+when membership changes, so assigning to a role is a promise about *everyone who
+will ever hold it*, not about who holds it today. A Riverside supervisor whose
+only current member is another Riverside employee cannot use that role to
+smuggle mandatory training onto whoever the role picks up next — a Northgate
+hire given that role tomorrow would inherit it with no re-check to catch it.
+Only somebody who reaches the whole organization may target a role, whatever
+its membership looks like right now.
+
 The refusal carries a sentence, from the server, in plain words (§4). Not "out of
 scope": *"You can assign training to people in Riverside. Sam works out of Northgate."*
 

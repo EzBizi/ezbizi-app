@@ -466,10 +466,17 @@ class ActionRunner
             ];
         }
 
+        // wasRecentlyCreated distinguishes a genuine insert from a repeat
+        // that resolved to the row already there — AssignmentWriter::create's
+        // own docblock, "a repeat assignment updates in place, never a
+        // second row". A rule firing twice for one instruction should say
+        // so, not claim to have assigned it a second time.
+        $verb = $assignment->wasRecentlyCreated ? 'Assigned' : 'Already assigned';
+
         return [
             'type' => 'training.assign',
             'ok' => true,
-            'detail' => "Assigned {$assigneeType}:{$assigneeId} training {$assignment->id}.",
+            'detail' => "{$verb} {$assigneeType}:{$assigneeId} training {$assignment->id}.",
         ];
     }
 

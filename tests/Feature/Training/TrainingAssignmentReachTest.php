@@ -3,9 +3,12 @@
 namespace Tests\Feature\Training;
 
 use App\Models\Assignment;
+use App\Models\Automation;
 use App\Models\AutomationEvent;
 use App\Models\AutomationRun;
+use App\Models\AutomationVersion;
 use App\Models\Franchise;
+use App\Models\Notification;
 use App\Models\Role;
 use App\Models\TrainingAssignment;
 use App\Models\TrainingGuide;
@@ -138,6 +141,9 @@ class TrainingAssignmentReachTest extends TestCase
         $memberB = $this->userWithExistingRole($tenant, $role, $riverside, 'MemberB');
         $outsider = $this->userInFranchise($tenant, $riverside, 'Outsider', ['training.view']);
 
+        // Organization reach — see the role-reach tests below for why a
+        // franchise-level assigner is refused for a role target regardless
+        // of where its current members happen to stand.
         $this->signedInAs($tenant['admin'])->postJson('/api/v1/training/assignments', [
             'guide_id' => $guide->id, 'assignee_type' => 'role', 'assignee_id' => $role->id,
         ])->assertCreated();
@@ -161,17 +167,23 @@ class TrainingAssignmentReachTest extends TestCase
         $this->assertNotContains($guide->id, $inOutsider, 'Somebody who does not hold the role must not see it.');
     }
 
-    /** The role case of the same sideways rule: one member outside reach refuses the whole assignment. */
-    public function test_a_role_assignment_is_refused_when_any_current_member_is_outside_reach(): void
+    /**
+     * Round 2 ruling: a role target is bounded by ORGANIZATION reach,
+     * always — never by its current membership. Proven here against the
+     * exact case a franchise-level rule would get RIGHT under the old,
+     * per-member rule and WRONG under this one being absent: every current
+     * member is reachable, so an assignment based on today's membership
+     * would have been allowed — and is refused anyway, because the promise
+     * is about whoever the role ever holds, not who holds it right now.
+     */
+    public function test_a_role_assignment_is_refused_to_a_non_organization_assigner_even_when_every_current_member_is_reachable(): void
     {
         $tenant = $this->provisionTenant('Alpha');
         $riverside = $tenant['franchise'];
-        $northgate = $this->extraFranchise($tenant, 'Northgate');
 
         $supervisor = $this->userInFranchise($tenant, $riverside, 'Supervisor', ['training.assign']);
         $role = $this->aRole($tenant, 'Field Tech', ['training.view']);
-        $this->userWithExistingRole($tenant, $role, $riverside, 'InReach');
-        $this->userWithExistingRole($tenant, $role, $northgate, 'OutOfReach');
+        $this->userWithExistingRole($tenant, $role, $riverside, 'OnlyMemberIsReachable');
         $guide = $this->aPublishedOrgGuide($tenant);
 
         $refused = $this->signedInAs($supervisor)->postJson('/api/v1/training/assignments', [
@@ -188,7 +200,47 @@ class TrainingAssignmentReachTest extends TestCase
         });
     }
 
-    /** A role with no current holder is nobody's to bound reach against — only organization reach may target it. */
+    /**
+     * The two-step bypass the round-2 review proved against the old,
+     * per-member rule: a Riverside supervisor's role assignment, allowed
+     * today because the role's only member is at Riverside, would have
+     * quietly covered a Northgate hire added to that role tomorrow — with
+     * no re-check when the membership changed. Since reach for a role no
+     * longer depends on membership at all, the supervisor cannot even reach
+     * the FIRST step: refused before there is anything to add anybody to.
+     */
+    public function test_a_role_target_cannot_be_used_to_smuggle_training_onto_a_franchise_added_later(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $riverside = $tenant['franchise'];
+        $northgate = $this->extraFranchise($tenant, 'Northgate');
+
+        $supervisor = $this->userInFranchise($tenant, $riverside, 'Supervisor', ['training.assign']);
+        $role = $this->aRole($tenant, 'Field Tech', ['training.view']);
+        $this->userWithExistingRole($tenant, $role, $riverside, 'RiversideMember');
+        $guide = $this->aPublishedOrgGuide($tenant);
+
+        $this->signedInAs($supervisor)->postJson('/api/v1/training/assignments', [
+            'guide_id' => $guide->id, 'assignee_type' => 'role', 'assignee_id' => $role->id,
+        ])->assertStatus(403);
+
+        // The bypass this closes: had the assignment above been allowed, a
+        // Northgate hire given the SAME role afterward would have inherited
+        // it with no re-check — decision 1 (one row, read at Learn time,
+        // never re-verified) is what makes that durable rather than a
+        // snapshot. Demonstrated by adding the member anyway (as the org
+        // admin would when actually hiring) and confirming there is still
+        // no row a Northgate member could ever have inherited.
+        $this->userWithExistingRole($tenant, $role, $northgate, 'LaterNorthgateHire');
+
+        $this->inTenant($tenant['org'], function () use ($guide, $role) {
+            $this->assertDatabaseMissing('training_assignments', [
+                'assignee_type' => TrainingAssignment::ROLE, 'assignee_id' => $role->id, 'guide_id' => $guide->id,
+            ]);
+        });
+    }
+
+    /** An empty role is likewise organization-reach-only — membership (none, one, many) never changes the answer. */
     public function test_an_empty_role_may_only_be_assigned_by_someone_with_organization_reach(): void
     {
         $tenant = $this->provisionTenant('Alpha');
@@ -201,6 +253,23 @@ class TrainingAssignmentReachTest extends TestCase
         $this->signedInAs($supervisor)->postJson('/api/v1/training/assignments', [
             'guide_id' => $guide->id, 'assignee_type' => 'role', 'assignee_id' => $role->id,
         ])->assertStatus(403);
+
+        $this->signedInAs($tenant['admin'])->postJson('/api/v1/training/assignments', [
+            'guide_id' => $guide->id, 'assignee_type' => 'role', 'assignee_id' => $role->id,
+        ])->assertCreated();
+    }
+
+    /** An organization-level assigner may target ANY role — mixed-place membership included — matching decision 1's read-time union. */
+    public function test_an_organization_level_assigner_may_assign_to_a_role_spanning_several_franchises(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $riverside = $tenant['franchise'];
+        $northgate = $this->extraFranchise($tenant, 'Northgate');
+
+        $role = $this->aRole($tenant, 'Field Tech', ['training.view']);
+        $this->userWithExistingRole($tenant, $role, $riverside, 'AtRiverside');
+        $this->userWithExistingRole($tenant, $role, $northgate, 'AtNorthgate');
+        $guide = $this->aPublishedOrgGuide($tenant);
 
         $this->signedInAs($tenant['admin'])->postJson('/api/v1/training/assignments', [
             'guide_id' => $guide->id, 'assignee_type' => 'role', 'assignee_id' => $role->id,
@@ -244,9 +313,11 @@ class TrainingAssignmentReachTest extends TestCase
             'guide_id' => $guide->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id,
         ])->assertCreated()->json('data.id');
 
+        // Repeat, identical body — a genuine no-op, so 200 (not 201: nothing
+        // was newly created) and the same row's id.
         $second = $this->signedInAs($tenant['admin'])->postJson('/api/v1/training/assignments', [
             'guide_id' => $guide->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id,
-        ])->assertCreated()->json('data.id');
+        ])->assertOk()->json('data.id');
 
         $this->assertSame($first, $second, 'A repeat assignment must hand back the same row, not a second one.');
 
@@ -263,6 +334,43 @@ class TrainingAssignmentReachTest extends TestCase
                 ->where('subject_id', $first)
                 ->count();
             $this->assertSame(1, $events, 'A duplicate assignment attempt must not raise a second event.');
+        });
+    }
+
+    /**
+     * Round 2 fix: a repeat naming a DIFFERENT due date used to come back
+     * `201` carrying the OLD date, with nothing saying the new one was
+     * ignored. It now updates the existing row's due date in place and
+     * answers `200`.
+     */
+    public function test_a_repeat_assignment_naming_a_new_due_date_updates_it_in_place(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $guide = $this->aPublishedOrgGuide($tenant);
+        $learner = $this->userInFranchise($tenant, $tenant['franchise'], 'Learner', ['training.view']);
+
+        $first = $this->signedInAs($tenant['admin'])->postJson('/api/v1/training/assignments', [
+            'guide_id' => $guide->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id, 'due_on' => '2026-09-01',
+        ])->assertCreated()->json('data.id');
+
+        $second = $this->signedInAs($tenant['admin'])->postJson('/api/v1/training/assignments', [
+            'guide_id' => $guide->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id, 'due_on' => '2026-10-15',
+        ])->assertOk();
+
+        $this->assertSame($first, $second->json('data.id'));
+        $this->assertSame('2026-10-15', $second->json('data.due_on'));
+
+        $this->inTenant($tenant['org'], function () use ($guide, $learner) {
+            $this->assertDatabaseHas('training_assignments', [
+                'assignee_type' => TrainingAssignment::USER, 'assignee_id' => $learner->id,
+                'guide_id' => $guide->id, 'due_on' => '2026-10-15',
+            ]);
+            $this->assertSame(
+                1,
+                TrainingAssignment::query()->where('guide_id', $guide->id)
+                    ->where('assignee_id', $learner->id)->count(),
+                'Still one row — the date changed on the SAME row, not a second one.',
+            );
         });
     }
 
@@ -445,7 +553,286 @@ class TrainingAssignmentReachTest extends TestCase
         });
     }
 
+    // ── Round 2: the permission gate must hold on BOTH paths ─────────
+
+    /**
+     * Round 2 review found `training.assign` checked ONLY in
+     * `AssignmentsController::store` — `assertTaskActionUsable`
+     * (`AutomationsController`) only runs its per-type permission check for
+     * `TASK_ACTIONS`, and `training.assign` is not one, so a rule using it
+     * ran with no permission check anywhere: `training.view` plus the
+     * automation permissions was enough to write a rule that did what a
+     * direct `POST` correctly refused. Proven both ways on the SAME
+     * under-permissioned person, so this cannot pass by accident on one
+     * path while staying broken on the other.
+     */
+    public function test_training_assign_is_refused_both_directly_and_through_an_automation_without_the_permission(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $riverside = $tenant['franchise'];
+
+        // Deliberately NOT training.assign.
+        $underPermissioned = $this->userInFranchise($tenant, $riverside, 'UnderPermissioned', [
+            'training.view', 'automations.create', 'automations.view', 'automations.edit',
+        ]);
+
+        $triggerGuide = $this->aPublishedOrgGuide($tenant, 'Trigger Guide');
+        $targetGuide = $this->aPublishedOrgGuide($tenant, 'Target Guide');
+        $learner = $this->userInFranchise($tenant, $riverside, 'Learner', ['training.view']);
+
+        // Direct path.
+        $direct = $this->signedInAs($underPermissioned)->postJson('/api/v1/training/assignments', [
+            'guide_id' => $targetGuide->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id,
+        ]);
+        $direct->assertStatus(403);
+        $this->assertStringContainsString('permission', (string) $direct->json('message'));
+
+        $this->inTenant($tenant['org'], function () use ($targetGuide, $learner) {
+            $this->assertDatabaseMissing('training_assignments', [
+                'guide_id' => $targetGuide->id, 'assignee_id' => $learner->id,
+            ]);
+        });
+
+        // Automation path — the SAME person builds a rule that does the
+        // identical thing instead of clicking the refused button.
+        $automationId = $this->signedInAs($underPermissioned)->postJson('/api/v1/automations', [
+            'name' => 'Assign without the permission',
+            'trigger_key' => 'training.completed',
+            'scope_type' => 'franchise',
+            'scope_id' => $riverside->id,
+            'actions' => [
+                [
+                    'type' => 'training.assign',
+                    'guide_id' => $targetGuide->id,
+                    'assignee_type' => 'user',
+                    'assignee_id' => $learner->id,
+                ],
+            ],
+        ])->assertCreated()->json('data.id');
+
+        $this->signedInAs($underPermissioned)
+            ->patchJson("/api/v1/automations/{$automationId}", ['is_active' => true])
+            ->assertOk();
+
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/guides/{$triggerGuide->id}/seen", ['screen' => 0])
+            ->assertOk();
+
+        $this->inTenant($tenant['org'], function () use ($automationId, $targetGuide, $learner) {
+            $event = AutomationEvent::query()
+                ->where('event_key', 'training.completed')
+                ->latest('occurred_at')
+                ->firstOrFail();
+
+            app(AutomationEngine::class)->deliver($event);
+
+            $run = AutomationRun::query()->where('automation_id', $automationId)->firstOrFail();
+            $this->assertSame(
+                AutomationRun::FAILED,
+                $run->status,
+                'A rule using training.assign without the permission must not succeed.',
+            );
+            $this->assertStringContainsString('permission', strtolower((string) $run->error));
+
+            $this->assertDatabaseMissing('training_assignments', [
+                'assignee_type' => TrainingAssignment::USER, 'assignee_id' => $learner->id, 'guide_id' => $targetGuide->id,
+            ]);
+        });
+    }
+
+    // ── Round 2: fail-open closed — a refusal must never write anyway ──
+
+    /**
+     * Round 2 review found `mayAssignTo` refuses an INACTIVE assignee while
+     * the old, separate `explain()` never checked that at all and fell
+     * through to `Response::allow()` — a no-op on `authorize()`, so the
+     * write proceeded anyway. `AssignmentReach` now derives both from one
+     * shared check (`refusalForAssignee`), which cannot disagree with
+     * itself. Proven directly against the exact case that broke it.
+     */
+    public function test_assigning_to_an_inactive_person_is_refused_and_nothing_is_written(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $guide = $this->aPublishedOrgGuide($tenant);
+        $learner = $this->userInFranchise($tenant, $tenant['franchise'], 'Learner', ['training.view']);
+
+        $this->inTenant($tenant['org'], fn () => $learner->forceFill(['is_active' => false])->save());
+
+        $refused = $this->signedInAs($tenant['admin'])->postJson('/api/v1/training/assignments', [
+            'guide_id' => $guide->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id,
+        ]);
+
+        $refused->assertStatus(403);
+        $this->assertNotSame('', trim((string) $refused->json('message')));
+
+        $this->inTenant($tenant['org'], function () use ($guide, $learner) {
+            $this->assertDatabaseMissing('training_assignments', [
+                'assignee_type' => TrainingAssignment::USER, 'assignee_id' => $learner->id, 'guide_id' => $guide->id,
+            ]);
+        });
+    }
+
+    // ── Round 2: a dud target — draft, or outside the learner's place ──
+
+    public function test_a_draft_guide_cannot_be_assigned(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $draft = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
+            'company_id' => null, 'franchise_id' => null,
+            'title' => 'Unfinished Guide', 'status' => TrainingGuide::DRAFT,
+            'screens' => $this->screens(1),
+        ]));
+        $learner = $this->userInFranchise($tenant, $tenant['franchise'], 'Learner', ['training.view']);
+
+        $this->signedInAs($tenant['admin'])->postJson('/api/v1/training/assignments', [
+            'guide_id' => $draft->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id,
+        ])->assertNotFound();
+
+        $this->inTenant($tenant['org'], function () use ($draft, $learner) {
+            $this->assertDatabaseMissing('training_assignments', [
+                'guide_id' => $draft->id, 'assignee_id' => $learner->id,
+            ]);
+        });
+    }
+
+    /**
+     * A guide filed at a sibling franchise is PUBLISHED and really exists,
+     * so `findOrFail` alone would have let this through — but a learner
+     * outside its place never sees it via `/learn`, so the row would be a
+     * `201` that can never come true (round 2 review).
+     */
+    public function test_a_guide_outside_the_learners_place_cannot_be_assigned_to_them(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $riverside = $tenant['franchise'];
+        $northgate = $this->extraFranchise($tenant, 'Northgate');
+
+        $sibling = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
+            'company_id' => $tenant['company']->id, 'franchise_id' => $northgate->id,
+            'title' => 'Northgate only', 'status' => TrainingGuide::PUBLISHED,
+            'screens' => $this->screens(1),
+        ]));
+        $learner = $this->userInFranchise($tenant, $riverside, 'Learner', ['training.view']);
+
+        $refused = $this->signedInAs($tenant['admin'])->postJson('/api/v1/training/assignments', [
+            'guide_id' => $sibling->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id,
+        ]);
+
+        $refused->assertStatus(422)->assertJsonValidationErrors(['guide_id']);
+        $this->assertNotSame('', trim((string) $refused->json('errors.guide_id.0')));
+
+        $this->inTenant($tenant['org'], function () use ($sibling, $learner) {
+            $this->assertDatabaseMissing('training_assignments', [
+                'guide_id' => $sibling->id, 'assignee_id' => $learner->id,
+            ]);
+        });
+    }
+
+    // ── Round 2: CarriesAutomationScope must be proven to NARROW, not merely be present ──
+
+    /**
+     * `TrainingAssignment implements CarriesAutomationScope` was reviewed
+     * and confirmed correct in isolation — but removing the interface
+     * entirely left the whole suite green, because nothing exercised
+     * `NotificationDispatcher::audienceFor` against a real `notify` rule
+     * the way Task 7/8's own equivalents do
+     * (`TrainingProgressTest`/`TrainingGradingTest`'s
+     * `test_automation_scope_narrows_the_audience_not_merely_present`,
+     * whose `rule()`/`drain()` apparatus this copies). This is that proof
+     * for Task 9.
+     */
+    public function test_automation_scope_narrows_who_is_told_about_an_assignment(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $riverside = $tenant['franchise'];
+        $northgate = $this->extraFranchise($tenant, 'Northgate');
+
+        $learner = $this->userInFranchise($tenant, $riverside, 'Learner', ['training.view']);
+        $coworker = $this->userInFranchise($tenant, $riverside, 'Coworker', []);
+        $outsider = $this->userInFranchise($tenant, $northgate, 'Outsider', []);
+        $guide = $this->aPublishedOrgGuide($tenant);
+
+        $this->rule($tenant, 'training.assigned', null, null, actions: [
+            ['type' => 'notify', 'message' => 'Somebody was given training.'],
+        ]);
+
+        $this->signedInAs($tenant['admin'])->postJson('/api/v1/training/assignments', [
+            'guide_id' => $guide->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id,
+        ])->assertCreated();
+
+        $this->drain($tenant);
+
+        $told = $this->inTenant($tenant['org'], fn () => Notification::query()
+            ->where('source', 'automation')->pluck('user_id')->all());
+
+        $this->assertNotEmpty($told, 'Nobody was told at all, so this proves nothing.');
+
+        $this->assertContains(
+            $coworker->id,
+            $told,
+            "The learner's own franchise coworker was not told — the scope did not reach the right "
+                .'place, which a [null, null] stub would also produce.',
+        );
+
+        $this->assertNotContains(
+            $outsider->id,
+            $told,
+            'Somebody at another franchise was told a named learner was given training — the leak '
+                .'this method exists to close.',
+        );
+    }
+
     // ── Fixtures ──────────────────────────────────────────────────────
+
+    /**
+     * A real, active automation with the given trigger/scope/actions —
+     * copied from `TrainingGradingTest::rule` (task-8's own copy of the
+     * identical helper), built here again rather than shared per the
+     * constraint that test helpers stay private to their own class.
+     */
+    private function rule(
+        array $tenant,
+        string $trigger,
+        ?string $scopeType,
+        ?string $scopeId,
+        array $actions,
+    ): Automation {
+        return $this->inTenant($tenant['org'], function () use ($tenant, $trigger, $scopeType, $scopeId, $actions) {
+            $automation = Automation::create([
+                'organization_id' => $tenant['org']->id,
+                'name' => "When {$trigger} at ".($scopeId ?? 'anywhere'),
+                'trigger_key' => $trigger,
+                'scope_type' => $scopeType,
+                'scope_id' => $scopeId,
+                'is_active' => true,
+            ]);
+
+            $version = AutomationVersion::create([
+                'organization_id' => $tenant['org']->id,
+                'automation_id' => $automation->id,
+                'version' => 1,
+                'conditions' => [],
+                'actions' => $actions,
+                'created_at' => now(),
+            ]);
+
+            $automation->forceFill(['active_version_id' => $version->id])->save();
+
+            return $automation->fresh();
+        });
+    }
+
+    /** Deliver everything sitting in the outbox, the way the scheduled sweep does. */
+    private function drain(array $tenant): void
+    {
+        $engine = app(AutomationEngine::class);
+
+        $this->inTenant($tenant['org'], fn () => AutomationEvent::query()
+            ->whereNull('delivered_at')
+            ->orderBy('occurred_at')
+            ->get()
+            ->each(fn (AutomationEvent $e) => $engine->deliver($e)));
+    }
 
     /** @param  array{org: \App\Models\Organization, franchise: Franchise}  $tenant */
     private function aPublishedOrgGuide(array $tenant, string $title = 'Org Guide', int $screenCount = 1): TrainingGuide

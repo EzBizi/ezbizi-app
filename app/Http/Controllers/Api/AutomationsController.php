@@ -69,9 +69,16 @@ class AutomationsController extends Controller
         /*
          * `ActionRunner::assignTraining` (task 9) is the real arm — the same
          * `App\Support\Training\AssignmentWriter` a person's own POST
-         * /training/assignments calls, so a rule reaches no further than §4
-         * already lets the rule's own creator reach by hand
-         * (AssignmentWriter's own docblock: "the ONE write path").
+         * /training/assignments calls, so a rule reaches no further, and
+         * needs no more PERMISSION, than the rule's own creator would by
+         * hand: `AssignmentWriter::create` checks `training.assign` itself,
+         * first, before anything else — not merely §4 reach. (Round-1 review
+         * found this entry's earlier wording true of reach and silently
+         * false of permission: `training.assign` was checked only in
+         * `AssignmentsController::store`, so a rule using this action ran
+         * with no permission check at all. Fixed by moving the gate into
+         * `AssignmentWriter::create`, the one path both take — see its own
+         * docblock — rather than by adding a second check here.)
          *
          * Spelled out here for the same reason time_clock is spelled out
          * above: the module declares executionType: 'training.assign', or
