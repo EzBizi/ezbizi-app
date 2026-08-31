@@ -210,8 +210,17 @@ any assertion anchored with `$` fails on a file that is correct in git:
 "    ->  1
 ```
 
-Known live instance: `WebManagementTest::test_the_plugin_downloads_as_a_zip_...`
-fails on every Windows checkout and passes on the Linux gate. It is a false red
-— the zip production serves is LF and correct. `?$` would fix the test;
-`wordpress-plugin/ezbizi/` and `tests/Feature/Web/` belong to Web Management, so
-it wants that module's owner rather than whoever trips over it next.
+**Swept, and the population is small.** Three `$`-anchored multiline regexes
+exist in `tests/` in total. Two were in `WebManagementTest` — the plugin's
+`Stable tag` and `Version` headers — and Web Management fixed both in `7149803`
+with `[^
+]+`, which cannot match a CR rather than merely tolerating one. The
+third, `ClientModuleScreensTest.php:54`, anchors at `^` only with no trailing
+`$`, so nothing can get between the pattern and the anchor. Nothing else in the
+suite has the shape.
+
+**If you write a new one, this is the trap.** `grep "Stable tag" file | od -c`
+shows the line ending in a bare `
+` with no CR, because grep strips it — which
+is how somebody talks themselves out of a correct diagnosis. The only reading to
+trust is `file_get_contents` plus the actual pattern.
