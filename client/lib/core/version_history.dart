@@ -8,6 +8,29 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0125',
+      date: '31 Aug 2026',
+      items: [
+        'Phone: a ring group now shows who would actually be rung, not how many '
+            'people are in it. A group of four where everyone is on Do not '
+            'disturb rings nobody, and it used to look identical to a working '
+            'one.',
+        'Phone: a menu that no caller ever hears is now shown as skipped. A menu '
+            'can be built, named and attached to a line and still be stepped '
+            'past on every call, and nothing said so - the caller does not know '
+            'they missed it and you would never get a complaint about it.',
+        'Phone: each number lists its full routing, so you can see where a call '
+            'goes rather than inferring it.',
+        'Notifications: the bell now refreshes on its own and raises desktop and '
+            'phone notifications, instead of only checking once when you signed '
+            'in.',
+        'Notifications: turning notifications off now turns all of them off. The '
+            'setting was only being honoured in one of the four places that '
+            'send, so an organization that switched it off kept receiving most '
+            'of them.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0124',
       date: '31 Aug 2026',
       items: [
