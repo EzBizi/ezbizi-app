@@ -77,11 +77,283 @@ void main() {
       expect(view.visibility, TaskViewVisibility.shared);
       expect(view.version, 4);
       expect(view.configuration.schema, 1);
-      expect(view.configuration.presentation, TaskViewPresentation.table);
+      expect(view.configuration.presentation, TaskPresentation.table);
       expect(view.configuration.filters.single.field, 'due_on');
       expect(view.configuration.sorts.single.direction, TaskSortDirection.desc);
       expect(view.configuration.columnWidths['task'], isNull);
       expect(view.preference?.density, TaskViewDensity.compact);
+    });
+
+    test(
+      'a schema:1 configuration decodes with a table presentation and a null window',
+      () {
+        final configuration = TaskViewConfiguration.fromJson(
+          _viewFixture()['configuration']! as Map<String, Object?>,
+        );
+
+        expect(configuration.schema, 1);
+        expect(configuration.presentation, TaskPresentation.table);
+        expect(configuration.rawPresentation, 'table');
+        expect(configuration.window, isNull);
+      },
+    );
+
+    test(
+      'THE ONE RULE: an unknown presentation from the server degrades to table rather than throwing',
+      () {
+        final json = _schemaTwoConfiguration(
+          presentation: 'server_added_presentation',
+          window: <String, Object?>{'anything': 'goes'},
+        );
+
+        final configuration = TaskViewConfiguration.fromJson(json);
+
+        expect(configuration.presentation, TaskPresentation.table);
+        expect(configuration.rawPresentation, 'server_added_presentation');
+        expect(configuration.window, isNull);
+      },
+    );
+
+    test('a table window round-trips page and per_page', () {
+      final json = _schemaTwoConfiguration(
+        presentation: 'table',
+        window: <String, Object?>{'page': 2, 'per_page': 25},
+      );
+
+      final configuration = TaskViewConfiguration.fromJson(json);
+      final window = configuration.window;
+
+      expect(window, isA<TaskTableWindow>());
+      expect((window as TaskTableWindow).page, 2);
+      expect(window.perPage, 25);
+      expect(configuration.toJson()['window'], <String, Object?>{
+        'page': 2,
+        'per_page': 25,
+      });
+    });
+
+    test('a kanban window round-trips bucket_field and buckets', () {
+      final json = _schemaTwoConfiguration(
+        presentation: 'kanban',
+        window: <String, Object?>{
+          'bucket_field': 'status',
+          'buckets': <Object?>['status-1', 'status-2'],
+        },
+      );
+
+      final configuration = TaskViewConfiguration.fromJson(json);
+      final window = configuration.window;
+
+      expect(window, isA<TaskKanbanWindow>());
+      expect((window as TaskKanbanWindow).bucketField, 'status');
+      expect(window.buckets, <String>['status-1', 'status-2']);
+      expect(configuration.toJson()['window'], <String, Object?>{
+        'bucket_field': 'status',
+        'buckets': <String>['status-1', 'status-2'],
+      });
+    });
+
+    test('a calendar window round-trips from and to', () {
+      final json = _schemaTwoConfiguration(
+        presentation: 'calendar',
+        window: <String, Object?>{'from': '2026-09-01', 'to': '2026-09-30'},
+      );
+
+      final configuration = TaskViewConfiguration.fromJson(json);
+      final window = configuration.window;
+
+      expect(window, isA<TaskDateRangeWindow>());
+      expect((window as TaskDateRangeWindow).from, DateTime.utc(2026, 9, 1));
+      expect(window.to, DateTime.utc(2026, 9, 30));
+      expect(configuration.toJson()['window'], <String, Object?>{
+        'from': '2026-09-01',
+        'to': '2026-09-30',
+      });
+    });
+
+    test('a timeline window round-trips from and to', () {
+      final json = _schemaTwoConfiguration(
+        presentation: 'timeline',
+        window: <String, Object?>{'from': '2026-09-01', 'to': '2026-09-14'},
+      );
+
+      final configuration = TaskViewConfiguration.fromJson(json);
+      final window = configuration.window;
+
+      expect(window, isA<TaskDateRangeWindow>());
+      expect((window as TaskDateRangeWindow).from, DateTime.utc(2026, 9, 1));
+      expect(window.to, DateTime.utc(2026, 9, 14));
+    });
+
+    test('a workload window round-trips from, to and unit', () {
+      final json = _schemaTwoConfiguration(
+        presentation: 'workload',
+        window: <String, Object?>{
+          'from': '2026-09-01',
+          'to': '2026-09-14',
+          'unit': 'week',
+        },
+      );
+
+      final configuration = TaskViewConfiguration.fromJson(json);
+      final window = configuration.window;
+
+      expect(window, isA<TaskWorkloadWindow>());
+      expect((window as TaskWorkloadWindow).from, DateTime.utc(2026, 9, 1));
+      expect(window.to, DateTime.utc(2026, 9, 14));
+      expect(window.unit, TaskWorkloadUnit.week);
+      expect(configuration.toJson()['window'], <String, Object?>{
+        'from': '2026-09-01',
+        'to': '2026-09-14',
+        'unit': 'week',
+      });
+    });
+
+    test('meta.omitted parses undated, outside_window and unowned', () {
+      final json = _rowsFixture();
+      (json['meta']! as Map<String, Object?>)['omitted'] = <String, Object?>{
+        'undated': 2,
+        'outside_window': 3,
+        'unowned': 1,
+      };
+      final board = TaskBoard.fromJson(_boardFixture());
+
+      final page = TaskRowsPage.fromJson(json, board: board);
+
+      expect(page.omitted.undated, 2);
+      expect(page.omitted.outsideWindow, 3);
+      expect(page.omitted.unowned, 1);
+    });
+
+    test('meta.omitted defaults to zero when the server omits the key', () {
+      final board = TaskBoard.fromJson(_boardFixture());
+
+      final page = TaskRowsPage.fromJson(_rowsFixture(), board: board);
+
+      expect(page.omitted.undated, 0);
+      expect(page.omitted.outsideWindow, 0);
+      expect(page.omitted.unowned, 0);
+    });
+
+    test(
+      'workload rows are per-owner units, not task rows, and never crash the parser',
+      () {
+        final json = <String, Object?>{
+          'data': <Object?>[
+            <String, Object?>{
+              'owner_id': 'user-1',
+              'owner_name': 'Taylor',
+              'units': <Object?>[
+                <String, Object?>{'date': '2026-09-01', 'count': 3},
+                <String, Object?>{'date': '2026-09-02', 'count': 1},
+              ],
+            },
+            <String, Object?>{
+              'owner_id': null,
+              'owner_name': null,
+              'units': <Object?>[
+                <String, Object?>{'date': '2026-09-01', 'count': 5},
+              ],
+            },
+          ],
+          'meta': <String, Object?>{
+            'total': 0,
+            'page': 1,
+            'per_page': 50,
+            'last_page': 1,
+            'group_counts': <Object?>[],
+            'status_summaries': <Object?>[],
+            'omitted': <String, Object?>{
+              'undated': 0,
+              'outside_window': 0,
+              'unowned': 1,
+            },
+            'view_id': 'view-1',
+            'view_version': 1,
+            'configuration': _schemaTwoConfiguration(
+              presentation: 'workload',
+              window: <String, Object?>{
+                'from': '2026-09-01',
+                'to': '2026-09-02',
+                'unit': 'day',
+              },
+            ),
+          },
+        };
+        final board = TaskBoard.fromJson(_boardFixture());
+
+        final page = TaskRowsPage.fromJson(json, board: board);
+
+        expect(page.rows, isEmpty);
+        expect(page.workloadRows, hasLength(2));
+        expect(page.workloadRows.first.ownerId, 'user-1');
+        expect(page.workloadRows.first.units.first.count, 3);
+        expect(page.workloadRows.last.ownerId, isNull);
+        expect(page.workloadRows.last.units.single.count, 5);
+      },
+    );
+
+    test(
+      'blocked_by is absent on a table row and present as typed refs on a timeline row',
+      () {
+        final tableRow = TaskRow.fromJson(
+          (_rowsFixture()['data']! as List<Object?>).single
+              as Map<String, Object?>,
+        );
+        expect(tableRow.blockedBy, isNull);
+
+        final timelineRowJson = Map<String, Object?>.from(
+          (_rowsFixture()['data']! as List<Object?>).single
+              as Map<String, Object?>,
+        )..['blocked_by'] = <Object?>[
+          <String, Object?>{
+            'id': 'dependency-1',
+            'task_id': 'task-0',
+            'number': 'TASK-0',
+            'title': 'Pour the slab',
+          },
+        ];
+        final timelineRow = TaskRow.fromJson(timelineRowJson);
+
+        expect(timelineRow.blockedBy, hasLength(1));
+        expect(timelineRow.blockedBy!.single.taskId, 'task-0');
+        expect(timelineRow.blockedBy!.single.title, 'Pour the slab');
+      },
+    );
+
+    test(
+      'a task detail carries its recurrence declaration when the server sends one',
+      () {
+        final detailJson = Map<String, Object?>.from(_minimalTaskJson())
+          ..['subtasks'] = <Object?>[]
+          ..['record_links'] = <Object?>[]
+          ..['recurrence'] = <String, Object?>{
+            'mode': 'after_completion',
+            'every': 2,
+            'unit': 'week',
+            'until': null,
+            'count': 5,
+          };
+
+        final detail = TaskDetailSnapshot.fromJson(detailJson, etag: '"d"');
+
+        expect(detail.recurrence, isNotNull);
+        expect(detail.recurrence!.mode, TaskRecurrenceMode.afterCompletion);
+        expect(detail.recurrence!.every, 2);
+        expect(detail.recurrence!.unit, TaskRecurrenceUnit.week);
+        expect(detail.recurrence!.until, isNull);
+        expect(detail.recurrence!.count, 5);
+      },
+    );
+
+    test('a task detail has no recurrence when the server sends none', () {
+      final detailJson = Map<String, Object?>.from(_minimalTaskJson())
+        ..['subtasks'] = <Object?>[]
+        ..['record_links'] = <Object?>[];
+
+      final detail = TaskDetailSnapshot.fromJson(detailJson, etag: '"d"');
+
+      expect(detail.recurrence, isNull);
     });
 
     test(
@@ -367,6 +639,42 @@ Map<String, Object?> _rowsFixture() => <String, Object?>{
     'view_version': 4,
     'configuration': _viewFixture()['configuration'],
   },
+};
+
+Map<String, Object?> _schemaTwoConfiguration({
+  required String presentation,
+  Map<String, Object?>? window,
+}) => <String, Object?>{
+  'schema': 2,
+  'presentation': presentation,
+  'filters': <Object?>[],
+  'sorts': <Object?>[],
+  'hidden_columns': <Object?>[],
+  'column_order': <Object?>['task'],
+  'column_widths': <String, Object?>{},
+  'group_by': null,
+  'search': '',
+  'window': window,
+};
+
+Map<String, Object?> _minimalTaskJson() => <String, Object?>{
+  'id': 'task-1',
+  'board_id': 'board-1',
+  'group_id': null,
+  'parent_task_id': null,
+  'number': 'TASK-1',
+  'title': 'Install north door',
+  'owner_user_id': null,
+  'collaborator_user_ids': <Object?>[],
+  'status_option_id': 'status-1',
+  'priority_option_id': null,
+  'start_on': null,
+  'due_on': null,
+  'position': 1,
+  'version': 1,
+  'detail_version': 1,
+  'custom_values': <String, Object?>{},
+  'group_by_value': null,
 };
 
 Map<String, Object?> _viewFixture() => <String, Object?>{

@@ -95,7 +95,191 @@ final class TaskColumnValueMutation {
 
 enum TaskViewVisibility { personal, shared, unknown }
 
-enum TaskViewPresentation { table, unknown }
+/// Mirrors `App\Support\Tasks\TaskPresentation` (server, string-backed enum)
+/// exactly: `table`, `kanban`, `calendar`, `timeline`, `workload`. There is
+/// deliberately no `unknown` case here — see `_presentationFromWire` below.
+enum TaskPresentation { table, kanban, calendar, timeline, workload }
+
+extension TaskPresentationWire on TaskPresentation {
+  String get wire => switch (this) {
+    TaskPresentation.table => 'table',
+    TaskPresentation.kanban => 'kanban',
+    TaskPresentation.calendar => 'calendar',
+    TaskPresentation.timeline => 'timeline',
+    TaskPresentation.workload => 'workload',
+  };
+}
+
+/// THE ONE RULE: an unknown presentation is a server ahead of this client
+/// (docs/ACTIVE-CONSTRAINTS.md — a frozen App Store client runs against live
+/// production). It degrades to Table rather than throwing or carrying a
+/// distinct "unknown" render state this client has no screen for.
+/// `TaskViewConfiguration.rawPresentation` still keeps the original wire
+/// string so a save-without-touching-presentation round-trips losslessly.
+TaskPresentation _presentationFromWire(String raw) => switch (raw) {
+  'table' => TaskPresentation.table,
+  'kanban' => TaskPresentation.kanban,
+  'calendar' => TaskPresentation.calendar,
+  'timeline' => TaskPresentation.timeline,
+  'workload' => TaskPresentation.workload,
+  _ => TaskPresentation.table,
+};
+
+/// Mirrors `App\Support\Tasks\TaskWindow` (spec §4 schema:2): the bounded
+/// query window a presentation declares, shaped per-presentation and
+/// validated server-side. Table's window is currently inert (Phase 1's exact
+/// pagination behaviour is untouched — see `TaskListQuery::boardRows`) but is
+/// still represented so a saved configuration round-trips exactly.
+sealed class TaskWindow {
+  const TaskWindow();
+
+  Map<String, Object?> toJson();
+
+  /// Never throws. A window whose shape does not match what this
+  /// presentation expects — including every window attached to a
+  /// presentation that just degraded to Table above — decodes to `null`
+  /// rather than crashing the configuration parse around it.
+  static TaskWindow? decode(
+    TaskPresentation presentation,
+    Map<String, Object?>? raw,
+  ) {
+    if (raw == null) return null;
+    try {
+      return switch (presentation) {
+        TaskPresentation.table => TaskTableWindow.fromJson(raw),
+        TaskPresentation.kanban => TaskKanbanWindow.fromJson(raw),
+        TaskPresentation.calendar ||
+        TaskPresentation.timeline => TaskDateRangeWindow.fromJson(raw),
+        TaskPresentation.workload => TaskWorkloadWindow.fromJson(raw),
+      };
+    } on FormatException {
+      return null;
+    }
+  }
+}
+
+final class TaskTableWindow extends TaskWindow {
+  const TaskTableWindow({required this.page, required this.perPage});
+
+  factory TaskTableWindow.fromJson(Map<String, Object?> json) =>
+      TaskTableWindow(page: _integer(json, 'page'), perPage: _integer(json, 'per_page'));
+
+  final int page;
+  final int perPage;
+
+  @override
+  Map<String, Object?> toJson() => <String, Object?>{
+    'page': page,
+    'per_page': perPage,
+  };
+}
+
+final class TaskKanbanWindow extends TaskWindow {
+  const TaskKanbanWindow({required this.bucketField, required this.buckets});
+
+  factory TaskKanbanWindow.fromJson(Map<String, Object?> json) =>
+      TaskKanbanWindow(
+        bucketField: _string(json, 'bucket_field'),
+        buckets: _strings(json, 'buckets'),
+      );
+
+  final String bucketField;
+  final List<String> buckets;
+
+  @override
+  Map<String, Object?> toJson() => <String, Object?>{
+    'bucket_field': bucketField,
+    'buckets': List<String>.unmodifiable(buckets),
+  };
+}
+
+/// Shared by Calendar and Timeline: `{from, to}`, no `unit`.
+final class TaskDateRangeWindow extends TaskWindow {
+  const TaskDateRangeWindow({required this.from, required this.to});
+
+  factory TaskDateRangeWindow.fromJson(Map<String, Object?> json) =>
+      TaskDateRangeWindow(
+        from: _parseDateOnly(_string(json, 'from'), 'window.from'),
+        to: _parseDateOnly(_string(json, 'to'), 'window.to'),
+      );
+
+  final DateTime from;
+  final DateTime to;
+
+  @override
+  Map<String, Object?> toJson() => <String, Object?>{
+    'from': _dateOnly(from),
+    'to': _dateOnly(to),
+  };
+}
+
+enum TaskWorkloadUnit { day, week }
+
+TaskWorkloadUnit _workloadUnitFromWire(String raw) => switch (raw) {
+  'day' => TaskWorkloadUnit.day,
+  'week' => TaskWorkloadUnit.week,
+  _ => throw FormatException('window.unit has an unsupported value: $raw.'),
+};
+
+String _workloadUnitWire(TaskWorkloadUnit unit) => switch (unit) {
+  TaskWorkloadUnit.day => 'day',
+  TaskWorkloadUnit.week => 'week',
+};
+
+/// Workload's window: `{from, to, unit}` where `unit` is `day` or `week` only
+/// — `TaskWindow::parseRange($withUnit: true)` never accepts `month` here,
+/// unlike a recurrence unit.
+final class TaskWorkloadWindow extends TaskWindow {
+  const TaskWorkloadWindow({
+    required this.from,
+    required this.to,
+    required this.unit,
+  });
+
+  factory TaskWorkloadWindow.fromJson(Map<String, Object?> json) =>
+      TaskWorkloadWindow(
+        from: _parseDateOnly(_string(json, 'from'), 'window.from'),
+        to: _parseDateOnly(_string(json, 'to'), 'window.to'),
+        unit: _workloadUnitFromWire(_string(json, 'unit')),
+      );
+
+  final DateTime from;
+  final DateTime to;
+  final TaskWorkloadUnit unit;
+
+  @override
+  Map<String, Object?> toJson() => <String, Object?>{
+    'from': _dateOnly(from),
+    'to': _dateOnly(to),
+    'unit': _workloadUnitWire(unit),
+  };
+}
+
+/// Mirrors the `meta.omitted` object every `GET .../rows` response carries
+/// (present for every presentation, not only windowed ones — Ruling 17).
+final class TaskOmitted {
+  const TaskOmitted({
+    required this.undated,
+    required this.outsideWindow,
+    required this.unowned,
+  });
+
+  static const TaskOmitted zero = TaskOmitted(
+    undated: 0,
+    outsideWindow: 0,
+    unowned: 0,
+  );
+
+  factory TaskOmitted.fromJson(Map<String, Object?> json) => TaskOmitted(
+    undated: _integer(json, 'undated'),
+    outsideWindow: _integer(json, 'outside_window'),
+    unowned: _integer(json, 'unowned'),
+  );
+
+  final int undated;
+  final int outsideWindow;
+  final int unowned;
+}
 
 enum TaskSortDirection { asc, desc, unknown }
 
@@ -796,12 +980,14 @@ final class TaskViewSummary {
 final class TaskRowsPage {
   const TaskRowsPage({
     required this.rows,
+    required this.workloadRows,
     required this.total,
     required this.page,
     required this.perPage,
     required this.lastPage,
     required this.groupCounts,
     required this.statusSummaries,
+    required this.omitted,
     required this.viewId,
     required this.viewVersion,
     required this.configuration,
@@ -814,10 +1000,28 @@ final class TaskRowsPage {
     String? etag,
   }) {
     final meta = _object(json, 'meta');
+    final configuration = TaskViewConfiguration.fromJson(
+      _object(meta, 'configuration'),
+    );
+    // Ruling 2 / FACTS: `data` legitimately diverges by presentation.
+    // Workload's `data` holds per-owner unit rows, not task rows — forcing
+    // it through `TaskRow.fromJson` (which requires `id`, `title`, etc.)
+    // would throw. This is the one presentation-shape branch this contract
+    // has to make so a known (not unknown) divergent shape never crashes
+    // the parse either.
+    final isWorkload = configuration.presentation == TaskPresentation.workload;
+    final omittedJson = _optionalObject(meta, 'omitted');
     return TaskRowsPage(
-      rows: _objects(json, 'data')
-          .map((row) => TaskRow.fromJson(row, board: board))
-          .toList(growable: false),
+      rows: isWorkload
+          ? const <TaskRow>[]
+          : _objects(json, 'data')
+              .map((row) => TaskRow.fromJson(row, board: board))
+              .toList(growable: false),
+      workloadRows: isWorkload
+          ? _objects(json, 'data')
+              .map(TaskWorkloadRow.fromJson)
+              .toList(growable: false)
+          : const <TaskWorkloadRow>[],
       total: _integer(meta, 'total'),
       page: _integer(meta, 'page'),
       perPage: _integer(meta, 'per_page'),
@@ -830,26 +1034,69 @@ final class TaskRowsPage {
         meta,
         'status_summaries',
       ).map(TaskStatusSummary.fromJson).toList(growable: false),
+      omitted: omittedJson == null
+          ? TaskOmitted.zero
+          : TaskOmitted.fromJson(omittedJson),
       viewId: _string(meta, 'view_id'),
       viewVersion: _integer(meta, 'view_version'),
-      configuration: TaskViewConfiguration.fromJson(
-        _object(meta, 'configuration'),
-      ),
+      configuration: configuration,
       etag: etag,
     );
   }
 
   final List<TaskRow> rows;
+  final List<TaskWorkloadRow> workloadRows;
   final int total;
   final int page;
   final int perPage;
   final int lastPage;
   final List<TaskGroupCount> groupCounts;
   final List<TaskStatusSummary> statusSummaries;
+  final TaskOmitted omitted;
   final String viewId;
   final int viewVersion;
   final TaskViewConfiguration configuration;
   final String? etag;
+}
+
+/// One per-owner row of `presentation=workload`'s `data` (spec §5,
+/// `TaskWorkloadQuery::rows`). `ownerId: null` is the explicit Unassigned
+/// row — surfaced, never dropped.
+final class TaskWorkloadRow {
+  const TaskWorkloadRow({
+    required this.ownerId,
+    required this.ownerName,
+    required this.units,
+  });
+
+  factory TaskWorkloadRow.fromJson(Map<String, Object?> json) =>
+      TaskWorkloadRow(
+        ownerId: _nullableString(json, 'owner_id'),
+        ownerName: _nullableString(json, 'owner_name'),
+        units: _objects(
+          json,
+          'units',
+        ).map(TaskWorkloadUnitCount.fromJson).toList(growable: false),
+      );
+
+  final String? ownerId;
+  final String? ownerName;
+  final List<TaskWorkloadUnitCount> units;
+}
+
+/// A task count on one day or week bucket. COUNTS TASKS, never hours —
+/// there is no effort field and this contract does not invent one.
+final class TaskWorkloadUnitCount {
+  const TaskWorkloadUnitCount({required this.date, required this.count});
+
+  factory TaskWorkloadUnitCount.fromJson(Map<String, Object?> json) =>
+      TaskWorkloadUnitCount(
+        date: _parseDateOnly(_string(json, 'date'), 'units[].date'),
+        count: _integer(json, 'count'),
+      );
+
+  final DateTime date;
+  final int count;
 }
 
 final class TaskRow {
@@ -874,6 +1121,7 @@ final class TaskRow {
     required this.values,
     required this.groupByValue,
     required this.subtasks,
+    this.blockedBy,
   });
 
   factory TaskRow.fromJson(Map<String, Object?> json, {TaskBoard? board}) {
@@ -914,6 +1162,16 @@ final class TaskRow {
       subtasks: (_optionalObjects(json, 'subtasks') ?? const [])
           .map((row) => TaskRow.fromJson(row, board: board))
           .toList(growable: false),
+      // `blocked_by` rides on the row only for the Timeline presentation and
+      // on the task detail response (task-4 brief) — deliberately absent
+      // everywhere else. `null` here means "this response never carried the
+      // key"; an empty list means "carried, and this task blocks on
+      // nothing" — the two are not the same thing.
+      blockedBy: json.containsKey('blocked_by')
+          ? _objects(json, 'blocked_by')
+              .map(TaskBlockedByRef.fromJson)
+              .toList(growable: false)
+          : null,
     );
   }
 
@@ -937,6 +1195,32 @@ final class TaskRow {
   final Map<String, TaskCellValue> values;
   final Object? groupByValue;
   final List<TaskRow> subtasks;
+  final List<TaskBlockedByRef>? blockedBy;
+}
+
+/// One blocking edge, as it appears in `blocked_by` — the blocker's identity
+/// only, not the edge's own concurrency version (dependencies carry no
+/// version; §4 task-4 brief).
+final class TaskBlockedByRef {
+  const TaskBlockedByRef({
+    required this.id,
+    required this.taskId,
+    required this.number,
+    required this.title,
+  });
+
+  factory TaskBlockedByRef.fromJson(Map<String, Object?> json) =>
+      TaskBlockedByRef(
+        id: _string(json, 'id'),
+        taskId: _string(json, 'task_id'),
+        number: _nullableString(json, 'number'),
+        title: _nullableString(json, 'title'),
+      );
+
+  final String id;
+  final String taskId;
+  final String? number;
+  final String? title;
 }
 
 final class TaskSubtaskSummary {
@@ -1159,6 +1443,7 @@ final class TaskViewConfiguration {
     required this.schema,
     required this.presentation,
     required this.rawPresentation,
+    this.window,
     required this.filters,
     required this.sorts,
     required this.hiddenColumns,
@@ -1170,8 +1455,9 @@ final class TaskViewConfiguration {
 
   static const empty = TaskViewConfiguration(
     schema: 1,
-    presentation: TaskViewPresentation.table,
+    presentation: TaskPresentation.table,
     rawPresentation: 'table',
+    window: null,
     filters: <TaskFilter>[],
     sorts: <TaskSort>[],
     hiddenColumns: <String>[],
@@ -1183,12 +1469,17 @@ final class TaskViewConfiguration {
 
   factory TaskViewConfiguration.fromJson(Map<String, Object?> json) {
     final rawPresentation = _string(json, 'presentation');
+    final presentation = _presentationFromWire(rawPresentation);
+    final schema = _integer(json, 'schema');
+    // `window` is a schema:2-only field (TaskViewCodec::SCHEMA_ONE_FIELDS
+    // excludes it entirely) — a schema:1 row, including every board's
+    // seeded default Main view, carries no window key at all.
+    final rawWindow = schema == 2 ? _optionalObject(json, 'window') : null;
     return TaskViewConfiguration(
-      schema: _integer(json, 'schema'),
-      presentation: rawPresentation == 'table'
-          ? TaskViewPresentation.table
-          : TaskViewPresentation.unknown,
+      schema: schema,
+      presentation: presentation,
       rawPresentation: rawPresentation,
+      window: TaskWindow.decode(presentation, rawWindow),
       filters: _objects(
         json,
         'filters',
@@ -1230,11 +1521,15 @@ final class TaskViewConfiguration {
     'column_widths': Map<String, int>.from(columnWidths)..remove('task'),
     'group_by': groupBy,
     'search': search,
+    // A schema:1 row must never carry a `window` key at all — the server
+    // rejects any key outside TaskViewCodec::SCHEMA_ONE_FIELDS.
+    if (schema == 2) 'window': window?.toJson(),
   };
 
   final int schema;
-  final TaskViewPresentation presentation;
+  final TaskPresentation presentation;
   final String rawPresentation;
+  final TaskWindow? window;
   final List<TaskFilter> filters;
   final List<TaskSort> sorts;
   final List<String> hiddenColumns;
@@ -1244,6 +1539,8 @@ final class TaskViewConfiguration {
   final String search;
 
   TaskViewConfiguration copyWith({
+    TaskPresentation? presentation,
+    Object? window = _taskAbsent,
     List<TaskFilter>? filters,
     List<TaskSort>? sorts,
     List<String>? hiddenColumns,
@@ -1251,20 +1548,37 @@ final class TaskViewConfiguration {
     Map<String, int>? columnWidths,
     Object? groupBy = _taskAbsent,
     String? search,
-  }) => TaskViewConfiguration(
-    schema: schema,
-    presentation: presentation,
-    rawPresentation: rawPresentation,
-    filters: filters ?? this.filters,
-    sorts: sorts ?? this.sorts,
-    hiddenColumns: hiddenColumns ?? this.hiddenColumns,
-    columnOrder: columnOrder ?? this.columnOrder,
-    columnWidths: columnWidths ?? this.columnWidths,
-    groupBy: identical(groupBy, _taskAbsent)
-        ? this.groupBy
-        : groupBy as String?,
-    search: search ?? this.search,
-  );
+  }) {
+    final resolvedPresentation = presentation ?? this.presentation;
+    final resolvedWindow = identical(window, _taskAbsent)
+        ? this.window
+        : window as TaskWindow?;
+    // Only Table with no window can still be schema:1 — everything else
+    // needs the schema:2 field set (TaskViewCodec::decode requires exactly
+    // schema 2's fields whenever `window` is present or presentation is not
+    // table).
+    final resolvedSchema =
+        resolvedPresentation == TaskPresentation.table && resolvedWindow == null
+        ? schema
+        : 2;
+    return TaskViewConfiguration(
+      schema: resolvedSchema,
+      presentation: resolvedPresentation,
+      rawPresentation: presentation == null
+          ? rawPresentation
+          : resolvedPresentation.wire,
+      window: resolvedWindow,
+      filters: filters ?? this.filters,
+      sorts: sorts ?? this.sorts,
+      hiddenColumns: hiddenColumns ?? this.hiddenColumns,
+      columnOrder: columnOrder ?? this.columnOrder,
+      columnWidths: columnWidths ?? this.columnWidths,
+      groupBy: identical(groupBy, _taskAbsent)
+          ? this.groupBy
+          : groupBy as String?,
+      search: search ?? this.search,
+    );
+  }
 }
 
 const Object _taskAbsent = Object();
@@ -1574,6 +1888,30 @@ final class TaskRecordLinkCandidate {
   final String? route;
 }
 
+/// The response shape from `POST tasks/{task}/dependencies` (task-4 brief) —
+/// a same-board blocking edge, display-only: it enforces nothing server-side
+/// and carries no concurrency version of its own.
+final class TaskDependency {
+  const TaskDependency({
+    required this.id,
+    required this.boardId,
+    required this.blockerTaskId,
+    required this.blockedTaskId,
+  });
+
+  factory TaskDependency.fromJson(Map<String, Object?> json) => TaskDependency(
+    id: _string(json, 'id'),
+    boardId: _string(json, 'board_id'),
+    blockerTaskId: _string(json, 'blocker_task_id'),
+    blockedTaskId: _string(json, 'blocked_task_id'),
+  );
+
+  final String id;
+  final String boardId;
+  final String blockerTaskId;
+  final String blockedTaskId;
+}
+
 final class TaskUpdate {
   const TaskUpdate({
     required this.id,
@@ -1784,6 +2122,70 @@ final class TaskActivity {
   final DateTime? createdAt;
 }
 
+/// Mirrors `App\Support\Tasks\TaskRecurrenceCodec`'s `{mode, every, unit,
+/// until, count}` exactly (task-5 brief). Read and written by key, matching
+/// the server codec — this is used both to decode a task detail's
+/// declaration and to encode one for `TaskApi.setRecurrence`.
+enum TaskRecurrenceMode { afterCompletion, onSchedule }
+
+enum TaskRecurrenceUnit { day, week, month }
+
+TaskRecurrenceMode _recurrenceModeFromWire(String raw) => switch (raw) {
+  'after_completion' => TaskRecurrenceMode.afterCompletion,
+  'on_schedule' => TaskRecurrenceMode.onSchedule,
+  _ => throw FormatException('recurrence.mode has an unsupported value: $raw.'),
+};
+
+String _recurrenceModeWire(TaskRecurrenceMode mode) => switch (mode) {
+  TaskRecurrenceMode.afterCompletion => 'after_completion',
+  TaskRecurrenceMode.onSchedule => 'on_schedule',
+};
+
+TaskRecurrenceUnit _recurrenceUnitFromWire(String raw) => switch (raw) {
+  'day' => TaskRecurrenceUnit.day,
+  'week' => TaskRecurrenceUnit.week,
+  'month' => TaskRecurrenceUnit.month,
+  _ => throw FormatException('recurrence.unit has an unsupported value: $raw.'),
+};
+
+String _recurrenceUnitWire(TaskRecurrenceUnit unit) => switch (unit) {
+  TaskRecurrenceUnit.day => 'day',
+  TaskRecurrenceUnit.week => 'week',
+  TaskRecurrenceUnit.month => 'month',
+};
+
+final class TaskRecurrence {
+  const TaskRecurrence({
+    required this.mode,
+    required this.every,
+    required this.unit,
+    this.until,
+    this.count,
+  });
+
+  factory TaskRecurrence.fromJson(Map<String, Object?> json) => TaskRecurrence(
+    mode: _recurrenceModeFromWire(_string(json, 'mode')),
+    every: _integer(json, 'every'),
+    unit: _recurrenceUnitFromWire(_string(json, 'unit')),
+    until: _nullableDateOnly(json, 'until'),
+    count: _optionalInteger(json, 'count'),
+  );
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'mode': _recurrenceModeWire(mode),
+    'every': every,
+    'unit': _recurrenceUnitWire(unit),
+    'until': until == null ? null : _dateOnly(until!),
+    'count': count,
+  };
+
+  final TaskRecurrenceMode mode;
+  final int every;
+  final TaskRecurrenceUnit unit;
+  final DateTime? until;
+  final int? count;
+}
+
 final class TaskDetailSnapshot {
   const TaskDetailSnapshot({
     required this.task,
@@ -1794,6 +2196,7 @@ final class TaskDetailSnapshot {
     this.watch = TaskWatchState.none,
     this.activities = const <TaskActivity>[],
     this.actions = const <String>[],
+    this.recurrence,
   });
 
   factory TaskDetailSnapshot.fromJson(
@@ -1823,6 +2226,9 @@ final class TaskDetailSnapshot {
           .map(TaskActivity.fromJson)
           .toList(growable: false),
       actions: _optionalStrings(json, 'actions'),
+      recurrence: _optionalObject(json, 'recurrence') == null
+          ? null
+          : TaskRecurrence.fromJson(_object(json, 'recurrence')),
     );
   }
 
@@ -1834,6 +2240,7 @@ final class TaskDetailSnapshot {
   final TaskWatchState watch;
   final List<TaskActivity> activities;
   final List<String> actions;
+  final TaskRecurrence? recurrence;
 
   bool can(String action) => actions.contains(action);
 
@@ -1843,6 +2250,7 @@ final class TaskDetailSnapshot {
     List<TaskUpdate>? updates,
     TaskWatchState? watch,
     List<TaskActivity>? activities,
+    Object? recurrence = _taskAbsent,
   }) => TaskDetailSnapshot(
     task: task ?? this.task,
     etag: etag ?? this.etag,
@@ -1852,6 +2260,9 @@ final class TaskDetailSnapshot {
     watch: watch ?? this.watch,
     activities: activities ?? this.activities,
     actions: actions,
+    recurrence: identical(recurrence, _taskAbsent)
+        ? this.recurrence
+        : recurrence as TaskRecurrence?,
   );
 }
 
@@ -2192,6 +2603,9 @@ DateTime _parseDateOnly(String raw, String path) {
   }
   return result;
 }
+
+String _dateOnly(DateTime date) =>
+    '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
 Map<String, Object?> _object(Map<String, Object?> json, String key) =>
     _expectMap(_required(json, key), key);
