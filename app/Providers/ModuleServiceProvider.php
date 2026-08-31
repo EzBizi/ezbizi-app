@@ -2070,16 +2070,28 @@ class ModuleServiceProvider extends ServiceProvider
              * module whose events are all about one kind of record. These are
              * not:
              *
-             *   assigned  — an assignment: who was given what, by whom, due when
+             *   assigned  — an assignment: what was given, to a person OR a role
              *   completed — a guide's progress: somebody reached the last screen
              *   passed    — an attempt: a score against a pass mark
              *   failed    — an attempt
              *   expired   — a pass that has run out of the period it was good for
              *
-             * Three records, not one. `assertKeysMatchSubject` would let any of
-             * them through — every key here begins `training.` whichever class
-             * were named — so this is not a rule the constructor can enforce for
-             * us; it is a claim that has to be true. Naming the attempt would
+             * Three records, not one — and `assertKeysMatchSubject` cannot tell
+             * which of the three is right, because it compares the declared key
+             * PREFIX and never the class.
+             *
+             * Left to default a subject keys as `strtolower(class_basename())`,
+             * so naming any of these three unqualified would key as
+             * `trainingassignment`, `trainingprogress` or `trainingattempt`,
+             * none of which is the `training.` these keys begin with, and boot
+             * would refuse it. That is not the check catching a wrong subject
+             * though — it is the check catching a compound class name, which is
+             * what the `key:` override exists for. Inventory passes
+             * `key: 'item'` for exactly that reason. Pass `key: 'training'` here
+             * and any one of the three sails through identically.
+             *
+             * So the constructor cannot enforce this for us; it is a claim that
+             * has to be true. Naming the attempt would
              * make the builder tell somebody writing a rule on "Training
              * assigned" that it reacts to something about an attempt, and the
              * field picker would offer an attempt's fields for an assignment's
@@ -2117,10 +2129,20 @@ class ModuleServiceProvider extends ServiceProvider
                 triggers: [
                     new TriggerDefinition(
                         key: 'training.assigned',
+                        /*
+                         * "Somebody" was wrong for half the feature and this is
+                         * a PUBLISHED sentence, so it is worth the words.
+                         * `assignee_type` is `user` or `role`, and a role
+                         * assignment is deliberately not expanded into one row
+                         * per person — so one row raises one event, and what it
+                         * carries may be a role rather than anybody in
+                         * particular. A rule that assumed a person would be
+                         * written against a description that promised one.
+                         */
                         label: 'Training assigned',
-                        description: 'Somebody was given a guide or a test to do. It carries what '
-                            .'they were given, who gave it to them, and the date it is due if '
-                            .'there is one.',
+                        description: 'A guide or a test was given out, to one person or to a '
+                            .'whole role at once. It carries what was given, who or which role '
+                            .'it went to, who gave it, and the date it is due if there is one.',
                         isRaised: false,
                     ),
                     new TriggerDefinition(

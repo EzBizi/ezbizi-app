@@ -42,7 +42,12 @@ class GlanceRegistry
     ];
 
     /**
-     * Coming-soon modules registered in Task 1 (copy is verbatim from the plan).
+     * Coming-soon modules.
+     *
+     * Marketing and Phone were registered in Task 1 and their copy is verbatim
+     * from the plan. Training arrived later, with its own module, and its
+     * sentence was written here — no plan sentence exists to be verbatim from,
+     * because no plan puts a Training summary on the home screen at all.
      *
      * @var array<string, array{label: string, sentence: string}>
      */
