@@ -77,7 +77,32 @@ sessions either. The SHA is the only handle that survives a rename.
 > inherits without choosing it — harmless while Play only needs it to rise, and
 > confusing at exactly the wrong moment because it is invisible from either side.
 | **Deploy** | `scripts/deploy.sh` · `scripts/sandbox.sh` · the production symlink and SSH path · the release rows in `EZBIZI-STATUS.md` | `ezbizi-a1` |
-| **UI/UX — cross-cutting** | `client/lib/core/theme.dart` · `module_screens.dart` · `dashboard_panels.dart` · `ui_strings.dart` (all four verified present). **Owns the decision, not the module:** general layout, module screens, dashboard panels and glances, navigation, and any new or changed UI. Ping before touching the four files above. **A module session still owns its own screen files** — bugfixes, copy changes and wiring that do not change layout stay with the module | `ezbizi-ea` |
+| **UI/UX — cross-cutting** | `client/lib/core/theme.dart` · `module_screens.dart` · `dashboard_panels.dart` · `ui_strings.dart` (all four verified present). **Owns the decision, not the module:** general layout, module screens, dashboard panels and glances, navigation, and any new or changed UI. Ping before touching the four files above. Process: ask → three HTML mockups → Jose picks one → the module session implements it (`StartUp.md` §6; worked examples in `docs/previews/`) | `ezbizi-ea` |
+
+> **The carve-out, so a defect fix is not stuck behind a design round trip.**
+> Changing a state's **prominence inside an existing component** stays with the
+> module session — grey caption to red banner, adding a count, naming a state the
+> screen previously left silent. Where that *is* the correctness fix, a design round
+> trip sits on a defect's critical path and costs more than it buys: five production
+> phone lines went to voicemail for months because that state was disclosed in grey
+> secondary text. **New component, new section, new arrangement** goes to UI/UX.
+> Condition: the module session tells UI/UX **after** shipping — not for approval, so
+> the same state does not become a red banner in Phone and a grey pill in Fleet.
+>
+> **Design sign-off is not a deploy gate**, and should not become one on a peer's
+> say-so. The deploy gate is tests, migrations and freeze safety — things it can
+> verify. If Jose wants design enforced there he can say so and it gets built. Until
+> then a process everybody hears about and nobody enforces produces the worst of both:
+> sessions that comply are slowed and sessions that do not ship anyway.
+>
+> **Three things about those four files that bite.** `module_screens.dart` — the
+> sidebar rail is the **intersection** of declared modules and client screens, so
+> declaring a module does not put a tab in front of the frozen reviewer binary, which
+> has no key for it. `GlanceRegistryTest:152` asserts sidebar modules and glance keys
+> as a sorted-set **equality**, so declaring a module without adding a glance turns
+> the gate red — Training hit this and had to add a `COMING_SOON` entry it had not
+> planned. And `ui_strings.dart` has two migrations behind it, so some strings are
+> tenant data and a copy change is not a one-line edit.
 | **Fleet** | `Support/Fleet/` · `Api/Vehicle*Controller.php` · `Models/Vehicle*.php` · `Policies/VehiclePolicy.php` · `Dashboard/Glances/FleetGlance.php` · `Tasks/RecordLinks/VehicleTaskLink.php` · `Console/Commands/ImportA1ToolsVehicles.php` · `migrations/2026_08_28_170000_add_fleet_fields_carried_from_a1_tools.php` · `screens/fleet/` · `test/fleet_screen_test.dart` · `tests/Feature/Fleet/` | `ezbizi-e9` |
 | **Inventory** | `Models/Inventory*.php` · `Policies/Inventory*Policy.php` · `Api/Inventory*Controller.php` · `Support/Inventory/` · `Console/Commands/InventorySeedDemo.php` · `screens/inventory_screen.dart` · `screens/inventory/` · `test/inventory_screen_test.dart` · `tests/Feature/Inventory/` · `migrations/2026_08_2{4_160000_create_inventory_tables,5_120000_create_inventory_sales_tables}.php` · `factories/Inventory{Item,Location,Vendor}Factory.php`. **Not Inventory despite the name:** `Support/Privacy/DataInventory.php` and `tests/Feature/Api/DataInventoryTest.php` are the §9 personal-data map — this has misled once already | `ezbizi-8f` |
 | **Services** | `Models/{Service,ServiceGroup,ServiceLabel}.php` · `Api/{Services,ServiceTaxonomy,ServiceGroups,ServiceLabels}Controller.php` · `Policies/Service{,Group,Label}Policy.php` · `Support/Services/ServiceVisibility.php` · `Dashboard/Glances/ServicesGlance.php` · `screens/services/` · `test/services_screen_test.dart` · `tests/Feature/Services/` | `ezbizi-d0` |
