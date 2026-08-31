@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Phone;
 
 use App\Http\Controllers\Api\Controller;
 use App\Models\PhoneCall;
+use App\Support\Phone\Attestation;
 use App\Models\PhoneConnection;
 use App\Models\PhoneNumber;
 use App\Support\Automations\EventEmitter;
@@ -136,6 +137,15 @@ class VoiceWebhookController extends Controller
                     'from_e164' => $from,
                     'to_e164' => $to,
                     'status' => PhoneCall::STATUS_RINGING,
+
+                    // The SHAKEN/STIR grade exists only in this payload. No
+                    // endpoint will tell us afterwards what this call was
+                    // graded, so it is captured here or it is lost — which is
+                    // why the Trust screen cannot be backfilled.
+                    'attestation' => Attestation::fromWebhook(
+                        $request->input('StirVerstat'),
+                        $request->input('StirStatus'),
+                    ),
                 ]);
 
                 $this->events->emit('phone.call.started', $call, $this->payload($call));
