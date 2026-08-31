@@ -2052,6 +2052,142 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
             ),
 
+            /*
+             * Training — guides people read and tests they take, and the record
+             * of who has done which.
+             *
+             * Actions beyond `view`: `monitor` sees other people's results,
+             * `manage` writes the guides and the tests, `assign` gives one to
+             * somebody. Deliberately not the CRUD set: reading your own training
+             * and looking at everybody else's are different acts, and only the
+             * second is the one an organization withholds.
+             *
+             * ── No subject, and the reason is Human Resources' ──
+             *
+             * `AutomationSubject` binds a module to ONE Eloquent class, because
+             * `ActionRunner::updateField` writes to the subject of the EVENT and
+             * the trigger is what decides the field list. That works for a
+             * module whose events are all about one kind of record. These are
+             * not:
+             *
+             *   assigned  — an assignment: who was given what, by whom, due when
+             *   completed — a guide's progress: somebody reached the last screen
+             *   passed    — an attempt: a score against a pass mark
+             *   failed    — an attempt
+             *   expired   — a pass that has run out of the period it was good for
+             *
+             * Three records, not one. `assertKeysMatchSubject` would let any of
+             * them through — every key here begins `training.` whichever class
+             * were named — so this is not a rule the constructor can enforce for
+             * us; it is a claim that has to be true. Naming the attempt would
+             * make the builder tell somebody writing a rule on "Training
+             * assigned" that it reacts to something about an attempt, and the
+             * field picker would offer an attempt's fields for an assignment's
+             * event. Wrong about four triggers to be right about two.
+             *
+             * Marketing declares none because there is no model at all; this
+             * declares none for HR's reason, which is the opposite problem.
+             *
+             * What null costs is one affordance and nothing else: the builder
+             * cannot grey out "Update a field" under a Training trigger in
+             * advance, so somebody can pick it and be refused at save, in a
+             * sentence. Nothing more is lost, because `ActionRunner::WRITABLE`
+             * holds Job, Customer and Vehicle and nothing else — no field on any
+             * Training record is writable by a rule in the first place, so there
+             * was never a field list here for a subject to unlock.
+             *
+             * The proper fix is a subject per TRIGGER rather than per module,
+             * which is a change to the wire shape the catalogue publishes as
+             * well as to ModuleDefinition. Recorded where HR records it, and not
+             * done quietly here.
+             *
+             * ── Every trigger is declared as not raised yet ──
+             *
+             * Nothing emits any of these: this task declares the module and the
+             * emitters arrive with the write paths. `isRaised: false` is what
+             * puts "nothing raises this yet" on the row a tenant reads, and
+             * ModuleRegistryTest holds the claim to the source — so the day one
+             * is emitted the build fails until the flag is dropped, rather than
+             * the builder going on promising a working rule will never run.
+             */
+            new ModuleDefinition(
+                key: 'training',
+                label: 'Training',
+                actions: ['view', 'monitor', 'manage', 'assign'],
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'training.assigned',
+                        label: 'Training assigned',
+                        description: 'Somebody was given a guide or a test to do. It carries what '
+                            .'they were given, who gave it to them, and the date it is due if '
+                            .'there is one.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key: 'training.completed',
+                        label: 'Guide finished',
+                        description: 'Somebody reached the end of a guide. This is about reading '
+                            .'it, not about passing anything — a guide with no test raises only '
+                            .'this.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key: 'training.passed',
+                        label: 'Test passed',
+                        description: 'Somebody took a test and met its pass mark. It carries the '
+                            .'score and, when the test expires, the date the pass runs out.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key: 'training.failed',
+                        label: 'Test failed',
+                        description: 'Somebody took a test and did not meet the pass mark. '
+                            .'Whether they may try again is the test\'s own retake setting.',
+                        isRaised: false,
+                    ),
+                    /*
+                     * Expiry is a fact about the CLOCK, and this is the event
+                     * that makes the whole "a pass runs out" option worth
+                     * having: "re-assign the ladder guide when the pass lapses"
+                     * is the rule an organization writes once.
+                     *
+                     * The nightly sweep INSERTS this into the outbox. It must
+                     * never dispatch: one rule failing while re-assigning one
+                     * lapsed pass would otherwise take down the sweep for
+                     * everybody else's.
+                     */
+                    new TriggerDefinition(
+                        key: 'training.expired',
+                        label: 'Pass ran out',
+                        description: 'A test pass reached the end of the period it was good for. '
+                            .'The training reappears in that person\'s list as due for retaking.',
+                        isRaised: false,
+                    ),
+                ],
+                automationActions: [
+                    /*
+                     * `executionType` is spelled out, and it is load-bearing.
+                     *
+                     * The catalogue marks a row implemented by looking up
+                     * `ActionDefinition::type()` — everything after the FIRST
+                     * dot — in AutomationsController::IMPLEMENTED_ACTIONS. Left
+                     * to default this would reduce to the bare word `assign`, in
+                     * a namespace every module shares, and the entry in that
+                     * const would never match: the action would publish as "not
+                     * built yet" forever with the const looking correct in the
+                     * diff. time_clock spells its two out for the same reason.
+                     */
+                    new ActionDefinition(
+                        key: 'training.assign',
+                        label: 'Assign training',
+                        description: 'Give somebody a guide or a test, optionally with a date it '
+                            .'is due by. Paired with "Account activated" this is how an induction '
+                            .'arrives on its own.',
+                        executionType: 'training.assign',
+                    ),
+                ],
+            ),
+
             new ModuleDefinition(
                 // Renamed from 'workflows' on 2026-08-10, permission keys and
                 // all — see the rename migration of that date. The product says

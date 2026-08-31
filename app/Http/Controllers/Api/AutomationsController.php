@@ -66,6 +66,9 @@ class AutomationsController extends Controller
         // execute as a bare `clock_in` in a namespace every module shares.
         'time_clock.clock_in',
         'time_clock.clock_out',
+        // Same: the module declares executionType: 'training.assign', or this
+        // entry would never match the bare `assign` that type() would default to.
+        'training.assign',
     ];
 
     private const TASK_ACTIONS = [

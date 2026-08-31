@@ -37,7 +37,8 @@ class GlanceRegistry
     public const ORDER = [
         'tasks', 'hr', 'customers', 'jobs', 'inspection', 'marketing',
         'web_management', 'phone', 'fleet_management', 'inventory',
-        'services', 'leads', 'reviews', 'business_profile', 'email', 'automations',
+        'services', 'leads', 'reviews', 'business_profile', 'email', 'training',
+        'automations',
     ];
 
     /**
@@ -53,6 +54,22 @@ class GlanceRegistry
         'phone' => [
             'label' => 'Phone',
             'sentence' => 'Phone is where the team places and receives calls, and sends texts. Open the Phone tab for the desk.',
+        ],
+        /*
+         * Added with the Training module, not with a Training glance.
+         *
+         * A tab and a dashboard box are one thing here: the completeness test
+         * asserts every sidebar tab has a glance, so declaring the module
+         * without an entry turns the suite red at a line about the dashboard.
+         * Training has its own dashboard INSIDE the tab — who has been assigned
+         * what, who is overdue, who is due for retaking — and no plan puts a
+         * summary of it on the home screen, so a placeholder is the honest
+         * answer rather than a temporary one. A live glance registered later
+         * wins on this key without this entry being removed first.
+         */
+        'training' => [
+            'label' => 'Training',
+            'sentence' => 'Training is where guides are read and tests are taken. Open the Training tab to see who has been assigned what.',
         ],
     ];
 
