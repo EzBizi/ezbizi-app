@@ -1942,59 +1942,112 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     ),
   );
 
+  /// Reserved for a visible `trailing` (in practice, only `_pagination()`'s
+  /// "Page X of Y / Previous / Next" row) whenever [minViewHeight] is
+  /// real-floor-enforced below — see that doc for why. `_pagination()`'s
+  /// height never varies with content or width (a fixed row, never a
+  /// wrapping one), so a single conservative constant safely covers it
+  /// whether or not it is actually showing (`_lastPage <= 1` renders a
+  /// `SizedBox.shrink()` instead), rather than needing to be measured.
+  static const _paginationReserve = 56.0;
+
   /// Every presentation's content area: the chrome (`_boardControls()`,
   /// plus an optional filters panel), and the presentation's own [view].
   ///
-  /// [minViewHeight], when given, wraps [view] in a `ConstrainedBox` floor
-  /// it can never be pushed under, however tall the chrome above wraps to
-  /// at a narrow pane (Task 15) — the earlier regression this guards
-  /// against squeezed `TaskTable` to a 64px viewport that silently dropped
-  /// rows out of view. `_workspace()` is the one caller that passes it,
-  /// because it is the one place this was ever actually reported broken
+  /// [minViewHeight], when given, is a REAL floor [view] cannot be pushed
+  /// under (whole-branch review finding 3 — an earlier version of this
+  /// method claimed exactly that but did not deliver it: `Expanded` gives
+  /// its child a TIGHT constraint, `minHeight == maxHeight == whatever
+  /// space is left`, and `BoxConstraints.enforce` can only ever CLAMP a
+  /// `ConstrainedBox`'s requested minimum DOWN into that already-decided
+  /// amount, never raise it — `(280).clamp(H, H) == H` for any `H`,
+  /// including one under 280. No amount of nesting `ConstrainedBox` around
+  /// [view] can fix that; the floor has to come from the OTHER side:
+  /// capping how much of the total available height the CHROME above is
+  /// allowed to consume, so whatever is "left" for [view] can never be
+  /// less than [minViewHeight] in the first place. The chrome is wrapped
+  /// in a `SingleChildScrollView` so, capped, it becomes scrollable rather
+  /// than clipped or (worse) still somehow stealing the table's floor —
+  /// turning the earlier regression this guards against (Task 15: three
+  /// wrapped chrome lines squeezed `TaskTable` to a 64px viewport that
+  /// silently dropped rows) into a visible, scrollable chrome instead,
+  /// exactly the trade Ruling 57 (progress.md) meant to accept but, before
+  /// this fix, did not actually get. In the ordinary case — chrome's
+  /// natural height comfortably under the budget — `SingleChildScrollView`
+  /// shrink-wraps to it exactly as a plain `Column` child already did, so
+  /// every existing desktop golden is unaffected pixel-for-pixel.
+  /// `_workspace()` is the one caller that passes it, because it is the
+  /// one place this was ever actually reported broken
   /// (`board_desktop.png`/`conflict_desktop.png`, a wide window with a
-  /// narrow content pane). Kanban/Calendar/Timeline/Workload deliberately
-  /// do NOT get a floor here: measured, a floor on top of THIS chrome at a
-  /// truly narrow 375px screen — where three bars plus Kanban's extra
-  /// "Group by" row can legitimately need more height wrapped than a short
-  /// phone viewport has at all — turns "shrinks to whatever's left, same
-  /// as it always could" into a hard `RenderFlex` overflow. `Expanded`
-  /// alone never errors that way; it just clamps to 0, exactly the
-  /// pre-existing behaviour every one of these four views already had
-  /// before this fix touched anything, and no report exists of it dropping
-  /// data the way `TaskTable` did. Widening this floor to all five is a
-  /// real, separate piece of work (each view's own true minimum content
-  /// size, and where the extra height should come from on a short phone),
-  /// not a same-pattern copy-paste — flagged rather than guessed at here.
+  /// narrow content pane).
+  ///
+  /// Kanban/Calendar/Timeline/Workload deliberately do NOT get a floor
+  /// here: measured, a floor on top of THIS chrome at a truly narrow 375px
+  /// screen — where three bars plus Kanban's extra "Group by" row can
+  /// legitimately need more height than a short phone viewport has at all
+  /// — would make the now-capped chrome scroll on every phone-sized
+  /// screen, not just a squeezed desktop pane. `Expanded` alone (their
+  /// current, unfloored behaviour) never errors that way; it just clamps
+  /// to 0, exactly the pre-existing behaviour every one of these four
+  /// views already had before this fix touched anything, and no report
+  /// exists of it dropping data the way `TaskTable` did. Widening this
+  /// floor to all five is a real, separate piece of work (each view's own
+  /// true minimum content size, and where the extra height should come
+  /// from on a short phone), not a same-pattern copy-paste — flagged
+  /// rather than guessed at here.
   Widget _boardScaffold({
     required Widget view,
     Widget? trailing,
     double? minViewHeight,
     double? paneWidth,
-  }) => Column(
-    children: [
-      _boardControls(paneWidth: paneWidth),
-      if (_showFilters)
-        SizedBox(
-          height: 330,
-          child: TaskFiltersPanel(
-            board: _board!,
-            configuration: _configuration,
-            people: _people,
-            onChanged: _changeConfiguration,
-            onClose: () => setState(() => _showFilters = false),
+  }) {
+    final chrome = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _boardControls(paneWidth: paneWidth),
+        if (_showFilters)
+          SizedBox(
+            height: 330,
+            child: TaskFiltersPanel(
+              board: _board!,
+              configuration: _configuration,
+              people: _people,
+              onChanged: _changeConfiguration,
+              onClose: () => setState(() => _showFilters = false),
+            ),
           ),
-        ),
-      Expanded(
-        child: minViewHeight == null
-            ? view
-            : ConstrainedBox(
-                constraints: BoxConstraints(minHeight: minViewHeight),
-                child: view,
-              ),
-      ),
-      ?trailing,
-    ],
-  );
+      ],
+    );
+    final constrainedView = minViewHeight == null
+        ? view
+        : ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minViewHeight),
+            child: view,
+          );
+    if (minViewHeight == null) {
+      return Column(
+        children: [chrome, Expanded(child: constrainedView), ?trailing],
+      );
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final chromeBudget = constraints.maxHeight.isFinite
+            ? (constraints.maxHeight - minViewHeight - _paginationReserve)
+                  .clamp(0.0, double.infinity)
+            : double.infinity;
+        return Column(
+          children: [
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: chromeBudget),
+              child: SingleChildScrollView(child: chrome),
+            ),
+            Expanded(child: constrainedView),
+            ?trailing,
+          ],
+        );
+      },
+    );
+  }
 
   /// Switches the active view's presentation. Kanban additionally needs a
   /// `window` (`bucket_field` + the current field's buckets) and a matching

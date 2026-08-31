@@ -77,9 +77,15 @@ class TaskPresentationBar extends StatelessWidget {
   /// measures the true pane width once and passes it down as `width`, so
   /// this bar wraps exactly when its own space — not the window — needs it.
   /// The starvation risk that `MediaQuery` was dodging is closed at the
-  /// other end instead: `TaskTable` now sits in a `ConstrainedBox` with a
-  /// 280px floor it can never be pushed under, however tall the chrome
-  /// above it grows (see `TasksScreen._workspace()`).
+  /// other end, in `TasksScreen._boardScaffold()`: `TaskTable` sits behind
+  /// a genuine 280px floor it cannot be pushed under, enforced by capping
+  /// how much height the chrome ABOVE it may consume (and letting that
+  /// chrome scroll internally if it needs more) rather than by nesting a
+  /// `ConstrainedBox` around the table itself, which an `Expanded` parent
+  /// can only ever clamp DOWN, never raise (whole-branch review finding 3
+  /// — an earlier version of this comment claimed the floor unconditional
+  /// when the nested-`ConstrainedBox` shape actually shipped could not
+  /// deliver that).
   static const _narrowBreakpoint = 700.0;
 
   List<Widget> _tabChips() => [
