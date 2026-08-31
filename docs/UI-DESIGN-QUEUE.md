@@ -218,9 +218,17 @@ on main may have moved on.
 
 | # | Item | State |
 |---|---|---|
-| ✅ | **Phone · Caller Identity & Trust** | **Layout 1 approved** (prerequisite ladder) — `docs/previews/phone-trust-layouts.html` @ `d66bcef`. Approved as drawn, i.e. **merged** with the existing Trust section as *Trust & caller identity*, rail 14 → 13. **No live Phone session to hand it to** — whoever picks Phone up implements layout 1. |
-| ✅ | **Scheduling · Availability + Settings** | **Layout 7 approved** (Overview + area rail — Jose's own combination of 1 and 2), Availability is **layout 4**. `docs/previews/scheduling-layouts.html` @ `560aed5`. Being built by the Scheduling session. |
-| ✅ | **Fleet · vehicle Identity card** | **Layout 2 approved** (grouped by subject) — `docs/previews/fleet-identity-layouts.html` @ `560aed5`. **No live Fleet session.** Ready to build by whoever picks Fleet up. |
+> **🔨 and ⚠️ are deliberately different, and ✅ is not used here.** An approved
+> design with nobody building it *looks* like progress on a queue and is not — it is
+> a drawing. The deploy desk's line, and it applies to this file before it applies to
+> anyone else's: a ticked row that means "waiting for a session that does not exist"
+> is the same failure this doc warns about twice elsewhere — **the marker stays
+> plausible and the meaning moves.** A row leaves this table when it ships, not when
+> it is approved.
+
+| 🔨 | **Phone · Caller Identity & Trust** | **Layout 1 approved, being built.** `docs/previews/phone-trust-layouts.html` @ `d66bcef` — build from that pin, not `d0ce75a`: the legend there omits `none` from the degraded bucket, which has nowhere to land once capture runs. Approved as drawn, i.e. **merged** with the existing Trust section as *Trust & caller identity*, rail 14 → 13. Held by the Phone session (`ezbizi-0b` per the roster). |
+| 🔨 | **Scheduling · Availability + Settings** | **Layout 7 approved, being built** (Overview + area rail — Jose's own combination of 1 and 2); Availability is **layout 4**. `docs/previews/scheduling-layouts.html` @ `560aed5`. Held by the Scheduling session. |
+| ⚠️ | **Fleet · vehicle Identity card** | **Layout 2 approved — and NOBODY IS BUILDING IT.** `docs/previews/fleet-identity-layouts.html` @ `560aed5`. The Fleet session that briefed it ended before it was drawn and none has replaced it. This row is not progress; it is a finished drawing waiting for an owner. If you are picking up Fleet, it is ready and needs nothing from Jose. |
 | 3 | **Phone · Settings rail** — 14 sections, grew one at a time | Not started. |
 | 4 | **Web Management · per-page value overrides** | Briefed. `license` ruled **conditional**. Not started. |
 
