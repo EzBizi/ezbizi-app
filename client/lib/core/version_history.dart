@@ -8,6 +8,28 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0123',
+      date: '31 Aug 2026',
+      items: [
+        'Scheduling: set how many jobs you can take, per time slot, per day, '
+            'for each service area. Most businesses run the same hours '
+            'everywhere, so Settings shows your pattern first and lists the '
+            'areas that differ from it, rather than making you set the same '
+            'thing thirty times.',
+        'A service area holds its own zip codes, and a zip belongs to exactly '
+            'one of them - so searching a zip has one answer rather than two. '
+            'A zip another area already covers is refused, and says which area '
+            'has it.',
+        'Closing a day removes it rather than setting it to zero, because "we '
+            'do not work Sundays" and "Sunday is full" are different things '
+            'and should not look the same.',
+        'Availability: search a zip code or an area and see that week. The '
+            'numbers are what you are set up to take - booked jobs are not '
+            'counted yet, and the screen says so rather than implying the '
+            'week is empty.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0122',
       date: '31 Aug 2026',
       items: [

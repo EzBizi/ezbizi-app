@@ -44,21 +44,32 @@ class SchedulingAvailabilityController extends Controller
         $data = $request->validate([
             'zip' => ['nullable', 'string', 'max:16'],
             'area_id' => ['nullable', 'uuid'],
+            // The screen has one search box and a person types a NAME into it,
+            // not a uuid. `area_id` stays for the rail, which already knows the
+            // id of the thing it just drew.
+            'area_name' => ['nullable', 'string', 'max:191'],
             'week' => ['nullable', 'date_format:Y-m-d'],
         ]);
 
-        if (($data['zip'] ?? null) === null && ($data['area_id'] ?? null) === null) {
+        $searched = $data['zip'] ?? $data['area_name'] ?? $data['area_id'] ?? null;
+
+        if ($searched === null) {
             throw ValidationException::withMessages([
-                'zip' => 'Search by a zip code or pick a service area.',
+                'zip' => 'Search by a zip code or a service area name.',
             ]);
         }
 
         $scope = ViewScope::forUser($request->user());
         $franchiseIds = $scope->franchiseIds();
 
-        $area = ($data['area_id'] ?? null) !== null
-            ? ServiceArea::whereIn('franchise_id', $franchiseIds)->find($data['area_id'])
-            : $this->areaForZip(trim((string) $data['zip']), $franchiseIds);
+        $area = match (true) {
+            ($data['area_id'] ?? null) !== null => ServiceArea::whereIn('franchise_id', $franchiseIds)
+                ->find($data['area_id']),
+            ($data['zip'] ?? null) !== null => $this->areaForZip(trim((string) $data['zip']), $franchiseIds),
+            default => ServiceArea::whereIn('franchise_id', $franchiseIds)
+                ->where('name', trim((string) $data['area_name']))
+                ->first(),
+        };
 
         if ($area === null) {
             // A zip nobody covers is a real answer and not an error: the
@@ -67,7 +78,7 @@ class SchedulingAvailabilityController extends Controller
             return response()->json([
                 'data' => [
                     'matched' => null,
-                    'searched' => $data['zip'] ?? $data['area_id'],
+                    'searched' => $searched,
                     'basis' => self::BASIS_CONFIGURED,
                     'days' => [],
                 ],
@@ -92,7 +103,11 @@ class SchedulingAvailabilityController extends Controller
                     // How it was found, so the screen can say "75201 is in
                     // Dallas" rather than silently showing a different place
                     // than the one that was typed.
-                    'by' => ($data['area_id'] ?? null) !== null ? 'area' : 'zip',
+                    'by' => match (true) {
+                        ($data['area_id'] ?? null) !== null => 'area',
+                        ($data['zip'] ?? null) !== null => 'zip',
+                        default => 'name',
+                    },
                 ],
                 'basis' => self::BASIS_CONFIGURED,
                 'week_start' => $monday->toDateString(),

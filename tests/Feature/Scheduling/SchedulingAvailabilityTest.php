@@ -126,6 +126,26 @@ class SchedulingAvailabilityTest extends TestCase
         $this->assertNull($body['matched'], "Alpha must not see Beta's coverage.");
     }
 
+    /**
+     * The screen has one box and a person types a NAME into it, not a uuid.
+     * This exists because the client was written sending `area_name` against a
+     * server that only took `zip` and `area_id` — the two halves disagreed and
+     * nothing failed until somebody searched.
+     */
+    public function test_an_area_can_be_found_by_the_name_somebody_types(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+
+        $body = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability?area_name=Dallas')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame('Dallas', $body['matched']['area_name']);
+        $this->assertSame('name', $body['matched']['by']);
+    }
+
     public function test_searching_with_neither_a_zip_nor_an_area_is_refused(): void
     {
         $tenant = $this->provisionTenant('Alpha');
