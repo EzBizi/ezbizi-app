@@ -1047,15 +1047,22 @@ how somebody talks themselves out of a correct diagnosis. Read it with
 
 ### The gate is bound on MIGRATIONS, not on tests
 
-Measured 2026-08-31, when a run went from ~20 minutes to 37+ for about 5% more
-tests. phpunit was using **1m52s of CPU in 19 minutes of wall clock** — 2.7%,
-effectively idle — and MySQL was the real consumer, caught mid
+Measured 2026-08-31: the test phase went from 1207s to 1474s — **22% longer for
+about 5% more tests**. phpunit was using **1m52s of CPU in 19 minutes of wall
+clock** — 2.7%, effectively idle — while MySQL was the real consumer, caught mid
 `alter table franchises add unique ...`.
+
+**The first version of this note said 60%, and that was wrong in the way this
+whole section is about.** I compared the remote script's total elapsed time,
+which includes an 18-minute `composer install`, against a previous run's TEST
+duration alone. Two different spans, reported as one trend. Check what a number
+covers before you put it in a document telling people to check what numbers
+cover.
 
 `RefreshDatabase` rebuilds the schema per test class. That day added roughly ten
 tables across Scheduling, phone trust, phone extensions, staff messages and
-Training, and every one of them made every rebuild more expensive. **The suite
-grew 5% and the gate grew 60%.**
+Training, and every one of them made every rebuild more expensive. **The suite grew 5%
+and the test phase grew 22%.**
 
 So when the gate feels slow, do not go looking for a slow test. Check the CPU
 split first:
