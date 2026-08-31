@@ -66,3 +66,26 @@ The approved set covers directory, populated board, and task detail at both 1440
 Visual inspection found no overflow stripes, clipped primary actions, unintended page-wide scrolling, stale overlays, or mismatched dimensions. Flutter's deterministic test font is intentionally visible in these baselines; layout, color, spacing, grouping, control presence, and responsive behavior—not host font rasterization—are the comparison contract.
 
 **Approved:** all 11 production goldens in `client/test/goldens/tasks/` faithfully represent the accepted A — Dense Grid direction and are approved as the Task 19 responsive baselines.
+
+## Task 15 golden re-approval (Phase 2 security and workflow gate)
+
+**Date:** 2026-08-31
+
+**Command:** `cd client && flutter test test/tasks/tasks_golden_test.dart` (no `--update-goldens` — Phase 2's changes to the backend query surface, dependencies, and recurrence touch no Tasks widget, so no golden was expected to move, and none did).
+
+**Result:** 11/11 passed against the checked-in PNGs with no regeneration. Every PNG was then opened and inspected individually, at native size:
+
+- `directory_desktop.png` / `directory_mobile.png` — top bar, scope switcher, Boards/My Tasks tabs, folder header, three board cards. No overflow; card layout intact at both widths.
+- `board_desktop.png` — side directory, board header, filter/tab row, toolbar (search/sort/group/filter/columns), grouped dense grid (To-Do and Completed group bars), five task rows with owner/status/priority/due columns, empty detail-pane placeholder on the right. Matches the approved A — Dense Grid direction; no column collision.
+- `board_mobile.png` — filter chips wrap correctly, group header, touch-first cards stacked, toolbar row scrolls horizontally by design (matches the original review's noted contained-scroll behavior for mobile toolbars).
+- `detail_desktop.png` — board stays visible with the selected row outlined (edit-cursor indicator present), detail panel on the right: title, linked record, owner/status/due facts, updates, activity, comment box. No clipping.
+- `detail_mobile.png` — full-screen detail route with a close control; same field set as desktop, stacked. No overflow.
+- `settings_desktop.png` — right-side drawer over a dimmed backdrop: tabs, name/description, folder, groups/statuses/priorities, an archive toggle, Save button, danger zone. Bounded to the drawer width.
+- `import_desktop.png` — right-side drawer: chosen-file chip, five field mappings (Task/Owner/Status/Group/Due date), disabled Review action, reconciliation list showing two flagged rows in red. Matches the original "two refused rows" fixture.
+- `conflict_desktop.png` — the concurrent-edit banner renders above the grid with its own action pair, and the edited row keeps the caller's in-flight text rather than being silently overwritten by the server's version.
+- `empty_desktop.png` — centered empty-state illustration placeholder, heading, body copy, single CTA, and a secondary link; no board chrome underneath.
+- `refusal_mobile.png` — access-refusal copy renders below the tabs; no board list, no stray requests reflected in the layout.
+
+Read with the paired-ghosts-vs-solid-blocks technique (Flutter's deterministic test font renders every character as a filled glyph box, so a real word reads as a run of solid blocks): every block run inspected stayed a single solid run at a stable position — no run split into two offset blocks (which would mean a glyph box moved, i.e. a layout shift) and no run relocated between rows. That is consistent with a byte-identical PNG produced by an unrelated backend change, which is what this run's untouched Dart source predicts.
+
+**Approved:** all 11 goldens in `client/test/goldens/tasks/` still faithfully represent the accepted A — Dense Grid direction. Task 15 changed no Flutter source, so this is a re-confirmation of the existing baseline, not a new one — recorded here per the brief's requirement to look at every PNG before signing off, not just trust a green test run.

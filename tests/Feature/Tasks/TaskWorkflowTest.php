@@ -9,7 +9,9 @@ use App\Models\Notification;
 use App\Models\Task;
 use App\Models\TaskActivity;
 use App\Models\TaskBoard;
+use App\Models\TaskDependency;
 use App\Models\TaskNotificationIntent;
+use App\Models\TaskRecurrenceOccurrence;
 use App\Models\TaskUpdate;
 use App\Support\Automations\AutomationEngine;
 use App\Support\Dashboard\DashboardPeriod;
@@ -209,6 +211,154 @@ final class TaskWorkflowTest extends TestCase
         $this->postJson("/api/v1/tasks/boards/{$board->id}/archive", [
             'expected_structure_version' => $board->structure_version,
         ])->assertOk()->assertJsonPath('data.archived', true);
+    }
+
+    /**
+     * Task 15: the Phase 2 end-to-end workflow. Board, display-only
+     * dependency, recurrence declaration, completion of the series task,
+     * the hourly worker producing the next instance, and every one of the
+     * five presentations opening on the resulting board — with the audit
+     * and outbox trail proven complete and in the exact order the writes
+     * actually happened.
+     */
+    public function test_phase_two_dependency_recurrence_and_presentation_workflow_has_an_ordered_audit_and_outbox_trail(): void
+    {
+        Carbon::setTestNow('2026-09-01 09:00:00 UTC');
+        $boardId = $this->postJson('/api/v1/tasks/boards', [
+            'name' => 'Phase Two Workflow', 'visibility' => 'scope',
+        ])->assertCreated()->json('data.id');
+        $this->enterTenant();
+        $board = TaskBoard::findOrFail($boardId);
+        $group = $board->groups()->active()->where('name', 'To do')->firstOrFail();
+        $notStarted = $board->statusOptions()->active()->where('category', StatusCategory::NotStarted)->firstOrFail();
+        $completed = $board->statusOptions()->active()->where('category', StatusCategory::Completed)->firstOrFail();
+
+        // 1. A setup task, and the series task it blocks (display-only —
+        // TaskDependenciesTest already proves a dependency never blocks
+        // completion, exercised here as part of the whole chain instead).
+        $setupId = $this->postJson("/api/v1/tasks/boards/{$board->id}/tasks", [
+            'title' => 'Prepare gear', 'group_id' => $group->id, 'status_option_id' => $notStarted->id,
+            'due_on' => '2026-09-02',
+        ])->assertCreated()->json('data.id');
+        $seriesId = $this->postJson("/api/v1/tasks/boards/{$board->id}/tasks", [
+            'title' => 'Weekly truck inspection', 'group_id' => $group->id, 'status_option_id' => $notStarted->id,
+            'due_on' => '2026-09-03', 'owner_user_id' => $this->tenant['admin']->id,
+        ])->assertCreated()->json('data.id');
+        $this->enterTenant();
+        $setup = Task::findOrFail($setupId);
+        $series = Task::findOrFail($seriesId);
+
+        // 2. Add a dependency: the series task is blocked by setup.
+        $dependencyId = $this->postJson("/api/v1/tasks/{$series->id}/dependencies", [
+            'blocker_task_id' => $setup->id,
+        ])->assertCreated()->json('data.id');
+
+        // 3. Declare recurrence on the series task.
+        $this->putJson("/api/v1/tasks/{$series->id}/recurrence", [
+            'expected_version' => $series->fresh()->version,
+            'recurrence' => ['mode' => 'after_completion', 'every' => 7, 'unit' => 'day'],
+        ])->assertOk();
+
+        // 4. Complete the series task.
+        $this->enterTenant();
+        $series = $series->fresh();
+        $this->patchJson("/api/v1/tasks/{$series->id}", [
+            'expected_version' => $series->version, 'status_option_id' => $completed->id,
+        ])->assertOk();
+        $this->enterTenant();
+        $completionDate = Task::findOrFail($series->id)->completed_at->toDateString();
+
+        // 5. Run the recurrence worker — the hourly `on_schedule` sweep and
+        // the `after_completion` relay both run every time, exactly as cron
+        // invokes them.
+        $this->artisan('ezbizi:create-recurring-tasks')->assertSuccessful();
+
+        // 6. Confirm the next instance exists.
+        $this->enterTenant();
+        $occurrence = TaskRecurrenceOccurrence::where('task_id', $series->id)->firstOrFail();
+        $this->assertNotNull($occurrence->created_task_id);
+        $instance = Task::findOrFail($occurrence->created_task_id);
+        $this->assertSame(
+            Carbon::parse($completionDate)->addDays(7)->toDateString(),
+            $instance->due_on?->format('Y-m-d'),
+        );
+        $this->assertSame('Weekly truck inspection', $instance->title);
+        $this->assertNotSame($series->number, $instance->number);
+
+        // 7. Open every one of the five presentations on this board.
+        $statusId = (string) $notStarted->id;
+        $presentations = [
+            'table' => $this->configuration(['schema' => 2, 'presentation' => 'table', 'window' => null]),
+            'kanban' => $this->configuration([
+                'schema' => 2, 'presentation' => 'kanban',
+                'window' => ['bucket_field' => 'status', 'buckets' => [$statusId]],
+            ]),
+            'calendar' => $this->configuration([
+                'schema' => 2, 'presentation' => 'calendar',
+                'window' => ['from' => '2026-09-01', 'to' => '2026-09-30'],
+            ]),
+            'timeline' => $this->configuration([
+                'schema' => 2, 'presentation' => 'timeline',
+                'window' => ['from' => '2026-09-01', 'to' => '2026-09-30'],
+            ]),
+            'workload' => $this->configuration([
+                'schema' => 2, 'presentation' => 'workload',
+                'window' => ['from' => '2026-09-01', 'to' => '2026-09-30', 'unit' => 'day'],
+            ]),
+        ];
+        $timelineRows = null;
+        foreach ($presentations as $presentation => $configuration) {
+            $url = "/api/v1/tasks/boards/{$board->id}/rows?".http_build_query([
+                'configuration' => json_encode($configuration, JSON_THROW_ON_ERROR),
+            ]);
+            $response = $this->getJson($url)->assertOk();
+            if ($presentation === 'timeline') {
+                $timelineRows = $response;
+            }
+        }
+        // Timeline additionally surfaces the dependency it opened with.
+        $seriesRow = collect($timelineRows->json('data'))->firstWhere('id', $series->id);
+        $this->assertNotNull($seriesRow);
+        $this->assertSame($setup->id, $seriesRow['blocked_by'][0]['task_id']);
+
+        // 8. The audit and outbox trail is complete and in the exact order
+        // the writes above actually happened.
+        $this->enterTenant();
+        $auditActions = DB::table('audit_events')->where('action', 'like', 'task.%')
+            ->orderBy('id')->pluck('action')->all();
+        $this->assertSame([
+            'task.created',              // setup
+            'task.created',               // series
+            'task.dependency_added',
+            'task.recurrence_declared',
+            'task.updated',               // completion
+            'task.recurrence_created',    // the worker's instance
+        ], $auditActions);
+
+        $outboxKeys = AutomationEvent::where('event_key', 'like', 'task.%')
+            ->orderBy('id')->pluck('event_key')->all();
+        $this->assertSame([
+            'task.created',                     // setup...
+            'task.due_date_changed',             // ...with a due date set at creation
+            'task.created',                      // series...
+            'task.owner_changed',                // ...with an owner...
+            'task.due_date_changed',              // ...and a due date, both set at creation
+            'task.dependency_added',
+            'task.status_changed',               // completion changes status...
+            'task.completed',                     // ...and crosses into the Completed category
+            'task.recurrence_instance_due',       // the relay marker, same write as the completion
+            'task.created',                       // the worker's instance
+        ], $outboxKeys);
+
+        $this->enterTenant();
+        $this->assertSame(1, TaskDependency::where('blocker_task_id', $setup->id)
+            ->where('blocked_task_id', $series->id)->count());
+        $this->assertDatabaseHas('audit_events', [
+            'action' => 'task.dependency_added', 'target_id' => $dependencyId,
+        ]);
+        $this->assertDatabaseHas('audit_events', [
+            'action' => 'task.recurrence_created', 'target_id' => $instance->id,
+        ]);
     }
 
     public function test_successful_configuration_mutations_advance_one_authoritative_version_and_emit_exact_audits(): void
