@@ -32,6 +32,53 @@ class VoiceWebhookTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
+    /**
+     * A browser call that Twilio describes as inbound is still outbound.
+     *
+     * Direction arrives as "inbound" for a browser-originated call — from
+     * Twilio's side the client IS calling in — so detection rested entirely on
+     * From beginning with "client:". When that inference did not hold, an
+     * outbound call was treated as inbound and answered by the line's own
+     * voicemail: somebody pressed Call and was invited to leave themselves a
+     * message.
+     *
+     * The client now states the direction outright. This posts the payload
+     * shape that broke it — Direction inbound, From NOT a client: identity —
+     * and asserts the call dials rather than records.
+     */
+    public function test_the_client_saying_outbound_beats_what_twilio_calls_the_call(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$connection, $authToken] = $this->inTenant($t['org'], function () use ($t) {
+            [$connection, , $authToken] = $this->openLine($t, e164: '+12035551008');
+
+            return [$connection, $authToken];
+        });
+
+        $url = $this->voiceUrl($t['org']->id, $connection->id);
+
+        $xml = $this->signedPost($url, [
+            'CallSid' => 'CA33333333333333333333333333333333',
+            'AccountSid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+
+            // Exactly the shape the old inference got wrong.
+            'Direction' => 'inbound',
+            'From' => '+12035551008',
+            'To' => '+13057242199',
+            'CallerId' => '+12035551008',
+            'EzBiziDirection' => 'outbound',
+            'CallStatus' => 'ringing',
+        ], $authToken)->assertOk()->getContent();
+
+        $this->assertStringContainsString('<Dial', $xml);
+        $this->assertStringContainsString('+13057242199', $xml);
+
+        // The symptom that was reported: the caller's own line answering them.
+        $this->assertStringNotContainsString('<Record', $xml);
+        $this->assertStringNotContainsString('leave a message', $xml);
+    }
+
     public function test_inbound_creates_a_call_row_and_returns_twiml(): void
     {
         $t = $this->provisionTenant();

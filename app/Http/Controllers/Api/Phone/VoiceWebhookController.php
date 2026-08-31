@@ -253,6 +253,22 @@ class VoiceWebhookController extends Controller
 
     private function isOutbound(Request $request): bool
     {
+        // The client says so, and that is authoritative.
+        //
+        // Everything below is inference about how Twilio describes a call, and
+        // inference is what failed: a browser-originated call arrives with
+        // Direction "inbound" — from Twilio's side the client is calling IN —
+        // so this rested on From beginning with "client:". When that did not
+        // hold, an outbound call was treated as inbound and answered by the
+        // line's own voicemail. Somebody pressed Call and was invited to leave
+        // themselves a message.
+        //
+        // The inference is kept as a fallback so calls placed by an older
+        // client, and Twilio's REST-initiated calls, still route correctly.
+        if ($request->input('EzBiziDirection') === 'outbound') {
+            return true;
+        }
+
         $direction = (string) $request->input('Direction', '');
         $from = (string) $request->input('From', '');
 

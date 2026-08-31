@@ -25,19 +25,21 @@ class CallTagsController extends Controller
     {
         $this->authorize('viewAny', PhoneCallTag::class);
 
+        // Through row(), not a second copy of it.
+        //
+        // This built its own array, and when `color` was added to row() the
+        // list kept returning tags without one. Create and update answered
+        // with the colour, the LIST did not — so a swatch saved correctly,
+        // the screen reloaded, and the colour vanished. It looked exactly like
+        // clicking a colour did nothing.
+        //
+        // Two payloads for one resource is the same shape as two copies of a
+        // rule: they agree until one of them is edited.
         $rows = PhoneCallTag::query()
             ->orderBy('position')
             ->orderBy('name')
             ->get()
-            ->map(fn (PhoneCallTag $tag) => [
-                'id' => $tag->id,
-                'name' => $tag->name,
-                'is_active' => $tag->is_active,
-                'position' => $tag->position,
-
-                // So Settings can say what retiring one would affect.
-                'call_count' => $tag->calls()->count(),
-            ])
+            ->map(fn (PhoneCallTag $tag) => $this->row($tag))
             ->all();
 
         return response()->json(['data' => $rows]);
