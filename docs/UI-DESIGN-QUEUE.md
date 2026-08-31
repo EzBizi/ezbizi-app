@@ -236,6 +236,27 @@ most. One-job-per-screen avoids it entirely by putting Save in the bar; a single
 scrolling form has to pin its footer above the keyboard, which is possible and is one
 more thing to get right.
 
+**A session name is an ADDRESS. A session id is an IDENTITY. They are not the same
+thing, and a recipient cannot derive one from the other.** `SendMessage` shows a
+rotating per-hour handle — the deploy desk was `ezbizi-a1`, then `ezbizi-28`, then
+`ezbizi-5b` in one day. The session-management tool shows a stable title,
+"EzBizi - Deployment". **Same session, two identities, and nothing in either message
+says so.**
+
+> This produced a false alarm worth learning from: two messages arrived minutes apart
+> asking identical end-of-day questions, one from each transport, and I concluded there
+> were two deploy desks about to collide on a release. There was one. The *observation*
+> was right — two addresses, no way to tell — and only the inference was wrong.
+>
+> It is worse than a stale name in one respect: **a stale name at least resolves to one
+> thing.** Two live addresses for one session resolve to two, and the recipient has no
+> way to collapse them.
+
+**So: route by the current name, but establish identity by asking.** "Which module do
+you hold" and "what is your session id" are the only reliable questions — and when
+attribution matters at all, cite a commit SHA, which is the one handle that outlives
+every address and every title.
+
 **Never express a state by fading the element that carries text.** Transparency attacks
 legibility directly, and it always bites hardest in the state where legibility matters
 most — dragging, disabled, loading, pending. Express it with elevation, an outline, a
