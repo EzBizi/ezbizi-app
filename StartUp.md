@@ -614,6 +614,38 @@ deletion above was found because "matches no commit" is a strange thing to say
 about a file sitting right there at HEAD — nothing had failed, the output just
 read oddly.
 
+### Ask whether the answer is a BELIEVABLE SHAPE, not just whether you checked
+
+"Verify before you claim" is about whether you looked. This is about whether what
+came back could be true. It is the cheaper check and it fires earlier, because it
+needs no second measurement — only a moment spent asking what a real answer would
+look like.
+
+Two on 2026-08-31, both caught this way and neither by a better method:
+
+- A sweep reported TWELVE entries of `IMPLEMENTED_ACTIONS` as unreachable,
+  including `task.create` and `time_clock.clock_in`. Twelve dead constants in
+  shipped, working code is not a thing that quietly happens. The sweep had
+  iterated `$m->actions`, which holds PERMISSION strings — view, create, edit —
+  rather than `$m->automationActions`, which holds the ActionDefinition objects.
+  A confident, precise, complete answer to the wrong question. The real number
+  was two, and both were global action types offered by a different path.
+- `scripts/index-landmines.sh` classified a file as "matches no commit —
+  somebody is working on it" while that file sat at HEAD with 368 lines. Nothing
+  had failed and no test was red; the sentence was merely strange. It was a
+  staged DELETION, which has no blob to look up, so the rule protecting other
+  people's work was protecting an armed revert of somebody's finished feature.
+
+**The tell is usually a number or a claim that is too round, too large, or too
+confident for the situation.** Twelve of anything wrong at once. Zero rows in a
+table somebody is actively using. A file that both exists and does not. When the
+shape is wrong, suspect the measurement before the system — the system has been
+running longer than your query has.
+
+This is not scepticism about results you dislike. A believable-shaped answer that
+happens to be unwelcome still needs acting on; an implausible one needs checking
+first, and usually turns out to be the instrument.
+
 ### After a merge, verify the TREE — not your diff
 
 `--filter` to the files you touched is the right discipline for your own work,
