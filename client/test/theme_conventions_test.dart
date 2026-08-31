@@ -89,11 +89,15 @@ void main() {
     // two literals makes the two disagree. Trust this number; it is the one the
     // gate enforces.
     //
-    // Roughly 11 of these are benign (`Colors.transparent`) and 2 are the
-    // sanctioned exception in signature_field.dart, which names black ink and
-    // white paper because they are the pixels of a printed document. They are
-    // inside the count deliberately: excluding them needs a second pattern that
-    // itself drifts, and the ratchet only cares about direction.
+    // SUPERSEDED, and left here because the reasoning was wrong in a way worth
+    // seeing. This used to say sanctioned literals were "inside the count
+    // deliberately", on the grounds that excluding them needs a second pattern
+    // that itself drifts. That was true about the mechanism and wrong about the
+    // consequence: a count that mixes allowed colours with owed ones cannot be
+    // acted on, because nobody can tell which is which — and the only way to add
+    // an allowed one is to raise the ceiling, which is the exact move the ratchet
+    // exists to prevent. They are excluded now. See `sanctioned` below.
+    //
     // Corrected 79 -> 80 on 2026-08-31. NOT a new literal: the count is
     // IDENTICAL at d0ce75a (where 79 was written) and at main, so nothing was
     // added after the baseline was declared. 79 was measured in a worktree that
@@ -147,9 +151,36 @@ void main() {
       // would be invisible on paper. The reason lives at the constant too.
       'screens/inspection/signature_field.dart':
           'a signature is printed, so its colours are ink and paper, not theme',
+
+      // The pre-login surface. auth_shell paints a fixed dark gradient
+      // (#071018 -> #0A2233 -> #06384E) and everything on it is white. It is
+      // deliberately OUTSIDE the theme: it is what you see before you are in
+      // the app, and it looks the same in light and dark by design.
+      //
+      // Converting these would be an active regression, not a cleanup —
+      // `Colors.white` here means "on my own dark background", so mapping it to
+      // `onSurface` renders the login screen dark-on-dark in light mode.
+      'widgets/auth_shell.dart':
+          'a fixed dark pre-login surface; white here means on-my-own-background',
+      'widgets/auth_preview.dart':
+          'drawn on auth_shell dark gradient, same fixed surface',
+
+      // A printed document and the desk it sits on. The file already documents
+      // this itself — "Ink, and the paper it sits on. DocumentRenderer's
+      // stylesheet, in Dart" — and says why they do not follow the theme.
+      'screens/hr/contract_document_page.dart':
+          'renders paper and ink for print; already reasoned about at the constants',
     };
 
-    const baseline = 78;
+    // MEASURED AFTER EXCLUDING THE ABOVE, and the drop is the finding rather
+    // than an adjustment. The count was never that much DEBT: roughly half of it
+    // was three surfaces that are deliberately outside the theme and say so in
+    // their own code. A ratchet that counts documented, correct decisions as
+    // debt reports a number nobody can act on, and manufactures pressure to
+    // "clean up" things whose conversion would be a regression.
+    //
+    // What remains is the honest figure, and it is small enough to finish.
+    const baseline = 31;
 
     test('no new hardcoded colours outside theme.dart', () {
       final pattern = RegExp(r'Color\(0x|Colors\.[a-z]');
