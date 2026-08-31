@@ -27,6 +27,38 @@ code, and do not infer it from a feature branch.
 | **"Teams rely on it" about Inspections or Tasks** | Both modules are live and neither has ever been used by a customer. Not embarrassing, but not a usage claim. |
 | **Monitoring, Marketing** | Registered, but their dashboard summaries are explicitly placeholders. |
 
+## Enforced at publish time
+
+`scripts/deploy-www.sh` refuses to publish if any page about to ship matches one
+of these, case-insensitively. **This block is the source of truth — the script
+parses it, so edit it here and nowhere else.**
+
+```forbidden-terms
+invoic
+estimat
+billing
+quotes &
+```
+
+**Deliberately narrow, and that is the point.** Only the billing family is
+machine-enforced, because those words cannot appear innocently on this site. The
+other rows above are judgements a grep would get wrong — "training" is an ordinary
+English word, and a claim about Local Services is a sentence rather than a term.
+A gate that cries wolf on a testimonial is a gate people start passing with a
+flag.
+
+It exists because on 2026-08-31 the shared index was found holding the exact
+inverse of `6c67efb` and `57fced3` — this file deleted, and all three pages
+reverted to the version telling a Google reviewer we do invoicing. The working
+tree was correct throughout; only the index was wrong. The next bare `git commit`
+by any of sixteen sessions would have put those claims back on `main`, and the
+publish path resolves `main`, so they would have reached the public site under a
+commit message about something else. Nobody would have been looking: the site had
+been verified clean an hour earlier.
+
+It was caught by one person running `git status` once more out of habit. That is
+not a control, and it does not survive the session that has the habit.
+
 ## Live, and safe to sell
 
 Customers · Field operations · Fleet · Inventory · People (users, HR onboarding,
