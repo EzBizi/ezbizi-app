@@ -36,6 +36,69 @@ class DialPlanTest extends TestCase
         $this->assertStringNotContainsString('-', $identity);
     }
 
+    /**
+     * The screen's column and the dialler must name the same people.
+     *
+     * Ring groups draws "who can be rung" from `roster()`, and a real call is
+     * placed from `batches()`. Two derivations of "available" would agree on
+     * the day they were written and drift the first time either changed —
+     * which is the failure this module has now hit six times, and the reason
+     * `reachableUserIds()` exists for both to call.
+     *
+     * The mixed group matters. All-registered or all-unavailable would pass
+     * against two implementations that disagreed about `on_call`.
+     */
+    public function test_the_roster_names_exactly_who_would_be_dialled(): void
+    {
+        $t = $this->provisionTenant();
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $connection = $this->connection($t);
+            $registered = $this->member($t, 'Registered');
+            $dnd = $this->member($t, 'Do not disturb');
+            $onCall = $this->member($t, 'On a call');
+            $silent = $this->member($t, 'Never registered');
+
+            $this->presence($connection, $registered, PhonePresence::STATE_REGISTERED);
+            $this->presence($connection, $dnd, PhonePresence::STATE_DND);
+            $this->presence($connection, $onCall, PhonePresence::STATE_ON_CALL);
+
+            $group = $this->group($connection, [
+                $registered->id, $dnd->id, $onCall->id, $silent->id,
+            ]);
+
+            $roster = DialPlan::roster($group, $connection);
+
+            $this->assertCount(4, $roster, 'a member vanished from the list');
+
+            $saysReachable = collect($roster)
+                ->filter(fn (array $row) => $row['reachable'])
+                ->pluck('user_id')
+                ->all();
+
+            $wouldDial = array_map(
+                fn (string $identity) => $identity,
+                array_merge(...DialPlan::batches($group, $connection)),
+            );
+
+            $this->assertSame(
+                array_map(fn ($id) => ClientIdentity::of(User::query()->find($id)), $saysReachable),
+                $wouldDial,
+                'the screen would show a different set of people than the call dials',
+            );
+
+            // And the reason is carried, because "not reachable" on its own
+            // sends somebody to ask four people why their phone is off.
+            $states = collect($roster)->pluck('state', 'name');
+            $this->assertSame(PhonePresence::STATE_DND, $states['Do not disturb']);
+            $this->assertSame(PhonePresence::STATE_ON_CALL, $states['On a call']);
+            $this->assertNull(
+                $states['Never registered'],
+                'somebody who never opened Phone was reported as having a state',
+            );
+        });
+    }
+
     public function test_unavailable_members_are_skipped(): void
     {
         $t = $this->provisionTenant();

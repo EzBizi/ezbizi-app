@@ -291,6 +291,21 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
           'in with Phone open and not on Do not disturb.',
           style: theme.textTheme.bodyMedium,
         ),
+
+        // The counts below are a MEASUREMENT, not a property, and there is no
+        // live channel to keep them true. Somebody's phone can register a
+        // second after this was read, so the age is stated rather than left
+        // for the reader to assume it is current.
+        if (_groups.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'Who can be rung was checked ${_measuredAgo()}. It is not live.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
         const SizedBox(height: 16),
 
         if (_connections.isEmpty)
@@ -312,6 +327,30 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
     );
   }
 
+  /// How old the reachability reading is, in words rather than a timestamp.
+  ///
+  /// "as of 14:32" makes somebody work out whether that was a minute ago; the
+  /// only thing they want to know is whether to trust the number.
+  String _measuredAgo() {
+    final stamps = _groups
+        .map((g) => DateTime.tryParse(g.measuredAt))
+        .whereType<DateTime>()
+        .toList();
+
+    if (stamps.isEmpty) return 'at some point';
+
+    final age = DateTime.now().difference(
+      stamps.reduce((a, b) => a.isAfter(b) ? a : b).toLocal(),
+    );
+
+    if (age.inSeconds < 60) return 'a few seconds ago';
+    if (age.inMinutes < 60) {
+      return '${age.inMinutes} minute${age.inMinutes == 1 ? '' : 's'} ago';
+    }
+
+    return 'over an hour ago';
+  }
+
   Widget _addButton() => Refused(
     reason: _canEdit ? null : _editRefusal,
     child: FilledButton.icon(
@@ -325,14 +364,30 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
     final answering = _lines.where((l) => l.ringGroupId == group.id).toList();
     final editing = _draft?.id == group.id;
 
+    final reachable = group.reachableCount;
+    final listed = group.members.length;
+
+    // The number that matters is not how many are IN the group.
+    //
+    // The pane said, once and as prose, that somebody only rings if they are
+    // signed in with Phone open and not on Do not disturb — and then listed
+    // "4 people". A group of four where all four are at Do not disturb rings
+    // NOBODY and looked identical to a working one. The rule was stated and
+    // never applied to the thing it was about.
+    final silent = listed > 0 && reachable == 0;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
+      color: silent ? theme.colorScheme.errorContainer : null,
       child: ListTile(
         title: Text(group.name),
         subtitle: Text(
           [
-            '${group.memberUserIds.length} '
-                '${group.memberUserIds.length == 1 ? "person" : "people"}',
+            listed == 0
+                ? 'nobody in it'
+                : silent
+                ? 'none of $listed can be rung'
+                : '$reachable of $listed can be rung',
             group.mode == 'sequential' ? 'one at a time' : 'all at once',
             answering.isEmpty
                 ? 'answers no line yet'
@@ -354,6 +409,16 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
 
   Widget _form(ThemeData theme) {
     final draft = _draft!;
+
+    // Reachability for the group being edited, keyed by person. Empty for a
+    // group that does not exist yet — nothing has been measured about a draft.
+    final roster = {
+      for (final member
+          in _groups
+              .where((g) => g.id == draft.id)
+              .expand((g) => g.members))
+        member.userId: member,
+    };
     final sameConnection = _lines
         .where((line) => line.connectionId == draft.connectionId)
         .toList();
@@ -461,6 +526,22 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
                           }
                         }),
                   title: Text(person.name),
+
+                  // Why this person would or would not ring, against their
+                  // name rather than as prose at the top of the pane. Only
+                  // for people already in the group: the server measures
+                  // reachability for members, and inventing a state for
+                  // somebody who is not one would be a guess.
+                  subtitle: roster[person.id] == null
+                      ? null
+                      : Text(
+                          roster[person.id]!.why,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: roster[person.id]!.reachable
+                                ? null
+                                : theme.colorScheme.error,
+                          ),
+                        ),
                   contentPadding: EdgeInsets.zero,
                   dense: true,
                 ),
@@ -620,6 +701,40 @@ class _Draft {
   Set<String> lineIds;
 }
 
+/// One person in a ring group, and whether a call would reach them.
+class _Member {
+  const _Member({
+    required this.userId,
+    required this.name,
+    required this.reachable,
+    required this.state,
+  });
+
+  final String userId;
+  final String name;
+  final bool reachable;
+
+  /// The presence row's own word, or null where there is NO row — which is a
+  /// different fact and gets a different sentence. `dnd` is somebody who chose
+  /// not to be rung; null is somebody who has never opened the softphone, and
+  /// that is usually a person who does not know they are in a ring group.
+  final String? state;
+
+  String get why => switch (state) {
+    'registered' => 'Rings now',
+    'dnd' => 'Do not disturb',
+    'on_call' => 'On another call',
+    _ => 'Never signed in to Phone',
+  };
+
+  factory _Member.fromJson(Map<String, dynamic> json) => _Member(
+    userId: json['user_id'] as String? ?? '',
+    name: json['name'] as String? ?? '',
+    reachable: json['reachable'] == true,
+    state: json['state'] as String?,
+  );
+}
+
 class _Group {
   const _Group({
     required this.id,
@@ -629,6 +744,8 @@ class _Group {
     required this.timeoutSeconds,
     required this.memberUserIds,
     required this.overflow,
+    required this.members,
+    required this.measuredAt,
     this.overflowGroupId,
     this.overflowNumber,
   });
@@ -640,8 +757,19 @@ class _Group {
   final int timeoutSeconds;
   final List<String> memberUserIds;
   final String overflow;
+
+  /// Every member, with whether a call reaches them RIGHT NOW — answered by
+  /// the server from the same code that does the dialling.
+  final List<_Member> members;
+
+  /// When that was measured. Not decoration: there is no live channel, so a
+  /// reachability count with no time against it reads as current forever.
+  final String measuredAt;
+
   final String? overflowGroupId;
   final String? overflowNumber;
+
+  int get reachableCount => members.where((m) => m.reachable).length;
 
   factory _Group.fromJson(Map<String, dynamic> json) => _Group(
     id: json['id'] as String? ?? '',
@@ -653,6 +781,11 @@ class _Group {
         .map((id) => id.toString())
         .toList(growable: false),
     overflow: json['overflow'] as String? ?? 'voicemail',
+    members: [
+      for (final row in (json['members'] as List? ?? const []))
+        if (row is Map<String, dynamic>) _Member.fromJson(row),
+    ],
+    measuredAt: json['members_measured_at'] as String? ?? '',
     overflowGroupId: json['overflow_group_id'] as String?,
     overflowNumber: json['overflow_number'] as String?,
   );

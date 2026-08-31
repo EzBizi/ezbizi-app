@@ -331,7 +331,7 @@ on main may have moved on.
 
 | # | Item | State |
 |---|---|---|
-| 🔨 | **Phone · Caller Identity & Trust** | **Layout 1 approved, being built.** `docs/previews/phone-trust-layouts.html` @ `d66bcef` — build from that pin, not `d0ce75a`: the legend there omits `none` from the degraded bucket, which has nowhere to land once capture runs. Approved as drawn, i.e. **merged** with the existing Trust section as *Trust & caller identity*, rail 14 → 13. Held by the Phone session (`ezbizi-0b` per the roster). |
+| ✅ | **Phone · Caller Identity & Trust** | **SHIPPED `cb27c68`.** Layout 1, built from the `d66bcef` pin. Merged with the existing Trust section as *Trust & caller identity*, absorbing Number quality, rail 14 → 13. This row read "being built, held by `ezbizi-0b`" for hours after it shipped, because the holder named in it stopped existing at a restart and a 🔨 cannot tell that from work in progress — the failure this table warns about, in the table. |
 | 🔨 | **Scheduling · Availability + Settings** | **Layout 7 approved, being built** (Overview + area rail — Jose's own combination of 1 and 2); Availability is **layout 4**. `docs/previews/scheduling-layouts.html` @ `560aed5`. Held by the Scheduling session. |
 | 📬 | **Fleet · vehicle Identity card** | **Layout 2 approved, handed to the deploy desk to route.** `docs/previews/fleet-identity-layouts.html` @ `560aed5`. The Fleet session that briefed it ended before it was drawn. **Not urgent** — nothing in Fleet is broken; the card works and the complaint was a long scroll at 375px. Fold it into the next Fleet work rather than staffing for it. |
 | 🔨 | **Phone · Connection** | **Layout 1 approved** — `docs/previews/phone-connection-layouts.html` @ `fc5b838`. Draws the org→company inheritance as a tree. Replaces **six prose variants** of one rule, each correct, each different depending on where you stood. No footer (nothing to save); retry in the head (its error is a failed load). |
@@ -339,6 +339,8 @@ on main may have moved on.
 | 🔨 | **Phone · Ring groups** | **Layout 1 approved** (split pane). `docs/previews/phone-ring-groups-layouts.html` @ `f545c31`. **The point is not the split:** reachability is a COLUMN of the member list, drawn from `DialPlan::batches()` — a group of four can ring nobody and look fine today. Tally is timestamped ("as of a few seconds ago"), never implied live. Keep the 60-second timeout explanation inline. Expect latent overflow in the narrowed detail column — pre-existing, not caused. |
 | ✅ | **Phone · Settings rail** | **SHIPPED `0d8e52c`.** Layout 1 (grouped rail) — `docs/previews/phone-settings-rail-layouts.html` @ `6389714`. Queued behind Trust with the Phone session. |
 | 4 | **Web Management · per-page value overrides** | Briefed. `license` ruled **conditional**. Not started. |
+
+**Phone, shipped 2026-08-31 and not re-listed above:** Voicemail on the shared pane skeleton (`3223015`), Numbers split pane (`b25c3db`), staff messaging (`ed3b35f`), extensions (`8b82ed2`), and the rail-is-a-switch guard (`753556b`). Still approved and NOT built: **Connection**, **Hours**, **Ring groups** — the three 🔨 rows above, held by the Phone session (`ezbizi-0b` → this one).
 
 **Also approved and shipped 2026-08-31:** the `theme.dart` contrast fix and the
 colour-literal ratchet, both in `d0ce75a`.

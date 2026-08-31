@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Phone;
 
 use App\Http\Controllers\Api\Controller;
+use App\Support\Phone\DialPlan;
 use App\Support\Phone\PhoneScope;
 use App\Http\Controllers\Api\Phone\Concerns\ResolvesPhoneConnections;
 use App\Models\PhoneConnection;
@@ -285,6 +286,8 @@ class RingGroupsController extends Controller
     /** @return array<string, mixed> */
     private function row(PhoneRingGroup $group): array
     {
+        $connection = $group->connection;
+
         return [
             'id' => $group->id,
             'connection_id' => $group->connection_id,
@@ -296,6 +299,25 @@ class RingGroupsController extends Controller
             'overflow' => $group->overflow,
             'overflow_group_id' => $group->overflow_group_id,
             'overflow_number' => $group->overflow_number,
+
+            // WHO THIS GROUP ACTUALLY REACHES, not who is listed in it.
+            //
+            // A group of four can ring nobody — all at Do Not Disturb, all on
+            // other calls, or nobody ever registered a softphone — and the
+            // screen showed four names either way. The one place that was
+            // knowable was inside DialPlan at the moment a real caller was
+            // already on the line.
+            //
+            // Asked of DialPlan rather than derived from a presence list here,
+            // so the column cannot drift from who gets dialled.
+            'members' => $connection === null
+                ? []
+                : DialPlan::roster($group, $connection),
+
+            // Stamped, because this is a MEASUREMENT and not a property.
+            // Somebody's phone can register a second after this is read, and a
+            // reachability column with no time on it reads as live.
+            'members_measured_at' => now()->toIso8601String(),
         ];
     }
 }

@@ -1498,6 +1498,84 @@ void main() {
       expect(sent.single['extension'], isNull);
     });
   });
+
+  group('Settings › Ring groups', () {
+    const conn = {
+      'id': 'cx-1',
+      'scope_type': 'company',
+      'scope_id': 'co-1',
+      'scope_name': 'A-1 Chimney',
+      'kind': 'subaccount',
+      'status': 'connected',
+    };
+
+    Map<String, Object?> groupOf(List<Map<String, Object?>> members) => {
+      'id': 'rg-1',
+      'connection_id': 'cx-1',
+      'name': 'Front desk',
+      'mode': 'simultaneous',
+      'timeout_seconds': 30,
+      'member_user_ids': [for (final m in members) m['user_id']],
+      'member_role_ids': <String>[],
+      'overflow': 'voicemail',
+      'members': members,
+      'members_measured_at': '2026-08-31T12:00:00+00:00',
+    };
+
+    /// The defect this pane was redrawn for.
+    ///
+    /// It stated the rule once as prose — somebody only rings if signed in
+    /// with Phone open and not on Do not disturb — and then said "4 people".
+    /// A group where all four are at Do not disturb rings NOBODY and looked
+    /// exactly like a working one. The rule was stated and never applied to
+    /// the thing it was about.
+    testWidgets('a group that can ring nobody says so instead of its headcount', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        ringGroups: [
+          groupOf(const [
+            {'user_id': 'u-1', 'name': 'Ana', 'reachable': false, 'state': 'dnd'},
+            {'user_id': 'u-2', 'name': 'Bar', 'reachable': false, 'state': 'on_call'},
+          ]),
+        ],
+      );
+
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('Ring groups'));
+
+      expect(find.textContaining('none of 2'), findsOneWidget);
+      expect(
+        find.textContaining('2 people'),
+        findsNothing,
+        reason: 'the headcount was shown as though it were the answer',
+      );
+    });
+
+    /// A count with no time against it reads as live, and there is no live
+    /// channel — somebody's phone can register a second after this was read.
+    testWidgets('the reachability count says how old it is', (tester) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        ringGroups: [
+          groupOf(const [
+            {'user_id': 'u-1', 'name': 'Ana', 'reachable': true, 'state': 'registered'},
+          ]),
+        ],
+      );
+
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('Ring groups'));
+
+      expect(find.textContaining('1 of 1 can be rung'), findsOneWidget);
+      expect(find.textContaining('It is not live'), findsOneWidget);
+    });
+  });
 }
 Finder _tab(String label) => find.widgetWithText(ChoiceChip, label);
 
