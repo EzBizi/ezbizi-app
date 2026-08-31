@@ -3,7 +3,7 @@
  * Plugin Name:       EzBizi
  * Plugin URI:        https://ezbizi.com
  * Description:       Publishes your company details — phone, address, licence, hours — from EzBizi, so one change updates every page of this site.
- * Version:           1.0.1
+ * Version:           1.0.2
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            EzBizi
@@ -46,7 +46,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const EZBIZI_VERSION = '1.0.1';
+const EZBIZI_VERSION = '1.0.2';
 const EZBIZI_CACHE_KEY = 'ezbizi_payload';
 const EZBIZI_LAST_GOOD = 'ezbizi_last_good';
 const EZBIZI_CACHE_TTL = 300;
@@ -257,8 +257,73 @@ add_action('init', function () {
 
 // ── Settings ────────────────────────────────────────────────────────
 
+/*
+ * Under Settings rather than a top-level menu, which is the directory's own
+ * guidance for a plugin whose whole interface is one screen. The cost is that
+ * it is not where somebody looks: A1 Tools puts itself in the sidebar, so the
+ * first person to install this one went to the sidebar, found nothing, and
+ * concluded the plugin had not worked.
+ *
+ * Being in the right place is worth nothing if it cannot be found, so the two
+ * additions below carry the weight instead of moving the page.
+ */
 add_action('admin_menu', function () {
     add_options_page('EzBizi', 'EzBizi', 'manage_options', 'ezbizi', 'ezbizi_settings_page');
+});
+
+/**
+ * A Settings link on the plugin's own row.
+ *
+ * This is where somebody is standing at the moment they wonder where the
+ * settings are — they have just activated it and are looking at the row. Every
+ * other configured plugin on that screen offers this link, so its absence reads
+ * as "this one has nothing to configure".
+ */
+add_filter('plugin_action_links_'.plugin_basename(__FILE__), function ($links) {
+    array_unshift($links, sprintf(
+        '<a href="%s">%s</a>',
+        esc_url(admin_url('options-general.php?page=ezbizi')),
+        esc_html__('Settings', 'ezbizi')
+    ));
+
+    return $links;
+});
+
+/**
+ * Say so, once, while the plugin is installed and doing nothing.
+ *
+ * Without a token this plugin is inert: no request, no values, every shortcode
+ * empty. That is indistinguishable from a broken install unless it says which
+ * one it is. Shown only to people who could actually fix it, and only on admin
+ * screens rather than on the site.
+ */
+add_action('admin_notices', function () {
+    if (! current_user_can('manage_options')) {
+        return;
+    }
+
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+
+    // Not on its own settings page — the form is right there.
+    if ($screen && $screen->id === 'settings_page_ezbizi') {
+        return;
+    }
+
+    $settings = ezbizi_settings();
+
+    if ($settings['token'] !== '') {
+        return;
+    }
+
+    printf(
+        '<div class="notice notice-warning"><p>%s <a href="%s">%s</a></p></div>',
+        esc_html__(
+            'EzBizi is active but not connected yet, so its shortcodes render nothing. Paste the site token from Web Management to finish.',
+            'ezbizi'
+        ),
+        esc_url(admin_url('options-general.php?page=ezbizi')),
+        esc_html__('Open EzBizi settings', 'ezbizi')
+    );
 });
 
 add_action('admin_init', function () {

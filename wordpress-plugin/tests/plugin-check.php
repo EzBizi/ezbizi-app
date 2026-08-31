@@ -109,6 +109,16 @@ function esc_attr($s) { return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8'
 function esc_url($s) { return filter_var((string) $s, FILTER_VALIDATE_URL) ? (string) $s : ''; }
 function esc_url_raw($s) { return (string) $s; }
 function register_setting($g, $n, $a = []) { $GLOBALS['settings'][$n] = $a; }
+function add_filter($hook, $cb, $p = 10, $a = 1) { $GLOBALS['filters'][$hook][] = $cb; }
+function apply_filters($hook, $value) {
+    foreach ($GLOBALS['filters'][$hook] ?? [] as $cb) { $value = $cb($value); }
+    return $value;
+}
+function plugin_basename($f) { return 'ezbizi/ezbizi.php'; }
+function admin_url($p = '') { return 'https://example.test/wp-admin/'.$p; }
+function get_current_screen() { return $GLOBALS['screen'] ?? null; }
+function __($t, $d = null) { return $t; }
+function esc_html__($t, $d = null) { return htmlspecialchars($t, ENT_QUOTES, 'UTF-8'); }
 function add_options_page() {}
 function current_user_can() { return true; }
 function settings_fields() {}
@@ -239,6 +249,47 @@ $_SERVER['REQUEST_URI'] = '/a-visitor-page';
 delete_transient(EZBIZI_CACHE_KEY);
 ezbizi_payload(true);
 check('the page being viewed is never sent', str_contains($GLOBALS['last_url'], 'a-visitor-page'), false);
+
+echo "\nAn installed plugin that is doing nothing says so\n";
+/*
+ * Both halves of a real report: the plugin was installed on a-1chimney.com, no
+ * menu appeared where the person looked, and EzBizi went on saying "waiting for
+ * the plugin". Nothing was broken — the screen lives under Settings, and a
+ * plugin with no token never calls home, so no connection was ever recorded.
+ * But an inert plugin that says nothing is indistinguishable from a broken one,
+ * and that is the defect these cover.
+ */
+reset_site();
+$GLOBALS['opt']['ezbizi_token'] = '';
+$GLOBALS['screen'] = null;
+
+ob_start();
+do_action('admin_notices');
+$notice = ob_get_clean();
+
+check('an unconnected site is told so', str_contains($notice, 'not connected yet'), true);
+check('and given the way there', str_contains($notice, 'page=ezbizi'), true);
+
+reset_site();
+$GLOBALS['screen'] = null;
+ob_start();
+do_action('admin_notices');
+check('a connected site is not nagged', ob_get_clean(), '');
+
+$GLOBALS['opt']['ezbizi_token'] = '';
+$GLOBALS['screen'] = (object) ['id' => 'settings_page_ezbizi'];
+ob_start();
+do_action('admin_notices');
+check('nor is somebody already on the form', ob_get_clean(), '');
+$GLOBALS['screen'] = null;
+
+echo "\nThe plugin's own row offers a way in\n";
+$links = apply_filters(
+    'plugin_action_links_ezbizi/ezbizi.php',
+    ['<a href="#">Deactivate</a>']
+);
+check('a Settings link is added first', str_contains($links[0], 'page=ezbizi'), true);
+check('and Deactivate survives', count($links), 2);
 
 echo "\nA blank token field keeps the saved token\n";
 reset_site();
