@@ -225,20 +225,31 @@ three minutes on a busy afternoon, and a design approved *as drawn* is a claim a
 specific drawing. `git show <sha>:docs/previews/<file>` is what was approved; the file
 on main may have moved on.
 
-| # | Item | State |
-|---|---|---|
-> **🔨 and ⚠️ are deliberately different, and ✅ is not used here.** An approved
+> **🔨 being built · ⏳ approved, an owner holds it · 📬 approved, routed to a desk, no owner yet · ⚠️ unowned and unrouted · ✅ never used here.** An approved
 > design with nobody building it *looks* like progress on a queue and is not — it is
 > a drawing. The deploy desk's line, and it applies to this file before it applies to
 > anyone else's: a ticked row that means "waiting for a session that does not exist"
 > is the same failure this doc warns about twice elsewhere — **the marker stays
 > plausible and the meaning moves.** A row leaves this table when it ships, not when
 > it is approved.
+>
+> **And an unowned design is ROUTED, not escalated.** A finished drawing with no
+> module session goes to the deploy desk, which outlives individual sessions. It does
+> not go back to Jose as a staffing request.
+>
+> The failure underneath, named by the deploy desk after we both made it three times:
+> **an item genuinely blocked on a decision and an item merely lacking an owner look
+> identical in a list.** The first belongs on the owner's desk. The second only gets
+> there because nobody wants to be the one holding it. Same shape as a tick that means
+> two things — and it applies to what design puts in front of Jose, not only to this
+> table: **if the answer is "find someone", it is not his to answer.**
 
+| # | Item | State |
+|---|---|---|
 | 🔨 | **Phone · Caller Identity & Trust** | **Layout 1 approved, being built.** `docs/previews/phone-trust-layouts.html` @ `d66bcef` — build from that pin, not `d0ce75a`: the legend there omits `none` from the degraded bucket, which has nowhere to land once capture runs. Approved as drawn, i.e. **merged** with the existing Trust section as *Trust & caller identity*, rail 14 → 13. Held by the Phone session (`ezbizi-0b` per the roster). |
 | 🔨 | **Scheduling · Availability + Settings** | **Layout 7 approved, being built** (Overview + area rail — Jose's own combination of 1 and 2); Availability is **layout 4**. `docs/previews/scheduling-layouts.html` @ `560aed5`. Held by the Scheduling session. |
-| ⚠️ | **Fleet · vehicle Identity card** | **Layout 2 approved — and NOBODY IS BUILDING IT.** `docs/previews/fleet-identity-layouts.html` @ `560aed5`. The Fleet session that briefed it ended before it was drawn and none has replaced it. This row is not progress; it is a finished drawing waiting for an owner. If you are picking up Fleet, it is ready and needs nothing from Jose. |
-| 3 | **Phone · Settings rail** — 14 sections, grew one at a time | Not started. |
+| 📬 | **Fleet · vehicle Identity card** | **Layout 2 approved, handed to the deploy desk to route.** `docs/previews/fleet-identity-layouts.html` @ `560aed5`. The Fleet session that briefed it ended before it was drawn. **Not urgent** — nothing in Fleet is broken; the card works and the complaint was a long scroll at 375px. Fold it into the next Fleet work rather than staffing for it. |
+| ⏳ | **Phone · Settings rail** | **Layout 1 approved** (grouped rail) — `docs/previews/phone-settings-rail-layouts.html` @ `6389714`. Queued behind Trust with the Phone session. |
 | 4 | **Web Management · per-page value overrides** | Briefed. `license` ruled **conditional**. Not started. |
 
 **Also approved and shipped 2026-08-31:** the `theme.dart` contrast fix and the
