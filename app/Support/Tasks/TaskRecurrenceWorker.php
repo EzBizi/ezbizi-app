@@ -117,6 +117,25 @@ final class TaskRecurrenceWorker
      * the fact: a mode check applied in PHP only after LIMIT has already
      * bounded the batch lets one mode crowd the other out of the window
      * instead of actually bounding "how much on_schedule work happens".
+     *
+     * Ordered by when this worker last actually gave the series a sweep —
+     * the most recent `created_at` among its OWN `task_recurrence_
+     * occurrences` rows, oldest (and never-swept, which sorts first: MySQL
+     * treats NULL as smaller than any value in ASC order) first — not by
+     * `id` (whole-branch review finding 8). `TaskDueWorker` orders by
+     * `due_on`, the real urgency signal in ITS domain; `on_schedule` series
+     * have no equivalent single "due" date to sort by (each one can have
+     * many future occurrences), but they DO have a record of every sweep
+     * this worker itself already gave them, in the same table
+     * attemptOccurrence() already writes to on every 'created' or
+     * 'terminal' outcome. `Task::id` is a random `HasUuids` UUID (not
+     * time-ordered), so ordering by `id` was not even "oldest series
+     * first" — it was an arbitrary but PERMANENTLY FIXED slice: whichever
+     * `$limit` series happened to sort lowest by UUID got every run,
+     * forever, and every other on_schedule series in an org past that
+     * count could go unswept permanently. This ordering instead rotates: a
+     * series just swept sorts to the back next run, guaranteeing every
+     * series' turn eventually comes.
      */
     public function onSchedule(int $limit = 500): int
     {
@@ -124,6 +143,7 @@ final class TaskRecurrenceWorker
         $query = Task::withoutGlobalScopes()
             ->where('recurrence->mode', 'on_schedule')
             ->whereNull('archived_at')
+            ->orderByRaw('(select max(created_at) from task_recurrence_occurrences where task_recurrence_occurrences.task_id = tasks.id) asc')
             ->orderBy('id')
             ->limit(max(1, min($limit, 5000)));
 

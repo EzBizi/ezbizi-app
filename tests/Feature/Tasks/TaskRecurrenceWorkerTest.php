@@ -186,6 +186,47 @@ final class TaskRecurrenceWorkerTest extends TestCase
     }
 
     /**
+     * Whole-branch review finding 8: onSchedule() used to order by `id`,
+     * a value that never changes — whichever series happened to sort
+     * lowest by UUID got swept EVERY run, and any series past the limit
+     * never got a turn at all. Three series, a limit of 2: run once, one
+     * of the three has no occurrence yet; run again, and it must now be
+     * among the swept ones (the two just-swept series sort to the back,
+     * having a fresh occurrence row the never-swept one does not) — proof
+     * the window actually rotates rather than starving the same tail
+     * forever.
+     */
+    public function test_on_schedule_rotates_past_its_limit_instead_of_starving_the_same_series_forever(): void
+    {
+        Carbon::setTestNow('2026-09-01 12:00:00');
+        $first = $this->createTask('Series A', startOn: '2026-09-01');
+        $this->declareRecurrence($first, 'on_schedule', 1, 'day');
+        $second = $this->createTask('Series B', startOn: '2026-09-01');
+        $this->declareRecurrence($second, 'on_schedule', 1, 'day');
+        $third = $this->createTask('Series C', startOn: '2026-09-01');
+        $this->declareRecurrence($third, 'on_schedule', 1, 'day');
+
+        Carbon::setTestNow('2026-09-02 12:00:00');
+        $this->artisan('ezbizi:create-recurring-tasks', ['--limit' => 2])->assertSuccessful();
+
+        $this->enterTenant();
+        $sweptAfterFirstRun = TaskRecurrenceOccurrence::whereIn('task_id', [$first->id, $second->id, $third->id])
+            ->distinct()->pluck('task_id');
+        $this->assertCount(2, $sweptAfterFirstRun, 'The limit must still bound a single run to 2.');
+        $unsweptId = collect([$first->id, $second->id, $third->id])->diff($sweptAfterFirstRun)->firstOrFail();
+
+        $this->artisan('ezbizi:create-recurring-tasks', ['--limit' => 2])->assertSuccessful();
+
+        $this->enterTenant();
+        $sweptAfterSecondRun = TaskRecurrenceOccurrence::whereIn('task_id', [$first->id, $second->id, $third->id])
+            ->distinct()->pluck('task_id');
+        $this->assertTrue(
+            $sweptAfterSecondRun->contains($unsweptId),
+            'The series left out of the first run must not be starved forever — it must get its turn.'
+        );
+    }
+
+    /**
      * Fix round 2 (task-6): one candidate throwing must not abort the rest
      * of the batch. Seeded the same way fix round 1's finding actually
      * happened — a board where buildInstance() cannot find a non-terminal
