@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi — App sidebar, module search</title>
+<style>
+  :root {
+    --cyan:#00AEEF; --primary:#00708F; --cyan-deep:#00708F;
+    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+    --ok:#0B8F5B; --err:#E07070; --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1180px; margin:0 auto; padding:16px 16px 48px; }
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:18px; margin:0 0 4px; }
+  header.picker p { margin:0 0 12px; color:var(--muted); max-width:82ch; }
+  .locked, .ask, .found { font-size:13px; border-radius:8px; padding:10px 12px;
+    margin-bottom:12px; max-width:94ch; }
+  .locked { background:var(--info-c); } .ask { background:var(--warn-c); } .found { background:var(--err-c); }
+  .locked strong, .ask strong, .found strong { display:block; margin-bottom:4px; }
+  .locked strong { color:var(--cyan-deep); } .ask strong { color:var(--warn); } .found strong { color:#A33; }
+  .ask b, .found b { display:block; margin-top:7px; }
+  .nums { display:flex; flex-wrap:wrap; gap:8px; }
+  .nums button { min-width:44px; min-height:44px; border-radius:8px;
+    border:1px solid var(--line); background:var(--page); color:var(--ink); }
+  .nums button[aria-pressed="true"] { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:92ch; }
+  .caption strong { display:block; margin-bottom:4px; }
+  kbd { border:1px solid var(--line); border-bottom-width:2px; border-radius:5px;
+    padding:1px 5px; font:inherit; font-size:11px; background:var(--page); color:var(--muted); }
+
+  .stage { display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start; }
+  .win { border:1px solid #C9D3DB; border-radius:10px; overflow:hidden; background:var(--page);
+    display:flex; flex-direction:column; width:300px; height:560px; }
+  .win .cap { font-size:11px; color:var(--muted); padding:6px 10px; background:var(--alt);
+    border-bottom:1px solid var(--line); }
+  .win .cap b { color:var(--ink); }
+  .side { display:flex; flex-direction:column; min-height:0; flex:1; background:var(--page); }
+  .brandrow { display:flex; align-items:center; gap:9px; padding:10px 12px;
+    border-bottom:1px solid var(--line); }
+  .brandrow .bm { font-weight:800; color:var(--cyan-deep); font-size:15px; }
+  .brandrow .tog { margin-left:auto; color:var(--muted); }
+
+  .searchrow { padding:9px 10px 7px; }
+  .search { display:flex; align-items:center; gap:8px; min-height:36px;
+    border:1px solid var(--line); border-radius:9px; background:var(--alt);
+    padding:0 10px; color:var(--muted); font-size:13px; }
+  .search.on { background:var(--page); border-color:var(--primary); color:var(--ink); }
+  .search .k { margin-left:auto; }
+  .searchicon { width:36px; height:36px; border-radius:9px; border:1px solid var(--line);
+    background:var(--alt); color:var(--muted); display:grid; place-items:center; margin:9px auto 4px; }
+
+  .navwrap { overflow-y:auto; flex:1; min-height:0; }
+  a.nav { display:flex; align-items:center; gap:11px; padding:7px 12px; color:var(--ink);
+    text-decoration:none; font-size:13px; min-height:34px; }
+  a.nav .ic { width:17px; height:17px; border-radius:4px; background:#C9D3DB; flex:none; }
+  a.nav.on { background:var(--info-c); font-weight:600; }
+  a.nav.on .ic { background:var(--primary); }
+  a.nav .hit { background:#FFE9A8; border-radius:3px; padding:0 1px; }
+  a.nav.kb { outline:2px solid var(--primary); outline-offset:-2px; border-radius:8px; }
+  .grouphead { font-size:10px; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--muted); padding:10px 12px 4px; font-weight:700; }
+  .tail { margin:0 14px; border-top:1px solid var(--line); }
+  .tailitems { flex:none; }
+  .stamp { color:var(--muted); font-size:10px; padding:7px 14px 9px; }
+  .empty { padding:14px 12px; color:var(--muted); font-size:12px; }
+  .empty b { display:block; color:var(--ink); margin-bottom:3px; }
+  .count { padding:4px 12px 2px; color:var(--muted); font-size:11px; }
+
+  .collapsed { width:74px !important; }
+  .collapsed a.nav { justify-content:center; padding:9px 0; }
+  .collapsed a.nav span:not(.ic) { display:none; }
+  .note { color:var(--muted); font-size:12px; margin-top:10px; max-width:92ch; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>App sidebar — finding a module</h1>
+
+    <div class="locked">
+      <strong>Context</strong>
+      Sixteen destinations today and growing — Scheduling and Training are both mid-build, and
+      Messaging is declared. Scrolling was just approved (<code>ec25e74</code>) and fixes
+      <em>the list does not fit</em>. This is the other half: <em>I cannot find the one I want</em>.
+      Scrolling makes a long list reachable; it does not make it findable. The sidebar is also the
+      only navigation in the app, so a module you cannot find is a module you cannot open.
+    </div>
+
+    <div class="found">
+      <strong>The obvious answer is unavailable here, and that is not a small detail</strong>
+      Every app you would compare this to solves it with a <b>command palette</b> — <kbd>⌘K</kbd>,
+      a floating overlay, type and jump. <b>EzBizi has no modals.</b> The rule is stated in
+      <code>StartUp.md</code> in as many words, five <code>AlertDialog</code>s were removed to
+      enforce it, and every Tasks screen now asserts <code>findsNothing</code> for it.
+      <b>A palette is a dialog.</b> Dimmed backdrop, traps focus, closes on Escape — it is the
+      thing the rule forbids, wearing a keyboard shortcut. So it is not in this gallery, and I am
+      naming it rather than quietly omitting it: if you want a palette, that is a decision to
+      change the no-modals rule, and it should be made as that rather than arrived at as a
+      side effect of wanting search.
+      <b>Everything here therefore searches IN the sidebar</b>, which turns out to be a better
+      fit anyway — the list is already vertical, already scrollable, and already where your eye is.
+    </div>
+
+    <div class="ask">
+      <strong>The one thing that decides this, and it is about the collapsed rail</strong>
+      The sidebar collapses to a 74px icon strip, where <b>a text field does not fit at all</b>.
+      Layout 1 shows a search icon that expands the sidebar when tapped; layout 2 keeps the field
+      permanently and simply has none when collapsed; layout 3 avoids the question by never
+      taking vertical space in the first place.
+      <b>Search should not need the mouse.</b> All three focus on <kbd>/</kbd> — a single key,
+      already the convention, and unlike <kbd>⌘K</kbd> it carries no expectation of an overlay.
+      Typing filters as you go, <kbd>↑</kbd><kbd>↓</kbd> moves, <kbd>Enter</kbd> opens,
+      <kbd>Esc</kbd> clears and restores the full list.
+    </div>
+
+    <p>Pick a number. <strong>1 is my recommendation.</strong> Sidebars drawn at their real
+      width, in a short window so the interaction with scrolling is visible.</p>
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+  <div class="stage" id="stage"></div>
+</div>
+
+<script>
+const CAPTIONS = {
+  1: ["1 · A field at the top that filters the list in place (recommended)",
+      "One field under the brand, always there, filtering the destinations beneath it as you type. Matching letters are highlighted so it is obvious WHY a row survived — 'ma' matching both Marketing and Fleet Management is confusing until you can see which letters matched. The tail never filters: Settings and Development are always there, because they are the things you go to when the list did not have what you wanted. Chosen because it costs one row of height, needs no new surface, no overlay, and no rule changed — and because the list it filters is the list you were already looking at, so nothing moves anywhere unexpected. Collapsed, the field becomes an icon that expands the sidebar and focuses the field, which is one tap for a state you were in anyway."],
+  2: ["2 · The field appears only when you ask for it",
+      "A search icon in the brand row; pressing it or hitting / slides a field in above the list. Zero permanent cost — on the tall screens where everything already fits, the sidebar is exactly as it is today. Weakness: search that is invisible until invoked is search most people never discover, and this is aimed at somebody who cannot find a module — precisely the person not looking for a hidden control. It optimises for the users who do not need it."],
+  3: ["3 · No field — type into the sidebar directly",
+      "No search UI at all. With the sidebar focused, typing letters filters it, exactly as a native file list does. Costs no vertical space whatsoever, which is the whole argument on a short screen, and it is the fastest for anyone who finds it. Weakness, and it is decisive: there is nothing to see, so nothing teaches it. It also fights the click-first way this app is used — the same objection as layout 2, one degree worse, because there is not even an icon to notice."],
+  4: ["4 · Layout 1 while filtering, and its empty state",
+      "The recommendation mid-search. 'man' has narrowed sixteen to three, with the matched letters highlighted so Fleet MANagement and Web MANagement make obvious sense next to each other. A count sits above the results, because when a filter is on, the difference between 'three modules match' and 'three modules exist' is the whole meaning of the list. Beside it, the state that matters more than the happy path: nothing matched. It names what was typed, says the list is filtered rather than empty, and offers the way back — an empty sidebar with no explanation is indistinguishable from a broken one."]
+};
+
+const NAV = ['Dashboard','Tasks','Human Resources','Customers','Jobs','Scheduling','Inspection',
+             'Marketing','Web Management','Phone','Fleet Management','Inventory','Services',
+             'Email','Automations','Monitoring'];
+
+const item = (n, on, kb) =>
+  `<a class="nav ${on?'on':''} ${kb?'kb':''}"><span class="ic"></span><span>${n}</span></a>`;
+
+const hl = (n, q) => {
+  const i = n.toLowerCase().indexOf(q);
+  if (i < 0) return n;
+  return n.slice(0,i) + '<span class="hit">' + n.slice(i,i+q.length) + '</span>' + n.slice(i+q.length);
+};
+
+const tail = () => `
+  <div class="tailitems">
+    <div class="tail"></div>
+    ${item('Settings')}
+    ${item('Development')}
+    <div class="stamp">v0.0.0125 · ab17ac0</div>
+  </div>`;
+
+const brand = (icon) => `
+  <div class="brandrow"><span class="bm">EzBizi</span>
+    ${icon ? '<span class="tog">&#9906;</span>' : ''}<span class="tog">&#8676;</span></div>`;
+
+const win = (cap, inner, cls) => `
+  <div class="win ${cls||''}">
+    <div class="cap">${cap}</div>
+    <div class="side">${inner}</div>
+  </div>`;
+
+const L1 = () => `
+  ${win('<b>Layout 1</b> · field always present', `
+    ${brand(false)}
+    <div class="searchrow"><div class="search">&#9906; <span>Find a module</span>
+      <kbd class="k">/</kbd></div></div>
+    <div class="navwrap">${NAV.map(n => item(n, n==='Human Resources')).join('')}</div>
+    ${tail()}`)}
+  ${win('<b>Collapsed</b> · the field becomes an icon', `
+    <div class="brandrow" style="justify-content:center"><span class="tog">&#8677;</span></div>
+    <div class="searchicon">&#9906;</div>
+    <div class="navwrap">${NAV.map(n => item(n, n==='Human Resources')).join('')}</div>
+    ${tail()}`, 'collapsed')}
+  <p class="note">One row of height. The tail never filters — Settings and Development are what
+    you reach for when the list did not have what you wanted, so they must not be filtered out
+    of reach by a search that failed.</p>`;
+
+const L2 = () => `
+  ${win('<b>Layout 2</b> · icon only, until asked', `
+    ${brand(true)}
+    <div class="navwrap">${NAV.map(n => item(n, n==='Human Resources')).join('')}</div>
+    ${tail()}`)}
+  ${win('<b>After pressing it</b>', `
+    ${brand(true)}
+    <div class="searchrow"><div class="search on">&#9906; <span>man|</span></div></div>
+    <div class="navwrap">
+      ${['Human Resources','Web Management','Fleet Management']
+        .map(n => `<a class="nav"><span class="ic"></span><span>${hl(n,'man')}</span></a>`).join('')}
+    </div>
+    ${tail()}`)}
+  <p class="note">Costs nothing when unused — and is invisible to the person who needs it, who by
+    definition is not looking for a hidden control.</p>`;
+
+const L3 = () => `
+  ${win('<b>Layout 3</b> · nothing to see', `
+    ${brand(false)}
+    <div class="navwrap">${NAV.map(n => item(n, n==='Human Resources')).join('')}</div>
+    ${tail()}`)}
+  ${win('<b>After typing “sch” with the rail focused</b>', `
+    ${brand(false)}
+    <div class="count">Filtered by “sch” · Esc to clear</div>
+    <div class="navwrap">
+      <a class="nav kb"><span class="ic"></span><span>${hl('Scheduling','sch')}</span></a>
+    </div>
+    ${tail()}`)}
+  <p class="note">No vertical cost at all, which is the strongest argument on a short screen.
+    And nothing teaches it.</p>`;
+
+const L4 = () => `
+  ${win('<b>Layout 1, filtering</b> · “man” → 3 of 16', `
+    ${brand(false)}
+    <div class="searchrow"><div class="search on">&#9906; <span>man|</span>
+      <span class="k" style="color:var(--muted)">&#10005;</span></div></div>
+    <div class="count">3 of 16 modules</div>
+    <div class="navwrap">
+      <a class="nav kb"><span class="ic"></span><span>${hl('Human Resources','man')}</span></a>
+      <a class="nav"><span class="ic"></span><span>${hl('Web Management','man')}</span></a>
+      <a class="nav"><span class="ic"></span><span>${hl('Fleet Management','man')}</span></a>
+    </div>
+    ${tail()}`)}
+  ${win('<b>Nothing matched</b> · the state that matters', `
+    ${brand(false)}
+    <div class="searchrow"><div class="search on">&#9906; <span>invoic|</span>
+      <span class="k" style="color:var(--muted)">&#10005;</span></div></div>
+    <div class="empty"><b>No module called “invoic”.</b>
+      The list is filtered, not empty — press <kbd>Esc</kbd> or clear the box to see all sixteen
+      again. If you were looking for billing, it lives inside Jobs.</div>
+    ${tail()}`)}
+  <p class="note">The count exists because with a filter on, “three modules match” and “three
+    modules exist” look identical — and one of those means the app has lost thirteen tabs.</p>`;
+
+const LAYOUTS = { 1:L1, 2:L2, 3:L3, 4:L4 };
+const nums = document.getElementById('nums'), stage = document.getElementById('stage'),
+      caption = document.getElementById('caption');
+Object.keys(LAYOUTS).forEach(k => {
+  const b = document.createElement('button'); b.type='button'; b.textContent=k;
+  b.addEventListener('click', () => show(+k)); nums.appendChild(b);
+});
+function show(i) {
+  [...nums.children].forEach((b,x) => b.setAttribute('aria-pressed', x+1===i ? 'true':'false'));
+  const e = CAPTIONS[i];
+  caption.innerHTML = '<strong>'+e[0]+'</strong>'+e[1];
+  stage.innerHTML = LAYOUTS[i]();
+}
+show(1);
+</script>
+</body>
+</html>
