@@ -240,12 +240,18 @@ const attestationPopulated = `
     </div>
     <div class="legend">
       <span><i class="sw a"></i> A &mdash; full attestation &middot; 30</span>
-      <span><i class="sw b"></i> B or C &mdash; degraded &middot; 0</span>
+      <span><i class="sw b"></i> B, C or none &mdash; degraded &middot; 0</span>
       <span><i class="sw gap"></i> Not captured &middot; 31</span>
     </div>
     <p class="meta"><b>61 calls in this window. We have a grade for 30 of them.</b>
       0.0% degraded is measured against those 30, not against all 61. The hatched half is not a bad
       grade &mdash; it is a call we never recorded a grade for.</p>
+    <p class="meta"><b>&ldquo;None&rdquo; and &ldquo;not captured&rdquo; are different facts and
+      must never share a colour.</b> Stored as <code>'none'</code> versus <code>NULL</code>:
+      <em>none</em> means the carrier really did send that call unsigned &mdash; a genuine bad
+      answer, and it belongs in the degraded bucket. <em>NULL</em> means we were not looking.
+      Collapsing them would report every call from before capture as untrusted, on a screen
+      somebody opens precisely because they are already worried.</p>
   </div>`;
 
 const attestationEmpty = `

@@ -69,7 +69,9 @@ if [ -n "$SHA" ]; then
   trap 'rm -rf "$TMP"' EXIT
   SRC=$TMP/www
   mkdir -p "$SRC"
-  git archive "$SHA" www | tar -x --strip-components=1 -C "$SRC"
+  # autocrlf=false: see the note in deploy.sh. The archive is built on Windows,
+  # so without this the published page bytes depend on which machine deployed.
+  git -c core.autocrlf=false archive "$SHA" www | tar -x --strip-components=1 -C "$SRC"
   echo "→ publishing www/ at $(git rev-parse --short "$SHA")"
 else
   echo "→ publishing www/ from the WORKING TREE (uncommitted edits included)"
@@ -98,7 +100,8 @@ tar -cz -C "$SRC" --exclude=./check-site.py . | ssh "$REMOTE" "
 #     the live page                                 12543 bytes
 #     difference 186 = exactly one CR per line, 186 lines
 #
-# `git archive` applies the repo CRLF policy; `git show` does not. This loop
+# `git archive` applies the CRLF policy of whoever runs it -- core.autocrlf in
+# LOCAL config, not something the repo pins; `git show` does not. This loop
 # compares against $SRC — the extracted ARCHIVE — which is the right comparison
 # and the one the deploy actually shipped.
 #

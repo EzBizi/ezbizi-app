@@ -690,6 +690,32 @@ This is not scepticism about results you dislike. A believable-shaped answer tha
 happens to be unwelcome still needs acting on; an implausible one needs checking
 first, and usually turns out to be the instrument.
 
+### A finding can be neutralised by being filed under one already forgiven
+
+The believable-shape rule above asks whether the ANSWER is plausible. This is the
+same failure one level up, where the answer is implausible but the CITATION makes
+it look already-decided.
+
+A live disclosure — an automation subject that broadcast one franchise's record to
+every user in the organization — was filed as "mirrors a known, already-deferred
+gap", pointing at a real note in `ModuleServiceProvider` about subjects-per-
+trigger. Different interface, different methods; they never touch. And the note it
+cited priced its own gap as harmless: *"what null costs is one affordance and
+nothing else."* So a disclosure inherited a cosmetic verdict, and the person
+reading the review saw a finding that had apparently already been considered.
+
+**The mis-filing is invisible, because the note it points at genuinely exists and
+genuinely was accepted.** Nothing in the citation is false. Only the match is.
+
+So: when a finding is dismissed as covered by a known issue, open the known issue
+and read what it actually says. "Similar in shape" and "the same problem" are
+different claims, and the second one is doing all the work.
+
+Related, from the same case: the reviewer classified it as a missing
+*affordance* — franchise-scoped rules never firing — and did not notice it was
+also a *disclosure*. One defect can sit in two categories, and being right about
+the boring one is how the other gets closed.
+
 ### After a merge, verify the TREE — not your diff
 
 `--filter` to the files you touched is the right discipline for your own work,
@@ -757,6 +783,77 @@ ever get read?* — static, greppable, findable by reading. A wrong answer needs
 *does this path return what its name claims?*, which only a test that knows the
 right answer can ask. That is why the label bug survived every review that read
 the code and died the moment something asserted which URL got fetched.
+
+### A green suite proves the code works, not that it is what you shipped
+
+The tests measure the CODE. Until 2026-08-31 nothing measured the DELIVERY, and
+they are not the same claim.
+
+The deploy gate copied its sandbox with `git archive`, which runs on the Windows
+machine, where `core.autocrlf=true` — and applies it. **1791 of 2131 files
+differed from what production receives**, 430 KB of injected CR, on every deploy
+the gate had ever run. Production was never affected: it is fed by `git push` and
+checks out on the box, in LF.
+
+2500 tests ran green against that tree for months, because PHP does not care
+about line endings. The suite was not confirming the sandbox matched production;
+it was demonstrating that almost nothing in it could tell. What finally noticed
+was one anchored regex, by accident. Fixed in `b0a4c4e` with
+`-c core.autocrlf=false` at the two archive call sites.
+
+**The question to carry forward is not "are the tests green" but "what would be
+different if the thing I am assuming were false, and does anything look there?"**
+
+### Anchoring a regex with `$` makes the test depend on who checked the file out
+
+`$` in multiline mode matches before a bare LF and NOT before a CRLF pair, and a
+greedy token cannot consume the CR to reach it. So on a Windows checkout this
+fails against a file that is byte-for-byte correct:
+
+```
+/^Stable tag:\s*(\S+)$/m   against  Stable tag: 1.0.2<CR><LF>   ->  0
+                           against  Stable tag: 1.0.2<LF>       ->  1
+```
+
+**`^` is safe** — the stray CR sits at the END of the previous line, not the
+start of the next. That one sentence classifies any regex in five seconds.
+
+Use a negated class that excludes CR and LF, rather than `\S+$`. Three
+independent sweeps agree the whole population was two occurrences, both in
+`WebManagementTest`, both fixed in `7149803`, and zero in shipping code — which
+matters, because a test that misreads a line ending goes red and somebody
+investigates, whereas the WordPress plugin would quietly render the wrong thing
+on a customer's page forever.
+
+**A fix landing on main does not reach the worktrees, and "fixed in <sha>" reads
+as though it does.** When this was fixed, twelve of the fourteen checkouts on this
+box still held the broken assertion. Each one self-resolves on its next
+`git merge main` — but not at the moment main goes green, so somebody runs the
+suite, hits the identical red, and has just read a note saying it was fixed. If
+you hit a red that a deploy note says is fixed, check whether YOUR checkout
+contains the fix before you debug it:
+
+```
+git merge-base --is-ancestor <fix-sha> HEAD && echo "have it" || echo "behind"
+```
+
+**And the reason it was missed is worth more than the instance.** The sweep that
+declared the population "two occurrences, full repo" used a search tool that
+respects ignore rules — so it measured the tracked working tree and never
+descended into the other checkouts. That is usually what you want, and it is
+silently not what you want the moment worktrees exist.
+
+That was the fourth instance in one day of a single shape: **a measurement whose
+scope is narrower than the claim built on it.** A ratchet baseline measured before
+a merge; golden images reviewed from the wrong tree; a file matching HEAD for a
+reason nobody tested; a repo-wide sweep that saw one checkout. None were careless
+— each used a reasonable tool and then described its output in broader terms than
+the tool had earned.
+
+**The trap while diagnosing it:** piping the file through `grep` before `od -c`
+shows the line ending in a bare LF with no CR, because grep strips it. That is
+how somebody talks themselves out of a correct diagnosis. Read it with
+`file_get_contents` and the actual pattern.
 
 ---
 

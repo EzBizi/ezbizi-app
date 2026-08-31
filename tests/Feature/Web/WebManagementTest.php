@@ -327,18 +327,33 @@ class WebManagementTest extends TestCase
          */
         $plugin = (string) $zip->getFromName('ezbizi/ezbizi.php');
 
+        /*
+         * `[^
+]+` rather than `(\S+)$`, because `$` in multiline mode
+         * matches before `
+` and NOT before `
+`. The first version of
+         * this test passed on an LF checkout and failed on a CRLF one holding
+         * byte-identical content — which on Windows is decided by git's
+         * autocrlf, so the same commit was green in a worktree and red in the
+         * primary tree. Reported by another session as a red on main; it was
+         * mine, introduced with these assertions in 50c30b0.
+         */
         $this->assertSame(
             1,
-            preg_match('/^Stable tag:\s*(\S+)$/m', $readme, $stable),
+            preg_match('/^Stable tag:[ \t]*([^\r\n]+)/m', $readme, $stable),
         );
         $this->assertSame(
             1,
-            preg_match('/^ \* Version:\s*(\S+)$/m', $plugin, $header),
+            preg_match('/^ \* Version:[ \t]*([^\r\n]+)/m', $plugin, $header),
         );
         $this->assertSame(
             1,
             preg_match("/EZBIZI_VERSION = '([^']+)'/", $plugin, $constant),
         );
+
+        $header[1] = trim($header[1]);
+        $stable[1] = trim($stable[1]);
 
         $this->assertSame(
             $header[1],

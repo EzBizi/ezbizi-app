@@ -153,7 +153,16 @@ wins:
 DB_DATABASE=ezbizi_testing_<yourmodule> vendor/bin/phpunit --filter=<YourTest>
 ```
 
-One module went 107 errors → 112/112 on this alone.
+One module went 107 errors → 112/112 on this alone. Another went 153 → 17 the
+same week, after reading this file.
+
+**The collision does not look like a collision.** It looks like *you* broke the
+tenant boundary — the red lands in `TenantIsolation`, `TimeClock`, `Tasks` and
+`Web Management` at once, which reads as a fleet-wide security failure rather
+than as two runners sharing a schema. That is the most alarming possible false
+signal, and it points at the one thing you would most want to be wrong about. If
+a run suddenly says you have broken tenancy everywhere, re-run it on your own
+schema **before** you believe it.
 
 **That prefix works for the test runner and nowhere else.** It names a *schema*
 only because `phpunit.xml:26` pins `DB_CONNECTION=mysql`. Everywhere else `.env`
@@ -175,3 +184,18 @@ in the repo root, untracked and — until this was written — unignored, one
 
 Committing safely on this shared tree is **not** temporary and lives in
 `StartUp.md` §4. Who owns which files is in `docs/MODULE-OWNERS.md`.
+
+---
+
+## 5 · CRLF — moved, because it outlives this file
+
+The `git archive` bug and the `$`-anchored-regex hazard now live in
+**`StartUp.md` §8**, under "A green suite proves the code works, not that it is
+what you shipped".
+
+They were written here first and that was a mistake: this file's own header says
+to delete it when App Store review clears, and CRLF checkouts have nothing to do
+with App Store review. Whoever eventually deletes this file will be following the
+instruction correctly, and durable knowledge must not be sitting in it.
+
+Raised by ezbizi-ea, who noticed the header contradicted the content.

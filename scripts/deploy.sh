@@ -53,7 +53,26 @@ echo "→ testing the tree about to ship ($GATED_SHA)"
 # behind stale in the sandbox. See the note beside `rm -rf $WIPE` below.
 WIPE=$(git ls-tree --name-only "$GATED_SHA" | grep -vx storage | tr '
 ' ' ')
-BACKEND_OUT=$(git archive "$GATED_SHA" | ssh "$REMOTE" "WIPE='$WIPE'"'
+# `-c core.autocrlf=false`, and it is not cosmetic. This archive is built HERE,
+# on Windows, where core.autocrlf=true — and `git archive` applies that policy on
+# the way out. So the tar that lands on the Linux sandbox had a CR injected into
+# every line of every file git considers text, while PRODUCTION is fed by
+# `git push` and checks out on the box with its own config, in LF.
+#
+# Measured on 2026-08-31: 1791 of 2131 files differed, 430 KB of pure CR. The gate
+# was therefore testing a tree that production never receives, on every deploy it
+# has ever run.
+#
+# It stayed invisible because PHP does not care about line endings. What finally
+# showed it was one anchored regex — `/^Stable tag:\s*(\S+)$/m` against the
+# plugin readme, where `$` cannot match with a CR sitting before the newline. A
+# green suite was never evidence the trees matched; it was evidence that almost
+# nothing in the suite can tell.
+#
+# Do NOT fix this by setting core.autocrlf in the repo config. That changes every
+# checkout for every session on this machine and shows the whole tree as modified.
+# The conversion is only wrong for what we SHIP, so it is turned off only here.
+BACKEND_OUT=$(git -c core.autocrlf=false archive "$GATED_SHA" | ssh "$REMOTE" "WIPE='$WIPE'"'
   set -e
   # /opt, not /var/www. The sandbox holds dev dependencies and a full Laravel
   # tree; sitting it beside the production .env is what let `--env=testing` fall

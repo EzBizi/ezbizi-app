@@ -100,6 +100,7 @@ class PhoneCall extends Model implements HoldsPersonalData
         'organization_id', 'number_id', 'connection_id',
         'twilio_sid', 'parent_sid', 'direction',
         'from_e164', 'to_e164', 'user_id', 'status',
+        'attestation',
         'duration_seconds', 'recording_sid', 'transcription_sid', 'transcript',
         'voicemail', 'dealt_at',
         'tag_id', 'tagged_by', 'tagged_at',

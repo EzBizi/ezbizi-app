@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Phone;
 use App\Http\Controllers\Api\Controller;
 use App\Models\AutomationEvent;
 use App\Models\PhoneCall;
+use App\Support\Phone\Attestation;
 use App\Models\PhoneConnection;
 use App\Models\PhoneNumber;
 use App\Support\Automations\EventEmitter;
@@ -69,6 +70,20 @@ class StatusWebhookController extends Controller
             $parent = $request->input('ParentCallSid');
             if (is_string($parent) && $parent !== '') {
                 $call->parent_sid = $parent;
+            }
+
+            // Outbound attestation arrives here rather than on the voice
+            // webhook — Twilio reports the grade it assigned once the call has
+            // gone to the network. Only ever written, never cleared: a later
+            // callback for the same call carries no StirStatus, and blanking
+            // it would erase the grade the first callback told us.
+            $grade = Attestation::fromWebhook(
+                $request->input('StirVerstat'),
+                $request->input('StirStatus'),
+            );
+
+            if ($grade !== null) {
+                $call->attestation = $grade;
             }
 
             $previous = $call->status;

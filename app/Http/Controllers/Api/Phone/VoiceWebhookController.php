@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Phone;
 
 use App\Http\Controllers\Api\Controller;
 use App\Models\PhoneCall;
+use App\Support\Phone\Attestation;
 use App\Models\PhoneConnection;
 use App\Models\PhoneNumber;
 use App\Support\Automations\EventEmitter;
@@ -136,6 +137,15 @@ class VoiceWebhookController extends Controller
                     'from_e164' => $from,
                     'to_e164' => $to,
                     'status' => PhoneCall::STATUS_RINGING,
+
+                    // The SHAKEN/STIR grade exists only in this payload. No
+                    // endpoint will tell us afterwards what this call was
+                    // graded, so it is captured here or it is lost — which is
+                    // why the Trust screen cannot be backfilled.
+                    'attestation' => Attestation::fromWebhook(
+                        $request->input('StirVerstat'),
+                        $request->input('StirStatus'),
+                    ),
                 ]);
 
                 $this->events->emit('phone.call.started', $call, $this->payload($call));
@@ -243,6 +253,22 @@ class VoiceWebhookController extends Controller
 
     private function isOutbound(Request $request): bool
     {
+        // The client says so, and that is authoritative.
+        //
+        // Everything below is inference about how Twilio describes a call, and
+        // inference is what failed: a browser-originated call arrives with
+        // Direction "inbound" — from Twilio's side the client is calling IN —
+        // so this rested on From beginning with "client:". When that did not
+        // hold, an outbound call was treated as inbound and answered by the
+        // line's own voicemail. Somebody pressed Call and was invited to leave
+        // themselves a message.
+        //
+        // The inference is kept as a fallback so calls placed by an older
+        // client, and Twilio's REST-initiated calls, still route correctly.
+        if ($request->input('EzBiziDirection') === 'outbound') {
+            return true;
+        }
+
         $direction = (string) $request->input('Direction', '');
         $from = (string) $request->input('From', '');
 
