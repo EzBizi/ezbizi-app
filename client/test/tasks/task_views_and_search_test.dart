@@ -922,14 +922,16 @@ void main() {
       await tester.pump();
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 20));
+      // `detailReads` is the load-bearing proof the detail panel actually
+      // opened. A `find.text(...)` canary right here would duplicate the
+      // one a few lines below (fix round 1, reviewer note) — nothing
+      // between the two changes what is visible, so a second identical
+      // assertion would prove nothing the first did not already. The
+      // original canary here was 'Description', which Task 13's recurrence
+      // panel pushed below this test's default-size viewport (a
+      // ListView(children:...) only builds what's near-visible) — removed
+      // rather than swapped for a second copy of the check below.
       expect(detailReads, 1);
-      // Proves the detail panel actually loaded — not the description
-      // field specifically. Task 13 added a recurrence panel above the
-      // collaborators section, so content further down the now-longer
-      // ListView (like the description field) is outside this test's
-      // default-size viewport until scrolled; the task title near the top
-      // is not.
-      expect(find.text('Still visible'), findsWidgets);
       await tester.pump(const Duration(milliseconds: 220));
       await tester.pump(const Duration(milliseconds: 20));
       await tester.pump(const Duration(milliseconds: 20));

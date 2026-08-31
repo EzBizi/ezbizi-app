@@ -971,19 +971,14 @@ final class TaskApi {
   /// optimistic-concurrency path as `updateTask`, so `expected_version` is
   /// the version this command sends.
   ///
-  /// NOTE for whoever wires the server route this calls: as of Task 9,
-  /// `setRecurrence` has no HTTP route or controller anywhere in `app/`
-  /// (confirmed against `routes/api.php`) — Ruling 23 in this plan's
-  /// progress ledger flags it explicitly as unreachable and assigns the gap
-  /// to "any endpoint exposing setRecurrence", with a hard requirement that
-  /// it perform the same board `ViewScope` decision
-  /// `TaskDependenciesController` does. This client method targets `PUT
-  /// tasks/{taskId}/recurrence` with body `{expected_version, recurrence}`,
-  /// returning `{data: <task>}` — mirroring the sibling single-purpose
-  /// mutations `PUT tasks/{id}/collaborators` and `PUT tasks/{id}/watch` —
-  /// because no route has ever been specified anywhere in the plan or spec.
-  /// Whoever wires the controller must either match this contract or this
-  /// method must be updated to match theirs.
+  /// Targets `PUT tasks/{taskId}/recurrence` with body `{expected_version,
+  /// recurrence}`, returning the updated task as `data` — the same shape
+  /// the sibling single-purpose mutations `PUT tasks/{id}/collaborators`
+  /// and `PUT tasks/{id}/watch` use. `TaskRecurrenceController` (task-13
+  /// brief) wires this route and performs the board `ViewScope` decision
+  /// `TaskDependenciesController` does — `TaskWriter::setRecurrence` itself
+  /// only checks `tasks.edit` plus an organization read-only guard, so the
+  /// controller is where exact-view access is enforced.
   Future<TaskApiResult<TaskRow>> setRecurrence(
     String taskId, {
     required int expectedTaskVersion,

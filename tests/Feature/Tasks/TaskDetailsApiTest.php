@@ -64,6 +64,51 @@ class TaskDetailsApiTest extends TestCase
         $this->withHeader('If-None-Match', $etag)->getJson($url)->assertNotFound();
     }
 
+    /**
+     * Fix round 1 (task-13 review): `TaskDetailsController::show()` carries
+     * `recurrence` on the response, but nothing in this suite proved it
+     * before now -- only the Flutter widget test's hand-built JSON fixture
+     * exercised the client's PARSE of that field, never whether the server
+     * actually sends it. A regression dropping the key again would have
+     * passed every backend test and every client test, with the panel just
+     * quietly showing nothing. This proves it end to end: declare a
+     * recurrence through the real `PUT tasks/{task}/recurrence` endpoint,
+     * then read it back through the real detail `GET` — mode and interval
+     * both intact.
+     */
+    public function test_declared_recurrence_is_returned_on_the_detail_response(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        app(TenantContext::class)->set($alpha['org']);
+        $this->artisan('ezbizi:sync-permissions')->assertSuccessful();
+        $alpha['admin']->forceFill(['preferences' => [
+            'navigation.scope' => ViewScope::COMPANY.':'.$alpha['company']->id,
+        ]])->save();
+        $this->actingAs($alpha['admin']->fresh());
+        $boardId = $this->postJson('/api/v1/tasks/boards', [
+            'name' => 'Recurrence detail', 'visibility' => 'scope',
+        ])->assertCreated()->json('data.id');
+        app(TenantContext::class)->set($alpha['org']);
+        $board = TaskBoard::findOrFail($boardId);
+        $status = $board->statusOptions()->active()->where('category', StatusCategory::NotStarted)->firstOrFail();
+        $group = $board->groups()->active()->firstOrFail();
+        $taskId = $this->postJson("/api/v1/tasks/boards/{$board->id}/tasks", [
+            'title' => 'Recurring inspection', 'group_id' => $group->id, 'status_option_id' => $status->id,
+        ])->assertCreated()->json('data.id');
+        app(TenantContext::class)->set($alpha['org']);
+        $task = Task::findOrFail($taskId);
+
+        $this->putJson("/api/v1/tasks/{$task->id}/recurrence", [
+            'expected_version' => $task->version,
+            'recurrence' => ['mode' => 'on_schedule', 'every' => 2, 'unit' => 'week'],
+        ])->assertOk();
+
+        $this->getJson("/api/v1/tasks/boards/{$board->id}/tasks/{$task->id}")->assertOk()
+            ->assertJsonPath('data.recurrence.mode', 'on_schedule')
+            ->assertJsonPath('data.recurrence.every', 2)
+            ->assertJsonPath('data.recurrence.unit', 'week');
+    }
+
     protected function tearDown(): void
     {
         app(TenantContext::class)->forget();

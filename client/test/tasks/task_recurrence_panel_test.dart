@@ -84,9 +84,16 @@ void main() {
   testWidgets('a subtask refusal from the server is shown verbatim, never a client-invented sentence', (
     tester,
   ) async {
+    // Copied verbatim from Refusal::recurrenceOnSubtask() (fix round 1,
+    // reviewer note) -- a truncated first-sentence-only fixture could not
+    // catch the client silently truncating or reformatting the server's
+    // sentence before display, because before and after would look
+    // identical. This is the REAL, complete refusal.
     const refusal =
         'A subtask cannot recur on its own — it is a checklist item under '
-        'its parent task rather than independent work.';
+        'its parent task rather than independent work. If this needs to '
+        'repeat on its own schedule, make it a task of its own instead of '
+        'a subtask.';
     final api = TaskApi(
       ApiClient(
         client: MockClient((request) async => _json(403, <String, Object?>{
