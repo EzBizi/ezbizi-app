@@ -313,7 +313,43 @@ class WebManagementTest extends TestCase
         $readme = (string) $zip->getFromName('ezbizi/readme.txt');
 
         $this->assertNotSame('', $readme, 'The zip has no readme.txt.');
-        $this->assertStringContainsString('Stable tag: 1.0.0', $readme);
+        /*
+         * The three version numbers must AGREE, which is the invariant — not
+         * that they equal any particular literal. `Stable tag` tells
+         * wordpress.org which tag to serve, so a stable tag pointing at a
+         * version the plugin header does not claim ships one version's code
+         * under another version's name, and a `EZBIZI_VERSION` that disagrees
+         * makes every site report the wrong version back to us.
+         *
+         * This used to assert `Stable tag: 1.0.0` and would have failed on the
+         * first release after that for no reason but its own literal.
+         */
+        $plugin = (string) $zip->getFromName('ezbizi/ezbizi.php');
+
+        $this->assertSame(
+            1,
+            preg_match('/^Stable tag:\s*(\S+)$/m', $readme, $stable),
+        );
+        $this->assertSame(
+            1,
+            preg_match('/^ \* Version:\s*(\S+)$/m', $plugin, $header),
+        );
+        $this->assertSame(
+            1,
+            preg_match("/EZBIZI_VERSION = '([^']+)'/", $plugin, $constant),
+        );
+
+        $this->assertSame(
+            $header[1],
+            $stable[1],
+            'The readme serves a tag the plugin header does not claim to be.',
+        );
+        $this->assertSame(
+            $header[1],
+            $constant[1],
+            'EZBIZI_VERSION disagrees with the header, so installs report the '
+            .'wrong version to the API.',
+        );
         $this->assertStringContainsString('== External Services ==', $readme);
 
         /*
