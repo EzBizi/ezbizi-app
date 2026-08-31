@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Automations\CarriesAutomationScope;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
@@ -16,7 +17,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * One SMS we store (spec §11) — body included, unlike email.
  */
-class PhoneMessage extends Model implements HoldsPersonalData
+class PhoneMessage extends Model implements CarriesAutomationScope, HoldsPersonalData
 {
     use BelongsToTenant;
     use HasFactory;
@@ -74,6 +75,40 @@ class PhoneMessage extends Model implements HoldsPersonalData
         'twilio_sid', 'direction', 'from_e164', 'to_e164',
         'body', 'customer_id',
     ];
+
+    /**
+     * Which company's line this happened on (§4, §5.5).
+     *
+     * Without this the dispatcher's column sniff looks for `franchise_id` and
+     * `owning_franchise_id`, finds neither on this table, and reads that as "no
+     * scope" — which its organization branch turns into EVERY ACTIVE USER. So a
+     * rule saying "notify me" on `phone.sms.received` would have carried a customer's message to
+     * everybody in the business, including the companies that do not answer
+     * that line. That is the exact leak NotificationDispatcher's own header says
+     * reach exists to prevent, arriving through a record shape its sniff was
+     * never written for.
+     *
+     * The scope is the NUMBER's, not the message's, because the message has no place of
+     * its own: it belongs wherever the line it arrived on is filed. That is the
+     * same answer PhoneScope gives when deciding who may open it — one rule read
+     * twice, rather than a second derivation that can disagree with who is
+     * allowed to see the record.
+     *
+     * A row whose number has been deleted answers `[null, null]` rather than
+     * guessing, and that is the conservative direction rather than a gap: the
+     * organization branch reaches the people who STAND at the organization, not
+     * everyone in it.
+     */
+    public function automationScope(): array
+    {
+        $number = $this->number;
+
+        return match ($number?->scope_type) {
+            PhoneNumber::SCOPE_FRANCHISE => ['franchise', $number->scope_id],
+            PhoneNumber::SCOPE_COMPANY => ['company', $number->scope_id],
+            default => [null, null],
+        };
+    }
 
     public function number(): BelongsTo
     {
