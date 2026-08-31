@@ -825,6 +825,29 @@ matters, because a test that misreads a line ending goes red and somebody
 investigates, whereas the WordPress plugin would quietly render the wrong thing
 on a customer's page forever.
 
+### Regenerating a golden: how to tell colour from movement before you do it
+
+`--update-goldens` is the standard way to hide a layout regression, because it
+makes any diff go away with equal confidence. The check that separates the two
+takes about a minute and reads the ISOLATED and MASKED diff images the failing
+run already wrote, BEFORE regenerating:
+
+- **Text as solid blocks** means the glyph boxes did not move — every pixel of a
+  glyph differs because its colour changed. Safe.
+- **Paired ghosts** — the same element appearing twice, offset — is the signature
+  of something MOVING. Not safe, and not a golden to update.
+- **Borders as single outlines**, and rows, columns and panels still aligned
+  across the whole frame.
+
+That distinguishes "the colour changed" from "something moved" WITHOUT being able
+to read any of the text, which matters because these frames render text as
+featureless blocks in the first place.
+
+Used on 2026-08-31 for eleven Tasks goldens after a brand-colour fix: every
+changed region was an accent-coloured element in its original position, so
+regenerating was correct. Say in the commit message what you checked for, so the
+module's owner can review the reasoning rather than take the result on trust.
+
 **A fix landing on main does not reach the worktrees, and "fixed in <sha>" reads
 as though it does.** When this was fixed, twelve of the fourteen checkouts on this
 box still held the broken assertion. Each one self-resolves on its next

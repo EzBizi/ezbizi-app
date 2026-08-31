@@ -70,19 +70,6 @@ class TwilioVoiceDevice implements VoiceDevice {
 
     final params = JSObject();
     params.setProperty('To'.toJS, to.toJS);
-
-    // Say it outright rather than let the server infer it.
-    //
-    // Outbound was being detected from Twilio's own Direction and From —
-    // Direction arrives as "inbound" for a browser-originated call, because
-    // from Twilio's side the client IS calling in, so detection rested
-    // entirely on From starting with "client:". When that inference failed the
-    // call was treated as INBOUND and answered by the line's own voicemail:
-    // somebody pressed Call and heard "please leave a message".
-    //
-    // A namespaced parameter cannot collide with a Twilio field and does not
-    // depend on how Twilio chooses to describe the call.
-    params.setProperty('EzBiziDirection'.toJS, 'outbound'.toJS);
     if (callerId != null && callerId.isNotEmpty) {
       params.setProperty('CallerId'.toJS, callerId.toJS);
     }
