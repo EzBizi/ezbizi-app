@@ -86,16 +86,22 @@ void main() {
     'a task due at 23:00 in the board place timezone renders on the correct day '
     'for a viewer in a different timezone',
     (tester) async {
-      // The server already resolved "23:00 in the board's place timezone" to
-      // this calendar day before truncating due_on to a date-only wire
-      // value (task-11 brief); TaskRow.dueOn always arrives as UTC midnight
-      // of that resolved day (task_models._parseDateOnly). If this widget
-      // ever called `.toLocal()` before bucketing, a viewer running in a
-      // timezone behind UTC — this suite's own host included — would see
-      // the card roll back to August 31 instead. Constructed directly here
-      // (not via JSON) to prove the bucketing itself, since real wire data
-      // can never carry an hour on due_on in the first place.
-      final dueAt2300PlaceTime = DateTime.utc(2026, 9, 1);
+      // due_on is a pure date column — TasksController validates writes as
+      // date_format:Y-m-d, so no time or timezone ever attaches to it — and
+      // TaskRow.dueOn always arrives as DateTime.utc(y, m, d), already the
+      // correct calendar day. This test proves the widget never runs that
+      // value through `.toLocal()`, which on a date-only value can only ever
+      // shift it BACKWARD (there is no time-of-day left to push it forward).
+      //
+      // Reach of this assertion: it fails a reintroduced `.toLocal()` call
+      // on any host running behind UTC (this suite's own EDT host included).
+      // It CANNOT detect the same bug on a host at or ahead of UTC —
+      // `.toLocal()` on a UTC-midnight value is a no-op there, since a
+      // date-only value has no time to lose in that direction. There is no
+      // single instant that catches both directions, and this repo pins no
+      // process timezone, so both adjacent days are asserted absent below to
+      // cover whichever direction a shift can occur in on the host that
+      // happens to run this suite.
       final task = TaskRow(
         id: 'task-tz',
         boardId: 'board-1',
@@ -108,7 +114,7 @@ void main() {
         statusOptionId: null,
         priorityOptionId: null,
         startOn: null,
-        dueOn: dueAt2300PlaceTime,
+        dueOn: DateTime.utc(2026, 9, 1),
         position: 1,
         version: 3,
         detailVersion: 1,
@@ -129,6 +135,13 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('calendar-day-2026-08-31')),
+          matching: find.text('File the permit'),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('calendar-day-2026-09-02')),
           matching: find.text('File the permit'),
         ),
         findsNothing,

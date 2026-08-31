@@ -18,16 +18,18 @@ typedef TaskCalendarMove = Future<String?> Function(TaskRow task, DateTime day);
 /// [month] and every date this widget hands back through [onMonthChanged] or
 /// [onMove] is a plain calendar date — `DateTime.utc(year, month, day)`,
 /// hour always zero. That mirrors exactly how `TaskRow.dueOn` already
-/// arrives: `TaskModels._parseDateOnly` builds it from the wire's
+/// arrives: `due_on` is a plain `date` column (`TasksController` validates
+/// writes as `date_format:Y-m-d` — no time or timezone is ever attached to
+/// it), and `TaskModels._parseDateOnly` builds it from the wire's
 /// `YYYY-MM-DD` string with `DateTime.utc(y, m, d)`, never `DateTime.parse`
-/// and never `.toLocal()`. The server resolves "due at 23:00" against the
-/// board's place timezone BEFORE it ever truncates to that date string, so
-/// by the time a value reaches here the calendar day is already correct.
-/// This widget's only obligation is to not undo that: every comparison below
-/// reads `.year`/`.month`/`.day` off the UTC value directly. Calling
-/// `.toLocal()` anywhere in this file would let the viewer's own device
-/// timezone shift a task onto the wrong day — that is the bug this file
-/// exists to not have.
+/// and never `.toLocal()`. The value that reaches here is already the
+/// correct calendar day; there is no wall-clock time or timezone on it left
+/// to resolve. This widget's only obligation is to not invent one: every
+/// comparison below reads `.year`/`.month`/`.day` off the UTC value
+/// directly. Calling `.toLocal()` anywhere in this file could only corrupt
+/// a date-only value — never correct it — by shifting it a day backward for
+/// a viewer whose device runs behind UTC; that is the bug this file exists
+/// to not have.
 class TaskCalendarView extends StatefulWidget {
   const TaskCalendarView({
     super.key,
