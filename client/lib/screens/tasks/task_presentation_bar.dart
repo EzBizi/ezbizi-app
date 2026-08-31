@@ -5,11 +5,11 @@ import 'task_models.dart';
 
 /// The presentation switcher Task 10 is required to build so Tasks 11-13
 /// (Calendar, Timeline, Workload) have a bar to plug their tab into instead
-/// of each inventing their own (Ruling 1, progress.md). Table, Kanban, and
-/// Calendar are wired to real screens; Timeline and Workload are shown but
-/// disabled — there is nothing yet for them to switch to, and an enabled tab
-/// that does nothing would be a worse experience than an honestly-disabled
-/// one.
+/// of each inventing their own (Ruling 1, progress.md). Table, Kanban,
+/// Calendar, and (Task 12) Timeline are wired to real screens; Workload is
+/// shown but disabled — there is nothing yet for it to switch to, and an
+/// enabled tab that does nothing would be a worse experience than an
+/// honestly-disabled one.
 ///
 /// Inline only — no popup menu, no dialog. When Kanban is the active
 /// presentation, an inline bucket-field selector appears alongside the
@@ -32,7 +32,7 @@ class TaskPresentationBar extends StatelessWidget {
     (TaskPresentation.table, 'Table', Icons.table_rows_outlined, true),
     (TaskPresentation.kanban, 'Kanban', Icons.view_kanban_outlined, true),
     (TaskPresentation.calendar, 'Calendar', Icons.calendar_month_outlined, true),
-    (TaskPresentation.timeline, 'Timeline', Icons.view_timeline_outlined, false),
+    (TaskPresentation.timeline, 'Timeline', Icons.view_timeline_outlined, true),
     (TaskPresentation.workload, 'Workload', Icons.bar_chart_outlined, false),
   ];
 

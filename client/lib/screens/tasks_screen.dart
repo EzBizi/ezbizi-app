@@ -26,6 +26,7 @@ import 'tasks/task_models.dart';
 import 'tasks/task_presentation_bar.dart';
 import 'tasks/task_quick_search.dart';
 import 'tasks/task_table.dart';
+import 'tasks/task_timeline_view.dart';
 import 'tasks/task_transfer_flow.dart';
 import 'tasks/task_views_bar.dart';
 
@@ -91,6 +92,10 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   TaskViewConfiguration _configuration = TaskViewConfiguration.empty;
   TaskKanbanField _kanbanField = TaskKanbanField.status;
   DateTime _calendarMonth = DateTime.utc(
+    DateTime.now().year,
+    DateTime.now().month,
+  );
+  DateTime _timelineMonth = DateTime.utc(
     DateTime.now().year,
     DateTime.now().month,
   );
@@ -1462,8 +1467,8 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       switch (_configuration.presentation) {
         TaskPresentation.kanban => _kanbanContent(),
         TaskPresentation.calendar => _calendarContent(),
+        TaskPresentation.timeline => _timelineContent(),
         TaskPresentation.table ||
-        TaskPresentation.timeline ||
         TaskPresentation.workload => mobile
             ? _mobileTableContent()
             : _workspace(wide),
@@ -1556,6 +1561,35 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     );
   }
 
+  Widget _timelineContent() {
+    final board = _board!;
+    return Column(
+      children: [
+        _boardControls(),
+        if (_showFilters)
+          SizedBox(
+            height: 330,
+            child: TaskFiltersPanel(
+              board: board,
+              configuration: _configuration,
+              people: _people,
+              onChanged: _changeConfiguration,
+              onClose: () => setState(() => _showFilters = false),
+            ),
+          ),
+        Expanded(
+          child: TaskTimelineView(
+            month: _timelineMonth,
+            rows: _rows,
+            omitted: _omitted,
+            onMove: _timelineMove,
+            onMonthChanged: _changeTimelineMonth,
+          ),
+        ),
+      ],
+    );
+  }
+
   /// Switches the active view's presentation. Kanban additionally needs a
   /// `window` (`bucket_field` + the current field's buckets) and a matching
   /// `group_by`, so `meta.group_counts` — which Kanban headers read their
@@ -1570,6 +1604,10 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     }
     if (presentation == TaskPresentation.calendar) {
       _applyCalendarWindow(_calendarMonth);
+      return;
+    }
+    if (presentation == TaskPresentation.timeline) {
+      _applyTimelineWindow(_timelineMonth);
       return;
     }
     _changeConfiguration(
@@ -1596,6 +1634,23 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   }
 
   void _changeCalendarMonth(DateTime month) => _applyCalendarWindow(month);
+
+  /// Re-windows Timeline to [month] — same shape as [_applyCalendarWindow],
+  /// sharing `TaskDateRangeWindow` (schema:2) with Calendar (task-12 brief).
+  void _applyTimelineWindow(DateTime month) {
+    final start = DateTime.utc(month.year, month.month);
+    final from = DateTime.utc(start.year, start.month, 1);
+    final to = DateTime.utc(start.year, start.month + 1, 0);
+    setState(() => _timelineMonth = start);
+    _changeConfiguration(
+      _configuration.copyWith(
+        presentation: TaskPresentation.timeline,
+        window: TaskDateRangeWindow(from: from, to: to),
+      ),
+    );
+  }
+
+  void _changeTimelineMonth(DateTime month) => _applyTimelineWindow(month);
 
   void _changeKanbanField(TaskKanbanField field) {
     setState(() => _kanbanField = field);
@@ -1668,6 +1723,47 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       current.id,
       expectedTaskVersion: current.version,
       changes: <String, Object?>{'due_on': _wireDate(day)},
+    );
+    if (!_isCurrentPrivacy(privacy)) return null;
+    if (result is TaskApiSuccess<TaskRow>) {
+      _putRow(_mergeServerRow(current, result.data));
+      return null;
+    }
+    if (result is TaskApiUnavailable<TaskRow>) {
+      _evict(result.message);
+      return result.message;
+    }
+    if (result is TaskApiConflictResult<TaskRow>) setState(() => _conflict = true);
+    return result.message ?? 'The change could not be saved.';
+  }
+
+  /// Drags a Timeline bar/marker/edge. THE PHASE 1 CORE-FIELD WRITE — same
+  /// `PATCH tasks/{id}` core-field write `_saveCoreNow`/`_kanbanMove`/
+  /// `_calendarMove` already issue, carrying `task.version` as
+  /// `expected_version`. An edge drag sends only the one field being moved
+  /// (the other stays `null` — omitted from `changes` entirely, not sent as
+  /// unchanged); a whole-bar or marker drag sends both in the SAME PATCH
+  /// call — one command, one version, exactly as task-12's brief requires.
+  /// This never reorders or swaps what it is told to write: a `start_on`
+  /// that lands after `due_on` is refused by the server, and
+  /// `TaskTimelineView` shows that refusal sentence verbatim.
+  Future<String?> _timelineMove(
+    TaskRow task, {
+    DateTime? startOn,
+    DateTime? dueOn,
+  }) async {
+    if (_bulkLockedTaskIds.contains(task.id)) {
+      return 'Finish the bulk change before editing this task.';
+    }
+    final current = _rows.where((row) => row.id == task.id).firstOrNull ?? task;
+    final privacy = _privacyGeneration;
+    final result = await _tasks.updateTask(
+      current.id,
+      expectedTaskVersion: current.version,
+      changes: <String, Object?>{
+        if (startOn != null) 'start_on': _wireDate(startOn),
+        if (dueOn != null) 'due_on': _wireDate(dueOn),
+      },
     );
     if (!_isCurrentPrivacy(privacy)) return null;
     if (result is TaskApiSuccess<TaskRow>) {
@@ -2108,7 +2204,8 @@ extension _TasksFirstOrNull<T> on Iterable<T> {
 
 /// Same `YYYY-MM-DD` shape `_dateOnly` in `task_models.dart` writes and
 /// `_Date` in `task_table.dart` submits — kept local rather than exported
-/// since only this file's Calendar drag write needs it client-side.
+/// since only this file's Calendar and Timeline drag writes need it
+/// client-side.
 String _wireDate(DateTime date) =>
     '${date.year.toString().padLeft(4, '0')}-'
     '${date.month.toString().padLeft(2, '0')}-'
