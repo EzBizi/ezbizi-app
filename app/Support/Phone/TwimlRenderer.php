@@ -2,9 +2,11 @@
 
 namespace App\Support\Phone;
 
+use App\Models\PhoneExtension;
 use App\Models\PhoneFlow;
 use App\Models\PhoneHoursSchedule;
 use App\Models\PhoneNumber;
+use App\Models\PhonePresence;
 use App\Models\PhoneRingGroup;
 use App\Models\PhoneVoicemailBox;
 use DateTimeImmutable;
@@ -79,8 +81,29 @@ final class TwimlRenderer
             return (string) $response;
         }
 
-        if ($outbound && is_string($context['dial_to'] ?? null) && $context['dial_to'] !== '') {
-            $this->dialParty($response, $number, $context);
+        if ($outbound) {
+            // ── An outbound call must never become voicemail ─────────
+            //
+            // This used to fall through to ringOrVoicemail when the dial
+            // target was missing, so somebody pressing Call heard the
+            // recording notice and then "please leave a message after the
+            // tone" — their own line answering them. Indistinguishable from a
+            // routing fault, and it left no trace saying what was wrong.
+            //
+            // Nobody rings out in order to leave themselves a message. If the
+            // destination did not arrive, that is a fault and it says so.
+            if (is_string($context['dial_to'] ?? null) && $context['dial_to'] !== '') {
+                $this->dialParty($response, $number, $context);
+
+                return (string) $response;
+            }
+
+            $response->say(
+                'This call could not be placed, because the number to dial did '
+                .'not reach the phone system. Nothing has been charged.',
+                ['language' => $language],
+            );
+            $response->hangup();
 
             return (string) $response;
         }
@@ -314,6 +337,83 @@ final class TwimlRenderer
         }
 
         $this->voicemail($response, $number, $language, $context);
+    }
+
+    /**
+     * Ring the person who holds this extension.
+     *
+     * ── Why an unavailable person is not the same as a wrong number ──
+     *
+     * Three things can go wrong and a caller deserves to be told which:
+     * nobody holds these digits, somebody does but is not at a desk, or the
+     * line has no phone account at all. Answering all three with the same
+     * silence is how a caller concludes the business is shut.
+     *
+     * Presence is checked the same way DialPlan does for a ring group, so
+     * "available" means the same thing whichever route reached the person.
+     *
+     * @param  array<string, mixed>  $context
+     */
+    private function dialExtension(
+        VoiceResponse $response,
+        PhoneNumber $number,
+        string $extension,
+        string $language,
+        array $context,
+    ): void {
+        $connection = $number->connection;
+        $digits = trim($extension);
+
+        if ($digits === '' || $connection === null) {
+            $this->voicemail($response, $number, $language, $context);
+
+            return;
+        }
+
+        $row = PhoneExtension::query()
+            ->where('connection_id', $connection->id)
+            ->where('extension', $digits)
+            ->first();
+
+        if ($row === null) {
+            $response->say(
+                'There is no extension '.implode(' ', str_split($digits)).'.',
+                ['language' => $language],
+            );
+            $this->voicemail($response, $number, $language, $context);
+
+            return;
+        }
+
+        $available = PhonePresence::query()
+            ->where('connection_id', $connection->id)
+            ->where('user_id', $row->user_id)
+            ->where('state', PhonePresence::STATE_REGISTERED)
+            ->exists();
+
+        if (! $available) {
+            // Named rather than anonymous: "Jose is not available" tells the
+            // caller they reached the right extension, which "sorry, nobody is
+            // here" does not.
+            $name = trim((string) $row->user?->name);
+
+            $response->say(
+                ($name === '' ? 'That extension' : $name).' is not available right now.',
+                ['language' => $language],
+            );
+            $this->voicemail($response, $number, $language, $context);
+
+            return;
+        }
+
+        $dial = $response->dial(null, $this->dialAttributes(
+            $number,
+            timeout: 30,
+            sequential: false,
+            context: $context,
+        ));
+
+        $dial->client(ClientIdentity::of($row->user));
     }
 
     /**
@@ -645,6 +745,24 @@ final class TwimlRenderer
                 context: $context,
             ));
             $dial->number($to);
+
+            return;
+        }
+
+        // ── Dial one person by extension ────────────────────────────
+        //
+        // Twilio has no notion of an extension. To Twilio these are Client
+        // identities and the digits are ours to resolve, so this looks the
+        // number up on THIS connection — 101 means one person here and may
+        // mean somebody else on another account.
+        if ($action === 'extension') {
+            $this->dialExtension(
+                $response,
+                $number,
+                (string) ($option['extension'] ?? ''),
+                $language,
+                $context,
+            );
 
             return;
         }

@@ -265,9 +265,19 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
     }
 
     if (_error != null) {
+      // A failed load replaced the pane with a sentence and nothing else, so
+      // the only way to retry was to navigate to another section and back.
       return Padding(
         padding: const EdgeInsets.all(24),
-        child: ErrorNote(_error!),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ErrorNote(_error!),
+            const SizedBox(height: 12),
+            TextButton(onPressed: _load, child: const Text('Try again')),
+          ],
+        ),
       );
     }
 

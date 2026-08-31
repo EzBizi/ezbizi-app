@@ -157,6 +157,13 @@ class _PortingPaneState extends State<PortingPane> {
         if (_error != null) ...[
           const SizedBox(height: 16),
           ErrorNote(_error!),
+
+          // When the load is what failed there are no ports and no accounts,
+          // so nothing else on this pane is pressable.
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(onPressed: _load, child: const Text('Try again')),
+          ),
         ],
 
         if (_open) ...[

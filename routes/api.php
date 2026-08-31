@@ -54,6 +54,7 @@ use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\Phone\CallsController as PhoneCallsController;
 use App\Http\Controllers\Api\Phone\CallTagsController as PhoneCallTagsController;
 use App\Http\Controllers\Api\Phone\ConnectionsController as PhoneConnectionsController;
+use App\Http\Controllers\Api\Phone\ExtensionsController as PhoneExtensionsController;
 use App\Http\Controllers\Api\Phone\FlowsController as PhoneFlowsController;
 use App\Http\Controllers\Api\Phone\HoursController as PhoneHoursController;
 use App\Http\Controllers\Api\Phone\MessagesController as PhoneMessagesController;
@@ -951,6 +952,11 @@ Route::prefix('v1')
         Route::delete('phone/connections/{connection}', [PhoneConnectionsController::class, 'destroy']);
         // Trust & caller identity. The attestation grade is captured on the
         // call rows; the observation log has no API behind it by necessity.
+        // Short numbers that reach one person. Twilio has no concept of an
+        // extension; the digits are ours to resolve before we dial.
+        Route::get('phone/extensions', [PhoneExtensionsController::class, 'index']);
+        Route::put('phone/extensions', [PhoneExtensionsController::class, 'update']);
+
         Route::get('phone/trust/attestation', [PhoneTrustController::class, 'attestation']);
         Route::get('phone/trust/observations', [PhoneTrustController::class, 'observations']);
         Route::post('phone/trust/observations', [PhoneTrustController::class, 'storeObservation']);

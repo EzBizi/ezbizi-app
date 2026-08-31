@@ -62,6 +62,15 @@ class _VoicemailPaneState extends State<VoicemailPane> {
 
   bool get _canEdit => widget.session.me?.can('phone.edit') ?? false;
 
+  /// Whichever company the switcher is on — the same words the top bar shows,
+  /// so a suggestion never names a business the reader does not work for.
+  String get _placeName {
+    final me = widget.session.me;
+    final label = me?.scope.label.trim() ?? '';
+
+    return label.isEmpty ? (me?.organization.name ?? 'us') : label;
+  }
+
   Future<void> _load() async {
     setState(() => _error = null);
 
@@ -187,6 +196,10 @@ class _VoicemailPaneState extends State<VoicemailPane> {
         if (_error != null) ...[
           const SizedBox(height: 16),
           ErrorNote(_error!),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(onPressed: _load, child: const Text('Try again')),
+          ),
         ],
 
         const SizedBox(height: 20),
@@ -317,14 +330,20 @@ class _VoicemailPaneState extends State<VoicemailPane> {
           controller: _greeting,
           maxLines: 4,
           onChanged: (_) => setState(() {}),
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             labelText: 'Greeting',
-            hintText: 'You have reached A-1 Chimney. Leave a number and we '
+
+            // The place you are standing in, not a company from a screenshot.
+            // A suggestion naming somebody else's business is worse than no
+            // suggestion: it reads as a template nobody adapted, and it is
+            // exactly the kind of thing that gets saved unedited and then
+            // spoken to a real caller.
+            hintText: 'You have reached $_placeName. Leave a number and we '
                 'will ring you back the same day.',
             helperText: 'Spoken to the caller. Left empty, they hear the '
                 'built-in sentence.',
             helperMaxLines: 2,
-            border: OutlineInputBorder(),
+            border: const OutlineInputBorder(),
           ),
         ),
 
