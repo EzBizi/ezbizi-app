@@ -825,6 +825,31 @@ matters, because a test that misreads a line ending goes red and somebody
 investigates, whereas the WordPress plugin would quietly render the wrong thing
 on a customer's page forever.
 
+**A fix landing on main does not reach the worktrees, and "fixed in <sha>" reads
+as though it does.** When this was fixed, twelve of the fourteen checkouts on this
+box still held the broken assertion. Each one self-resolves on its next
+`git merge main` — but not at the moment main goes green, so somebody runs the
+suite, hits the identical red, and has just read a note saying it was fixed. If
+you hit a red that a deploy note says is fixed, check whether YOUR checkout
+contains the fix before you debug it:
+
+```
+git merge-base --is-ancestor <fix-sha> HEAD && echo "have it" || echo "behind"
+```
+
+**And the reason it was missed is worth more than the instance.** The sweep that
+declared the population "two occurrences, full repo" used a search tool that
+respects ignore rules — so it measured the tracked working tree and never
+descended into the other checkouts. That is usually what you want, and it is
+silently not what you want the moment worktrees exist.
+
+That was the fourth instance in one day of a single shape: **a measurement whose
+scope is narrower than the claim built on it.** A ratchet baseline measured before
+a merge; golden images reviewed from the wrong tree; a file matching HEAD for a
+reason nobody tested; a repo-wide sweep that saw one checkout. None were careless
+— each used a reasonable tool and then described its output in broader terms than
+the tool had earned.
+
 **The trap while diagnosing it:** piping the file through `grep` before `od -c`
 shows the line ending in a bare LF with no CR, because grep strips it. That is
 how somebody talks themselves out of a correct diagnosis. Read it with
