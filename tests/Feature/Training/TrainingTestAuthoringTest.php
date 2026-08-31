@@ -34,8 +34,17 @@ class TrainingTestAuthoringTest extends TestCase
         $tenant = $this->provisionTenant('Alpha');
         $author = $this->userWithRole($tenant, 'Author', ['training.manage']);
 
+        // requires_guide: true needs a guide_id to point at — see
+        // assertGuideGateHasATarget — so this test attaches one, unlike the
+        // brief's own illustrative snippet (which predates that rule).
+        $guide = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
+            'company_id' => $tenant['company']->id, 'franchise_id' => null,
+            'title' => 'Ladder Safety Guide', 'status' => TrainingGuide::PUBLISHED, 'screens' => [],
+        ]));
+
         $response = $this->signedInAs($author)->postJson('/api/v1/training/tests', [
             'company_id' => $tenant['company']->id,
+            'guide_id' => $guide->id,
             'title' => 'Ladder Safety',
             'requires_guide' => true,
             'pass_mark' => 80,
@@ -67,7 +76,12 @@ class TrainingTestAuthoringTest extends TestCase
             'title' => 'Nonsense',
             'pass_mark' => 140,
             'questions' => [],
-        ])->assertStatus(422);
+        ])
+            ->assertStatus(422)
+            // Keyed to `pass_mark` specifically, not merely a 422 — otherwise
+            // this test cannot tell the pass-mark rule from any other reason
+            // the request might be refused.
+            ->assertJsonValidationErrors(['pass_mark']);
     }
 
     public function test_update_changes_the_four_options(): void
@@ -75,8 +89,17 @@ class TrainingTestAuthoringTest extends TestCase
         $tenant = $this->provisionTenant('Alpha');
         $author = $this->userWithRole($tenant, 'Author', ['training.manage']);
 
+        // requires_guide: true needs a guide_id already attached (or sent in
+        // the same request) — see assertGuideGateHasATarget — so this test's
+        // test row is seeded with one.
+        $guide = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
+            'company_id' => $tenant['company']->id, 'franchise_id' => null,
+            'title' => 'Original Guide', 'status' => TrainingGuide::PUBLISHED, 'screens' => [],
+        ]));
+
         $test = $this->inTenant($tenant['org'], fn () => TrainingTest::create([
             'company_id' => $tenant['company']->id, 'franchise_id' => null,
+            'guide_id' => $guide->id,
             'title' => 'Original', 'status' => TrainingTest::DRAFT,
             'questions' => [], 'pass_mark' => 80,
         ]));
@@ -171,6 +194,88 @@ class TrainingTestAuthoringTest extends TestCase
         );
     }
 
+    public function test_a_correct_flag_sent_as_one_alongside_true_is_refused_not_silently_counted_as_one(): void
+    {
+        // Laravel's `boolean` rule accepts 1 as well as true, but does not
+        // cast — so a naive `=== true` count would see only the `true`
+        // choice, call this "exactly one", and store `1` and `true` side by
+        // side. Both are meant as "correct"; a caller who sent two right
+        // answers must be told so, not have one of them silently ignored by
+        // the count.
+        $tenant = $this->provisionTenant('Alpha');
+        $author = $this->userWithRole($tenant, 'Author', ['training.manage']);
+
+        $response = $this->signedInAs($author)->postJson('/api/v1/training/tests', [
+            'company_id' => $tenant['company']->id,
+            'title' => 'Loose Boolean',
+            'pass_mark' => 80,
+            'questions' => [
+                ['prompt' => 'Q1', 'choices' => [
+                    ['text' => 'A', 'correct' => 1],
+                    ['text' => 'B', 'correct' => true],
+                ]],
+            ],
+        ]);
+
+        $response->assertStatus(422)->assertJsonValidationErrors(['questions']);
+        $this->assertSame(
+            'Every question needs exactly one right answer. Question 1 has 2.',
+            $response->json('errors.questions.0'),
+        );
+    }
+
+    public function test_a_correct_flag_sent_as_zero_and_one_is_accepted_and_stored_as_real_booleans(): void
+    {
+        // The other half of the same bug: a naive `=== true` count sees
+        // neither `0` nor `1` as `true`, so a caller who correctly marked
+        // exactly one right answer (`1`) would be refused with "...has
+        // none." — false. Normalizing before counting fixes the refusal;
+        // asserting the stored shape below proves normalizing happens
+        // before storage too, not only before the count.
+        $tenant = $this->provisionTenant('Alpha');
+        $author = $this->userWithRole($tenant, 'Author', ['training.manage']);
+
+        $response = $this->signedInAs($author)->postJson('/api/v1/training/tests', [
+            'company_id' => $tenant['company']->id,
+            'title' => 'Loose Boolean, Valid',
+            'pass_mark' => 80,
+            'questions' => [
+                ['prompt' => 'Q1', 'choices' => [
+                    ['text' => 'A', 'correct' => 0],
+                    ['text' => 'B', 'correct' => 1],
+                ]],
+            ],
+        ]);
+
+        $response->assertCreated();
+        $this->assertSame(false, $response->json('data.questions.0.choices.0.correct'));
+        $this->assertSame(true, $response->json('data.questions.0.choices.1.correct'));
+    }
+
+    public function test_a_smuggled_key_inside_a_question_or_choice_does_not_survive_storage(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $author = $this->userWithRole($tenant, 'Author', ['training.manage']);
+
+        $response = $this->signedInAs($author)->postJson('/api/v1/training/tests', [
+            'company_id' => $tenant['company']->id,
+            'title' => 'Clean Storage',
+            'pass_mark' => 80,
+            'questions' => [[
+                'prompt' => 'Q1',
+                'smuggled' => 'should not survive',
+                'choices' => [
+                    ['text' => 'A', 'correct' => true, 'smuggled_choice' => 'nope'],
+                    ['text' => 'B', 'correct' => false],
+                ],
+            ]],
+        ]);
+
+        $response->assertCreated();
+        $this->assertArrayNotHasKey('smuggled', $response->json('data.questions.0'));
+        $this->assertArrayNotHasKey('smuggled_choice', $response->json('data.questions.0.choices.0'));
+    }
+
     public function test_questions_array_is_bounded(): void
     {
         $tenant = $this->provisionTenant('Alpha');
@@ -184,14 +289,23 @@ class TrainingTestAuthoringTest extends TestCase
             ],
         ]);
 
-        $this->signedInAs($author)->postJson('/api/v1/training/tests', [
+        $response = $this->signedInAs($author)->postJson('/api/v1/training/tests', [
             'company_id' => $tenant['company']->id,
             'title' => 'Too many questions',
             'pass_mark' => 80,
             'questions' => $questions,
-        ])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors(['questions']);
+        ]);
+
+        $response->assertStatus(422)->assertJsonValidationErrors(['questions']);
+
+        // Every one of the 201 questions has exactly one correct choice, so
+        // the ONLY rule this payload can trip is the size cap — but the
+        // exactly-one-correct-answer rule also keys its refusal to
+        // `questions`, so `assertJsonValidationErrors` alone cannot tell the
+        // two apart. Laravel's own array `max` message names the number;
+        // the hand-written one-correct-answer sentence never does.
+        $this->assertStringContainsString('200', $response->json('errors.questions.0'));
+        $this->assertStringNotContainsString('right answer', $response->json('errors.questions.0'));
     }
 
     // ── guide_id reachability: the guide must be at or above the test's place ──
@@ -283,6 +397,105 @@ class TrainingTestAuthoringTest extends TestCase
         ])
             ->assertStatus(422)
             ->assertJsonValidationErrors(['guide_id']);
+    }
+
+    public function test_moving_a_test_up_to_company_general_invalidates_a_franchise_only_guide(): void
+    {
+        // The branch the store-only tests above cannot reach: nobody touched
+        // `guide_id` at all. The test moves from the franchise its guide was
+        // filed on up to the company's General, and that move ALONE turns a
+        // previously-compatible guide incompatible — proving
+        // `assertGuideCompatible` really is re-checked on a bare place move,
+        // not only when `guide_id` itself changes.
+        $tenant = $this->provisionTenant('Alpha');
+        $riverside = $tenant['franchise'];
+        $author = $this->userWithRole($tenant, 'Author', ['training.manage']);
+
+        $guide = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
+            'company_id' => $tenant['company']->id, 'franchise_id' => $riverside->id,
+            'title' => 'Riverside Guide', 'status' => TrainingGuide::PUBLISHED, 'screens' => [],
+        ]));
+
+        $test = $this->inTenant($tenant['org'], fn () => TrainingTest::create([
+            'company_id' => $tenant['company']->id, 'franchise_id' => $riverside->id,
+            'guide_id' => $guide->id,
+            'title' => 'Riverside Test', 'status' => TrainingTest::DRAFT,
+            'questions' => [], 'pass_mark' => 80,
+        ]));
+
+        // Only `franchise_id` is sent — `guide_id` is untouched.
+        $this->signedInAs($author)->patchJson('/api/v1/training/tests/'.$test->id, [
+            'franchise_id' => null,
+        ])
+            // Keyed to `franchise_id`, the field the caller actually sent,
+            // not `guide_id` — the minor fix alongside this test.
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['franchise_id']);
+    }
+
+    public function test_patching_a_siblings_guide_onto_a_franchise_test_is_refused(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $riverside = $tenant['franchise'];
+        $northgate = $this->extraFranchise($tenant, 'Northgate');
+        $author = $this->userWithRole($tenant, 'Author', ['training.manage']);
+
+        $guide = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
+            'company_id' => $tenant['company']->id, 'franchise_id' => $northgate->id,
+            'title' => 'Northgate Guide', 'status' => TrainingGuide::PUBLISHED, 'screens' => [],
+        ]));
+
+        $test = $this->inTenant($tenant['org'], fn () => TrainingTest::create([
+            'company_id' => $tenant['company']->id, 'franchise_id' => $riverside->id,
+            'title' => 'Riverside Test', 'status' => TrainingTest::DRAFT,
+            'questions' => [], 'pass_mark' => 80,
+        ]));
+
+        $this->signedInAs($author)->patchJson('/api/v1/training/tests/'.$test->id, [
+            'guide_id' => $guide->id,
+        ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['guide_id']);
+    }
+
+    // ── requires_guide must point at something (Important 3) ──────
+
+    public function test_requiring_a_guide_with_none_attached_is_refused_at_creation(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $author = $this->userWithRole($tenant, 'Author', ['training.manage']);
+
+        $this->signedInAs($author)->postJson('/api/v1/training/tests', [
+            'company_id' => $tenant['company']->id,
+            'title' => 'Dangling Gate',
+            'pass_mark' => 80,
+            'requires_guide' => true,
+            'questions' => [],
+        ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['requires_guide']);
+    }
+
+    public function test_turning_on_requires_guide_with_no_guide_attached_is_refused_on_update(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $author = $this->userWithRole($tenant, 'Author', ['training.manage']);
+
+        $test = $this->inTenant($tenant['org'], fn () => TrainingTest::create([
+            'company_id' => $tenant['company']->id, 'franchise_id' => null,
+            'title' => 'No Guide Yet', 'status' => TrainingTest::DRAFT,
+            'questions' => [], 'pass_mark' => 80,
+        ]));
+
+        // Neither `guide_id` nor any place field is sent — only
+        // `requires_guide`, against a test whose `guide_id` was already
+        // null. Proves the check runs unconditionally, not only inside the
+        // touches-place-or-guide branch.
+        $this->signedInAs($author)->patchJson('/api/v1/training/tests/'.$test->id, [
+            'requires_guide' => true,
+        ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['requires_guide']);
     }
 
     // ── Place-scope and the authoring gate (mirrors TrainingGuideScopeTest) ──

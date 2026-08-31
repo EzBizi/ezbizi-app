@@ -22,12 +22,17 @@ use Symfony\Component\HttpFoundation\Response;
  * per-test options (decision 4) that decide how a test is passed.
  *
  * Mirrors GuidesController closely: same place-scope engine, same
- * store/update place-handling shape. Two things this controller adds that
+ * store/update place-handling shape. Three things this controller adds that
  * the guide one does not need: `questions` carries its own answer-key trust
- * boundary (every question must have exactly one correct choice — see
- * [assertExactlyOneCorrectPerQuestion]), and `guide_id`, when supplied, is
+ * boundary (every question must have exactly one correct choice, counted on
+ * a NORMALIZED and REBUILT copy of the input — see [normalizeQuestions] and
+ * [assertExactlyOneCorrectPerQuestion]); `guide_id`, when supplied, is
  * checked against the test's own place (see [assertGuideCompatible]) so a
- * test cannot point at a guide fewer of its own takers could ever reach.
+ * test cannot point at a guide fewer of its own takers could ever reach;
+ * and `requires_guide: true` with no `guide_id` is refused at authoring
+ * (see [assertGuideGateHasATarget]) — though that state is still reachable
+ * without this controller at all, and must stay readable elsewhere as
+ * "no gate" rather than an error, per that method's docblock.
  */
 class TestsController extends Controller
 {
@@ -82,7 +87,12 @@ class TestsController extends Controller
     {
         $input = $request->validate($this->rules());
 
+        if (array_key_exists('questions', $input)) {
+            $input['questions'] = $this->normalizeQuestions($input['questions']);
+        }
+
         $this->assertExactlyOneCorrectPerQuestion($input['questions'] ?? []);
+        $this->assertGuideGateHasATarget($input['requires_guide'] ?? false, $input['guide_id'] ?? null);
 
         $company = isset($input['company_id'])
             ? Company::findOrFail($input['company_id'])
@@ -140,16 +150,28 @@ class TestsController extends Controller
         $input = $request->validate($this->rules(updating: true));
 
         if (array_key_exists('questions', $input)) {
+            $input['questions'] = $this->normalizeQuestions($input['questions']);
             $this->assertExactlyOneCorrectPerQuestion($input['questions']);
         }
 
         $touchesPlace = array_key_exists('company_id', $input) || array_key_exists('franchise_id', $input);
         $touchesGuide = array_key_exists('guide_id', $input);
 
+        // Runs unconditionally, not only when place or guide are touched:
+        // `requires_guide` can be turned on by itself against a test whose
+        // `guide_id` was already null, and that is just as much a gate
+        // pointing at nothing as clearing `guide_id` while `requires_guide`
+        // stays on.
+        $effectiveRequiresGuide = array_key_exists('requires_guide', $input)
+            ? $input['requires_guide']
+            : $test->requires_guide;
+        $effectiveGuideId = $touchesGuide ? $input['guide_id'] : $test->guide_id;
+        $this->assertGuideGateHasATarget($effectiveRequiresGuide, $effectiveGuideId);
+
         if ($touchesPlace || $touchesGuide) {
             $companyId = array_key_exists('company_id', $input) ? $input['company_id'] : $test->company_id;
             $franchiseId = array_key_exists('franchise_id', $input) ? $input['franchise_id'] : $test->franchise_id;
-            $guideId = array_key_exists('guide_id', $input) ? $input['guide_id'] : $test->guide_id;
+            $guideId = $effectiveGuideId;
 
             $company = $companyId === null ? null : Company::findOrFail($companyId);
             $franchise = $franchiseId === null ? null : Franchise::findOrFail($franchiseId);
@@ -172,7 +194,15 @@ class TestsController extends Controller
             // Re-checked whenever either side could have changed: a place move
             // with the guide left alone can turn a previously-compatible guide
             // incompatible just as surely as changing the guide itself does.
-            $this->assertGuideCompatible($guide, $company, $franchise);
+            //
+            // Blamed on whichever field the caller actually sent — `guide_id`
+            // when they changed the guide, otherwise the place field they
+            // moved — so a 422 highlights the input that was in the request
+            // rather than one that was not.
+            $blameField = $touchesGuide
+                ? 'guide_id'
+                : (array_key_exists('company_id', $input) ? 'company_id' : 'franchise_id');
+            $this->assertGuideCompatible($guide, $company, $franchise, $blameField);
         }
 
         $test->fill($input);
@@ -192,10 +222,60 @@ class TestsController extends Controller
     }
 
     /**
+     * Rebuilds each question — and each choice — from its known keys only,
+     * with `correct` normalized to a real boolean.
+     *
+     * Two independent problems, one fix, both closed at the one place this
+     * JSON is written rather than downstream in Task 6 or Task 8:
+     *
+     * 1. **The boolean is not actually a boolean.** Laravel's `boolean`
+     *    validation rule accepts `1`, `0`, `"1"`, `"0"` as well as `true` and
+     *    `false` — but does not cast, so `$request->validate()` hands back
+     *    whatever shape the caller sent. [assertExactlyOneCorrectPerQuestion]
+     *    (and Task 8's grading) need a strict `=== true` count, and against
+     *    raw input that count is simply wrong in both directions: `1`
+     *    alongside `true` strictly counts as one correct choice, so it is
+     *    accepted and stored with two different-looking "correct" values
+     *    side by side, which a truthy read (the natural way to grade) sees
+     *    as two right answers on a question this boundary just certified as
+     *    having exactly one. And `0` alongside `1` strictly counts as ZERO
+     *    correct, so a caller who marked exactly one right answer is refused
+     *    with "...has none." — a sentence that is untrue about what they
+     *    sent. `filter_var(..., FILTER_VALIDATE_BOOLEAN)` reads every shape
+     *    Laravel's `boolean` rule accepts the same way, so counting and
+     *    storage agree with each other and with what was actually meant.
+     *
+     * 2. **Keys outside the schema ride along.** A `questions.*.choices.*`
+     *    wildcard rule validates the keys it names; it does not strip the
+     *    ones it doesn't. An extra key on a question object (or a choice)
+     *    can survive `$request->validate()` into the array this method is
+     *    given, and from there into the stored JSON, forever. Rebuilding
+     *    each question from exactly `prompt` and `choices`, and each choice
+     *    from exactly `text` and `correct`, means nothing not in the schema
+     *    can ever reach the database no matter what a caller adds.
+     *
+     * @param  array<int, array{prompt?: mixed, choices?: array<int, array{text?: mixed, correct?: mixed}>}>  $questions
+     * @return array<int, array{prompt: mixed, choices: array<int, array{text: mixed, correct: bool}>}>
+     */
+    private function normalizeQuestions(array $questions): array
+    {
+        return array_map(fn (array $question) => [
+            'prompt' => $question['prompt'],
+            'choices' => array_map(fn (array $choice) => [
+                'text' => $choice['text'],
+                'correct' => filter_var($choice['correct'], FILTER_VALIDATE_BOOLEAN),
+            ], $question['choices']),
+        ], $questions);
+    }
+
+    /**
      * A question with no correct choice can never be passed; one with two is
      * ambiguous. Refuses on the first offending question, naming it, so the
      * author knows exactly which one to fix rather than being told the whole
      * array is wrong.
+     *
+     * Expects [normalizeQuestions]'s output — `correct` already a real bool —
+     * so the strict `=== true` count below means what it says.
      *
      * @param  array<int, array{choices?: array<int, array{correct?: bool}>}>  $questions
      */
@@ -247,9 +327,21 @@ class TestsController extends Controller
      * covers the test's own place, and a guide that passes this compatibility
      * check is always filed at or above that same place — so if the caller
      * can file the test there, they can already see the guide.
+     *
+     * @param  string  $field  which request field the 422 is keyed to — the
+     *                         guide, or the place, depending on which one the
+     *                         caller actually sent (see the call sites: `store`
+     *                         always blames `guide_id`, since a fresh create has
+     *                         no prior state to move away from; `update` blames
+     *                         whichever field changed, so the error highlights
+     *                         an input that was actually in the request).
      */
-    private function assertGuideCompatible(?TrainingGuide $guide, ?Company $company, ?Franchise $franchise): void
-    {
+    private function assertGuideCompatible(
+        ?TrainingGuide $guide,
+        ?Company $company,
+        ?Franchise $franchise,
+        string $field = 'guide_id',
+    ): void {
         if ($guide === null) {
             return;
         }
@@ -260,8 +352,39 @@ class TestsController extends Controller
 
         if (! $compatible) {
             throw ValidationException::withMessages([
-                'guide_id' => 'That guide is not filed at or above this test\'s place, so not everyone '
+                $field => 'That guide is not filed at or above this test\'s place, so not everyone '
                     .'who takes the test could reach it. Pick a guide filed on this same place, or higher.',
+            ]);
+        }
+    }
+
+    /**
+     * `requires_guide: true` with no `guide_id` is a gate pointing at
+     * nothing. Refused at authoring, with a sentence, because it is almost
+     * always a mistake — an author who meant to gate the test on a guide
+     * and forgot to pick one, or who removed the guide without noticing the
+     * gate was still on.
+     *
+     * ── This guard is not the only line of defense ───────────────────
+     *
+     * `training_tests.guide_id` is `nullOnDelete` (see the migration), so
+     * DELETING the guide a test points at reaches this exact state —
+     * `requires_guide: true`, `guide_id: null` — with no call through this
+     * controller at all. This method cannot close that path; it only
+     * catches the authoring mistake. So a test already sitting in that
+     * state must not become a dead end nobody can pass: everywhere else in
+     * the module that reads `requires_guide` (Task 8's grading, in
+     * particular) must treat a null `guide_id` as "no gate" rather than as
+     * an error, whatever `requires_guide` says. The house rule is no dead
+     * ends, and a state this guard cannot undo is the one place that rule
+     * has to be honored by the READER instead of the writer.
+     */
+    private function assertGuideGateHasATarget(bool $requiresGuide, ?string $guideId): void
+    {
+        if ($requiresGuide && $guideId === null) {
+            throw ValidationException::withMessages([
+                'requires_guide' => 'This test requires a guide, but none is attached. Pick a guide, '
+                    .'or turn off requiring one.',
             ]);
         }
     }
