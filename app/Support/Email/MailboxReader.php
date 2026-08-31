@@ -98,12 +98,43 @@ interface MailboxReader
      * hands the parts to a provider API that builds the message itself. Neither
      * path may interpolate a recipient into a header by hand.
      *
+     * Files travel INSIDE the request that sends the message and are never
+     * written down — same rule as the rest of this interface. There is no
+     * attachment record, no `attachables` row and nothing to clean up, because
+     * an outgoing file that outlives the send is a copy of correspondence.
+     *
      * @param  list<string>  $to  one or more recipient addresses
+     * @param  list<array{name: string, mime: string, bytes: string}>  $attachments
      *
      * @throws CannotReadMailbox when the mailbox cannot be opened at all
      * @throws CannotReachHost   when the SMTP host fails the same guard the IMAP host does
      */
-    public function send(Mailbox $mailbox, array $to, string $subject, string $body): void;
+    public function send(Mailbox $mailbox, array $to, string $subject, string $body, array $attachments = []): void;
+
+    /**
+     * Which folders THIS mailbox can actually open, as this module's labels.
+     *
+     * ── Asked, rather than assumed by the client ─────────────────
+     *
+     * The screen used to hold its own table of which provider had which
+     * folders. That is a second dictionary — the same objection
+     * {@see \App\Support\Automations\ModuleRegistry} raises about a client
+     * keeping its own copy of anything the server decides — and it cannot be
+     * right for IMAP at all, where the answer depends on the customer's own
+     * server and is not knowable until somebody looks.
+     *
+     * Gmail and Graph answer from a constant, because theirs genuinely are
+     * constant. IMAP asks the server. The caller cannot tell which, and that
+     * is the point.
+     *
+     * INBOX is always in the list. Every provider has one, and a mailbox that
+     * offered no folder at all would have nothing to draw.
+     *
+     * @return list<string>
+     *
+     * @throws CannotReadMailbox
+     */
+    public function availableFolders(Mailbox $mailbox): array;
 
     /**
      * Move this message (and its thread, where the provider groups) to Trash.

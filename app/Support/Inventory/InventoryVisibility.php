@@ -61,6 +61,11 @@ final class InventoryVisibility
             return [];
         }
 
+        // Not symmetrical on purpose: the organization arm answers with reach, not
+        // with $scope->companyIds(). ViewScope::forUser falls back to an organization
+        // view for anyone who has never touched the switcher, so a user assigned to
+        // one company arrives claiming to look at all of them; trusting the scope in
+        // that arm shows them every company. Phone shipped exactly that to production.
         $covered = match ($scope->type) {
             ViewScope::COMPANY => $scope->companyIds(),
             ViewScope::FRANCHISE => array_values(array_filter([

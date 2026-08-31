@@ -189,7 +189,7 @@ final class GmailMailboxReader implements MailboxReader
 
     public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
-        return $this->page($mailbox, ['labelIds' => $this->folder($label)], $cursor, $limit);
+        return $this->page($mailbox, ['labelIds' => $this->folder($mailbox, $label)], $cursor, $limit);
     }
 
     /**
@@ -209,18 +209,45 @@ final class GmailMailboxReader implements MailboxReader
     {
         return $this->page($mailbox, [
             'q' => $query,
-            'labelIds' => $this->folder($label),
+            'labelIds' => $this->folder($mailbox, $label),
         ], $cursor, $limit);
     }
 
-    /** Gmail's own folder ids. Anything else is Inbox, not a guessed label. */
-    private function folder(string $label): string
+    /**
+     * Gmail's own folder ids, and a refusal for anything else.
+     *
+     * ── This used to answer INBOX, and that was the bug ──────────
+     *
+     * The old comment read "anything else is Inbox, not a guessed label", and
+     * the instinct behind it was right — do not guess at a label Gmail has
+     * never heard of. The chosen safe default was not. Returning the Inbox
+     * means `?label=ARCHIVE` answers 200 with received mail while the screen
+     * says Archive, which is the failure this module found in Graph and IMAP
+     * and fixed in both, sitting untouched in the provider that was said to
+     * honour the label.
+     *
+     * It was never reachable from the screen, because the client only offers
+     * the six below. That is the same "latent, not harmless" as the others: a
+     * public endpoint, one client change from being a real wrong answer.
+     *
+     * @throws CannotReadMailbox
+     */
+    private function folder(Mailbox $mailbox, string $label): string
     {
         $name = strtoupper($label);
 
-        return in_array($name, ['INBOX', 'STARRED', 'SENT', 'DRAFT', 'TRASH', 'SPAM'], true)
-            ? $name
-            : 'INBOX';
+        if (in_array($name, ['INBOX', 'STARRED', 'SENT', 'DRAFT', 'TRASH', 'SPAM'], true)) {
+            return $name;
+        }
+
+        throw CannotReadMailbox::providerRefused(
+            $mailbox,
+            sprintf(
+                'A Gmail inbox has no folder called "%s", so there is nothing to show. '
+                .'Gmail offers Inbox, Starred, Sent, Drafts, Trash and Spam.',
+                $label,
+            ),
+        );
     }
 
     /**
@@ -694,16 +721,22 @@ final class GmailMailboxReader implements MailboxReader
         ]);
     }
 
+    /** Gmail's are fixed, and Gmail is the same everywhere. */
+    public function availableFolders(Mailbox $mailbox): array
+    {
+        return ['INBOX', 'STARRED', 'SENT', 'DRAFT', 'TRASH', 'SPAM'];
+    }
+
     /**
      * A new message — the same endpoint as a reply, without the thread.
      *
      * No `threadId`, so Gmail files it as a new conversation rather than under
      * whatever was last opened. That omission is the whole difference.
      */
-    public function send(Mailbox $mailbox, array $to, string $subject, string $body): void
+    public function send(Mailbox $mailbox, array $to, string $subject, string $body, array $attachments = []): void
     {
         $this->post($mailbox, self::API.'/messages/send', [
-            'raw' => $this->composer->composeNewForGmail($mailbox, $to, $subject, $body),
+            'raw' => $this->composer->composeNewForGmail($mailbox, $to, $subject, $body, $attachments),
         ]);
     }
 

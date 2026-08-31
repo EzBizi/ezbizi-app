@@ -90,6 +90,24 @@ tar -cz -C "$SRC" --exclude=./check-site.py . | ssh "$REMOTE" "
 # file unreadable by www-data, exits 0 and serves the old page.
 #
 # Byte-for-byte, because "it returned 200" is what the stale site did all day.
+# DO NOT VERIFY A PUBLISHED PAGE WITH `git show`. It is the obvious way to check
+# and it reports a false mismatch on every file:
+#
+#     git show HEAD:www/google-ads-api/index.html   12357 bytes
+#     git archive HEAD -- (same path)               12543 bytes
+#     the live page                                 12543 bytes
+#     difference 186 = exactly one CR per line, 186 lines
+#
+# `git archive` applies the repo CRLF policy; `git show` does not. This loop
+# compares against $SRC — the extracted ARCHIVE — which is the right comparison
+# and the one the deploy actually shipped.
+#
+# The reason this warning is here rather than in a doc: the failure mode is
+# somebody deciding a good publish is broken and correcting it. On www/ that
+# means editing the marketing site by hand, which is what this script exists to
+# stop, and it would happen during whatever review made them check in the first
+# place. Found on 2026-08-31 by a session verifying a page a Google reviewer was
+# about to load.
 echo "→ verifying what the server returns"
 bad=0
 for f in $(cd "$SRC" && find . -name '*.html' | sed 's|^\./||' | sort); do
@@ -104,4 +122,25 @@ for f in $(cd "$SRC" && find . -name '*.html' | sed 's|^\./||' | sort); do
 done
 
 [ "$bad" -eq 0 ] || { echo "✗ $bad page(s) wrong — the site is NOT what this repo says"; exit 1; }
+# ── is what we just published still the newest thing? ───────────
+#
+# Everything above proves the UPLOAD worked: the bytes on the server are the
+# bytes of the SHA we shipped. It cannot prove that SHA was CURRENT, and those
+# are different claims.
+#
+# The gap is real and it bit on 2026-08-31. deploy-www.sh runs at the end of
+# deploy.sh, which pins GATED_SHA before its gate — so a www-only commit landing
+# during that ~19 minute window has nothing to carry it. The site was correct in
+# git and stale in public, every check green, while a Google compliance reviewer
+# was reading the page. It was found by a session diffing the live page against
+# every historical commit on a hunch, which is not a control.
+#
+# A www-only commit has no deploy of its own. This is the thing that tells you.
+AHEAD=$(git rev-list --count "${SHA:-HEAD}"..main -- www/ 2>/dev/null || echo 0)
+if [ "${AHEAD:-0}" -gt 0 ]; then
+  echo "⚠ PUBLISHED, BUT NOT CURRENT — main is $AHEAD commit(s) ahead on www/:" >&2
+  git log --oneline "${SHA:-HEAD}"..main -- www/ 2>/dev/null | sed 's/^/     /' >&2
+  echo "  Re-run: scripts/deploy-www.sh \$(git rev-parse main)" >&2
+fi
+
 echo "✓ site published"

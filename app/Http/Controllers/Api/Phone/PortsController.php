@@ -19,6 +19,38 @@ class PortsController extends Controller
         private readonly TwilioGateway $twilio,
     ) {}
 
+    /**
+     * GET /api/v1/phone/ports
+     *
+     * Ports started on the phone accounts this person can reach.
+     *
+     * There was no way to read these. A port could be started, the carrier
+     * webhook updated its status for weeks, and nobody could see any of it —
+     * a port-in takes days to complete and the only surface reporting on it
+     * was a row nothing selected. Moving a business's main number is the
+     * single most anxious thing this module does, so it needs a screen more
+     * than most of what has one.
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $connections = PhoneConnection::query()->get()
+            ->filter(fn (PhoneConnection $c) => $request->user()->can('view', $c))
+            ->pluck('id');
+
+        if ($connections->isEmpty()) {
+            return response()->json(['data' => []]);
+        }
+
+        $rows = PhonePortRequest::query()
+            ->whereIn('connection_id', $connections)
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn (PhonePortRequest $row) => $this->row($row))
+            ->all();
+
+        return response()->json(['data' => $rows]);
+    }
+
     /** POST /api/v1/phone/ports */
     public function store(Request $request): JsonResponse
     {
@@ -65,6 +97,17 @@ class PortsController extends Controller
             'twilio_sid' => $row->twilio_sid,
             'status' => $row->status,
             'status_reason' => $row->status_reason,
+            'created_at' => $row->created_at?->toIso8601String(),
+
+            // Said by the server rather than worked out on screen, because
+            // the same list is read by the web client and the phone app and a
+            // port that looks finished in one and pending in the other is
+            // worse than either answer alone.
+            'settled' => in_array(
+                strtolower((string) $row->status),
+                ['completed', 'canceled', 'cancelled', 'failed', 'expired'],
+                true,
+            ),
         ];
     }
 }

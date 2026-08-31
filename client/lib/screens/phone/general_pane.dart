@@ -44,6 +44,7 @@ class _GeneralPaneState extends State<GeneralPane> {
   List<_Named> _groups = const [];
   List<_Named> _schedules = const [];
   List<_Named> _menus = const [];
+  List<_Named> _boxes = const [];
 
   String? _lineId;
 
@@ -52,6 +53,7 @@ class _GeneralPaneState extends State<GeneralPane> {
   String? _scheduleId;
   String? _menuId;
   String? _groupId;
+  String? _boxId;
   String _afterHours = 'voicemail';
   bool _record = false;
   bool _transcribe = false;
@@ -86,6 +88,7 @@ class _GeneralPaneState extends State<GeneralPane> {
       widget.api.get('/phone/ring-groups'),
       widget.api.get('/phone/hours'),
       widget.api.get('/phone/flows'),
+      widget.api.get('/phone/voicemail-boxes'),
     ]);
 
     if (!mounted) return;
@@ -108,6 +111,7 @@ class _GeneralPaneState extends State<GeneralPane> {
       _groups = _Named.listFrom(results[1].body);
       _schedules = _Named.listFrom(results[2].body);
       _menus = _Named.listFrom(results[3].body);
+      _boxes = _Named.listFrom(results[4].body);
       _lineId ??= lines.isEmpty ? null : lines.first.id;
     });
 
@@ -123,6 +127,7 @@ class _GeneralPaneState extends State<GeneralPane> {
       _scheduleId = line.hoursScheduleId;
       _menuId = line.flowId;
       _groupId = line.ringGroupId;
+      _boxId = line.voicemailBoxId;
       _afterHours = line.afterHours;
       _record = line.record;
       _transcribe = line.transcribe;
@@ -147,6 +152,7 @@ class _GeneralPaneState extends State<GeneralPane> {
       'hours_schedule_id': _scheduleId,
       'flow_id': _menuId,
       'ring_group_id': _groupId,
+      'voicemail_box_id': _boxId,
       'after_hours': _afterHours,
       'after_hours_number': _afterHours == 'forward' ? _forwardTo.text.trim() : null,
       'fallback_number': _fallback.text.trim(),
@@ -290,6 +296,17 @@ class _GeneralPaneState extends State<GeneralPane> {
             ),
           ],
           onChanged: (v) => setState(() => _afterHours = v ?? 'voicemail'),
+        ),
+
+        const SizedBox(height: 16),
+        _pick(
+          label: 'Voicemail greeting',
+          value: _boxId,
+          items: _boxes,
+          none: 'Built-in — “Please leave a message after the tone.”',
+          helper: 'What a caller hears when nobody answers. Mailboxes are '
+              'written on the Voicemail screen.',
+          onChanged: (v) => setState(() => _boxId = v),
         ),
 
         if (_afterHours == 'forward') ...[
@@ -454,6 +471,7 @@ class _Line {
     this.ringGroupId,
     this.hoursScheduleId,
     this.flowId,
+    this.voicemailBoxId,
     this.afterHoursNumber,
     this.fallbackNumber,
     this.recordingNotice,
@@ -468,6 +486,7 @@ class _Line {
   final String? ringGroupId;
   final String? hoursScheduleId;
   final String? flowId;
+  final String? voicemailBoxId;
   final String? afterHoursNumber;
   final String? fallbackNumber;
   final String? recordingNotice;
@@ -491,6 +510,7 @@ class _Line {
           ringGroupId: row['ring_group_id'] as String?,
           hoursScheduleId: row['hours_schedule_id'] as String?,
           flowId: row['flow_id'] as String?,
+          voicemailBoxId: row['voicemail_box_id'] as String?,
           afterHoursNumber: row['after_hours_number'] as String?,
           fallbackNumber: row['fallback_number'] as String?,
           recordingNotice: row['recording_notice'] as String?,

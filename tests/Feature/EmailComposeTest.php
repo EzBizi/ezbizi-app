@@ -261,6 +261,186 @@ class EmailComposeTest extends TestCase
         $this->assertNoHeaderLineStartsWith($message, 'Bcc');
     }
 
+    // ── attachments ──────────────────────────────────────────────
+
+    /** @return array{name: string, mime: string, bytes: string} */
+    private function file(string $name = 'sweep.pdf', string $mime = 'application/pdf', string $bytes = '%PDF-1.4 report'): array
+    {
+        return ['name' => $name, 'mime' => $mime, 'bytes' => $bytes];
+    }
+
+    public function test_a_message_with_no_files_stays_a_plain_text_message(): void
+    {
+        $message = $this->composer()->composeNew(
+            $this->inbox(),
+            ['bob@example.com'],
+            'Sweep',
+            'Morning',
+        );
+
+        $this->assertStringContainsString('Content-Type: text/plain; charset=utf-8', $message);
+        $this->assertStringNotContainsStringIgnoringCase('multipart', $message);
+        $this->assertStringNotContainsString('boundary', $message);
+    }
+
+    public function test_a_file_arrives_as_its_own_part_named_and_typed(): void
+    {
+        $message = $this->composer()->composeNew(
+            $this->inbox(),
+            ['bob@example.com'],
+            'Report',
+            'See attached.',
+            [$this->file()],
+        );
+
+        $this->assertMatchesRegularExpression(
+            '/Content-Type: multipart\/mixed; boundary="ezbizi-[0-9a-f]{32}"/',
+            $message,
+        );
+
+        $this->assertStringContainsString('Content-Type: application/pdf', $message);
+        $this->assertStringContainsString(
+            'Content-Disposition: attachment; filename="sweep.pdf"',
+            $message,
+        );
+        $this->assertStringContainsString('Content-Transfer-Encoding: base64', $message);
+
+        // The typed words survive alongside the file — a multipart message that
+        // carries the attachment and drops the sentence is the failure that
+        // looks fine in a file list.
+        $this->assertStringContainsString('See attached.', $message);
+    }
+
+    /**
+     * THE ONE CORRECTNESS RULE OF MULTIPART: the boundary must not occur
+     * inside a part.
+     *
+     * A fixed boundary breaks the first time somebody attaches a saved copy of
+     * a message this composer built, because that file's contents ARE boundary
+     * lines. The reader then sees the message truncated at the collision, with
+     * no error at either end.
+     */
+    public function test_the_boundary_is_different_every_time(): void
+    {
+        $composer = $this->composer();
+        $inbox    = $this->inbox();
+
+        $first  = $composer->composeNew($inbox, ['b@example.com'], 'A', 'x', [$this->file()]);
+        $second = $composer->composeNew($inbox, ['b@example.com'], 'A', 'x', [$this->file()]);
+
+        preg_match('/boundary="([^"]+)"/', $first, $a);
+        preg_match('/boundary="([^"]+)"/', $second, $b);
+
+        $this->assertNotSame($a[1], $b[1]);
+
+        // And long enough that a collision is not a thing that happens.
+        $this->assertSame(32, strlen(str_replace('ezbizi-', '', $a[1])));
+    }
+
+    /**
+     * A filename is a header value, and it comes from whoever picked the file.
+     */
+    public function test_a_newline_in_a_filename_cannot_open_a_new_header(): void
+    {
+        $message = $this->composer()->composeNew(
+            $this->inbox(),
+            ['bob@example.com'],
+            'Report',
+            'Morning',
+            [$this->file(name: "quote.pdf\r\nBcc: everyone@competitor.example")],
+        );
+
+        foreach (explode("\r\n", $message) as $line) {
+            $this->assertStringStartsNotWith('Bcc', $line);
+        }
+
+        // The control: the real filename is still on the part.
+        $this->assertStringContainsString('quote.pdf', $message);
+    }
+
+    /**
+     * Binary survives the trip, byte for byte.
+     *
+     * Base64 rather than 8bit precisely so that a PDF is not corrupted by one
+     * hop that does not speak the extension — so the test decodes the part back
+     * and compares, rather than checking that some base64 is present.
+     */
+    public function test_binary_content_round_trips_exactly(): void
+    {
+        $bytes = random_bytes(2048);
+
+        $message = $this->composer()->composeNew(
+            $this->inbox(),
+            ['bob@example.com'],
+            'Photo',
+            'Here',
+            [$this->file(name: 'photo.png', mime: 'image/png', bytes: $bytes)],
+        );
+
+        // The part after the base64 header, up to the closing boundary.
+        preg_match('/Content-Transfer-Encoding: base64\r\n\r\n(.*?)\r\n--/s', $message, $m);
+
+        $this->assertNotEmpty($m, 'No base64 part was produced.');
+        $this->assertSame($bytes, base64_decode(str_replace("\r\n", '', $m[1]), true));
+    }
+
+    /**
+     * RFC 2045 caps an ENCODED line at 76 characters, and servers enforce it.
+     *
+     * Only the encoded part: the rule is about base64 content lines, not about
+     * headers, which live under RFC 5322's own limit of 998. The first version
+     * of this test checked every line in the message and failed on the
+     * `Content-Type: multipart/mixed; boundary="…"` header at 81 characters —
+     * a correct header, and a wrong assertion.
+     */
+    public function test_no_encoded_line_runs_past_seventy_six_characters(): void
+    {
+        $message = $this->composer()->composeNew(
+            $this->inbox(),
+            ['bob@example.com'],
+            'Photo',
+            'Here',
+            [$this->file(name: 'photo.png', mime: 'image/png', bytes: random_bytes(4096))],
+        );
+
+        preg_match('/Content-Transfer-Encoding: base64\r\n\r\n(.*?)\r\n--/s', $message, $m);
+
+        $this->assertNotEmpty($m, 'No base64 part was produced.');
+
+        $lines = explode("\r\n", $m[1]);
+
+        // The control: a single unwrapped line would trivially pass a
+        // "every line is short" check if the part were empty, so assert there
+        // is real content wrapped across several lines.
+        $this->assertGreaterThan(10, count($lines));
+
+        foreach ($lines as $line) {
+            $this->assertLessThanOrEqual(76, strlen($line));
+        }
+    }
+
+    public function test_several_files_each_get_their_own_part(): void
+    {
+        $message = $this->composer()->composeNew(
+            $this->inbox(),
+            ['bob@example.com'],
+            'Two things',
+            'Both attached.',
+            [$this->file(name: 'one.pdf'), $this->file(name: 'two.pdf')],
+        );
+
+        preg_match('/boundary="([^"]+)"/', $message, $b);
+
+        $this->assertStringContainsString('filename="one.pdf"', $message);
+        $this->assertStringContainsString('filename="two.pdf"', $message);
+
+        // Three opening delimiters — the text part and two files — plus the
+        // closing one. A message that dropped a part would still contain both
+        // filenames if they shared a part, so the count is what proves it.
+        $this->assertSame(3, substr_count($message, '--'.$b[1]."\r\n"));
+        $this->assertStringEndsWith('--'.$b[1].'--', $message);
+    }
+
     /** Gmail wants the same bytes, base64url and unpadded. */
     public function test_the_gmail_form_is_the_same_message_encoded(): void
     {

@@ -319,12 +319,12 @@ class HrPeopleController extends Controller
      */
     private function visibleTo(Builder $query, User $actor): void
     {
-        $query->whereKey($actor->getKey())
-            ->orWhereHas('assignments', fn (Builder $a) => $this->reach->constrain($a, $actor));
-
-        if ($actor->canActOnOrganization($actor->organization)) {
-            $query->orWhereDoesntHave('assignments');
-        }
+        // Delegated to ScopeReach — this predicate is also what Monitoring's
+        // DevicesController needs (a device's OWNER, not a place column, is
+        // what reach is checked against there), so the three-arm rule now
+        // lives once, on the primitive it is built from. Behavior-preserving:
+        // see ScopeReach::constrainToVisiblePeople().
+        $this->reach->constrainToVisiblePeople($query, $actor);
     }
 
     /**

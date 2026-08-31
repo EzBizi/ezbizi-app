@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import 'core/deployment.dart';
 import 'core/desktop_updater.dart';
 import 'core/files.dart';
 import 'core/module_screens.dart';
+import 'core/monitoring_heartbeat.dart';
 import 'core/permissions.dart';
 import 'core/session.dart';
 import 'core/staff_session.dart';
@@ -356,9 +358,27 @@ class _HomeShellState extends State<HomeShell> {
   int _taskNavigationEpoch = 0;
   void Function()? _stopListening;
 
+  /// Reports this device's presence and which module is on screen
+  /// (2026-08-28-monitoring-pc-specs). Lives here rather than on [EzBiziApp]
+  /// so it only starts beating once somebody is actually signed in and inside
+  /// the shell — a beat posted before that would just be an authenticated
+  /// endpoint refusing a request nobody sent on purpose.
+  ///
+  /// Constructed explicitly in [initState] rather than as an inline `late
+  /// final` field initializer — a `late final` FIELD initializer runs on
+  /// first READ, not at construction. The only reads were in `_show()` and
+  /// `dispose()`, so a session that lands on a deep link and never taps the
+  /// nav rail never read it, never constructed it, and its `Timer.periodic`
+  /// never started: zero beats, not even the keep-alive, contradicting the
+  /// class's own doc comment that the keep-alive fires unconditionally once
+  /// this exists. Assigning it here forces that construction to happen
+  /// exactly once, unconditionally, the moment the shell mounts.
+  late final MonitoringHeartbeat _heartbeat;
+
   @override
   void initState() {
     super.initState();
+    _heartbeat = MonitoringHeartbeat(widget.api);
     _apply(widget.address?.path);
     _stopListening = widget.address?.listen((path) {
       if (!mounted) return;
@@ -369,6 +389,7 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void dispose() {
     _stopListening?.call();
+    _heartbeat.dispose();
     super.dispose();
   }
 
@@ -463,6 +484,7 @@ class _HomeShellState extends State<HomeShell> {
     _selected = id;
     _pendingTaskIntent = null;
     widget.address?.push(_pathFor(rail, id));
+    unawaited(_heartbeat.enter(id));
   });
 
   void _consumeTaskIntent() => setState(() {

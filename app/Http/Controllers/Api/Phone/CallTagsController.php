@@ -55,10 +55,15 @@ class CallTagsController extends Controller
                     ->where('organization_id', $request->user()->organization_id),
             ],
             'position' => ['sometimes', 'integer', 'min:0', 'max:999'],
+            // Refused rather than coerced when unknown: a colour the client
+            // cannot draw would render as no colour, which looks like the tag
+            // simply did not save.
+            'color' => ['sometimes', 'nullable', Rule::in(PhoneCallTag::COLORS)],
         ]);
 
         $tag = PhoneCallTag::query()->create([
             'name' => trim((string) $input['name']),
+            'color' => $input['color'] ?? null,
             'is_active' => true,
             'position' => (int) ($input['position'] ?? 0),
         ]);
@@ -80,6 +85,10 @@ class CallTagsController extends Controller
             ],
             'is_active' => ['sometimes', 'boolean'],
             'position' => ['sometimes', 'integer', 'min:0', 'max:999'],
+            // Refused rather than coerced when unknown: a colour the client
+            // cannot draw would render as no colour, which looks like the tag
+            // simply did not save.
+            'color' => ['sometimes', 'nullable', Rule::in(PhoneCallTag::COLORS)],
         ]);
 
         $tag->fill($input)->save();
@@ -162,6 +171,7 @@ class CallTagsController extends Controller
         return [
             'id' => $tag->id,
             'name' => $tag->name,
+            'color' => $tag->color,
             'is_active' => $tag->is_active,
             'position' => $tag->position,
             'call_count' => $tag->calls()->count(),

@@ -7,6 +7,7 @@ use App\Models\TaskBoard;
 use App\Models\TaskBoardMember;
 use App\Models\TaskColumnDefinition;
 use App\Models\TaskColumnOption;
+use App\Models\TaskDependency;
 use App\Models\TaskFolder;
 use App\Models\TaskGroup;
 use App\Models\TaskPriorityOption;
@@ -43,6 +44,7 @@ final class EnsureTaskRouteAccess
         $board = $route->parameter('board');
         $task = $route->parameter('task');
         $folder = $route->parameter('folder');
+        $dependency = $route->parameter('dependency');
         $action = $route->getActionName();
 
         if ($task instanceof Task) {
@@ -70,6 +72,22 @@ final class EnsureTaskRouteAccess
             } else {
                 $this->access->viewDecision($actor, $board, $scope)->authorize();
             }
+        } elseif ($dependency instanceof TaskDependency) {
+            // {dependency} carries no board/task ancestor in the route (task-4
+            // review, fix round 1), so a bare viewDecision()->authorize() denial
+            // here would answer with a generic 'Not Found' — a DIFFERENT body
+            // than the 'No query results for model [...] <id>' message route
+            // binding already produces for an id that never existed at all,
+            // which discloses exactly the thing this check exists to hide.
+            // Re-resolving through the same visible-boards query the model
+            // itself would be found by makes an invisible dependency raise the
+            // identical ModelNotFoundException — same class, same id — as one
+            // that was never real, rather than falling through to the generic
+            // directoryDecision() branch below, which would 403 instead.
+            $visibleBoards = $this->access->constrainVisible(TaskBoard::query()->active(), $actor, $scope)
+                ->select('task_boards.id');
+            $visible = TaskDependency::query()->whereIn('board_id', $visibleBoards)->findOrFail($dependency->id);
+            $board = TaskBoard::query()->find($visible->board_id);
         } elseif ($folder instanceof TaskFolder) {
             abort_unless($this->folders->canManage($actor, $folder, $scope), Response::HTTP_NOT_FOUND);
         } else {

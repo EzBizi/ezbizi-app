@@ -352,6 +352,21 @@ final class FakeTwilioGateway implements TwilioGateway
         $this->record(__FUNCTION__, [$connection->id, $incomingSid, $params]);
     }
 
+    public ?string $failMoveIncomingWith = null;
+
+    public function moveIncomingToAccount(
+        PhoneConnection $from,
+        string $incomingSid,
+        string $targetAccountSid,
+        array $params = [],
+    ): void {
+        $this->record(__FUNCTION__, [$from->id, $incomingSid, $targetAccountSid, $params]);
+
+        if ($this->failMoveIncomingWith !== null) {
+            throw new RuntimeException($this->failMoveIncomingWith);
+        }
+    }
+
     public function releaseIncoming(PhoneConnection $connection, string $incomingSid): void
     {
         $this->record(__FUNCTION__, [$connection->id, $incomingSid]);
@@ -383,6 +398,37 @@ final class FakeTwilioGateway implements TwilioGateway
         return [
             'sid' => 'SM'.bin2hex(random_bytes(16)),
             'status' => 'queued',
+        ];
+    }
+
+    /**
+     * A detailed lookup a test wants to force — an invalid number, a landline,
+     * a mobile. Null gives a valid US mobile.
+     *
+     * @var array<string, mixed>|null
+     */
+    public ?array $detailedLookup = null;
+
+    public function lookupDetailed(string $e164): array
+    {
+        $this->record(__FUNCTION__, func_get_args());
+
+        if (! $this->lookupEnabled) {
+            throw new RuntimeException('not enabled');
+        }
+
+        if ($this->detailedLookup !== null) {
+            return $this->detailedLookup;
+        }
+
+        return [
+            'phone_number' => $e164,
+            'valid' => true,
+            'national_format' => '(561) 555-0123',
+            'country_code' => 'US',
+            'line_type' => 'mobile',
+            'carrier_name' => 'Fake Wireless',
+            'caller_name' => 'Fake Caller',
         ];
     }
 

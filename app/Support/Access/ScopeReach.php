@@ -178,6 +178,36 @@ class ScopeReach
     }
 
     /**
+     * Which PEOPLE this actor may see — a `users` query narrowed to reach.
+     *
+     * Three arms:
+     *
+     *   yourself           always, whatever your assignments say; a list that
+     *                      does not contain the person reading it looks broken
+     *   anybody assigned   to a place your authority covers (via [constrain]
+     *                      on their `assignments`)
+     *   the unassigned     only if you reach the whole organization, because
+     *                      there is no smaller place to check them against
+     *
+     * `$query` must already be scoped to the `users` table — directly (a list
+     * of people) or through a relation (`whereHas('user', fn ($u) =>
+     * $reach->constrainToVisiblePeople($u, $actor))`, for a row that BELONGS
+     * to a person rather than being one, such as a monitored device). Shared
+     * between HrPeopleController (direct) and Monitoring's DevicesController
+     * (through the relation) so the one predicate for "may you see this
+     * person" cannot drift into two.
+     */
+    public function constrainToVisiblePeople(Builder $query, User $actor): void
+    {
+        $query->whereKey($actor->getKey())
+            ->orWhereHas('assignments', fn (Builder $a) => $this->constrain($a, $actor));
+
+        if ($actor->canActOnOrganization($actor->organization)) {
+            $query->orWhereDoesntHave('assignments');
+        }
+    }
+
+    /**
      * Every place this person may assign somebody to — the picker's whole content.
      *
      * The organization itself appears only for somebody assigned at organization

@@ -201,6 +201,14 @@ class _EmailScreenState extends State<EmailScreen> {
     });
 
     if (_allInboxes || _selected != null) _loadMessages();
+
+    // A single-inbox customer is landed straight in that inbox without ever
+    // passing through _select, so discovery has to be started here as well.
+    // Without this the one case that needs folders asked for — one mailbox,
+    // likely IMAP — is the one case that never asks.
+    final landedOn = _selected;
+
+    if (landedOn != null) _loadFolders(landedOn);
   }
 
   Future<void> _loadMessages({int page = 1, String? cursor}) async {
@@ -341,7 +349,7 @@ class _EmailScreenState extends State<EmailScreen> {
 
     final targets = [
       for (final mailbox in _mailboxes)
-        if (_folder == 'INBOX' || mailbox.isGmail)
+        if (mailbox.opensFolder(_folder))
           if (!append || _mailboxHasMore(mailbox.id)) mailbox,
     ];
 
@@ -370,7 +378,7 @@ class _EmailScreenState extends State<EmailScreen> {
         if (_submittedSearch.isNotEmpty) {
           query['search'] = _submittedSearch;
         }
-        if (_folder != 'INBOX' && mailbox.isGmail) {
+        if (_folder != 'INBOX' && mailbox.opensFolder(_folder)) {
           query['label'] = _folder;
         }
         if (_unreadOnly) {
@@ -605,6 +613,52 @@ class _EmailScreenState extends State<EmailScreen> {
     });
 
     _loadMessages();
+    _loadFolders(mailbox);
+  }
+
+  /// Ask what folders this mailbox actually has.
+  ///
+  /// ── Only once, and only when a mailbox is opened ─────────────
+  ///
+  /// For IMAP the answer costs a connection to the customer's mail server, so
+  /// it is not asked on the inbox listing — that would open one per mailbox
+  /// before anybody had chosen any of them. Asked here, and remembered.
+  ///
+  /// ── A failure is silence, not a message ──────────────────────
+  ///
+  /// If this cannot be answered the folder list stays as the provider guess,
+  /// which for IMAP is the Inbox alone. That is the honest fallback: the
+  /// mailbox is still readable, and there is nothing useful to say to somebody
+  /// about a folder list they were not looking at. The mail itself has its own
+  /// error path, and that one does speak up.
+  Future<void> _loadFolders(Mailbox mailbox) async {
+    if (mailbox.discoveredFolders != null) return;
+
+    final response = await widget.api.get('/email/mailboxes/${mailbox.id}/folders');
+
+    if (!mounted || !response.ok) return;
+
+    final data = response.data;
+
+    if (data is! List) return;
+
+    final folders = {
+      for (final folder in data)
+        if (folder is String && folder.isNotEmpty) folder,
+    };
+
+    if (folders.isEmpty) return;
+
+    setState(() {
+      _mailboxes = [
+        for (final row in _mailboxes)
+          row.id == mailbox.id ? row.withFolders(folders) : row,
+      ];
+
+      if (_selected?.id == mailbox.id) {
+        _selected = _selected!.withFolders(folders);
+      }
+    });
   }
 
   void _closeMessage() {

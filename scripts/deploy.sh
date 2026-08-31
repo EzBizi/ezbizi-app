@@ -286,6 +286,21 @@ refresh() {
   echo "updated $dest"
   updated=1
 }
+# The backup verifier runs from a SNAPSHOT in /usr/local/bin, not from the
+# release. On 2026-08-28 its six-table list was replaced with a derived one
+# (f52faa8) — and the fix sat in deploy/ through four releases while the copy
+# that actually runs every night kept the old list. Nothing looked wrong: the
+# file was in every release, git said it was fixed, and the verifier went on
+# checking the six tables a truncated dump leaves full.
+#
+# Same lesson as the peer watchdog directly below, which is why it now sits
+# beside it: shipping a file into deploy/ is not installing it.
+refresh "$ROOT/deploy/restore-check.sh" /usr/local/bin/ezbizi-restore-check.sh 0755
+# backup.sh is identical to its installed copy today, and is here so that stays
+# true. Every script in deploy/ that runs from /usr/local/bin belongs on this
+# list; refresh() is a no-op when the destination does not exist, so listing one
+# a box has never installed costs nothing.
+refresh "$ROOT/deploy/backup.sh" /usr/local/bin/ezbizi-backup.sh 0755
 refresh "$ROOT/deploy/watch-peer-websites.sh" /usr/local/bin/ezbizi-watch-peer-websites.sh 0755
 refresh "$ROOT/deploy/ezbizi-watch-peer.service" /etc/systemd/system/ezbizi-watch-peer.service 0644
 refresh "$ROOT/deploy/ezbizi-watch-peer.timer" /etc/systemd/system/ezbizi-watch-peer.timer 0644
@@ -296,6 +311,100 @@ else
   echo "peer watchdog unchanged"
 fi
 ' || echo "warning: peer watchdog refresh failed; box may be on an older copy" >&2
+
+# Live URLs that no test in this repo can check.
+#
+# On 2026-08-28 /api/v1/web/ezbizi.js returned an nginx 404 for a week while the
+# route was registered, the controller correct and the file in the release.
+# `location /api` was a plain prefix and the static-asset block is a regex, and a
+# regex location outranks a plain prefix one — so every API path ending in an
+# asset extension was answered from the Flutter root. Every in-repo check was
+# green throughout, because they all exercise Laravel router and nginx sits
+# upstream of anything the test framework can reach.
+#
+# CONTENT-TYPE, not just status. A 200 of the Flutter index.html was the other
+# way this fails, and a status-only assertion would have passed it.
+#
+# Not only routes with a literal extension: any route whose last segment is a
+# user-supplied parameter can be pushed into that regex by the caller
+# (/api/v1/web/sites/foo.js). Nothing reaches a controller, but the wrong 404
+# comes back. Add a line here for anything with that shape.
+# What the SCHEDULER holds, asked of the scheduler.
+#
+# A diff of routes/console.php proves a line was added to a file. It does not
+# prove the scheduler took it — which is the failure mode this exists for. On
+# 2026-08-28 ezbizi:publish-due-social-posts had to be confirmed by hand on the
+# box, because a schedule entry that silently does not register looks exactly
+# like one that does: the posts sit at "scheduled" forever and nothing goes red.
+#
+# It keeps the PREVIOUS release list and prints only what changed. Printing the
+# whole list every time is the weak form — a list nobody reads is not a control,
+# and a command that disappears has to show up as an ABSENCE to be noticed at
+# all. Proven both ways against the box before shipping: a doctored baseline
+# reported one addition and one disappearance rather than only ever saying fine.
+#
+# The empty guard matters more than it looks. If schedule:list fails, the list
+# is empty and every command reads as REMOVED — a fleet-wide false alarm, which
+# is how a check teaches people to ignore it.
+echo "→ what the scheduler actually holds"
+ssh "$REMOTE" '
+  cd /var/www/ezbizi-current
+  PREV=/var/www/ezbizi/last-schedule.txt
+  NOW=$(mktemp)
+  sudo -u www-data php8.4 artisan schedule:list 2>/dev/null | grep -oE "artisan [a-z0-9:._-]+" | sed "s/^artisan //" | sort -u > "$NOW"
+  if [ ! -s "$NOW" ]; then
+    echo "   ✗ schedule:list returned nothing — the scheduler holds no commands, or the call failed"
+  elif [ -f "$PREV" ]; then
+    A=$(comm -13 "$PREV" "$NOW"); R=$(comm -23 "$PREV" "$NOW")
+    if [ -z "$A" ] && [ -z "$R" ]; then
+      echo "   ok   $(wc -l < "$NOW") scheduled commands, unchanged"
+    else
+      [ -n "$A" ] && echo "$A" | sed "s/^/   + now scheduled: /"
+      [ -n "$R" ] && echo "$R" | sed "s/^/   - NO LONGER scheduled: /"
+    fi
+    cp "$NOW" "$PREV"
+  else
+    echo "   (first run) $(wc -l < "$NOW") scheduled commands recorded as the baseline"
+    cp "$NOW" "$PREV"
+  fi
+  rm -f "$NOW"
+' || echo "⚠ could not read the schedule from the box" >&2
+
+echo "→ smoke: URLs only the live server can answer"
+while read -r url want; do
+  [ -z "$url" ] && continue
+  got=$(curl -sS -o /dev/null -w "%{http_code} %{content_type}" "$url" || echo "no answer")
+  case "$got" in
+    "$want"*) echo "   ok   $url" ;;
+    *)        echo "   ✗    $url -> $got (wanted $want)" >&2 ;;
+  esac
+done <<SMOKE
+https://app.ezbizi.com/api/v1/web/ezbizi.js 200 application/javascript
+https://app.ezbizi.com/api/v1/web/public/values 400 application/json
+SMOKE
+
+# The last unverified hop. The UI does not travel through git — it is a 36 MB
+# tarball unpacked into a shared directory — so everything above proves what the
+# SERVER holds and nothing proves what a BROWSER is handed. A UI upload that
+# silently served the previous build looks exactly like a healthy release: new
+# API, old client, every user on yesterday.
+#
+# build-web.sh compiles the identity in with --dart-define=BUILD_ID, so the SHA
+# is a string inside the bundle. Do NOT reach for /version.json instead: it
+# reports pubspec's 1.0.0 build 1, which has never changed and never will.
+if [ "$CODE_ONLY" != "--code" ]; then
+  # To a file, not a pipe. `grep -q` exits on the first match and curl then dies
+  # writing into a closed pipe, printing "Failure writing output to destination"
+  # on a check that PASSED — an alarming line under a tick.
+  BUNDLE=$(mktemp)
+  curl -sS -o "$BUNDLE" https://app.ezbizi.com/main.dart.js || true
+  if grep -q "$(git rev-parse --short "$GATED_SHA")" "$BUNDLE"; then
+    echo "   ok   main.dart.js carries $(git rev-parse --short "$GATED_SHA")"
+  else
+    echo "   ✗    main.dart.js does NOT carry $(git rev-parse --short "$GATED_SHA") — browsers may still be served the previous build" >&2
+  fi
+  rm -f "$BUNDLE"
+fi
 
 # The marketing site, last, for the same reason the code goes before the UI:
 # www/index.html loads the snippet from app.ezbizi.com, so a site published

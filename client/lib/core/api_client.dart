@@ -282,6 +282,64 @@ class ApiClient {
     }
   }
 
+  /// SEVERAL files under one field name, plus ordinary fields.
+  ///
+  /// [postFile] sends exactly one, which is right for the upload endpoints that
+  /// take one. Composing an email takes up to five and they have to arrive in
+  /// the SAME request as the message — sending them one at a time would mean
+  /// deciding what to do when the third upload fails after two have already
+  /// gone, and there is no good answer to that for a message that has not been
+  /// sent yet.
+  ///
+  /// [field] is repeated per file (`attachments[]`), which is what a PHP
+  /// backend reads as an array. Everything else — the identity headers, `_http`
+  /// rather than `request.send()`, the 426 notice — is [postFile]'s reasoning
+  /// unchanged; see the comments there, which apply here word for word.
+  ///
+  /// Additive: no existing caller changes. This lives in core rather than in
+  /// the Email module because nothing about it is email-specific.
+  Future<ApiResponse> postFiles(
+    String path,
+    String field,
+    List<({String name, List<int> bytes})> files, {
+    Map<String, String>? fields,
+  }) async {
+    try {
+      final request = http.MultipartRequest('POST', Uri.parse('$_root/api/v1$path'))
+        ..headers['Accept'] = 'application/json'
+        ..headers.addAll(_identity);
+
+      for (final file in files) {
+        request.files.add(
+          http.MultipartFile.fromBytes('$field[]', file.bytes, filename: file.name),
+        );
+      }
+
+      if (fields != null) request.fields.addAll(fields);
+
+      if (_token != null) request.headers['Authorization'] = 'Bearer $_token';
+
+      final streamed = await _http.send(request);
+      final response = await http.Response.fromStream(streamed);
+
+      _noticeUpgradeRequired(response.statusCode, response.body);
+
+      return ApiResponse(
+        statusCode: response.statusCode,
+        body: response.body.isEmpty
+            ? <String, dynamic>{}
+            : jsonDecode(response.body) as Map<String, dynamic>,
+        correlationId: response.headers['x-correlation-id'],
+        headers: Map<String, String>.unmodifiable(response.headers),
+      );
+    } catch (_) {
+      return const ApiResponse(
+        statusCode: 0,
+        body: {'message': 'Could not send that. Check your connection.'},
+      );
+    }
+  }
+
   /// A file, not JSON. Returns null on any failure — the caller shows a note.
   ///
   /// Separate from get() because a CSV body would fail jsonDecode, and because

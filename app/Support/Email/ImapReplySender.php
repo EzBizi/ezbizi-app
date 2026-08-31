@@ -32,14 +32,32 @@ namespace App\Support\Email;
 final class ImapReplySender
 {
     /**
-     * The longest reply this will put on the wire.
+     * The longest message this will put on the wire.
      *
-     * A reply is something a person typed into a box. A megabyte of it is
-     * already far past anything anybody writes, and the cap exists so that a
-     * bug elsewhere cannot turn one request into an unbounded upload to
-     * somebody else's mail server.
+     * ── Why this is no longer a megabyte ─────────────────────────
+     *
+     * It used to be, and the reasoning was "a reply is something a person
+     * typed into a box, so a megabyte is far past anything anybody writes".
+     * That was true of replies and stopped being true when compose gained
+     * attachments: base64 inflates a file by a third, so a one-megabyte cap
+     * rejects a 750KB photo — the most ordinary thing a business attaches.
+     *
+     * The cap's PURPOSE is unchanged and still the reason it exists: a bug
+     * elsewhere must not be able to turn one request into an unbounded upload
+     * to somebody else's mail server. That needs a bound, not a small one.
+     *
+     * Three megabytes because that is the tightest ceiling across the three
+     * providers, and one number that behaves the same everywhere beats three
+     * that differ: Microsoft Graph carries attachments inline on `sendMail` to
+     * roughly 3MB of request and wants an upload session above it. The
+     * controller's own limit sits below this so the refusal a person reads is
+     * the controller's sentence, not a transport error — this is the backstop.
+     *
+     * ponytail: 3MB ceiling, matched to Graph's inline limit. Bigger
+     * attachments need a Graph upload session and a chunked SMTP path, which
+     * is a different feature, not a bigger number here.
      */
-    private const MAX_MESSAGE_BYTES = 1_048_576;
+    private const MAX_MESSAGE_BYTES = 3_145_728;
 
     /**
      * @param  list<string>  $to  envelope recipients — one RCPT TO each. A reply
@@ -59,8 +77,14 @@ final class ImapReplySender
     ): void {
         if (strlen($message) > self::MAX_MESSAGE_BYTES) {
             throw ImapFailure::unreachable(
-                'That reply is too long to send. Shorten it, or send the detail as an attachment '
-                .'from your own mail program.'
+                // Says "message" rather than "reply" because compose reaches
+                // here too now, and telling somebody who attached a large PDF
+                // to "shorten your reply" is advice for a different problem.
+                // It also no longer suggests attaching the detail instead —
+                // that is what they just did.
+                'That message is too large to send. If it has files attached, send fewer or '
+                .'smaller ones; a very large file is better shared as a link than as an '
+                .'attachment.'
             );
         }
 
