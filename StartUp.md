@@ -1045,6 +1045,37 @@ how somebody talks themselves out of a correct diagnosis. Read it with
 
 ## 9 · Deploying
 
+### A sub-second failure is infrastructure — but only if something answered
+
+A suite that dies far faster than it could possibly run is an environmental
+answer wearing a domain-shaped error message. The clearest case: a MySQL that is
+still STARTING refuses with
+
+```
+SQLSTATE[HY000] [1698] Access denied for user 'root'@'localhost'
+```
+
+which reads as a credentials problem and will have you editing config. It is not
+— the grant tables are simply not loaded yet. 698ms against ~30s for a real run
+is the tell, not the message. Re-run before you change anything.
+
+**THE TELL HAS A FAILURE MODE, and it is the rule's own shape turned on the
+rule.** A session adopting it timed a liveness check at 77ms and read "still
+starting" — but `mysql` was not on PATH in that shell and they had timed
+`command not found`. The clock was honest; it was measuring a call that never
+reached a server.
+
+So the duration is only a valid signal **once you know the error came FROM the
+database**. `1698 Access denied` proves a server answered. `command not found`,
+a socket error, or a missing driver prove one did not. Both come back in
+milliseconds and both look like evidence.
+
+Confirm the error's ORIGIN first, then read the clock. And prefer a real
+operation over a liveness probe either way: on 2026-08-31 a `/dev/tcp` port check
+reported MySQL DOWN while an actual phpunit run passed against it in the same
+minute — `/dev/tcp` is unreliable under Git Bash on Windows. Never believe a
+negative probe.
+
 ### The gate is bound on MIGRATIONS, not on tests
 
 Measured 2026-08-31: the test phase went from 1207s to 1474s — **22% longer for
