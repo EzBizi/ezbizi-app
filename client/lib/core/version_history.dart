@@ -8,7 +8,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
-      version: '0.0.0121',
+      version: '0.0.0122',
       date: '31 Aug 2026',
       items: [
         'Web Management: your websites are a list down the left and the '
@@ -19,6 +19,16 @@ class VersionHistory {
         'Web Management: hours of operation has a day-by-day editor with a '
             'clock, and still lets you type your own wording if your hours do '
             'not fit a grid.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0121',
+      date: '31 Aug 2026',
+      items: [
+        'Scheduling has a place in the sidebar. It holds Availability, Schedule '
+            'and Settings, and all three are empty for now - the tab is here so '
+            'that who may see it can be decided before there is anything in it '
+            'to see.',
       ],
     ),
     VersionRelease(

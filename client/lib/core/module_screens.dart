@@ -15,6 +15,7 @@ import '../screens/monitoring/monitoring_screen.dart';
 import '../screens/reviews_screen.dart';
 import '../screens/marketing_screen.dart';
 import '../screens/phone_screen.dart';
+import '../screens/scheduling_screen.dart';
 import '../screens/services_screen.dart';
 import '../screens/tasks_screen.dart';
 import '../screens/web_screen.dart';
@@ -70,6 +71,10 @@ final Map<String, ModuleScreen> moduleScreens = {
   'jobs': ModuleScreen(
     Icons.construction_outlined,
     (api, session) => JobsScreen(api: api, session: session),
+  ),
+  'scheduling': ModuleScreen(
+    Icons.calendar_month_outlined,
+    (api, session) => SchedulingScreen(api: api, session: session),
   ),
   'inspection': ModuleScreen(
     Icons.fact_check_outlined,

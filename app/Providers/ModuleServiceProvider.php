@@ -969,6 +969,30 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             /*
+             * Scheduling — a shell, and this comment is the honest label on it.
+             *
+             * Three tabs stand (Availability, Schedule, Settings) and all three
+             * are placeholders. There is no table, no endpoint and no model
+             * behind any of them yet, so the only thing this declaration buys
+             * today is the rail slot and the four permissions — which is the
+             * point: the permissions exist before the screens do, so nobody
+             * ships a screen and grants it to everybody by accident.
+             *
+             * It sits next to Jobs because that is the work it will eventually
+             * be about. Whether Availability turns out to mean staff, equipment
+             * or customer-facing slots is undecided, and this file is not the
+             * place that decides it.
+             */
+            new ModuleDefinition(
+                key: 'scheduling',
+                label: 'Scheduling',
+                actions: ModuleDefinition::DEFAULT_ACTIONS,
+                automationExemptBecause: 'Nothing is scheduled yet — this module is a shell. '
+                    .'Replace this with real triggers when Availability becomes real; do not '
+                    .'read it as a ruling that scheduling has nothing to automate.',
+            ),
+
+            /*
              * Inspection — named templates a role fills in on a visit, then a
              * frozen report. The tab is one destination with three faces (New
              * Inspection, Generated Reports, Builder). Extra work after submit
