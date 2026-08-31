@@ -66,12 +66,21 @@ and freeze safety — things it can verify. It declined to add "has this been th
 design?" on a peer's say-so, which is correct: a role must not be enforceable by the
 session that holds it. Only Jose can put it at the gate.
 
-**Never redefine a field or a number in place — add a new one.** Three distinct
+**Never redefine a field or a number in place — add a new one.** Four distinct
 instances in a single day: summing per-guide `overdue` and calling the result people;
-a safety note that was right for the wrong reason; and an offer to redefine
-`people_due_for_retaking` from *already lapsed* to *lapsing within N days*. Each time,
-**the number stays plausible and the meaning moves**, so nothing announces the change
-and every existing reader is quietly wrong. If the meaning shifts, the name shifts.
+a safety note that was right for the wrong reason; an offer to redefine
+`people_due_for_retaking` from *already lapsed* to *lapsing within N days*; and a ✅ in
+this file's own queue meaning both "being built" and "nobody is touching this". Each
+time, **the number stays plausible and the meaning moves**, so nothing announces the
+change and every existing reader is quietly wrong. If the meaning shifts, the name
+shifts.
+
+> **Why writing the rule down twice did not stop it happening in the file that
+> contains it:** this failure is markedly easier to see in someone else's data than in
+> your own status column. Nobody audits their own progress markers — a tick you wrote
+> reads as the thing you meant when you wrote it, not as the thing it now says. So the
+> rule needs a habit attached, not just a statement: when a marker could describe two
+> states, split it before anyone has to ask which one it means.
 
 **Two panels that summon different people must differ in tense as well as wording.**
 HR's certification panel is a *lookahead* with a `days` window defaulting to 60 —
@@ -211,11 +220,24 @@ live one — read it rather than this summary.
 
 ## Queue
 
+**Approved designs are pinned to a SHA, not to "on main".** Main moves every two or
+three minutes on a busy afternoon, and a design approved *as drawn* is a claim about a
+specific drawing. `git show <sha>:docs/previews/<file>` is what was approved; the file
+on main may have moved on.
+
 | # | Item | State |
 |---|---|---|
-| ✅ | **Phone · Caller Identity & Trust** | **Layout 1 approved** (prerequisite ladder) — `docs/previews/phone-trust-layouts.html`. Approved as drawn, i.e. **merged** with the existing Trust section as *Trust & caller identity*, rail 14 → 13. **No live Phone session to hand it to** — whoever picks Phone up implements layout 1. |
-| — | **Scheduling · Availability + Settings** | Six layouts built — `docs/previews/scheduling-layouts.html`. **With Jose.** See below. |
-| 2 | **Fleet · vehicle Identity card** | Briefed, see below. Not started. |
+> **🔨 and ⚠️ are deliberately different, and ✅ is not used here.** An approved
+> design with nobody building it *looks* like progress on a queue and is not — it is
+> a drawing. The deploy desk's line, and it applies to this file before it applies to
+> anyone else's: a ticked row that means "waiting for a session that does not exist"
+> is the same failure this doc warns about twice elsewhere — **the marker stays
+> plausible and the meaning moves.** A row leaves this table when it ships, not when
+> it is approved.
+
+| 🔨 | **Phone · Caller Identity & Trust** | **Layout 1 approved, being built.** `docs/previews/phone-trust-layouts.html` @ `d66bcef` — build from that pin, not `d0ce75a`: the legend there omits `none` from the degraded bucket, which has nowhere to land once capture runs. Approved as drawn, i.e. **merged** with the existing Trust section as *Trust & caller identity*, rail 14 → 13. Held by the Phone session (`ezbizi-0b` per the roster). |
+| 🔨 | **Scheduling · Availability + Settings** | **Layout 7 approved, being built** (Overview + area rail — Jose's own combination of 1 and 2); Availability is **layout 4**. `docs/previews/scheduling-layouts.html` @ `560aed5`. Held by the Scheduling session. |
+| ⚠️ | **Fleet · vehicle Identity card** | **Layout 2 approved — and NOBODY IS BUILDING IT.** `docs/previews/fleet-identity-layouts.html` @ `560aed5`. The Fleet session that briefed it ended before it was drawn and none has replaced it. This row is not progress; it is a finished drawing waiting for an owner. If you are picking up Fleet, it is ready and needs nothing from Jose. |
 | 3 | **Phone · Settings rail** — 14 sections, grew one at a time | Not started. |
 | 4 | **Web Management · per-page value overrides** | Briefed. `license` ruled **conditional**. Not started. |
 

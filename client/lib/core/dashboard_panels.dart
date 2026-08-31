@@ -69,6 +69,13 @@ IconData dashboardPanelIcon(String key) {
     'services': Icons.handyman_outlined,
     'email': Icons.inbox_outlined,
     'automations': Icons.bolt_outlined,
+    'tasks': Icons.checklist_outlined,
+    'reviews': Icons.reviews_outlined,
+    'leads': Icons.person_search_outlined,
+    'business_profile': Icons.storefront_outlined,
+    // Monitoring watches DEVICES — the subject is `MonitoredDevice` — so this is
+    // a machine, not a heartbeat or a chart.
+    'monitoring': Icons.desktop_windows_outlined,
   };
 
   return byModule[key] ??

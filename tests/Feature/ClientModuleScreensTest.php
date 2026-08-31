@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Support\Modules\ModuleDefinition;
 use App\Support\Modules\ModuleRegistry;
 use Tests\TestCase;
 
@@ -95,6 +96,126 @@ class ClientModuleScreensTest extends TestCase
             "These modules have a screen but no `view` permission, so no role could ever be\n".
             "granted the tab: %s",
             implode(', ', $missing),
+        ));
+    }
+
+    private const PANELS = __DIR__.'/../../client/lib/core/dashboard_panels.dart';
+
+    /**
+     * Modules whose dashboard panel has no icon of its own YET.
+     *
+     * Each one renders `Icons.insights_outlined` — a generic chart nobody chose
+     * — on a customer's dashboard today. They are listed rather than fixed here
+     * because `dashboard_panels.dart` belongs to another session; the list is a
+     * ratchet, not an acceptance. Delete a line when its icon lands.
+     */
+    private const PANELS_WITHOUT_AN_ICON = [
+        // Empty, and it should stay that way. All five entries were cleared when
+        // their icons landed — every sidebar module now draws one somebody chose.
+        // Adding a name here is not a fix, it is a deferral with a comment.
+    ];
+
+    /**
+     * Every sidebar module draws an icon somebody chose.
+     *
+     * ── Why this test exists ──────────────────────────────────────
+     *
+     * `GlanceRegistryTest` already asserts sidebar modules against glance keys as
+     * a sorted-set equality, so a module declared WITHOUT a glance turns the gate
+     * red — loud, and it has caught two modules already.
+     *
+     * Nothing asserted the icon map. `dashboardPanelIcon` ends in
+     * `?? Icons.insights_outlined`, so a module that registers its glance
+     * correctly and omits an icon row goes GREEN and renders a generic chart on
+     * every customer's dashboard, permanently. Two failure modes on the same
+     * declaration: one loud, one silent, and the silent one is the one that
+     * reaches the customer.
+     *
+     * A fallback that makes a missing entry look deliberate is exactly the shape
+     * that needs a test, because nothing else will ever notice.
+     */
+    public function test_every_sidebar_module_has_a_dashboard_icon_somebody_chose(): void
+    {
+        $source = file_get_contents(self::PANELS);
+
+        $this->assertNotFalse($source, 'client/lib/core/dashboard_panels.dart is unreadable.');
+
+        // `^`-anchored only, with no trailing `$`. A `$` here would pass on a LF
+        // checkout and fail on a CRLF one against a byte-identical file --
+        // StartUp.md §8 has the whole story.
+        preg_match_all("/^\s*'([a-z_]+)':\s*Icons\./m", $source, $matches);
+
+        $withIcons = $matches[1];
+
+        $this->assertNotEmpty($withIcons, 'Found no panel icons — has the map moved?');
+
+        $tabs = collect(app(ModuleRegistry::class)->all())
+            ->filter(fn ($m) => $m->rolesGroup === ModuleDefinition::ROLES_TAB
+                && $m->sidebar
+                && $m->key !== 'dashboard')
+            ->keys()->all();
+
+        /*
+         * A FLOOR ON THE REGISTRY SIDE, not only on the Dart side.
+         *
+         * `array_diff($tabs, ...)` over an EMPTY $tabs is empty, so this test
+         * passes green while checking nothing at all -- and nothing says the
+         * scan stopped working. Rename ROLES_TAB, change the `sidebar` flag, or
+         * break the filter, and the gate reports success forever.
+         *
+         * An upper bound alone is not a gate; it needs proof that the
+         * measurement ran. Found by reading another session's post-mortem of
+         * the identical hole in the colour-literal ratchet (f31d990) and asking
+         * whether it described this test too. It did.
+         */
+        $this->assertGreaterThan(5, count($tabs), 'Found almost no sidebar modules — the registry filter has stopped matching, so this test is no longer checking anything.');
+
+        $missing = array_values(array_diff($tabs, $withIcons, self::PANELS_WITHOUT_AN_ICON));
+
+        sort($missing);
+
+        $this->assertSame([], $missing, sprintf(
+            "These sidebar modules have no icon in dashboard_panels.dart:
+  %s
+
+".
+            "They will render Icons.insights_outlined -- a generic chart -- on every
+".
+            "customer's dashboard, and nothing else will ever go red about it.
+
+".
+            "Add a row to `byModule`, or add the key to PANELS_WITHOUT_AN_ICON with a
+".
+            "reason if it is genuinely meant to be generic.",
+            implode("
+  ", $missing),
+        ));
+    }
+
+    /**
+     * The gap list is a ratchet and has to shrink, never quietly stop applying.
+     *
+     * Without this, a module fixed in `byModule` but left in the list looks
+     * exempt forever, and the next reader cannot tell which entries are real.
+     */
+    public function test_the_icon_gap_list_names_only_modules_that_are_still_missing(): void
+    {
+        $source = file_get_contents(self::PANELS);
+        preg_match_all("/^\s*'([a-z_]+)':\s*Icons\./m", (string) $source, $matches);
+
+        $stale = array_values(array_intersect(self::PANELS_WITHOUT_AN_ICON, $matches[1]));
+
+        sort($stale);
+
+        $this->assertSame([], $stale, sprintf(
+            "These are listed as having no icon, but dashboard_panels.dart now gives
+".
+            "them one:
+  %s
+
+Remove them from PANELS_WITHOUT_AN_ICON.",
+            implode("
+  ", $stale),
         ));
     }
 }
