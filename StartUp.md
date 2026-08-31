@@ -884,6 +884,39 @@ matters, because a test that misreads a line ending goes red and somebody
 investigates, whereas the WordPress plugin would quietly render the wrong thing
 on a customer's page forever.
 
+### A verification script must assert HOW MANY things it verified
+
+The floor rule above applies to gates. It applies just as hard to the throwaway
+script you write to convince yourself a refactor was safe — and there the stakes
+are higher, because nobody reviews it and it runs once.
+
+A session replacing 84 literals across 14 glances wrote a checker comparing each
+new constant against the method it replaced. First run: "0 identical, 84
+mismatched." That was the CHECKER being broken, not the refactor — Python's glob
+returns Windows backslash paths, and `git show HEAD:app\Support\...` reads as
+nothing, so every "old" value came back None.
+
+**The dangerous version is the one that failed the other way.** Had it been
+written to SKIP unreadable files instead of comparing them, it would have
+compared zero pairs and printed a clean pass. A refactor across 84 values would
+have been declared verified by a script that read nothing.
+
+So: assert the counts, not just the result.
+
+```python
+assert files_read == 14
+assert comparisons == 84
+```
+
+**A check that cannot distinguish "I compared them and they matched" from "I
+compared nothing" is not a check.** One line converts a silent pass into a loud
+failure.
+
+Two bugs of this shape were made by the same session two hours apart, and both
+were in the CHECKING code rather than the changed code, and both failed toward
+"looks fine". That is the direction to expect: verification code is written in a
+hurry by someone who already believes the answer.
+
 ### PHP's default 128M dies partway through a large filter
 
 `php -d memory_limit=1G vendor/bin/phpunit --filter=...` for anything broad. The
