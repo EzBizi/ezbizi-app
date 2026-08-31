@@ -967,6 +967,67 @@ void main() {
       'status': 'connected',
     };
 
+    /// A menu that is configured and never heard.
+    ///
+    /// Every other field on the row reads as healthy — it has keys, it is on a
+    /// line — while no caller has ever reached it. Nobody reports it either:
+    /// the caller does not know they missed a menu, and the owner does not
+    /// know theirs is skipped.
+    testWidgets('a menu that never plays says so on its row', (tester) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        flows: const [
+          {
+            'id': 'fl-1',
+            'connection_id': 'cx-1',
+            'name': 'Never heard',
+            'prompt': 'Press one for sales.',
+            'options': [
+              {'digit': '1', 'action': 'ring_group', 'ring_group_id': 'rg-1'},
+            ],
+            'number_ids': ['n-1'],
+            'plays': false,
+          },
+        ],
+      );
+
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('IVR menus'));
+
+      expect(find.textContaining('No caller ever hears this'), findsOneWidget);
+    });
+
+    /// The claim is serious, so an older server that does not send the field
+    /// must not put the warning on every healthy menu.
+    testWidgets('a menu says nothing when the server does not report it', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        flows: const [
+          {
+            'id': 'fl-1',
+            'connection_id': 'cx-1',
+            'name': 'Main menu',
+            'prompt': 'Press one for sales.',
+            'options': [
+              {'digit': '1', 'action': 'ring_group', 'ring_group_id': 'rg-1'},
+            ],
+            'number_ids': ['n-1'],
+          },
+        ],
+      );
+
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('IVR menus'));
+
+      expect(find.textContaining('No caller ever hears this'), findsNothing);
+    });
+
     testWidgets('a menu posts the digit, action and group the renderer reads', (tester) async {
       Map<String, dynamic>? sent;
 

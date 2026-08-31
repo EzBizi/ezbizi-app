@@ -166,6 +166,7 @@ final class TwimlRenderer
                 ? 'Twilio posts it to EzBizi and the steps below run in order.'
                 : 'Nothing below runs until the number is imported or bought here.',
             'usable' => $pointed,
+            'skipped' => false,
         ];
 
         $schedule = $number->hours_schedule_id === null
@@ -178,6 +179,7 @@ final class TwimlRenderer
                 'title' => 'Business hours: always open',
                 'detail' => 'No schedule is set, so the call is never treated as after hours.',
                 'usable' => true,
+                'skipped' => false,
             ];
         } else {
             $closed = $this->closed($number, $context);
@@ -194,6 +196,7 @@ final class TwimlRenderer
                     }
                     : 'Open, so the call carries on to the steps below.',
                 'usable' => true,
+                'skipped' => false,
             ];
         }
 
@@ -211,6 +214,20 @@ final class TwimlRenderer
                     : 'A menu is set but has no usable menu step, so it is skipped.')
                 : 'The caller hears it and presses a key: “'.$prompt.'”',
             'usable' => true,
+
+            // CONFIGURED AND NEVER PLAYED is the case this exists for.
+            //
+            // A flow can be built, named, given keys and options and attached
+            // to a line, and still contain no menu node — at which point the
+            // caller goes straight past it and hears nothing. Nobody
+            // complains: the caller does not know they missed a menu and the
+            // owner does not know theirs is skipped.
+            //
+            // Not folded into `usable`, which on this step means "does not
+            // break the call" and on the answer step means "reaches somebody".
+            // Two meanings behind one key is how a value stays plausible while
+            // its meaning moves.
+            'skipped' => $prompt === null && $number->flow_id !== null,
         ];
 
         $connection = $number->connection;
@@ -236,6 +253,7 @@ final class TwimlRenderer
                 default => 'Whoever is on duty in that group is dialled.',
             },
             'usable' => $reaches,
+            'skipped' => false,
         ];
 
         // Only worth a line when it changes the answer — a fallback on a line
@@ -253,6 +271,7 @@ final class TwimlRenderer
                     : 'Nobody above answers, so this number is dialled instead. '
                         .'Tried once, then voicemail.',
                 'usable' => true,
+                'skipped' => false,
             ];
         }
 
@@ -680,11 +699,11 @@ final class TwimlRenderer
         }
 
         $flow = PhoneFlow::query()->find($number->flow_id);
-        if ($flow === null || ! is_array($flow->nodes)) {
+        if ($flow === null) {
             return null;
         }
 
-        $menu = $this->findMenu($flow->nodes);
+        $menu = self::menuNodeOf($flow);
         if ($menu === null || ! is_array($menu['options'] ?? null)) {
             return null;
         }
@@ -786,11 +805,11 @@ final class TwimlRenderer
         }
 
         $flow = PhoneFlow::query()->find($number->flow_id);
-        if ($flow === null || ! is_array($flow->nodes)) {
+        if ($flow === null) {
             return null;
         }
 
-        $menu = $this->findMenu($flow->nodes);
+        $menu = self::menuNodeOf($flow);
         if ($menu === null) {
             return null;
         }
@@ -806,7 +825,29 @@ final class TwimlRenderer
      * @param  array<mixed>  $nodes
      * @return array<string, mixed>|null
      */
-    private function findMenu(array $nodes): ?array
+    /**
+     * The menu node this flow would actually play, or null if it has none.
+     *
+     * A flow can be built, named, given keys and options, and still contain no
+     * `menu` node — at which point the renderer skips it and the caller never
+     * hears it. Nothing failed while that was true: the menu saved, the pane
+     * listed it, and every call went straight past.
+     *
+     * Public and static because THREE readers need this same answer and a
+     * second derivation would go quietly out of step: the renderer deciding
+     * what to play, the IVR pane saying a menu never plays, and `describe()`
+     * marking the step skipped.
+     */
+    public static function menuNodeOf(PhoneFlow $flow): ?array
+    {
+        if (! is_array($flow->nodes)) {
+            return null;
+        }
+
+        return self::findMenu($flow->nodes);
+    }
+
+    private static function findMenu(array $nodes): ?array
     {
         if (($nodes['type'] ?? null) === 'menu') {
             return $nodes;

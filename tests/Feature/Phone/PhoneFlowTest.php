@@ -9,6 +9,7 @@ use App\Models\PhoneRingGroup;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
+use App\Support\Phone\TwimlRenderer;
 
 /**
  * Call menus: what a caller hears, and where each key sends them (spec §7).
@@ -141,6 +142,82 @@ class PhoneFlowTest extends TestCase
             ->patchJson('/api/v1/phone/numbers/'.$number->id, ['flow_id' => $foreign->id])
             ->assertStatus(422)
             ->assertJsonValidationErrors('flow_id');
+    }
+
+    /**
+     * A menu that is fully configured and never plays.
+     *
+     * This is the module's signature failure wearing another hat: the flow
+     * saves, the pane lists it, it is attached to a line, and no caller ever
+     * hears it — because the renderer looks for a `menu` node and this one has
+     * none. Nobody reports it, either. The caller does not know they missed a
+     * menu, and the owner does not know theirs is skipped.
+     *
+     * Two readers are asserted together on purpose. The list has to say the
+     * menu never plays, AND the line's own trace has to mark the step skipped,
+     * because General draws that step and Call flow reports it. One without
+     * the other is a screen that disagrees with the call.
+     */
+    public function test_a_menu_with_no_playable_step_says_so_and_is_marked_skipped(): void
+    {
+        [$t, $connection, $group] = $this->connectedCompany();
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+
+        $number = $this->inTenant($t['org'], function () use ($t, $connection, $group) {
+            // Everything a working menu has, except the node the renderer
+            // actually looks for.
+            $broken = PhoneFlow::query()->create([
+                'organization_id' => $t['org']->id,
+                'connection_id' => $connection->id,
+                'name' => 'Never heard',
+                'nodes' => [
+                    'type' => 'something_else',
+                    'prompt' => 'Press one for sales.',
+                    'options' => [
+                        ['digit' => '1', 'action' => 'ring_group', 'ring_group_id' => $group->id],
+                    ],
+                ],
+            ]);
+
+            return PhoneNumber::query()->create([
+                'organization_id' => $t['org']->id,
+                'connection_id' => $connection->id,
+                'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'e164' => '+12035557788',
+                'label' => 'Front',
+                'twilio_sid' => 'PNbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                'flow_id' => $broken->id,
+                'ring_group_id' => $group->id,
+                'after_hours' => 'voicemail',
+                'record' => false,
+                'transcribe' => false,
+            ]);
+        });
+
+        $listed = $this->signedInAs($editor)
+            ->getJson('/api/v1/phone/flows')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertFalse(
+            collect($listed)->firstWhere('name', 'Never heard')['plays'],
+            'a menu with no playable step was listed as though callers hear it',
+        );
+
+        $steps = $this->inTenant(
+            $t['org'],
+            fn () => (new TwimlRenderer)->describe($number->refresh()),
+        );
+
+        $menu = collect($steps)->firstWhere('step', 'menu');
+
+        $this->assertTrue($menu['skipped'], 'the trace did not mark the menu skipped');
+
+        // And `usable` is NOT the flag. It means "does not break the call" on
+        // this step, which stays true — folding the two together is how the
+        // one step the marker exists for would render as fine.
+        $this->assertTrue($menu['usable']);
     }
 
     public function test_a_menu_is_stored_in_the_shape_the_renderer_reads(): void

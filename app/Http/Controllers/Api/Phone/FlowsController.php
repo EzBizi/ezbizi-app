@@ -15,6 +15,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Exists;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
+use App\Support\Phone\TwimlRenderer;
 
 /**
  * Phone call flows — the menu a caller hears (spec §7).
@@ -217,6 +218,20 @@ class FlowsController extends Controller
                 (array) ($nodes['options'] ?? []),
                 'is_array',
             )),
+
+            // WHETHER THIS MENU EVER PLAYS.
+            //
+            // A menu can be built, named, given keys and options and attached
+            // to a line, and still contain no `menu` node — at which point the
+            // renderer skips it and the caller goes straight past. Nothing
+            // fails: the menu saves, this list shows it, and no call ever
+            // reaches it. Nobody complains either, because the caller does not
+            // know they missed a menu and the owner does not know theirs is
+            // skipped.
+            //
+            // Answered by the renderer's own lookup rather than by counting
+            // options here, so the screen cannot disagree with the call.
+            'plays' => TwimlRenderer::menuNodeOf($flow) !== null,
 
             // Which lines play this menu. Deleting one is a decision about
             // those lines, so the screen has to be able to say which.

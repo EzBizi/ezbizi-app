@@ -1016,6 +1016,8 @@ class NumbersController extends Controller
     /** @return array<string, mixed> */
     private function row(PhoneNumber $number): array
     {
+        $steps = (new TwimlRenderer)->describe($number);
+
         return [
             'id' => $number->id,
             'organization_id' => $number->organization_id,
@@ -1063,8 +1065,16 @@ class NumbersController extends Controller
             // O(n) queries over the visible lines. Fine at five; if an
             // organization ever holds hundreds, eager-load the groups and
             // presences rather than reintroducing a separate rule here.
-            'answers' => collect((new TwimlRenderer)->describe($number))
-                ->firstWhere('step', 'answer')['usable'] ?? false,
+            'answers' => collect($steps)->firstWhere('step', 'answer')['usable'] ?? false,
+
+            // The whole trace, not one boolean out of it.
+            //
+            // describe() was already being run for every row and all but one
+            // field of it thrown away, so General could not draw a step as
+            // skipped and Call flow needed a second request to say WHICH line
+            // reaches nobody. Widening costs no queries; it was only ever
+            // withheld by the App Store freeze, which has lifted.
+            'steps' => $steps,
         ];
     }
 }
