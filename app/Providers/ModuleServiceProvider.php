@@ -2151,7 +2151,12 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'Somebody reached the end of a guide. This is about reading '
                             .'it, not about passing anything — a guide with no test raises only '
                             .'this.',
-                        isRaised: false,
+                        // Raised by ProgressController::seen (task 7), on the
+                        // outbox and inside the same transaction as the
+                        // progress row — see its docblock. The other four
+                        // triggers in this module are still declared
+                        // isRaised: false; see the block comment above.
+                        isRaised: true,
                     ),
                     new TriggerDefinition(
                         key: 'training.passed',
