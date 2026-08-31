@@ -297,6 +297,20 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     );
   }
 
+  /// A switch, and NOT an IndexedStack — which is load-bearing, not incidental.
+  ///
+  /// Building one pane at a time means leaving a section disposes it and coming
+  /// back constructs it again, so every pane's `initState` reloads and shows
+  /// what the server holds NOW. Several panes edit the same line: General and
+  /// Numbers share five controls, and Ring groups writes `phone_numbers` too.
+  ///
+  /// An IndexedStack keeps every pane alive and would look like a straight
+  /// performance win. It would also mean a pane you visited an hour ago is
+  /// still showing what it fetched then — change the fallback number in
+  /// General, open Numbers, save, and General's stale copy silently reverts it.
+  ///
+  /// PhoneScreenTest has a test that a pane refetches when it is opened again,
+  /// so this is enforced rather than remembered.
   Widget _sectionBody() {
     return switch (_section) {
       // General leads and Call flow follows it. They answer the same question

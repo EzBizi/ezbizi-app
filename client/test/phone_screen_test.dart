@@ -549,6 +549,44 @@ void main() {
       expect(find.textContaining('Also on General'), findsWidgets);
     });
 
+    /// Leaving a section and coming back must REFETCH.
+    ///
+    /// Several panes edit the same line — General and Numbers share five
+    /// controls, and Ring groups writes phone_numbers too — so a pane showing
+    /// what it fetched an hour ago is a pane that will silently revert somebody
+    /// else's save. Today that is guaranteed by the rail being a switch, which
+    /// disposes the pane you leave.
+    ///
+    /// This exists because that is a correctness property held up by something
+    /// that looks like an implementation detail. Swapping the switch for an
+    /// IndexedStack reads as a straight performance win and would reintroduce
+    /// the bug in silence. It would fail here instead.
+    testWidgets('a pane refetches when it is opened again', (tester) async {
+      final log = <String>[];
+
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        requestLog: log,
+      );
+
+      await openNumbers(tester);
+      final first = log.where((r) => r.endsWith('/phone/numbers')).length;
+      expect(first, greaterThan(0), reason: 'Numbers never loaded at all');
+
+      // Away, then back.
+      await _tap(tester, find.text('Hours'));
+      await _tap(tester, find.text('Numbers'));
+
+      expect(
+        log.where((r) => r.endsWith('/phone/numbers')).length,
+        greaterThan(first),
+        reason: 'reopening Numbers served a cached pane, so another screen '
+            'saving the same line would be reverted by this one',
+      );
+    });
+
     testWidgets('a line with no ring group says calls go to voicemail', (tester) async {
       await _pump(
         tester,
@@ -1213,6 +1251,7 @@ Future<void> _pump(
   void Function(Map<String, dynamic> body)? onRingGroup,
   void Function(Map<String, dynamic> body)? onNumberPatch,
   void Function()? onDelete,
+  List<String>? requestLog,
   List<Map<String, Object?>> voicemailBoxes = const [],
   bool voicemailFails = false,
   void Function(Map<String, dynamic> body)? onVoicemailSave,
@@ -1242,6 +1281,7 @@ Future<void> _pump(
         onRingGroup: onRingGroup,
         onNumberPatch: onNumberPatch,
         onDelete: onDelete,
+        requestLog: requestLog,
         voicemailBoxes: voicemailBoxes,
         voicemailFails: voicemailFails,
         onVoicemailSave: onVoicemailSave,
@@ -1329,12 +1369,14 @@ MockClientHandler _handler({
   void Function(Map<String, dynamic> body)? onRingGroup,
   void Function(Map<String, dynamic> body)? onNumberPatch,
   void Function()? onDelete,
+  List<String>? requestLog,
   List<Map<String, Object?>> voicemailBoxes = const [],
   bool voicemailFails = false,
   void Function(Map<String, dynamic> body)? onVoicemailSave,
 }) {
   return (request) async {
     final path = request.url.path;
+    requestLog?.add('${request.method} $path');
 
     if (path.endsWith('/me')) {
       return _json({
