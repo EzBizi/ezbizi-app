@@ -66,12 +66,21 @@ and freeze safety — things it can verify. It declined to add "has this been th
 design?" on a peer's say-so, which is correct: a role must not be enforceable by the
 session that holds it. Only Jose can put it at the gate.
 
-**Never redefine a field or a number in place — add a new one.** Three distinct
+**Never redefine a field or a number in place — add a new one.** Four distinct
 instances in a single day: summing per-guide `overdue` and calling the result people;
-a safety note that was right for the wrong reason; and an offer to redefine
-`people_due_for_retaking` from *already lapsed* to *lapsing within N days*. Each time,
-**the number stays plausible and the meaning moves**, so nothing announces the change
-and every existing reader is quietly wrong. If the meaning shifts, the name shifts.
+a safety note that was right for the wrong reason; an offer to redefine
+`people_due_for_retaking` from *already lapsed* to *lapsing within N days*; and a ✅ in
+this file's own queue meaning both "being built" and "nobody is touching this". Each
+time, **the number stays plausible and the meaning moves**, so nothing announces the
+change and every existing reader is quietly wrong. If the meaning shifts, the name
+shifts.
+
+> **Why writing the rule down twice did not stop it happening in the file that
+> contains it:** this failure is markedly easier to see in someone else's data than in
+> your own status column. Nobody audits their own progress markers — a tick you wrote
+> reads as the thing you meant when you wrote it, not as the thing it now says. So the
+> rule needs a habit attached, not just a statement: when a marker could describe two
+> states, split it before anyone has to ask which one it means.
 
 **Two panels that summon different people must differ in tense as well as wording.**
 HR's certification panel is a *lookahead* with a `days` window defaulting to 60 —
