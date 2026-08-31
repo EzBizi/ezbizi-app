@@ -101,6 +101,25 @@ class AutomationSubjectScopeTest extends TestCase
         'monitoring',
     ];
 
+    /**
+     * Modules raising triggers that have not yet declared what they EMIT.
+     *
+     * Grandfathered, and the list only shrinks. Every module here predates
+     * `ModuleDefinition::$emits`; each one's owner declares the record types it
+     * passes to `events->emit()` and deletes its line. The next module to raise
+     * a trigger cannot join this list — that is the entire point, because the
+     * defect this guards is an absence and absences do not appear in diffs.
+     *
+     * Approved by Jose on 2026-08-31 as the permanent fix for the disclosure
+     * class. Proposed by the Training session, whose reviewer hit it live.
+     */
+    private const HAS_NOT_DECLARED_WHAT_IT_EMITS = [
+        'tasks', 'companies', 'franchises', 'users', 'hr', 'time_clock',
+        'customers', 'jobs', 'inspection', 'marketing', 'phone',
+        'fleet_management', 'inventory', 'services', 'leads', 'reviews',
+        'business_profile', 'email', 'monitoring',
+    ];
+
     /** @return array<string, \App\Support\Modules\ModuleDefinition> modules raising at least one trigger */
     private function modulesThatRaise(): array
     {
@@ -218,6 +237,108 @@ class AutomationSubjectScopeTest extends TestCase
         $this->assertSame([], $stale, sprintf(
             "These are listed as reaching the whole organization and no longer do:\n  %s\n\nRemove them.",
             implode("\n  ", $stale),
+        ));
+    }
+
+    /**
+     * A module that raises an event says which records it emits.
+     *
+     * This is the assertion the whole file was built for, and it took two
+     * attempts. The first version asked whether a module declared `$subject` —
+     * which governs field editing, not audience — and would have failed the one
+     * module that got scoping right first. `$emits` asks the question that
+     * `audienceFor` actually answers.
+     */
+    public function test_a_module_that_raises_events_declares_what_it_emits(): void
+    {
+        $missing = [];
+
+        foreach ($this->modulesThatRaise() as $key => $module) {
+            if ($module->emits === [] && ! in_array($key, self::HAS_NOT_DECLARED_WHAT_IT_EMITS, true)) {
+                $missing[] = $key;
+            }
+        }
+
+        sort($missing);
+
+        $this->assertSame([], $missing, sprintf(
+            "These modules raise automation events without declaring what they emit:
+  %s
+
+".
+            "Add `emits: [YourModel::class]` to the module definition — every record type you
+".
+            "pass to events->emit(), not just the main one.
+
+".
+            'Until a module declares this, nothing can ask whether the records it broadcasts '.
+            'can say where they sit, and a `notify` rule on any of its triggers may reach '.
+            'every active user in the organization.',
+            implode("
+  ", $missing),
+        ));
+    }
+
+    /** Every declared emitted model can say where it sits. */
+    public function test_every_emitted_model_can_say_where_it_sits(): void
+    {
+        $unscoped = [];
+
+        foreach ($this->modulesThatRaise() as $key => $module) {
+            foreach ($module->emits as $model) {
+                $this->assertTrue(class_exists($model), "Module '$key' emits $model, which does not exist.");
+
+                if ((new ReflectionClass($model))->implementsInterface(CarriesAutomationScope::class)) {
+                    continue;
+                }
+
+                $table = (new $model)->getTable();
+
+                if (Schema::hasTable($table)
+                    && (Schema::hasColumn($table, 'franchise_id') || Schema::hasColumn($table, 'owning_franchise_id'))) {
+                    continue;
+                }
+
+                $unscoped[] = sprintf('%s emits %s', $key, class_basename($model));
+            }
+        }
+
+        sort($unscoped);
+
+        $this->assertSame([], $unscoped, sprintf(
+            "These emitted records cannot say where they sit, so NotificationDispatcher
+".
+            "notifies EVERY ACTIVE USER in the organization about them:
+  %s
+
+".
+            'Implement App\Support\Automations\CarriesAutomationScope on the model.',
+            implode("
+  ", $unscoped),
+        ));
+    }
+
+    /** The grandfather list shrinks and never quietly stops applying. */
+    public function test_the_undeclared_list_names_only_modules_that_still_have_not(): void
+    {
+        $raising = $this->modulesThatRaise();
+        $stale = [];
+
+        foreach (self::HAS_NOT_DECLARED_WHAT_IT_EMITS as $key) {
+            if (isset($raising[$key]) && $raising[$key]->emits !== []) {
+                $stale[] = $key;
+            }
+        }
+
+        sort($stale);
+
+        $this->assertSame([], $stale, sprintf(
+            "These now declare what they emit and no longer need excusing:
+  %s
+
+Remove them.",
+            implode("
+  ", $stale),
         ));
     }
 }

@@ -2194,6 +2194,24 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'training',
                 label: 'Training',
+                /*
+                 * The first module to declare this, and the worked example for
+                 * the other nineteen.
+                 *
+                 * NOT `subject:` — that names the one model whose fields an
+                 * `update_field` action may set, and Training emits three record
+                 * types (progress now; attempts and assignments in Tasks 8-10).
+                 * Naming one would make the field picker silently wrong about the
+                 * other two, which is why this module correctly declares no
+                 * subject at all.
+                 *
+                 * `emits` is the audience question instead: every record type
+                 * passed to `events->emit()`, so a test can ask of each whether it
+                 * can say where it sits. TrainingProgress implements
+                 * CarriesAutomationScope, declared in the same commit that flipped
+                 * `training.completed` to raised.
+                 */
+                emits: [\App\Models\TrainingProgress::class],
                 actions: ['view', 'monitor', 'manage', 'assign'],
                 triggers: [
                     new TriggerDefinition(
