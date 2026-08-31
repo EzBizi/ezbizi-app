@@ -79,8 +79,29 @@ final class TwimlRenderer
             return (string) $response;
         }
 
-        if ($outbound && is_string($context['dial_to'] ?? null) && $context['dial_to'] !== '') {
-            $this->dialParty($response, $number, $context);
+        if ($outbound) {
+            // ── An outbound call must never become voicemail ─────────
+            //
+            // This used to fall through to ringOrVoicemail when the dial
+            // target was missing, so somebody pressing Call heard the
+            // recording notice and then "please leave a message after the
+            // tone" — their own line answering them. Indistinguishable from a
+            // routing fault, and it left no trace saying what was wrong.
+            //
+            // Nobody rings out in order to leave themselves a message. If the
+            // destination did not arrive, that is a fault and it says so.
+            if (is_string($context['dial_to'] ?? null) && $context['dial_to'] !== '') {
+                $this->dialParty($response, $number, $context);
+
+                return (string) $response;
+            }
+
+            $response->say(
+                'This call could not be placed, because the number to dial did '
+                .'not reach the phone system. Nothing has been charged.',
+                ['language' => $language],
+            );
+            $response->hangup();
 
             return (string) $response;
         }
