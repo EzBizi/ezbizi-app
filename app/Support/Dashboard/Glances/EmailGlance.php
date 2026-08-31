@@ -5,7 +5,7 @@ namespace App\Support\Dashboard\Glances;
 use App\Models\Mailbox;
 use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
-use App\Support\Dashboard\Glance;
+use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
 use App\Support\Email\CannotReachHost;
 use App\Support\Email\CannotReadMailbox;
@@ -19,42 +19,19 @@ use App\Support\Tenancy\TenantContext;
  * Unread is the provider's mailbox-level figure — never a stored message list.
  * A mailbox that cannot be asked is named in a sentence; the others still draw.
  */
-final class EmailGlance implements Glance
+final class EmailGlance extends DescribedGlance
 {
+    protected const KEY = 'email';
+    protected const LABEL = 'Email';
+    protected const PERMISSION = 'email.view';
+    protected const PRESENTATIONS = ['bar', 'pie', 'text'];
+    protected const DEFAULT_PRESENTATION = 'bar';
+    protected const SNAPSHOT = true;
+
     public function __construct(
         private readonly MailboxAccess $access,
         private readonly MailboxReaders $readers,
     ) {}
-
-    public function key(): string
-    {
-        return 'email';
-    }
-
-    public function label(): string
-    {
-        return 'Email';
-    }
-
-    public function permission(): string
-    {
-        return 'email.view';
-    }
-
-    public function allowedPresentations(): array
-    {
-        return ['bar', 'pie', 'text'];
-    }
-
-    public function defaultPresentation(): string
-    {
-        return 'bar';
-    }
-
-    public function snapshot(): bool
-    {
-        return true;
-    }
 
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {

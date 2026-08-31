@@ -6,7 +6,7 @@ use App\Models\Review;
 use App\Models\ReviewReply;
 use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
-use App\Support\Dashboard\Glance;
+use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
@@ -30,37 +30,14 @@ use Illuminate\Support\Carbon;
  * Bucketed on `reviewed_at` — when the review was left — rather than on
  * `created_at`, which is only when a sync happened to write it down.
  */
-final class ReviewsGlance implements Glance
+final class ReviewsGlance extends DescribedGlance
 {
-    public function key(): string
-    {
-        return 'reviews';
-    }
-
-    public function label(): string
-    {
-        return 'Reviews';
-    }
-
-    public function permission(): string
-    {
-        return 'reviews.view';
-    }
-
-    public function allowedPresentations(): array
-    {
-        return ['line', 'bar', 'text'];
-    }
-
-    public function defaultPresentation(): string
-    {
-        return 'line';
-    }
-
-    public function snapshot(): bool
-    {
-        return false;
-    }
+    protected const KEY = 'reviews';
+    protected const LABEL = 'Reviews';
+    protected const PERMISSION = 'reviews.view';
+    protected const PRESENTATIONS = ['line', 'bar', 'text'];
+    protected const DEFAULT_PRESENTATION = 'line';
+    protected const SNAPSHOT = false;
 
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {

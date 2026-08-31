@@ -6,7 +6,7 @@ use App\Models\Task;
 use App\Models\TaskBoard;
 use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
-use App\Support\Dashboard\Glance;
+use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tasks\StatusCategory;
@@ -15,39 +15,16 @@ use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 
-final class TasksGlance implements Glance
+final class TasksGlance extends DescribedGlance
 {
+    protected const KEY = 'tasks';
+    protected const LABEL = 'Tasks';
+    protected const PERMISSION = 'tasks.view';
+    protected const PRESENTATIONS = ['bar', 'text'];
+    protected const DEFAULT_PRESENTATION = 'bar';
+    protected const SNAPSHOT = false;
+
     public function __construct(private readonly TaskBoardAccess $access) {}
-
-    public function key(): string
-    {
-        return 'tasks';
-    }
-
-    public function label(): string
-    {
-        return 'Tasks';
-    }
-
-    public function permission(): string
-    {
-        return 'tasks.view';
-    }
-
-    public function allowedPresentations(): array
-    {
-        return ['bar', 'text'];
-    }
-
-    public function defaultPresentation(): string
-    {
-        return 'bar';
-    }
-
-    public function snapshot(): bool
-    {
-        return false;
-    }
 
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {
