@@ -113,6 +113,34 @@ while IFS= read -r f; do
   fi
 done < <(git diff --cached --name-only)
 
+# ── a migration whose model is not in git ────────────────────────
+#
+# A DIFFERENT landmine from anything above, and the one this script missed on
+# 2026-08-31. Nothing was staged, so everything here read "0 stale, 0 live" and
+# the tree looked clean. Meanwhile a commit had landed a migration creating
+# `phone_trust_observations` while its model sat UNTRACKED on disk.
+#
+# That ships a table to production with no retention policy: invisible to
+# `ezbizi:expire-data`, so it accumulates forever. RetentionTest catches it, but
+# only twenty minutes into a deploy, and only after it has blocked everybody
+# else's release.
+#
+# An untracked file under app/Models is almost never deliberate for long. It is
+# either about to be committed or about to be forgotten, and the second one is
+# silent.
+UNTRACKED_MODELS=$(git ls-files --others --exclude-standard app/Models/ 2>/dev/null)
+
+if [ -n "$UNTRACKED_MODELS" ]; then
+  echo
+  echo "  ⚠ MODELS THAT EXIST ONLY ON THIS DISK — git has never seen them:"
+  echo "$UNTRACKED_MODELS" | sed 's/^/       /'
+  echo
+  echo "     If a migration for any of these is already COMMITTED, production"
+  echo "     gets the table without the model — no retention policy, nothing to"
+  echo "     expire it, and RetentionTest will block every deploy until it lands."
+  echo "     Commit them with their migration, or neither."
+fi
+
 echo
 echo "  $stale stale, $live live"
 
