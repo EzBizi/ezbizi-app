@@ -8,6 +8,20 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0126',
+      date: '31 Aug 2026',
+      items: [
+        'Phone: a new Team tab shows each person, their extension, and the '
+            'number they call out from. Numbers were being bought with nobody '
+            'assigned to them, so every outbound call went out under the same '
+            'line - four people ringing four customers all showed one number, '
+            'and every callback landed on whoever picked up.',
+        'Phone: the call desk now gives each column a fair share of the window '
+            'rather than fixing the two busiest at their smallest useful size '
+            'and giving every extra pixel to the dial pad.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0125',
       date: '31 Aug 2026',
       items: [
