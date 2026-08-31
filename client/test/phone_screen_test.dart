@@ -187,7 +187,7 @@ void main() {
     expect(find.text('IVR menus'), findsOneWidget);
     expect(find.text('Hours'), findsOneWidget);
     expect(find.text('Ring groups'), findsOneWidget);
-    expect(find.text('Trust'), findsOneWidget);
+    expect(find.text('Trust & caller identity'), findsOneWidget);
     expect(find.text('Messaging'), findsOneWidget);
     expect(find.text('Activate phone service'), findsNothing);
 
@@ -787,12 +787,16 @@ void main() {
       );
 
       await _tap(tester, find.text('Settings'));
-      await _tap(tester, find.text('Trust'));
+      await _tap(tester, find.text('Trust & caller identity'));
 
-      expect(find.text('With the carriers'), findsOneWidget);
-      expect(find.text('Approved'), findsOneWidget);
-      expect(find.text('Turned down'), findsOneWidget);
-      expect(find.textContaining('nobody at EzBizi can hurry it'), findsOneWidget);
+      // The sentence that matters on this screen: a carrier review is
+      // somebody else's queue, and a customer who thinks EzBizi is sitting on
+      // it will ring EzBizi.
+      expect(
+        find.textContaining('nobody at EzBizi can hurry it'),
+        findsWidgets,
+      );
+      expect(find.text('Pending review'), findsWidgets);
     });
   });
 
