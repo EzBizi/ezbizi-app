@@ -110,11 +110,9 @@ class ClientModuleScreensTest extends TestCase
      * ratchet, not an acceptance. Delete a line when its icon lands.
      */
     private const PANELS_WITHOUT_AN_ICON = [
-        'business_profile',
-        'leads',
-        'monitoring',
-        'reviews',
-        'tasks',
+        // Empty, and it should stay that way. All five entries were cleared when
+        // their icons landed — every sidebar module now draws one somebody chose.
+        // Adding a name here is not a fix, it is a deferral with a comment.
     ];
 
     /**
