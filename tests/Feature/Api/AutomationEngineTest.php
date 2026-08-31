@@ -12,6 +12,7 @@ use App\Models\Job;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Automations\AutomationEngine;
 use App\Support\Automations\OutboundWebhook;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
@@ -445,6 +446,39 @@ class AutomationEngineTest extends TestCase
         // whatever actually broke.
         $this->assertNotNull($automation->disabled_at);
         $this->assertStringContainsString('consecutive failures', $automation->disabled_reason);
+    }
+
+    /**
+     * Zero recipients has two causes and they send you to different places.
+     *
+     * Break it by returning the old single sentence from ActionRunner::notify()
+     * and this goes red on the "switched off" assertion.
+     */
+    public function test_a_silenced_company_is_told_so_rather_than_that_nobody_had_reach(): void
+    {
+        $automation = $this->automation('job.created', null,
+            [['type' => 'notify', 'message' => 'New job']]);
+
+        // Nothing about the rule changes — it still matches, still runs, still
+        // reaches the same people. Only the company's setting moves.
+        $this->inTenant(fn () => app(SettingsResolver::class)
+            ->set('notifications.automation_enabled', $this->org['organization'], false));
+
+        $this->makeJob();
+        $this->drain();
+
+        $detail = $this->inTenant(fn () => AutomationRun::query()
+            ->where('automation_id', $automation->id)
+            ->latest('started_at')
+            ->firstOrFail()
+            ->action_results[0]['detail'] ?? '');
+
+        $this->assertStringContainsString('switched off', $detail);
+
+        // The failure this exists for: a settings toggle reported as a scoping
+        // problem, sending whoever debugs the rule to look at franchise
+        // assignments for a reason that is not there.
+        $this->assertStringNotContainsString('Nobody has reach', $detail);
     }
 
     public function test_a_version_cannot_be_edited(): void
