@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AccountDeletionController;
 use App\Http\Controllers\Api\AddressLookupController;
 use App\Http\Controllers\Api\AttachmentsController;
 use App\Http\Controllers\Api\AuthController;
@@ -1333,6 +1334,19 @@ Route::prefix('v1')
         Route::delete('me/avatar', [ProfileController::class, 'destroyAvatar']);
         Route::get('users/{user}/avatar', [ProfileController::class, 'avatar']);
         Route::get('me/sessions', [ProfileController::class, 'sessions']);
+
+        // ── Deleting your own account ────────────────────────────
+        //
+        // No policy and no id in the path, for the same reason as the routes
+        // above: the subject is read off the token, so there is nobody else to
+        // authorize against and no way to aim this at a colleague.
+        //
+        // The GET is not decoration. A purge is irreversible and its report is
+        // the only place anybody learns what does NOT go - the same argument
+        // PurgePersonalData makes for its mandatory dry run, and it applies
+        // twice over when the person erasing themselves has to live with it.
+        Route::get('me/deletion', [AccountDeletionController::class, 'show']);
+        Route::delete('me', [AccountDeletionController::class, 'destroy']);
         Route::delete('me/sessions', [ProfileController::class, 'revokeOtherSessions']);
 
         // ── Your own preferences (§2.1 category 6) ───────────────
