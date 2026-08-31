@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Google Ads API — how EzBizi uses it</title>
+<meta name="description" content="How EZBIZI LLC uses the Google Ads API and Local Services Ads data in the EzBizi field-service CRM: per-tenant OAuth, read-dominant access, no aggregation and no resale.">
+<meta name="robots" content="index,follow">
+<meta name="google-site-verification" content="OaHJgW-pM3f9sFFx7ZF1KxAPlCXH7yycOREAvjpNeko">
+<link rel="canonical" href="https://www.ezbizi.com/google-ads-api/">
+<link rel="icon" href="https://www.ezbizi.com/favicon.ico" sizes="any">
+<link rel="icon" href="https://www.ezbizi.com/icon-512.png" type="image/png" sizes="512x512">
+<link rel="apple-touch-icon" href="https://www.ezbizi.com/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="EzBizi">
+<meta property="og:url" content="https://www.ezbizi.com/google-ads-api/">
+<meta property="og:title" content="Google Ads API — how EzBizi uses it">
+<meta property="og:description" content="Per-tenant OAuth, read-dominant access, no aggregation and no resale.">
+<meta property="og:image" content="https://www.ezbizi.com/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="theme-color" content="#00aeef">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Google Ads API — how EzBizi uses it">
+<meta name="twitter:description" content="Per-tenant OAuth, read-dominant access, no aggregation and no resale.">
+<meta name="twitter:image" content="https://www.ezbizi.com/og.png">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebPage","@id":"https://www.ezbizi.com/google-ads-api/#page","url":"https://www.ezbizi.com/google-ads-api/","name":"Google Ads API — how EzBizi uses it","dateModified":"2026-08-31","inLanguage":"en-US","isPartOf":{"@type":"WebSite","url":"https://www.ezbizi.com/","name":"EzBizi"},"publisher":{"@type":"Organization","name":"EZBIZI LLC","url":"https://www.ezbizi.com/","address":{"@type":"PostalAddress","streetAddress":"800 SE 4th Ave Ste 107","addressLocality":"Hallandale Beach","addressRegion":"FL","postalCode":"33009","addressCountry":"US"}}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--cyan:#00aeef;--ink:#060808;--muted:#5b6672;--border:rgba(6,8,8,.10);--bg-2:#f5f8fa;--font:"Inter",system-ui,sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);color:var(--ink);line-height:1.65;background:#fff}
+.wrap{max-width:760px;margin:0 auto;padding:48px 24px 80px}
+a{color:var(--cyan)}
+h1{font-size:1.75rem;margin:24px 0 8px}
+h2{font-size:1.1rem;margin:32px 0 8px}
+h3{font-size:.95rem;margin:20px 0 6px}
+p,li{color:var(--muted);margin:0 0 12px}
+ul{padding-left:1.2rem;margin-bottom:16px}
+.meta{font-size:.85rem;color:#8a949f}
+nav{border-bottom:1px solid var(--border);padding-bottom:16px}
+table{border-collapse:collapse;width:100%;margin:0 0 20px;font-size:.9rem}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top;color:var(--muted)}
+th{color:var(--ink);font-weight:600;white-space:nowrap}
+.box{background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin:0 0 20px}
+.box p:last-child{margin-bottom:0}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85em;background:var(--bg-2);padding:1px 5px;border-radius:4px;color:var(--ink)}
+.k{color:var(--ink);font-weight:600}
+@media (max-width:520px){table,thead,tbody,th,td,tr{display:block}th{border:0;padding-bottom:2px}td{padding-top:2px;border-bottom:1px solid var(--border)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav><a href="https://www.ezbizi.com/">EzBizi</a></nav>
+
+<h1>How EzBizi uses the Google Ads API</h1>
+<p class="meta">EZBIZI LLC · Manager account 706-109-4046 · Last updated 31 August 2026</p>
+
+<p>This page is written for Google's API compliance reviewers. It states what EzBizi is, which
+Google Ads and Local Services data it reads, on whose behalf, and what it does not do.</p>
+
+<h2>The company</h2>
+<table>
+<tr><th>Legal entity</th><td>EZBIZI LLC</td></tr>
+<tr><th>Address</th><td>800 SE 4th Ave Ste 107, Hallandale Beach, FL 33009, United States</td></tr>
+<tr><th>Website</th><td><a href="https://www.ezbizi.com/">www.ezbizi.com</a></td></tr>
+<tr><th>Product</th><td>EzBizi — a field-service CRM, at <a href="https://app.ezbizi.com/">app.ezbizi.com</a></td></tr>
+<tr><th>API contact</th><td><a href="mailto:development@ezbizi.com">development@ezbizi.com</a></td></tr>
+<tr><th>Google Ads manager account</th><td>706-109-4046</td></tr>
+<tr><th>Google Cloud project</th><td>ezbizi-506117 (number 247590132639)</td></tr>
+</table>
+
+<h2>Business model</h2>
+<p>EzBizi is sold as a monthly software subscription to service businesses — home services,
+trades, and multi-location franchises. They use it to manage customers, jobs, scheduling,
+inspections, staff and billing in one system.</p>
+<p>Revenue comes entirely from those subscriptions. EzBizi does not resell advertising, take a
+percentage of ad spend, manage campaigns as a service, or monetise data in any form. Google Ads
+API access exists for one purpose: to bring a customer's own advertising results into that
+customer's own CRM record.</p>
+
+<h2>What the tool does</h2>
+<p>The <span class="k">Leads</span> module inside EzBizi. Its purpose is to close the gap between
+an advertising enquiry and the work that results from it.</p>
+<p>A service business receives enquiries through Google Local Services Ads. Those enquiries live
+in Google's interface, while the resulting customer, job, invoice and technician assignment live
+in the CRM. Nobody can answer <em>"what did this lead actually become?"</em> without cross-checking
+two systems by hand.</p>
+<p>The Leads module retrieves each customer's own Local Services lead and conversation data, plus
+their Google Ads reporting metrics, and shows them beside that business's existing records. An
+enquiry becomes a customer and a job in the same system, with the originating source preserved so
+the work can be attributed back to the advertising that produced it.</p>
+
+<h2>Who uses it</h2>
+<ul>
+<li>Owners and operations managers of service businesses running Local Services Ads.</li>
+<li>Office and dispatch staff who answer enquiries and schedule the work.</li>
+<li>Multi-location operators who need per-location attribution across several accounts.</li>
+</ul>
+<p>Every user reaches the data through their own EzBizi login, governed by role-based permissions
+inside their own organization. It is not offered as a general-purpose Google Ads management tool
+and Google Ads data is never shown to anyone other than the account owner's own staff.</p>
+
+<h2>Authorization — each customer connects their own account</h2>
+<p>EzBizi is a multi-tenant platform. Each customer authorizes their <strong>own</strong> Google Ads
+account through a standard OAuth 2.0 authorization-code flow against EzBizi's own registered OAuth
+client. There is no shared credential, no manager-level access to accounts we were not granted,
+and no scraping of any kind.</p>
+<table>
+<tr><th>1</th><td>A signed-in EzBizi user opens the Leads tab and chooses <em>Connect Google Ads</em>.</td></tr>
+<tr><th>2</th><td>They are sent to Google's consent screen, branded EZBIZI LLC, requesting the <code>adwords</code> scope with offline access.</td></tr>
+<tr><th>3</th><td>They grant or decline. Declining changes nothing.</td></tr>
+<tr><th>4</th><td>EzBizi exchanges the code, encrypts the refresh token, and stores it scoped to that customer alone.</td></tr>
+<tr><th>5</th><td>The accounts the customer has granted are listed, and they choose which to link.</td></tr>
+<tr><th>6</th><td>Scheduled synchronisation retrieves that customer's leads and reporting on their behalf.</td></tr>
+<tr><th>7</th><td>They may disconnect at any time, which deletes the stored grant.</td></tr>
+</table>
+<p>Offline access is requested because synchronisation runs on a schedule rather than only while
+somebody is watching the screen.</p>
+
+<h2>API usage</h2>
+<table>
+<tr><th>Service</th><th>Purpose</th><th>Operation</th></tr>
+<tr><td>Local Services API — detailed lead reports</td><td>Retrieve the customer's own LSA leads, type, category and charge status</td><td>Read</td></tr>
+<tr><td>Local Services API — lead conversations</td><td>Show the enquiry's message and call history on the lead record</td><td>Read</td></tr>
+<tr><td>Google Ads API — <code>customer</code>, <code>customer_client</code></td><td>List the accounts the customer has granted, so they can choose</td><td>Read</td></tr>
+<tr><td>Google Ads API — campaign metrics via <code>GoogleAdsService.Search</code></td><td>Spend, impressions and lead volume for the customer's own reporting</td><td>Read</td></tr>
+<tr><td>Local Services API — lead status</td><td>Apply an explicit user action, such as marking a lead booked or archived</td><td>Write</td></tr>
+</table>
+
+<h3>Read and write</h3>
+<p>Usage is predominantly <strong>read</strong>. The single write path is lead status, and it is
+always the direct result of a person acting in the EzBizi interface — marking a lead as booked
+when they schedule the job, for example. Every such call is recorded in that organization's audit
+log with the acting user, timestamp and target.</p>
+<p>EzBizi does <strong>not</strong> create, modify or pause campaigns; set or adjust bids or
+budgets; manage keywords, assets or creatives; or perform automated bulk mutation of any kind.</p>
+
+<h3>Why no narrower scope is requested</h3>
+<p>The Google Ads API publishes exactly one OAuth scope,
+<code>https://www.googleapis.com/auth/adwords</code>. There is no read-only variant, so requesting
+it is the only way to read a customer's own lead and reporting data.</p>
+
+<h3>Request volume</h3>
+<ul>
+<li>Scheduled incremental synchronisation per connected account, using per-customer cursors so each run retrieves only what has changed since the last successful point.</li>
+<li>Reporting queries are date-ranged and requested on demand or once daily — never polled.</li>
+<li>Requests are rate-limited per customer, retried with exponential backoff, and stop on quota signals rather than retrying blindly.</li>
+</ul>
+
+<h2>Data handling</h2>
+<div class="box">
+<p><span class="k">Per-customer isolation.</span> Every stored record carries its owning
+organization. Reads are filtered and writes are stamped and verified at the data layer;
+cross-organization writes are refused outright.</p>
+<p><span class="k">Token storage.</span> Refresh tokens are encrypted at rest with
+application-level encryption, masked on every serialisation, and are not retrievable through any
+API response or support view.</p>
+<p><span class="k">No client-side credentials.</span> The OAuth client secret and all tokens
+remain server-side. Redirect URIs are derived from the application's own configured origin, never
+from request input.</p>
+<p><span class="k">No aggregation, no resale.</span> Data retrieved for one customer is never
+combined with another's, sold, shared with third parties, or used to train models.</p>
+<p><span class="k">Revocation.</span> Disconnecting deletes the stored grant. Customers may also
+revoke access in their Google Account, which EzBizi detects and surfaces as a broken connection
+rather than failing silently.</p>
+<p><span class="k">Audit.</span> Connection, disconnection and every write are recorded with the
+acting user and a timestamp.</p>
+</div>
+
+<h2>Compliance</h2>
+<p>EZBIZI LLC accepts the Google Ads API Terms and Conditions and the Required Minimum
+Functionality expectations. The tool is used exclusively by the businesses that own the connected
+accounts, to view and act on their own advertising results.</p>
+
+<p class="meta">Related: <a href="https://www.ezbizi.com/privacy/">Privacy</a> ·
+<a href="https://www.ezbizi.com/terms/">Terms</a> ·
+<a href="mailto:development@ezbizi.com">development@ezbizi.com</a></p>
+
+</div>
+</body>
+</html>
