@@ -375,4 +375,168 @@ class TrainingAnswerKeyTest extends TestCase
 
         $this->assertNotContains('Dispatch Only Quiz', $assignedTitles);
     }
+
+    // ── Round 2 review findings: `assigned` must obey place scope, and
+    //    a row's inclusion and its rendered content must be one decision ──
+
+    /**
+     * IMPORTANT 1 from review round 2: `assigned` was built straight off
+     * `TrainingAssignment`'s `guide`/`test` relations, checked only for
+     * publication — never through InventoryVisibility, so a franchise-scoped
+     * learner assigned a sibling franchise's test saw it anyway. Proven by
+     * the review directly:
+     *
+     *   PROBE1 assigned titles: ["Northgate Quiz"]
+     *   PROBE1 library  titles: []          <- constrain works here
+     *   PROBE1 leaked sibling prompt: YES
+     *
+     * `assigned` now renders from the exact same InventoryVisibility-scoped
+     * collections `library` reads from (LearnController::readableTests /
+     * readableGuides), so a target outside this learner's place scope
+     * cannot appear in `assigned` any more than it can in `library`.
+     */
+    public function test_a_learner_assigned_a_sibling_franchises_test_sees_nothing(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $riverside = $tenant['franchise'];
+        $northgate = $this->extraFranchise($tenant, 'Northgate');
+
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $riverside);
+
+        $sibling = $this->inTenant($tenant['org'], fn () => TrainingTest::create([
+            'company_id' => $tenant['company']->id, 'franchise_id' => $northgate->id,
+            'title' => 'Northgate Quiz', 'status' => TrainingTest::PUBLISHED,
+            'pass_mark' => 80, 'requires_guide' => false,
+            'questions' => [[
+                'prompt' => 'Which building is this?',
+                'choices' => [
+                    ['text' => 'Northgate', 'correct' => true],
+                    ['text' => 'Riverside', 'correct' => false],
+                ],
+            ]],
+        ]));
+
+        $this->inTenant($tenant['org'], fn () => TrainingAssignment::create([
+            'company_id' => $tenant['company']->id, 'franchise_id' => $northgate->id,
+            'test_id' => $sibling->id,
+            'assignee_type' => TrainingAssignment::USER,
+            'assignee_id' => $learner->id,
+        ]));
+
+        $payload = $this->signedInAs($learner)->getJson('/api/v1/training/learn')->assertOk();
+
+        $this->assertSame(
+            [],
+            $payload->json('assigned'),
+            'A sibling franchise\'s test must not surface in `assigned` just because it was assigned.',
+        );
+        $this->assertStringNotContainsString('Northgate Quiz', $payload->getContent());
+    }
+
+    /**
+     * IMPORTANT 2 from review round 2: the published filter asked "is
+     * EITHER of my targets published?" while rendering independently
+     * decided which target to show, preferring test. A row carrying both a
+     * published `guide_id` and a draft `test_id` — the schema does not
+     * forbid that pairing, only TestsController's own writer avoids it —
+     * passed the filter on the guide and rendered the draft test, which did
+     * not even appear anywhere in the payload to explain why the row was
+     * there. Proven by the review directly:
+     *
+     *   PROBE2 assigned titles: ["Unfinished Draft Quiz"]
+     *   PROBE2 leaked draft prompt: YES
+     *
+     * Selection and publication are now the same lookup
+     * (LearnController::presentAssignment): whichever target is actually
+     * found in the readable, published collection is the one rendered, and
+     * that is provably the guide here, not the draft test.
+     */
+    public function test_an_assignment_naming_both_a_published_guide_and_a_draft_test_never_surfaces_the_draft(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view']);
+
+        $guide = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
+            'company_id' => $tenant['company']->id, 'franchise_id' => null,
+            'title' => 'Published Guide', 'status' => TrainingGuide::PUBLISHED, 'screens' => [],
+        ]));
+
+        $draftTest = $this->inTenant($tenant['org'], fn () => TrainingTest::create([
+            'company_id' => $tenant['company']->id,
+            'title' => 'Unfinished Draft Quiz', 'status' => TrainingTest::DRAFT,
+            'pass_mark' => 80, 'requires_guide' => false,
+            'questions' => [[
+                'prompt' => 'Still a secret?',
+                'choices' => [
+                    ['text' => 'Yes', 'correct' => true],
+                    ['text' => 'No', 'correct' => false],
+                ],
+            ]],
+        ]));
+
+        // A row the schema does not forbid, even though no writer this
+        // codebase has today produces one: both `guide_id` and `test_id`
+        // set on the same assignment.
+        $this->inTenant($tenant['org'], fn () => TrainingAssignment::create([
+            'company_id' => $tenant['company']->id,
+            'guide_id' => $guide->id,
+            'test_id' => $draftTest->id,
+            'assignee_type' => TrainingAssignment::USER,
+            'assignee_id' => $learner->id,
+        ]));
+
+        $body = $this->signedInAs($learner)
+            ->getJson('/api/v1/training/learn')
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('Unfinished Draft Quiz', $body);
+        $this->assertStringNotContainsString('Still a secret', $body);
+
+        // Not silently dropped either: the row's OTHER target, which really
+        // is published, still renders — proving this is a selection fix,
+        // not the row simply vanishing.
+        $this->assertStringContainsString('Published Guide', $body);
+    }
+
+    // ── MINOR from review round 2: a malformed stored row fails soft ──
+
+    /**
+     * `stripAnswerKey` used to hand every question and every choice straight
+     * to a typed closure, so a row written outside TestsController's
+     * `normalizeQuestions` (a seeder, an import, a manual fix) — with a
+     * question that is not an array, or a `choices` value that is not an
+     * array — threw a TypeError, a 500. The 500 disclosed nothing, but it
+     * was a dead end for a learner looking at an otherwise-readable test.
+     * The malformed question is now skipped; the well-formed one beside it
+     * still renders.
+     */
+    public function test_a_malformed_stored_question_is_skipped_instead_of_crashing_the_read(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view']);
+
+        // Written directly against the model, bypassing TestsController's
+        // validation and normalizeQuestions entirely — exactly what a
+        // seeder or an import would do.
+        $malformed = $this->inTenant($tenant['org'], fn () => TrainingTest::create([
+            'company_id' => $tenant['company']->id,
+            'title' => 'Malformed Quiz', 'status' => TrainingTest::PUBLISHED,
+            'pass_mark' => 80, 'requires_guide' => false,
+            'questions' => [
+                'not a question array at all',
+                [
+                    'prompt' => 'Well formed question',
+                    'choices' => 'not a choices array either',
+                ],
+            ],
+        ]));
+
+        $this->signedInAs($learner)
+            ->getJson("/api/v1/training/learn/tests/{$malformed->id}")
+            ->assertOk()
+            ->assertJsonPath('data.questions.0.prompt', 'Well formed question')
+            ->assertJsonPath('data.questions.0.choices', [])
+            ->assertJsonCount(1, 'data.questions');
+    }
 }

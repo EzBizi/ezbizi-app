@@ -14,6 +14,7 @@ use App\Support\Training\LearnerView;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 
 /**
  * The learner-facing read — what somebody is assigned, what else is on
@@ -40,6 +41,29 @@ use Illuminate\Http\Request;
  * carries the same stripped shape as one fetched on its own, because a
  * second unstripped path is exactly the kind of drift this boundary exists
  * to prevent.
+ *
+ * ── The place-scope boundary, and why `assigned` reads from `library`'s
+ *    own data instead of its own ─────────────────────────────────────
+ *
+ * An earlier version of this controller computed `assigned` straight off
+ * `TrainingAssignment`'s `guide`/`test` relations, checking only each
+ * target's `status` — no InventoryVisibility check at all. That let a
+ * learner see a sibling franchise's test the moment anything assigned it to
+ * them, because the assignee-union query has no reason on its own to know
+ * about place. It also decided "is this row's target published" and "which
+ * target do I render" independently, so a row carrying both a published
+ * `guide_id` and a draft `test_id` (the schema does not forbid a row
+ * carrying both — see [presentAssignment]) could pass the publication check
+ * on the guide and render the draft test anyway.
+ *
+ * [readableGuides] and [readableTests] are the one place both leaks close at
+ * once: they are the SAME InventoryVisibility-constrained, published-only
+ * queries [library] reads from, and [presentAssignment] renders an
+ * assignment's target by looking it up in those collections rather than by
+ * touching `$assignment->guide` or `$assignment->test` at all. A target
+ * that would not appear in `library` cannot appear in `assigned` either,
+ * because they are drawn from the identical set — and a row's inclusion and
+ * its rendered content are now the same lookup, not two.
  */
 class LearnController extends Controller
 {
@@ -50,12 +74,12 @@ class LearnController extends Controller
         $this->authorizeLearner($user);
 
         $scope = ViewScope::forUser($user);
+        $guides = $this->readableGuides($user, $scope);
+        $tests = $this->readableTests($user, $scope);
 
         return response()->json([
-            'assigned' => $this->assignedQuery($user)->get()
-                ->map(fn (TrainingAssignment $assignment) => $this->presentAssignment($assignment))
-                ->values(),
-            'library' => $this->library($user, $scope),
+            'assigned' => $this->assigned($user, $guides, $tests),
+            'library' => $this->library($guides, $tests),
         ]);
     }
 
@@ -91,28 +115,42 @@ class LearnController extends Controller
     }
 
     /**
-     * Guides and tests a learner may reach, in their own view scope,
-     * published only (decision 3) — the same InventoryVisibility engine the
-     * authoring lists use (GuidesController::index, TestsController::index),
-     * pointed at a learner's view instead of a manage-gated one.
-     *
-     * @return array<int, array<string, mixed>>
+     * Every published guide this learner's view scope reaches, keyed by id
+     * — the same InventoryVisibility engine the authoring lists use
+     * (GuidesController::index), pointed at the learner's own view. The one
+     * query both [library] and [assigned] read guides from; see this
+     * class's docblock for why `assigned` does not run its own.
      */
-    private function library(User $user, ViewScope $scope): array
+    private function readableGuides(User $user, ViewScope $scope): Collection
     {
-        $guides = InventoryVisibility::constrain(
+        return InventoryVisibility::constrain(
             TrainingGuide::query()->where('status', TrainingGuide::PUBLISHED),
             $user,
             $scope,
-        )->orderBy('title')->get()->map(fn (TrainingGuide $g) => $this->presentGuide($g));
+        )->orderBy('title')->get()->keyBy('id');
+    }
 
-        $tests = InventoryVisibility::constrain(
+    /** Same as {@see readableGuides}, for tests. */
+    private function readableTests(User $user, ViewScope $scope): Collection
+    {
+        return InventoryVisibility::constrain(
             TrainingTest::query()->where('status', TrainingTest::PUBLISHED),
             $user,
             $scope,
-        )->orderBy('title')->get()->map(fn (TrainingTest $t) => $this->presentTest($t));
+        )->orderBy('title')->get()->keyBy('id');
+    }
 
-        return $guides->concat($tests)->values()->all();
+    /**
+     * @param  Collection<string, TrainingGuide>  $guides
+     * @param  Collection<string, TrainingTest>  $tests
+     * @return array<int, array<string, mixed>>
+     */
+    private function library(Collection $guides, Collection $tests): array
+    {
+        return $guides->map(fn (TrainingGuide $g) => $this->presentGuide($g))
+            ->concat($tests->map(fn (TrainingTest $t) => $this->presentTest($t)))
+            ->values()
+            ->all();
     }
 
     /**
@@ -126,11 +164,26 @@ class LearnController extends Controller
      * writes to it before Task 9, so this returns empty for now, but the
      * query itself does not change when Task 9 starts writing rows.
      *
-     * Published only, same as the library (decision 3): an assignment whose
-     * target has gone back to draft since it was assigned is the authoring
-     * surface's business, not something dangled in front of a learner who
-     * cannot even see drafts elsewhere.
+     * Rendered from `$guides`/`$tests` — the same place-scoped,
+     * published-only collections [library] uses — never from
+     * `$assignment->guide` or `$assignment->test` directly; see this
+     * class's docblock.
+     *
+     * @param  Collection<string, TrainingGuide>  $guides
+     * @param  Collection<string, TrainingTest>  $tests
+     * @return array<int, array<string, mixed>>
      */
+    private function assigned(User $user, Collection $guides, Collection $tests): array
+    {
+        return $this->assignedQuery($user)
+            ->get()
+            ->map(fn (TrainingAssignment $a) => $this->presentAssignment($a, $guides, $tests))
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /** Just the assignee union (decision 2). Place scope and publication are decided in [presentAssignment]. */
     private function assignedQuery(User $user): Builder
     {
         return TrainingAssignment::query()
@@ -146,24 +199,42 @@ class LearnController extends Controller
                             ->where('assignee_id', $user->role_id);
                     });
                 }
-            })
-            ->where(function (Builder $published): void {
-                $published
-                    ->whereHas('guide', fn (Builder $g) => $g->where('status', TrainingGuide::PUBLISHED))
-                    ->orWhereHas('test', fn (Builder $t) => $t->where('status', TrainingTest::PUBLISHED));
-            })
-            ->with(['guide', 'test']);
+            });
     }
 
-    /** @return array<string, mixed> */
-    private function presentAssignment(TrainingAssignment $assignment): array
+    /**
+     * Whether this row is shown at all, and what it is shown AS, are the
+     * SAME decision: look the row's target up in the readable, published
+     * collection for its kind, and render whichever one is found there. A
+     * row whose target is not in either collection — outside this learner's
+     * place scope, still a draft, or (both nullable, per the migration)
+     * simply pointing at nothing — is excluded, `null`.
+     *
+     * `test` is tried first when a row names both: the schema does not
+     * forbid a row carrying both a `guide_id` and a `test_id` (see the
+     * migration), even though no writer this codebase has today produces
+     * one. Trying test first is an arbitrary but STABLE choice for that
+     * edge case — the point this method exists to guarantee is that
+     * whichever target is chosen is the one both checked and rendered,
+     * never one checked and the other rendered.
+     *
+     * @param  Collection<string, TrainingGuide>  $guides
+     * @param  Collection<string, TrainingTest>  $tests
+     * @return array<string, mixed>|null
+     */
+    private function presentAssignment(TrainingAssignment $assignment, Collection $guides, Collection $tests): ?array
     {
-        // `test` before `guide`: the two are mutually exclusive in every row
-        // Task 9 writes, but the column pair does not enforce that itself,
-        // and a defensible default is needed for whichever one is set.
-        $content = $assignment->test !== null
-            ? $this->presentTest($assignment->test)
-            : $this->presentGuide($assignment->guide);
+        $content = match (true) {
+            $assignment->test_id !== null && $tests->has($assignment->test_id)
+                => $this->presentTest($tests->get($assignment->test_id)),
+            $assignment->guide_id !== null && $guides->has($assignment->guide_id)
+                => $this->presentGuide($guides->get($assignment->guide_id)),
+            default => null,
+        };
+
+        if ($content === null) {
+            return null;
+        }
 
         return [
             'assignment_id' => $assignment->id,
