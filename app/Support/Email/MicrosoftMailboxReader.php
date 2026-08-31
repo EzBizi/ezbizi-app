@@ -136,9 +136,23 @@ final class MicrosoftMailboxReader implements MailboxReader
         return self::GRAPH.'/me/mailFolders/'.$folder.'/messages';
     }
 
+    /**
+     * Search WITHIN the folder somebody is standing in.
+     *
+     * ── It used to search the whole mailbox ──────────────────────
+     *
+     * `/me/messages` is every message in the account. So searching while
+     * standing in Sent returned hits from the Inbox as well, under a heading
+     * that said Sent — a smaller version of the same lie as the listing bug,
+     * and one that would have been read as "search is a bit odd" rather than
+     * as a fault.
+     *
+     * Scoped through the same map the listing uses, so an unknown folder is
+     * refused here too rather than quietly searching everything.
+     */
     public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
-        return $this->page($mailbox, self::GRAPH.'/me/messages', [
+        return $this->page($mailbox, $this->folderUrl($mailbox, $label), [
             '$search' => '"'.$query.'"',
             '$select' => self::LIST_SELECT,
             '$top'    => (string) max(1, min($limit, 100)),

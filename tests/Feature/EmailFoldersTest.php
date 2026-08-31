@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Mailbox;
 use App\Support\Email\CannotReadMailbox;
+use App\Support\Email\GmailMailboxReader;
 use App\Support\Email\ImapMailboxReader;
 use App\Support\Email\MicrosoftMailboxReader;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -18,16 +19,34 @@ use Tests\TestCase;
  *  THE FAILURE THIS FILE EXISTS FOR: it succeeds, it displays, and
  *  it is wrong.
  *
- *  Two of the three readers used to accept `$label` and ignore it.
- *  Asking an Outlook inbox for Sent returned RECEIVED mail, with a
- *  200 and nothing anywhere saying otherwise — somebody checking
- *  what the business had sent a customer would have been reading
- *  what the customer sent them.
+ *  ALL THREE readers had it, in three different spellings, and the
+ *  third was found only after the first two were fixed and reported.
  *
- *  It was not reachable from the screen, because the client only
- *  offers folders on Gmail. That makes it latent, not harmless: the
- *  endpoint takes the parameter from anyone, and the day the client
- *  widened its folder list the lie would have shipped with it.
+ *    Graph  a hardcoded /mailFolders/inbox URL
+ *    IMAP   the argument ignored outright
+ *    Gmail  a mapping that answered INBOX for anything unrecognised
+ *
+ *  Gmail was the one written up as honouring the label. It honoured
+ *  the six it knew and quietly answered the Inbox for everything
+ *  else, behind a comment — "anything else is Inbox, not a guessed
+ *  label" — that had the right instinct about guessing and the wrong
+ *  safe default underneath it.
+ *
+ *  Asking for Sent and getting RECEIVED mail, with a 200 and nothing
+ *  anywhere saying otherwise: somebody checking what the business had
+ *  sent a customer would have been reading what the customer sent
+ *  them.
+ *
+ *  None of it was reachable from the screen. That makes it latent,
+ *  not harmless — the endpoint takes the parameter from anyone, and
+ *  the day the client widened its folder list the lie would have
+ *  shipped with it.
+ *
+ *  The lesson is in the third instance rather than the first: a
+ *  fallback that looks like caution IS this bug. "Default to the safe
+ *  thing" and "return the wrong thing confidently" are the same line
+ *  of code when the safe thing is a different answer to the question
+ *  that was asked.
  * ═══════════════════════════════════════════════════════════════════
  */
 class EmailFoldersTest extends TestCase
@@ -190,6 +209,100 @@ class EmailFoldersTest extends TestCase
     }
 
     // ── IMAP: honest about offering only the Inbox ───────────────
+
+    // ── Gmail: the provider that was said to honour the label ────
+
+    /**
+     * A folder Gmail does not have is refused, NOT quietly turned into Inbox.
+     *
+     * This is the third instance of one bug in one module. Graph had it in a
+     * hardcoded URL, IMAP had it by ignoring the argument, and Gmail had it in
+     * a mapping whose comment said "anything else is Inbox, not a guessed
+     * label" — the right instinct about guessing, with the wrong safe default
+     * chosen underneath it.
+     *
+     * Gmail was reported as honouring the label while the other two were
+     * fixed. It honoured the six it knew, and answered the Inbox for
+     * everything else.
+     */
+    public function test_a_folder_gmail_does_not_have_is_refused_not_turned_into_the_inbox(): void
+    {
+        config([
+            'services.google_mail.client_id'     => 'a-google-client-id',
+            'services.google_mail.client_secret' => 'a-google-client-secret',
+        ]);
+
+        Http::fake([
+            'oauth2.googleapis.com/*'   => Http::response(['access_token' => 'a-token', 'expires_in' => 3599]),
+            'gmail.googleapis.com/*'    => Http::response(['threads' => []]),
+        ]);
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->mailbox($t, 'gmail_oauth');
+
+        try {
+            $this->inTenant($t['org'], fn () => app(GmailMailboxReader::class)->list($mailbox, label: 'ARCHIVE'));
+
+            $this->fail('Gmail accepted a folder it does not have, so something was shown for it.');
+        } catch (CannotReadMailbox $e) {
+            $this->assertStringContainsString('ARCHIVE', $e->getMessage());
+        }
+
+        // Nothing was fetched: the refusal precedes the request, so no Inbox
+        // listing was built and discarded.
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'gmail.googleapis.com'));
+    }
+
+    public function test_the_folders_gmail_does_have_still_work(): void
+    {
+        config([
+            'services.google_mail.client_id'     => 'a-google-client-id',
+            'services.google_mail.client_secret' => 'a-google-client-secret',
+        ]);
+
+        Http::fake([
+            'oauth2.googleapis.com/*' => Http::response(['access_token' => 'a-token', 'expires_in' => 3599]),
+            'gmail.googleapis.com/*'  => Http::response(['threads' => []]),
+        ]);
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->mailbox($t, 'gmail_oauth');
+
+        $this->inTenant($t['org'], fn () => app(GmailMailboxReader::class)->list($mailbox, label: 'SENT'));
+
+        // The control for the refusal above: SENT is not caught by the guard,
+        // and it reaches Gmail as SENT rather than as INBOX.
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'labelIds=SENT'));
+    }
+
+    // ── searching inside a folder, not across the mailbox ────────
+
+    /**
+     * Searching in Sent must not return the Inbox as well.
+     *
+     * Graph's `/me/messages` is every message in the account, so search
+     * ignored the folder entirely — a quieter version of the listing bug, and
+     * one that reads as "search is a bit odd" rather than as a fault.
+     */
+    public function test_searching_outlook_stays_inside_the_folder(): void
+    {
+        Http::fake([
+            'login.microsoftonline.com/*' => Http::response(
+                ['access_token' => 'an-access-token', 'expires_in' => 3599],
+            ),
+            'graph.microsoft.com/*' => Http::response(['value' => []]),
+        ]);
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->mailbox($t, 'microsoft_oauth');
+
+        $this->inTenant($t['org'], fn () => app(MicrosoftMailboxReader::class)->search($mailbox, 'invoice', label: 'SENT'));
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/mailFolders/sentitems/messages'));
+        Http::assertNotSent(
+            fn ($request) => str_contains($request->url(), '/me/messages'),
+        );
+    }
 
     /**
      * IMAP asks the server, so the refusal is now about THIS server.
