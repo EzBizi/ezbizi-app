@@ -124,6 +124,10 @@ use App\Http\Controllers\Api\Tasks\TaskUpdatesController;
 use App\Http\Controllers\Api\Tasks\TaskViewsController;
 use App\Http\Controllers\Api\Tasks\TaskWatchPreferencesController;
 use App\Http\Controllers\Api\TimeClockController;
+use App\Http\Controllers\Api\Training\GuidesController as TrainingGuidesController;
+use App\Http\Controllers\Api\Training\LearnController as TrainingLearnController;
+use App\Http\Controllers\Api\Training\ProgressController as TrainingProgressController;
+use App\Http\Controllers\Api\Training\TestsController as TrainingTestsController;
 use App\Http\Controllers\Api\TwoFactorController;
 use App\Http\Controllers\Api\UiStringsController;
 use App\Http\Controllers\Api\VehicleAssignmentsController;
@@ -662,6 +666,24 @@ Route::prefix('v1')
         Route::post('scheduling/pattern/apply', [SchedulingPatternController::class, 'apply']);
         Route::apiResource('scheduling/areas', SchedulingAreasController::class)
             ->parameters(['areas' => 'area']);
+
+        // Training — guides people read, the tests they take, and (later
+        // tasks) who has been given which. `view`/`monitor`/`manage`/
+        // `assign` are the module's four permissions; these two tasks wire
+        // the guide and the test. List applies the same place-scope engine
+        // as Inventory and Services — see GuidesController::index and
+        // TestsController::index. Later tasks add assignments and
+        // progress/results routes to this same block.
+        Route::apiResource('training/guides', TrainingGuidesController::class);
+        Route::apiResource('training/tests', TrainingTestsController::class);
+        // The learner-facing read (task 6) — `training.view`, not `.manage`;
+        // see LearnController's docblock for the answer-key trust boundary.
+        Route::get('training/learn', [TrainingLearnController::class, 'index']);
+        Route::get('training/learn/tests/{test}', [TrainingLearnController::class, 'showTest']);
+        // Reading progress through a guide (task 7) — same `training.view`
+        // gate and the same place-scope/published-only filter as the reads
+        // above; see ProgressController's docblock.
+        Route::post('training/learn/guides/{guide}/seen', [TrainingProgressController::class, 'seen']);
 
         // ── The shape of the business (§3) ───────────────────────
         //

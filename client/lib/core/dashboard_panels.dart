@@ -73,6 +73,11 @@ IconData dashboardPanelIcon(String key) {
     'reviews': Icons.reviews_outlined,
     'leads': Icons.person_search_outlined,
     'business_profile': Icons.storefront_outlined,
+    // Training is a guide somebody reads and a test they sit, so the icon is
+    // the learning, not the paperwork — a certificate or a checklist would
+    // read as HR, whose panel sits beside this one and counts a different
+    // thing entirely.
+    'training': Icons.school_outlined,
     // Monitoring watches DEVICES — the subject is `MonitoredDevice` — so this is
     // a machine, not a heartbeat or a chart.
     'monitoring': Icons.desktop_windows_outlined,

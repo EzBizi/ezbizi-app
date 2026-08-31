@@ -37,12 +37,18 @@ class GlanceRegistry
     public const ORDER = [
         'tasks', 'hr', 'customers', 'jobs', 'scheduling', 'inspection', 'marketing',
         'web_management', 'phone', 'fleet_management', 'inventory',
-        'services', 'leads', 'reviews', 'business_profile', 'email', 'automations',
-        'monitoring',
+        'services', 'leads', 'reviews', 'business_profile', 'email', 'training',
+        'automations', 'monitoring',
     ];
 
     /**
-     * Coming-soon modules registered in Task 1 (copy is verbatim from the plan).
+     * Coming-soon modules.
+     *
+     * Each entry is a module that has a tab but no live glance class yet. Some
+     * arrived with copy taken verbatim from a plan; Training's sentence was
+     * written here, because no plan puts a Training summary on the home screen
+     * at all. Do not read this list as a queue — an entry is only a promise
+     * that the tab exists, not that a glance is coming.
      *
      * @var array<string, array{label: string, sentence: string}>
      */
@@ -54,6 +60,22 @@ class GlanceRegistry
         'phone' => [
             'label' => 'Phone',
             'sentence' => 'Phone is where the team places and receives calls, and sends texts. Open the Phone tab for the desk.',
+        ],
+        /*
+         * Added with the Training module, not with a Training glance.
+         *
+         * A tab and a dashboard box are one thing here: the completeness test
+         * asserts every sidebar tab has a glance, so declaring the module
+         * without an entry turns the suite red at a line about the dashboard.
+         * Training has its own dashboard INSIDE the tab — who has been assigned
+         * what, who is overdue, who is due for retaking — and no plan puts a
+         * summary of it on the home screen, so a placeholder is the honest
+         * answer rather than a temporary one. A live glance registered later
+         * wins on this key without this entry being removed first.
+         */
+        'training' => [
+            'label' => 'Training',
+            'sentence' => 'Training is where guides are read and tests are taken. Open the Training tab to see who has been assigned what.',
         ],
         'monitoring' => [
             'label' => 'Monitoring',
