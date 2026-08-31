@@ -122,4 +122,25 @@ for f in $(cd "$SRC" && find . -name '*.html' | sed 's|^\./||' | sort); do
 done
 
 [ "$bad" -eq 0 ] || { echo "✗ $bad page(s) wrong — the site is NOT what this repo says"; exit 1; }
+# ── is what we just published still the newest thing? ───────────
+#
+# Everything above proves the UPLOAD worked: the bytes on the server are the
+# bytes of the SHA we shipped. It cannot prove that SHA was CURRENT, and those
+# are different claims.
+#
+# The gap is real and it bit on 2026-08-31. deploy-www.sh runs at the end of
+# deploy.sh, which pins GATED_SHA before its gate — so a www-only commit landing
+# during that ~19 minute window has nothing to carry it. The site was correct in
+# git and stale in public, every check green, while a Google compliance reviewer
+# was reading the page. It was found by a session diffing the live page against
+# every historical commit on a hunch, which is not a control.
+#
+# A www-only commit has no deploy of its own. This is the thing that tells you.
+AHEAD=$(git rev-list --count "${SHA:-HEAD}"..main -- www/ 2>/dev/null || echo 0)
+if [ "${AHEAD:-0}" -gt 0 ]; then
+  echo "⚠ PUBLISHED, BUT NOT CURRENT — main is $AHEAD commit(s) ahead on www/:" >&2
+  git log --oneline "${SHA:-HEAD}"..main -- www/ 2>/dev/null | sed 's/^/     /' >&2
+  echo "  Re-run: scripts/deploy-www.sh \$(git rev-parse main)" >&2
+fi
+
 echo "✓ site published"
