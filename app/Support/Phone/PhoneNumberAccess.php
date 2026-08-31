@@ -232,24 +232,23 @@ final class PhoneNumberAccess
             ->exists();
     }
 
+    /**
+     * Delegated to PhoneScope so numbers and the things they point at answer
+     * the same question the same way.
+     *
+     * This method used to hold its own copy of the rule. Ring groups, hours,
+     * menus and voicemail boxes then grew their own filters — by REACH rather
+     * than view — and a company started seeing a sibling's ring group. Five
+     * copies of "may this company see it" is how the answers drift apart, and
+     * this module has demonstrated that more than once.
+     */
     public function inView(User $user, PhoneNumber $number): bool
     {
-        $view = ViewScope::forUser($user);
-
-        if ($view->isOrganization()) {
-            return true;
-        }
-
-        if ($view->type === ViewScope::COMPANY) {
-            return match ($number->scope_type) {
-                PhoneNumber::SCOPE_COMPANY => in_array($number->scope_id, $view->companyIds(), true),
-                PhoneNumber::SCOPE_FRANCHISE => in_array($number->scope_id, $view->franchiseIds(), true),
-                default => false,
-            };
-        }
-
-        return $number->scope_type === PhoneNumber::SCOPE_FRANCHISE
-            && $number->scope_id === $view->id;
+        return PhoneScope::visible(
+            $user,
+            (string) $number->scope_type,
+            (string) $number->scope_id,
+        );
     }
 
     public function reaches(User $user, PhoneNumber $number): bool

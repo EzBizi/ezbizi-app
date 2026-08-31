@@ -23,6 +23,54 @@ class PhonePortTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
+    /**
+     * Ports could be started and never read.
+     *
+     * The row existed, the carrier webhook updated its status for weeks, and
+     * no endpoint listed it — so the most anxious thing this module does was
+     * also the only one with no way to check on it.
+     */
+    public function test_ports_can_be_listed_and_say_whether_they_are_settled(): void
+    {
+        $t = $this->provisionTenant();
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+
+        $connection = $this->inTenant($t['org'], fn () => PhoneConnection::factory()->create([
+            'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
+            'scope_id' => $t['org']->id,
+        ]));
+
+        $this->inTenant($t['org'], function () use ($t, $connection) {
+            PhonePortRequest::query()->create([
+                'organization_id' => $t['org']->id,
+                'connection_id' => $connection->id,
+                'e164s' => ['+19544538774'],
+                'twilio_sid' => 'PO'.str_repeat('a', 32),
+                'status' => 'pending',
+            ]);
+
+            PhonePortRequest::query()->create([
+                'organization_id' => $t['org']->id,
+                'connection_id' => $connection->id,
+                'e164s' => ['+19544538775'],
+                'twilio_sid' => 'PO'.str_repeat('b', 32),
+                'status' => 'canceled',
+            ]);
+        });
+
+        $rows = collect(
+            $this->signedInAs($editor)->getJson('/api/v1/phone/ports')->assertOk()->json('data')
+        )->keyBy('twilio_sid');
+
+        $this->assertCount(2, $rows);
+
+        // `settled` is decided by the server so the web client and the phone
+        // app cannot disagree about whether a port is still moving.
+        $this->assertFalse($rows['PO'.str_repeat('a', 32)]['settled']);
+        $this->assertTrue($rows['PO'.str_repeat('b', 32)]['settled']);
+        $this->assertSame(['+19544538774'], $rows['PO'.str_repeat('a', 32)]['e164s']);
+    }
+
     public function test_port_webhook_moves_the_row_to_in_progress(): void
     {
         $t = $this->provisionTenant();

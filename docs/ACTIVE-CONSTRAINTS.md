@@ -85,6 +85,20 @@ minutes. It has already overturned three confident guesses — including one of 
   because a **filter** excludes the member from the response entirely, and a filter
   can be relaxed. "Safe" flattens three claims with different shelf lives.
 
+  *Precision correction, twice. An earlier version said the dashboard dispatches on
+  presentation rather than glance key — wrong. The replacement said it looks up by
+  key with a default fallback — two-thirds right. `dashboard_panels.dart:73-77` has
+  **three arms**, and the middle one is a distinct second fallback:*
+
+      byModule[key]                      // exact glance key
+          ?? byModule[key.split('.').first]  // MODULE PREFIX — 13 icons registered here
+          ?? Icons.insights_outlined         // default
+
+  *So `training.progress` finds a `training` icon if one exists, and only then falls
+  through. Two fallbacks, not one. Recorded at this length because a mechanism that is
+  two-thirds right decays into a wrong one the moment somebody reasons from it — which
+  is exactly how the first error got made.*
+
   **And declaring a thing is often only half of it.** `AutomationsController:50`
   holds a private `IMPLEMENTED_ACTIONS`; an action absent from it is published as
   `implemented: false` at `:217` and refused at `:918`, so it is drawn as "not built
@@ -139,9 +153,49 @@ wins:
 DB_DATABASE=ezbizi_testing_<yourmodule> vendor/bin/phpunit --filter=<YourTest>
 ```
 
-One module went 107 errors → 112/112 on this alone.
+One module went 107 errors → 112/112 on this alone. Another went 153 → 17 the
+same week, after reading this file.
+
+**The collision does not look like a collision.** It looks like *you* broke the
+tenant boundary — the red lands in `TenantIsolation`, `TimeClock`, `Tasks` and
+`Web Management` at once, which reads as a fleet-wide security failure rather
+than as two runners sharing a schema. That is the most alarming possible false
+signal, and it points at the one thing you would most want to be wrong about. If
+a run suddenly says you have broken tenancy everywhere, re-run it on your own
+schema **before** you believe it.
+
+**That prefix works for the test runner and nowhere else.** It names a *schema*
+only because `phpunit.xml:26` pins `DB_CONNECTION=mysql`. Everywhere else `.env`
+says sqlite, and Laravel reads `DB_DATABASE` as a **file path**:
+
+| Command | Driver | `DB_DATABASE` means |
+|---|---|---|
+| `php artisan test` | mysql | schema `ezbizi_testing_<m>` |
+| `DB_DATABASE=… php artisan migrate` | **sqlite** | **a FILE `./ezbizi_testing_<m>`** |
+| `DB_CONNECTION=mysql DB_DATABASE=… php artisan migrate` | mysql | schema `ezbizi_testing_<m>` |
+
+The middle row **exits 0 and lists every migration as though it ran.** It has
+already happened: a 925 KB SQLite file named `ezbizi_testing_twilio` was sitting
+in the repo root, untracked and — until this was written — unignored, one
+`git add -A` from being committed. For anything that is not `phpunit`, set
+`DB_CONNECTION=mysql` as well.
 
 ---
 
 Committing safely on this shared tree is **not** temporary and lives in
 `StartUp.md` §4. Who owns which files is in `docs/MODULE-OWNERS.md`.
+
+---
+
+## 5 · CRLF — moved, because it outlives this file
+
+The `git archive` bug and the `$`-anchored-regex hazard now live in
+**`StartUp.md` §8**, under "A green suite proves the code works, not that it is
+what you shipped".
+
+They were written here first and that was a mistake: this file's own header says
+to delete it when App Store review clears, and CRLF checkouts have nothing to do
+with App Store review. Whoever eventually deletes this file will be following the
+instruction correctly, and durable knowledge must not be sitting in it.
+
+Raised by ezbizi-ea, who noticed the header contradicted the content.

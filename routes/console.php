@@ -78,6 +78,12 @@ Schedule::command('ezbizi:dispatch-task-notification-intents')->everyMinute()->w
 Schedule::command('ezbizi:expire-task-update-attachment-candidates')->hourly()->withoutOverlapping(10);
 Schedule::command('ezbizi:expire-task-import-sessions')->hourly()->withoutOverlapping(10);
 
+// Monitoring (2026-08-28-monitoring-pc-specs, task 6). Every five minutes so a
+// device that stops reporting is caught soon after the default 180-second
+// (monitoring.offline_after_seconds) threshold passes, without scanning on
+// every request the way the heartbeat does.
+Schedule::command('ezbizi:dispatch-monitoring-device-offline')->everyFiveMinutes()->withoutOverlapping(10);
+
 // Backup health (§18 Phase 0 item 5). At 05:00, well after the 03:17 timer, so a
 // slow night is not reported as a missing one.
 //

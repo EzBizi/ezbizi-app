@@ -268,23 +268,45 @@ class ImapReplySenderTest extends TestCase
     }
 
     /**
-     * An enormous reply is refused rather than uploaded.
+     * An enormous message is refused rather than uploaded.
      *
-     * A reply is something a person typed into a box. The cap exists so a bug
-     * elsewhere cannot turn one request into an unbounded upload to somebody
-     * else's mail server.
+     * The cap exists so a bug elsewhere cannot turn one request into an
+     * unbounded upload to somebody else's mail server. That purpose has not
+     * changed; the NUMBER did, when compose gained attachments — a one-megabyte
+     * cap rejects a 750KB photo once base64 has added its third.
+     *
+     * So this test moved with it, and the old size is now asserted to PASS
+     * rather than simply being deleted: two megabytes used to be refused and is
+     * now legitimate, and a cap that silently drifted back down would otherwise
+     * look identical to one that was raised on purpose.
      */
-    public function test_an_enormous_reply_is_refused(): void
+    public function test_an_enormous_message_is_refused(): void
     {
         $approved = $this->serve();
 
         try {
-            $this->send($approved, str_repeat('x', 2 * 1024 * 1024));
+            $this->send($approved, str_repeat('x', 4 * 1024 * 1024));
 
-            $this->fail('A two-megabyte reply was put on the wire.');
+            $this->fail('A four-megabyte message was put on the wire.');
         } catch (ImapFailure $e) {
             $this->assertSame(ImapFailure::UNREACHABLE, $e->kind);
-            $this->assertStringContainsString('too long', $e->getMessage());
+            $this->assertStringContainsString('too large', $e->getMessage());
         }
+    }
+
+    /**
+     * The size an ordinary attachment lands at goes through.
+     *
+     * Two megabytes was over the old cap and is under the new one. Without
+     * this, nothing would notice the cap being lowered again — the refusal
+     * test above passes at any cap below four megabytes, including one.
+     */
+    public function test_a_message_the_size_of_a_real_attachment_is_accepted(): void
+    {
+        $approved = $this->serve();
+
+        $this->send($approved, "Subject: Photo\r\n\r\n".str_repeat('x', 2 * 1024 * 1024));
+
+        $this->assertStringContainsString('EHLO', $this->server->received());
     }
 }

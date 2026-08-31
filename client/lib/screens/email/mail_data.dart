@@ -73,6 +73,7 @@ class Mailbox {
     required this.canReply,
     required this.replyRefusal,
     this.provider = '',
+    this.discoveredFolders,
   });
 
   final String id;
@@ -110,6 +111,81 @@ class Mailbox {
   /// Gmail folders (Starred, Sent, …) exist on this mailbox.
   bool get isGmail =>
       provider == 'gmail_oauth' || provider == 'gmail_workspace';
+
+  bool get isOutlook => provider == 'microsoft_oauth';
+
+  /// The folders THIS provider can actually open, by the label the API takes.
+  ///
+  /// ── Not one list for everybody ───────────────────────────────
+  ///
+  /// The three providers do not have the same folders, and offering a folder
+  /// the server will refuse is the same failure as offering one it silently
+  /// substitutes — the person picks it and gets a sentence instead of mail.
+  ///
+  /// Outlook has no Starred: Graph has a flag filter over the inbox, which is
+  /// a different query rather than a folder. It does have Archive, which Gmail
+  /// does not offer here.
+  ///
+  /// IMAP is empty on purpose. The server refuses anything but the Inbox
+  /// because folder names differ per server and discovering them is real work
+  /// (`LIST`, SPECIAL-USE, a quoting guard) — so nothing is drawn rather than
+  /// drawing something that refuses.
+  /// What the SERVER said this mailbox has, once it has been asked.
+  ///
+  /// ── Why an asked answer beats the guess below ────────────────
+  ///
+  /// For Gmail and Outlook the guess is right and always will be — their
+  /// folders are fixed, and the server answers from the same constant. For
+  /// IMAP the guess cannot be right in principle: the answer depends on the
+  /// customer's own mail server, which may have no Archive, may call Sent
+  /// "Sent Items", and may have the whole lot in Portuguese.
+  ///
+  /// Null until asked, and NOT empty. Empty would mean "this mailbox has no
+  /// folders", which is a different claim and one this client is not entitled
+  /// to make before it has looked.
+  final Set<String>? discoveredFolders;
+
+  /// The same mailbox, with what the server said about its folders.
+  ///
+  /// A copy rather than a setter because [Mailbox] is immutable and should
+  /// stay so — the screen swaps the row in its list.
+  Mailbox withFolders(Set<String> folders) => Mailbox(
+    id: id,
+    address: address,
+    label: label,
+    unread: unread,
+    sharedRead: sharedRead,
+    canReply: canReply,
+    replyRefusal: replyRefusal,
+    provider: provider,
+    discoveredFolders: folders,
+  );
+
+  Set<String> get folderIds => discoveredFolders ?? _guessedFolderIds;
+
+  /// What this provider's folders are, before the server has been asked.
+  ///
+  /// Right for Gmail and Outlook by construction. For IMAP it is deliberately
+  /// only the Inbox: offering six folders that might not exist, and finding
+  /// out on the click, is the broken promise this module keeps refusing to
+  /// make.
+  Set<String> get _guessedFolderIds {
+    if (isGmail) {
+      return const {'INBOX', 'STARRED', 'SENT', 'DRAFT', 'TRASH', 'SPAM'};
+    }
+
+    if (isOutlook) {
+      return const {'INBOX', 'SENT', 'DRAFT', 'TRASH', 'SPAM', 'ARCHIVE'};
+    }
+
+    return const {'INBOX'};
+  }
+
+  /// Whether this mailbox can show the named folder at all.
+  bool opensFolder(String folder) => folderIds.contains(folder);
+
+  /// Worth drawing a folder list for — more than just an Inbox.
+  bool get hasFolders => folderIds.length > 1;
 
   factory Mailbox.fromJson(Map<String, dynamic> json) => Mailbox(
     id: '${json['id']}',

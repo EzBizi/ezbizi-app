@@ -35,19 +35,20 @@ class GlanceRegistry
      * @var string[]
      */
     public const ORDER = [
-        'tasks', 'hr', 'customers', 'jobs', 'inspection', 'marketing',
+        'tasks', 'hr', 'customers', 'jobs', 'scheduling', 'inspection', 'marketing',
         'web_management', 'phone', 'fleet_management', 'inventory',
         'services', 'leads', 'reviews', 'business_profile', 'email', 'training',
-        'automations',
+        'automations', 'monitoring',
     ];
 
     /**
      * Coming-soon modules.
      *
-     * Marketing and Phone were registered in Task 1 and their copy is verbatim
-     * from the plan. Training arrived later, with its own module, and its
-     * sentence was written here — no plan sentence exists to be verbatim from,
-     * because no plan puts a Training summary on the home screen at all.
+     * Each entry is a module that has a tab but no live glance class yet. Some
+     * arrived with copy taken verbatim from a plan; Training's sentence was
+     * written here, because no plan puts a Training summary on the home screen
+     * at all. Do not read this list as a queue — an entry is only a promise
+     * that the tab exists, not that a glance is coming.
      *
      * @var array<string, array{label: string, sentence: string}>
      */
@@ -75,6 +76,14 @@ class GlanceRegistry
         'training' => [
             'label' => 'Training',
             'sentence' => 'Training is where guides are read and tests are taken. Open the Training tab to see who has been assigned what.',
+        ],
+        'monitoring' => [
+            'label' => 'Monitoring',
+            'sentence' => 'Monitoring will show who is online and on which device here. Open the Monitoring tab for the roster.',
+        ],
+        'scheduling' => [
+            'label' => 'Scheduling',
+            'sentence' => 'Scheduling will show what is booked here once the Schedule tab is live.',
         ],
     ];
 

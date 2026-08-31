@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EzBizi — Fleet · vehicle Identity card layouts</title>
+  <style>
+    :root {
+      /* mirrors client/lib/core/theme.dart AFTER d0ce75a */
+      --cyan:#00AEEF; --primary:#00708F; --cyan-deep:#00708F;
+      --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+      --ok:#0B8F5B; --err:#E07070; --warn:#B5730B;
+      --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+    }
+    * { box-sizing:border-box; }
+    html,body { margin:0; background:#DDE3E8; color:var(--ink);
+      font:14px/1.45 system-ui, "Segoe UI", sans-serif; }
+    button { font:inherit; cursor:pointer; }
+    .app { max-width:1280px; margin:0 auto; padding:16px 16px 48px; }
+
+    header.picker { background:var(--page); border:1px solid var(--line);
+      border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+    header.picker h1 { font-size:18px; margin:0 0 4px; }
+    header.picker p { margin:0 0 12px; color:var(--muted); max-width:80ch; }
+    .locked { font-size:13px; background:var(--info-c); border-radius:8px;
+      padding:10px 12px; margin-bottom:12px; max-width:92ch; }
+    .locked strong { display:block; margin-bottom:4px; color:var(--cyan-deep); }
+    .ask { font-size:13px; background:var(--warn-c); border-radius:8px;
+      padding:10px 12px; margin-bottom:12px; max-width:92ch; }
+    .ask strong { display:block; margin-bottom:4px; color:var(--warn); }
+    .ask b { display:block; margin-top:7px; }
+    .nums { display:flex; flex-wrap:wrap; gap:8px; }
+    .nums button { min-width:44px; min-height:44px; border-radius:8px;
+      border:1px solid var(--line); background:var(--page); color:var(--ink); }
+    .nums button[aria-pressed="true"] { background:var(--primary); color:#fff; border-color:var(--primary); }
+    .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:90ch; }
+    .caption strong { display:block; margin-bottom:4px; }
+
+    .shell { display:grid; grid-template-columns:200px 1fr; min-height:760px;
+      background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+    nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px; }
+    nav.side .brand { font-weight:700; color:var(--cyan-deep); margin-bottom:16px; padding:0 8px; }
+    nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+      text-decoration:none; margin-bottom:2px; }
+    nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+    .page { display:flex; flex-direction:column; min-width:0; }
+    .tabs { display:flex; flex-wrap:wrap; gap:8px; padding:12px 16px; border-bottom:1px solid var(--line); }
+    .tabs span { padding:8px 14px; border-radius:999px; border:1px solid var(--line);
+      background:var(--page); color:var(--muted); }
+    .tabs span.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+
+    .split { display:grid; grid-template-columns:260px 1fr; flex:1; min-height:0; }
+    .vlist { border-right:1px solid var(--line); overflow:auto; }
+    .vlist .row { padding:11px 14px; border-bottom:1px solid var(--line); font-size:13px; }
+    .vlist .row.on { background:var(--info-c); box-shadow:inset 3px 0 0 var(--primary); }
+    .vlist .row b { display:block; font-weight:600; }
+    .vlist .row span { color:var(--muted); font-size:12px; }
+    .pane { padding:18px 20px 32px; overflow:auto; min-width:0; }
+    .pane > h2 { font-size:17px; margin:0 0 2px; }
+    .pane > .sub { color:var(--muted); margin:0 0 16px; max-width:72ch; }
+
+    .card { border:1px solid var(--line); border-radius:10px; padding:0; margin:0 0 12px; overflow:hidden; }
+    .card > h3 { font-size:13px; margin:0; padding:11px 15px; background:var(--alt);
+      border-bottom:1px solid var(--line); display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .card .body { padding:13px 15px; }
+    .pill { font-size:11px; padding:2px 8px; border-radius:999px; background:var(--page);
+      color:var(--muted); font-weight:600; white-space:nowrap; border:1px solid var(--line); }
+    .pill.warn { background:var(--warn-c); color:var(--warn); border-color:transparent; }
+    .pill.none { color:var(--muted); }
+    .pill.lock { background:var(--alt); color:var(--muted); }
+
+    /* a field */
+    .f { margin-bottom:12px; }
+    .f label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+    .f .ctl { display:flex; align-items:center; min-height:44px; border:1px solid var(--line);
+      border-radius:8px; padding:0 12px; background:var(--page); font-size:14px; }
+    .f .ctl.sel::after { content:"⌄"; margin-left:auto; color:var(--muted); }
+    .f .ctl.empty { color:#9AA5AF; }
+    .f .ctl.ro { background:var(--alt); color:var(--muted); }
+    .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:0 14px; }
+    .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:0 14px; }
+
+    /* the merged plate control */
+    .plate { display:flex; gap:0; }
+    .plate .st { min-height:44px; border:1px solid var(--line); border-right:0;
+      border-radius:8px 0 0 8px; padding:0 12px; display:flex; align-items:center;
+      background:var(--alt); font-weight:600; gap:6px; }
+    .plate .st::after { content:"⌄"; color:var(--muted); }
+    .plate .num { flex:1; min-height:44px; border:1px solid var(--line);
+      border-radius:0 8px 8px 0; padding:0 12px; display:flex; align-items:center; color:#9AA5AF; }
+
+    .fold { display:flex; align-items:center; gap:9px; width:100%; min-height:44px;
+      border:1px dashed #C9D3DB; border-radius:9px; background:var(--alt); color:var(--primary);
+      padding:0 14px; margin-bottom:12px; font-size:13px; font-weight:600; }
+    .fold .n { margin-left:auto; color:var(--muted); font-weight:500; font-size:12px; }
+    .banner { background:var(--info-c); border-radius:8px; padding:11px 13px;
+      font-size:13px; margin:0 0 14px; }
+    .banner b { display:block; margin-bottom:3px; }
+    .btn { background:var(--primary); color:#fff; border:0; border-radius:8px;
+      padding:9px 14px; min-height:44px; }
+    .btn.ghost { background:transparent; color:var(--primary); border:1px solid var(--line); }
+    .row-actions { display:flex; gap:8px; margin-top:4px; flex-wrap:wrap; }
+    .meta { color:var(--muted); font-size:12px; margin-top:6px; }
+
+    .phone { width:375px; margin:0 auto; border:8px solid var(--ink); border-radius:28px;
+      overflow:hidden; background:#fff; min-height:720px; display:flex; flex-direction:column; }
+    .phone .bar375 { padding:11px 12px; border-bottom:1px solid var(--line); font-weight:600;
+      display:flex; gap:8px; align-items:center; font-size:14px; }
+    .phone .bar375 .back { color:var(--primary); font-weight:500; }
+    .phone .scroll { padding:13px 12px 24px; overflow:auto; }
+
+    @media (max-width:900px) {
+      .shell { grid-template-columns:1fr; }
+      nav.side { display:none; }
+      .split { grid-template-columns:1fr; }
+      .grid2, .grid3 { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>Fleet › vehicle Identity card — layouts</h1>
+
+    <div class="locked">
+      <strong>Already decided, not in this gallery</strong>
+      The card <b>edits in place</b> — every field is a live control, enabled when the signed-in
+      role holds <code>fleet_management.edit</code> and disabled otherwise, one Save on the card,
+      <b>no separate view mode</b>. So read-only density tricks are not available. Body type, Fuel
+      type and Status are dropdowns; Company and Franchise appear only when the current view
+      leaves a real choice. No modals; colours from <code>theme.dart</code>; 375px is a floor.
+    </div>
+
+    <div class="ask">
+      <strong>The measured facts these are designed against — 21 fields across A-1's 24 real vehicles</strong>
+      <b>Fill rates:</b> <b style="display:inline">always (24/24)</b> year · make · model · plate_state ·
+      vin · body_type · fuel_type · status &nbsp;·&nbsp; <b style="display:inline">22</b> colour
+      &nbsp;·&nbsp; <b style="display:inline">16</b> odometer + its date &nbsp;·&nbsp;
+      <b style="display:inline">9</b> plate &nbsp;·&nbsp; <b style="display:inline">3–4</b>
+      toll device · toll plan · registration expiry &nbsp;·&nbsp; <b style="display:inline">0</b>
+      trim · next service date · next service miles · inspection expiry · toll flat rate · notes.
+      <b>1 · The finding, and it is not a layout problem.</b> <code>plate_state</code> is 24/24 while
+      <code>plate</code> is 9/24 — the import correctly nulled eleven typed absences ("NA", "(NEW)").
+      So fifteen vehicles render "Plate state: CT" beside an empty Plate. Two fields, one fact, and
+      the always-present half is the useless half. Every layout here draws them as <b>one control</b>:
+      a state selector attached to a plate field, so "CT / —" reads as one incomplete fact.
+      <b>2 · Six fields are empty across the entire fleet, and hiding them is not allowed.</b>
+      An editable field that hides when empty can never be filled. So no layout hides anything by
+      data — where fields are folded away, the <b>user</b> opens the fold, and it stays open.
+      <b>3 · <code>toll_flat_rate_cents</code> is in the API and database with no control at all.</b>
+      It is money, so it belongs behind <code>fleet_management.financials</code>. The server already
+      strips it from the payload without that permission — so a control drawn unconditionally is an
+      empty box, not a hidden one. Layout 2 draws it correctly; say if you would rather leave it out.
+    </div>
+
+    <p>
+      Pick a number. <strong>2 is my recommendation.</strong> 1, 2 and 3 are three different
+      answers to "twenty-one editable fields, none of which may hide". 4 is the recommendation
+      at 375px, which is where the current card hurts most.
+    </p>
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+  <div id="stage"></div>
+</div>
+
+<script>
+const CAPTIONS = {
+  1: ["1 · Frequency first, the rest behind a fold",
+      "Orders fields by how often they actually hold a value: the eight that are always present at the top, then colour and odometer, then the sparse ones, then a fold holding the six that are empty across the whole fleet. Optimises hard for the common read — open a vehicle, see what is known, done — and cuts the default card from twenty-one fields to about eleven. Weakness, and it is the reason this is not my recommendation: frequency order is not FINDABLE order. Nobody knows that toll plan is the fifteenth field, so anyone looking for a specific field scans the whole card, and the fold makes it worse by putting six of them somewhere a scan does not reach."],
+  2: ["2 · Grouped by subject (recommended)",
+      "Four short cards instead of one long column: Identity, Plates & registration, Odometer & service, Tolls. With twenty-one fields and no hiding permitted, the real problem is findability rather than length — you can guess which group holds 'inspection expires', and you cannot guess its position in a list. Each group is short enough to read whole at 375px, so the card stops being a scroll and becomes four small screens. A group whose fields are ALL empty collapses to its header with a count, expanded by one click and remembered — user-controlled, so nothing is hidden by data. Tolls ships collapsed for A-1 because all three toll fields are empty; Identity never collapses because it never can be."],
+  3: ["3 · Two columns, one long card",
+      "The smallest possible change: keep the existing single card and existing order, pair short fields side by side. Halves the scroll at desktop for almost no conceptual cost, and there is no new structure for anyone to learn or maintain. Weakness: it does nothing at 375px, which is exactly where the complaint came from — at one phone wide it collapses to the same twenty-one-field column it is today. It fixes the width nobody complained about."],
+  4: ["4 · Layout 2 at 375px",
+      "Where the current card hurts. Four collapsible groups mean the vehicle opens to four headers and one expanded group rather than a twenty-field scroll, and each group is short enough to hold on one screen. The merged plate control matters more at this width than any other: two rows saved on every vehicle, and the state selector stays attached to the number it belongs to instead of drifting a row away from it."]
+};
+
+const shell = (body) => `
+  <div class="shell">
+    <nav class="side">
+      <div class="brand">EzBizi</div>
+      <a>Dashboard</a><a>Customers</a><a>Jobs</a>
+      <a>Scheduling</a><a>Phone</a><a class="on">Fleet</a>
+    </nav>
+    <div class="page">
+      <div class="tabs"><span class="on">Vehicles</span><span>Maintenance</span><span>Fuel</span><span>Settings</span></div>
+      <div class="split">
+        <div class="vlist">
+          ${[['Van 1 · 2019 Ford Transit 250','CT · 84,210 mi',1],
+             ['Van 2 · 2021 Ford Transit 350','CT · 41,880 mi',0],
+             ['Van 3 · 2018 Chevy Express','CT · 122,400 mi',0],
+             ['Truck 1 · 2020 Ram 2500','CT · 67,015 mi',0],
+             ['Van 4 · 2022 Ford Transit 250','CT · 22,190 mi',0]]
+            .map(v => `<div class="row ${v[2]?'on':''}"><b>${v[0]}</b><span>${v[1]}</span></div>`).join('')}
+          <div class="row"><span>24 vehicles</span></div>
+        </div>
+        <div class="pane">${body}</div>
+      </div>
+    </div>
+  </div>`;
+
+const f = (label, value, kind) => `
+  <div class="f">
+    <label>${label}</label>
+    <div class="ctl ${kind || ''}">${value || '—'}</div>
+  </div>`;
+
+const plateControl = `
+  <div class="f">
+    <label>Plate</label>
+    <div class="plate">
+      <span class="st">CT</span>
+      <span class="num">Not recorded</span>
+    </div>
+    <p class="meta">State and number are one fact. Fifteen of twenty-four vehicles have the
+      state and no number — this way that reads as one incomplete plate, not as a filled field
+      beside an empty one.</p>
+  </div>`;
+
+const saveRow = (name) => `
+  <div class="row-actions" style="margin-top:14px">
+    <button class="btn" type="button">Save ${name}</button>
+    <button class="btn ghost" type="button">Discard changes</button>
+  </div>`;
+
+/* ---- 1 · frequency ---- */
+const L1 = () => shell(`
+  <h2>Van 1 <span class="pill none">2019 Ford Transit 250</span></h2>
+  <p class="sub">Identity. Ordered by how often a field is actually filled in.</p>
+  <div class="card">
+    <h3>Identity</h3>
+    <div class="body">
+      <div class="grid3">
+        ${f('Year','2019')}${f('Make','Ford')}${f('Model','Transit 250')}
+      </div>
+      <div class="grid2">
+        ${f('VIN','1FTYR2CM4KKA12345')}${f('Status','Active','sel')}
+      </div>
+      <div class="grid2">
+        ${f('Body type','Cargo van','sel')}${f('Fuel type','Gasoline','sel')}
+      </div>
+      <div class="grid2">
+        ${plateControl}${f('Colour','White')}
+      </div>
+      <div class="grid2">
+        ${f('Odometer','84,210 mi')}${f('Odometer read on','12 Aug 2026')}
+      </div>
+      <div class="grid2">
+        ${f('Toll device number','Not recorded','empty')}${f('Toll plan','Not recorded','empty')}
+      </div>
+      ${f('Registration expires on','Not recorded','empty')}
+      <button class="fold" type="button">
+        ▸ Show the fields nobody has filled in <span class="n">6 fields</span>
+      </button>
+      <p class="meta">Trim · Next service date · Next service miles · Inspection expiry ·
+        Toll flat rate · Notes — empty on all 24 vehicles. Folded, never hidden: an editable
+        field that disappears when empty can never be filled.</p>
+      ${saveRow('Van 1')}
+    </div>
+  </div>`);
+
+/* ---- 2 · grouped (recommended) ---- */
+const L2 = () => shell(`
+  <h2>Van 1 <span class="pill none">2019 Ford Transit 250</span></h2>
+  <p class="sub">Identity, in four groups. Nothing is hidden by the data — a group you open
+    stays open.</p>
+
+  <div class="card">
+    <h3>Identity <span class="pill">8 of 8 filled</span></h3>
+    <div class="body">
+      <div class="grid3">${f('Year','2019')}${f('Make','Ford')}${f('Model','Transit 250')}</div>
+      <div class="grid3">${f('Trim','Not recorded','empty')}${f('Colour','White')}${f('Status','Active','sel')}</div>
+      <div class="grid3">${f('VIN','1FTYR2CM4KKA12345')}${f('Body type','Cargo van','sel')}${f('Fuel type','Gasoline','sel')}</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Plates &amp; registration <span class="pill warn">plate number missing</span></h3>
+    <div class="body">
+      <div class="grid2">
+        ${plateControl}
+        ${f('Registration expires on','Not recorded','empty')}
+      </div>
+      ${f('Inspection expires on','Not recorded','empty')}
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Odometer &amp; service <span class="pill">2 of 4 filled</span></h3>
+    <div class="body">
+      <div class="grid2">${f('Odometer','84,210 mi')}${f('Odometer read on','12 Aug 2026')}</div>
+      <div class="grid2">${f('Next service on','Not recorded','empty')}${f('Next service at','Not recorded','empty')}</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Tolls <span class="pill none">nothing recorded</span>
+      <span class="pill lock">Flat rate needs Financials</span></h3>
+    <div class="body" style="padding:11px 15px">
+      <button class="fold" type="button" style="margin:0">
+        ▸ Open to fill these in <span class="n">3 fields, all empty</span>
+      </button>
+      <p class="meta" style="margin-top:9px">Collapsed because all three are empty on every
+        vehicle — not because empty fields hide. One click opens it and it stays open.
+        <b>Toll flat rate</b> is money: it is stripped from the payload without
+        <code>fleet_management.financials</code>, so for a role without it the control is
+        disabled carrying the server's sentence, never an empty box.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Notes</h3>
+    <div class="body">${f('Notes','Nothing written','empty')}</div>
+  </div>
+  ${saveRow('Van 1')}`);
+
+/* ---- 3 · two column ---- */
+const L3 = () => shell(`
+  <h2>Van 1 <span class="pill none">2019 Ford Transit 250</span></h2>
+  <p class="sub">One card, existing order, two columns.</p>
+  <div class="card">
+    <h3>Identity</h3>
+    <div class="body">
+      <div class="grid2">
+        ${f('Year','2019')}${f('Make','Ford')}
+        ${f('Model','Transit 250')}${f('Trim','Not recorded','empty')}
+        ${f('Colour','White')}${f('VIN','1FTYR2CM4KKA12345')}
+        ${plateControl}${f('Body type','Cargo van','sel')}
+        ${f('Fuel type','Gasoline','sel')}${f('Status','Active','sel')}
+        ${f('Odometer','84,210 mi')}${f('Odometer read on','12 Aug 2026')}
+        ${f('Registration expires on','Not recorded','empty')}${f('Inspection expires on','Not recorded','empty')}
+        ${f('Next service on','Not recorded','empty')}${f('Next service at','Not recorded','empty')}
+        ${f('Toll device number','Not recorded','empty')}${f('Toll plan','Not recorded','empty')}
+      </div>
+      ${f('Notes','Nothing written','empty')}
+      <p class="meta">Halves the scroll on a desktop. At 375px both columns collapse into one
+        and this is the card it is today.</p>
+      ${saveRow('Van 1')}
+    </div>
+  </div>`);
+
+/* ---- 4 · 375 ---- */
+const L4 = () => `
+  <div class="phone">
+    <div class="bar375"><span class="back">&lsaquo; Vehicles</span> Van 1</div>
+    <div class="scroll">
+      <div class="card">
+        <h3>Identity <span class="pill">8 of 8</span></h3>
+        <div class="body">
+          ${f('Year','2019')}${f('Make','Ford')}${f('Model','Transit 250')}
+          ${f('Colour','White')}${f('Status','Active','sel')}
+          <button class="fold" type="button" style="margin:4px 0 0">
+            ▸ VIN, body type, fuel type, trim <span class="n">4 more</span></button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Plates &amp; registration <span class="pill warn">number missing</span></h3>
+        <div class="body">
+          ${plateControl}
+          <button class="fold" type="button" style="margin:4px 0 0">
+            ▸ Registration &amp; inspection expiry <span class="n">2, both empty</span></button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Odometer &amp; service <span class="pill">2 of 4</span></h3>
+        <div class="body">
+          ${f('Odometer','84,210 mi')}${f('Odometer read on','12 Aug 2026')}
+          <button class="fold" type="button" style="margin:4px 0 0">
+            ▸ Next service <span class="n">2, both empty</span></button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Tolls <span class="pill none">nothing recorded</span></h3>
+        <div class="body" style="padding:11px 15px">
+          <button class="fold" type="button" style="margin:0">
+            ▸ Open to fill these in <span class="n">3 fields</span></button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Notes</h3>
+        <div class="body">${f('Notes','Nothing written','empty')}</div>
+      </div>
+      <button class="btn" type="button" style="width:100%">Save Van 1</button>
+      <p class="meta" style="text-align:center">Four headers and one open group, instead of a
+        twenty-one field column.</p>
+    </div>
+  </div>`;
+
+const LAYOUTS = { 1:L1, 2:L2, 3:L3, 4:L4 };
+
+const nums = document.getElementById('nums');
+const stage = document.getElementById('stage');
+const caption = document.getElementById('caption');
+
+Object.keys(LAYOUTS).forEach(k => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = k;
+  b.addEventListener('click', () => show(+k));
+  nums.appendChild(b);
+});
+
+function show(i) {
+  [...nums.children].forEach((b, idx) => b.setAttribute('aria-pressed', idx + 1 === i ? 'true' : 'false'));
+  const entry = CAPTIONS[i];
+  caption.innerHTML = '<strong>' + entry[0] + '</strong>' + entry[1];
+  stage.innerHTML = LAYOUTS[i]();
+}
+show(2);
+</script>
+</body>
+</html>

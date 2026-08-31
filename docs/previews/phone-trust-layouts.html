@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EzBizi — Phone › Caller Identity &amp; Trust layouts</title>
+  <style>
+    :root {
+      /* mirrors client/lib/core/theme.dart constants exactly */
+      --cyan:#00AEEF; --cyan-d:#0093CA; --cyan-deep:#00708F;
+      --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+      --ok:#0B8F5B; --err:#E07070; --warn:#B5730B;
+      /* stand-ins for colorScheme.errorContainer / tertiaryContainer */
+      --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+    }
+    * { box-sizing:border-box; }
+    html,body { margin:0; background:#DDE3E8; color:var(--ink);
+      font:14px/1.45 system-ui, "Segoe UI", sans-serif; }
+    button { font:inherit; cursor:pointer; }
+    .app { max-width:1280px; margin:0 auto; padding:16px 16px 48px; }
+
+    header.picker { background:var(--page); border:1px solid var(--line);
+      border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+    header.picker h1 { font-size:18px; margin:0 0 4px; }
+    header.picker p { margin:0 0 12px; color:var(--muted); max-width:78ch; }
+    .locked { font-size:13px; background:var(--info-c); border-radius:8px;
+      padding:10px 12px; margin-bottom:12px; max-width:90ch; }
+    .locked strong { display:block; margin-bottom:4px; color:var(--cyan-deep); }
+    .ask { font-size:13px; background:var(--warn-c); border-radius:8px;
+      padding:10px 12px; margin-bottom:12px; max-width:90ch; }
+    .ask strong { display:block; margin-bottom:4px; color:var(--warn); }
+    .ask b { display:block; margin-top:7px; }
+    .nums { display:flex; flex-wrap:wrap; gap:8px; }
+    .nums button { min-width:44px; min-height:44px; border-radius:8px;
+      border:1px solid var(--line); background:var(--page); color:var(--ink); }
+    .nums button[aria-pressed="true"] { background:var(--cyan); color:#fff; border-color:var(--cyan); }
+    .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:88ch; }
+    .caption strong { display:block; margin-bottom:4px; }
+
+    .shell { display:grid; grid-template-columns:200px 1fr; min-height:720px;
+      background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+    nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px; }
+    nav.side .brand { font-weight:700; color:var(--cyan-deep); margin-bottom:16px; padding:0 8px; }
+    nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+      text-decoration:none; margin-bottom:2px; }
+    nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--cyan); font-weight:600; }
+    .page { display:flex; flex-direction:column; min-width:0; }
+    .tabs { display:flex; flex-wrap:wrap; gap:8px; padding:12px 16px; border-bottom:1px solid var(--line); }
+    .tabs span { padding:8px 14px; border-radius:999px; border:1px solid var(--line);
+      background:var(--page); color:var(--muted); }
+    .tabs span.on { background:var(--cyan); color:#fff; border-color:var(--cyan); }
+
+    .settings { display:grid; grid-template-columns:200px 1fr; flex:1; min-height:0; }
+    .settings nav { border-right:1px solid var(--line); padding:12px; overflow:auto; }
+    .settings nav a { display:block; padding:9px 12px; border-radius:8px;
+      color:var(--ink); text-decoration:none; font-size:13px; }
+    .settings nav a.on { background:var(--info-c); color:var(--cyan-deep); font-weight:600; }
+    .pane { padding:18px 20px 32px; overflow:auto; min-width:0; }
+    .pane > h2 { font-size:17px; margin:0 0 2px; }
+    .pane > .sub { color:var(--muted); margin:0 0 18px; max-width:70ch; }
+
+    .card { border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin:0 0 12px; }
+    .card h3 { font-size:14px; margin:0 0 2px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .card .why { color:var(--muted); font-size:13px; margin:2px 0 0; max-width:64ch; }
+    .pill { font-size:11px; padding:2px 8px; border-radius:999px; background:var(--alt);
+      color:var(--muted); font-weight:600; white-space:nowrap; }
+    .pill.ok { background:var(--ok-c); color:var(--ok); }
+    .pill.warn { background:var(--warn-c); color:var(--warn); }
+    .pill.err { background:var(--err-c); color:#A33; }
+    .pill.none { background:var(--alt); color:var(--muted); }
+    .btn { background:var(--cyan); color:#fff; border:0; border-radius:8px;
+      padding:9px 14px; min-height:44px; }
+    .btn.ghost { background:transparent; color:var(--cyan-d); border:1px solid var(--line); }
+    .btn.sm { min-height:36px; padding:6px 12px; font-size:13px; }
+    .row-actions { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+    .meta { color:var(--muted); font-size:12px; margin-top:6px; }
+
+    /* attestation bar */
+    .bar { display:flex; height:26px; border-radius:6px; overflow:hidden;
+      border:1px solid var(--line); margin:12px 0 8px; background:var(--alt); }
+    .bar i { display:block; height:100%; }
+    .bar .a  { background:var(--cyan); }
+    .bar .b  { background:var(--warn); }
+    .bar .gap { background:repeating-linear-gradient(45deg,#E9EDF1 0 6px,#DCE3E9 6px 12px); }
+    .legend { display:flex; flex-wrap:wrap; gap:14px; font-size:12px; color:var(--muted); }
+    .legend span { display:flex; align-items:center; gap:6px; }
+    .sw { width:11px; height:11px; border-radius:3px; flex:none; border:1px solid var(--line); }
+    .sw.a { background:var(--cyan); } .sw.b { background:var(--warn); }
+    .sw.gap { background:repeating-linear-gradient(45deg,#E9EDF1 0 4px,#DCE3E9 4px 8px); }
+    .windows { display:flex; gap:6px; flex-wrap:wrap; }
+    .windows b { font-weight:500; font-size:12px; padding:6px 11px; border-radius:999px;
+      border:1px solid var(--line); color:var(--muted); min-height:32px; display:flex; align-items:center; }
+    .windows b.on { background:var(--cyan); border-color:var(--cyan); color:#fff; }
+
+    /* the three kinds of nothing */
+    .void { border:1px dashed #C9D3DB; border-radius:10px; padding:16px;
+      background:var(--alt); color:var(--muted); font-size:13px; }
+    .void b { display:block; color:var(--ink); font-size:14px; margin-bottom:4px; }
+    .banner { background:var(--info-c); border-radius:8px; padding:11px 13px;
+      font-size:13px; margin:0 0 12px; }
+    .banner.err { background:var(--err-c); }
+    .banner.warn { background:var(--warn-c); }
+    .banner b { display:block; margin-bottom:3px; }
+
+    /* ladder */
+    .ladder { position:relative; padding-left:26px; }
+    .ladder::before { content:""; position:absolute; left:9px; top:10px; bottom:22px;
+      width:2px; background:var(--line); }
+    .step { position:relative; margin-bottom:12px; }
+    .step::before { content:""; position:absolute; left:-22px; top:16px; width:12px; height:12px;
+      border-radius:50%; background:var(--page); border:2px solid var(--line); }
+    .step.done::before { background:var(--ok); border-color:var(--ok); }
+    .step.wait::before { background:var(--warn); border-color:var(--warn); }
+    .step.blocked::before { background:var(--page); border-color:var(--err); }
+    .step .dep { font-size:12px; color:var(--warn); margin-top:8px;
+      background:var(--warn-c); border-radius:6px; padding:7px 9px; }
+
+    /* two column */
+    .cols { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .cols h4 { font-size:12px; text-transform:uppercase; letter-spacing:.05em;
+      color:var(--muted); margin:0 0 8px; font-weight:600; }
+    .cols .side-note { font-size:12px; color:var(--muted); margin:8px 0 12px; }
+
+    /* verdict */
+    .verdict { border-radius:12px; padding:18px 20px; margin-bottom:16px; background:var(--info-c); }
+    .verdict.warn { background:var(--warn-c); } .verdict.ok { background:var(--ok-c); }
+    .verdict h3 { font-size:18px; margin:0 0 6px; line-height:1.3; }
+    .verdict p { margin:0; color:var(--muted); font-size:13px; max-width:64ch; }
+    .evidence { border:1px solid var(--line); border-radius:10px; margin-bottom:8px; }
+    .evidence summary { padding:13px 16px; cursor:pointer; display:flex; gap:10px;
+      align-items:center; flex-wrap:wrap; font-weight:600; font-size:14px; }
+    .evidence summary .pill { margin-left:auto; }
+    .evidence .inner { padding:0 16px 16px; border-top:1px solid var(--line); padding-top:14px; }
+
+    table.log { width:100%; border-collapse:collapse; font-size:13px; }
+    table.log th, table.log td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); }
+    table.log th { color:var(--muted); font-weight:500; font-size:12px; }
+
+    /* 375 */
+    .phone { width:375px; margin:0 auto; border:8px solid var(--ink); border-radius:28px;
+      overflow:hidden; background:#fff; min-height:680px; display:flex; flex-direction:column; }
+    .phone .bar375 { padding:11px 12px; border-bottom:1px solid var(--line); font-weight:600;
+      display:flex; gap:8px; align-items:center; font-size:14px; }
+    .phone .bar375 .back { color:var(--cyan-d); font-weight:500; }
+    .phone .scroll { padding:14px 12px 24px; overflow:auto; }
+
+    @media (max-width:900px) {
+      .shell { grid-template-columns:1fr; }
+      nav.side { display:none; }
+      .settings { grid-template-columns:1fr; }
+      .cols { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>Phone › Caller Identity &amp; Trust — layouts</h1>
+
+    <div class="locked">
+      <strong>Already decided, not in this gallery</strong>
+      Lives in Phone › Settings, a 200px rail plus pane, collapsing to one-pane-with-Back below 600px.
+      Gated on <code>phone.edit</code>. No modals — the observation entry is an inline row, not a dialog.
+      Colours come from <code>theme.dart</code>; the tints here stand for <code>colorScheme.errorContainer</code>
+      and friends. 375px is a floor, not a target. The content is the three things Phone described: a
+      SHAKEN/STIR attestation measure, two Twilio registrations (CNAM and Voice Integrity), and a
+      hand-typed observation log.
+    </div>
+
+    <div class="ask">
+      <strong>Two things I need you to rule on, and neither is really layout</strong>
+      <b>1 · The rail already has both “Trust” and “Number quality.”</b>
+      Both answer “is something wrong with my number.” My recommendation is that this screen
+      <em>absorbs</em> the existing Trust section (port-in / carrier review) and the merged section is called
+      <b>Trust &amp; caller identity</b> — somebody asking “why do my calls show as spam” will click Trust, and
+      finding half the answer there is worse than finding all of it. It also takes the rail from 14 items to 13,
+      which is the direction that rail needs to go. I have drawn it merged. Say so and I will draw it beside instead.
+      <b>2 · Every layout here is honest that the screen is empty on day one.</b>
+      EzBizi discards StirVerstat on inbound calls today, so there is no attestation history anywhere and there
+      will be none until capture is built. <b>Layout 4 is that day-one screen</b> — it is what every customer sees
+      first, A-1 included, and it is the one most worth your attention.
+    </div>
+
+    <p>
+      Pick a number. <strong>1 is my recommendation.</strong> 1, 2 and 3 are three genuinely different
+      organising principles for the same content — not three arrangements of one idea. 4 and 5 are the
+      recommended layout in the two states it has to survive: empty on day one, and 375px.
+    </p>
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+  <div id="stage"></div>
+</div>
+
+<script>
+const CAPTIONS = {
+  1: ["1 · Prerequisite ladder (recommended)",
+      "Orders the screen by what depends on what. The Twilio Business Profile sits at the top as step zero — console-only, not actionable here — and both registrations hang off it. Voice Integrity carries an explicit line saying it is waiting on that profile being APPROVED, not merely created. Chosen because the brief's two hardest problems are structural rather than cosmetic: the two registrations look like a symmetric pair and are not, and the screen is empty on day one. A ladder answers both — a blocked state is drawn underneath the thing blocking it, and at step zero the screen says ‘you have not started’ instead of drawing an empty chart. Weakness: it is the busiest of the three, and the ladder metaphor weakens once everything is approved and the order stops mattering."],
+  2: ["2 · Verdict first, evidence collapsed",
+      "Opens with one plain sentence answering the only question the visitor arrived with, then three collapsed evidence blocks. Built for the stated user: an owner who visits weeks apart and remembers nothing. Strongest on the empty state — ‘we cannot tell yet’ is a real answer where an empty bar is not — and much the best at 375px, since collapsed rows stack for free. Weakness: it hides the asymmetry rather than showing it. Two collapsed rows reading ‘Approved’ and ‘Rejected’ still look independent, and the reason they are not is one fold down."],
+  3: ["3 · What Twilio knows / what people saw",
+      "Two columns split by SOURCE rather than by topic: everything the API reports on the left, everything a human wrote down on the right. Makes the manual nature of the log structural instead of a caption — the strongest answer to ‘make it legible as a deliberate record rather than a feature that failed to sync.’ Weakness, and it is real: at 375px the columns stack and the split carrying the entire meaning becomes two headings in one scroll. It is a desktop idea that degrades into a list."],
+  4: ["4 · Day one — layout 1 with nothing in it",
+      "Not an alternative look. This is what every customer sees the day it ships, and the state Phone most wanted designed. Three different kinds of nothing, said three different ways: attestation is empty because CAPTURE HAS NOT STARTED (a dashed well naming a date, never a 0% bar); the registrations are empty because a prerequisite lives in the Twilio Console; the log is empty because nobody has looked yet, and only a person can. An empty chart that looks broken and an empty chart that means ‘we started counting on Tuesday’ are the same pixels — so none of these draws a chart."],
+  5: ["5 · Layout 1 at 375px",
+      "Every layout must do this; it is a floor, not an option. The ladder stacks in dependency order and keeps its rail, so ‘this is blocked by the thing above it’ survives the narrow width — the one thing that must not be lost. The window switcher wraps to two rows. Observation entry is an inline row that expands in place, never a dialog. Back returns to the section list, per the sub-600 rule."]
+};
+
+const RAIL = ["General","Call flow","Connection","Numbers","Porting","IVR menus","Hours",
+              "Ring groups","Voicemail","Tags","Trust &amp; caller identity","Number quality","Cost","Messaging"];
+
+const shell = (body) => `
+  <div class="shell">
+    <nav class="side">
+      <div class="brand">EzBizi</div>
+      <a>Dashboard</a><a>Customers</a><a>Jobs</a>
+      <a class="on">Phone</a><a>Email</a><a>Fleet</a>
+    </nav>
+    <div class="page">
+      <div class="tabs"><span>Call</span><span>Records</span><span class="on">Settings</span></div>
+      <div class="settings">
+        <nav>${RAIL.map(s => `<a class="${s.indexOf('Trust') === 0 ? 'on' : ''}">${s}</a>`).join('')}</nav>
+        <div class="pane">${body}</div>
+      </div>
+    </div>
+  </div>`;
+
+/* ---- shared blocks ---- */
+
+const attestationPopulated = `
+  <div class="card">
+    <h3>Attestation <span class="pill ok">0.0% degraded</span></h3>
+    <p class="why">How carriers graded your outbound calls. An A means the carrier vouched for the number;
+      B and C mean it went out less trusted.</p>
+    <div class="windows" style="margin-top:12px">
+      <b>7 days</b><b class="on">30 days</b><b>90 days</b><b>All</b>
+    </div>
+    <div class="bar">
+      <i class="a" style="width:49.2%"></i><i class="gap" style="width:50.8%"></i>
+    </div>
+    <div class="legend">
+      <span><i class="sw a"></i> A &mdash; full attestation &middot; 30</span>
+      <span><i class="sw b"></i> B, C or none &mdash; degraded &middot; 0</span>
+      <span><i class="sw gap"></i> Not captured &middot; 31</span>
+    </div>
+    <p class="meta"><b>61 calls in this window. We have a grade for 30 of them.</b>
+      0.0% degraded is measured against those 30, not against all 61. The hatched half is not a bad
+      grade &mdash; it is a call we never recorded a grade for.</p>
+    <p class="meta"><b>&ldquo;None&rdquo; and &ldquo;not captured&rdquo; are different facts and
+      must never share a colour.</b> Stored as <code>'none'</code> versus <code>NULL</code>:
+      <em>none</em> means the carrier really did send that call unsigned &mdash; a genuine bad
+      answer, and it belongs in the degraded bucket. <em>NULL</em> means we were not looking.
+      Collapsing them would report every call from before capture as untrusted, on a screen
+      somebody opens precisely because they are already worried.</p>
+  </div>`;
+
+const attestationEmpty = `
+  <div class="card">
+    <h3>Attestation <span class="pill none">Not started</span></h3>
+    <p class="why">How carriers graded your outbound calls.</p>
+    <div class="void" style="margin-top:12px">
+      <b>Nothing recorded yet &mdash; this is not an error.</b>
+      EzBizi is not capturing call grades yet. Once capture is switched on this fills forward from that day.
+      It cannot be backfilled, because the grade only exists at the moment the call is placed.
+      <div class="row-actions"><button class="btn sm ghost" type="button">What gets captured</button></div>
+    </div>
+  </div>`;
+
+const profileStep = (approved) => `
+  <div class="card" style="margin-bottom:0">
+    <h3>Twilio Business Profile
+      ${approved ? '<span class="pill ok">Approved</span>' : '<span class="pill none">Not created</span>'}</h3>
+    <p class="why">Twilio&rsquo;s record that your business is real. Both registrations below depend on it.</p>
+    ${approved
+      ? '<div class="meta">Approved 12 Aug 2026 &middot; BJ7f2c&hellip;a91 &middot; last synced 2 hours ago</div>'
+      : `<div class="banner warn" style="margin:10px 0 0">
+           <b>This one cannot be done from EzBizi.</b>
+           Twilio has no API that creates a Business Profile &mdash; it only exists once somebody fills it in on
+           Twilio&rsquo;s own site. EzBizi reads it after that. A Twilio limitation, not a missing feature here.
+         </div>`}
+    <div class="row-actions">
+      <button class="btn ghost sm" type="button">Open Twilio Console &#8599;</button>
+      ${approved
+        ? '<button class="btn ghost sm" type="button">Re-sync</button>'
+        : '<button class="btn ghost sm" type="button">Paste a profile SID</button>'}
+    </div>
+  </div>`;
+
+const cnamCard = (state) => `
+  <div class="card" style="margin-bottom:0">
+    <h3>CNAM &mdash; the name on the handset
+      ${state === 'ok' ? '<span class="pill ok">Approved</span>'
+        : state === 'none' ? '<span class="pill none">Not started</span>'
+        : '<span class="pill warn">Pending review</span>'}</h3>
+    <p class="why">What a customer sees written above the number when you ring them.</p>
+    ${state === 'ok'
+      ? '<div class="meta">Showing as <b>A-1 CHIMNEY</b> &middot; approved 14 Aug &middot; last synced 2 hours ago</div>'
+      : state === 'none'
+        ? '<div class="meta">Nothing submitted. Customers see the bare number.</div>'
+        : '<div class="meta">Submitted 28 Aug &middot; carriers typically take 10 business days</div>'}
+    <div class="row-actions">
+      <button class="btn sm ${state === 'none' ? '' : 'ghost'}" type="button">
+        ${state === 'none' ? 'Set the displayed name' : 'Manage'}</button>
+    </div>
+  </div>`;
+
+const viCard = (state, blockedBy) => `
+  <div class="card" style="margin-bottom:0">
+    <h3>Voice Integrity &mdash; spam labelling
+      ${state === 'rej' ? '<span class="pill err">Rejected</span>'
+        : state === 'none' ? '<span class="pill none">Not started</span>'
+        : '<span class="pill warn">Pending review</span>'}</h3>
+    <p class="why">Asks carriers to stop labelling this number as spam. This is the one that answers
+      &ldquo;Scam Likely&rdquo;.</p>
+    ${state === 'rej'
+      ? '<div class="meta">Rejected 26 Aug &middot; reason from Twilio: business profile not approved</div>'
+      : '<div class="meta">Nothing submitted for this number.</div>'}
+    ${blockedBy ? `<div class="dep">Waiting on the Business Profile above. Voice Integrity needs it
+      <b>approved</b>, not merely created &mdash; which is why this can read &ldquo;rejected&rdquo; while CNAM
+      reads &ldquo;approved&rdquo; for one reason, not two. Fix the profile, then resubmit.</div>` : ''}
+    <div class="row-actions"><button class="btn ghost sm" type="button">Manage</button></div>
+  </div>`;
+
+const logCard = (rows) => `
+  <div class="card">
+    <h3>What people have observed
+      <span class="pill none">${rows ? '3 notes' : 'Empty'}</span></h3>
+    <div class="banner" style="margin:8px 0 12px">
+      <b>Only a person can fill this in, and that is deliberate.</b>
+      No Twilio API reports whether a number currently shows as &ldquo;Scam Likely&rdquo; on a given carrier
+      &mdash; not one. The only way to know is for somebody to ring this number from a phone on that carrier
+      and write down what the screen said. This log is that record. It is empty because nobody has looked,
+      not because a sync failed.
+    </div>
+    ${rows ? `
+      <table class="log">
+        <tr><th>When</th><th>Carrier</th><th>What the handset showed</th><th>Who looked</th></tr>
+        <tr><td>29 Aug</td><td>Verizon</td><td>A-1 CHIMNEY &mdash; clean</td><td>Eve</td></tr>
+        <tr><td>22 Aug</td><td>Verizon</td><td><b>Scam Likely</b></td><td>Eve</td></tr>
+        <tr><td>22 Aug</td><td>T-Mobile</td><td>Number only, no label</td><td>Luis</td></tr>
+      </table>` : ''}
+    <div class="row-actions"><button class="btn sm" type="button">Record what you saw</button></div>
+    <p class="meta">Opens an inline row &mdash; carrier, what the handset showed, who looked. Not a dialog.</p>
+  </div>`;
+
+/* ---- layouts ---- */
+
+const L1 = () => shell(`
+  <h2>Trust &amp; caller identity</h2>
+  <p class="sub">Whether your outbound calls arrive looking trustworthy &mdash; and what is standing in the way.</p>
+  <div class="ladder">
+    <div class="step done">${profileStep(true)}</div>
+    <div class="step done">${cnamCard('ok')}</div>
+    <div class="step blocked">${viCard('rej', true)}</div>
+  </div>
+  <div style="height:6px"></div>
+  ${attestationPopulated}
+  ${logCard(true)}`);
+
+const L2 = () => shell(`
+  <h2>Trust &amp; caller identity</h2>
+  <p class="sub">Whether your outbound calls arrive looking trustworthy.</p>
+  <div class="verdict warn">
+    <h3>Your number is probably still being labelled as spam.</h3>
+    <p>Voice Integrity &mdash; the registration that fixes this &mdash; was rejected on 26 August because your
+       Twilio Business Profile is not approved. Somebody last saw a clean handset on 29 August, but that was
+       one carrier on one day, and nothing here checks it automatically.</p>
+  </div>
+  <details class="evidence" open>
+    <summary>The two registrations <span class="pill err">1 rejected</span></summary>
+    <div class="inner">
+      ${profileStep(true)}<div style="height:10px"></div>
+      ${cnamCard('ok')}<div style="height:10px"></div>
+      ${viCard('rej', true)}
+    </div>
+  </details>
+  <details class="evidence">
+    <summary>Call grades, last 30 days <span class="pill ok">0.0% degraded of 30 graded</span></summary>
+    <div class="inner">${attestationPopulated}</div>
+  </details>
+  <details class="evidence">
+    <summary>What people have observed <span class="pill none">3 notes &middot; last 29 Aug</span></summary>
+    <div class="inner">${logCard(true)}</div>
+  </details>`);
+
+const L3 = () => shell(`
+  <h2>Trust &amp; caller identity</h2>
+  <p class="sub">Two sources, answering different questions. Neither is complete on its own.</p>
+  <div class="cols">
+    <div>
+      <h4>What Twilio reports</h4>
+      <p class="side-note">Synced automatically. Tells you what has been <em>submitted and approved</em>
+        &mdash; not what a customer&rsquo;s phone actually shows.</p>
+      ${profileStep(true)}<div style="height:10px"></div>
+      ${cnamCard('ok')}<div style="height:10px"></div>
+      ${viCard('rej', true)}<div style="height:10px"></div>
+      ${attestationPopulated}
+    </div>
+    <div>
+      <h4>What people have observed</h4>
+      <p class="side-note">Typed by hand, because no API can answer it. Tells you what a customer
+        <em>actually saw</em> &mdash; the only source that does.</p>
+      ${logCard(true)}
+    </div>
+  </div>`);
+
+const L4 = () => shell(`
+  <h2>Trust &amp; caller identity</h2>
+  <p class="sub">Whether your outbound calls arrive looking trustworthy &mdash; and what is standing in the way.</p>
+  <div class="banner" style="margin-bottom:16px">
+    <b>Nothing here is set up yet, and nothing here is broken.</b>
+    This screen has three parts and all three are empty for different reasons. Each one says which.
+  </div>
+  <div class="ladder">
+    <div class="step blocked">${profileStep(false)}</div>
+    <div class="step">${cnamCard('none')}</div>
+    <div class="step">${viCard('none', true)}</div>
+  </div>
+  <div style="height:6px"></div>
+  ${attestationEmpty}
+  ${logCard(false)}`);
+
+const L5 = () => `
+  <div class="phone">
+    <div class="bar375"><span class="back">&lsaquo; Settings</span> Trust &amp; caller identity</div>
+    <div class="scroll">
+      <div class="ladder" style="padding-left:22px">
+        <div class="step done">${profileStep(true)}</div>
+        <div class="step done">${cnamCard('ok')}</div>
+        <div class="step blocked">${viCard('rej', true)}</div>
+      </div>
+      <div style="height:6px"></div>
+      ${attestationPopulated}
+      ${logCard(true)}
+    </div>
+  </div>`;
+
+const LAYOUTS = { 1: L1, 2: L2, 3: L3, 4: L4, 5: L5 };
+
+const nums = document.getElementById('nums');
+const stage = document.getElementById('stage');
+const caption = document.getElementById('caption');
+
+Object.keys(LAYOUTS).forEach(k => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = k;
+  b.addEventListener('click', () => show(+k));
+  nums.appendChild(b);
+});
+
+function show(i) {
+  [...nums.children].forEach((b, idx) => b.setAttribute('aria-pressed', idx + 1 === i ? 'true' : 'false'));
+  const entry = CAPTIONS[i];
+  caption.innerHTML = '<strong>' + entry[0] + '</strong>' + entry[1];
+  stage.innerHTML = LAYOUTS[i]();
+}
+show(1);
+</script>
+</body>
+</html>

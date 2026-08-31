@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../widgets/delete_account_card.dart';
 import '../widgets/appearance_card.dart';
 import '../widgets/async_body.dart';
 import '../widgets/identity_card.dart';
@@ -136,6 +137,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           PasswordCard(api: widget.api, session: widget.session),
           const SizedBox(height: 12),
           _sessionsCard(),
+
+          const SizedBox(height: 16),
+          DeleteAccountCard(api: widget.api, session: widget.session),
         ],
       ),
     );

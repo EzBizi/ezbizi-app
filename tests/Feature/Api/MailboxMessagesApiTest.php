@@ -23,6 +23,7 @@ use App\Support\Email\MessageSummary;
 use App\Support\Email\ReplyComposer;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
@@ -1036,6 +1037,77 @@ class MailboxMessagesApiTest extends TestCase
         $this->assertSame([], FakeMailboxReader::$sent);
     }
 
+    public function test_a_file_reaches_the_provider_as_name_type_and_bytes(): void
+    {
+        $this->withFakeProvider();
+
+        $t = $this->provisionTenant('A1-Group');
+
+        $mailbox = $this->inbox($t);
+        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view'], email: 'jenny@a1.test');
+
+        $this->grant($t, $mailbox, 'Front desk');
+
+        $this->signedInAs($jenny)
+            ->post("/api/v1/email/mailboxes/{$mailbox->id}/messages", [
+                'to'          => ['bob@example.com'],
+                'subject'     => 'Your report',
+                'body'        => 'Attached.',
+                // createWithContent, not create: `create()` fakes the SIZE and
+                // writes an empty file, so the controller reads zero bytes and
+                // the test proves nothing about what reaches the provider.
+                'attachments' => [
+                    UploadedFile::fake()->createWithContent('sweep.pdf', str_repeat('P', 4096)),
+                ],
+            ])
+            ->assertOk();
+
+        $sent = FakeMailboxReader::$sent[0];
+
+        $this->assertCount(1, $sent['attachments']);
+        $this->assertSame('sweep.pdf', $sent['attachments'][0]['name']);
+
+        // The BYTES, not a path or a handle — nothing was written down for the
+        // reader to go back and fetch.
+        $this->assertSame(str_repeat('P', 4096), $sent['attachments'][0]['bytes']);
+    }
+
+    /**
+     * Per-file validation cannot express "these, added up".
+     *
+     * Five files of 2MB are each individually valid and together unsendable, so
+     * the total is checked separately and refused with a sentence about the
+     * total rather than about one file.
+     */
+    public function test_files_that_are_too_large_together_are_refused(): void
+    {
+        $this->withFakeProvider();
+
+        $t = $this->provisionTenant('A1-Group');
+
+        $mailbox = $this->inbox($t);
+        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view'], email: 'jenny@a1.test');
+
+        $this->grant($t, $mailbox, 'Front desk');
+
+        $this->signedInAs($jenny)
+            ->post("/api/v1/email/mailboxes/{$mailbox->id}/messages", [
+                'to'          => ['bob@example.com'],
+                'subject'     => 'Everything',
+                'body'        => 'All of it.',
+                'attachments' => [
+                    UploadedFile::fake()->createWithContent('a.pdf', str_repeat('a', 900 * 1024)),
+                    UploadedFile::fake()->createWithContent('b.pdf', str_repeat('b', 900 * 1024)),
+                    UploadedFile::fake()->createWithContent('c.pdf', str_repeat('c', 900 * 1024)),
+                ],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', fn (string $m) => str_contains($m, '2 MB'));
+
+        // Nothing was sent — not a truncated message with two of the three.
+        $this->assertSame([], FakeMailboxReader::$sent);
+    }
+
     public function test_a_message_with_no_recipient_is_refused(): void
     {
         $this->withFakeProvider();
@@ -1409,9 +1481,19 @@ class FakeMailboxReader implements MailboxReader
     /** @var array<int, array{to: list<string>, subject: string, body: string}> */
     public static array $sent = [];
 
-    public function send(Mailbox $mailbox, array $to, string $subject, string $body): void
+    /** @var list<string> */
+    public static array $folders = ['INBOX', 'SENT'];
+
+    public function availableFolders(Mailbox $mailbox): array
     {
-        self::$sent[] = ['to' => $to, 'subject' => $subject, 'body' => $body];
+        return self::$folders;
+    }
+
+    public function send(Mailbox $mailbox, array $to, string $subject, string $body, array $attachments = []): void
+    {
+        self::$sent[] = [
+            'to' => $to, 'subject' => $subject, 'body' => $body, 'attachments' => $attachments,
+        ];
     }
 
     /** @var string[] */

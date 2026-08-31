@@ -119,9 +119,15 @@ final class ReplyComposer
      * header past the join.
      *
      * @param  list<string>  $to  one or more recipient addresses
+     * @param  list<array{name: string, mime: string, bytes: string}>  $attachments
      */
-    public function composeNew(Mailbox $mailbox, array $to, string $subject, string $body): string
-    {
+    public function composeNew(
+        Mailbox $mailbox,
+        array $to,
+        string $subject,
+        string $body,
+        array $attachments = [],
+    ): string {
         $recipients = array_values(array_filter(array_map(
             fn (string $address) => $this->headerValue($address),
             $to,
@@ -132,20 +138,97 @@ final class ReplyComposer
             'To: '.implode(', ', $recipients),
             'Subject: '.$this->headerValue($this->subjectForNew($subject)),
             'MIME-Version: 1.0',
-            'Content-Type: text/plain; charset=utf-8',
         ];
 
         // No In-Reply-To and no References, deliberately. This message is not
         // under anything, and inventing threading headers for it would file it
         // beneath an unrelated conversation in the recipient's mail program.
 
-        return implode("\r\n", $lines)."\r\n\r\n".str_replace("\r\n", "\n", $body);
+        if ($attachments === []) {
+            $lines[] = 'Content-Type: text/plain; charset=utf-8';
+
+            return implode("\r\n", $lines)."\r\n\r\n".str_replace("\r\n", "\n", $body);
+        }
+
+        return $this->multipart($lines, $body, $attachments);
     }
 
-    /** The same new message, base64url and unpadded, as Gmail's `messages.send` wants it. */
-    public function composeNewForGmail(Mailbox $mailbox, array $to, string $subject, string $body): string
+    /**
+     * The same new message, base64url and unpadded, as Gmail's `messages.send`
+     * wants it. Attachments travel inside the MIME, so Gmail needs no separate
+     * upload for anything this size.
+     *
+     * @param  list<array{name: string, mime: string, bytes: string}>  $attachments
+     */
+    public function composeNewForGmail(
+        Mailbox $mailbox,
+        array $to,
+        string $subject,
+        string $body,
+        array $attachments = [],
+    ): string {
+        return rtrim(strtr(
+            base64_encode($this->composeNew($mailbox, $to, $subject, $body, $attachments)),
+            '+/',
+            '-_',
+        ), '=');
+    }
+
+    /**
+     * A `multipart/mixed` message: the typed text, then the files.
+     *
+     * ── The boundary must not occur inside any part ──────────────
+     *
+     * That is the one correctness rule of multipart, and getting it wrong
+     * truncates the message at whatever line happens to collide — the reader
+     * sees half a message and no error. The boundary here is 128 bits of
+     * `random_bytes`, so a collision is not "unlikely", it is not going to
+     * happen; and it is generated per message rather than fixed, so a file
+     * whose CONTENTS are a previous boundary cannot break the next send.
+     *
+     * A fixed boundary string would be the cheaper-looking choice and is the
+     * bug: attach a saved copy of an email built by this composer and its
+     * boundary lines are now inside a part.
+     *
+     * ── Base64, always, and hard-wrapped ─────────────────────────
+     *
+     * Not quoted-printable and not 8bit: a PDF down an 8bit part is what
+     * arrives corrupted through one hop that does not speak the extension. The
+     * 76-character wrap is RFC 2045's line-length rule, and servers do enforce
+     * it.
+     *
+     * @param  list<string>  $lines  the headers built so far
+     * @param  list<array{name: string, mime: string, bytes: string}>  $attachments
+     */
+    private function multipart(array $lines, string $body, array $attachments): string
     {
-        return rtrim(strtr(base64_encode($this->composeNew($mailbox, $to, $subject, $body)), '+/', '-_'), '=');
+        $boundary = 'ezbizi-'.bin2hex(random_bytes(16));
+
+        $lines[] = 'Content-Type: multipart/mixed; boundary="'.$boundary.'"';
+
+        $parts = [
+            '--'.$boundary,
+            'Content-Type: text/plain; charset=utf-8',
+            '',
+            str_replace("\r\n", "\n", $body),
+        ];
+
+        foreach ($attachments as $file) {
+            $parts[] = '--'.$boundary;
+            // The filename is scrubbed like any other header value — it comes
+            // from whoever picked the file, and a newline in it would end the
+            // header and start one of the sender's choosing.
+            $parts[] = 'Content-Type: '.$this->headerValue($file['mime']);
+            $parts[] = 'Content-Disposition: attachment; filename="'
+                .str_replace('"', '', $this->headerValue($file['name'])).'"';
+            $parts[] = 'Content-Transfer-Encoding: base64';
+            $parts[] = '';
+            $parts[] = trim(chunk_split(base64_encode($file['bytes']), 76, "\r\n"));
+        }
+
+        $parts[] = '--'.$boundary.'--';
+
+        return implode("\r\n", $lines)."\r\n\r\n".implode("\r\n", $parts);
     }
 
     /**

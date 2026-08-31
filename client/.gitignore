@@ -43,3 +43,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Golden-test failure output. Regenerated on every failing run, and an
+# untracked directory in a sixteen-session shared tree is one `git add -A`
+# from being committed.
+test/**/failures/

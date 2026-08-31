@@ -58,7 +58,7 @@ final class TaskDueWorker
             if ($organization === null || $organization->isReadOnly()) {
                 continue;
             }
-            $observed += $this->tenant->run($organization, function () use ($taskId, $observe): int {
+            $observed += $this->runCandidate($organization, function () use ($taskId, $observe): int {
                 $task = Task::query()->active()->with([
                     'board.company', 'board.franchise', 'board.organization', 'owner', 'statusOption',
                 ])->find($taskId);
@@ -73,6 +73,26 @@ final class TaskDueWorker
         }
 
         return $observed;
+    }
+
+    /**
+     * Per-item resilience (fix round 2, task-6 — see TaskRecurrenceWorker's
+     * copy of this method for the full rationale): one candidate's uncaught
+     * exception must not abort the rest of the batch. A failure is reported
+     * (so it stays visible, not silently swallowed) and counted as zero for
+     * this run; the occurrence that produced it is untouched, so the SAME
+     * candidate is picked up again next run — exactly the same retry story
+     * as any other skipped candidate.
+     */
+    private function runCandidate(Organization $organization, callable $work): int
+    {
+        try {
+            return $this->tenant->run($organization, $work);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return 0;
+        }
     }
 
     private function observeOverdue(Task $task): int

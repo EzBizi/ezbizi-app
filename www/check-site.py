@@ -13,6 +13,7 @@ import html.parser
 import json
 import os
 import re
+import struct
 import sys
 import xml.etree.ElementTree as ET
 
@@ -96,6 +97,22 @@ for p in pages:
 
     if 'pk_REPLACE_WITH_KEY' in doc and '<!--' not in doc.split('pk_REPLACE_WITH_KEY')[0][-400:]:
         fail.append('%s: placeholder pk_ key is live, not commented out' % rel)
+
+# The favicon must keep its large frames. scripts/make-brand-assets.py regenerates
+# this file, and for a while it wrote only 16/32/48 while the live site carried
+# 16/32/48/64/128/256 - so running the generator reverted the icon and a publish
+# shipped the revert. stdlib only: this runs on the box before the upload.
+ico = os.path.join(ROOT, 'favicon.ico')
+if os.path.exists(ico):
+    with open(ico, 'rb') as f:
+        head = f.read(6 + 16 * 64)
+    count = struct.unpack('<H', head[4:6])[0]
+    frames = sorted((head[6 + 16 * i] or 256) for i in range(count))
+    if 256 not in frames:
+        fail.append('favicon.ico has frames %s - the 256px one is gone, so the '
+                    'generator has reverted it' % frames)
+else:
+    fail.append('favicon.ico is missing')
 
 # Every page in the sitemap must exist, and every page must be in the sitemap.
 smap = os.path.join(ROOT, 'sitemap.xml')

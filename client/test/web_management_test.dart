@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/screens/web/seo_tab.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
@@ -29,7 +30,9 @@ void main() {
 
     expect(find.text('SEO'), findsOneWidget);
     expect(find.text('Websites'), findsOneWidget);
-    expect(find.text('a-1chimney.com'), findsOneWidget);
+    // The selected host appears twice by design — once in the rail, once as
+    // the detail heading. That is the split working, not a duplicate.
+    expect(find.text('a-1chimney.com'), findsWidgets);
     expect(find.text('nj.a-1chimney.com'), findsOneWidget);
   });
 
@@ -38,8 +41,8 @@ void main() {
   ) async {
     await _pumpDestination(tester, permissions: ['web_management.view']);
 
-    expect(find.textContaining('Connected'), findsOneWidget);
-    expect(find.textContaining('Waiting for the plugin'), findsOneWidget);
+    expect(find.textContaining('Connected'), findsWidgets);
+    expect(find.textContaining('Waiting for the plugin'), findsWidgets);
   });
 
   testWidgets('view alone cannot add a website', (tester) async {
@@ -55,9 +58,6 @@ void main() {
       tester,
       permissions: ['web_management.view', 'web_management.edit'],
     );
-
-    await tester.tap(find.text('a-1chimney.com'));
-    await tester.pumpAndSettle();
 
     expect(find.text('Phone number'), findsOneWidget);
     expect(find.textContaining('[ezbizi_phone]'), findsOneWidget);
@@ -84,12 +84,151 @@ void main() {
       emptyValues: true,
     );
 
-    await tester.tap(find.text('a-1chimney.com'));
-    await tester.pumpAndSettle();
-
     // The panel is open and usable rather than spinning.
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(find.text('Phone number'), findsOneWidget);
+  });
+
+  /// The panel must SHOW the browser key, and must not let it be confused with
+  /// the plugin token.
+  ///
+  /// This test exists because of a real incident: the public key shipped in the
+  /// API with no UI behind it, so the only credential this screen displayed was
+  /// the secret `ezb_` token. Asked for the browser key, the only reasonable
+  /// thing to hand over was the token — which is a screen defect, not a user
+  /// mistake, and it put a live secret somewhere it should never have gone.
+  testWidgets('a site offers its browser key, distinguished from the token', (
+    tester,
+  ) async {
+    await _pumpDestination(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+    );
+
+    expect(find.textContaining('pk_fixture_browser_key'), findsWidgets);
+
+    // The snippet points at the route that is actually served — public/ is not
+    // a web root on this host, so /ezbizi.js at the domain root is not it.
+    expect(find.textContaining('/api/v1/web/ezbizi.js'), findsOneWidget);
+
+    // And it is ABSOLUTE. A relative src resolves against whatever site the
+    // snippet was pasted into, which is never this one.
+    expect(find.textContaining('src="https://'), findsOneWidget);
+
+    // And it says which key is safe in public, because that is the whole
+    // distinction somebody has to get right.
+    expect(find.textContaining('ezb_'), findsOneWidget);
+  });
+
+  /// The split has a narrow half, and it is the half most likely to rot.
+  ///
+  /// The old one-column screen worked at every width by construction. A split
+  /// does not: below the breakpoint the rail becomes the screen and the detail
+  /// is PUSHED, which is a second code path nobody looks at on a desktop.
+  testWidgets('on a phone the list is the screen and a site pushes', (
+    tester,
+  ) async {
+    await _pumpSeoTab(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      size: const Size(390, 844),
+    );
+
+    // No detail beside the list at this width — just the list.
+    expect(find.text('a-1chimney.com'), findsOneWidget);
+    expect(find.text('Phone number'), findsNothing);
+
+    await tester.tap(find.text('a-1chimney.com'));
+    await tester.pumpAndSettle();
+
+    // Pushed a screen, not opened a modal.
+    expect(find.byType(Dialog), findsNothing);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('Phone number'), findsOneWidget);
+  });
+
+  testWidgets('the wide layout shows a site without being asked', (
+    tester,
+  ) async {
+    await _pumpDestination(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+    );
+
+    // The first site is selected for you rather than leaving an empty pane.
+    expect(find.text('Phone number'), findsOneWidget);
+    expect(find.textContaining('[ezbizi_phone]'), findsOneWidget);
+  });
+
+  /// The pasted snippet must carry an ABSOLUTE url.
+  ///
+  /// It shipped relative — `src="/api/v1/web/ezbizi.js"` — because the
+  /// same-origin web build leaves ApiClient.baseUrl empty on purpose. That
+  /// resolves against whichever site the snippet was pasted into, so it 404d
+  /// on www.ezbizi.com and worked only on app.ezbizi.com, the single host that
+  /// will never need it. Verified against production at the time: www gave 404,
+  /// app gave 200 application/javascript.
+  group('the snippet url a customer pastes', () {
+    test('uses the configured base when there is one', () {
+      expect(
+        snippetApiBase(
+          configured: 'https://app.ezbizi.com',
+          pageUrl: Uri.parse('https://irrelevant.example/'),
+        ),
+        'https://app.ezbizi.com',
+      );
+    });
+
+    test('falls back to the origin serving the app, never to nothing', () {
+      expect(
+        snippetApiBase(
+          configured: '',
+          pageUrl: Uri.parse('https://app.ezbizi.com/web_management'),
+        ),
+        'https://app.ezbizi.com',
+      );
+    });
+
+    test('never returns a relative base, even off the web', () {
+      // A `file:` Uri has no origin and would throw; a blank result here is
+      // what produced the original bug.
+      final base = snippetApiBase(
+        configured: '',
+        pageUrl: Uri.parse('file:///C:/build/app'),
+      );
+
+      expect(base, isNotEmpty);
+      expect(base, startsWith('https://'));
+    });
+  });
+
+  /// The browser key must be rotatable FROM THE SCREEN, not only from the API.
+  ///
+  /// The doc promised the public key "rotates independently" before any
+  /// endpoint existed; the endpoint was then built and still had no control
+  /// behind it. Same defect, one layer up — a capability nobody can reach is
+  /// indistinguishable from one that does not exist.
+  testWidgets('a browser key can be reissued, inline and never in a dialog', (
+    tester,
+  ) async {
+    await _pumpDestination(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+    );
+
+    await tester.tap(find.text('New key'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Dialog), findsNothing);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.textContaining('Issue a new browser key?'), findsOneWidget);
+    expect(find.text('Cancel'), findsOneWidget);
+  });
+
+  testWidgets('view alone cannot reissue a browser key', (tester) async {
+    await _pumpDestination(tester, permissions: ['web_management.view']);
+
+    expect(find.text('New key'), findsNothing);
   });
 
   // §6 — no pop-ups, ever. Adding is a form in place, not a dialog.
@@ -118,9 +257,10 @@ void main() {
       permissions: ['web_management.view', 'web_management.edit'],
     );
 
-    await tester.tap(find.text('a-1chimney.com'));
+    // The actions sit below eight fields in a scrolling pane now, so they have
+    // to be brought into view before they can be tapped.
+    await tester.ensureVisible(find.text('Remove website'));
     await tester.pumpAndSettle();
-
     await tester.tap(find.text('Remove website'));
     await tester.pumpAndSettle();
 
@@ -157,13 +297,46 @@ void main() {
   });
 }
 
+/// Pump the SEO tab on its own, at a chosen size.
+///
+/// `_pumpDestination` goes through HomeShell, which replaces NavigationSidebar
+/// with a different navigation on a phone — so a narrow test driven through the
+/// shell ends up testing the shell. This mounts the tab directly, which is what
+/// the narrow-layout tests are actually about.
+Future<void> _pumpSeoTab(
+  WidgetTester tester, {
+  required List<String> permissions,
+  required Size size,
+  bool emptyValues = false,
+}) async {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+
+  final api = ApiClient(
+    client: MockClient(_respond(permissions, false, emptyValues)),
+  );
+  final session = Session(api);
+
+  await tester.runAsync(() => session.adopt('tok'));
+
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: Scaffold(body: SeoTab(api: api, session: session)),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
 Future<void> _pumpDestination(
   WidgetTester tester, {
   required List<String> permissions,
   bool scopedToCompany = false,
   bool emptyValues = false,
+  Size size = const Size(1280, 900),
 }) async {
-  tester.view.physicalSize = const Size(1280, 900);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
@@ -251,6 +424,7 @@ const List<Map<String, Object?>> _sites = [
     'connected_at': '2026-08-28T10:00:00+00:00',
     'last_seen_at': '2026-08-28T11:00:00+00:00',
     'plugin_version': '1.0.0',
+    'public_key': 'pk_fixture_browser_key',
   },
   {
     'id': 'site-2',
@@ -260,6 +434,7 @@ const List<Map<String, Object?>> _sites = [
     'connected_at': null,
     'last_seen_at': null,
     'plugin_version': null,
+    'public_key': 'pk_fixture_branch_key',
   },
 ];
 

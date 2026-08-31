@@ -325,6 +325,28 @@ class SettingRegistry
             ),
 
             /*
+             * How long a device may stay silent before DeviceOfflineWorker
+             * raises `monitoring.device_offline` for it.
+             *
+             * 180 seconds is 3× the 60-second heartbeat cadence — one missed
+             * beat is noise (a laptop asleep for a few seconds, a slow
+             * network), three in a row is a device that stopped reporting.
+             *
+             * In `operations` rather than a group of its own, same reasoning
+             * as `organization.structure_canvas` just above: a new group
+             * with one member is a heading SettingRegistryTest's grouping
+             * check gains nothing from.
+             */
+            new SettingDefinition(
+                key: 'monitoring.offline_after_seconds', label: 'Mark a device offline after',
+                type: SettingDefinition::TYPE_INT, default: 180,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'Seconds since a device last reported before it counts as offline. '
+                    .'Devices report roughly every 60 seconds, so anything under that fires on '
+                    .'a single missed beat.',
+            ),
+
+            /*
              * Where the boxes sit on the Organization tab's structure canvas.
              *
              * ── Why it is a setting at all ───────────────────────

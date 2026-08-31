@@ -65,9 +65,36 @@ final class MicrosoftMailboxReader implements MailboxReader
         return null;
     }
 
+    /**
+     * Graph's well-known folder names, keyed by the label this module uses.
+     *
+     * ── A FIXED MAP, and that is the security property ───────────
+     *
+     * The label arrives from a query string. Interpolating it into a URL path
+     * would let a caller address any folder — or any other Graph resource — by
+     * writing one. A map means an unrecognised label produces a refusal rather
+     * than a request, and there is no arrangement of characters that reaches
+     * something not listed here.
+     *
+     * `STARRED` is deliberately absent. Graph has no starred folder; the
+     * nearest thing is a `flag/flagStatus` filter over the inbox, which is a
+     * different query rather than a different folder, and offering "Starred"
+     * that quietly showed the inbox would be the lie this method exists to
+     * stop.
+     */
+    private const FOLDERS = [
+        'INBOX'   => 'inbox',
+        'SENT'    => 'sentitems',
+        'DRAFT'   => 'drafts',
+        'DRAFTS'  => 'drafts',
+        'TRASH'   => 'deleteditems',
+        'SPAM'    => 'junkemail',
+        'ARCHIVE' => 'archive',
+    ];
+
     public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
-        return $this->page($mailbox, self::INBOX, [
+        return $this->page($mailbox, $this->folderUrl($mailbox, $label), [
             '$select'   => self::LIST_SELECT,
             '$orderby'  => 'receivedDateTime desc',
             '$top'      => (string) max(1, min($limit, 100)),
@@ -75,9 +102,57 @@ final class MicrosoftMailboxReader implements MailboxReader
         ]);
     }
 
+    /**
+     * The messages URL for one folder.
+     *
+     * ── Why an unknown label REFUSES rather than falling back ────
+     *
+     * Returning the inbox for a folder we cannot address is the failure this
+     * module keeps finding in other people's code and its own: it succeeds, it
+     * displays, and it is wrong. Somebody looking at "Sent" would be reading
+     * received mail, and nothing anywhere would say so.
+     *
+     * This used to be a constant pointing at the inbox and the label was
+     * ignored entirely, which is exactly that failure — reachable through the
+     * API even while the client only offered folders on Gmail.
+     *
+     * @throws CannotReadMailbox
+     */
+    private function folderUrl(Mailbox $mailbox, string $label): string
+    {
+        $folder = self::FOLDERS[strtoupper($label)] ?? null;
+
+        if ($folder === null) {
+            throw CannotReadMailbox::providerRefused(
+                $mailbox,
+                sprintf(
+                    'An Outlook inbox has no folder called "%s", so there is nothing to show. '
+                    .'Outlook offers Inbox, Sent, Drafts, Trash, Spam and Archive.',
+                    $label,
+                ),
+            );
+        }
+
+        return self::GRAPH.'/me/mailFolders/'.$folder.'/messages';
+    }
+
+    /**
+     * Search WITHIN the folder somebody is standing in.
+     *
+     * ── It used to search the whole mailbox ──────────────────────
+     *
+     * `/me/messages` is every message in the account. So searching while
+     * standing in Sent returned hits from the Inbox as well, under a heading
+     * that said Sent — a smaller version of the same lie as the listing bug,
+     * and one that would have been read as "search is a bit odd" rather than
+     * as a fault.
+     *
+     * Scoped through the same map the listing uses, so an unknown folder is
+     * refused here too rather than quietly searching everything.
+     */
     public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
-        return $this->page($mailbox, self::GRAPH.'/me/messages', [
+        return $this->page($mailbox, $this->folderUrl($mailbox, $label), [
             '$search' => '"'.$query.'"',
             '$select' => self::LIST_SELECT,
             '$top'    => (string) max(1, min($limit, 100)),
@@ -254,17 +329,57 @@ final class MicrosoftMailboxReader implements MailboxReader
      * leaves the next colleague unable to see that the customer was already
      * answered.
      */
-    public function send(Mailbox $mailbox, array $to, string $subject, string $body): void
+    /**
+     * Graph's well-known folders, which every Outlook mailbox has.
+     *
+     * Taken from the same map the reader addresses, so the offer and what can
+     * be opened cannot drift apart. DRAFTS is filtered out because it is an
+     * alias for DRAFT rather than a folder of its own.
+     */
+    public function availableFolders(Mailbox $mailbox): array
     {
+        return array_values(array_filter(
+            array_keys(self::FOLDERS),
+            fn (string $label) => $label !== 'DRAFTS',
+        ));
+    }
+
+    public function send(Mailbox $mailbox, array $to, string $subject, string $body, array $attachments = []): void
+    {
+        $message = [
+            'subject'      => $subject,
+            'body'         => ['contentType' => 'Text', 'content' => $body],
+            'toRecipients' => array_values(array_map(
+                fn (string $address) => ['emailAddress' => ['address' => $address]],
+                $to,
+            )),
+        ];
+
+        if ($attachments !== []) {
+            /*
+             * Graph assembles the MIME itself, so files go as structured
+             * objects rather than through {@see ReplyComposer::composeNew}.
+             * That is the third different shape for the same three files —
+             * raw MIME for IMAP, raw MIME base64url for Gmail, this for Graph
+             * — and it is why the controller hands every reader the same
+             * name/mime/bytes triple and lets each one do its own packing.
+             *
+             * `sendMail` carries attachments inline up to about 3MB of
+             * request. Above that Graph wants an upload session against a
+             * draft, which is a different flow entirely; the controller's size
+             * limit keeps us the safe side of it rather than discovering the
+             * boundary from a 413 in front of a customer.
+             */
+            $message['attachments'] = array_values(array_map(fn (array $file) => [
+                '@odata.type'  => '#microsoft.graph.fileAttachment',
+                'name'         => $file['name'],
+                'contentType'  => $file['mime'],
+                'contentBytes' => base64_encode($file['bytes']),
+            ], $attachments));
+        }
+
         $this->post($mailbox, self::GRAPH.'/me/sendMail', [
-            'message' => [
-                'subject'      => $subject,
-                'body'         => ['contentType' => 'Text', 'content' => $body],
-                'toRecipients' => array_values(array_map(
-                    fn (string $address) => ['emailAddress' => ['address' => $address]],
-                    $to,
-                )),
-            ],
+            'message'         => $message,
             'saveToSentItems' => true,
         ]);
     }

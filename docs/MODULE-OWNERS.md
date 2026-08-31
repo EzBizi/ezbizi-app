@@ -49,12 +49,26 @@ sessions either. The SHA is the only handle that survives a rename.
 | **Third-party integrations** — OAuth drivers, Meta, `config/services.php` provider blocks, the 2026-10-26 Meta cutoff | — | **deliberately blank, see below** |
 | **Tasks** | `screens/tasks/` · `screens/tasks_screen.dart` · `Models/Task*.php` · `Policies/Task*.php` · `Support/Tasks/` · `Providers/TaskServiceProvider.php` · `Jobs/DeliverTaskNotificationIntent.php` · `Middleware/EnsureTaskRouteAccess.php` · `tests/Feature/Tasks/` | `ezbizi-13` |
 | **Android · Play** | `client/android/` · the android path of `scripts/build-app.sh` · `build-web.sh` · `release.sh` · `windows-installer.iss` · `assets/logo` · `assets/installer` · `client/integration_test/store_screenshots_test.dart` · `client/test_driver/screenshots.dart` · the **Play** Console | `ezbizi-16` |
-| **iOS · Apple** | `client/ios/` · the ios path of `scripts/build-app.sh` · the Mac relay · App Store Connect, TestFlight, the Apple Developer consoles | `ezbizi-71` |
+| **iOS · Apple** | `client/ios/` · the ios path of `scripts/build-app.sh` · the Mac relay · App Store Connect, TestFlight, the Apple Developer consoles | **blank — and it is mid-review** |
+| **Website** | `www/` — **every page under it**, plus `robots.txt`, `sitemap.xml`, `check-site.py`, and the `www/favicon.ico` size list in `scripts/make-brand-assets.py`. Public copy, page structure, meta and structured data. *Not* `scripts/deploy-www.sh` or `/var/www/www` — publishing is the deploy session's. | `3b5b79f` `57b4502` `436fd6f` |
 
+> **iOS is unowned and it is not idle — it is mid-App-Store-review.** The session
+> that held it is gone. What the next owner inherits: App Store Connect status
+> *Waiting for Review* on build `0.0.0112`; `./scripts/build-app.sh ios --upload`
+> ships a new one, signing and validation already wired; signing material lives on
+> the Mac relay and in `H:/Development/Credentials/` (see below — it has no backup);
+> and **EU trader status needs the Account Holder and blocks submission outright**.
+> Fuller detail is on the board under `ios-build-and-testflight`.
+> **Do not delete `docs/ACTIVE-CONSTRAINTS.md` while that review is open** — it is
+> the only durable record of the freeze.
+>
 > **These two were split from one session and neither could see the other.** Each
-> reported the other's half as orphaned within minutes; both halves are in fact
-> owned. `scripts/build-app.sh` and `release.sh` cover every platform in one file,
-> so both sessions have lines in them — neither owns it outright.
+> reported the other's half as orphaned within minutes — and at that moment both
+> were in fact owned. This row was `ezbizi-71` until that session ended, which is
+> the failure this file warns about: a name that has stopped being true reads
+> exactly like one that is. `scripts/build-app.sh` and `release.sh` cover every
+> platform in one file, so both sessions had lines in them — neither owns it
+> outright.
 >
 > **All three of these bump `client/VERSION`.** `build.gradle.kts` derives Android's
 > `versionCode` from it (`0.0.0112` → `112`) and `build-app.sh` derives Apple's
@@ -63,6 +77,32 @@ sessions either. The SHA is the only handle that survives a rename.
 > inherits without choosing it — harmless while Play only needs it to rise, and
 > confusing at exactly the wrong moment because it is invisible from either side.
 | **Deploy** | `scripts/deploy.sh` · `scripts/sandbox.sh` · the production symlink and SSH path · the release rows in `EZBIZI-STATUS.md` | `ezbizi-a1` |
+| **UI/UX — cross-cutting** | `client/lib/core/theme.dart` · `module_screens.dart` · `dashboard_panels.dart` · `ui_strings.dart` (all four verified present). **Owns the decision, not the module:** general layout, module screens, dashboard panels and glances, navigation, and any new or changed UI. Ping before touching the four files above. Process: ask → three HTML mockups → Jose picks one → the module session implements it (`StartUp.md` §6; worked examples in `docs/previews/`) | `ezbizi-ea` |
+
+> **The carve-out, so a defect fix is not stuck behind a design round trip.**
+> Changing a state's **prominence inside an existing component** stays with the
+> module session — grey caption to red banner, adding a count, naming a state the
+> screen previously left silent. Where that *is* the correctness fix, a design round
+> trip sits on a defect's critical path and costs more than it buys: five production
+> phone lines went to voicemail for months because that state was disclosed in grey
+> secondary text. **New component, new section, new arrangement** goes to UI/UX.
+> Condition: the module session tells UI/UX **after** shipping — not for approval, so
+> the same state does not become a red banner in Phone and a grey pill in Fleet.
+>
+> **Design sign-off is not a deploy gate**, and should not become one on a peer's
+> say-so. The deploy gate is tests, migrations and freeze safety — things it can
+> verify. If Jose wants design enforced there he can say so and it gets built. Until
+> then a process everybody hears about and nobody enforces produces the worst of both:
+> sessions that comply are slowed and sessions that do not ship anyway.
+>
+> **Three things about those four files that bite.** `module_screens.dart` — the
+> sidebar rail is the **intersection** of declared modules and client screens, so
+> declaring a module does not put a tab in front of the frozen reviewer binary, which
+> has no key for it. `GlanceRegistryTest:152` asserts sidebar modules and glance keys
+> as a sorted-set **equality**, so declaring a module without adding a glance turns
+> the gate red — Training hit this and had to add a `COMING_SOON` entry it had not
+> planned. And `ui_strings.dart` has two migrations behind it, so some strings are
+> tenant data and a copy change is not a one-line edit.
 | **Fleet** | `Support/Fleet/` · `Api/Vehicle*Controller.php` · `Models/Vehicle*.php` · `Policies/VehiclePolicy.php` · `Dashboard/Glances/FleetGlance.php` · `Tasks/RecordLinks/VehicleTaskLink.php` · `Console/Commands/ImportA1ToolsVehicles.php` · `migrations/2026_08_28_170000_add_fleet_fields_carried_from_a1_tools.php` · `screens/fleet/` · `test/fleet_screen_test.dart` · `tests/Feature/Fleet/` | `ezbizi-e9` |
 | **Inventory** | `Models/Inventory*.php` · `Policies/Inventory*Policy.php` · `Api/Inventory*Controller.php` · `Support/Inventory/` · `Console/Commands/InventorySeedDemo.php` · `screens/inventory_screen.dart` · `screens/inventory/` · `test/inventory_screen_test.dart` · `tests/Feature/Inventory/` · `migrations/2026_08_2{4_160000_create_inventory_tables,5_120000_create_inventory_sales_tables}.php` · `factories/Inventory{Item,Location,Vendor}Factory.php`. **Not Inventory despite the name:** `Support/Privacy/DataInventory.php` and `tests/Feature/Api/DataInventoryTest.php` are the §9 personal-data map — this has misled once already | `ezbizi-8f` |
 | **Services** | `Models/{Service,ServiceGroup,ServiceLabel}.php` · `Api/{Services,ServiceTaxonomy,ServiceGroups,ServiceLabels}Controller.php` · `Policies/Service{,Group,Label}Policy.php` · `Support/Services/ServiceVisibility.php` · `Dashboard/Glances/ServicesGlance.php` · `screens/services/` · `test/services_screen_test.dart` · `tests/Feature/Services/` | `ezbizi-d0` |
@@ -79,14 +119,16 @@ Name these rather than assuming a module covers them.
 
 - **`Api/StaffClientVersionsController.php`**, `Middleware/EnforceMinimumClientVersion.php`, `Models/PlatformMinimumClientVersion.php` — control plane. A minimum client version is a **database row**: it needs no deploy, passes no gate, and 426s every client that falls below it. It has no module owner, so nobody is watching it.
 - **The store consoles** are not code and appear in no file list, so an unowned one does not read as unowned — it just goes quiet. They carry real deadlines: Meta Tech Provider has a hard 2026-10-26 cutoff, and **EU trader status needs the Account Holder and blocks App Store submission outright**.
-- **Signing material is single-disk and outside every backup this project has.**
+- **Signing material lives outside git and must stay there.**
   `H:/Development/Credentials/` holds the Apple signing artefacts and the Android
-  upload key. It is not in git, so the GitHub push does not cover it, and the
-  App Store Connect `.p8` **downloads exactly once from Apple** — the copy there is
-  the only one. Losing the Android upload key means a key-reset request to Google;
-  losing the `.p8` cannot be undone by anyone. Do not commit any of it — this repo
-  is pushed to production. It needs a backup that is not this machine, and it does
-  not have one.
+  upload key. The GitHub push does not cover it and must not: this repo is pushed to
+  production, so committing any of it publishes it. The App Store Connect `.p8`
+  **downloads exactly once from Apple**, and losing the Android upload key means a
+  key-reset request to Google.
+  **Confirmed 2026-08-31: the owner holds a physical USB backup**, so this is not the
+  single point of failure an earlier version of this file called it. Recorded because
+  the absence of a backup is unprovable from inside the repo — the next reader would
+  otherwise re-derive the same alarm from the same evidence.
 
 ## Contested files, edited in regions
 

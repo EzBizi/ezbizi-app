@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EzBizi — Phone › Settings rail layouts</title>
+  <style>
+    :root {
+      /* mirrors client/lib/core/theme.dart AFTER d0ce75a */
+      --cyan:#00AEEF; --primary:#00708F; --cyan-deep:#00708F;
+      --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+      --ok:#0B8F5B; --err:#E07070; --warn:#B5730B;
+      --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+    }
+    * { box-sizing:border-box; }
+    html,body { margin:0; background:#DDE3E8; color:var(--ink);
+      font:14px/1.45 system-ui, "Segoe UI", sans-serif; }
+    button { font:inherit; cursor:pointer; }
+    .app { max-width:1280px; margin:0 auto; padding:16px 16px 48px; }
+
+    header.picker { background:var(--page); border:1px solid var(--line);
+      border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+    header.picker h1 { font-size:18px; margin:0 0 4px; }
+    header.picker p { margin:0 0 12px; color:var(--muted); max-width:80ch; }
+    .locked { font-size:13px; background:var(--info-c); border-radius:8px;
+      padding:10px 12px; margin-bottom:12px; max-width:92ch; }
+    .locked strong { display:block; margin-bottom:4px; color:var(--cyan-deep); }
+    .ask { font-size:13px; background:var(--warn-c); border-radius:8px;
+      padding:10px 12px; margin-bottom:12px; max-width:92ch; }
+    .ask strong { display:block; margin-bottom:4px; color:var(--warn); }
+    .ask b { display:block; margin-top:7px; }
+    .nums { display:flex; flex-wrap:wrap; gap:8px; }
+    .nums button { min-width:44px; min-height:44px; border-radius:8px;
+      border:1px solid var(--line); background:var(--page); color:var(--ink); }
+    .nums button[aria-pressed="true"] { background:var(--primary); color:#fff; border-color:var(--primary); }
+    .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:90ch; }
+    .caption strong { display:block; margin-bottom:4px; }
+
+    .shell { display:grid; grid-template-columns:200px 1fr; min-height:660px;
+      background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+    nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px; }
+    nav.side .brand { font-weight:700; color:var(--cyan-deep); margin-bottom:16px; padding:0 8px; }
+    nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+      text-decoration:none; margin-bottom:2px; }
+    nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+    .page { display:flex; flex-direction:column; min-width:0; }
+    .tabs { display:flex; flex-wrap:wrap; gap:8px; padding:12px 16px; border-bottom:1px solid var(--line); }
+    .tabs span { padding:8px 14px; border-radius:999px; border:1px solid var(--line);
+      background:var(--page); color:var(--muted); }
+    .tabs span.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+
+    .settings { display:grid; grid-template-columns:216px 1fr; flex:1; min-height:0; }
+    .rail { border-right:1px solid var(--line); padding:10px 8px; overflow:auto; }
+    .rail a { display:flex; align-items:center; gap:9px; padding:8px 11px; border-radius:8px;
+      color:var(--ink); text-decoration:none; font-size:13px; min-height:38px; }
+    .rail a.on { background:var(--info-c); color:var(--cyan-deep); font-weight:600; }
+    .rail a .ic { width:16px; text-align:center; color:var(--muted); font-size:13px; flex:none; }
+    .rail a.on .ic { color:var(--cyan-deep); }
+    .rail a .tag { margin-left:auto; font-size:10px; padding:1px 6px; border-radius:999px;
+      background:var(--warn-c); color:var(--warn); font-weight:600; }
+    .rail h4 { font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+      color:var(--muted); margin:14px 0 4px; padding:0 11px; font-weight:600; }
+    .rail h4:first-child { margin-top:2px; }
+    .rail .sub { padding-left:20px; }
+    .rail .parent { font-weight:600; }
+    .rail .count { margin-left:auto; color:var(--muted); font-size:11px; font-weight:500; }
+
+    .pane { padding:18px 20px 32px; overflow:auto; min-width:0; }
+    .pane > h2 { font-size:17px; margin:0 0 2px; }
+    .pane > .sub { color:var(--muted); margin:0 0 16px; max-width:70ch; }
+    .card { border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin:0 0 12px; }
+    .card h3 { font-size:14px; margin:0 0 4px; }
+    .card p { margin:0; color:var(--muted); font-size:13px; }
+    .banner { background:var(--info-c); border-radius:8px; padding:11px 13px;
+      font-size:13px; margin:0 0 14px; }
+    .banner b { display:block; margin-bottom:3px; }
+    .meta { color:var(--muted); font-size:12px; margin-top:8px; }
+
+    .phone { width:375px; margin:0 auto; border:8px solid var(--ink); border-radius:28px;
+      overflow:hidden; background:#fff; min-height:660px; display:flex; flex-direction:column; }
+    .phone .bar375 { padding:11px 12px; border-bottom:1px solid var(--line); font-weight:600;
+      display:flex; gap:8px; align-items:center; font-size:14px; }
+    .phone .scroll { padding:10px 10px 24px; overflow:auto; }
+
+    @media (max-width:900px) {
+      .shell { grid-template-columns:1fr; }
+      nav.side { display:none; }
+      .settings { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>Phone › Settings rail — layouts</h1>
+
+    <div class="locked">
+      <strong>Already decided, not in this gallery</strong>
+      The rail is 216px beside a pane, collapsing to one-pane-with-Back below 600px.
+      Every section already has an icon somebody chose. <b>Trust absorbs Number quality
+      as “Trust &amp; caller identity”</b> — approved with the Trust screen, 14 → 13.
+      General leads and Call flow follows it deliberately: the same question as the form
+      you fill in, then the report of what it did, in the order somebody works. No modals,
+      colours from <code>theme.dart</code>, 375px is a floor.
+    </div>
+
+    <div class="ask">
+      <strong>Read from the code rather than from the brief, and one fact changes the problem</strong>
+      The session that raised this said “fourteen rail items, it grew one section at a time
+      and nobody looked at the whole” — then ended. Reading <code>settings_tab.dart</code>
+      rather than its summary:
+      <b>1 · Thirteen sections are built. <code>Messaging</code> is not.</b> It falls through
+      to <code>_unbuilt('Messaging campaigns will be set here.')</code> with a
+      <code>Tag('Not built yet')</code>. So this is not fourteen items — it is twelve working
+      sections, one merge, and <b>a navigation row that goes nowhere</b>, sitting among the
+      others as an equal. That is a different problem from “too many”.
+      <b>2 · Every layout keeps it visible.</b> Declaring a module and marking it coming is a
+      house pattern here — Training, Scheduling and Monitoring all ship <code>COMING_SOON</code>
+      glances. Hiding it would be the only place the product goes quiet about something it
+      intends to build. But it does not stay <em>among equals</em>: it sits last, in its own
+      group, carrying the badge it already has.
+      <b>3 · The Trust merge is assumed, not proposed.</b> You approved it with the Trust
+      screen, so all three layouts show twelve destinations rather than thirteen.
+    </div>
+
+    <p>
+      Pick a number. <strong>1 is my recommendation.</strong> 1, 2 and 3 are three answers to
+      a rail that grew one item at a time. 4 is the recommendation at 375px.
+    </p>
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+  <div id="stage"></div>
+</div>
+
+<script>
+const CAPTIONS = {
+  1: ["1 · Grouped rail (recommended)",
+      "Four headers over the same twelve destinations: Connect, Answering, Identity, Running it. Nothing moves modules, nothing adds a click, and the cost is four header rows. Chosen because twelve flat items is a SCANNING problem, not a depth problem — somebody arriving to change their voicemail greeting should not read twelve labels to find it, and grouping means they read one header and then three items. The groups also make the rail's own history legible: 'it grew one section at a time' is visible as soon as related things sit together, and the next section added has an obvious home rather than the bottom. Messaging sits last inside 'Running it' with its existing Not built yet badge, so it is present but not offered as an equal."],
+  2: ["2 · Flat, reordered by how often it is touched",
+      "Keeps a single flat list and changes only the order: the sections an owner opens repeatedly at the top, the ones touched once during setup at the bottom. The smallest possible change — no headers, no new structure, and the existing keyboard and screen-reader behaviour is untouched. Weakness: frequency order is not FINDABLE order, which is the same objection that lost Fleet layout 1. Nobody knows Porting is eleventh, and a flat list gives no landmark to scan against, so the person hunting still reads every label. It optimises the visit you already know how to make."],
+  3: ["3 · Two levels — five destinations, sub-items on selection",
+      "The rail holds five parents; picking one reveals its children. Fewest visible items by a wide margin and the only layout that would still be comfortable at twenty sections. Weakness, and it is why this is not the recommendation: it adds a click to every single visit in order to fix a problem people have only when hunting. Settings is somewhere you go to change one specific thing you already have in mind — depth taxes the common case to help the rare one. Included because if Phone keeps adding sections it becomes the right answer, and it is better to have seen it now."],
+  4: ["4 · Layout 1 at 375px",
+      "Below 600 the rail becomes the screen and a selection pushes the pane, which is the existing behaviour and the same pattern Web Management ships. The groups matter more here, not less: on a phone the whole list cannot be held in view at once, so headers are the only landmark available while scrolling. Messaging keeps its badge at this width — a dead end discovered after a tap costs more on a phone than on a desktop."]
+};
+
+const SECTIONS = {
+  connect:  [['⚙','General'], ['⇄','Call flow'], ['⚭','Connection'],
+             ['⌗','Numbers'], ['⇆','Porting']],
+  answer:   [['☚','IVR menus'], ['◴','Hours'], ['⚫','Ring groups'],
+             ['✉','Voicemail']],
+  identity: [['✓','Trust & caller identity']],
+  running:  [['⚑','Tags'], ['▤','Cost'], ['✉','Messaging', 'Not built yet']]
+};
+
+const item = (s, on) => `
+  <a class="${on ? 'on' : ''}"><span class="ic">${s[0]}</span>${s[1]}${
+    s[2] ? `<span class="tag">${s[2]}</span>` : ''}</a>`;
+
+const shell = (rail, pane) => `
+  <div class="shell">
+    <nav class="side">
+      <div class="brand">EzBizi</div>
+      <a>Dashboard</a><a>Customers</a><a>Jobs</a>
+      <a class="on">Phone</a><a>Email</a><a>Fleet</a>
+    </nav>
+    <div class="page">
+      <div class="tabs"><span>Call</span><span>Records</span><span class="on">Settings</span></div>
+      <div class="settings">
+        <div class="rail">${rail}</div>
+        <div class="pane">${pane}</div>
+      </div>
+    </div>
+  </div>`;
+
+const voicemailPane = `
+  <h2>Voicemail</h2>
+  <p class="sub">What a caller hears when nobody picks up, and where the message goes.</p>
+  <div class="card"><h3>Greeting</h3><p>Recorded 12 Aug. Played on every line that has no greeting of its own.</p></div>
+  <div class="card"><h3>Where messages go</h3><p>Transcribed and delivered to the Records tab, and emailed to the line's owner.</p></div>
+  <div class="card"><h3>After the beep</h3><p>Hang up after 3 minutes of silence.</p></div>`;
+
+const L1 = () => shell(`
+  <h4>Connect</h4>
+  ${SECTIONS.connect.map(s => item(s, false)).join('')}
+  <h4>Answering</h4>
+  ${SECTIONS.answer.map(s => item(s, s[1] === 'Voicemail')).join('')}
+  <h4>Identity</h4>
+  ${SECTIONS.identity.map(s => item(s, false)).join('')}
+  <h4>Running it</h4>
+  ${SECTIONS.running.map(s => item(s, false)).join('')}
+`, voicemailPane);
+
+const L2 = () => shell(`
+  ${[['⌗','Numbers'], ['✉','Voicemail'], ['⚫','Ring groups'],
+     ['◴','Hours'], ['⇄','Call flow'], ['⚑','Tags'],
+     ['☚','IVR menus'], ['✓','Trust & caller identity'], ['▤','Cost'],
+     ['⚙','General'], ['⚭','Connection'], ['⇆','Porting'],
+     ['✉','Messaging','Not built yet']]
+    .map(s => item(s, s[1] === 'Voicemail')).join('')}
+  <p class="meta" style="padding:8px 11px">Most-touched at the top, setup-once at the
+    bottom. No headers, no depth, no new structure.</p>
+`, voicemailPane);
+
+const L3 = () => shell(`
+  <a class="parent"><span class="ic">⚭</span>Connect<span class="count">3</span></a>
+  <a class="parent on"><span class="ic">✉</span>Answering<span class="count">4</span></a>
+  <div class="sub">
+    ${SECTIONS.answer.map(s => item(s, s[1] === 'Voicemail')).join('')}
+  </div>
+  <a class="parent"><span class="ic">⌗</span>Numbers<span class="count">3</span></a>
+  <a class="parent"><span class="ic">✓</span>Identity<span class="count">1</span></a>
+  <a class="parent"><span class="ic">▤</span>Running it<span class="count">3</span></a>
+  <p class="meta" style="padding:8px 11px">Five rows until you pick one. Would still be
+    comfortable at twenty sections; costs a click on every visit until then.</p>
+`, voicemailPane);
+
+const L4 = () => `
+  <div class="phone">
+    <div class="bar375">Phone — Settings</div>
+    <div class="scroll">
+      <div class="rail" style="border:0;padding:0">
+        <h4>Connect</h4>
+        ${SECTIONS.connect.map(s => item(s, false)).join('')}
+        <h4>Answering</h4>
+        ${SECTIONS.answer.map(s => item(s, false)).join('')}
+        <h4>Identity</h4>
+        ${SECTIONS.identity.map(s => item(s, false)).join('')}
+        <h4>Running it</h4>
+        ${SECTIONS.running.map(s => item(s, false)).join('')}
+      </div>
+      <p class="meta" style="padding:6px 11px">Picking one pushes the pane, with Back to
+        this list. Headers are the only landmark while scrolling a list that cannot be
+        held in view.</p>
+    </div>
+  </div>`;
+
+const LAYOUTS = { 1:L1, 2:L2, 3:L3, 4:L4 };
+
+const nums = document.getElementById('nums');
+const stage = document.getElementById('stage');
+const caption = document.getElementById('caption');
+
+Object.keys(LAYOUTS).forEach(k => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = k;
+  b.addEventListener('click', () => show(+k));
+  nums.appendChild(b);
+});
+
+function show(i) {
+  [...nums.children].forEach((b, idx) => b.setAttribute('aria-pressed', idx + 1 === i ? 'true' : 'false'));
+  const entry = CAPTIONS[i];
+  caption.innerHTML = '<strong>' + entry[0] + '</strong>' + entry[1];
+  stage.innerHTML = LAYOUTS[i]();
+}
+show(1);
+</script>
+</body>
+</html>

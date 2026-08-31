@@ -8,6 +8,93 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0122',
+      date: '31 Aug 2026',
+      items: [
+        'Web Management: your websites are a list down the left and the '
+            'details of the one you picked fill the right, instead of cards '
+            'you open one at a time.',
+        'Web Management: every field shows its shortcode as a button that '
+            'copies it, rather than as text you had to select by hand.',
+        'Web Management: hours of operation has a day-by-day editor with a '
+            'clock, and still lets you type your own wording if your hours do '
+            'not fit a grid.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0121',
+      date: '31 Aug 2026',
+      items: [
+        'Scheduling has a place in the sidebar. It holds Availability, Schedule '
+            'and Settings, and all three are empty for now - the tab is here so '
+            'that who may see it can be decided before there is anything in it '
+            'to see.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0120',
+      date: '31 Aug 2026',
+      items: [
+        'You can delete your own account from the account screen. It erases '
+            'your name, email and personal details and signs you out on every '
+            'device, and it asks for your password and the word DELETE first - '
+            'being signed in is not enough for something that cannot be undone.',
+        'The work stays with the organization. Jobs, customers and records you '
+            'touched keep their history; what was yours is removed from them.',
+        'The only administrator of an organization cannot delete their account, '
+            'because that would leave the business with nobody able to run it. '
+            'The screen says so, and says to make somebody else an '
+            'administrator first.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0119',
+      date: '31 Aug 2026',
+      items: [
+        'Email: a mailbox connected by password now opens its other folders '
+            'too. EzBizi asks your mail server what it has rather than '
+            'guessing, so Sent is found whether your server calls it Sent, '
+            'Sent Items or something in your own language - and a folder your '
+            'server does not have is simply not offered.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0118',
+      date: '31 Aug 2026',
+      items: [
+        'Email: attach files to a message you are starting. Up to five, two '
+            'megabytes together — and if they come to more than that, it says '
+            'so before you have waited for them to upload rather than after.',
+        'Email: pick a folder and get that folder. Outlook inboxes now open '
+            'Sent, Drafts, Trash, Spam and Archive; a mail server connected by '
+            'password still opens only the Inbox, and says so plainly instead '
+            'of handing back the Inbox under another name.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0117',
+      date: '28 Aug 2026',
+      items: [
+        'Web Management: you can issue a new browser key without touching the '
+            'plugin token. A page still carrying the old key keeps whatever '
+            'text is already written into it rather than going blank.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0116',
+      date: '28 Aug 2026',
+      items: [
+        'Phone: point a line at a menu. Menus could be built, named and given '
+            'destinations, and there was no way to attach one to a number — '
+            'every caller went straight past it.',
+        'Phone: the Cost screen no longer spins forever on a company with no '
+            'usage collected yet.',
+        'Web Management: your two keys are shown side by side and named for '
+            'what each is for — the secret one belongs on your server, the '
+            'public one goes in your page source on purpose.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0115',
       date: '28 Aug 2026',
       items: [

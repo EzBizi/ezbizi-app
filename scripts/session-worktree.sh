@@ -156,4 +156,23 @@ cat <<EOF
 
     DB_DATABASE=ezbizi_testing_$MODULE php artisan test
     DB_DATABASE=ezbizi_testing_$MODULE vendor/bin/phpunit
+
+  AND IT ONLY WORKS FOR THOSE TWO. Anything else needs DB_CONNECTION as well:
+
+    DB_CONNECTION=mysql DB_DATABASE=ezbizi_testing_$MODULE php artisan migrate
+
+  Because the prefix above is not doing what it looks like it is doing. It
+  works only because phpunit.xml:26 pins DB_CONNECTION=mysql, and phpunit sets
+  that before Laravel loads .env — which is immutable, so .env cannot win.
+  Outside the test runner nothing pins it, .env says DB_CONNECTION=sqlite, and
+  Laravel then reads DB_DATABASE as a FILE PATH:
+
+    php artisan test                  -> mysql,  schema ezbizi_testing_$MODULE
+    php artisan migrate               -> sqlite, FILE ./ezbizi_testing_$MODULE
+    DB_CONNECTION=mysql ... migrate   -> mysql,  schema ezbizi_testing_$MODULE
+
+  The middle one exits 0 and prints a full list of migrations that ran. It
+  created an empty SQLite database in the repo root and touched no MySQL at
+  all. Not hypothetical: ezbizi_testing_twilio, 925 KB, is sitting in the repo
+  root right now from exactly that command.
 EOF

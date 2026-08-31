@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AccountDeletionController;
 use App\Http\Controllers\Api\AddressLookupController;
 use App\Http\Controllers\Api\AttachmentsController;
 use App\Http\Controllers\Api\AuthController;
@@ -44,6 +45,8 @@ use App\Http\Controllers\Api\MailboxMessagesController;
 use App\Http\Controllers\Api\MarketingController;
 use App\Http\Controllers\Api\MetaCallbacksController;
 use App\Http\Controllers\Api\MicrosoftMailAuthController;
+use App\Http\Controllers\Api\Monitoring\DevicesController as MonitoringDevicesController;
+use App\Http\Controllers\Api\Monitoring\HeartbeatController as MonitoringHeartbeatController;
 use App\Http\Controllers\Api\NotificationsController;
 use App\Http\Controllers\Api\OrganizationCanvasController;
 use App\Http\Controllers\Api\OrganizationProfileController;
@@ -66,12 +69,16 @@ use App\Http\Controllers\Api\Phone\ServiceRequestsController as PhoneServiceRequ
 use App\Http\Controllers\Api\Phone\SmsWebhookController as PhoneSmsWebhookController;
 use App\Http\Controllers\Api\Phone\StatusWebhookController as PhoneStatusWebhookController;
 use App\Http\Controllers\Api\Phone\TokensController as PhoneTokensController;
+use App\Http\Controllers\Api\Phone\TrustController as PhoneTrustController;
+use App\Http\Controllers\Api\Phone\VoicemailBoxesController as PhoneVoicemailBoxesController;
 use App\Http\Controllers\Api\Phone\TranscriptionWebhookController as PhoneTranscriptionWebhookController;
 use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookController;
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ReviewsController;
 use App\Http\Controllers\Api\RolesController;
+use App\Http\Controllers\Api\SchedulingAreasController;
+use App\Http\Controllers\Api\SchedulingPatternController;
 use App\Http\Controllers\Api\SendingIdentitiesController;
 use App\Http\Controllers\Api\ServiceGroupsController;
 use App\Http\Controllers\Api\ServiceLabelsController;
@@ -96,6 +103,7 @@ use App\Http\Controllers\Api\Tasks\TaskBulkController;
 use App\Http\Controllers\Api\Tasks\TaskCollaboratorsController;
 use App\Http\Controllers\Api\Tasks\TaskColumnsController;
 use App\Http\Controllers\Api\Tasks\TaskColumnValuesController;
+use App\Http\Controllers\Api\Tasks\TaskDependenciesController;
 use App\Http\Controllers\Api\Tasks\TaskDetailsController;
 use App\Http\Controllers\Api\Tasks\TaskDuplicationController;
 use App\Http\Controllers\Api\Tasks\TaskExportsController;
@@ -484,6 +492,8 @@ Route::prefix('v1')
             Route::get('tasks/{task}/record-links/search', [TaskRecordLinksController::class, 'search']);
             Route::post('tasks/{task}/record-links', [TaskRecordLinksController::class, 'store']);
             Route::delete('tasks/{task}/record-links/{link}', [TaskRecordLinksController::class, 'destroy']);
+            Route::post('tasks/{task}/dependencies', [TaskDependenciesController::class, 'store']);
+            Route::delete('tasks/dependencies/{dependency}', [TaskDependenciesController::class, 'destroy']);
             Route::post('tasks/{task}/archive', [TasksController::class, 'archive']);
             Route::post('tasks/{task}/restore', [TasksController::class, 'restore']);
             Route::put('tasks/{task}/columns/{column}', [TaskColumnValuesController::class, 'update']);
@@ -637,6 +647,23 @@ Route::prefix('v1')
         Route::post('services/labels', [ServiceLabelsController::class, 'store']);
         Route::delete('services/labels/{id}', [ServiceLabelsController::class, 'destroy']);
         Route::apiResource('services', ServicesController::class);
+
+        /*
+         * Scheduling — capacity per slot, per weekday, per service area
+         * (docs/superpowers/specs/2026-08-31-scheduling-availability-design.md,
+         * design docs/previews/scheduling-layouts.html #7).
+         *
+         * `pattern/*` is declared BEFORE the apiResource, because
+         * `scheduling/areas/{area}` would otherwise swallow anything nested
+         * under it that arrives first. Ordering here is load-bearing, not
+         * tidiness.
+         */
+        Route::put('scheduling/areas/{area}/slots', [SchedulingAreasController::class, 'slots']);
+        Route::put('scheduling/areas/{area}/zips', [SchedulingAreasController::class, 'zips']);
+        Route::post('scheduling/pattern/preview', [SchedulingPatternController::class, 'preview']);
+        Route::post('scheduling/pattern/apply', [SchedulingPatternController::class, 'apply']);
+        Route::apiResource('scheduling/areas', SchedulingAreasController::class)
+            ->parameters(['areas' => 'area']);
 
         // Training — guides people read, the tests they take, and (later
         // tasks) who has been given which. `view`/`monitor`/`manage`/
@@ -944,6 +971,13 @@ Route::prefix('v1')
 
         Route::post('phone/connections', [PhoneConnectionsController::class, 'store']);
         Route::delete('phone/connections/{connection}', [PhoneConnectionsController::class, 'destroy']);
+        // Trust & caller identity. The attestation grade is captured on the
+        // call rows; the observation log has no API behind it by necessity.
+        Route::get('phone/trust/attestation', [PhoneTrustController::class, 'attestation']);
+        Route::get('phone/trust/observations', [PhoneTrustController::class, 'observations']);
+        Route::post('phone/trust/observations', [PhoneTrustController::class, 'storeObservation']);
+        Route::delete('phone/trust/observations/{observation}', [PhoneTrustController::class, 'destroyObservation']);
+
         Route::get('phone/connections/{connection}/trust', [PhoneConnectionsController::class, 'trustShow']);
         Route::post('phone/connections/{connection}/trust', [PhoneConnectionsController::class, 'trustStore']);
 
@@ -963,6 +997,10 @@ Route::prefix('v1')
         // the authority that spends the money in the first place.
         Route::get('phone/usage', [PhoneNumbersController::class, 'usage']);
 
+        // What a number actually is — Twilio Lookup v2. phone.edit, because a
+        // fresh lookup is billed; the cached answer is free.
+        Route::get('phone/lookup', [PhoneNumbersController::class, 'lookup']);
+
         Route::get('phone/numbers/available', [PhoneNumbersController::class, 'available']);
         Route::get('phone/numbers/countries', [PhoneNumbersController::class, 'countries']);
 
@@ -981,6 +1019,11 @@ Route::prefix('v1')
         // How a line behaves — above all which group answers it. Without this
         // `ring_group_id` could never be set and every inbound call fell
         // through to voicemail.
+        // Hand a line to a different company. Organization view only — the
+        // controller refuses elsewhere, because a company view cannot see the
+        // company it would be moving to.
+        Route::post('phone/numbers/{number}/move', [PhoneNumbersController::class, 'move']);
+
         Route::patch('phone/numbers/{number}', [PhoneNumbersController::class, 'update']);
         Route::delete('phone/numbers/{number}', [PhoneNumbersController::class, 'destroy']);
 
@@ -1003,6 +1046,16 @@ Route::prefix('v1')
         Route::delete('phone/ring-groups/{group}', [PhoneRingGroupsController::class, 'destroy']);
 
         // Port-in: start via gateway; status webhooks update phone_port_requests.
+        // Reading them was never possible: a port could be started, its
+        // status updated by webhook for weeks, and no screen could show it.
+        // Voicemail boxes: the greeting, not the messages. Recordings live on
+        // the call rows and keep their own retention there.
+        Route::get('phone/voicemail-boxes', [PhoneVoicemailBoxesController::class, 'index']);
+        Route::post('phone/voicemail-boxes', [PhoneVoicemailBoxesController::class, 'store']);
+        Route::patch('phone/voicemail-boxes/{box}', [PhoneVoicemailBoxesController::class, 'update']);
+        Route::delete('phone/voicemail-boxes/{box}', [PhoneVoicemailBoxesController::class, 'destroy']);
+
+        Route::get('phone/ports', [PhonePortsController::class, 'index']);
         Route::post('phone/ports', [PhonePortsController::class, 'store']);
 
         // Named open-hours schedules on a connection. Create may take a number
@@ -1191,6 +1244,7 @@ Route::prefix('v1')
         Route::post('email/workspace/oauth/start', [GoogleWorkspaceAuthController::class, 'start']);
         Route::get('email/workspace/oauth/status', [GoogleWorkspaceAuthController::class, 'status']);
 
+        Route::get('email/mailboxes/{mailbox}/folders', [MailboxMessagesController::class, 'folders']);
         Route::get('email/mailboxes/{mailbox}/messages', [MailboxMessagesController::class, 'index']);
         Route::post('email/mailboxes/{mailbox}/messages', [MailboxMessagesController::class, 'store']);
         Route::post('email/mailboxes/{mailbox}/messages/bulk', [MailboxMessagesController::class, 'bulk']);
@@ -1306,6 +1360,15 @@ Route::prefix('v1')
             ->parameters(['automations' => 'automation']);
         Route::post('automations', [AutomationsController::class, 'store']);
 
+        // ── Monitoring: the devices roster (2026-08-28-monitoring-pc-specs) ──
+        //
+        // Deliberately in THIS group rather than the heartbeat's idle-less one
+        // above (routes/api.php ~line 1552): an admin reading this tab IS
+        // navigation, and SlideIdleWindow should treat it as such. The
+        // heartbeat is a background beat with no screen behind it, which is
+        // the one case idle must NOT extend on.
+        Route::get('monitoring/devices', [MonitoringDevicesController::class, 'index']);
+
         // Changing it while signed in. Needs the current password: a session
         // proves somebody sat down at an unlocked laptop, not that they are the
         // account holder.
@@ -1325,6 +1388,19 @@ Route::prefix('v1')
         Route::delete('me/avatar', [ProfileController::class, 'destroyAvatar']);
         Route::get('users/{user}/avatar', [ProfileController::class, 'avatar']);
         Route::get('me/sessions', [ProfileController::class, 'sessions']);
+
+        // ── Deleting your own account ────────────────────────────
+        //
+        // No policy and no id in the path, for the same reason as the routes
+        // above: the subject is read off the token, so there is nobody else to
+        // authorize against and no way to aim this at a colleague.
+        //
+        // The GET is not decoration. A purge is irreversible and its report is
+        // the only place anybody learns what does NOT go - the same argument
+        // PurgePersonalData makes for its mandatory dry run, and it applies
+        // twice over when the person erasing themselves has to live with it.
+        Route::get('me/deletion', [AccountDeletionController::class, 'show']);
+        Route::delete('me', [AccountDeletionController::class, 'destroy']);
         Route::delete('me/sessions', [ProfileController::class, 'revokeOtherSessions']);
 
         // ── Your own preferences (§2.1 category 6) ───────────────
@@ -1572,6 +1648,22 @@ Route::prefix('v1')
                 ],
             ]);
         });
+    });
+
+/*
+ * Monitoring heartbeat — a person reports their own presence. Deliberately
+ * OUTSIDE `idle`: SlideIdleWindow pushes the token's expiry forward on every
+ * authenticated call, so a timer-driven beat would keep a walked-away session
+ * alive forever and silently void security.session_timeout_minutes. Presence is
+ * not user activity for the idle clock; genuine navigation (which hits the
+ * idle-bearing group above) is. No `subscription` or `two-factor` either — a
+ * background beat should not be interrupted by either gate.
+ */
+Route::prefix('v1')
+    ->middleware(['auth:sanctum', 'tenant'])
+    ->group(function () {
+        Route::post('monitoring/heartbeat', [MonitoringHeartbeatController::class, 'store'])
+            ->middleware('throttle:120,1');
     });
 
 /*

@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi — Monitoring · PC Specs layouts</title>
+<style>
+  :root {
+    --cyan:#00AEEF; --cyan-d:#0093CA; --cyan-deep:#00708F;
+    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+    --green:#0B8F5B; --coral:#E07070; --amber:#B5730B;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 Inter, system-ui, "Segoe UI", sans-serif; }
+  .wrap { max-width:1180px; margin:0 auto; padding:16px 16px 64px; }
+  h1 { font-size:19px; margin:0 0 4px; letter-spacing:-.4px; }
+  .lead { color:var(--muted); margin:0 0 6px; max-width:70ch; }
+  .note { color:var(--muted); font-size:13px; margin:0 0 22px; max-width:74ch; }
+  .note b { color:var(--ink); }
+
+  /* ---- app window frame ---- */
+  .frame { background:var(--page); border:1px solid #cfd6dd; border-radius:12px;
+    overflow:hidden; margin:0 0 30px; box-shadow:0 1px 3px rgba(6,8,8,.06); }
+  .tag { display:flex; align-items:center; gap:10px; padding:11px 16px;
+    border-bottom:1px solid var(--line); background:var(--alt); }
+  .tag .n { width:26px; height:26px; border-radius:8px; background:var(--cyan); color:#fff;
+    display:grid; place-items:center; font-weight:800; font-size:14px; flex:none; }
+  .tag h2 { font-size:14px; margin:0; }
+  .tag p { margin:0; color:var(--muted); font-size:13px; }
+
+  .app { display:grid; grid-template-columns:210px 1fr; min-height:600px; }
+
+  /* ---- sidebar ---- */
+  .rail { background:var(--alt); border-right:1px solid var(--line); padding:12px 0; }
+  .mark { padding:6px 16px 14px; font-weight:800; font-size:19px; letter-spacing:-.5px; }
+  .mark .ez { color:var(--cyan); } .mark .bz { color:var(--ink); }
+  .rail a { display:flex; align-items:center; gap:9px; padding:8px 16px; color:var(--muted);
+    font-size:13px; text-decoration:none; }
+  .rail a .i { width:16px; text-align:center; opacity:.8; }
+  .rail a.on { color:var(--ink); font-weight:600; background:rgba(0,174,239,.10);
+    box-shadow:inset 3px 0 0 var(--cyan); }
+  .rail .grp { padding:14px 16px 6px; font-size:10px; letter-spacing:1.3px; font-weight:700;
+    color:#93a0ad; text-transform:uppercase; }
+
+  /* ---- main ---- */
+  .main { display:flex; flex-direction:column; min-width:0; }
+  .top { display:flex; align-items:center; gap:12px; padding:12px 18px;
+    border-bottom:1px solid var(--line); }
+  .top h3 { font-size:17px; margin:0; letter-spacing:-.3px; }
+  .top .sp { flex:1; }
+  .clock { display:inline-flex; align-items:center; gap:7px; height:34px; padding:0 13px;
+    border-radius:18px; background:var(--green); color:#fff; font-weight:600; font-size:13px; }
+  .who { display:inline-flex; align-items:center; gap:8px; color:var(--muted); font-size:13px; }
+  .who .av { width:28px; height:28px; border-radius:50%; background:var(--cyan-deep); color:#fff;
+    display:grid; place-items:center; font-weight:700; font-size:12px; }
+
+  .subtabs { display:flex; gap:4px; padding:10px 18px 0; border-bottom:1px solid var(--line);
+    overflow-x:auto; }
+  .subtabs button { border:0; background:none; padding:9px 12px 12px; color:var(--muted);
+    font-weight:600; font-size:13.5px; border-bottom:2px solid transparent; white-space:nowrap; }
+  .subtabs button.on { color:var(--ink); border-bottom-color:var(--cyan); }
+  .subtabs button.soon { color:#aab4bd; }
+  .subtabs button.soon span { font-size:10px; font-weight:700; letter-spacing:.3px;
+    color:#aab4bd; background:var(--alt); border:1px solid var(--line); border-radius:10px;
+    padding:1px 6px; margin-left:6px; }
+
+  .body { padding:16px 18px; }
+  .toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .search { flex:1; min-width:160px; height:38px; border:1px solid var(--line); border-radius:10px;
+    background:var(--page); padding:0 12px; display:flex; align-items:center; gap:8px; color:var(--muted); }
+  .fchip { height:34px; padding:0 12px; border-radius:17px; border:1px solid var(--line);
+    background:var(--page); color:var(--muted); font-size:13px; display:inline-flex; align-items:center; gap:6px; }
+  .fchip.on { background:var(--cyan); color:#fff; border-color:var(--cyan); }
+  .fchip .ct { font-weight:700; }
+
+  /* status dot */
+  .dot { width:9px; height:9px; border-radius:50%; display:inline-block; flex:none; }
+  .dot.online { background:var(--green); } .dot.idle { background:var(--amber); }
+  .dot.off { background:#c4ccd4; }
+
+  /* capability pills */
+  .caps { display:flex; gap:5px; flex-wrap:wrap; }
+  .cap { font-size:11px; font-weight:600; padding:2px 8px; border-radius:11px;
+    border:1px solid var(--line); color:var(--muted); background:var(--page); }
+  .cap.has { color:var(--cyan-deep); border-color:rgba(0,112,143,.3); background:rgba(0,174,239,.07); }
+  .cap.no { color:#aab4bd; text-decoration:line-through; }
+
+  .plat { font-size:11px; font-weight:700; letter-spacing:.4px; color:var(--muted);
+    background:var(--alt); border:1px solid var(--line); border-radius:6px; padding:1px 7px; }
+
+  /* ===== Design 1: roster with expandable devices ===== */
+  .roster { border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .person { border-bottom:1px solid var(--line); }
+  .person:last-child { border-bottom:0; }
+  .phead { display:flex; align-items:center; gap:12px; padding:12px 14px; background:var(--page); }
+  .phead .av { width:34px; height:34px; border-radius:50%; background:var(--cyan-deep); color:#fff;
+    display:grid; place-items:center; font-weight:700; font-size:13px; flex:none; }
+  .phead .nm { font-weight:600; }
+  .phead .sub { color:var(--muted); font-size:12.5px; }
+  .phead .sp { flex:1; }
+  .phead .cur { color:var(--ink); font-size:13px; }
+  .phead .cur b { color:var(--cyan-deep); }
+  .phead .cnt { color:var(--muted); font-size:12.5px; }
+  .caret { color:var(--muted); font-size:12px; }
+  .devices { background:var(--alt); border-top:1px solid var(--line); }
+  .drow { display:grid; grid-template-columns:26px 1.4fr 1.6fr 1fr; gap:12px; align-items:center;
+    padding:11px 14px 11px 40px; border-bottom:1px solid var(--line); font-size:13px; }
+  .drow:last-child { border-bottom:0; }
+  .drow .dn { font-weight:600; display:flex; align-items:center; gap:8px; }
+  .drow .meta { color:var(--muted); font-size:12.5px; }
+  .specline { color:var(--muted); font-size:12.5px; }
+  .specline b { color:var(--ink); font-weight:600; }
+  .webonly { color:#93a0ad; font-style:italic; font-size:12.5px; }
+
+  /* ===== Design 2: device cards ===== */
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:12px; }
+  .card { border:1px solid var(--line); border-radius:14px; background:var(--page); padding:14px; }
+  .card .ch { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .card .ch .av { width:30px; height:30px; border-radius:50%; background:var(--cyan-deep); color:#fff;
+    display:grid; place-items:center; font-weight:700; font-size:12px; flex:none; }
+  .card .ch .nm { font-weight:600; line-height:1.1; }
+  .card .ch .dv { color:var(--muted); font-size:12.5px; }
+  .card .ch .sp { flex:1; }
+  .kv { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; margin:10px 0; font-size:12.5px; }
+  .kv .k { color:var(--muted); } .kv .v { color:var(--ink); text-align:right; font-weight:500; }
+  .card .foot { display:flex; align-items:center; justify-content:space-between; gap:8px;
+    margin-top:12px; padding-top:11px; border-top:1px solid var(--line); }
+  .seen { color:var(--muted); font-size:12px; }
+  .cardweb { background:var(--alt); }
+  .cardweb .kv { opacity:.55; }
+
+  /* ===== Design 3: presence board ===== */
+  .cols { display:grid; grid-template-columns:1fr 320px; gap:16px; }
+  .now h4, .side h4 { font-size:11px; letter-spacing:1.1px; text-transform:uppercase; color:var(--muted);
+    margin:0 0 10px; font-weight:700; }
+  .live { border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .lrow { display:flex; align-items:center; gap:12px; padding:12px 14px; border-bottom:1px solid var(--line);
+    background:var(--page); }
+  .lrow:last-child { border-bottom:0; }
+  .lrow.offl { background:var(--alt); }
+  .lrow .av { width:36px; height:36px; border-radius:50%; background:var(--cyan-deep); color:#fff;
+    display:grid; place-items:center; font-weight:700; font-size:13px; flex:none; }
+  .lrow .nm { font-weight:600; }
+  .lrow .on-tab { color:var(--muted); font-size:12.5px; }
+  .lrow .on-tab b { color:var(--cyan-deep); }
+  .lrow .sp { flex:1; }
+  .dwell { text-align:right; }
+  .dwell .big { font-weight:700; font-size:15px; }
+  .dwell .lbl { color:var(--muted); font-size:11px; }
+  .side .stat { border:1px solid var(--line); border-radius:12px; background:var(--page);
+    padding:12px 14px; margin-bottom:10px; }
+  .side .stat .num { font-size:24px; font-weight:800; letter-spacing:-.5px; }
+  .side .stat .num.warn { color:var(--coral); }
+  .side .stat .cap2 { color:var(--muted); font-size:12.5px; }
+  .side .mini { display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--line); font-size:13px; }
+  .side .mini:last-child { border-bottom:0; }
+  .side .mini .g { flex:1; color:var(--muted); }
+
+  .disclosure { display:flex; gap:8px; align-items:flex-start; margin-top:14px; padding:10px 12px;
+    background:var(--alt); border:1px solid var(--line); border-radius:10px; color:var(--muted); font-size:12.5px; }
+  .disclosure b { color:var(--ink); }
+
+  @media (max-width:720px) {
+    .app { grid-template-columns:1fr; }
+    .rail { display:flex; gap:2px; overflow-x:auto; border-right:0; border-bottom:1px solid var(--line);
+      padding:8px; }
+    .rail .mark, .rail .grp { display:none; }
+    .rail a { white-space:nowrap; padding:8px 12px; border-radius:8px; }
+    .rail a.on { box-shadow:none; }
+    .drow { grid-template-columns:20px 1fr; gap:6px; padding-left:20px; }
+    .drow .meta, .drow .speccell { grid-column:2; }
+    .cols { grid-template-columns:1fr; }
+    .phead .cur { display:none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Monitoring — PC Specs, three layouts</h1>
+  <p class="lead">Same tab, same data, three ways to read it. Answer by number.</p>
+  <p class="note">Real palette from <b>theme.dart</b>, real field data (A‑1 Chimney + Everdoors).
+    The rule the whole tab turns on: <b>a device shows only what it can report</b> — a web
+    session gives you tab + dwell + last seen and nothing more, and the layout says so out loud
+    rather than leaving a blank that reads like a bug. Specs (RAM/disk/wifi/open apps) exist only
+    where the desktop agent is installed. Resize the window narrow to see the 375px behaviour.</p>
+
+  <!-- ============ CHOSEN : 1 (roster) + 3's glance panel ============ -->
+  <div class="frame" style="border-color:var(--cyan);box-shadow:0 0 0 3px rgba(0,174,239,.14);">
+    <div class="tag" style="background:rgba(0,174,239,.09);border-bottom-color:rgba(0,174,239,.3);">
+      <div class="n" style="background:var(--green);">✓</div>
+      <div><h2>Chosen — roster, with the glance panel on the right</h2>
+        <p>Design 1's people‑first roster as the working surface; Design 3's at‑a‑glance panel docked
+          alongside. Panel drops below the roster at 375px.</p></div>
+    </div>
+    <div class="app">
+      <nav class="rail">
+        <div class="mark"><span class="ez">Ez</span><span class="bz">bizi</span></div>
+        <a href="#"><span class="i">▤</span>Dashboard</a>
+        <a href="#"><span class="i">◱</span>Tasks</a>
+        <a href="#"><span class="i">◐</span>Customers</a>
+        <a href="#"><span class="i">▦</span>Jobs</a>
+        <a href="#"><span class="i">☎</span>Phone</a>
+        <div class="grp">Oversight</div>
+        <a href="#" class="on"><span class="i">◉</span>Monitoring</a>
+        <a href="#"><span class="i">⚙</span>Automations</a>
+      </nav>
+      <div class="main">
+        <div class="top">
+          <h3>Monitoring</h3><div class="sp"></div>
+          <span class="clock">● On the clock</span>
+          <span class="who"><span class="av">JD</span>J. Demasi · A‑1 Chimney</span>
+        </div>
+        <div class="subtabs">
+          <button class="on">PC Specs</button>
+          <button class="soon">Camera Monitoring <span>soon</span></button>
+          <button class="soon">Desktop Monitoring <span>soon</span></button>
+        </div>
+        <div class="body">
+          <div class="cols">
+            <div class="now" style="min-width:0;">
+              <div class="toolbar">
+                <div class="search">⌕ Search people or devices…</div>
+                <button class="fchip on">All <span class="ct">14</span></button>
+                <button class="fchip">Online <span class="ct">6</span></button>
+                <button class="fchip">Has agent <span class="ct">5</span></button>
+                <button class="fchip">Web only <span class="ct">7</span></button>
+              </div>
+              <div class="roster">
+                <div class="person">
+                  <div class="phead">
+                    <span class="av">MR</span>
+                    <div><div class="nm">Marco Reyes <span class="dot online" title="online"></span></div>
+                      <div class="sub">Lead tech · A‑1 Chimney</div></div>
+                    <div class="sp"></div>
+                    <div class="cur">in <b>Jobs</b> · 22m</div>
+                    <div class="cnt" style="width:96px;text-align:right;">2 devices ▾</div>
+                  </div>
+                  <div class="devices">
+                    <div class="drow">
+                      <span class="dot online"></span>
+                      <span class="dn"><span class="plat">WINDOWS</span> Shop desktop</span>
+                      <span class="speccell specline"><b>16 GB</b> RAM · <b>119 GB</b> free · Win 11 26100 · Wi‑Fi “A1‑SHOP” −48 dBm<br>Open: EzBizi, Chrome, Outlook</span>
+                      <span class="meta">agent v0.0.0115 · seen just now</span>
+                    </div>
+                    <div class="drow">
+                      <span class="dot idle"></span>
+                      <span class="dn"><span class="plat">iOS</span> iPhone 15</span>
+                      <span class="speccell specline">iOS 18.5 · on cellular</span>
+                      <span class="meta">seen 3m ago</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="person">
+                  <div class="phead">
+                    <span class="av">PN</span>
+                    <div><div class="nm">Priya Nair <span class="dot online"></span></div>
+                      <div class="sub">Office · Everdoors</div></div>
+                    <div class="sp"></div>
+                    <div class="cur">in <b>Customers</b> · 8m</div>
+                    <div class="cnt" style="width:96px;text-align:right;">1 device ▸</div>
+                  </div>
+                  <div class="devices">
+                    <div class="drow">
+                      <span class="dot online"></span>
+                      <span class="dn"><span class="plat">WEB</span> Chrome · Windows</span>
+                      <span class="speccell webonly">Web session — no specs or screenshots available from a browser.</span>
+                      <span class="meta">seen just now</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="person">
+                  <div class="phead">
+                    <span class="av">DE</span>
+                    <div><div class="nm">Dwayne Ellis <span class="dot off"></span></div>
+                      <div class="sub">Tech · A‑1 Chimney</div></div>
+                    <div class="sp"></div>
+                    <div class="cur" style="color:var(--muted)">offline</div>
+                    <div class="cnt" style="width:96px;text-align:right;">2 devices ▸</div>
+                  </div>
+                </div>
+                <div class="person">
+                  <div class="phead">
+                    <span class="av">SW</span>
+                    <div><div class="nm">Sam Whitfield <span class="dot off"></span></div>
+                      <div class="sub">Installer · Everdoors</div></div>
+                    <div class="sp"></div>
+                    <div class="cur" style="color:var(--muted)">offline</div>
+                    <div class="cnt" style="width:96px;text-align:right;">1 device ▸</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="side">
+              <h4>At a glance</h4>
+              <div class="stat"><div class="num">6 / 14</div><div class="cap2">people online</div></div>
+              <div class="stat"><div class="num warn">1</div><div class="cap2">disk low — Dwayne’s MacBook, 6 GB free · can fire <b>monitoring.disk_low</b></div></div>
+              <div class="stat">
+                <div class="cap2" style="margin-bottom:6px;font-weight:600;color:var(--ink)">Devices with agent</div>
+                <div class="mini"><span class="plat">WIN</span><span class="g">Shop desktop</span><span class="dot online"></span></div>
+                <div class="mini"><span class="plat">WIN</span><span class="g">Front desk</span><span class="dot online"></span></div>
+                <div class="mini"><span class="plat">MAC</span><span class="g">MacBook Air</span><span class="dot off"></span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="disclosure">🛈 <span><b>What each device can report</b> is on its row; the panel keeps the
+            counts and the disk‑low alert in view while you work the roster. Capability is declared by the
+            device, never assumed.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="note" style="margin:-8px 0 22px;">Below are the three originals for reference — the choice above
+    is <b>1 + 3's panel</b>.</p>
+
+  <!-- ============ DESIGN 1 : ROSTER ============ -->
+  <div class="frame">
+    <div class="tag"><div class="n">1</div>
+      <div><h2>Roster — people first, devices tucked under each</h2>
+        <p>Scan your crew top to bottom; expand a person to see their machines. Dense, admin-shaped.</p></div>
+    </div>
+    <div class="app">
+      <nav class="rail">
+        <div class="mark"><span class="ez">Ez</span><span class="bz">bizi</span></div>
+        <a href="#"><span class="i">▤</span>Dashboard</a>
+        <a href="#"><span class="i">◱</span>Tasks</a>
+        <a href="#"><span class="i">◐</span>Customers</a>
+        <a href="#"><span class="i">▦</span>Jobs</a>
+        <a href="#"><span class="i">☎</span>Phone</a>
+        <div class="grp">Oversight</div>
+        <a href="#" class="on"><span class="i">◉</span>Monitoring</a>
+        <a href="#"><span class="i">⚙</span>Automations</a>
+      </nav>
+      <div class="main">
+        <div class="top">
+          <h3>Monitoring</h3><div class="sp"></div>
+          <span class="clock">● On the clock</span>
+          <span class="who"><span class="av">JD</span>J. Demasi · A‑1 Chimney</span>
+        </div>
+        <div class="subtabs">
+          <button class="on">PC Specs</button>
+          <button class="soon">Camera Monitoring <span>soon</span></button>
+          <button class="soon">Desktop Monitoring <span>soon</span></button>
+        </div>
+        <div class="body">
+          <div class="toolbar">
+            <div class="search">⌕ Search people or devices…</div>
+            <button class="fchip on">All <span class="ct">14</span></button>
+            <button class="fchip">Online <span class="ct">6</span></button>
+            <button class="fchip">Has agent <span class="ct">5</span></button>
+            <button class="fchip">Web only <span class="ct">7</span></button>
+          </div>
+
+          <div class="roster">
+            <!-- expanded person with agent -->
+            <div class="person">
+              <div class="phead">
+                <span class="av">MR</span>
+                <div><div class="nm">Marco Reyes <span class="dot online" title="online"></span></div>
+                  <div class="sub">Lead tech · A‑1 Chimney</div></div>
+                <div class="sp"></div>
+                <div class="cur">in <b>Jobs</b> · 22m</div>
+                <div class="cnt" style="width:96px;text-align:right;">2 devices ▾</div>
+              </div>
+              <div class="devices">
+                <div class="drow">
+                  <span class="dot online"></span>
+                  <span class="dn"><span class="plat">WINDOWS</span> Shop desktop</span>
+                  <span class="speccell specline"><b>16 GB</b> RAM · <b>119 GB</b> free · Win 11 26100 · Wi‑Fi “A1‑SHOP” −48 dBm<br>Open: EzBizi, Chrome, Outlook</span>
+                  <span class="meta">agent v0.0.0115 · seen just now</span>
+                </div>
+                <div class="drow">
+                  <span class="dot idle"></span>
+                  <span class="dn"><span class="plat">iOS</span> iPhone 15</span>
+                  <span class="speccell specline">iOS 18.5 · on cellular</span>
+                  <span class="meta">seen 3m ago</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- collapsed person, web only -->
+            <div class="person">
+              <div class="phead">
+                <span class="av">PN</span>
+                <div><div class="nm">Priya Nair <span class="dot online"></span></div>
+                  <div class="sub">Office · Everdoors</div></div>
+                <div class="sp"></div>
+                <div class="cur">in <b>Customers</b> · 8m</div>
+                <div class="cnt" style="width:96px;text-align:right;">1 device ▸</div>
+              </div>
+              <div class="devices">
+                <div class="drow">
+                  <span class="dot online"></span>
+                  <span class="dn"><span class="plat">WEB</span> Chrome · Windows</span>
+                  <span class="speccell webonly">Web session — no specs or screenshots available from a browser.</span>
+                  <span class="meta">seen just now</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- collapsed, offline -->
+            <div class="person">
+              <div class="phead">
+                <span class="av">DE</span>
+                <div><div class="nm">Dwayne Ellis <span class="dot off"></span></div>
+                  <div class="sub">Tech · A‑1 Chimney</div></div>
+                <div class="sp"></div>
+                <div class="cur" style="color:var(--muted)">offline</div>
+                <div class="cnt" style="width:96px;text-align:right;">2 devices ▸</div>
+              </div>
+            </div>
+
+            <div class="person">
+              <div class="phead">
+                <span class="av">SW</span>
+                <div><div class="nm">Sam Whitfield <span class="dot off"></span></div>
+                  <div class="sub">Installer · Everdoors</div></div>
+                <div class="sp"></div>
+                <div class="cur" style="color:var(--muted)">offline</div>
+                <div class="cnt" style="width:96px;text-align:right;">1 device ▸</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="disclosure">🛈 <span><b>What each device can report</b> is shown on its row —
+            capability is declared by the device, never assumed. Web and mobile sessions cannot be
+            screen‑captured; the row states it instead of hiding it.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ DESIGN 2 : DEVICE CARDS ============ -->
+  <div class="frame">
+    <div class="tag"><div class="n">2</div>
+      <div><h2>Device cards — one card per machine, specs on the face</h2>
+        <p>Every device is its own tile; filter to “has agent” and you’re reading fleet health. Fewer clicks to specs.</p></div>
+    </div>
+    <div class="app">
+      <nav class="rail">
+        <div class="mark"><span class="ez">Ez</span><span class="bz">bizi</span></div>
+        <a href="#"><span class="i">▤</span>Dashboard</a>
+        <a href="#"><span class="i">◱</span>Tasks</a>
+        <a href="#"><span class="i">◐</span>Customers</a>
+        <a href="#"><span class="i">▦</span>Jobs</a>
+        <a href="#"><span class="i">☎</span>Phone</a>
+        <div class="grp">Oversight</div>
+        <a href="#" class="on"><span class="i">◉</span>Monitoring</a>
+        <a href="#"><span class="i">⚙</span>Automations</a>
+      </nav>
+      <div class="main">
+        <div class="top">
+          <h3>Monitoring</h3><div class="sp"></div>
+          <span class="clock">● On the clock</span>
+          <span class="who"><span class="av">JD</span>J. Demasi · A‑1 Chimney</span>
+        </div>
+        <div class="subtabs">
+          <button class="on">PC Specs</button>
+          <button class="soon">Camera Monitoring <span>soon</span></button>
+          <button class="soon">Desktop Monitoring <span>soon</span></button>
+        </div>
+        <div class="body">
+          <div class="toolbar">
+            <div class="search">⌕ Filter devices…</div>
+            <button class="fchip">All <span class="ct">21</span></button>
+            <button class="fchip on">Has agent <span class="ct">5</span></button>
+            <button class="fchip">Mobile <span class="ct">9</span></button>
+            <button class="fchip">Web <span class="ct">7</span></button>
+            <button class="fchip">Offline <span class="ct">8</span></button>
+          </div>
+
+          <div class="grid">
+            <!-- agent card -->
+            <div class="card">
+              <div class="ch"><span class="av">MR</span>
+                <div><div class="nm">Marco Reyes</div><div class="dv"><span class="plat">WINDOWS</span> Shop desktop</div></div>
+                <div class="sp"></div><span class="dot online"></span></div>
+              <div class="caps"><span class="cap has">Activity</span><span class="cap has">Specs</span><span class="cap has">Screenshots</span></div>
+              <div class="kv">
+                <span class="k">RAM</span><span class="v">16 GB</span>
+                <span class="k">Disk free</span><span class="v">119 GB</span>
+                <span class="k">OS</span><span class="v">Win 11 · 26100</span>
+                <span class="k">Wi‑Fi</span><span class="v">A1‑SHOP · −48 dBm</span>
+                <span class="k">Open apps</span><span class="v">EzBizi, Chrome, Outlook</span>
+              </div>
+              <div class="foot"><span class="seen">Now · in Jobs 22m</span><span class="plat">agent v115</span></div>
+            </div>
+
+            <!-- agent card, warning -->
+            <div class="card">
+              <div class="ch"><span class="av">DE</span>
+                <div><div class="nm">Dwayne Ellis</div><div class="dv"><span class="plat">MACOS</span> MacBook Air</div></div>
+                <div class="sp"></div><span class="dot off"></span></div>
+              <div class="caps"><span class="cap has">Activity</span><span class="cap has">Specs</span><span class="cap has">Screenshots</span></div>
+              <div class="kv">
+                <span class="k">RAM</span><span class="v">8 GB</span>
+                <span class="k">Disk free</span><span class="v" style="color:var(--coral)">6 GB low</span>
+                <span class="k">OS</span><span class="v">macOS 15.5</span>
+                <span class="k">Wi‑Fi</span><span class="v">—</span>
+                <span class="k">Open apps</span><span class="v">last: EzBizi, Safari</span>
+              </div>
+              <div class="foot"><span class="seen">Offline · seen 2h ago</span><span class="plat">agent v112</span></div>
+            </div>
+
+            <!-- mobile card -->
+            <div class="card">
+              <div class="ch"><span class="av">MR</span>
+                <div><div class="nm">Marco Reyes</div><div class="dv"><span class="plat">iOS</span> iPhone 15</div></div>
+                <div class="sp"></div><span class="dot idle"></span></div>
+              <div class="caps"><span class="cap has">Activity</span><span class="cap no">Specs</span><span class="cap no">Screenshots</span></div>
+              <div class="kv">
+                <span class="k">OS</span><span class="v">iOS 18.5</span>
+                <span class="k">Network</span><span class="v">Cellular</span>
+                <span class="k">App build</span><span class="v">0.0.0115</span>
+              </div>
+              <div class="foot"><span class="seen">Idle · seen 3m ago</span></div>
+            </div>
+
+            <!-- web card -->
+            <div class="card cardweb">
+              <div class="ch"><span class="av">PN</span>
+                <div><div class="nm">Priya Nair</div><div class="dv"><span class="plat">WEB</span> Chrome · Windows</div></div>
+                <div class="sp"></div><span class="dot online"></span></div>
+              <div class="caps"><span class="cap has">Activity</span><span class="cap no">Specs</span><span class="cap no">Screenshots</span></div>
+              <div class="kv"><span class="k">Browser</span><span class="v">Chrome 140</span>
+                <span class="k">Platform</span><span class="v">Windows</span></div>
+              <div class="foot"><span class="seen">Now · in Customers 8m</span>
+                <span class="plat" style="color:#aab4bd">no agent</span></div>
+            </div>
+          </div>
+
+          <div class="disclosure">🛈 <span>Grey <b>“no agent”</b> cards are web/mobile sessions — struck‑through
+            capabilities show what that device can’t do. Install the desktop app on a machine to turn its
+            card full‑colour with live specs.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ DESIGN 3 : PRESENCE BOARD ============ -->
+  <div class="frame">
+    <div class="tag"><div class="n">3</div>
+      <div><h2>Presence board — who’s working right now, up front</h2>
+        <p>Ops‑room view: live people and what tab they’re in lead; specs and offline sit to the side. Best on a wall screen.</p></div>
+    </div>
+    <div class="app">
+      <nav class="rail">
+        <div class="mark"><span class="ez">Ez</span><span class="bz">bizi</span></div>
+        <a href="#"><span class="i">▤</span>Dashboard</a>
+        <a href="#"><span class="i">◱</span>Tasks</a>
+        <a href="#"><span class="i">◐</span>Customers</a>
+        <a href="#"><span class="i">▦</span>Jobs</a>
+        <a href="#"><span class="i">☎</span>Phone</a>
+        <div class="grp">Oversight</div>
+        <a href="#" class="on"><span class="i">◉</span>Monitoring</a>
+        <a href="#"><span class="i">⚙</span>Automations</a>
+      </nav>
+      <div class="main">
+        <div class="top">
+          <h3>Monitoring</h3><div class="sp"></div>
+          <span class="clock">● On the clock</span>
+          <span class="who"><span class="av">JD</span>J. Demasi · A‑1 Chimney</span>
+        </div>
+        <div class="subtabs">
+          <button class="on">PC Specs</button>
+          <button class="soon">Camera Monitoring <span>soon</span></button>
+          <button class="soon">Desktop Monitoring <span>soon</span></button>
+        </div>
+        <div class="body">
+          <div class="cols">
+            <div class="now">
+              <h4>Working now · 6</h4>
+              <div class="live">
+                <div class="lrow">
+                  <span class="av">MR</span>
+                  <div><div class="nm">Marco Reyes <span class="plat">WINDOWS</span></div>
+                    <div class="on-tab">in <b>Jobs</b> · Shop desktop · agent</div></div>
+                  <div class="sp"></div>
+                  <div class="dwell"><div class="big">22m</div><div class="lbl">on this tab</div></div>
+                </div>
+                <div class="lrow">
+                  <span class="av">PN</span>
+                  <div><div class="nm">Priya Nair <span class="plat">WEB</span></div>
+                    <div class="on-tab">in <b>Customers</b> · Chrome · Windows</div></div>
+                  <div class="sp"></div>
+                  <div class="dwell"><div class="big">8m</div><div class="lbl">on this tab</div></div>
+                </div>
+                <div class="lrow">
+                  <span class="av">TL</span>
+                  <div><div class="nm">Tanya Lowe <span class="plat">WINDOWS</span></div>
+                    <div class="on-tab">in <b>Phone</b> · Front desk · agent</div></div>
+                  <div class="sp"></div>
+                  <div class="dwell"><div class="big">1h 04m</div><div class="lbl">on this tab</div></div>
+                </div>
+                <div class="lrow offl">
+                  <span class="av">DE</span>
+                  <div><div class="nm">Dwayne Ellis <span class="plat">MACOS</span></div>
+                    <div class="on-tab">offline · seen 2h ago</div></div>
+                  <div class="sp"></div>
+                  <div class="dwell"><div class="lbl">MacBook Air</div></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="side">
+              <h4>At a glance</h4>
+              <div class="stat"><div class="num">6 / 14</div><div class="cap2">people online</div></div>
+              <div class="stat"><div class="num warn">1</div><div class="cap2">disk low — Dwayne’s MacBook, 6 GB free</div></div>
+              <div class="stat">
+                <div class="cap2" style="margin-bottom:6px;font-weight:600;color:var(--ink)">Devices with agent</div>
+                <div class="mini"><span class="plat">WIN</span><span class="g">Shop desktop</span><span class="dot online"></span></div>
+                <div class="mini"><span class="plat">WIN</span><span class="g">Front desk</span><span class="dot online"></span></div>
+                <div class="mini"><span class="plat">MAC</span><span class="g">MacBook Air</span><span class="dot off"></span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="disclosure">🛈 <span>Dwell resets when someone changes tab, so “1h 04m in Phone” is
+            real focus time, not a login age. Only agent devices carry specs — the <b>disk‑low</b> alert can
+            fire an automation (<b>monitoring.disk_low</b>).</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="note" style="margin-top:6px;">All three are the <b>PC Specs</b> tab of Sub‑project 1 —
+    no agent required for what’s drawn here except the specs fields, which appear only on agent devices.
+    Camera and Desktop Monitoring are the greyed sub‑tabs, built after this. Pick a number, or mix
+    (“1’s roster, 3’s glance panel on the right”).</p>
+</div>
+</body>
+</html>

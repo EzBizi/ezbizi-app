@@ -219,10 +219,33 @@ final class ImapConnection
      */
     public function examineInbox(): array
     {
-        $result = $this->command('EXAMINE INBOX', tolerate: true);
+        return $this->examine('INBOX');
+    }
+
+    /**
+     * The same, for any folder.
+     *
+     * ── The name is quoted, and that is not cosmetic ─────────────
+     *
+     * A folder name reaches here from {@see ImapMailboxReader::folderFor},
+     * which read it off a `LIST` response — that is to say, off a server we do
+     * not run. {@see quoted} refuses CR, LF and NUL for the same reason it
+     * refuses them in a password: an IMAP command is one CRLF-terminated line,
+     * and a name carrying one would end this command and start another.
+     *
+     * @return array{exists: int, uidvalidity: int, uidnext: int}
+     *
+     * @throws ImapFailure
+     */
+    public function examine(string $folder): array
+    {
+        $result = $this->command('EXAMINE '.$this->quoted($folder, 'folder name'), tolerate: true);
 
         if ($result['status'] !== 'OK') {
-            throw ImapFailure::misbehaved('The mail server would not open the INBOX folder.');
+            throw ImapFailure::misbehaved(sprintf(
+                'The mail server would not open the %s folder.',
+                $folder,
+            ));
         }
 
         $exists      = 0;
@@ -244,6 +267,85 @@ final class ImapConnection
         }
 
         return ['exists' => $exists, 'uidvalidity' => $uidvalidity, 'uidnext' => $uidnext];
+    }
+
+    /**
+     * Every folder on the server, with whatever it says about each.
+     *
+     * ── Why this cannot be a constant map ────────────────────────
+     *
+     * Graph has fixed folder names, so {@see MicrosoftMailboxReader} maps
+     * labels to them in code. IMAP has no such thing. The same folder is
+     * `Sent`, `Sent Items`, `Sent Messages` or `INBOX.Sent` depending on the
+     * server, the hierarchy separator is whatever the server says it is, and a
+     * customer may have renamed any of it. So the names have to be asked for.
+     *
+     * ── SPECIAL-USE first, names only as a fallback ──────────────
+     *
+     * RFC 6154 lets a server label a folder by PURPOSE — `\Sent`, `\Drafts`,
+     * `\Trash`, `\Junk`, `\Archive` — which is the server telling us directly
+     * rather than us guessing from a word. Where it is offered it is right by
+     * definition, including on a server whose folders are in another language.
+     * Not every server implements it, which is why the caller also has names
+     * to fall back on.
+     *
+     * The attributes come back on a plain `LIST` from any server that supports
+     * the extension, so this does not ask for `RETURN (SPECIAL-USE)` — that
+     * form is refused outright by servers that do not know it, which would
+     * cost the whole listing to gain nothing.
+     *
+     * ponytail: names are taken as sent. A folder whose name is not ASCII
+     * arrives in modified UTF-7 (RFC 2060 §5.1.3) and will not match a
+     * fallback word; SPECIAL-USE covers those servers, and decoding mUTF-7 is
+     * the upgrade if a customer ever has a renamed non-ASCII Sent folder.
+     *
+     * @return list<array{name: string, attributes: list<string>}>
+     *
+     * @throws ImapFailure
+     */
+    public function folders(): array
+    {
+        $result = $this->command('LIST "" "*"', tolerate: true);
+
+        if ($result['status'] !== 'OK') {
+            throw ImapFailure::misbehaved('The mail server would not list its folders.');
+        }
+
+        $folders = [];
+
+        foreach ($result['raw'] as $line) {
+            // * LIST (\HasNoChildren \Sent) "/" "Sent Items"
+            // * LIST (\HasNoChildren) "." INBOX.Sent
+            if (preg_match('/^\*\s+LIST\s+\(([^)]*)\)\s+(?:"[^"]*"|NIL)\s+(.+)$/i', trim($line), $m) !== 1) {
+                continue;
+            }
+
+            $name = trim($m[2]);
+
+            // The name is a quoted string or a bare atom. Unquoting has to
+            // undo the escaping the server applied, or a folder with a quote
+            // in its name comes back with a backslash still in it and then
+            // fails to match itself on EXAMINE.
+            if (str_starts_with($name, '"') && str_ends_with($name, '"') && strlen($name) >= 2) {
+                $name = str_replace(['\\"', '\\\\'], ['"', '\\'], substr($name, 1, -1));
+            }
+
+            if ($name === '') {
+                continue;
+            }
+
+            $attributes = [];
+
+            foreach (preg_split('/\s+/', trim($m[1])) ?: [] as $attribute) {
+                if ($attribute !== '') {
+                    $attributes[] = $attribute;
+                }
+            }
+
+            $folders[] = ['name' => $name, 'attributes' => $attributes];
+        }
+
+        return $folders;
     }
 
     /**

@@ -93,7 +93,7 @@ final class TaskViewWriter
             $this->uniqueName($locked, $visibility, $ownerId, $name, $view->id);
             $before = $this->auditFields($view);
             if (array_key_exists('configuration', $input)) {
-                $view->configuration = $this->codec->decode($locked, $input['configuration']);
+                $view->configuration = $this->codec->decode($locked, $input['configuration'], $view->is_permanent_main);
             }
             if ($visibility !== $view->visibility) {
                 $view->position = $this->nextPosition($locked, $visibility, $ownerId);

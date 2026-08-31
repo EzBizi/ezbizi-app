@@ -40,8 +40,18 @@ abstract class TestCase extends BaseTestCase
      */
     private const REQUIRED_MARKER = 'testing';
 
+    /**
+     * The shared schema every session lands on when nobody types the prefix.
+     */
+    private const SHARED_SCHEMA = 'ezbizi_testing';
+
     protected function setUp(): void
     {
+        // BEFORE parent::setUp(), which is where RefreshDatabase drops and
+        // remigrates the schema. Checking after it would fire the warning having
+        // already done the exact damage it exists to prevent.
+        $this->refuseSharedSchema();
+
         parent::setUp();
 
         $this->app->instance(TwilioGateway::class, new FakeTwilioGateway);
@@ -64,5 +74,71 @@ abstract class TestCase extends BaseTestCase
                 self::REQUIRED_MARKER,
             ));
         }
+    }
+
+    /**
+     * A rule that executes, because the same rule in prose did not.
+     *
+     * Sixteen sessions share this Windows machine and one MySQL. `RefreshDatabase`
+     * drops the schema between tests, so two sessions running at once destroy each
+     * other's runs. ACTIVE-CONSTRAINTS §4 has said so for a week; two sessions lost
+     * a full run to it anyway, and BOTH had read the file. That is a placement
+     * problem, not a wording one — the rule was true and it was nowhere near the
+     * moment it mattered.
+     *
+     * THE COLLISION DOES NOT LOOK LIKE A COLLISION, which is what makes it expensive.
+     * It surfaces as 150 errors spread across TenantIsolation, TimeClock, Tasks and
+     * Web Management — indistinguishable from having broken the tenant boundary, so
+     * the natural response is to go debugging the security model. One session went
+     * 153 red to 17 on the prefix alone; another went 107 to 112/112.
+     *
+     * Windows only, deliberately. The deploy gate runs on its own Linux sandbox
+     * where `ezbizi_testing` has exactly one tenant, and refusing there would break
+     * the thing that gates every release, for no gain.
+     */
+    private function refuseSharedSchema(): void
+    {
+        if (PHP_OS_FAMILY !== 'Windows') {
+            return;
+        }
+
+        // getenv, not config(): the app is not booted yet, and this has to run
+        // before it is. phpunit.xml sets DB_DATABASE without force="true", so a
+        // real shell variable wins and getenv reports whichever actually applies.
+        if (getenv('DB_DATABASE') !== self::SHARED_SCHEMA) {
+            return;
+        }
+
+        // Deliberate single-session use stays possible, and has to say so out loud.
+        if (getenv('EZBIZI_ALLOW_SHARED_SCHEMA') === '1') {
+            return;
+        }
+
+        throw new RuntimeException(sprintf(
+            "Refusing to run against the SHARED '%s' schema on this machine.
+
+".
+            'Sixteen sessions share one MySQL here, and RefreshDatabase drops this '.
+            'schema between tests. If anyone else is running, you will both get a '.
+            "wall of red that looks like a broken tenant boundary and is not.
+
+".
+            "Use your own:
+".
+            "    DB_DATABASE=%s_<yourmodule> vendor/bin/phpunit
+".
+            "    DB_DATABASE=%s_<yourmodule> php artisan test
+
+".
+            'Anything that is NOT phpunit needs DB_CONNECTION=mysql as well, or '.
+            'Laravel reads DB_DATABASE as a sqlite FILE PATH and exits 0 having '.
+            "touched no MySQL at all.
+
+".
+            'Genuinely alone and want the shared one? EZBIZI_ALLOW_SHARED_SCHEMA=1',
+            self::SHARED_SCHEMA,
+            self::SHARED_SCHEMA,
+            self::SHARED_SCHEMA,
+        ));
     }
 }

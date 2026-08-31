@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Phone;
 
 use App\Http\Controllers\Api\Controller;
+use App\Support\Phone\PhoneScope;
 use App\Models\PhoneConnection;
 use App\Models\PhoneFlow;
 use App\Models\PhoneNumber;
@@ -52,7 +53,10 @@ class FlowsController extends Controller
     {
         $this->authorize('viewAny', PhoneNumber::class);
 
-        $rows = PhoneFlow::query()
+        // This had NO filter at all: every menu in the tenant, to everybody,
+        // whichever company they were looking at. The others at least filtered
+        // by reach; this one did not filter.
+        $rows = PhoneScope::apply(PhoneFlow::query(), $request->user())
             ->orderBy('name')
             ->get()
             ->map(fn (PhoneFlow $flow) => $this->row($flow))
@@ -71,7 +75,11 @@ class FlowsController extends Controller
 
         $this->assertGroupsOnSameAccount($input['options'], $connection);
 
+        [$scopeType, $scopeId] = PhoneScope::filing($request->user());
+
         $flow = PhoneFlow::query()->create([
+            'scope_type' => $scopeType,
+            'scope_id' => $scopeId,
             'connection_id' => $connection->id,
             'name' => trim((string) $input['name']),
             'nodes' => $this->nodes($input),

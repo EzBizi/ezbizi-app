@@ -292,4 +292,41 @@ final class Refusal
             default => $user->organization?->franchise_label ?? 'franchise',
         });
     }
+
+    /**
+     * A proposed "blocks" edge would make two tasks wait on each other,
+     * directly or through others in between (Tasks Phase 2 design §9,
+     * task-4 brief).
+     *
+     * Not a §4 reach failure — the actor holds `tasks.edit` and stands over
+     * the board perfectly well. What is refused is the shape of the graph
+     * itself, so there is nothing to name a place or a remedy-by-assignment
+     * for; the fix is picking a different blocker.
+     */
+    public static function dependencyCycle(): Response
+    {
+        return Response::deny(
+            'That would make each task wait on the other, directly or through others in '
+            .'between, so the dependency was not added. Pick a blocker this task does not '
+            .'already lead back to.'
+        );
+    }
+
+    /**
+     * A "blocks" edge is refused across two different boards (Tasks Phase 2
+     * design §9, task-4 brief).
+     *
+     * `task_dependencies` stores one `board_id` for the pair, and both task
+     * references are compound-keyed against it — a cross-board edge is not a
+     * row the schema can hold, so this is caught here with a sentence rather
+     * than surfacing as a database error.
+     */
+    public static function dependencyCrossBoard(): Response
+    {
+        return Response::deny(
+            'A task can only be blocked by another task on the same board, so this dependency '
+            .'was not added. Move both tasks onto the same board first, or link the record '
+            .'instead of drawing a dependency between boards.'
+        );
+    }
 }

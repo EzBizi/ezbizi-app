@@ -9,7 +9,9 @@ import 'package:flutter/material.dart';
 class EzBiziTheme {
   static const _cyan = Color(0xFF00AEEF);
   static const _cyanDark = Color(0xFF0093CA);
-  // A deeper cyan for `secondary`, so nothing has to reach outside the brand.
+  // A deeper cyan for `secondary` — and, on light, for `primary` too, because
+  // it is the only one of the three that reads as text on white (5.7:1). So
+  // nothing has to reach outside the brand to be legible.
   static const _cyanDeep = Color(0xFF00708F);
   static const _ink = Color(0xFF060808);
   static const _muted = Color(0xFF5B6672);
@@ -90,8 +92,23 @@ class EzBiziTheme {
     final generated = ColorScheme.fromSeed(
       seedColor: _cyan,
       brightness: brightness,
-      primary: _cyan,
-      onPrimary: Colors.white,
+      // `primary` has to work in BOTH directions — as a fill with `onPrimary`
+      // text on it, and as text/icons/focus rings on `surface` — so it must
+      // clear 4.5:1 against its own foreground *and* against the surface. The
+      // brand cyan only manages that on a dark surface.
+      //
+      //   #00AEEF on white    2.5:1   fails AA and even AA-large
+      //   #00AEEF on #10161B  7.2:1   passes
+      //   #00708F on white    5.7:1   passes
+      //   white   on #00AEEF  2.5:1   fails
+      //   #060808 on #00AEEF  7.9:1   passes
+      //
+      // Hence the flip, and hence `onPrimary` flipping with it: on light we
+      // darken the fill and keep white on it; on dark we keep the brand cyan
+      // and put ink on it. The bright cyan is still the brand — it is reachable
+      // as [accent] for large fills and marks that carry no text.
+      primary: isDark ? _cyan : _cyanDeep,
+      onPrimary: isDark ? _ink : Colors.white,
       surface: isDark ? const Color(0xFF10161B) : Colors.white,
     );
 
@@ -118,8 +135,10 @@ class EzBiziTheme {
 
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: _cyan,
-          foregroundColor: Colors.white,
+          // No colours here on purpose. FilledButton already defaults to
+          // `primary`/`onPrimary`, so naming them again pinned the button to the
+          // brand cyan with white on it — 2.5:1, on the app's main action, in
+          // both brightnesses. Inheriting is the fix and the shorter code.
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
@@ -140,7 +159,10 @@ class EzBiziTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: _cyan, width: 2),
+          // A focus ring is a non-text UI component: WCAG wants 3:1 against
+          // what is next to it. Bright cyan on a white field is 2.5:1, so the
+          // one indicator a keyboard user relies on was the hardest to see.
+          borderSide: BorderSide(color: scheme.primary, width: 2),
         ),
       ),
 

@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.0.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -147,6 +147,16 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.0.2 =
+* The plugin now says when it is installed but not yet connected, instead
+  of sitting silent with every shortcode empty.
+* Added a Settings link on the plugin's own row, which is where people
+  look for it.
+
+= 1.0.1 =
+* Maintenance release. No changes to the plugin itself — published to
+  confirm the update path works before a real fix has to travel it.
 
 = 1.0.0 =
 * First release. Shortcodes for the business details held in EzBizi, with
