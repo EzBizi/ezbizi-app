@@ -825,6 +825,31 @@ matters, because a test that misreads a line ending goes red and somebody
 investigates, whereas the WordPress plugin would quietly render the wrong thing
 on a customer's page forever.
 
+### A count is not a set: two changes in opposite directions look like one
+
+The sharpest measurement failure of 2026-08-31 was the one where the NUMBER WAS
+CORRECT.
+
+A session merged main to pick up a fix, and their failing-test count went 17 to
+16. The merge had fixed one red and introduced another — a table arriving without
+its retention policy. Net movement: one, in the direction that looks like
+progress. Had they reported "16 red, all known" without reading the list, they
+would have handed the deploy desk a green-looking number concealing a fresh
+failure, and it would have been believed, because the desk had asked for exactly
+that number.
+
+Every other bad measurement that day was a wrong number, and a wrong number can
+be caught by re-measuring. This one cannot: re-running gives 16 again. **Only the
+LIST shows it**, because the count is a lossy projection and the loss is
+precisely the part that changed.
+
+So when you report a suite's state after ANY change to the tree, report what is
+in it, not how many. And when you receive a count that moved by one after a
+change that could plausibly move it in both directions, ask for the list before
+you believe the direction.
+
+Found by the session it happened to, who read the list anyway.
+
 ### An upper bound is not a gate: floor anything whose scope is DERIVED
 
 A ratchet asserting only `found <= baseline` passes when `found` is **0**. Break
