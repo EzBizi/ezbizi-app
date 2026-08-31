@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi — Phone › Ring groups layouts</title>
+<style>
+  :root {
+    --cyan:#00AEEF; --primary:#00708F; --cyan-deep:#00708F;
+    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+    --ok:#0B8F5B; --err:#E07070; --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1220px; margin:0 auto; padding:16px 16px 48px; }
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:18px; margin:0 0 4px; }
+  header.picker p { margin:0 0 12px; color:var(--muted); max-width:82ch; }
+  .locked, .ask, .found { font-size:13px; border-radius:8px; padding:10px 12px;
+    margin-bottom:12px; max-width:94ch; }
+  .locked { background:var(--info-c); } .ask { background:var(--warn-c); } .found { background:var(--err-c); }
+  .locked strong, .ask strong, .found strong { display:block; margin-bottom:4px; }
+  .locked strong { color:var(--cyan-deep); } .ask strong { color:var(--warn); } .found strong { color:#A33; }
+  .ask b, .found b { display:block; margin-top:7px; }
+  .nums { display:flex; flex-wrap:wrap; gap:8px; }
+  .nums button { min-width:44px; min-height:44px; border-radius:8px;
+    border:1px solid var(--line); background:var(--page); color:var(--ink); }
+  .nums button[aria-pressed="true"] { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:92ch; }
+  .caption strong { display:block; margin-bottom:4px; }
+
+  .shell { display:grid; grid-template-columns:200px 1fr; min-height:680px;
+    background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px; }
+  nav.side .brand { font-weight:700; color:var(--cyan-deep); margin-bottom:16px; padding:0 8px; }
+  nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+    text-decoration:none; margin-bottom:2px; }
+  nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  .page { display:flex; flex-direction:column; min-width:0; }
+  .tabs { display:flex; gap:8px; padding:12px 16px; border-bottom:1px solid var(--line); }
+  .tabs span { padding:8px 14px; border-radius:999px; border:1px solid var(--line);
+    background:var(--page); color:var(--muted); }
+  .tabs span.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .settings { display:grid; grid-template-columns:200px 1fr; flex:1; min-height:0; }
+  .rail { border-right:1px solid var(--line); padding:10px 8px; overflow:auto; }
+  .rail a { display:block; padding:8px 11px; border-radius:8px; color:var(--ink);
+    text-decoration:none; font-size:13px; }
+  .rail a.on { background:var(--info-c); color:var(--cyan-deep); font-weight:600; }
+  .rail h4 { font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--muted); margin:12px 0 4px; padding:0 11px; font-weight:600; }
+  .rail h4:first-child { margin-top:0; }
+
+  .pane { display:flex; flex-direction:column; min-width:0; overflow:auto; }
+  .paneHead { padding:16px 20px 12px; border-bottom:1px solid var(--line);
+    display:flex; align-items:flex-start; gap:12px; }
+  .paneHead h2 { font-size:17px; margin:0 0 2px; }
+  .paneHead p { margin:0; color:var(--muted); font-size:13px; max-width:70ch; }
+  .paneBody { padding:16px 20px 24px; flex:1; }
+  .paneFoot { margin-top:auto; padding:12px 20px; border-top:1px solid var(--line);
+    background:var(--alt); display:flex; gap:8px; align-items:center; }
+  .paneFoot .state { color:var(--muted); font-size:12px; margin-right:auto; }
+
+  .alarm { background:var(--err-c); border-radius:9px; padding:12px 14px; font-size:13px;
+    margin-bottom:14px; display:flex; gap:12px; align-items:flex-start; }
+  .alarm .g { flex:1; } .alarm b { display:block; margin-bottom:2px; }
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:8px;
+    padding:9px 14px; min-height:40px; }
+  .btn.ghost { background:transparent; color:var(--primary); border:1px solid var(--line); }
+  .btn.sm { min-height:32px; padding:4px 10px; font-size:13px; }
+  .pill { font-size:11px; padding:2px 8px; border-radius:999px; background:var(--alt);
+    border:1px solid var(--line); color:var(--muted); font-weight:600; white-space:nowrap; }
+  .pill.err { background:var(--err-c); color:#A33; border-color:transparent; }
+  .pill.ok { background:var(--ok-c); color:var(--ok); border-color:transparent; }
+  .pill.warn { background:var(--warn-c); color:var(--warn); border-color:transparent; }
+
+  .split2 { display:grid; grid-template-columns:264px 1fr; border:1px solid var(--line);
+    border-radius:10px; overflow:hidden; min-height:430px; }
+  .split2 .l { border-right:1px solid var(--line); background:var(--alt); overflow:auto; }
+  .split2 .l .it { padding:10px 13px; border-bottom:1px solid var(--line); font-size:13px; }
+  .split2 .l .it.on { background:var(--page); box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  .split2 .l .it.bad { background:var(--err-c); }
+  .split2 .l .it .sub { color:var(--muted); font-size:12px; }
+  .split2 .r { padding:14px 16px; overflow:auto; }
+
+  .f { margin-bottom:12px; }
+  .f label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .ctl { display:flex; align-items:center; min-height:40px; border:1px solid var(--line);
+    border-radius:8px; padding:0 12px; background:var(--page); }
+  .ctl.sel::after { content:"⌄"; margin-left:auto; color:var(--muted); }
+  .seg { display:flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; }
+  .seg span { flex:1; text-align:center; padding:9px 8px; font-size:13px; color:var(--muted);
+    background:var(--page); border-right:1px solid var(--line); }
+  .seg span:last-child { border-right:0; }
+  .seg span.on { background:var(--primary); color:#fff; font-weight:600; }
+
+  /* member rows — reachability is the point */
+  .mem { display:grid; grid-template-columns:10px 1fr auto auto; gap:11px; align-items:center;
+    padding:10px 12px; border:1px solid var(--line); border-radius:9px; margin-bottom:6px; }
+  .mem.out { background:var(--alt); }
+  .dot { width:10px; height:10px; border-radius:50%; }
+  .dot.on { background:var(--ok); } .dot.off { background:#C9D3DB; } .dot.dnd { background:var(--warn); }
+  .mem .nm { font-weight:600; font-size:13px; }
+  .mem .why { color:var(--muted); font-size:12px; }
+  .mem.out .nm { color:var(--muted); font-weight:500; }
+  .reach { font-size:12px; font-weight:600; white-space:nowrap; }
+  .reach.y { color:var(--ok); } .reach.n { color:var(--muted); }
+
+  .tally { display:flex; gap:10px; align-items:center; padding:11px 13px; border-radius:9px;
+    background:var(--ok-c); font-size:13px; margin-bottom:12px; }
+  .tally.bad { background:var(--err-c); }
+  .tally b { font-weight:700; }
+  .note { color:var(--muted); font-size:12px; margin-top:10px; }
+  .sec { border:1px solid var(--line); border-radius:10px; margin-bottom:12px; overflow:hidden; }
+  .sec > h3 { margin:0; padding:10px 14px; background:var(--alt); font-size:13px;
+    border-bottom:1px solid var(--line); }
+  .sec .in { padding:12px 14px; }
+
+  .phone { width:375px; margin:0 auto; border:8px solid var(--ink); border-radius:28px;
+    overflow:hidden; background:#fff; min-height:680px; display:flex; flex-direction:column; }
+  .phone .bar375 { padding:11px 12px; border-bottom:1px solid var(--line); font-weight:600;
+    display:flex; gap:8px; align-items:center; font-size:14px; }
+  .phone .bar375 .back { color:var(--primary); font-weight:500; }
+  .phone .scroll { overflow:auto; flex:1; display:flex; flex-direction:column; }
+
+  @media (max-width:900px) {
+    .shell { grid-template-columns:1fr; } nav.side { display:none; }
+    .settings { grid-template-columns:1fr; } .split2 { grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>Phone › Ring groups — layouts</h1>
+
+    <div class="locked">
+      <strong>Read from <code>ring_groups_pane.dart</code></strong>
+      <b>“A group is who a line rings.”</b> Each group has a name, a phone account, a strategy —
+      <em>Everyone at once</em> or <em>One at a time</em> — a ring timeout, and members. The
+      timeout is capped and the copy already says why: <em>“Twilio hangs up a browser call at 60
+      seconds, so it cannot ring longer.”</em> Empty state exists and is good: <em>“No groups yet.
+      Without one, a call goes straight to voicemail.”</em> Today the list and the draft form
+      share one <code>ListView</code> (<code>:309</code>), so the form sits below the groups.
+      Pane pattern is layout 1, approved.
+    </div>
+
+    <div class="found">
+      <strong>The finding: being in a group and being reachable are different things, and only one is drawn</strong>
+      The pane's own sentence is the whole problem — <em>“Someone only rings if they are signed in
+      with Phone open and not on Do not disturb.”</em> It is said <b>once, at the top, as prose</b>,
+      and then the member list shows names.
+      <b>So a group with four people can ring nobody and look completely fine.</b> Phone confirmed
+      the server already knows: <code>DialPlan::batches()</code> is a three-condition check, and a
+      group whose every member sits at Do Not Disturb comes back empty — <em>“has nobody available
+      to ring, so every call goes to voicemail.”</em> That is the state that answers no calls while
+      looking perfectly configured, and it is the exact shape this module has been fixing all week.
+      <b>Every layout here draws reachability per member and tallies it for the group.</b> Not as a
+      warning bolted on top — as the column the list is <em>about</em>. Membership is what you
+      edit; reachability is what you came to find out.
+    </div>
+
+    <div class="ask">
+      <strong>One thing I need you to rule on</strong>
+      <b>Reachability is a live fact and this is a settings screen.</b> Somebody signs out and the
+      group's tally changes without anybody editing anything — so the pane can show a green “3 of 4
+      can be reached” that is stale within a minute, which is a smaller version of the honesty
+      problem already settled on Trust and Scheduling. Every layout therefore <b>timestamps it</b>
+      (“as of a few seconds ago”) rather than implying live presence, because there is no realtime
+      transport here either. If you would rather the pane not show live state at all and stay
+      purely a configuration screen, say so — it is defensible, and it costs the one thing the
+      screen is currently worst at.
+    </div>
+
+    <p>Pick a number. <strong>1 is my recommendation.</strong> 4 is it at 375px.</p>
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+  <div id="stage"></div>
+</div>
+
+<script>
+const CAPTIONS = {
+  1: ["1 · Split pane, with reachability as a column of the member list (recommended)",
+      "Groups on the left with a can-be-reached tally on each, the selected group's members on the right — each member showing whether they would ring right now and, if not, why: signed out, or Do not disturb. The tally is the headline of the detail pane, not a footnote. Chosen because the question people bring to this screen is 'will this group actually answer', and today the screen can only answer 'who is in it'. It also matches Numbers, which Jose approved as a split, so it is now the house shape for a list-plus-editor pane rather than a new idea. Weakness: it puts live state on a settings screen, so a green tally can go stale while you look at it — mitigated by timestamping, not solved."],
+  2: ["2 · List above, editor below — today's shape, tidied",
+      "Keeps the current arrangement (`:309` puts the draft form inside the same ListView after the groups) and adds the reachability column and tally without moving anything. By far the smallest change, and it preserves a genuine property of the current design: with the form below the list you can see all your groups while creating a new one, which a split pane hides behind a selection. Weakness: editing an existing group means scrolling past every group to reach the form, and with the member list now carrying an extra column per person that scroll gets longer, not shorter."],
+  3: ["3 · One card per group, all members visible at once",
+      "No selection at all — every group and every member on one scroll, each member showing reachability. The only layout where 'is anybody reachable anywhere right now' is answerable without clicking, which for a business whose whole phone system routes through two or three groups is arguably THE question. Weakness: it does not scale, and it puts editing behind a per-card control so the pane is a report that occasionally becomes a form. At two groups it is the best of the three; at eight it is unusable, and unlike Call flow I cannot tell you which is typical."],
+  4: ["4 · Layout 1 at 375px",
+      "The list becomes the screen and a group pushes the detail, per the sub-600 rule. Reachability moves under each name rather than into a column, and the group tally pins under the header so it stays visible while scrolling members — it is the summary the whole screen exists for, and the one thing that must not scroll away. The timeout control keeps its explanation inline, because 'why can I not set 90 seconds' is asked exactly once and answered forever by one sentence."]
+};
+
+const RAIL = `
+  <h4>Connect</h4><a>General</a><a>Call flow</a><a>Connection</a><a>Numbers</a><a>Porting</a>
+  <h4>Answering</h4><a>IVR menus</a><a>Hours</a><a class="on">Ring groups</a><a>Voicemail</a>
+  <h4>Identity</h4><a>Trust &amp; caller identity</a>
+  <h4>Running it</h4><a>Tags</a><a>Cost</a><a>Messaging</a>`;
+
+const GROUPS = [
+  ['Front desk', 4, 3, 0],
+  ['Service', 3, 1, 0],
+  ['After hours', 2, 0, 1]
+];
+
+const MEMBERS = [
+  ['Maya Chen', 'on', 'Signed in, Phone open'],
+  ['Luis Ortega', 'on', 'Signed in, Phone open'],
+  ['Priya Nair', 'on', 'Signed in, Phone open'],
+  ['Sam Wright', 'dnd', 'Do not disturb']
+];
+
+const AFTER = [
+  ['Tom Reilly', 'off', 'Signed out'],
+  ['Sam Wright', 'dnd', 'Do not disturb']
+];
+
+const shell = (body) => `
+  <div class="shell">
+    <nav class="side"><div class="brand">EzBizi</div>
+      <a>Dashboard</a><a>Customers</a><a>Jobs</a><a class="on">Phone</a><a>Fleet</a></nav>
+    <div class="page">
+      <div class="tabs"><span>Call</span><span>Records</span><span class="on">Settings</span></div>
+      <div class="settings"><div class="rail">${RAIL}</div>${body}</div>
+    </div>
+  </div>`;
+
+const head = `
+  <div class="paneHead">
+    <div style="flex:1"><h2>Ring groups</h2>
+      <p>Who a line rings. Somebody only rings if they are signed in with Phone open and not
+        on Do not disturb.</p></div>
+    <button class="btn ghost sm" type="button">↻ Try again</button>
+  </div>`;
+
+const alarm = `
+  <div class="alarm">
+    <div class="g"><b>After hours can ring nobody right now.</b>
+      Both members are unavailable — one signed out, one on Do not disturb — so every call routed
+      to it goes straight to voicemail. It is not misconfigured; there is simply no one to ring.</div>
+  </div>`;
+
+const memRow = (m) => `
+  <div class="mem ${m[1] === 'on' ? '' : 'out'}">
+    <span class="dot ${m[1]}"></span>
+    <div><div class="nm">${m[0]}</div><div class="why">${m[2]}</div></div>
+    <span></span>
+    <span class="reach ${m[1] === 'on' ? 'y' : 'n'}">${m[1] === 'on' ? 'Would ring' : 'Would not ring'}</span>
+  </div>`;
+
+const tally = (n, of) => `
+  <div class="tally ${n === 0 ? 'bad' : ''}">
+    <b>${n} of ${of} can be reached right now.</b>
+    ${n === 0 ? 'Every call to this group goes to voicemail.' : ''}
+    <span style="margin-left:auto;color:var(--muted);font-size:12px">as of a few seconds ago</span>
+  </div>`;
+
+const groupList = (sel) => GROUPS.map((g,i) => `
+  <div class="it ${i===sel ? 'on' : ''} ${g[2]===0 ? 'bad' : ''}">
+    <b>${g[0]}</b>
+    <div class="sub">${g[1]} ${g[1]===1?'person':'people'} · ${g[3] ? 'One at a time' : 'Everyone at once'}</div>
+    <div style="font-size:12px;margin-top:3px;color:${g[2]===0 ? '#A33' : 'var(--ok)'};font-weight:600">
+      ${g[2]} of ${g[1]} reachable</div>
+  </div>`).join('');
+
+const editor = (name, members, strategy) => `
+  ${tally(members.filter(m => m[1]==='on').length, members.length)}
+  <div class="f"><label>What this group is called</label><div class="ctl">${name}</div></div>
+  <div class="f"><label>How it rings</label>
+    <div class="seg"><span class="${strategy?'':'on'}">Everyone at once</span><span class="${strategy?'on':''}">One at a time</span></div></div>
+  <div class="f"><label>Ring for</label><div class="ctl sel">25 seconds</div>
+    <div class="note" style="margin-top:5px">Twilio hangs up a browser call at 60 seconds,
+      so it cannot ring longer.</div></div>
+  <div class="f"><label>Who is in it</label></div>
+  ${members.map(memRow).join('')}
+  <button class="btn ghost sm" type="button" style="margin-top:8px">Add somebody</button>`;
+
+const foot = `
+  <div class="paneFoot">
+    <span class="state">Everything saved · 12 Aug, 4:02pm</span>
+    <button class="btn ghost sm" type="button">Discard</button>
+    <button class="btn sm" type="button">Save</button>
+  </div>`;
+
+const L1 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      ${alarm}
+      <div class="split2">
+        <div class="l">${groupList(0)}
+          <div class="it" style="color:var(--primary)">+ Add a ring group</div></div>
+        <div class="r">${editor('Front desk', MEMBERS, false)}</div>
+      </div>
+    </div>
+    ${foot}
+  </div>`);
+
+const L2 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      ${alarm}
+      ${GROUPS.map(g => `
+        <div class="sec"><h3><b>${g[0]}</b>
+          <span class="pill ${g[2]===0?'err':'ok'}" style="margin-left:8px">${g[2]} of ${g[1]} reachable</span></h3>
+          <div class="in" style="padding:9px 14px;color:var(--muted);font-size:12px">
+            ${g[3] ? 'One at a time' : 'Everyone at once'} · rings for 25 seconds
+            <button class="btn ghost sm" type="button" style="float:right">Edit</button></div>
+        </div>`).join('')}
+      <div class="sec"><h3>New ring group</h3><div class="in">${editor('', MEMBERS, false)}</div></div>
+      <p class="note">Today's shape kept: the form sits under the list, so you can see every
+        group while creating one. Editing an existing group still means scrolling past them all.</p>
+    </div>
+    ${foot}
+  </div>`);
+
+const L3 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      ${alarm}
+      ${[['Front desk', MEMBERS], ['After hours', AFTER]].map(([n, ms]) => `
+        <div class="sec"><h3><b>${n}</b>
+          <span class="pill ${ms.filter(m=>m[1]==='on').length===0?'err':'ok'}" style="margin-left:8px">
+            ${ms.filter(m=>m[1]==='on').length} of ${ms.length} reachable</span>
+          <button class="btn ghost sm" type="button" style="float:right">Edit</button></h3>
+          <div class="in">${ms.map(memRow).join('')}</div></div>`).join('')}
+      <p class="note">Every group and every member at once — the only layout where “is anybody
+        reachable anywhere” needs no clicks. Two groups fit. Eight would not.</p>
+    </div>
+  </div>`);
+
+const L4 = () => `
+  <div class="phone">
+    <div class="bar375"><span class="back">‹ Groups</span> Front desk</div>
+    <div class="scroll">
+      <div style="padding:12px 12px 0">${tally(3, 4)}</div>
+      <div class="paneBody" style="padding:4px 12px 16px">
+        <div class="f"><label>What this group is called</label><div class="ctl">Front desk</div></div>
+        <div class="f"><label>How it rings</label>
+          <div class="seg"><span class="on">Everyone</span><span>One at a time</span></div></div>
+        <div class="f"><label>Ring for</label><div class="ctl sel">25 seconds</div>
+          <div class="note" style="margin-top:5px">Twilio hangs up a browser call at 60 seconds.</div></div>
+        <div class="f"><label>Who is in it</label></div>
+        ${MEMBERS.map(m => `
+          <div class="mem ${m[1]==='on'?'':'out'}" style="grid-template-columns:10px 1fr">
+            <span class="dot ${m[1]}"></span>
+            <div><div class="nm">${m[0]}</div>
+              <div class="why">${m[2]} — ${m[1]==='on' ? 'would ring' : 'would not ring'}</div></div>
+          </div>`).join('')}
+      </div>
+      ${foot}
+    </div>
+  </div>`;
+
+const LAYOUTS = { 1:L1, 2:L2, 3:L3, 4:L4 };
+const nums = document.getElementById('nums'), stage = document.getElementById('stage'),
+      caption = document.getElementById('caption');
+Object.keys(LAYOUTS).forEach(k => {
+  const b = document.createElement('button'); b.type='button'; b.textContent=k;
+  b.addEventListener('click', () => show(+k)); nums.appendChild(b);
+});
+function show(i) {
+  [...nums.children].forEach((b,x) => b.setAttribute('aria-pressed', x+1===i ? 'true':'false'));
+  const e = CAPTIONS[i];
+  caption.innerHTML = '<strong>'+e[0]+'</strong>'+e[1];
+  stage.innerHTML = LAYOUTS[i]();
+}
+show(1);
+</script>
+</body>
+</html>
