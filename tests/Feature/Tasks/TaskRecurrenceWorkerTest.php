@@ -415,6 +415,67 @@ final class TaskRecurrenceWorkerTest extends TestCase
             ->where('subject_id', $task->id)->count());
     }
 
+    // ── span preservation (whole-branch review finding 7) ───────────
+
+    /**
+     * buildInstance() used to set only due_on, so a recurring SPANNING
+     * task (both start_on and due_on) lost its span on every instance —
+     * a Timeline point marker instead of a bar, and Workload counting it
+     * on one day instead of across the whole span. The offset between the
+     * root's own dates must carry forward relative to each new due date.
+     */
+    public function test_a_spanning_roots_instance_preserves_the_same_span_as_the_root(): void
+    {
+        Carbon::setTestNow('2026-09-01 12:00:00');
+        $task = $this->createTask('Two-week installation', startOn: '2026-09-01');
+        $this->patchJson("/api/v1/tasks/{$task->id}", [
+            'expected_version' => Task::findOrFail($task->id)->version, 'due_on' => '2026-09-15',
+        ])->assertOk();
+        $this->enterTenant();
+        $task = Task::findOrFail($task->id);
+        $this->declareRecurrence($task, 'after_completion', 1, 'day');
+        $completed = $this->statusOf(StatusCategory::Completed);
+        $this->patchJson("/api/v1/tasks/{$task->id}", [
+            'expected_version' => Task::findOrFail($task->id)->version, 'status_option_id' => $completed->id,
+        ])->assertOk();
+        $this->enterTenant();
+        $this->artisan('ezbizi:create-recurring-tasks')->assertSuccessful();
+
+        $this->enterTenant();
+        $occurrence = TaskRecurrenceOccurrence::where('task_id', $task->id)->firstOrFail();
+        $instance = Task::findOrFail($occurrence->created_task_id);
+        // Completed 2026-09-01, steps 1 day -> due 2026-09-02.
+        $this->assertSame('2026-09-02', $instance->due_on?->format('Y-m-d'));
+        // The root's own span was 14 days (09-01 to 09-15); the instance
+        // must carry that SAME span, not just a due date.
+        $this->assertSame('2026-08-19', $instance->start_on?->format('Y-m-d'));
+    }
+
+    /** A root with only one date (no span to preserve) must not gain one. */
+    public function test_a_root_with_only_a_due_date_produces_an_instance_with_no_start_on(): void
+    {
+        Carbon::setTestNow('2026-09-01 12:00:00');
+        $task = $this->createTask('Point deadline');
+        $this->patchJson("/api/v1/tasks/{$task->id}", [
+            'expected_version' => Task::findOrFail($task->id)->version, 'due_on' => '2026-09-10',
+        ])->assertOk();
+        $this->enterTenant();
+        $task = Task::findOrFail($task->id);
+        $this->declareRecurrence($task, 'after_completion', 1, 'day');
+        $completed = $this->statusOf(StatusCategory::Completed);
+        $this->patchJson("/api/v1/tasks/{$task->id}", [
+            'expected_version' => Task::findOrFail($task->id)->version, 'status_option_id' => $completed->id,
+        ])->assertOk();
+        $this->enterTenant();
+        $this->artisan('ezbizi:create-recurring-tasks')->assertSuccessful();
+
+        $this->enterTenant();
+        $occurrence = TaskRecurrenceOccurrence::where('task_id', $task->id)->firstOrFail();
+        $instance = Task::findOrFail($occurrence->created_task_id);
+        $this->assertNotNull($instance->due_on);
+        $this->assertNull($instance->start_on);
+    }
+
     // ── field copy list ───────────────────────────────────────────
 
     public function test_created_instance_copies_the_allowed_fields_and_not_the_excluded_ones(): void

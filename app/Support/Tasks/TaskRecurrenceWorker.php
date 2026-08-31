@@ -428,6 +428,22 @@ final class TaskRecurrenceWorker
             ->whereNotIn('category', [StatusCategory::Completed, StatusCategory::Cancelled])
             ->orderBy('position')->firstOrFail();
 
+        // Whole-branch review finding 7: the root's start_on-to-due_on
+        // SPAN — not either date on its own — is what carries forward.
+        // Without this, a recurring two-week task's instance had only
+        // due_on, rendering as a Timeline point marker instead of a bar,
+        // and Workload counted it on one day instead of across its span:
+        // three Phase 2 features disagreeing about the same task. The
+        // offset is always >= 0 — TaskWriter's own startAfterDue guard
+        // never lets an inverted pair reach $root in the first place — so
+        // this only ever shifts the new start_on backward from the new
+        // due_on, never forward past it. A root with only one of the two
+        // dates (or neither) carries no span; the instance's start_on
+        // stays null, unchanged from before this fix.
+        $spanDays = $root->start_on !== null && $root->due_on !== null
+            ? $root->start_on->diffInDays($root->due_on)
+            : null;
+
         $instance = new Task;
         $instance->forceFill([
             'organization_id' => $root->organization_id,
@@ -440,6 +456,7 @@ final class TaskRecurrenceWorker
             'owner_user_id' => $root->owner_user_id,
             'status_option_id' => $status->id,
             'priority_option_id' => $root->priority_option_id,
+            'start_on' => $spanDays === null ? null : Carbon::parse($occurrenceDate)->subDays($spanDays)->toDateString(),
             'due_on' => $occurrenceDate,
             'due_revision' => 1,
             'position' => $this->nextPosition($board, $root->group_id),
