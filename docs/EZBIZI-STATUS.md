@@ -106,6 +106,128 @@ already carried its own scoped independent review, each recorded on the `tasks-m
 card with the findings closed, and a second pass over the same 72 commits was judged to buy
 nothing. No Critical or Important finding is outstanding.
 
+## Tasks — Phase 2, 2026-08-31
+
+Five presentations, one query surface. `GET tasks/boards/{board}/rows` is the only read path for
+Table, Kanban, Calendar, Timeline/Gantt, and Workload — `presentation` and `window` travel inside
+the saved view's `configuration` JSON rather than as separate endpoints or query parameters. Four
+presentation-specific endpoints would have been four places to get exact-view/private-board access
+right; one endpoint checked once (`TaskBoardAccess::viewDecision`) cannot drift out of sync with
+itself the way four copies of the same check eventually do.
+
+**View configuration moved to `schema:2`, upgraded on read, never rewritten.** A schema 1 view
+(Phase 1's only shape — table, no window) decodes today at the same meaning it always had, with
+`presentation: "table"` and a `window` added alongside it; nothing is written back to the stored
+row (`TaskViewCodec::decode`, called from both `TaskViewsController::present()` and
+`TaskBoardRowsController::index()`). A rollback to Phase 1 code reads exactly the rows Phase 1
+left behind — there is no forward-written `schema:2` row for pre-rollback code to choke on.
+
+**Windows are bounded and presentation-specific.** `TaskWindow::parse()` validates the exact shape
+for the presentation asking — a Kanban window is a `bucket_field` and a list of buckets, a
+Calendar/Timeline/Workload window is a `from`/`to` range (Workload additionally carries a
+`day`/`week` unit) — and refuses an unknown shape or one belonging to a different presentation
+before anything resolves a field reference against the board. A range window is capped at 400
+days (`TaskWindow::MAX_SPAN_DAYS`); a Kanban window is capped at 50 buckets
+(`TaskWindow::MAX_BUCKETS`), each a UUID-shaped record id (status/priority option, or user), so a
+busy board's widest request still runs as one bounded query rather than pulling every row into PHP
+to sort by hand. The window is folded into the endpoint's conditional ETag alongside Phase 1's
+existing dependency-complete cache key, so changing the window is a cache miss, not stale data
+served under a fresh-looking tag.
+
+**Dependencies are display-only, and stay that way on purpose.** A "blocks" edge
+(`TaskDependencyWriter`) draws a line between two tasks on Timeline and nothing else: it never
+reads or writes `completed_at`, never refuses a completion, never touches a due date, and there is
+no override path because there is nothing to override. The one thing it does enforce is shape — a
+cycle is rejected at write time, inside the same board-row lock that stops a concurrent insert from
+slipping one past the check (`TaskDependencyCycle::wouldCreate`). The reason to stop there: a
+"blocks" edge that also gated completion or pushed dates around is a second scheduling engine
+layered on Timeline's dates, and Phase 2 draws exactly the line the design asked for — visual
+sequencing — without building the thing it did not ask for.
+
+**Workload counts tasks, never hours.** There is no effort/estimate field on a task and no
+capacity model, and `TaskWorkloadQuery` does not invent either: a task with both `start_on` and
+`due_on` counts on every day/week its span covers (so a two-week task reads as sustained load, not
+a spike on its last day); a task with only `due_on` counts once, on that date; a task with no
+`due_on` at all — including one carrying only `start_on` — cannot be placed on a bounded timeline
+and is excluded, same as an undated task on Calendar. No threshold, no over/under-loaded verdict —
+the count is the whole answer, and reading a meaning like "too many" into a number is left to
+whoever is looking at the board.
+
+**Recurrence has two modes, and they run through different transactions on purpose.**
+`on_schedule` is purely calendar-driven: the hourly worker walks forward from the series task's own
+`start_on`/`due_on`, one `every`/`unit` step per cycle, and creates every occurrence that is due
+and not yet recorded, regardless of whether earlier ones were finished. `after_completion` is
+completion-driven — exactly one occurrence is ever pending, dated `every`/`unit` from the
+completion that produced it — and it does **not** create that occurrence inline. Completing a task
+only emits a `RELAY_TRIGGER` outbox event (a plain `EventEmitter::emit()`, no lock, no row write);
+the hourly worker's `relayPendingCompletions()` is the only thing that turns that marker into a
+task, in its own transaction. The reason: the occurrence-creation path takes a
+`lockForUpdate()->max('position')` lock, and an InnoDB deadlock there aborts the whole surrounding
+transaction, not a savepoint — if that lock lived inside the completion's own transaction, a
+deadlock on somebody else's series could silently lose the completion itself while the API reported
+success. Routing through the outbox means the completion transaction never touches a lock it does
+not already need for its own sake. `TaskRecurrenceOccurrence` is the idempotency row for both
+modes — written in the same transaction as whatever it records, a created task or a terminal
+marker with none.
+
+**Cross-board Timeline/Calendar/Workload are read-only summaries**, and they reuse My Tasks'
+access path verbatim rather than re-deriving one. Phase 1 already proved that path against a
+two-process membership-revocation race; a second implementation of the same check is a second
+place for that race to reopen. `TaskBoardAccess::constrainVisible` prefilters to the boards the
+caller can actually see before `TaskWorkloadQuery` (and the equivalent Calendar/Timeline read)
+aggregate across them, and a card drawn from a board other than the one currently open now names
+its source board, so a cross-board summary never reads as belonging to whichever board happens to
+be on screen.
+
+**Timeline needed no new column.** `tasks.start_on` existed from Phase 1 (added for the table's
+own start-date field); Timeline/Gantt reads it as a bar's left edge and `due_on` as its right edge,
+so the whole presentation is a new way of reading two columns that were already there rather than
+new schema.
+
+**A behaviour change, not just a new feature: `start_on` after `due_on` is now refused.** The
+Phase 1 design and the client's own doc comments asserted this refusal existed, and the client
+rendered a message for it — but no server code enforced it. `TasksController` validated each date
+independently and `TaskWriter` compared each date only to its own previous value, so dragging a
+Timeline bar's start handle past its own due date (or, before Timeline existed, editing the table)
+wrote the invalid pair to production silently. Phase 2 closes it in `TaskWriter`, on both task
+creation and `PATCH /tasks/{id}`, comparing the **merged** state — the row after the incoming
+attributes are applied, not the request in isolation, because a `PATCH` may carry only one of the
+two dates — and refuses with 422 (`Refusal::startAfterDue()`) when `start_on` ends up after
+`due_on`. Clearing either date can never trip it. **This is a real behaviour change on an existing
+endpoint**, not additive: a request that previously succeeded and silently wrote `start_on >
+due_on` now gets a 422. The frozen `v0.0.0112` client's table editor could write this state before
+Phase 2 and is refused there too, now — the same gap Timeline made easier to hit, closed at its
+one source rather than patched per presentation.
+
+**Server-push was dropped, deliberately, and the reasoning is recorded here so the decision is not
+silently revisited.** The Phase 1 design listed "optional server-push refresh" as later work.
+Phase 2's design (§13) drops it: Phase 1's polling already converges — conditional ETags,
+dependency-complete cache keys, privacy-generation eviction, and a documented contract for what a
+304 preserves — and it was tested against a real two-process access-revocation race, not assumed
+correct. A push channel would add a connection to run, authenticate, scale, and reconnect, to
+improve a refresh that already works, and it would need its own answer to every access-revocation
+case polling already answers. If boards are observed going stale in real use, that observation is
+the justification and this decision is revisited then — not before.
+
+**The App Store freeze bound this implementation, and has since been lifted.** From 2026-08-28,
+Apple's reviewer was running the submitted binary — frozen at `v0.0.0112` — against live
+production, and `docs/ACTIVE-CONSTRAINTS.md` held the resulting rules for the duration: do not
+remove or rename an existing response field, do not make an always-present field null or absent,
+do not tighten a permission answer so a previously-successful request now 403s, and do not alter a
+`Refusal.php` sentence the frozen client renders. Several Phase 2 choices were shaped by that
+freeze while it was in force — new fields and new endpoints stayed additive, and the `start_on`
+refusal above was double-checked against the frozen tree's own doc comments before being built,
+specifically because a `Refusal` sentence the reviewer's client could render was in scope. The
+freeze is no longer in force; nothing in Phase 2 depends on it remaining so.
+
+**Explicit Phase 3 boundary**, unchanged from the Phase 1 design §20 and restated in the Phase 2
+spec §19: forms, reusable board templates, chart/dashboard views, formula/roll-up/connected-board
+columns, external guest boards, direct monday.com migration, advanced reporting, and controlled
+public/embed surfaces. Two carry notes from Phase 2: connected-board columns are the natural home
+for cross-board dependencies, which Phase 2 deliberately refused to build; external guests need an
+identity model that exists nowhere in EzBizi today and should be scoped as its own project rather
+than a Phase 3 bullet. Phase 3 receives its own design, plan, and review gate.
+
 ## EZ Leads — all three modules live, 2026-08-27
 
 The first expansion work that depends on an outside party's approval rather than on us. Rodrigo's

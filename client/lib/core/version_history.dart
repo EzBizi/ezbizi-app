@@ -8,6 +8,27 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0123',
+      date: '31 Aug 2026',
+      items: [
+        'Tasks: four new ways to look at a board - Kanban, Calendar, '
+            'Timeline, and Workload - alongside the table, all reading the '
+            'same boards and the same permissions.',
+        'Tasks: a task can now repeat on its own schedule, either a fixed '
+            'calendar cadence or a fixed gap after you finish the one '
+            'before it.',
+        'Tasks: draw a line between two tasks on the Timeline to show one '
+            'blocks the other. It is a visual note, not a rule - finishing '
+            'the blocked task is never refused because of it.',
+        'Tasks: Workload shows how many tasks land on each day, not how '
+            'many hours they add up to.',
+        'Tasks: a start date can no longer be set after the due date. This '
+            'was always meant to be refused and now actually is - it may '
+            'catch a date pair you set earlier that should not have gone '
+            'through.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0122',
       date: '31 Aug 2026',
       items: [
