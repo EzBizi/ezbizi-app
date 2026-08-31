@@ -137,12 +137,14 @@ void main() {
     test('no new hardcoded colours outside theme.dart', () {
       final pattern = RegExp(r'Color\(0x|Colors\.[a-z]');
       var found = 0;
+      var scanned = 0;
       final worst = <String, int>{};
 
       for (final file in Directory('lib')
           .listSync(recursive: true)
           .whereType<File>()
           .where((f) => f.path.endsWith('.dart'))) {
+        scanned++;
         if (file.path.replaceAll(r'\', '/').endsWith('core/theme.dart')) {
           continue;
         }
@@ -155,6 +157,27 @@ void main() {
 
       final ranked = worst.entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
+
+      // A RATCHET THAT ONLY CHECKS AN UPPER BOUND PASSES WHEN ITS INSTRUMENT
+      // BREAKS. Break the regex, point `Directory` at the wrong cwd, or rename
+      // lib/, and `found` is 0 — comfortably under the baseline, green forever,
+      // and nobody is told the gate stopped looking.
+      //
+      // This is the failure the deploy desk hit an hour after this file was
+      // written: a grep with wrong escaping matched nothing, and "no match" was
+      // read as "no problem". It was caught only because the answer was too
+      // convenient. A gate cannot rely on someone finding its output suspicious.
+      //
+      // So the floors are asserted first and separately from the ceiling. They
+      // are not the rule — they are the proof that the rule was measured.
+      expect(scanned, greaterThan(100),
+          reason: 'Only $scanned .dart files scanned under lib/. The scan is '
+              'broken or the working directory is wrong — this test says '
+              'nothing about colour literals until that is fixed.');
+      expect(found, greaterThan(0),
+          reason: 'Zero colour literals matched anywhere outside theme.dart. '
+              'That has never been true; the pattern is broken. A ratchet that '
+              'matches nothing passes silently, which is worse than a red.');
 
       expect(
         found,
