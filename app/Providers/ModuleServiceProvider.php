@@ -9,6 +9,7 @@ use App\Models\BusinessLocation;
 use App\Models\InventoryItem;
 use App\Models\Job;
 use App\Models\Lead;
+use App\Models\MonitoredDevice;
 use App\Models\Organization;
 use App\Models\Review;
 use App\Models\Service;
@@ -2075,6 +2076,55 @@ class ModuleServiceProvider extends ServiceProvider
                 // the loop guards count actions, not rules, so a rule that
                 // writes rules escapes them entirely. It stays a human act.
                 automationExemptBecause: 'An automation that could write automations would escape the loop guards.',
+            ),
+
+            /*
+             * Monitoring — 2026-08-28-monitoring-pc-specs.
+             *
+             * Not CRUD. A device is reported by the machine that runs the
+             * client, never created or edited by an admin, so the only
+             * standing grant is `view`. `specs.view` is a second, narrower
+             * grant so an organization can let a manager see who is online
+             * without also handing them the hardware inventory underneath.
+             *
+             * The subject names 'monitoring' explicitly rather than letting
+             * it derive from the class: MonitoredDevice would default to
+             * `monitoreddevice`, and the triggers below are keyed
+             * `monitoring.*` — the same compound-name case InventoryItem
+             * documents itself (it keys as `item`, not `inventoryitem`).
+             *
+             * Both triggers started `isRaised: false` — this module was
+             * registered before anything under app/ emitted either event, and
+             * ModuleRegistryTest's standing check refuses `isRaised: true`
+             * until something does (its own failure message: "declared as
+             * raised, but nothing in app/ mentions it... declare isRaised:
+             * false until something emits it"). `new_device_seen` flipped to
+             * true (the default — the parameter is omitted below) once
+             * HeartbeatController::store() started calling
+             * EventEmitter::emit('monitoring.new_device_seen', ...) on a
+             * newly-created device (2026-08-28-monitoring-pc-specs, task 4).
+             * `device_offline` flipped the same way once DeviceOfflineWorker
+             * started calling EventEmitter::emit('monitoring.device_offline',
+             * ...) from its scheduled sweep (task 6).
+             */
+            new ModuleDefinition(
+                key: 'monitoring',
+                label: 'Monitoring',
+                actions: ['view', 'specs.view'],
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'monitoring.new_device_seen',
+                        label: 'New device seen',
+                        description: 'A person signed in from a device not seen before.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'monitoring.device_offline',
+                        label: 'Device went offline',
+                        description: 'A device stopped reporting for longer than the allowed gap.',
+                    ),
+                ],
+                subject: new AutomationSubject(MonitoredDevice::class, 'Device', key: 'monitoring'),
+                sidebar: true,
             ),
 
             /*

@@ -1,0 +1,160 @@
+import 'dart:async';
+import 'dart:math';
+
+import 'api_client.dart';
+import 'client_platform.dart';
+import 'token_store_io.dart' if (dart.library.js_interop) 'token_store_web.dart'
+    as store;
+
+/// A device reporting its own presence — POST /monitoring/heartbeat, the
+/// endpoint HeartbeatController::store() validates (2026-08-28-monitoring-pc-
+/// specs). See app/Http/Controllers/Api/Monitoring/HeartbeatController.php
+/// for the body this has to match exactly:
+///
+///   device_key      required, string, max 64
+///   platform         required, one of web/android/ios/windows/macos/linux
+///   capabilities     required, array of a fixed enum
+///   current_module   optional, string
+///   segment          optional: {module_key, dwell_seconds (int, >= 0)}
+///
+/// ── What a "beat" is, and when one goes out ───────────────────────
+///
+/// [enter] is called every time somebody switches to a different module. It
+/// does two things in one request: it reports the module just OPENED as
+/// `current_module`, and — if a module was already open — it closes that
+/// module's segment, reporting how long it was open as `dwell_seconds`. The
+/// segment names the module being LEFT, never the one being entered; get that
+/// backwards and every dwell reading in the roster describes the wrong tab
+/// while still passing every validation rule on the server, which is why it
+/// is asserted explicitly in the test rather than left to fall out of the
+/// server accepting the body.
+///
+/// Separately, a 60-second [Timer.periodic] posts a keep-alive beat carrying
+/// whatever `current_module` is current — no segment, because nothing was
+/// closed. Its only job is to keep `last_seen_at` fresh for a person who has
+/// been sitting on the same screen for minutes, who [enter] alone would never
+/// hear from again.
+///
+/// ── Why a [Stopwatch] and not two [DateTime.now()] calls ──────────
+///
+/// A stopwatch is the built-in tool for "how long since I started timing",
+/// and reads the monotonic clock rather than the wall clock — immune to a
+/// system clock adjustment (NTP sync, a manual change, a DST transition)
+/// producing a negative or wildly wrong dwell time mid-session.
+///
+/// ── Why `device_key` is cached in memory rather than re-read per beat ─────
+///
+/// It is read from local storage (or generated, on the very first run) once,
+/// the first time this instance ever needs it, and kept from then on. Storage
+/// on the web is sessionStorage/localStorage (see token_store_web.dart) —
+/// synchronous and cheap, but re-reading it before every one of a dozen beats
+/// an hour buys nothing a single cached value does not already give.
+class MonitoringHeartbeat {
+  MonitoringHeartbeat(this._api, {Duration interval = const Duration(seconds: 60)})
+      : _interval = interval {
+    // Started immediately, not on the first [enter]. A person who opens the
+    // app and never touches the nav (the default screen is exactly where they
+    // wanted to be) must still show up as present — the keep-alive is not
+    // conditional on ever having changed modules.
+    _timer = Timer.periodic(_interval, (_) => unawaited(_post()));
+  }
+
+  final ApiClient _api;
+  final Duration _interval;
+
+  static const List<String> _capabilities = ['activity'];
+  static const String _deviceKeyStorageKey = 'ezbizi.monitoring_device_key';
+
+  Timer? _timer;
+  String? _currentModule;
+  final Stopwatch _dwell = Stopwatch();
+  String? _deviceKey;
+
+  /// Somebody switched to [moduleKey]. Closes the previous module's segment
+  /// (if there was one) and posts a beat naming the new module as
+  /// `current_module`. The very first call in a session has no previous
+  /// module to close, so it posts with no `segment` at all.
+  Future<void> enter(String moduleKey) async {
+    final segment = _closeSegment();
+
+    _currentModule = moduleKey;
+    _dwell
+      ..reset()
+      ..start();
+
+    await _post(segment: segment);
+  }
+
+  /// The segment for the module being left, or null if this is the first
+  /// module entered this session. Read the dwell BEFORE [_dwell] is reset for
+  /// the module being entered — the caller does that reset itself, after this
+  /// returns, precisely so this method never has to guess which stopwatch
+  /// reading belongs to which module.
+  Map<String, Object?>? _closeSegment() {
+    final previous = _currentModule;
+    if (previous == null) return null;
+
+    return {
+      'module_key': previous,
+      'dwell_seconds': _dwell.elapsed.inSeconds,
+    };
+  }
+
+  Future<void> _post({Map<String, Object?>? segment}) async {
+    final body = <String, Object?>{
+      'device_key': await _deviceKeyValue(),
+      'platform': ClientPlatform.name,
+      'capabilities': _capabilities,
+      if (_currentModule != null) 'current_module': _currentModule,
+      'segment': ?segment,
+    };
+
+    await _api.post('/monitoring/heartbeat', body);
+  }
+
+  /// Reads the persisted device key, or generates and persists one the first
+  /// time this device ever beats. `persist: true` — localStorage, not
+  /// sessionStorage — because a device key identifies the INSTALL, not the
+  /// browser tab: it has to be the same value the next time the browser opens,
+  /// not just the same value across a reload of this tab (see
+  /// token_store_web.dart for the two, and TokenStore for the tab-scoped
+  /// choice a signed-in session makes for the opposite reason).
+  Future<String> _deviceKeyValue() async {
+    final cached = _deviceKey;
+    if (cached != null) return cached;
+
+    final stored = store.readItem(_deviceKeyStorageKey);
+    final key = (stored == null || stored.isEmpty) ? _uuidV4() : stored;
+
+    _deviceKey = key;
+    store.writeItem(_deviceKeyStorageKey, key, persist: true);
+
+    return key;
+  }
+
+  /// Stops the keep-alive timer. Call this when whatever owns this instance
+  /// goes away — otherwise the timer keeps this object, and everything it
+  /// closes over, alive and posting for the lifetime of the process.
+  void dispose() {
+    _timer?.cancel();
+    _timer = null;
+  }
+}
+
+/// A random (RFC 4122) v4 uuid. No `uuid` package for this: it is sixteen
+/// random bytes with two nibbles pinned to say "version 4, this variant" —
+/// small enough that a whole dependency for it would cost more than it saves.
+String _uuidV4() {
+  final random = Random.secure();
+  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+
+  bytes[6] = (bytes[6] & 0x0F) | 0x40; // version 4
+  bytes[8] = (bytes[8] & 0x3F) | 0x80; // variant 10xx
+
+  String hex(int start, int end) => bytes
+      .sublist(start, end)
+      .map((b) => b.toRadixString(16).padLeft(2, '0'))
+      .join();
+
+  return '${hex(0, 4)}-${hex(4, 6)}-${hex(6, 8)}-${hex(8, 10)}-${hex(10, 16)}';
+}
