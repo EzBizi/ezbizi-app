@@ -40,6 +40,7 @@ class TaskCalendarView extends StatefulWidget {
     required this.onMonthChanged,
     this.readOnly = false,
     this.boardNamesByTaskId,
+    this.onOpen,
   });
 
   /// The displayed month. Only `.year`/`.month` are read; the day and any
@@ -74,6 +75,12 @@ class TaskCalendarView extends StatefulWidget {
   /// board name a card on a shared grid gives no way to tell two same-
   /// titled tasks from different boards apart, or where to click through to.
   final Map<String, String>? boardNamesByTaskId;
+
+  /// Opens a task's detail panel (whole-branch review finding 2). `null`
+  /// leaves cards non-interactive — this widget adds no assumption about
+  /// what "open" means; the caller decides (a board's own Calendar opens
+  /// the panel in place, a cross-board one could resolve the board first).
+  final ValueChanged<TaskRow>? onOpen;
 
   @override
   State<TaskCalendarView> createState() => _TaskCalendarViewState();
@@ -284,6 +291,7 @@ class _TaskCalendarViewState extends State<TaskCalendarView> {
                                       : (task) => _handleDrop(task, day),
                                   readOnly: widget.readOnly,
                                   boardNamesByTaskId: widget.boardNamesByTaskId,
+                                  onOpen: widget.onOpen,
                                 ),
                         ),
                     ],
@@ -335,6 +343,7 @@ class _TaskCalendarViewState extends State<TaskCalendarView> {
                         : (task) => _handleDrop(task, day),
                     readOnly: widget.readOnly,
                     boardNamesByTaskId: widget.boardNamesByTaskId,
+                    onOpen: widget.onOpen,
                   ),
                 ),
             ],
@@ -354,6 +363,7 @@ class _DayCell extends StatelessWidget {
     required this.onDropped,
     this.readOnly = false,
     this.boardNamesByTaskId,
+    this.onOpen,
   });
 
   final DateTime day;
@@ -362,6 +372,7 @@ class _DayCell extends StatelessWidget {
   final ValueChanged<TaskRow>? onDropped;
   final bool readOnly;
   final Map<String, String>? boardNamesByTaskId;
+  final ValueChanged<TaskRow>? onOpen;
 
   Widget _body(BuildContext context, {required bool highlighted}) {
     final scheme = Theme.of(context).colorScheme;
@@ -392,6 +403,7 @@ class _DayCell extends StatelessWidget {
                     dragging: movingTaskId == task.id,
                     readOnly: readOnly,
                     boardName: boardNamesByTaskId?[task.id],
+                    onOpen: onOpen,
                   ),
               ],
             ),
@@ -422,6 +434,7 @@ class _DayRow extends StatelessWidget {
     required this.onDropped,
     this.readOnly = false,
     this.boardNamesByTaskId,
+    this.onOpen,
   });
 
   final DateTime day;
@@ -430,6 +443,7 @@ class _DayRow extends StatelessWidget {
   final ValueChanged<TaskRow>? onDropped;
   final bool readOnly;
   final Map<String, String>? boardNamesByTaskId;
+  final ValueChanged<TaskRow>? onOpen;
 
   static const _weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -474,6 +488,7 @@ class _DayRow extends StatelessWidget {
                     dragging: movingTaskId == task.id,
                     readOnly: readOnly,
                     boardName: boardNamesByTaskId?[task.id],
+                    onOpen: onOpen,
                   ),
               ],
             ),
@@ -501,6 +516,7 @@ class _CalendarCard extends StatelessWidget {
     required this.dragging,
     this.readOnly = false,
     this.boardName,
+    this.onOpen,
   });
 
   final TaskRow task;
@@ -512,9 +528,19 @@ class _CalendarCard extends StatelessWidget {
   /// look is byte-identical to before.
   final String? boardName;
 
+  /// Opens this task's detail panel (whole-branch review finding 2).
+  final ValueChanged<TaskRow>? onOpen;
+
   @override
   Widget build(BuildContext context) {
-    final body = _body(context);
+    final onOpen = this.onOpen;
+    final body = onOpen == null
+        ? _body(context)
+        : InkWell(
+            key: ValueKey('calendar-card-open-${task.id}'),
+            onTap: () => onOpen(task),
+            child: _body(context),
+          );
     // A cross-board card (task-14 brief) is never wrapped in `Draggable`
     // here — not disabled, absent — because dragging it would need the
     // target board's write authorization resolved per card.

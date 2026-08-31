@@ -63,6 +63,7 @@ class TaskTimelineView extends StatefulWidget {
     required this.onMonthChanged,
     this.readOnly = false,
     this.boardNamesByTaskId,
+    this.onOpen,
   });
 
   /// The displayed month. Only `.year`/`.month` are read; the day and any
@@ -94,6 +95,12 @@ class TaskTimelineView extends StatefulWidget {
   /// map instead, so the same "which board" gap `TaskCalendarView` closes
   /// is closed here too.
   final Map<String, String>? boardNamesByTaskId;
+
+  /// Opens a task's detail panel (whole-branch review finding 2) — the
+  /// only way to reach `TaskDependencyPanel`/`TaskRecurrencePanel` for a
+  /// task viewed here, since both mount only inside `TaskDetailPanel`.
+  /// `null` leaves the row label and bar/marker non-interactive.
+  final ValueChanged<TaskRow>? onOpen;
 
   @override
   State<TaskTimelineView> createState() => _TaskTimelineViewState();
@@ -302,19 +309,22 @@ class _TaskTimelineViewState extends State<TaskTimelineView> {
           // Aligns with the day-header row on the grid side.
           const SizedBox(height: _headerHeight),
           for (final row in rows)
-            Container(
+            InkWell(
               key: ValueKey('timeline-label-${row.id}'),
-              height: _rowHeight,
-              alignment: Alignment.centerLeft,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: EzBiziTheme.edge(context))),
+              onTap: widget.onOpen == null ? null : () => widget.onOpen!(row),
+              child: Container(
+                height: _rowHeight,
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: EzBiziTheme.edge(context))),
+                ),
+                // `null` for a single board's own Timeline — unchanged, one
+                // line. The cross-board caller (task-14 brief, fix round 1)
+                // supplies a board name, so the label grows to two lines
+                // rather than merging it into the same ellipsized line.
+                child: _label(scheme, row, widget.boardNamesByTaskId?[row.id]),
               ),
-              // `null` for a single board's own Timeline — unchanged, one
-              // line. The cross-board caller (task-14 brief, fix round 1)
-              // supplies a board name, so the label grows to two lines
-              // rather than merging it into the same ellipsized line.
-              child: _label(scheme, row, widget.boardNamesByTaskId?[row.id]),
             ),
         ],
       ),
@@ -424,11 +434,15 @@ class _TaskTimelineViewState extends State<TaskTimelineView> {
         left: left,
         width: width,
         height: _rowHeight - 8,
-        child: TaskTimelineBar(
-          key: ValueKey('timeline-bar-${task.id}'),
-          task: task,
-          dragging: dragging,
-          readOnly: widget.readOnly,
+        child: GestureDetector(
+          key: ValueKey('timeline-bar-open-${task.id}'),
+          onTap: widget.onOpen == null ? null : () => widget.onOpen!(task),
+          child: TaskTimelineBar(
+            key: ValueKey('timeline-bar-${task.id}'),
+            task: task,
+            dragging: dragging,
+            readOnly: widget.readOnly,
+          ),
         ),
       );
     }
@@ -440,12 +454,16 @@ class _TaskTimelineViewState extends State<TaskTimelineView> {
       left: left,
       width: _dayWidth,
       height: _rowHeight - 8,
-      child: TaskTimelineMarker(
-        key: ValueKey('timeline-marker-${task.id}'),
-        task: task,
-        isDue: isDue,
-        dragging: dragging,
-        readOnly: widget.readOnly,
+      child: GestureDetector(
+        key: ValueKey('timeline-marker-open-${task.id}'),
+        onTap: widget.onOpen == null ? null : () => widget.onOpen!(task),
+        child: TaskTimelineMarker(
+          key: ValueKey('timeline-marker-${task.id}'),
+          task: task,
+          isDue: isDue,
+          dragging: dragging,
+          readOnly: widget.readOnly,
+        ),
       ),
     );
   }

@@ -1800,16 +1800,89 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   /// no `unknown` case (see `_presentationFromWire`) — an unrecognised wire
   /// value degrades to `table` before it ever reaches this switch, so this
   /// one stays exhaustive rather than needing a defensive fallback arm.
+  /// Kanban/Calendar/Timeline need a task's detail panel reachable exactly
+  /// the same way Table's `_workspace()` already makes one reachable
+  /// (whole-branch review finding 2) — a side panel on a wide-enough
+  /// desktop pane, otherwise the SAME mobile full-screen route
+  /// `_selectTaskId` already pushes for every presentation regardless of
+  /// which one is active (see its own `MediaQuery.sizeOf(context).width <
+  /// 700` branch). On mobile that push is the whole story, so these three
+  /// content builders are used unwrapped there — wrapping them too would
+  /// leave a STALE in-place fullscreen panel behind after the pushed
+  /// route is popped (its own `onClose` only pops the route, it never
+  /// resets `_detailOpen`), exactly mirroring how `_mobileTableContent()`
+  /// also never wraps itself in anything detail-panel-related. Workload
+  /// rows are per-owner aggregates, not tasks, so it is deliberately left
+  /// alone here — there is nothing on it to open.
   Widget _presentationBody(bool mobile, bool wide) =>
       switch (_configuration.presentation) {
-        TaskPresentation.kanban => _kanbanContent(),
-        TaskPresentation.calendar => _calendarContent(),
-        TaskPresentation.timeline => _timelineContent(),
+        TaskPresentation.kanban =>
+          mobile ? _kanbanContent() : _withDetailPanel(_kanbanContent()),
+        TaskPresentation.calendar =>
+          mobile ? _calendarContent() : _withDetailPanel(_calendarContent()),
+        TaskPresentation.timeline =>
+          mobile ? _timelineContent() : _withDetailPanel(_timelineContent()),
         TaskPresentation.workload => _workloadContent(),
         TaskPresentation.table => mobile
             ? _mobileTableContent()
             : _workspace(wide),
       };
+
+  /// Adds the same side-by-side (or narrow-pane fullscreen swap) detail
+  /// panel treatment `_workspace()` gives Table, to any other presentation
+  /// [content]. A standalone `LayoutBuilder`, not a refactor of
+  /// `_workspace()` itself: that method also has to reserve room for the
+  /// board directory and pass `TaskTable` an exact `paneWidth`, neither of
+  /// which any of these three presentations need, and folding this into
+  /// that one risks changing ITS width math (Task 15's own floor) for a
+  /// change this finding never asked for.
+  Widget _withDetailPanel(Widget content) => LayoutBuilder(
+    builder: (context, constraints) {
+      // Same 1100 threshold `_workspace()` uses, for the same reason: the
+      // detail panel's default 390px (+16px divider) needs to leave a
+      // content pane wide enough that `TaskPresentationBar`/
+      // `TaskViewsBar` don't wrap onto multiple lines.
+      final showDetail = _detailOpen && constraints.maxWidth >= 1100;
+      if (_detailOpen && !showDetail && _detail != null) {
+        return TaskDetailPanel(
+          task: _detail,
+          taskApi: _tasks,
+          onTaskChanged: _replaceDetail,
+          onOpenRecordRoute: _openRecordRoute,
+          onDraftChanged: _draftChanged,
+          privacyEpoch: _privacyGeneration,
+          onUnavailable: _evict,
+          fullScreen: true,
+          onClose: () => setState(() => _detailOpen = false),
+        );
+      }
+      return Row(
+        children: [
+          Expanded(child: content),
+          if (showDetail) ...[
+            TaskDetailDivider(
+              onResize: (delta) => setState(
+                () => _detailWidth = (_detailWidth + delta).clamp(300, 640),
+              ),
+            ),
+            SizedBox(
+              width: _detailWidth,
+              child: TaskDetailPanel(
+                task: _detail,
+                taskApi: _tasks,
+                onTaskChanged: _replaceDetail,
+                onOpenRecordRoute: _openRecordRoute,
+                onDraftChanged: _draftChanged,
+                privacyEpoch: _privacyGeneration,
+                onUnavailable: _evict,
+                onClose: () => setState(() => _detailOpen = false),
+              ),
+            ),
+          ],
+        ],
+      );
+    },
+  );
 
   Widget _mobileTableContent() => _boardScaffold(
     view: TaskMobileList(
@@ -1833,6 +1906,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
         owners: _owners,
         hiddenColumns: _configuration.hiddenColumns,
         onMove: _kanbanMove,
+        onOpen: _selectTask,
       ),
     );
   }
@@ -1844,6 +1918,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       omitted: _omitted,
       onMove: _calendarMove,
       onMonthChanged: _changeCalendarMonth,
+      onOpen: _selectTask,
     ),
   );
 
@@ -1854,6 +1929,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       omitted: _omitted,
       onMove: _timelineMove,
       onMonthChanged: _changeTimelineMonth,
+      onOpen: _selectTask,
     ),
   );
 

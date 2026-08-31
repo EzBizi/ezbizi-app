@@ -133,6 +133,7 @@ class TaskKanbanView extends StatefulWidget {
     required this.onMove,
     this.owners = const <TaskParticipant>[],
     this.hiddenColumns = const <String>[],
+    this.onOpen,
   });
 
   final TaskBoard board;
@@ -148,6 +149,11 @@ class TaskKanbanView extends StatefulWidget {
   final TaskKanbanMove onMove;
   final List<TaskParticipant> owners;
   final List<String> hiddenColumns;
+
+  /// Opens a task's detail panel (whole-branch review finding 2) — before
+  /// this, a Kanban card could not be opened at all. `null` leaves cards
+  /// non-interactive beyond dragging.
+  final ValueChanged<TaskRow>? onOpen;
 
   @override
   State<TaskKanbanView> createState() => _TaskKanbanViewState();
@@ -261,6 +267,7 @@ class _TaskKanbanViewState extends State<TaskKanbanView> {
               hiddenColumns: widget.hiddenColumns,
               movingTaskId: _movingTaskId,
               onDropped: (task) => _handleDrop(task, bucket),
+              onOpen: widget.onOpen,
             ),
           ),
       ],
@@ -303,6 +310,7 @@ class _TaskKanbanViewState extends State<TaskKanbanView> {
             hiddenColumns: widget.hiddenColumns,
             movingTaskId: _movingTaskId,
             onDropped: (task) => _handleDrop(task, bucket),
+            onOpen: widget.onOpen,
           ),
         ),
       ],
@@ -321,6 +329,7 @@ class _KanbanColumn extends StatelessWidget {
     required this.hiddenColumns,
     required this.movingTaskId,
     required this.onDropped,
+    this.onOpen,
   });
 
   final TaskKanbanBucket bucket;
@@ -331,6 +340,7 @@ class _KanbanColumn extends StatelessWidget {
   final List<String> hiddenColumns;
   final String? movingTaskId;
   final ValueChanged<TaskRow> onDropped;
+  final ValueChanged<TaskRow>? onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -397,6 +407,7 @@ class _KanbanColumn extends StatelessWidget {
                             owners: owners,
                             hiddenColumns: hiddenColumns,
                             dragging: movingTaskId == task.id,
+                            onOpen: onOpen,
                           ),
                       ],
                     ),
@@ -432,6 +443,7 @@ class _KanbanCard extends StatelessWidget {
     required this.owners,
     required this.hiddenColumns,
     required this.dragging,
+    this.onOpen,
   });
 
   final TaskRow task;
@@ -440,9 +452,19 @@ class _KanbanCard extends StatelessWidget {
   final List<String> hiddenColumns;
   final bool dragging;
 
+  /// Opens this task's detail panel (whole-branch review finding 2).
+  final ValueChanged<TaskRow>? onOpen;
+
   @override
   Widget build(BuildContext context) {
-    final body = _body(context);
+    final onOpen = this.onOpen;
+    final body = onOpen == null
+        ? _body(context)
+        : InkWell(
+            key: ValueKey('kanban-card-open-${task.id}'),
+            onTap: () => onOpen(task),
+            child: _body(context),
+          );
     return Draggable<TaskRow>(
       data: task,
       feedback: Material(

@@ -177,6 +177,69 @@ void main() {
     );
   });
 
+  // Whole-branch review finding 2: before this fix, Kanban, Calendar and
+  // Timeline had no way to open a task's detail panel at all — the four
+  // new content builders never built the `Row` containing
+  // `TaskDetailPanel`, and none of the three view widgets took an
+  // open/select callback. 'Avery Thompson' (a record link, from
+  // `_detailTask`) only ever renders once the FULL task detail has loaded
+  // — never on a card/bar itself — so its appearance is proof the panel
+  // opened with the right task, not just that something rendered.
+  testWidgets('activating a task on Kanban opens the detail panel', (
+    tester,
+  ) async {
+    await _pumpTasks(
+      tester,
+      size: _desktop,
+      openBoard: true,
+      openPresentation: 'kanban',
+    );
+    expect(find.text('Avery Thompson'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('kanban-card-open-task-1')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Avery Thompson'), findsOneWidget);
+  });
+
+  testWidgets('activating a task on Calendar opens the detail panel', (
+    tester,
+  ) async {
+    await _pumpTasks(
+      tester,
+      size: _desktop,
+      openBoard: true,
+      openPresentation: 'calendar',
+    );
+    await _navigateToFixedMonth(tester);
+    expect(find.text('Avery Thompson'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('calendar-card-open-task-1')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Avery Thompson'), findsOneWidget);
+  });
+
+  testWidgets('activating a task on Timeline opens the detail panel', (
+    tester,
+  ) async {
+    await _pumpTasks(
+      tester,
+      size: _desktop,
+      openBoard: true,
+      openPresentation: 'timeline',
+    );
+    await _navigateToFixedMonth(tester);
+    expect(find.text('Avery Thompson'), findsNothing);
+
+    // task-1 carries both start_on and due_on, so it draws as a bar, not a
+    // marker.
+    await tester.tap(find.byKey(const ValueKey('timeline-bar-open-task-1')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Avery Thompson'), findsOneWidget);
+  });
+
   testWidgets('task detail desktop', (tester) async {
     await _pumpTasks(tester, size: _desktop, openBoard: true, openDetail: true);
 
