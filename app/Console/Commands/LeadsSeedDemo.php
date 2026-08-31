@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\BusinessLocation;
 use App\Models\Company;
 use App\Models\Lead;
 use App\Models\Organization;
@@ -14,7 +15,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Demo enquiries and reviews, so EZ Leads has something to open.
+ * Demo enquiries, reviews and listings, so EZ Leads has something to open.
  *
  * ── Why this exists at all ───────────────────────────────────
  *
@@ -39,7 +40,7 @@ class LeadsSeedDemo extends Command
                             {--live : Allow the production database}
                             {--force : Skip the confirmation}';
 
-    protected $description = 'Plant fictional leads and reviews so EZ Leads has something to show';
+    protected $description = 'Plant fictional leads, reviews and locations so EZ Leads has something to show';
 
     private const PREFIX = 'DEMO-';
 
@@ -56,6 +57,19 @@ class LeadsSeedDemo extends Command
         ['Gregory Sun',      '+1 (555) 0110', 'chimney_inspection', 'archived',   'CREDITED',    48, 'Called about a dryer vent, not a chimney.'],
         ['Hannah Okafor',    '+1 (555) 0189', 'chimney_sweep',      'booked',     'CHARGED',     53, 'Fireplace smells after the rain.'],
         ['Devin Park',       '+1 (555) 0156', 'chimney_repair',     'not_a_lead', 'NOT_CHARGED', 72, 'Wrong number.'],
+    ];
+
+    /**
+     * Two listings, and one of them is suspended on purpose.
+     *
+     * A demo where everything is healthy shows the screen at its least useful.
+     * The whole point of this module is that a listing can be invisible on Maps
+     * while looking perfectly fine in a CRM, so one row carries the state
+     * somebody would actually need to be told about.
+     */
+    private const LOCATIONS = [
+        ['Ridgeline Chimney — Miami',    '+1 (555) 0120', '1400 NW 22nd Ave', 'Miami',        'FL', '33125', 'Chimney sweep',       'VERIFIED', true],
+        ['Ridgeline Chimney — Kendall',  '+1 (555) 0131', '8720 SW 72nd St',  'Kendall',      'FL', '33173', 'Chimney sweep',       'SUSPENDED', false],
     ];
 
     private const REVIEWS = [
@@ -89,7 +103,7 @@ class LeadsSeedDemo extends Command
         }
 
         if (! $this->option('force')
-            && ! $this->confirm("Plant demo leads and reviews on {$organization->name}?")) {
+            && ! $this->confirm("Plant demo leads, reviews and locations on {$organization->name}?")) {
             return self::SUCCESS;
         }
 
@@ -131,6 +145,41 @@ class LeadsSeedDemo extends Command
                     );
                 }
 
+                foreach (self::LOCATIONS as $i => [$title, $phone, $line1, $city, $state, $zip, $category, $state_, $live]) {
+                    BusinessLocation::updateOrCreate(
+                        [
+                            'organization_id' => $organization->id,
+                            'remote_name'     => self::PREFIX.'locations/'.($i + 1),
+                        ],
+                        [
+                            'company_id'         => $company->id,
+                            'connection_id'      => $gbp->id,
+                            'account_name'       => self::PREFIX.'accounts/demo',
+                            'title'              => $title,
+                            'phone'              => $phone,
+                            'website'            => 'https://www.ezbizi.com/',
+                            'address_line1'      => $line1,
+                            'city'               => $city,
+                            'state'              => $state,
+                            'postal_code'        => $zip,
+                            'country'            => 'US',
+                            'primary_category'   => $category,
+                            'verification_state' => $state_,
+                            'is_published'       => $live,
+                            'hours'              => [
+                                'monday'    => '08:00-17:00',
+                                'tuesday'   => '08:00-17:00',
+                                'wednesday' => '08:00-17:00',
+                                'thursday'  => '08:00-17:00',
+                                'friday'    => '08:00-16:00',
+                                'saturday'  => 'closed',
+                                'sunday'    => 'closed',
+                            ],
+                            'synced_at'          => now(),
+                        ],
+                    );
+                }
+
                 foreach (self::REVIEWS as $i => [$stars, $who, $text, $daysAgo, $reply]) {
                     $review = Review::updateOrCreate(
                         [
@@ -165,9 +214,10 @@ class LeadsSeedDemo extends Command
             });
 
             $this->info(sprintf(
-                'Planted %d leads and %d reviews on %s. Every row is fictional.',
+                'Planted %d leads, %d reviews and %d locations on %s. Every row is fictional.',
                 count(self::LEADS),
                 count(self::REVIEWS),
+                count(self::LOCATIONS),
                 $organization->name,
             ));
 
