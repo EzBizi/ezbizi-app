@@ -12,25 +12,33 @@ use Illuminate\Auth\Access\Response;
 /**
  * Who may read and write training guides.
  *
- * Mirrors InventoryItemPolicy, verb for verb: General (`franchise_id` null)
- * is visible to anyone who can see that company, including a franchise-only
- * user assigned under it. Organization guides (`company_id` null) are
- * visible throughout the tenant; writing one is an organization act.
- * `training.manage` covers create, update and delete — §9 declared only
- * view/monitor/manage/assign, so there is no separate permission per verb.
+ * `/training/guides` is the AUTHORING surface — the Settings tab, not the
+ * Learn tab a learner reads from. The spec's tab table maps Settings to
+ * `manage`, Learn to `view`, Dashboard to `monitor`; gating reads here on
+ * `training.view` would hand every guide, drafts included, to anyone who
+ * merely holds Learn access. So every verb below — read and write alike —
+ * checks `training.manage`, and `training.view` gates the learner-facing
+ * `GET /training/learn` that Task 6 adds instead. One permission, one
+ * controller.
+ *
+ * Mirrors InventoryItemPolicy, verb for verb, past the permission check:
+ * General (`franchise_id` null) is visible to anyone who can see that
+ * company, including a franchise-only user assigned under it. Organization
+ * guides (`company_id` null) are visible throughout the tenant; writing one
+ * is an organization act.
  */
 class TrainingGuidePolicy
 {
     public function viewAny(User $user): Response
     {
-        return $user->hasPermission('training.view')
+        return $user->hasPermission('training.manage')
             ? Response::allow()
             : Refusal::permission('see training');
     }
 
     public function view(User $user, TrainingGuide $guide): Response
     {
-        if (! $user->hasPermission('training.view')) {
+        if (! $user->hasPermission('training.manage')) {
             return Refusal::permission('see training');
         }
 

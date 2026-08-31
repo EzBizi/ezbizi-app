@@ -26,6 +26,14 @@ class GuidesController extends Controller
 {
     public function __construct(private readonly TenantContext $tenant) {}
 
+    /**
+     * An `exists` rule scoped to this organization.
+     *
+     * Laravel's plain `exists` runs a raw query with no tenant scope, so naming
+     * another organization's id passes validation and only fails later as a 404.
+     * Two different answers for two different ids is an existence oracle — it
+     * tells a caller which ids are real somewhere else on the platform.
+     */
     private function existsInTenant(string $table): \Illuminate\Validation\Rules\Exists
     {
         return Rule::exists($table, 'id')
@@ -51,10 +59,20 @@ class GuidesController extends Controller
         // module's to change.
         $query = InventoryVisibility::constrain(TrainingGuide::query(), $user, $scope);
 
-        $guides = $query->orderBy('title')->get();
+        $guides = $query
+            ->orderBy('title')
+            ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
 
         return response()->json([
-            'data' => $guides->map(fn (TrainingGuide $g) => $this->present($g)),
+            'data' => collect($guides->items())->map(
+                fn (TrainingGuide $g) => $this->present($g),
+            ),
+            'meta' => [
+                'total' => $guides->total(),
+                'per_page' => $guides->perPage(),
+                'current_page' => $guides->currentPage(),
+                'last_page' => $guides->lastPage(),
+            ],
         ]);
     }
 
@@ -153,7 +171,7 @@ class GuidesController extends Controller
             'title' => [$required, 'string', 'max:191'],
             'summary' => ['sometimes', 'nullable', 'string', 'max:500'],
             'status' => ['sometimes', 'string', Rule::in([TrainingGuide::DRAFT, TrainingGuide::PUBLISHED])],
-            'screens' => ['sometimes', 'array'],
+            'screens' => ['sometimes', 'array', 'max:200'],
             'company_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('companies')],
             'franchise_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('franchises')],
         ];
