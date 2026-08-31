@@ -535,6 +535,7 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'hr',
                 label: 'Human Resources',
+                auditActionPrefixes: ['onboarding', 'invitation', 'contract'],
                 actions: ['view', 'create', 'edit'],
                 triggers: [
                     /*
@@ -986,6 +987,7 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'scheduling',
                 label: 'Scheduling',
+                auditExemptBecause: 'Writes no audit rows yet. A known gap, not a decision — tracked as TODO #35.',
                 actions: ModuleDefinition::DEFAULT_ACTIONS,
                 automationExemptBecause: 'Nothing is scheduled yet — this module is a shell. '
                     .'Replace this with real triggers when Availability becomes real; do not '
@@ -1100,6 +1102,7 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'marketing',
                 label: 'Marketing',
+                auditActionPrefixes: ['social'],
                 actions: ['view', 'edit'],
                 triggers: [
                     /*
@@ -1239,6 +1242,7 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'web_management',
                 label: 'Web Management',
+                auditExemptBecause: 'Writes no audit rows yet. A known gap, not a decision — tracked as TODO #35.',
                 actions: ['view', 'edit'],
                 automationExemptBecause: 'Nothing here happens on its own. A value changes because '
                     .'somebody typed it, and a plugin reading it is a machine polling on a timer — '
@@ -1272,6 +1276,7 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'phone',
                 label: 'Phone',
+                auditExemptBecause: 'Writes no audit rows yet. A known gap, not a decision — tracked as TODO #35.',
                 actions: ['view', 'edit'],
                 triggers: [
                     new TriggerDefinition(
@@ -1360,6 +1365,7 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'fleet_management',
                 label: 'Fleet Management',
+                auditExemptBecause: 'Writes no audit rows yet. A known gap, not a decision — tracked as TODO #35.',
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'assign', 'financials'],
                 subject: new AutomationSubject(Vehicle::class, 'Vehicle'),
                 triggers: [
@@ -1477,6 +1483,7 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'inventory',
                 label: 'Inventory',
+                auditExemptBecause: 'Writes no audit rows yet. A known gap, not a decision — tracked as TODO #35.',
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'financials'],
                 subject: new AutomationSubject(InventoryItem::class, 'Item', key: 'item'),
                 triggers: [
@@ -1550,6 +1557,7 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'services',
                 label: 'Services',
+                auditExemptBecause: 'Writes no audit rows yet. A known gap, not a decision — tracked as TODO #35.',
                 actions: ModuleDefinition::DEFAULT_ACTIONS,
                 subject: new AutomationSubject(Service::class, 'Service'),
                 /*
@@ -1810,6 +1818,7 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key:     'business_profile',
                 label:   'Business Profile',
+                auditActionPrefixes: ['business_location'],
                 // Drawn as a tab inside Marketing rather than as a row of its own
                 // in a sidebar that already holds fifteen. Its permissions are
                 // untouched by that: this says where it appears, not who reaches it.
@@ -1906,6 +1915,7 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'email',
                 label: 'Email',
+                auditActionPrefixes: ['mailbox', 'sending_identity'],
                 triggers: [
                     /*
                      * THE ONE THIS MODULE EXISTS FOR, AND IT FIRES.
