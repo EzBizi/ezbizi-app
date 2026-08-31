@@ -65,14 +65,75 @@ final class MicrosoftMailboxReader implements MailboxReader
         return null;
     }
 
+    /**
+     * Graph's well-known folder names, keyed by the label this module uses.
+     *
+     * ── A FIXED MAP, and that is the security property ───────────
+     *
+     * The label arrives from a query string. Interpolating it into a URL path
+     * would let a caller address any folder — or any other Graph resource — by
+     * writing one. A map means an unrecognised label produces a refusal rather
+     * than a request, and there is no arrangement of characters that reaches
+     * something not listed here.
+     *
+     * `STARRED` is deliberately absent. Graph has no starred folder; the
+     * nearest thing is a `flag/flagStatus` filter over the inbox, which is a
+     * different query rather than a different folder, and offering "Starred"
+     * that quietly showed the inbox would be the lie this method exists to
+     * stop.
+     */
+    private const FOLDERS = [
+        'INBOX'   => 'inbox',
+        'SENT'    => 'sentitems',
+        'DRAFT'   => 'drafts',
+        'DRAFTS'  => 'drafts',
+        'TRASH'   => 'deleteditems',
+        'SPAM'    => 'junkemail',
+        'ARCHIVE' => 'archive',
+    ];
+
     public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
-        return $this->page($mailbox, self::INBOX, [
+        return $this->page($mailbox, $this->folderUrl($mailbox, $label), [
             '$select'   => self::LIST_SELECT,
             '$orderby'  => 'receivedDateTime desc',
             '$top'      => (string) max(1, min($limit, 100)),
             ...$this->cursorQuery($cursor),
         ]);
+    }
+
+    /**
+     * The messages URL for one folder.
+     *
+     * ── Why an unknown label REFUSES rather than falling back ────
+     *
+     * Returning the inbox for a folder we cannot address is the failure this
+     * module keeps finding in other people's code and its own: it succeeds, it
+     * displays, and it is wrong. Somebody looking at "Sent" would be reading
+     * received mail, and nothing anywhere would say so.
+     *
+     * This used to be a constant pointing at the inbox and the label was
+     * ignored entirely, which is exactly that failure — reachable through the
+     * API even while the client only offered folders on Gmail.
+     *
+     * @throws CannotReadMailbox
+     */
+    private function folderUrl(Mailbox $mailbox, string $label): string
+    {
+        $folder = self::FOLDERS[strtoupper($label)] ?? null;
+
+        if ($folder === null) {
+            throw CannotReadMailbox::providerRefused(
+                $mailbox,
+                sprintf(
+                    'An Outlook inbox has no folder called "%s", so there is nothing to show. '
+                    .'Outlook offers Inbox, Sent, Drafts, Trash, Spam and Archive.',
+                    $label,
+                ),
+            );
+        }
+
+        return self::GRAPH.'/me/mailFolders/'.$folder.'/messages';
     }
 
     public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage

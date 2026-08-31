@@ -127,13 +127,21 @@ class MailFolder {
   final IconData icon;
 }
 
-const List<MailFolder> gmailFolders = [
+/// Every folder this client knows how to name, in the order they are drawn.
+///
+/// Which of them a given mailbox is actually offered comes from
+/// [Mailbox.folderIds] — this list is the vocabulary, not the offer. Renamed
+/// from `gmailFolders` when Outlook gained folders: the old name was accurate
+/// while Gmail was the only provider with any, and would have been a quiet
+/// lie afterwards.
+const List<MailFolder> mailFolders = [
   MailFolder(id: 'INBOX', label: 'Inbox', icon: Icons.inbox_outlined),
   MailFolder(id: 'STARRED', label: 'Starred', icon: Icons.star_outline),
   MailFolder(id: 'SENT', label: 'Sent', icon: Icons.send_outlined),
   MailFolder(id: 'DRAFT', label: 'Drafts', icon: Icons.drafts_outlined),
   MailFolder(id: 'TRASH', label: 'Trash', icon: Icons.delete_outline),
   MailFolder(id: 'SPAM', label: 'Spam', icon: Icons.report_outlined),
+  MailFolder(id: 'ARCHIVE', label: 'Archive', icon: Icons.archive_outlined),
 ];
 
 class MailboxRail extends StatelessWidget {
@@ -163,16 +171,26 @@ class MailboxRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    Mailbox? selected;
-    for (final mailbox in mailboxes) {
-      if (mailbox.id == selectedId) {
-        selected = mailbox;
-        break;
-      }
-    }
-    final anyGmail = mailboxes.any((mailbox) => mailbox.isGmail);
-    final folders = (allSelected && anyGmail) || (selected != null && selected.isGmail)
-        ? gmailFolders
+
+    // Which folders to draw, decided by what the mailboxes in view can
+    // actually open rather than by one provider's list.
+    //
+    // In All inboxes that is the union across every mailbox with folders: a
+    // folder only Outlook has still lists the Outlook mail, and the screen
+    // filters each fetch to the mailboxes that open it. Offering the
+    // intersection instead would hide Archive the moment one Gmail inbox was
+    // in view, which is a folder disappearing for a reason nobody can see.
+    final openable = <String>{
+      for (final mailbox in mailboxes)
+        if (allSelected || mailbox.id == selectedId)
+          if (mailbox.hasFolders) ...mailbox.folderIds,
+    };
+
+    final folders = openable.length > 1
+        ? [
+            for (final folder in mailFolders)
+              if (openable.contains(folder.id)) folder,
+          ]
         : const <MailFolder>[];
     final showAll = mailboxes.length > 1 && onSelectAll != null;
 

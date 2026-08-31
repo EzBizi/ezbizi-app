@@ -111,6 +111,42 @@ class Mailbox {
   bool get isGmail =>
       provider == 'gmail_oauth' || provider == 'gmail_workspace';
 
+  bool get isOutlook => provider == 'microsoft_oauth';
+
+  /// The folders THIS provider can actually open, by the label the API takes.
+  ///
+  /// ── Not one list for everybody ───────────────────────────────
+  ///
+  /// The three providers do not have the same folders, and offering a folder
+  /// the server will refuse is the same failure as offering one it silently
+  /// substitutes — the person picks it and gets a sentence instead of mail.
+  ///
+  /// Outlook has no Starred: Graph has a flag filter over the inbox, which is
+  /// a different query rather than a folder. It does have Archive, which Gmail
+  /// does not offer here.
+  ///
+  /// IMAP is empty on purpose. The server refuses anything but the Inbox
+  /// because folder names differ per server and discovering them is real work
+  /// (`LIST`, SPECIAL-USE, a quoting guard) — so nothing is drawn rather than
+  /// drawing something that refuses.
+  Set<String> get folderIds {
+    if (isGmail) {
+      return const {'INBOX', 'STARRED', 'SENT', 'DRAFT', 'TRASH', 'SPAM'};
+    }
+
+    if (isOutlook) {
+      return const {'INBOX', 'SENT', 'DRAFT', 'TRASH', 'SPAM', 'ARCHIVE'};
+    }
+
+    return const {'INBOX'};
+  }
+
+  /// Whether this mailbox can show the named folder at all.
+  bool opensFolder(String folder) => folderIds.contains(folder);
+
+  /// Worth drawing a folder list for — more than just an Inbox.
+  bool get hasFolders => folderIds.length > 1;
+
   factory Mailbox.fromJson(Map<String, dynamic> json) => Mailbox(
     id: '${json['id']}',
     address: json['address'] as String? ?? '',

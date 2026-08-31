@@ -341,7 +341,7 @@ class _EmailScreenState extends State<EmailScreen> {
 
     final targets = [
       for (final mailbox in _mailboxes)
-        if (_folder == 'INBOX' || mailbox.isGmail)
+        if (mailbox.opensFolder(_folder))
           if (!append || _mailboxHasMore(mailbox.id)) mailbox,
     ];
 
@@ -370,7 +370,7 @@ class _EmailScreenState extends State<EmailScreen> {
         if (_submittedSearch.isNotEmpty) {
           query['search'] = _submittedSearch;
         }
-        if (_folder != 'INBOX' && mailbox.isGmail) {
+        if (_folder != 'INBOX' && mailbox.opensFolder(_folder)) {
           query['label'] = _folder;
         }
         if (_unreadOnly) {

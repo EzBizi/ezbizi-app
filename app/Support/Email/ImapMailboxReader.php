@@ -140,6 +140,8 @@ final class ImapMailboxReader implements MailboxReader
      */
     public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
+        $this->assertInboxOnly($mailbox, $label);
+
         $limit = max(1, min($limit, self::MAX_PAGE));
 
         return $this->withConnection($mailbox, function (ImapConnection $imap) use ($cursor, $limit) {
@@ -601,6 +603,47 @@ final class ImapMailboxReader implements MailboxReader
             to: $to,
             message: $this->composer->composeNew($mailbox, $to, $subject, $body, $attachments),
         ));
+    }
+
+    /**
+     * IMAP has folders; this reader does not offer them yet, and says so.
+     *
+     * ── Why a refusal and not a quiet Inbox ──────────────────────
+     *
+     * `$label` used to be accepted and ignored here, so `?label=SENT` returned
+     * received mail and reported success. That is the failure shape this
+     * codebase keeps finding: it saved, it displayed, it did nothing. The
+     * client only offers folders on Gmail, so nothing on screen reached it —
+     * but the endpoint is reachable, and a latent lie is still a lie.
+     *
+     * ── What real IMAP folders would take ────────────────────────
+     *
+     * Not a constant map like Graph's. Folder names differ per server —
+     * `Sent`, `Sent Items`, `INBOX.Sent` — so it needs `LIST "" "*"`, ideally
+     * with `RETURN (SPECIAL-USE)` to read `\Sent` and `\Trash` where the
+     * server offers it, and a heuristic where it does not. It also needs the
+     * folder name quoted into `EXAMINE`, which is the same injection shape as
+     * the header guard in {@see ReplyComposer}: a name is attacker-adjacent
+     * once it comes back off a server we do not run.
+     *
+     * ponytail: Inbox only, refused honestly. Real folders need LIST discovery
+     * plus SPECIAL-USE and an EXAMINE quoting guard — a piece of work, not a
+     * parameter.
+     *
+     * @throws CannotReadMailbox
+     */
+    private function assertInboxOnly(Mailbox $mailbox, string $label): void
+    {
+        if (strtoupper($label) === 'INBOX') {
+            return;
+        }
+
+        throw CannotReadMailbox::providerRefused(
+            $mailbox,
+            'EzBizi can only open the Inbox on a mail server connected this way, so there '
+            .'is nothing to show for that folder. The other folders are still there in '
+            .'your own mail program.',
+        );
     }
 
     // ── the preflight, which was already real ────────────────────

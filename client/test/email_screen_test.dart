@@ -499,6 +499,74 @@ void main() {
     expect(body, contains('Attached.'));
   });
 
+  /// A folder list is what the PROVIDER can open, not one list for everybody.
+  ///
+  /// Outlook has no Starred — Graph offers a flag filter over the inbox, which
+  /// is a different query rather than a folder — and it does have Archive,
+  /// which Gmail is not offered here. Drawing one list for both means one of
+  /// them names a folder that comes back refused, which is the same failure as
+  /// a folder that silently shows the Inbox, only louder.
+  testWidgets('an Outlook inbox offers Archive and not Starred', (tester) async {
+    await _pump(
+      tester,
+      _handler(mailboxes: [
+        {
+          'id': 'mb-1',
+          'address': 'info@a-1chimney.com',
+          'display_name': 'Info',
+          'provider': 'microsoft_oauth',
+          'unread': 0,
+          'can_reply': true,
+          'shared_read': true,
+        },
+      ]),
+      size: const Size(1400, 900),
+    );
+
+    expect(find.text('Archive'), findsOneWidget);
+    expect(
+      find.text('Starred'),
+      findsNothing,
+      reason: 'Outlook is offered a folder Graph cannot address, so picking it '
+          'returns a refusal instead of mail.',
+    );
+
+    // The control: the folder list is drawn at all, so this is "Starred is
+    // absent" rather than "no folders were rendered".
+    expect(find.text('Sent'), findsOneWidget);
+    expect(find.text('LABELS'), findsOneWidget);
+  });
+
+  /// IMAP opens only the Inbox, so it is offered no folder list at all.
+  ///
+  /// The server refuses anything else — folder names differ per server and
+  /// discovering them is real work — so drawing the list would be offering
+  /// six refusals.
+  testWidgets('an IMAP inbox is offered no folder list', (tester) async {
+    await _pump(
+      tester,
+      _handler(mailboxes: [
+        {
+          'id': 'mb-1',
+          'address': 'info@a-1chimney.com',
+          'display_name': 'Info',
+          'provider': 'imap',
+          'unread': 0,
+          'can_reply': true,
+          'shared_read': true,
+        },
+      ]),
+      size: const Size(1400, 900),
+    );
+
+    expect(find.text('LABELS'), findsNothing);
+    expect(find.text('Sent'), findsNothing);
+    expect(find.text('Starred'), findsNothing);
+
+    // The control: the mailbox itself is on screen.
+    expect(find.text('info@a-1chimney.com'), findsWidgets);
+  });
+
   /// Gate four of four: if the answer would be 403, the button is not drawn.
   testWidgets('an inbox somebody may read and not answer offers no New '
       'message button', (tester) async {
