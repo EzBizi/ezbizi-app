@@ -69,6 +69,7 @@ use App\Http\Controllers\Api\Phone\ServiceRequestsController as PhoneServiceRequ
 use App\Http\Controllers\Api\Phone\SmsWebhookController as PhoneSmsWebhookController;
 use App\Http\Controllers\Api\Phone\StatusWebhookController as PhoneStatusWebhookController;
 use App\Http\Controllers\Api\Phone\TokensController as PhoneTokensController;
+use App\Http\Controllers\Api\Phone\TrustController as PhoneTrustController;
 use App\Http\Controllers\Api\Phone\VoicemailBoxesController as PhoneVoicemailBoxesController;
 use App\Http\Controllers\Api\Phone\TranscriptionWebhookController as PhoneTranscriptionWebhookController;
 use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookController;
@@ -950,6 +951,13 @@ Route::prefix('v1')
 
         Route::post('phone/connections', [PhoneConnectionsController::class, 'store']);
         Route::delete('phone/connections/{connection}', [PhoneConnectionsController::class, 'destroy']);
+        // Trust & caller identity. The attestation grade is captured on the
+        // call rows; the observation log has no API behind it by necessity.
+        Route::get('phone/trust/attestation', [PhoneTrustController::class, 'attestation']);
+        Route::get('phone/trust/observations', [PhoneTrustController::class, 'observations']);
+        Route::post('phone/trust/observations', [PhoneTrustController::class, 'storeObservation']);
+        Route::delete('phone/trust/observations/{observation}', [PhoneTrustController::class, 'destroyObservation']);
+
         Route::get('phone/connections/{connection}/trust', [PhoneConnectionsController::class, 'trustShow']);
         Route::post('phone/connections/{connection}/trust', [PhoneConnectionsController::class, 'trustStore']);
 
