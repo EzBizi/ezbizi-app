@@ -924,6 +924,109 @@ void main() {
       );
     });
   });
+
+  group('Settings › Voicemail', () {
+    const conn = {
+      'id': 'cx-1',
+      'scope_type': 'company',
+      'scope_id': 'co-1',
+      'scope_name': 'A-1 Chimney',
+      'kind': 'subaccount',
+      'status': 'connected',
+    };
+
+    const box = {
+      'id': 'vb-1',
+      'connection_id': 'cx-1',
+      'name': 'Main mailbox',
+      'greeting_text': 'You have reached us.',
+      'spoken_greeting': 'You have reached us.',
+      'max_seconds': 300,
+      'transcribe': false,
+      'notify_emails': <String>[],
+    };
+
+    /// The footer's PRESENCE is what says a pane is editable.
+    ///
+    /// It is the whole reason the skeleton has one: read-only panes have no
+    /// footer, so a Save appearing on a list would be a claim that the list is
+    /// something you change. This is the assertion that keeps that true, and it
+    /// has to check both halves — a pane that never shows Save passes half of
+    /// it while being useless.
+    testWidgets('the mailbox list has no Save, and opening one produces it', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        voicemailBoxes: const [box],
+      );
+
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('Voicemail'));
+
+      expect(
+        find.widgetWithText(FilledButton, 'Save'),
+        findsNothing,
+        reason: 'the list offered a Save, which says the list is editable',
+      );
+
+      await _tap(tester, find.text('Edit'));
+
+      expect(find.widgetWithText(FilledButton, 'Save'), findsOneWidget);
+    });
+
+    /// A count tells you that you have unsaved work and never tells you what.
+    ///
+    /// On a form with four sections that is most of the question, and the
+    /// answer is above the fold in the footer rather than found by scrolling.
+    testWidgets('the footer names what changed rather than only counting it', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        voicemailBoxes: const [box],
+      );
+
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('Voicemail'));
+      await _tap(tester, find.text('Edit'));
+
+      expect(find.textContaining('Everything saved'), findsOneWidget);
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Greeting'),
+        'You have reached the office. Leave a number.',
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('One change not saved'), findsOneWidget);
+      expect(find.textContaining('the greeting'), findsOneWidget);
+    });
+
+    /// Voicemail was one of four panes that showed a failure and offered
+    /// nothing to do about it, so the only way out was to leave Settings and
+    /// come back. It inherits the control from the skeleton now rather than
+    /// from somebody remembering to add one.
+    testWidgets('a load that fails offers a way to try it again', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        voicemailFails: true,
+      );
+
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('Voicemail'));
+
+      expect(find.text('Try again'), findsOneWidget);
+    });
+  });
 }
 Finder _tab(String label) => find.widgetWithText(ChoiceChip, label);
 
@@ -1001,6 +1104,9 @@ Future<void> _pump(
   void Function(Map<String, dynamic> body)? onRingGroup,
   void Function(Map<String, dynamic> body)? onNumberPatch,
   void Function()? onDelete,
+  List<Map<String, Object?>> voicemailBoxes = const [],
+  bool voicemailFails = false,
+  void Function(Map<String, dynamic> body)? onVoicemailSave,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -1027,6 +1133,9 @@ Future<void> _pump(
         onRingGroup: onRingGroup,
         onNumberPatch: onNumberPatch,
         onDelete: onDelete,
+        voicemailBoxes: voicemailBoxes,
+        voicemailFails: voicemailFails,
+        onVoicemailSave: onVoicemailSave,
         importable: importable,
     callFlow: callFlow,
         schedules: schedules,
@@ -1111,6 +1220,9 @@ MockClientHandler _handler({
   void Function(Map<String, dynamic> body)? onRingGroup,
   void Function(Map<String, dynamic> body)? onNumberPatch,
   void Function()? onDelete,
+  List<Map<String, Object?>> voicemailBoxes = const [],
+  bool voicemailFails = false,
+  void Function(Map<String, dynamic> body)? onVoicemailSave,
 }) {
   return (request) async {
     final path = request.url.path;
@@ -1291,6 +1403,18 @@ MockClientHandler _handler({
           'status_reason': null,
         },
       }, createStatus);
+    }
+
+    if (path.endsWith('/phone/voicemail-boxes') && request.method == 'GET') {
+      if (voicemailFails) {
+        return _json({'message': 'The phone service did not answer.'}, 503);
+      }
+      return _json({'data': voicemailBoxes});
+    }
+
+    if (path.contains('/phone/voicemail-boxes/') && request.method == 'PATCH') {
+      onVoicemailSave?.call(jsonDecode(request.body) as Map<String, dynamic>);
+      return _json({'data': voicemailBoxes.isEmpty ? {} : voicemailBoxes.first});
     }
 
     return _json({'message': 'Unexpected ${request.method} $path'}, 500);
