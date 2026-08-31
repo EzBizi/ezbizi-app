@@ -23,7 +23,7 @@ code, and do not infer it from a feature branch.
 | **Scheduling a job onto a calendar** | Not built. The Schedule tab is a placeholder until Scheduled Jobs ships. What *is* live: service areas, zip mapping, and configured capacity per slot per weekday — so "coverage and capacity" is true and "schedule your jobs" is not. |
 | **Training** | Its tables are not on production. Ships in a later deploy. |
 | **Phone** | Works, but no production line has a ring group, so every inbound call reaches voicemail. "Phone system" while calls reach nobody is a promise we are not keeping. |
-| **Local Services enquiries arriving as leads** | *Unverified, not false.* **This forbids the marketing claim, not the compliance page — see below.** A Google Ads connection row and a Business Profile row both exist, and 5 reviews are real — but `leads` holds 8 rows and nobody can say whether any arrived from Local Services or were typed in. A connection row proves OAuth completed; it does not prove the API returns data. Publish when someone confirms one has landed. |
+| **Local Services enquiries arriving as leads** | **Contradicted, not merely unverified — and the evidence is a decoy.** Querying production returns `source = local_services` on 8 leads, which reads exactly like the confirmation this row has been waiting for. All 8 were created in the *same second* and none carries a provider id: they are `leads:seed-demo`, run on production by the deploy session on 2026-08-31. The `source` string was written by the seeder, not by Google. **True count of real Local Services enquiries: 0.** The checkable test for next time — a genuine enquiry carries a provider `external_id` and does not share a timestamp with seven siblings. This forbids the marketing claim, not the compliance page; see below. |
 | **"Teams rely on it" about Inspections or Tasks** | Both modules are live and neither has ever been used by a customer. Not embarrassing, but not a usage claim. |
 | **Monitoring, Marketing** | Registered, but their dashboard summaries are explicitly placeholders. |
 
@@ -46,6 +46,12 @@ other rows above are judgements a grep would get wrong — "training" is an ordi
 English word, and a claim about Local Services is a sentence rather than a term.
 A gate that cries wolf on a testimonial is a gate people start passing with a
 flag.
+
+**An empty or missing `forbidden-terms` block is a FAILURE, not a pass.** The
+script treats it that way deliberately: the failure this gate exists to stop is a
+reverted index restoring the billing pages, and that same revert would delete this
+file. A gate that reads its rules from a file the attack deletes has to fail
+closed.
 
 It exists because on 2026-08-31 the shared index was found holding the exact
 inverse of `6c67efb` and `57fced3` — this file deleted, and all three pages
@@ -93,6 +99,17 @@ combination rather than named modules — reports exist (`inspection_reports`,
 `phone_reports`) and the dashboard has real per-module summaries. Nothing there
 is false, but neither is backed by a row count; they rest on the deploy session's
 judgement. Pull them the same way if that changes.
+
+## `/download/windows.json` tracks PRODUCTION, not `client/VERSION`
+
+The daily task file says to check the manifest against `client/VERSION`. **That
+check is wrong and will report a false mismatch every time a client change is
+merged and not yet shipped.** On 2026-08-31 it did: manifest `0.0.0122`, repo
+`0.0.0123`, nothing wrong.
+
+The installer has to match the API it will talk to, so the manifest tracks the
+deployed release. Compare it to what production runs — ask the deploy session —
+or to the published `EzBizi-setup.exe`, not to the repo's next version bump.
 
 ## Two things that make this easier than it looks
 
