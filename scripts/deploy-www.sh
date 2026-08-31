@@ -90,6 +90,24 @@ tar -cz -C "$SRC" --exclude=./check-site.py . | ssh "$REMOTE" "
 # file unreadable by www-data, exits 0 and serves the old page.
 #
 # Byte-for-byte, because "it returned 200" is what the stale site did all day.
+# DO NOT VERIFY A PUBLISHED PAGE WITH `git show`. It is the obvious way to check
+# and it reports a false mismatch on every file:
+#
+#     git show HEAD:www/google-ads-api/index.html   12357 bytes
+#     git archive HEAD -- (same path)               12543 bytes
+#     the live page                                 12543 bytes
+#     difference 186 = exactly one CR per line, 186 lines
+#
+# `git archive` applies the repo CRLF policy; `git show` does not. This loop
+# compares against $SRC — the extracted ARCHIVE — which is the right comparison
+# and the one the deploy actually shipped.
+#
+# The reason this warning is here rather than in a doc: the failure mode is
+# somebody deciding a good publish is broken and correcting it. On www/ that
+# means editing the marketing site by hand, which is what this script exists to
+# stop, and it would happen during whatever review made them check in the first
+# place. Found on 2026-08-31 by a session verifying a page a Google reviewer was
+# about to load.
 echo "→ verifying what the server returns"
 bad=0
 for f in $(cd "$SRC" && find . -name '*.html' | sed 's|^\./||' | sort); do
