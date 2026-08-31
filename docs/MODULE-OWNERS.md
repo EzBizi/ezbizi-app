@@ -29,6 +29,27 @@ watching, which is not. The integrations row is blank on purpose: two distinct
 message pipes are both presenting as `ezbizi-3d`, and the real owner is not yet
 known.
 
+**SESSION NAMES ARE RECYCLED, NOT JUST RETIRED — and that is why this file
+records SHAs.**
+
+Measured 2026-08-31: one session was renamed three times in a day
+(`ezbizi-c8` → `ezbizi-bc` → `ezbizi-17`), and by the afternoon **a different
+session held `ezbizi-c8`**, started an hour later.
+
+So the failure mode is not "a stale name reaches nobody", which is loud and
+recoverable. It is **"a stale name reaches somebody else"** — silent, and it
+looks like it worked. A competent session asked about a module it has never
+touched will try to help, and you get a plausible answer to a question it was
+never in a position to answer.
+
+That is the whole argument for the two rules below. A SHA cannot be reassigned.
+A blank routes to nobody. **A wrong name now routes to somebody who will
+answer.**
+
+When you must reach a session: ask it to identify itself and wait, rather than
+inferring from a roster. `ListAgents` shows a `[ref]` beside each name — that ref
+is stable for the life of a session where the name is not.
+
 **Do not reconstruct this file from `git log --name-only`.** Web Management's
 history contains Phone and Services files — `AddressesController`,
 `NumbersController`, `TwilioGateway`, `ServicesController`,
