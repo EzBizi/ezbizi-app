@@ -2129,6 +2129,191 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
             ),
 
+            /*
+             * Training — guides people read and tests they take, and the record
+             * of who has done which.
+             *
+             * Actions beyond `view`: `monitor` sees other people's results,
+             * `manage` writes the guides and the tests, `assign` gives one to
+             * somebody. Deliberately not the CRUD set: reading your own training
+             * and looking at everybody else's are different acts, and only the
+             * second is the one an organization withholds.
+             *
+             * ── No subject, and the reason is Human Resources' ──
+             *
+             * `AutomationSubject` binds a module to ONE Eloquent class, because
+             * `ActionRunner::updateField` writes to the subject of the EVENT and
+             * the trigger is what decides the field list. That works for a
+             * module whose events are all about one kind of record. These are
+             * not:
+             *
+             *   assigned  — an assignment: what was given, to a person OR a role
+             *   completed — a guide's progress: somebody reached the last screen
+             *   passed    — an attempt: a score against a pass mark
+             *   failed    — an attempt
+             *   expired   — a pass that has run out of the period it was good for
+             *
+             * Three records, not one — and `assertKeysMatchSubject` cannot tell
+             * which of the three is right, because it compares the declared key
+             * PREFIX and never the class.
+             *
+             * Left to default a subject keys as `strtolower(class_basename())`,
+             * so naming any of these three unqualified would key as
+             * `trainingassignment`, `trainingprogress` or `trainingattempt`,
+             * none of which is the `training.` these keys begin with, and boot
+             * would refuse it. That is not the check catching a wrong subject
+             * though — it is the check catching a compound class name, which is
+             * what the `key:` override exists for. Inventory passes
+             * `key: 'item'` for exactly that reason. Pass `key: 'training'` here
+             * and any one of the three sails through identically.
+             *
+             * So the constructor cannot enforce this for us; it is a claim that
+             * has to be true. Naming the attempt would
+             * make the builder tell somebody writing a rule on "Training
+             * assigned" that it reacts to something about an attempt, and the
+             * field picker would offer an attempt's fields for an assignment's
+             * event. Wrong about four triggers to be right about two.
+             *
+             * Marketing declares none because there is no model at all; this
+             * declares none for HR's reason, which is the opposite problem.
+             *
+             * What null costs is one affordance and nothing else: the builder
+             * cannot grey out "Update a field" under a Training trigger in
+             * advance, so somebody can pick it and be refused at save, in a
+             * sentence. Nothing more is lost, because `ActionRunner::WRITABLE`
+             * holds Job, Customer and Vehicle and nothing else — no field on any
+             * Training record is writable by a rule in the first place, so there
+             * was never a field list here for a subject to unlock.
+             *
+             * The proper fix is a subject per TRIGGER rather than per module,
+             * which is a change to the wire shape the catalogue publishes as
+             * well as to ModuleDefinition. Recorded where HR records it, and not
+             * done quietly here.
+             *
+             * ── `isRaised` is declared per trigger, and checked against reality ──
+             *
+             * This task declared the module with every trigger `isRaised: false`:
+             * nothing emitted any of them yet, and `isRaised: false` is what puts
+             * "nothing raises this yet" on the row a tenant reads. `training.completed`
+             * has since been flipped to `isRaised: true` (task 7's ProgressController
+             * raises it on a guide's final screen) — the other four are still
+             * `isRaised: false`; nothing else in this module emits yet.
+             * ModuleRegistryTest holds the claim to the source for every one of the
+             * five independently: the day any of them is emitted, the build fails
+             * until its own flag is dropped, rather than the builder going on
+             * promising a working rule will never run.
+             */
+            new ModuleDefinition(
+                key: 'training',
+                label: 'Training',
+                /*
+                 * The first module to declare this, and the worked example for
+                 * the other nineteen.
+                 *
+                 * NOT `subject:` — that names the one model whose fields an
+                 * `update_field` action may set, and Training emits three record
+                 * types (progress now; attempts and assignments in Tasks 8-10).
+                 * Naming one would make the field picker silently wrong about the
+                 * other two, which is why this module correctly declares no
+                 * subject at all.
+                 *
+                 * `emits` is the audience question instead: every record type
+                 * passed to `events->emit()`, so a test can ask of each whether it
+                 * can say where it sits. TrainingProgress implements
+                 * CarriesAutomationScope, declared in the same commit that flipped
+                 * `training.completed` to raised.
+                 */
+                emits: [\App\Models\TrainingProgress::class],
+                actions: ['view', 'monitor', 'manage', 'assign'],
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'training.assigned',
+                        /*
+                         * "Somebody" was wrong for half the feature and this is
+                         * a PUBLISHED sentence, so it is worth the words.
+                         * `assignee_type` is `user` or `role`, and a role
+                         * assignment is deliberately not expanded into one row
+                         * per person — so one row raises one event, and what it
+                         * carries may be a role rather than anybody in
+                         * particular. A rule that assumed a person would be
+                         * written against a description that promised one.
+                         */
+                        label: 'Training assigned',
+                        description: 'A guide or a test was given out, to one person or to a '
+                            .'whole role at once. It carries what was given, who or which role '
+                            .'it went to, who gave it, and the date it is due if there is one.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key: 'training.completed',
+                        label: 'Guide finished',
+                        description: 'Somebody reached the end of a guide. This is about reading '
+                            .'it, not about passing anything — a guide with no test raises only '
+                            .'this.',
+                        // Raised by ProgressController::seen (task 7), on the
+                        // outbox and inside the same transaction as the
+                        // progress row — see its docblock. The other four
+                        // triggers in this module are still declared
+                        // isRaised: false; see the block comment above.
+                        isRaised: true,
+                    ),
+                    new TriggerDefinition(
+                        key: 'training.passed',
+                        label: 'Test passed',
+                        description: 'Somebody took a test and met its pass mark. It carries the '
+                            .'score and, when the test expires, the date the pass runs out.',
+                        isRaised: false,
+                    ),
+                    new TriggerDefinition(
+                        key: 'training.failed',
+                        label: 'Test failed',
+                        description: 'Somebody took a test and did not meet the pass mark. '
+                            .'Whether they may try again is the test\'s own retake setting.',
+                        isRaised: false,
+                    ),
+                    /*
+                     * Expiry is a fact about the CLOCK, and this is the event
+                     * that makes the whole "a pass runs out" option worth
+                     * having: "re-assign the ladder guide when the pass lapses"
+                     * is the rule an organization writes once.
+                     *
+                     * The nightly sweep INSERTS this into the outbox. It must
+                     * never dispatch: one rule failing while re-assigning one
+                     * lapsed pass would otherwise take down the sweep for
+                     * everybody else's.
+                     */
+                    new TriggerDefinition(
+                        key: 'training.expired',
+                        label: 'Pass ran out',
+                        description: 'A test pass reached the end of the period it was good for. '
+                            .'The training reappears in that person\'s list as due for retaking.',
+                        isRaised: false,
+                    ),
+                ],
+                automationActions: [
+                    /*
+                     * `executionType` is spelled out, and it is load-bearing.
+                     *
+                     * The catalogue marks a row implemented by looking up
+                     * `ActionDefinition::type()` — everything after the FIRST
+                     * dot — in AutomationsController::IMPLEMENTED_ACTIONS. Left
+                     * to default this would reduce to the bare word `assign`, in
+                     * a namespace every module shares, and the entry in that
+                     * const would never match: the action would publish as "not
+                     * built yet" forever with the const looking correct in the
+                     * diff. time_clock spells its two out for the same reason.
+                     */
+                    new ActionDefinition(
+                        key: 'training.assign',
+                        label: 'Assign training',
+                        description: 'Give somebody a guide or a test, optionally with a date it '
+                            .'is due by. Paired with "Account activated" this is how an induction '
+                            .'arrives on its own.',
+                        executionType: 'training.assign',
+                    ),
+                ],
+            ),
+
             new ModuleDefinition(
                 // Renamed from 'workflows' on 2026-08-10, permission keys and
                 // all — see the rename migration of that date. The product says

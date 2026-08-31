@@ -2,14 +2,12 @@
 
 namespace App\Support\Tasks;
 
+use App\Support\Enums\HasValues;
+
 enum BoardVisibility: string
 {
+    use HasValues;
+
     case Scope = 'scope';
     case Private = 'private';
-
-    /** @return list<string> */
-    public static function values(): array
-    {
-        return array_column(self::cases(), 'value');
-    }
 }

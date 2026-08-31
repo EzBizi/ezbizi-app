@@ -54,6 +54,8 @@ use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\Phone\CallsController as PhoneCallsController;
 use App\Http\Controllers\Api\Phone\CallTagsController as PhoneCallTagsController;
 use App\Http\Controllers\Api\Phone\ConnectionsController as PhoneConnectionsController;
+use App\Http\Controllers\Api\StaffMessagesController;
+use App\Http\Controllers\Api\Phone\ExtensionsController as PhoneExtensionsController;
 use App\Http\Controllers\Api\Phone\FlowsController as PhoneFlowsController;
 use App\Http\Controllers\Api\Phone\HoursController as PhoneHoursController;
 use App\Http\Controllers\Api\Phone\MessagesController as PhoneMessagesController;
@@ -69,6 +71,7 @@ use App\Http\Controllers\Api\Phone\ServiceRequestsController as PhoneServiceRequ
 use App\Http\Controllers\Api\Phone\SmsWebhookController as PhoneSmsWebhookController;
 use App\Http\Controllers\Api\Phone\StatusWebhookController as PhoneStatusWebhookController;
 use App\Http\Controllers\Api\Phone\TokensController as PhoneTokensController;
+use App\Http\Controllers\Api\Phone\TrustController as PhoneTrustController;
 use App\Http\Controllers\Api\Phone\VoicemailBoxesController as PhoneVoicemailBoxesController;
 use App\Http\Controllers\Api\Phone\TranscriptionWebhookController as PhoneTranscriptionWebhookController;
 use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookController;
@@ -76,6 +79,9 @@ use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ReviewsController;
 use App\Http\Controllers\Api\RolesController;
+use App\Http\Controllers\Api\SchedulingAreasController;
+use App\Http\Controllers\Api\SchedulingAvailabilityController;
+use App\Http\Controllers\Api\SchedulingPatternController;
 use App\Http\Controllers\Api\SendingIdentitiesController;
 use App\Http\Controllers\Api\ServiceGroupsController;
 use App\Http\Controllers\Api\ServiceLabelsController;
@@ -120,6 +126,10 @@ use App\Http\Controllers\Api\Tasks\TaskUpdatesController;
 use App\Http\Controllers\Api\Tasks\TaskViewsController;
 use App\Http\Controllers\Api\Tasks\TaskWatchPreferencesController;
 use App\Http\Controllers\Api\TimeClockController;
+use App\Http\Controllers\Api\Training\GuidesController as TrainingGuidesController;
+use App\Http\Controllers\Api\Training\LearnController as TrainingLearnController;
+use App\Http\Controllers\Api\Training\ProgressController as TrainingProgressController;
+use App\Http\Controllers\Api\Training\TestsController as TrainingTestsController;
 use App\Http\Controllers\Api\TwoFactorController;
 use App\Http\Controllers\Api\UiStringsController;
 use App\Http\Controllers\Api\VehicleAssignmentsController;
@@ -643,6 +653,42 @@ Route::prefix('v1')
         Route::delete('services/labels/{id}', [ServiceLabelsController::class, 'destroy']);
         Route::apiResource('services', ServicesController::class);
 
+        /*
+         * Scheduling — capacity per slot, per weekday, per service area
+         * (docs/superpowers/specs/2026-08-31-scheduling-availability-design.md,
+         * design docs/previews/scheduling-layouts.html #7).
+         *
+         * `pattern/*` is declared BEFORE the apiResource, because
+         * `scheduling/areas/{area}` would otherwise swallow anything nested
+         * under it that arrives first. Ordering here is load-bearing, not
+         * tidiness.
+         */
+        Route::get('scheduling/availability', [SchedulingAvailabilityController::class, 'show']);
+        Route::put('scheduling/areas/{area}/slots', [SchedulingAreasController::class, 'slots']);
+        Route::put('scheduling/areas/{area}/zips', [SchedulingAreasController::class, 'zips']);
+        Route::post('scheduling/pattern/preview', [SchedulingPatternController::class, 'preview']);
+        Route::post('scheduling/pattern/apply', [SchedulingPatternController::class, 'apply']);
+        Route::apiResource('scheduling/areas', SchedulingAreasController::class)
+            ->parameters(['areas' => 'area']);
+
+        // Training — guides people read, the tests they take, and (later
+        // tasks) who has been given which. `view`/`monitor`/`manage`/
+        // `assign` are the module's four permissions; these two tasks wire
+        // the guide and the test. List applies the same place-scope engine
+        // as Inventory and Services — see GuidesController::index and
+        // TestsController::index. Later tasks add assignments and
+        // progress/results routes to this same block.
+        Route::apiResource('training/guides', TrainingGuidesController::class);
+        Route::apiResource('training/tests', TrainingTestsController::class);
+        // The learner-facing read (task 6) — `training.view`, not `.manage`;
+        // see LearnController's docblock for the answer-key trust boundary.
+        Route::get('training/learn', [TrainingLearnController::class, 'index']);
+        Route::get('training/learn/tests/{test}', [TrainingLearnController::class, 'showTest']);
+        // Reading progress through a guide (task 7) — same `training.view`
+        // gate and the same place-scope/published-only filter as the reads
+        // above; see ProgressController's docblock.
+        Route::post('training/learn/guides/{guide}/seen', [TrainingProgressController::class, 'seen']);
+
         // ── The shape of the business (§3) ───────────────────────
         //
         // The model has carried Sub Companies since the foundation and the
@@ -931,6 +977,25 @@ Route::prefix('v1')
 
         Route::post('phone/connections', [PhoneConnectionsController::class, 'store']);
         Route::delete('phone/connections/{connection}', [PhoneConnectionsController::class, 'destroy']);
+        // Trust & caller identity. The attestation grade is captured on the
+        // call rows; the observation log has no API behind it by necessity.
+        // Colleagues messaging each other. Not gated on a permission: both
+        // ends are staff of the same organization, and "a colleague you may
+        // not message" is not a concept this business has.
+        Route::get('staff-messages', [StaffMessagesController::class, 'index']);
+        Route::get('staff-messages/unread', [StaffMessagesController::class, 'unread']);
+        Route::post('staff-messages', [StaffMessagesController::class, 'store']);
+
+        // Short numbers that reach one person. Twilio has no concept of an
+        // extension; the digits are ours to resolve before we dial.
+        Route::get('phone/extensions', [PhoneExtensionsController::class, 'index']);
+        Route::put('phone/extensions', [PhoneExtensionsController::class, 'update']);
+
+        Route::get('phone/trust/attestation', [PhoneTrustController::class, 'attestation']);
+        Route::get('phone/trust/observations', [PhoneTrustController::class, 'observations']);
+        Route::post('phone/trust/observations', [PhoneTrustController::class, 'storeObservation']);
+        Route::delete('phone/trust/observations/{observation}', [PhoneTrustController::class, 'destroyObservation']);
+
         Route::get('phone/connections/{connection}/trust', [PhoneConnectionsController::class, 'trustShow']);
         Route::post('phone/connections/{connection}/trust', [PhoneConnectionsController::class, 'trustStore']);
 

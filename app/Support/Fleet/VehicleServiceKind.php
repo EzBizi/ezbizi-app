@@ -2,8 +2,12 @@
 
 namespace App\Support\Fleet;
 
+use App\Support\Enums\HasValues;
+
 enum VehicleServiceKind: string
 {
+    use HasValues;
+
     case Oil = 'oil';
     case Tires = 'tires';
     case Brakes = 'brakes';
@@ -11,10 +15,4 @@ enum VehicleServiceKind: string
     case Inspection = 'inspection';
     case Registration = 'registration';
     case Other = 'other';
-
-    /** @return list<string> */
-    public static function values(): array
-    {
-        return array_column(self::cases(), 'value');
-    }
 }

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
-import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
@@ -34,6 +34,18 @@ String snippetApiBase({required String configured, required Uri pageUrl}) {
 
   return 'https://app.ezbizi.com';
 }
+
+/// Where the plugin comes from, and why it is not us any more.
+///
+/// wordpress.org serves the tag named by `Stable tag`, so this is current the
+/// moment an SVN release lands and needs no deploy of ours. The route we still
+/// expose, `/web/plugin`, builds a zip from the `wordpress-plugin/` directory
+/// ON THE BOX — which is whatever release is deployed, so it lags every plugin
+/// release. Jose downloaded 1.0.0 from a button beside a panel describing
+/// 1.0.2, which is the second-source-of-truth problem with a version number
+/// attached to it.
+final Uri pluginDownloadUrl =
+    Uri.parse('https://downloads.wordpress.org/plugin/ezbizi.zip');
 
 /// SEO — the hosts a company owns, and the business facts each one publishes.
 ///
@@ -686,26 +698,46 @@ class _SiteDetailState extends State<_SiteDetail> {
   ///
   /// Fetched rather than linked, because the endpoint is authenticated and a
   /// plain `<a href>` carries no token.
+  /// Where the plugin comes from, and why it is no longer us.
+  ///
+  /// This used to fetch `/web/plugin`, which builds a zip from the
+  /// `wordpress-plugin/` directory ON THE BOX at request time. That was right
+  /// while we were the only distributor and wrong the moment the directory
+  /// approved us: the box's copy is whatever release is deployed, so it lags
+  /// every plugin release until the next deploy. Jose downloaded 1.0.0 from a
+  /// button beside a panel describing 1.0.2.
+  ///
+  /// It is the second-source-of-truth problem in miniature, and the fix is the
+  /// same as everywhere else — have one source. wordpress.org serves the tag
+  /// named by `Stable tag`, which is current the moment an SVN release lands
+  /// and needs no deploy of ours at all.
+  ///
+  /// LAUNCHED, NOT FETCHED. A cross-origin XHR for the zip would need CORS
+  /// headers from wordpress.org, which it does not send; a navigation has no
+  /// such requirement. That is also why the server route is left in place
+  /// rather than redirected — a 302 into a fetch hits the same wall, and
+  /// clients already deployed still call it.
   Future<void> _downloadPlugin() async {
     setState(() {
       _downloading = true;
       _error = null;
     });
 
-    final response = await widget.api.getBytesResponse('/web/plugin');
+    final opened = await launchUrl(
+      pluginDownloadUrl,
+      mode: LaunchMode.externalApplication,
+    );
 
     if (!mounted) return;
 
     setState(() {
       _downloading = false;
-      if (response.bytes == null) {
-        _error = response.message ?? 'The plugin could not be downloaded.';
+      if (!opened) {
+        _error =
+            'The download could not be opened. It is at '
+            'wordpress.org/plugins/ezbizi.';
       }
     });
-
-    if (response.bytes case final bytes?) {
-      Files.download('ezbizi-wordpress-plugin.zip', bytes);
-    }
   }
 
   Future<void> _rotate() async {
@@ -1161,7 +1193,7 @@ class _SiteDetailState extends State<_SiteDetail> {
         children: [
           Text('Connect $_host', style: theme.textTheme.titleSmall),
           const SizedBox(height: 8),
-          const Text('1. Download the EzBizi plugin, below.'),
+          const Text('1. Get the EzBizi plugin from wordpress.org, below.'),
           const Text(
             '2. In WordPress, open Plugins › Add New › Upload Plugin, choose '
             'the file, and activate it.',
@@ -1173,7 +1205,7 @@ class _SiteDetailState extends State<_SiteDetail> {
           OutlinedButton.icon(
             onPressed: _downloading ? null : _downloadPlugin,
             icon: const Icon(Icons.download_outlined, size: 18),
-            label: Text(_downloading ? 'Preparing…' : 'Download the plugin'),
+            label: Text(_downloading ? 'Opening…' : 'Get the plugin'),
           ),
           const SizedBox(height: 8),
           Text(

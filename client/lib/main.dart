@@ -1552,14 +1552,45 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
         // out of its source.
         child: Column(
           children: [
+            // The destinations scroll; the group below does NOT.
+            //
+            // A NavigationRail lays its destinations out in a Column and has no
+            // scrolling of its own. Inside a bare Expanded it therefore
+            // OVERFLOWED on a short window: past about 780px of sidebar the
+            // sixteen destinations drew straight over Settings and Development,
+            // and the ones underneath were unreachable rather than merely
+            // hidden — there was nothing to scroll with. Reported from a 900px
+            // screen, where Services sat on top of Settings.
+            //
+            // The rail still has to FILL the column when there is room, or it
+            // stops stretching and the selected-row highlight ends early. So it
+            // is a scroll view with a minimum height of whatever it was given:
+            // at full height nothing scrolls and this is identical to before;
+            // below that the list scrolls and the tail stays put.
+            //
+            // The tail is deliberately outside this. Going to Settings is often
+            // what somebody does BECAUSE they could not find a module in the
+            // list, so it is the last thing that should require scrolling to
+            // reach.
             Expanded(
-              child: _rail(
-                context,
-                expanded: widget.expanded,
-                width: width,
-                destinations: widget.destinations,
-                selectedIndex: widget.selectedIndex,
-                onSelected: widget.onSelected,
+              child: LayoutBuilder(
+                builder: (context, constraints) => SingleChildScrollView(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
+                    ),
+                    child: IntrinsicHeight(
+                      child: _rail(
+                        context,
+                        expanded: widget.expanded,
+                        width: width,
+                        destinations: widget.destinations,
+                        selectedIndex: widget.selectedIndex,
+                        onSelected: widget.onSelected,
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
 

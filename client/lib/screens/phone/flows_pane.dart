@@ -265,11 +265,33 @@ class _FlowsPaneState extends State<FlowsPane> {
               child: ListTile(
                 key: ValueKey('flow:${flow.id}'),
                 title: Text(flow.name),
-                subtitle: Text(
-                  '${flow.options.length} '
-                  '${flow.options.length == 1 ? 'key' : 'keys'}'
-                  '${flow.numberIds.isEmpty ? ' · not on any line yet' : ' · on ${flow.numberIds.length} line(s)'}',
-                  style: theme.textTheme.bodySmall,
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '${flow.options.length} '
+                      '${flow.options.length == 1 ? 'key' : 'keys'}'
+                      '${flow.numberIds.isEmpty ? ' · not on any line yet' : ' · on ${flow.numberIds.length} line(s)'}',
+                      style: theme.textTheme.bodySmall,
+                    ),
+
+                    // The menu that is configured and never heard.
+                    //
+                    // Everything above reads as healthy while this is true —
+                    // it has keys, it is on a line — and no caller has ever
+                    // heard it. Nobody reports it either: the caller does not
+                    // know they missed a menu, and the owner does not know
+                    // theirs is skipped.
+                    if (!flow.plays)
+                      Text(
+                        'No caller ever hears this. It has no step that plays, '
+                        'so calls go straight past it to whoever answers.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.error,
+                        ),
+                      ),
+                  ],
                 ),
                 trailing: _canEdit
                     ? Row(
@@ -592,6 +614,7 @@ class _Flow {
     required this.prompt,
     required this.options,
     required this.numberIds,
+    required this.plays,
   });
 
   final String id;
@@ -600,6 +623,11 @@ class _Flow {
   final String prompt;
   final List<Map<String, dynamic>> options;
   final List<String> numberIds;
+
+  /// Whether a caller ever hears this menu, answered by the server from the
+  /// renderer's own lookup. A menu with no usable step is skipped at call
+  /// time, and every other field here looks perfectly healthy while it is.
+  final bool plays;
 
   static List<_Flow> listFrom(dynamic payload) {
     final data = payload is Map ? payload['data'] : payload;
@@ -617,6 +645,11 @@ class _Flow {
         numberIds: (row['number_ids'] as List? ?? const [])
             .map((e) => e.toString())
             .toList(),
+
+        // Absent on an older server. Defaulting to TRUE rather than false:
+        // "this menu never plays" is a serious claim and inventing it from a
+        // missing field would put a warning on every healthy menu.
+        plays: row['plays'] == null ? true : row['plays'] == true,
       );
     }).toList(growable: false);
   }

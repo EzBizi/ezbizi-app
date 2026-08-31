@@ -1,11 +1,14 @@
 # Active constraints — read before you write code
 
-**Temporary. Delete this file when App Store review clears.** Opened 2026-08-28.
+**REVIEW CLEARED 2026-08-31, confirmed by Jose. The freeze is over.** Opened
+2026-08-28.
 
-**Do not delete it while App Store Connect still reports *Waiting for Review*.**
-It is the only durable record of the freeze; everything else about it lives in
-sessions that do not survive the afternoon. Check the status before removing it,
-and if you cannot check, leave it.
+**This file is NOT being deleted, and the original instruction to delete it was
+wrong.** §1 was temporary and is now history. §2, §3 and §5 are not — a minimum
+client version is still dangerous, SES is still sandboxed, and §4's rule now
+lives in a test rather than in prose. A file whose header schedules its own
+deletion takes the durable content with it, which was caught once already when
+the CRLF section had to be moved to `StartUp.md` §8 to survive.
 
 It exists because these constraints were being broadcast to a session roster that
 turns over every few minutes, so half the fleet never heard them and the other half
@@ -14,9 +17,19 @@ a file reaches whoever arrives next.
 
 ---
 
-## 1 · App Store review is live
+## 1 · App Store review — CLEARED, constraint lifted
 
-Apple's reviewer runs the **submitted binary, frozen at `v0.0.0112`**, against
+**Jose confirmed on 2026-08-31 that review has finished. Everything below is
+recorded as history, not as a rule. You may change response shapes again.**
+
+Still worth telling the deploy session when a release moves an existing response
+shape — not as a veto, but because an installed client older than the release can
+still be reading it, and knowing which release did it is the difference between a
+report and an investigation.
+
+What the constraint was, kept because it will return with the next submission:
+
+Apple's reviewer ran the **submitted binary, frozen at `v0.0.0112`**, against
 **live production**. The `.ipa` cannot change. Production can, and does, many times
 an hour. The failure is invisible from our side: there is no broken reviewer session
 to observe, only a rejection days later, and resubmitting restarts the clock.

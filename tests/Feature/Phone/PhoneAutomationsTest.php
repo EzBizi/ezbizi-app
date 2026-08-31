@@ -8,6 +8,10 @@ use App\Models\Job;
 use App\Models\PhoneCall;
 use App\Models\PhoneConnection;
 use App\Models\PhoneNumber;
+use App\Models\Franchise;
+use App\Models\Notification;
+use App\Models\PhoneMessage;
+use App\Support\Notifications\NotificationDispatcher;
 use App\Models\PhoneNumberGrant;
 use App\Support\Automations\ActionRunner;
 use App\Support\Modules\ModuleRegistry;
@@ -385,6 +389,80 @@ class PhoneAutomationsTest extends TestCase
      * @param  array{org: \App\Models\Organization, franchise: \App\Models\Franchise}  $tenant
      * @return array{0: PhoneConnection, 1: PhoneNumber}
      */
+    /**
+     * A customer's message is not announced to a company that does not answer
+     * that line.
+     *
+     * NotificationDispatcher works out its audience by sniffing `franchise_id`
+     * and `owning_franchise_id`. `phone_messages` carries NEITHER, so the sniff
+     * returned null, the dispatcher read that as "belongs to the whole
+     * organization", and took the branch that tells EVERY ACTIVE USER.
+     *
+     * That branch is reachable from a tenant-authored rule: there are five
+     * phone triggers, and on `phone.sms.received` what it would have carried to
+     * the whole business is what a customer wrote. Nothing failed while it did
+     * so - the rule ran, the notification arrived, and it arrived to everybody.
+     *
+     * The outsider below holds every phone permission there is and works at
+     * another branch. Reach, not permission, is what has to exclude them, which
+     * is why giving them those permissions is part of the test rather than an
+     * oversight.
+     */
+    public function test_a_notification_about_a_phone_message_reaches_only_people_who_can_open_it(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+
+        $elsewhere = $this->inTenant($t['org'], fn () => Franchise::create([
+            'organization_id' => $t['org']->id,
+            'company_id' => $t['company']->id,
+            'name' => 'Alpha F2',
+        ]));
+
+        $outsider = $this->userWithRole(
+            $t, 'Other branch', ['phone.view', 'phone.edit'],
+            'other@alpha.test', onlyAt: $elsewhere,
+        );
+
+        $insider = $this->userWithRole(
+            $t, 'This branch', ['phone.view'],
+            'here@alpha.test', onlyAt: $t['franchise'],
+        );
+
+        $told = $this->inTenant($t['org'], function () use ($t) {
+            [, $number] = $this->openLine($t, e164: '+12035553009', franchiseScoped: true);
+
+            $message = PhoneMessage::create([
+                'connection_id' => $number->connection_id,
+                'number_id' => $number->id,
+                'twilio_sid' => 'SMaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                'direction' => PhoneMessage::DIRECTION_INBOUND,
+                'from_e164' => '+15551110009',
+                'to_e164' => '+12035553009',
+                'body' => 'Can somebody call me back about the chimney',
+            ]);
+
+            app(NotificationDispatcher::class)->dispatch(
+                title: 'A new message',
+                body: $message->body,
+                subject: $message,
+            );
+
+            return Notification::query()->pluck('user_id')->all();
+        });
+
+        // Without this the last assertion passes on an empty audience, which is
+        // the one way this test could certify silence as safety.
+        $this->assertNotEmpty($told, 'Nobody was told at all, so this proves nothing.');
+        $this->assertContains($insider->getKey(), $told,
+            'The branch that answers the line was not told about its own message.');
+
+        $this->assertNotContains(
+            $outsider->getKey(),
+            $told,
+            'Somebody at another branch was sent what a customer wrote.',
+        );
+    }
+
     private function openLine(array $tenant, string $e164, bool $franchiseScoped = false): array
     {
         $connection = PhoneConnection::factory()->create([

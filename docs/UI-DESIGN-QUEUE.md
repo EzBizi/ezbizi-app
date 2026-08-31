@@ -66,7 +66,7 @@ and freeze safety — things it can verify. It declined to add "has this been th
 design?" on a peer's say-so, which is correct: a role must not be enforceable by the
 session that holds it. Only Jose can put it at the gate.
 
-**Never redefine a field or a number in place — add a new one.** Four distinct
+**Never redefine a field or a number in place — add a new one.** Five distinct
 instances in a single day: summing per-guide `overdue` and calling the result people;
 a safety note that was right for the wrong reason; an offer to redefine
 `people_due_for_retaking` from *already lapsed* to *lapsing within N days*; and a ✅ in
@@ -74,6 +74,15 @@ this file's own queue meaning both "being built" and "nobody is touching this". 
 time, **the number stays plausible and the meaning moves**, so nothing announces the
 change and every existing reader is quietly wrong. If the meaning shifts, the name
 shifts.
+
+> **The fifth, found in a JSON key by the Phone session, is the cleanest example
+> of the shape.** `TwimlRenderer::describe()` gives every step a `usable` bool —
+> but on the *menu* step it means "this step does not break the call", and on the
+> *answer* step it means "reaches somebody". Two meanings, one key. So a design
+> asking for `usable` as its skip flag would have rendered the one step it was
+> drawn for — a menu that is configured and silently skipped — as perfectly fine.
+> The fix is a distinct `skipped` bool, not a widened `usable`: **when a key has to
+> answer a second question, it gets a second key.**
 
 > **Why writing the rule down twice did not stop it happening in the file that
 > contains it:** this failure is markedly easier to see in someone else's data than in
@@ -97,6 +106,156 @@ re-touching an owner-approved artefact to chase a token invites the question of 
 the approval still stands. Client work takes colour from `theme.dart` by house rule and
 so cannot inherit a stale mockup value. If a mockup's chrome differs from the shipped
 screen, the mockup is the stale one.
+
+**Hours has no time picker, and must not gain one.** A picker is a dialog, and this
+codebase has no modals. Times are a **masked text field** — validated as real times,
+from-before-to, equal refused, masking as it is typed (`8910b88`). Any Hours layout
+that assumes a picker affordance is designing against a rule, not a gap.
+
+**A retry belongs where the error was a failed LOAD, not on every error.** The pane
+head's retry *reloads*. A form's error is usually a refused **save**, so putting a
+reload there offers to recover somebody's work by discarding it — retrying a refused
+save is pressing Save again. So: **failed load → retry in the head; refused save →
+reported at the footer, retried with Save.** Most panes can do both and must tell them
+apart. Found by the Phone session while building Voicemail, against a rule I had
+written too broadly.
+
+**Classify a pane by reading it, not by sampling its strings.** Voicemail was recorded
+as a *form* in a 13-pane audit and drawn as one. It manages **multiple mailboxes** —
+`_boxes`, New mailbox, per-row Edit and Delete, "Back to the mailboxes". Building the
+approved drawing would have deleted multi-mailbox support; the module session caught it.
+The audit classified from string samples and widget counts, which is a measurement
+narrower than the claim built on it — the same failure this file records five other
+times, committed by the person recording them.
+
+**A layout that narrows something will expose overflow that was always there.**
+Splitting Numbers put its line form in a 320px column for the first time and three
+dropdowns plus the place picker overflowed — no `isExpanded`, so "Nobody — go straight
+to voicemail" laid out at its natural width. The defect was real the whole time; the
+form had simply never *been* narrow, because it always had the whole pane.
+
+> This is the day's measurement theme running backwards. Everywhere else the
+> instrument was too narrow for the claim. Here the **condition** was never created,
+> so a correct instrument was never pointed at it. When a design narrows a container
+> that was previously full-width, expect latent overflow, and treat it as
+> **pre-existing rather than caused** — the split did not break those dropdowns, it
+> made them ordinary.
+
+**A `Widget` in an `InputDecoration.label` reports its full intrinsic width** and will
+overflow a narrow field (measured: 81px at 560). Markers that belong *to* a field —
+"also in General", "needs Financials" — go in the help text, which wraps, unless the
+design deliberately spends vertical rhythm to put them outside the decoration.
+
+**Grouping a list reorders it, so anything keyed on POSITION breaks silently.**
+Adding headings to the Phone rail moved Trust above Tags, and the body switched on the
+section's *index* — so one move repointed every section below it. You tap Trust, you get
+Tags, and it reads as a rendering bug rather than an off-by-one. Keying on position had
+been *safe rather than correct*, for exactly as long as nobody reordered a flat list.
+**Any design that regroups or reorders an existing list should say so explicitly**, because
+the implementation may be relying on the old order without anybody knowing it.
+
+**Group and order must live in ONE declaration, and headings must be derived from it.**
+Two lists cannot be made to agree. A section listed under *Answering* but drawn between
+two *Connect* entries is a heading that lies — worse than no headings at all, when the
+point of headings is to let somebody stop reading early.
+
+**A group of one still earns its heading when the heading is the finding aid.** Phone's
+*Identity* group holds one section. It stays a group: it is the answer to "why are my
+calls marked spam", and being buried among housekeeping is how it went unfound.
+
+**A sabotage that does not apply looks exactly like a passing test.** Verifying a check by
+breaking the thing it guards only proves something if the break landed. Caught three times
+in one day — twice from CRLF, where a pattern written with `
+` silently fails to match a
+file with `
+
+`, the replace does nothing, and the run passes green. **Confirming the
+sabotage applied is part of doing one.**
+
+**Do not collapse the reasons an incapacity exists — the reason decides who fixes it.**
+Ring groups was drawn with two unavailable states (signed out, Do not disturb) and the
+data has **three**: *never signed in to Phone* is a separate fact, and it is usually
+somebody who **does not know they were put in a ring group at all**. Those need three
+different actions — go and tell them, wait, or respect a deliberate choice — so
+flattening them into "unavailable" throws away the only part that tells you what to do.
+Found by the Phone session while building `10ff9d0`, against a drawing of mine that
+implied two.
+
+**When the screen needs a fact the server computes but discards, grow the endpoint —
+never recompute it in the client.** Reachability lived inside `DialPlan::batches()` and
+was knowable only mid-call; the pane got member ids and nothing else. `reachableUserIds()`
+now exists and `batches()` calls it, so the screen and the dialler share one rule. The
+same shape as `describe()` keeping one boolean out of a whole trace. **A client-side
+reimplementation of a server rule is a second copy that will drift**, and the drift is
+silent because both sides look right in isolation.
+
+> The test for that pair has to run against a **mixed** group. All-reachable or
+> all-unreachable passes against two implementations that disagree — which is a
+> condition never created rather than an instrument too narrow, the same trap as the
+> `isExpanded` overflow.
+
+**A missing measurement is not a zero measurement.** Third instance, so it is a rule
+rather than three fixes: attestation shows *not captured* rather than a 0% rate;
+Scheduling says *configured capacity* rather than *remaining*; Cost marks today
+**not yet counted** rather than £0 because the import runs overnight. Each time, a
+plausible zero was available and would have been read as a fact. **If the number is
+absent, say absent — a zero is an assertion.**
+
+**Which way an absent FIELD should default depends on which direction the claim is
+serious.** Phone's decision, and it does not generalise — deliberately:
+
+> `plays` missing → **assume it plays**. "No caller ever hears this menu" is an
+> accusation; inventing it from an absent field paints every healthy menu red against
+> an older server.
+>
+> `reachable` missing → **assume NOT reachable**. "This group will answer" is a
+> reassurance; inventing it means a call goes nowhere while the screen says it is fine.
+
+**Default toward the claim you would rather be wrong about.** Same field shape,
+opposite safe default, because one is an accusation and the other is a promise.
+
+**Every gallery is 3 desktop options and 3 mobile options — and the mobile ones are
+DESIGNED FOR MOBILE, not the desktop layout narrowed.** Jose's instruction, and it
+corrects a habit: every "at 375px" drawn before this was a desktop layout squeezed.
+Choosing a desktop layout does **not** choose the phone one; they can be completely
+different designs, because they are different users in different situations.
+
+> *Your account* is the worked example. Desktop answers **"show me everything about my
+> account"** — which is why a two-column layout with the facts always visible is right
+> there. A phone user came to change **one thing** — a photo, a number, two-factor after
+> a prompt — and a long form answers that badly: you scroll past nine things you did not
+> come for to reach the one you did. So the phone version is rows that each open one
+> screen, and the read-only facts drop to the bottom. On desktop they cost nothing
+> because they sit in space that was empty anyway; on a phone every one of them is
+> between you and the thing you opened the app to do.
+
+**A phone-only constraint that has no desktop equivalent: the keyboard covers half the
+screen.** A single Save at the end of a long form sits *behind the keyboard exactly
+while you type*, and "two changes not saved" is invisible at the moment it matters
+most. One-job-per-screen avoids it entirely by putting Save in the bar; a single
+scrolling form has to pin its footer above the keyboard, which is possible and is one
+more thing to get right.
+
+**A session name is an ADDRESS. A session id is an IDENTITY. They are not the same
+thing, and a recipient cannot derive one from the other.** `SendMessage` shows a
+rotating per-hour handle — the deploy desk was `ezbizi-a1`, then `ezbizi-28`, then
+`ezbizi-5b` in one day. The session-management tool shows a stable title,
+"EzBizi - Deployment". **Same session, two identities, and nothing in either message
+says so.**
+
+> This produced a false alarm worth learning from: two messages arrived minutes apart
+> asking identical end-of-day questions, one from each transport, and I concluded there
+> were two deploy desks about to collide on a release. There was one. The *observation*
+> was right — two addresses, no way to tell — and only the inference was wrong.
+>
+> It is worse than a stale name in one respect: **a stale name at least resolves to one
+> thing.** Two live addresses for one session resolve to two, and the recipient has no
+> way to collapse them.
+
+**So: route by the current name, but establish identity by asking.** "Which module do
+you hold" and "what is your session id" are the only reliable questions — and when
+attribution matters at all, cite a commit SHA, which is the one handle that outlives
+every address and every title.
 
 **Never express a state by fading the element that carries text.** Transparency attacks
 legibility directly, and it always bites hardest in the state where legibility matters
@@ -202,6 +361,17 @@ client that has no screen for it.
 From `StartUp.md` §6 and the departed rules desk. `docs/ACTIVE-CONSTRAINTS.md` is the
 live one — read it rather than this summary.
 
+> **THE APP STORE FREEZE IS OVER** (2026-08-31, confirmed by Jose via the deploy desk).
+> `ACTIVE-CONSTRAINTS` §1 — no change to an existing response shape while a frozen
+> `.ipa` ran against production — is **gone**. Anything a design deferred for that
+> reason is unblocked, and "additive only" is no longer a constraint on a proposal.
+> §2 (minimum client version) and §3 (SES sandbox) outlive it.
+>
+> Designs drawn under it and now free to ask for more: widening
+> `describe()`'s trace instead of keeping one boolean (Phone · General), the
+> distinct `skipped` bool, Training's `summary` roll-up, and the Numbers
+> recommendation that moves line editing into General.
+
 1. **No modals. Ever.** A new screen or a right-side panel, including
    confirm-before-destructive and including text entry. `customer_detail_panel.dart`
    is the worked example of the panel pattern; do not invent a second dialect.
@@ -225,21 +395,39 @@ three minutes on a busy afternoon, and a design approved *as drawn* is a claim a
 specific drawing. `git show <sha>:docs/previews/<file>` is what was approved; the file
 on main may have moved on.
 
-| # | Item | State |
-|---|---|---|
-> **🔨 and ⚠️ are deliberately different, and ✅ is not used here.** An approved
+> **🔨 being built · ⏳ approved, an owner holds it · 📬 approved, routed to a desk, no owner yet · ⚠️ unowned and unrouted · ✅ never used here.** An approved
 > design with nobody building it *looks* like progress on a queue and is not — it is
 > a drawing. The deploy desk's line, and it applies to this file before it applies to
 > anyone else's: a ticked row that means "waiting for a session that does not exist"
 > is the same failure this doc warns about twice elsewhere — **the marker stays
 > plausible and the meaning moves.** A row leaves this table when it ships, not when
 > it is approved.
+>
+> **And an unowned design is ROUTED, not escalated.** A finished drawing with no
+> module session goes to the deploy desk, which outlives individual sessions. It does
+> not go back to Jose as a staffing request.
+>
+> The failure underneath, named by the deploy desk after we both made it three times:
+> **an item genuinely blocked on a decision and an item merely lacking an owner look
+> identical in a list.** The first belongs on the owner's desk. The second only gets
+> there because nobody wants to be the one holding it. Same shape as a tick that means
+> two things — and it applies to what design puts in front of Jose, not only to this
+> table: **if the answer is "find someone", it is not his to answer.**
 
-| 🔨 | **Phone · Caller Identity & Trust** | **Layout 1 approved, being built.** `docs/previews/phone-trust-layouts.html` @ `d66bcef` — build from that pin, not `d0ce75a`: the legend there omits `none` from the degraded bucket, which has nowhere to land once capture runs. Approved as drawn, i.e. **merged** with the existing Trust section as *Trust & caller identity*, rail 14 → 13. Held by the Phone session (`ezbizi-0b` per the roster). |
+| # | Item | State |
+|---|---|---|
+| ✅ | **Phone · Caller Identity & Trust** | **SHIPPED `cb27c68`.** Layout 1, built from the `d66bcef` pin. Merged with the existing Trust section as *Trust & caller identity*, absorbing Number quality, rail 14 → 13. This row read "being built, held by `ezbizi-0b`" for hours after it shipped, because the holder named in it stopped existing at a restart and a 🔨 cannot tell that from work in progress — the failure this table warns about, in the table. |
 | 🔨 | **Scheduling · Availability + Settings** | **Layout 7 approved, being built** (Overview + area rail — Jose's own combination of 1 and 2); Availability is **layout 4**. `docs/previews/scheduling-layouts.html` @ `560aed5`. Held by the Scheduling session. |
-| ⚠️ | **Fleet · vehicle Identity card** | **Layout 2 approved — and NOBODY IS BUILDING IT.** `docs/previews/fleet-identity-layouts.html` @ `560aed5`. The Fleet session that briefed it ended before it was drawn and none has replaced it. This row is not progress; it is a finished drawing waiting for an owner. If you are picking up Fleet, it is ready and needs nothing from Jose. |
-| 3 | **Phone · Settings rail** — 14 sections, grew one at a time | Not started. |
+| 📬 | **Fleet · vehicle Identity card** | **Layout 2 approved, handed to the deploy desk to route.** `docs/previews/fleet-identity-layouts.html` @ `560aed5`. The Fleet session that briefed it ended before it was drawn. **Not urgent** — nothing in Fleet is broken; the card works and the complaint was a long scroll at 375px. Fold it into the next Fleet work rather than staffing for it. |
+| 🔨 | **Phone · Call desk proportions** | **Layout 2 approved** — `docs/previews/phone-call-desk-proportions.html` @ `bb289f9`. **25 · 25 · 50** (Team / Dial / Customer) as `flex: 1 / 1 / 2`, **with floors** ~220 / ~260 / ~340. Today is `SizedBox(220) · Expanded · `SizedBox(280)` = 19/57/24, so the panes holding the most content are fixed at their smallest and the pad takes the remainder. The floors exist because **a keypad has a minimum and a roster does not** — bare 25% gives the pad 166px at a 950 window, above the stacking breakpoint. |
+| 🔨 | **App sidebar · scrolling** | **Layout 1 approved** — `docs/previews/app-sidebar-scroll-layouts.html` @ `bb289f9`. **Destinations scroll, the Settings/Development tail stays pinned.** `_rail()` returns a Flutter `NavigationRail`, which lays destinations in a Column and **cannot scroll**; inside an `Expanded` it overflows and draws over the tail. Height-triggered, threshold ~780px of sidebar — fine at 1080, broken at 800. Items underneath are **unreachable rather than hidden**. No module owns `main.dart`; design is building it. |
+| 🔨 | **Phone · Connection** | **Layout 1 approved** — `docs/previews/phone-connection-layouts.html` @ `fc5b838`. Draws the org→company inheritance as a tree. Replaces **six prose variants** of one rule, each correct, each different depending on where you stood. No footer (nothing to save); retry in the head (its error is a failed load). |
+| 🔨 | **Phone · Hours** | **Layout 3 approved** — `docs/previews/phone-hours-layouts.html` @ `f545c31`. Today’s shape kept: opening a set **replaces the pane**, with Back. **Deliberate, not an oversight** — Numbers is a split and Hours is not, because seven rows of masked time fields want full width. *Say so in the code*, or somebody will later “fix” Hours to match Numbers. Holidays get their own bordered block above the week; a day with no times is an absent row, never empty fields. **No time picker** (`8910b88`). |
+| 🔨 | **Phone · Ring groups** | **Layout 1 approved** (split pane). `docs/previews/phone-ring-groups-layouts.html` @ `f545c31`. **The point is not the split:** reachability is a COLUMN of the member list, drawn from `DialPlan::batches()` — a group of four can ring nobody and look fine today. Tally is timestamped ("as of a few seconds ago"), never implied live. Keep the 60-second timeout explanation inline. Expect latent overflow in the narrowed detail column — pre-existing, not caused. |
+| ✅ | **Phone · Settings rail** | **SHIPPED `0d8e52c`.** Layout 1 (grouped rail) — `docs/previews/phone-settings-rail-layouts.html` @ `6389714`. Queued behind Trust with the Phone session. |
 | 4 | **Web Management · per-page value overrides** | Briefed. `license` ruled **conditional**. Not started. |
+
+**Phone, shipped 2026-08-31 and not re-listed above:** Voicemail on the shared pane skeleton (`3223015`), Numbers split pane (`b25c3db`), staff messaging (`ed3b35f`), extensions (`8b82ed2`), and the rail-is-a-switch guard (`753556b`). Still approved and NOT built: **Connection**, **Hours**, **Ring groups** — the three 🔨 rows above, held by the Phone session (`ezbizi-0b` → this one).
 
 **Also approved and shipped 2026-08-31:** the `theme.dart` contrast fix and the
 colour-literal ratchet, both in `d0ce75a`.

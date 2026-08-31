@@ -250,4 +250,27 @@ class EzBiziTheme {
 
   static const Color accent = _cyan;
   static const Color accentDark = _cyanDark;
+
+  /// Eight colours for standing in where a person has no picture.
+  ///
+  /// Picked by a stable hash of the sender, so the same person keeps the same
+  /// colour — which is the whole point of them, and the reason this is a fixed
+  /// list rather than anything generated. Reordering it repaints every avatar
+  /// in the app, so add to the end rather than inserting.
+  ///
+  /// It lives here rather than beside the one screen that first needed it for
+  /// two reasons. A second surface wanting sender avatars would otherwise
+  /// hardcode its own eight and the same person would be two colours in two
+  /// places. And these carry white glyphs, so the day dark mode makes one of
+  /// them unreadable there is exactly one place to fix it.
+  static const List<Color> avatarPalette = [
+    Color(0xFF1A73E8),
+    Color(0xFFD93025),
+    Color(0xFF188038),
+    Color(0xFFF9AB00),
+    Color(0xFF9334E6),
+    Color(0xFF1967D2),
+    Color(0xFFE37400),
+    Color(0xFF12B5CB),
+  ];
 }

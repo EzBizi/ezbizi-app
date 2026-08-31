@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
+import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
@@ -315,17 +316,6 @@ class SenderAvatar extends StatelessWidget {
   /// DMARC for this message, if the provider said. Null when it did not.
   final bool? authenticated;
 
-  static const _palette = [
-    Color(0xFF1A73E8),
-    Color(0xFFD93025),
-    Color(0xFF188038),
-    Color(0xFFF9AB00),
-    Color(0xFF9334E6),
-    Color(0xFF1967D2),
-    Color(0xFFE37400),
-    Color(0xFF12B5CB),
-  ];
-
   String get _letter {
     final source = name.trim().isNotEmpty ? name.trim() : email.trim();
     if (source.isEmpty) return '?';
@@ -338,7 +328,8 @@ class SenderAvatar extends StatelessWidget {
     for (final unit in key.codeUnits) {
       hash = (hash + unit) & 0x7fffffff;
     }
-    return _palette[hash % _palette.length];
+    const palette = EzBiziTheme.avatarPalette;
+    return palette[hash % palette.length];
   }
 
   @override

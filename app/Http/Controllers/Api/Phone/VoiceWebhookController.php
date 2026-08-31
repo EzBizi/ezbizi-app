@@ -18,6 +18,8 @@ use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response as Status;
 use Throwable;
 use Twilio\TwiML\VoiceResponse;
+use App\Models\PhoneExtension;
+use App\Support\Phone\ClientIdentity;
 
 /**
  * Public Twilio Voice URL. Signature is auth; path names the tenant.
@@ -226,7 +228,23 @@ class VoiceWebhookController extends Controller
             if ($to !== '') {
                 $context['dial_to'] = $to;
             }
+            // WHICH LINE THIS PERSON CALLS OUT FROM.
+            //
+            // The client sends the line its pad has selected, and that is
+            // honoured — somebody deliberately choosing a different line to
+            // call from should get it. What this adds is the fallback: when
+            // the client sends nothing usable, the caller's OWN assigned
+            // number is used before anything else.
+            //
+            // Without it an outbound call with no caller ID goes out with
+            // whatever Twilio decides, which for a browser call is the client
+            // identity — not a number the account owns, so the carrier
+            // rejects it and the call simply fails. That is a call that never
+            // connects and never says why.
             $callerId = $this->callerId($request);
+            if ($callerId === '') {
+                $callerId = $this->assignedCallerId($request, $connection);
+            }
             if ($callerId !== '') {
                 $context['caller_id'] = $callerId;
             }
@@ -273,6 +291,42 @@ class VoiceWebhookController extends Controller
         $from = (string) $request->input('From', '');
 
         return $direction === 'outbound-api' || str_starts_with($from, 'client:');
+    }
+
+    /**
+     * The number assigned to whoever is placing this call, if any.
+     *
+     * A browser call arrives as `client:<identity>`, and the identity is the
+     * caller's user id with the hyphens taken out — so the person is
+     * recoverable from the request without the client having to assert who
+     * they are. Their assignment is then read from the same row that holds
+     * their extension.
+     *
+     * Returns '' rather than guessing when the person or the assignment is
+     * missing. Picking "some number on the account" would put one person's
+     * calls out under another person's line, which is worse than a call that
+     * does not connect: the customer rings back the wrong colleague.
+     */
+    private function assignedCallerId(Request $request, PhoneConnection $connection): string
+    {
+        $from = (string) $request->input('From', '');
+        if (! str_starts_with($from, 'client:')) {
+            return '';
+        }
+
+        $identity = substr($from, strlen('client:'), 32);
+        if ($identity === '') {
+            return '';
+        }
+
+        $extension = PhoneExtension::query()
+            ->where('connection_id', $connection->id)
+            ->whereNotNull('number_id')
+            ->get()
+            ->first(fn (PhoneExtension $row) => $row->user !== null
+                && ClientIdentity::of($row->user) === $identity);
+
+        return (string) ($extension?->number?->e164 ?? '');
     }
 
     private function callerId(Request $request): string

@@ -80,6 +80,56 @@ fi
 echo "→ checking the site"
 python "$SRC/check-site.py"
 
+# ── claims the site is not allowed to make ───────────────────────
+#
+# check-site.py validates STRUCTURE. It cannot tell whether a page has quietly
+# started claiming a product we do not have, and it runs against the working
+# tree rather than the commit being published.
+#
+# On 2026-08-31 the shared index was found holding the exact inverse of the
+# commits that removed the billing claims: the claims file deleted, and all
+# three pages reverted to the version telling a Google compliance reviewer that
+# EzBizi does invoicing. The working tree was correct; only the index was wrong.
+# The next bare `git commit` by any of sixteen sessions would have put it back
+# on main, and this script publishes from main — so it would have reached the
+# public site under a commit message about something else, with nobody looking,
+# because the site had been verified clean an hour earlier.
+#
+# The terms live in docs/WEBSITE-CLAIMS.md and are parsed from it, so there is
+# one source of truth and it is the one a human reads.
+TERMS_DOC=docs/WEBSITE-CLAIMS.md
+TERMS=$(sed -n '/^```forbidden-terms$/,/^```$/p' "$TERMS_DOC" | sed '1d;$d' | grep -v '^[[:space:]]*$' || true)
+
+if [ -z "$TERMS" ]; then
+  echo "✗ no forbidden-terms block found in $TERMS_DOC." >&2
+  echo "  The publish gate reads its list from there. An empty list is not a" >&2
+  echo "  pass — it means the check is no longer checking anything." >&2
+  exit 1
+fi
+
+echo "→ checking the pages make no claim we removed on purpose"
+CLAIM_HITS=0
+while IFS= read -r term; do
+  [ -z "$term" ] && continue
+  hits=$(grep -ril -- "$term" "$SRC" 2>/dev/null || true)
+  if [ -n "$hits" ]; then
+    CLAIM_HITS=$((CLAIM_HITS + 1))
+    echo "  ✗ \"$term\" appears in:" >&2
+    echo "$hits" | sed "s|^|       |" >&2
+  fi
+done <<EOF
+$TERMS
+EOF
+
+if [ "$CLAIM_HITS" -gt 0 ]; then
+  echo >&2
+  echo "✗ REFUSING TO PUBLISH. These claims were removed deliberately and the" >&2
+  echo "  reasons are in $TERMS_DOC. If a claim has become true, change that" >&2
+  echo "  file first — do not delete the term to get past this." >&2
+  exit 1
+fi
+echo "   ok - $(echo "$TERMS" | grep -c .) terms, none present"
+
 echo "→ publishing to $REMOTE:$ROOT"
 tar -cz -C "$SRC" --exclude=./check-site.py . | ssh "$REMOTE" "
   set -e

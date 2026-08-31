@@ -5,7 +5,7 @@ namespace App\Support\Dashboard\Glances;
 use App\Models\User;
 use App\Models\Vehicle;
 use App\Support\Dashboard\DashboardPeriod;
-use App\Support\Dashboard\Glance;
+use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
 use App\Support\Fleet\VehicleStatus;
 use App\Support\Fleet\VehicleVisibility;
@@ -20,37 +20,14 @@ use Illuminate\Database\Eloquent\Builder;
  * move. Service / insurance due stay sentences. Money stays off this box —
  * financials live on the vehicle pane.
  */
-final class FleetGlance implements Glance
+final class FleetGlance extends DescribedGlance
 {
-    public function key(): string
-    {
-        return 'fleet_management';
-    }
-
-    public function label(): string
-    {
-        return 'Fleet Management';
-    }
-
-    public function permission(): string
-    {
-        return 'fleet_management.view';
-    }
-
-    public function allowedPresentations(): array
-    {
-        return ['pie', 'bar', 'text'];
-    }
-
-    public function defaultPresentation(): string
-    {
-        return 'pie';
-    }
-
-    public function snapshot(): bool
-    {
-        return true;
-    }
+    protected const KEY = 'fleet_management';
+    protected const LABEL = 'Fleet Management';
+    protected const PERMISSION = 'fleet_management.view';
+    protected const PRESENTATIONS = ['pie', 'bar', 'text'];
+    protected const DEFAULT_PRESENTATION = 'pie';
+    protected const SNAPSHOT = true;
 
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {

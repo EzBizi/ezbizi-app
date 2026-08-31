@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi — Phone › Hours layouts</title>
+<style>
+  :root {
+    --cyan:#00AEEF; --primary:#00708F; --cyan-deep:#00708F;
+    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+    --ok:#0B8F5B; --err:#E07070; --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1220px; margin:0 auto; padding:16px 16px 48px; }
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:18px; margin:0 0 4px; }
+  header.picker p { margin:0 0 12px; color:var(--muted); max-width:82ch; }
+  .locked, .ask { font-size:13px; border-radius:8px; padding:10px 12px;
+    margin-bottom:12px; max-width:94ch; }
+  .locked { background:var(--info-c); } .ask { background:var(--warn-c); }
+  .locked strong, .ask strong { display:block; margin-bottom:4px; }
+  .locked strong { color:var(--cyan-deep); } .ask strong { color:var(--warn); }
+  .ask b { display:block; margin-top:7px; }
+  .nums { display:flex; flex-wrap:wrap; gap:8px; }
+  .nums button { min-width:44px; min-height:44px; border-radius:8px;
+    border:1px solid var(--line); background:var(--page); color:var(--ink); }
+  .nums button[aria-pressed="true"] { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:92ch; }
+  .caption strong { display:block; margin-bottom:4px; }
+
+  .shell { display:grid; grid-template-columns:200px 1fr; min-height:700px;
+    background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px; }
+  nav.side .brand { font-weight:700; color:var(--cyan-deep); margin-bottom:16px; padding:0 8px; }
+  nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+    text-decoration:none; margin-bottom:2px; }
+  nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  .page { display:flex; flex-direction:column; min-width:0; }
+  .tabs { display:flex; gap:8px; padding:12px 16px; border-bottom:1px solid var(--line); }
+  .tabs span { padding:8px 14px; border-radius:999px; border:1px solid var(--line);
+    background:var(--page); color:var(--muted); }
+  .tabs span.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .settings { display:grid; grid-template-columns:200px 1fr; flex:1; min-height:0; }
+  .rail { border-right:1px solid var(--line); padding:10px 8px; overflow:auto; }
+  .rail a { display:block; padding:8px 11px; border-radius:8px; color:var(--ink);
+    text-decoration:none; font-size:13px; }
+  .rail a.on { background:var(--info-c); color:var(--cyan-deep); font-weight:600; }
+  .rail h4 { font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--muted); margin:12px 0 4px; padding:0 11px; font-weight:600; }
+  .rail h4:first-child { margin-top:0; }
+
+  .pane { display:flex; flex-direction:column; min-width:0; overflow:auto; }
+  .paneHead { padding:16px 20px 12px; border-bottom:1px solid var(--line);
+    display:flex; align-items:flex-start; gap:12px; }
+  .paneHead h2 { font-size:17px; margin:0 0 2px; }
+  .paneHead p { margin:0; color:var(--muted); font-size:13px; max-width:70ch; }
+  .paneBody { padding:16px 20px 24px; flex:1; }
+  .paneFoot { margin-top:auto; padding:12px 20px; border-top:1px solid var(--line);
+    background:var(--alt); display:flex; gap:8px; align-items:center; }
+  .paneFoot .state { color:var(--muted); font-size:12px; margin-right:auto; }
+
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:8px;
+    padding:9px 14px; min-height:40px; }
+  .btn.ghost { background:transparent; color:var(--primary); border:1px solid var(--line); }
+  .btn.sm { min-height:32px; padding:4px 10px; font-size:13px; }
+  .pill { font-size:11px; padding:2px 8px; border-radius:999px; background:var(--alt);
+    border:1px solid var(--line); color:var(--muted); font-weight:600; white-space:nowrap; }
+  .pill.warn { background:var(--warn-c); color:var(--warn); border-color:transparent; }
+  .pill.ok { background:var(--ok-c); color:var(--ok); border-color:transparent; }
+
+  .split2 { display:grid; grid-template-columns:250px 1fr; border:1px solid var(--line);
+    border-radius:10px; overflow:hidden; min-height:450px; }
+  .split2 .l { border-right:1px solid var(--line); background:var(--alt); overflow:auto; }
+  .split2 .l .it { padding:10px 13px; border-bottom:1px solid var(--line); font-size:13px; }
+  .split2 .l .it.on { background:var(--page); box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  .split2 .l .it .sub { color:var(--muted); font-size:12px; }
+  .split2 .r { padding:14px 16px; overflow:auto; }
+
+  .f { margin-bottom:12px; }
+  .f label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .ctl { display:flex; align-items:center; min-height:40px; border:1px solid var(--line);
+    border-radius:8px; padding:0 12px; background:var(--page); }
+  .ctl.sel::after { content:"⌄"; margin-left:auto; color:var(--muted); }
+
+  /* the week as rows — masked time fields, never a picker */
+  .day { display:grid; grid-template-columns:96px 1fr auto; gap:12px; align-items:center;
+    padding:9px 12px; border:1px solid var(--line); border-radius:9px; margin-bottom:6px; }
+  .day.shut { background:var(--alt); }
+  .day .nm { font-weight:600; font-size:13px; }
+  .day .times { display:flex; gap:8px; align-items:center; }
+  .mask { min-width:78px; min-height:38px; border:1px solid var(--line); border-radius:7px;
+    background:var(--page); display:flex; align-items:center; justify-content:center;
+    font-variant-numeric:tabular-nums; font-size:13px; }
+  .mask.ph { color:#9AA5AF; }
+  .day .to { color:var(--muted); font-size:12px; }
+  .day .state { font-size:12px; color:var(--muted); white-space:nowrap; }
+  .day.shut .state { font-weight:600; }
+
+  /* overrides beat the week */
+  .over { border:2px solid var(--warn); border-radius:10px; overflow:hidden; margin-top:14px; }
+  .over > h3 { margin:0; padding:10px 14px; background:var(--warn-c); font-size:13px;
+    color:var(--warn); display:flex; gap:8px; align-items:center; }
+  .over .in { padding:12px 14px; }
+  .orow { display:grid; grid-template-columns:130px 1fr auto; gap:12px; align-items:center;
+    padding:9px 0; border-bottom:1px solid var(--line); font-size:13px; }
+  .orow:last-child { border-bottom:0; }
+  .orow .d { font-weight:600; }
+  .orow .beats { color:var(--warn); font-size:12px; }
+
+  .weekgrid { border-collapse:collapse; width:100%; font-size:13px; }
+  .weekgrid th, .weekgrid td { border:1px solid var(--line); padding:7px 6px; text-align:center; }
+  .weekgrid th { background:var(--alt); color:var(--muted); font-size:12px; font-weight:600; }
+  .weekgrid td.shut { background:repeating-linear-gradient(45deg,#F2F5F7 0 6px,#E9EDF1 6px 12px);
+    color:var(--muted); font-size:11px; }
+  .weekgrid td.ovr { background:var(--warn-c); color:var(--warn); font-weight:600; }
+
+  .note { color:var(--muted); font-size:12px; margin-top:10px; }
+  .sec { border:1px solid var(--line); border-radius:10px; margin-bottom:12px; overflow:hidden; }
+  .sec > h3 { margin:0; padding:10px 14px; background:var(--alt); font-size:13px;
+    border-bottom:1px solid var(--line); }
+  .sec .in { padding:12px 14px; }
+
+  .phone { width:375px; margin:0 auto; border:8px solid var(--ink); border-radius:28px;
+    overflow:hidden; background:#fff; min-height:700px; display:flex; flex-direction:column; }
+  .phone .bar375 { padding:11px 12px; border-bottom:1px solid var(--line); font-weight:600;
+    display:flex; gap:8px; align-items:center; font-size:14px; }
+  .phone .bar375 .back { color:var(--primary); font-weight:500; }
+  .phone .scroll { overflow:auto; flex:1; display:flex; flex-direction:column; }
+
+  @media (max-width:900px) {
+    .shell { grid-template-columns:1fr; } nav.side { display:none; }
+    .settings { grid-template-columns:1fr; } .split2 { grid-template-columns:1fr; }
+    .day { grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>Phone › Hours — layouts</h1>
+
+    <div class="locked">
+      <strong>Read from <code>hours_pane.dart</code>, with a constraint from the Phone session</strong>
+      <b>“When a line is open. A line with no hours is always open.”</b> Hours belong to a phone
+      account; a line points at a set. The editor has a name, a clock (<em>“Clock these hours run
+      on”</em>), the week, and a separate list of <b>days it is closed anyway</b> — <em>“Holidays
+      and one-offs. These beat the week above.”</em>
+      <b>There is NO time picker and there must not be one.</b> A picker is a dialog and this
+      codebase has no modals, so times are a <b>masked field</b>, validated as real times,
+      from-before-to, equal refused (Phone, <code>8910b88</code>). Every layout here uses the mask.
+      Empty state exists and is kept: <em>“No hours set yet. Every line answers around the clock
+      until you set some.”</em>
+    </div>
+
+    <div class="ask">
+      <strong>Two things this pane already gets right, which the redesign must not lose</strong>
+      <b>1 · “A day with no times is closed, and says so.”</b> Absence means closed — the same rule
+      Scheduling settled, where closing a day <b>deletes</b> rows rather than writing zeros. Hours
+      reached it first and independently. So a closed day is drawn as an absent row, never as a
+      row of empty fields, because empty fields read as unfinished and this is finished.
+      <b>2 · The holiday list genuinely beats the week, and precedence is invisible today.</b>
+      Both live in the same editor as two lists, and the only thing saying which wins is the
+      sentence “these beat the week above”. Every layout here makes the override layer look like
+      an override layer rather than a second list.
+      <b>Worth knowing while you judge:</b> Scheduling deliberately has NO per-date exception and
+      I shaped its cell so one could be added later. Hours already has them. So whatever wins here
+      is the precedent for what Scheduling's eventually looks like — that is an argument for
+      picking the one that reads best, not the one that is least work.
+    </div>
+
+    <p>Pick a number. <strong>1 is my recommendation.</strong> 4 is it at 375px.</p>
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+  <div id="stage"></div>
+</div>
+
+<script>
+const CAPTIONS = {
+  1: ["1 · Split pane; the week as rows, overrides in a bordered layer above it (recommended)",
+      "Hours sets on the left, the selected set on the right. The week is seven rows of masked time fields, with a closed day drawn as an absent row saying 'Closed' rather than two empty boxes. The holiday list sits in its OWN bordered block, visually on top of the week and titled so precedence is structural rather than a sentence: 'these beat the week below'. Chosen because the override layer is the only genuinely confusing thing in this pane, and a border plus position says what a caption cannot. Rows rather than a grid because a masked time field needs real width — seven columns of them at any realistic pane width is cramped, and this is a field you type into, not a cell you tick."],
+  2: ["2 · Split pane; the week as a grid, overrides painted onto it",
+      "The week as a seven-column table with the times in each cell, and a holiday shown IN the grid on the day it lands, tinted, so you see the override where it actually applies rather than in a list below. The strongest at answering 'what happens on the 25th' — you look at the 25th. Weakness, and it is why it is not the recommendation: a grid cell is a bad home for a masked text field you have to type into, holidays are dated and a weekly grid is not, so a one-off in March has nowhere to live until you are looking at March. It buys clarity for the recurring case and loses the dated one, which is the case the feature exists for."],
+  3: ["3 · Today's shape, tidied — list, then the editor replaces it",
+      "Keeps the current arrangement, where opening a set replaces the pane and a 'Back to the list' control returns. Adds the absent-row treatment for closed days and the bordered override layer, without moving to a split. Least change, and it preserves full width for the editor, which is a real advantage for seven rows of time fields. Weakness: it is the pattern Numbers was just moved AWAY from, so keeping it here means two list-plus-editor panes in one module behaving differently — and 'why does this one lose the list and that one keeps it' is a question with no good answer."],
+  4: ["4 · Layout 1 at 375px",
+      "Days become cards, each with its two masked fields side by side — a mask survives narrow far better than a picker would have, which is the accidental benefit of a constraint imposed for a different reason. Closed days collapse to a single line. The override block keeps its border and stays above the week, because at this width you cannot see both at once and the one that WINS should be the one you meet first."]
+};
+
+const RAIL = `
+  <h4>Connect</h4><a>General</a><a>Call flow</a><a>Connection</a><a>Numbers</a><a>Porting</a>
+  <h4>Answering</h4><a>IVR menus</a><a class="on">Hours</a><a>Ring groups</a><a>Voicemail</a>
+  <h4>Identity</h4><a>Trust &amp; caller identity</a>
+  <h4>Running it</h4><a>Tags</a><a>Cost</a><a>Messaging</a>`;
+
+const SETS = [
+  ['Office hours', 'Open Mon, Tue, Wed, Thu, Fri'],
+  ['Emergency cover', 'Open every day'],
+  ['Showroom', 'Open Sat only']
+];
+
+const WEEK = [
+  ['Monday','08:00','17:00'], ['Tuesday','08:00','17:00'], ['Wednesday','08:00','17:00'],
+  ['Thursday','08:00','17:00'], ['Friday','08:00','16:00'],
+  ['Saturday',null,null], ['Sunday',null,null]
+];
+
+const HOLIDAYS = [
+  ['25 Dec 2026','Christmas Day','Thursday — would have been 08:00 to 17:00'],
+  ['1 Jan 2027','New Year','Friday — would have been 08:00 to 16:00']
+];
+
+const shell = (body) => `
+  <div class="shell">
+    <nav class="side"><div class="brand">EzBizi</div>
+      <a>Dashboard</a><a>Customers</a><a>Jobs</a><a class="on">Phone</a><a>Fleet</a></nav>
+    <div class="page">
+      <div class="tabs"><span>Call</span><span>Records</span><span class="on">Settings</span></div>
+      <div class="settings"><div class="rail">${RAIL}</div>${body}</div>
+    </div>
+  </div>`;
+
+const head = `
+  <div class="paneHead">
+    <div style="flex:1"><h2>Hours</h2>
+      <p>When a line is open. A line with no hours is always open.</p></div>
+    <button class="btn ghost sm" type="button">↻ Try again</button>
+  </div>`;
+
+const foot = `
+  <div class="paneFoot">
+    <span class="state"><b style="color:var(--warn)">One change not saved</b> — Friday closes at 16:00</span>
+    <button class="btn ghost sm" type="button">Discard</button>
+    <button class="btn sm" type="button">Save</button>
+  </div>`;
+
+const dayRow = (d) => d[1] ? `
+  <div class="day">
+    <span class="nm">${d[0]}</span>
+    <span class="times"><span class="mask">${d[1]}</span><span class="to">to</span>
+      <span class="mask">${d[2]}</span></span>
+    <span class="state">Open</span>
+  </div>` : `
+  <div class="day shut">
+    <span class="nm">${d[0]}</span>
+    <span class="times"><span class="state">No times — so it is closed, and callers are told so.</span></span>
+    <button class="btn ghost sm" type="button">Add times</button>
+  </div>`;
+
+const overrides = (above) => `
+  <div class="over">
+    <h3>⚠ Days it is closed anyway <span class="pill warn">beats the week ${above ? 'below' : 'above'}</span></h3>
+    <div class="in">
+      <p class="note" style="margin:0 0 8px">Holidays and one-offs. On these dates the line is
+        closed whatever the week says.</p>
+      ${HOLIDAYS.map(h => `
+        <div class="orow">
+          <span class="d">${h[0]}</span>
+          <span>${h[1]}<div class="beats">${h[2]}</div></span>
+          <button class="btn ghost sm" type="button">Remove</button>
+        </div>`).join('')}
+      <button class="btn ghost sm" type="button" style="margin-top:9px">Add a closed day</button>
+    </div>
+  </div>`;
+
+const nameAndClock = `
+  <div class="f"><label>What these hours are called</label><div class="ctl">Office hours</div></div>
+  <div class="f"><label>Clock these hours run on</label>
+    <div class="ctl sel">America/New_York — Eastern</div></div>`;
+
+const setList = () => SETS.map((s,i) => `
+  <div class="it ${i===0?'on':''}"><b>${s[0]}</b><div class="sub">${s[1]}</div></div>`).join('')
+  + '<div class="it" style="color:var(--primary)">+ Add hours</div>';
+
+const L1 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      <div class="split2">
+        <div class="l">${setList()}</div>
+        <div class="r">
+          ${nameAndClock}
+          ${overrides(true)}
+          <div class="f" style="margin-top:14px"><label>The week</label></div>
+          ${WEEK.map(dayRow).join('')}
+          <p class="note">A day with no times is closed and says so — an absent row, never two
+            empty boxes, because empty boxes read as unfinished and this is finished.</p>
+        </div>
+      </div>
+    </div>
+    ${foot}
+  </div>`);
+
+const L2 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      <div class="split2">
+        <div class="l">${setList()}</div>
+        <div class="r">
+          ${nameAndClock}
+          <div class="f"><label>The week — December</label></div>
+          <table class="weekgrid">
+            <tr>${WEEK.map(d => `<th>${d[0].slice(0,3)}</th>`).join('')}</tr>
+            <tr>
+              ${WEEK.map((d,i) => i===3
+                ? '<td class="ovr">25 Dec<br>Closed<br><span style="font-weight:400">Christmas</span></td>'
+                : d[1] ? `<td>${d[1]}<br>to<br>${d[2]}</td>` : '<td class="shut">Closed</td>').join('')}
+            </tr>
+          </table>
+          <p class="note">A holiday is painted on the day it lands, so “what happens on the 25th”
+            is answered by looking at the 25th. But a weekly grid has no month, so a one-off in
+            March has nowhere to live until you are looking at March — and a masked field you type
+            into is cramped inside a table cell.</p>
+        </div>
+      </div>
+    </div>
+    ${foot}
+  </div>`);
+
+const L3 = () => shell(`
+  <div class="pane">
+    <div class="paneHead">
+      <div style="flex:1"><h2><span style="color:var(--primary);font-weight:500;font-size:13px">‹ Back to the list</span><br>Office hours</h2>
+        <p>When a line is open. A line with no hours is always open.</p></div>
+      <button class="btn ghost sm" type="button">↻ Try again</button>
+    </div>
+    <div class="paneBody">
+      ${nameAndClock}
+      ${overrides(true)}
+      <div class="f" style="margin-top:14px"><label>The week</label></div>
+      ${WEEK.map(dayRow).join('')}
+      <p class="note">Full width for seven rows of time fields, which is a real advantage. But
+        Numbers was just moved away from replace-the-pane, so keeping it here makes two
+        list-plus-editor panes in one module behave differently.</p>
+    </div>
+    ${foot}
+  </div>`);
+
+const L4 = () => `
+  <div class="phone">
+    <div class="bar375"><span class="back">‹ Hours</span> Office hours</div>
+    <div class="scroll">
+      <div class="paneBody" style="padding:13px 12px">
+        ${nameAndClock}
+        ${overrides(true)}
+        <div class="f" style="margin-top:14px"><label>The week</label></div>
+        ${WEEK.map(d => d[1] ? `
+          <div class="day" style="grid-template-columns:1fr">
+            <span class="nm">${d[0]}</span>
+            <span class="times"><span class="mask">${d[1]}</span><span class="to">to</span>
+              <span class="mask">${d[2]}</span></span>
+          </div>` : `
+          <div class="day shut" style="grid-template-columns:1fr auto">
+            <span class="nm">${d[0]}</span><span class="state">Closed</span>
+          </div>`).join('')}
+      </div>
+      ${foot}
+    </div>
+  </div>`;
+
+const LAYOUTS = { 1:L1, 2:L2, 3:L3, 4:L4 };
+const nums = document.getElementById('nums'), stage = document.getElementById('stage'),
+      caption = document.getElementById('caption');
+Object.keys(LAYOUTS).forEach(k => {
+  const b = document.createElement('button'); b.type='button'; b.textContent=k;
+  b.addEventListener('click', () => show(+k)); nums.appendChild(b);
+});
+function show(i) {
+  [...nums.children].forEach((b,x) => b.setAttribute('aria-pressed', x+1===i ? 'true':'false'));
+  const e = CAPTIONS[i];
+  caption.innerHTML = '<strong>'+e[0]+'</strong>'+e[1];
+  stage.innerHTML = LAYOUTS[i]();
+}
+show(1);
+</script>
+</body>
+</html>

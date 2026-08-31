@@ -1,11 +1,25 @@
 import 'voice_device_io.dart'
-    if (dart.library.js_interop) 'voice_device_web.dart' as impl;
+    if (dart.library.js_interop) 'voice_device_web.dart'
+    as impl;
 
 /// Twilio Voice Device for the Call desk.
 ///
 /// The JS SDK only exists in the browser. Tests inject a fake and never load
 /// it. Off the web this is a silent stub so `flutter test` still compiles.
 abstract class VoiceDevice {
+  /// Whether this build can EVER place a call.
+  ///
+  /// Distinct from [registered], and the distinction is the whole point. A
+  /// device that failed to register might succeed on a retry; a build with no
+  /// Voice SDK in it never will, because the SDK is a browser script and the
+  /// desktop app is not a browser.
+  ///
+  /// Collapsing the two is what put "reload the page; if it keeps happening
+  /// the network is blocking the connection" in front of desktop users — a
+  /// transient-sounding diagnosis, with a Retry button, for a permanent
+  /// platform fact. Somebody reads that and goes to look at their firewall.
+  bool get supported;
+
   /// Register with an access token from POST /phone/tokens.
   Future<void> setup(String token);
 

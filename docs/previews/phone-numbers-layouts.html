@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi — Phone › Numbers layouts</title>
+<style>
+  :root {
+    --cyan:#00AEEF; --primary:#00708F; --cyan-deep:#00708F;
+    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+    --ok:#0B8F5B; --err:#E07070; --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1240px; margin:0 auto; padding:16px 16px 48px; }
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:18px; margin:0 0 4px; }
+  header.picker p { margin:0 0 12px; color:var(--muted); max-width:82ch; }
+  .locked, .ask, .found { font-size:13px; border-radius:8px; padding:10px 12px;
+    margin-bottom:12px; max-width:94ch; }
+  .locked { background:var(--info-c); } .ask { background:var(--warn-c); } .found { background:var(--err-c); }
+  .locked strong, .ask strong, .found strong { display:block; margin-bottom:4px; }
+  .locked strong { color:var(--cyan-deep); } .ask strong { color:var(--warn); } .found strong { color:#A33; }
+  .ask b, .found b { display:block; margin-top:7px; }
+  .nums { display:flex; flex-wrap:wrap; gap:8px; }
+  .nums button { min-width:44px; min-height:44px; border-radius:8px;
+    border:1px solid var(--line); background:var(--page); color:var(--ink); }
+  .nums button[aria-pressed="true"] { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:92ch; }
+  .caption strong { display:block; margin-bottom:4px; }
+  table.dup { border-collapse:collapse; font-size:12px; margin:8px 0 4px; }
+  table.dup th, table.dup td { border:1px solid rgba(0,0,0,.12); padding:4px 9px; text-align:left; }
+  table.dup th { background:rgba(0,0,0,.05); }
+  table.dup td.y { color:#A33; font-weight:700; text-align:center; }
+  table.dup td.n { color:var(--muted); text-align:center; }
+
+  .shell { display:grid; grid-template-columns:200px 1fr; min-height:700px;
+    background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px; }
+  nav.side .brand { font-weight:700; color:var(--cyan-deep); margin-bottom:16px; padding:0 8px; }
+  nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+    text-decoration:none; margin-bottom:2px; }
+  nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  .page { display:flex; flex-direction:column; min-width:0; }
+  .tabs { display:flex; gap:8px; padding:12px 16px; border-bottom:1px solid var(--line); }
+  .tabs span { padding:8px 14px; border-radius:999px; border:1px solid var(--line);
+    background:var(--page); color:var(--muted); }
+  .tabs span.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .settings { display:grid; grid-template-columns:200px 1fr; flex:1; min-height:0; }
+  .rail { border-right:1px solid var(--line); padding:10px 8px; overflow:auto; }
+  .rail a { display:block; padding:8px 11px; border-radius:8px; color:var(--ink);
+    text-decoration:none; font-size:13px; }
+  .rail a.on { background:var(--info-c); color:var(--cyan-deep); font-weight:600; }
+  .rail h4 { font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--muted); margin:12px 0 4px; padding:0 11px; font-weight:600; }
+  .rail h4:first-child { margin-top:0; }
+
+  .pane { display:flex; flex-direction:column; min-width:0; overflow:auto; }
+  .paneHead { padding:16px 20px 12px; border-bottom:1px solid var(--line);
+    display:flex; align-items:flex-start; gap:12px; }
+  .paneHead h2 { font-size:17px; margin:0 0 2px; }
+  .paneHead p { margin:0; color:var(--muted); font-size:13px; max-width:70ch; }
+  .paneBody { padding:16px 20px 24px; flex:1; }
+
+  .alarm { background:var(--err-c); border-radius:9px; padding:12px 14px; font-size:13px;
+    margin-bottom:14px; display:flex; gap:12px; align-items:flex-start; }
+  .alarm .g { flex:1; } .alarm b { display:block; margin-bottom:2px; }
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:8px;
+    padding:9px 14px; min-height:40px; }
+  .btn.ghost { background:transparent; color:var(--primary); border:1px solid var(--line); }
+  .btn.sm { min-height:32px; padding:4px 10px; font-size:13px; }
+  .pill { font-size:11px; padding:2px 8px; border-radius:999px; background:var(--alt);
+    border:1px solid var(--line); color:var(--muted); font-weight:600; white-space:nowrap; }
+  .pill.err { background:var(--err-c); color:#A33; border-color:transparent; }
+
+  .seg { display:flex; border:1px solid var(--line); border-radius:9px;
+    overflow:hidden; margin-bottom:14px; max-width:460px; }
+  .seg span { flex:1; text-align:center; padding:9px 8px; font-size:13px; color:var(--muted);
+    background:var(--page); border-right:1px solid var(--line); }
+  .seg span:last-child { border-right:0; }
+  .seg span.on { background:var(--primary); color:#fff; font-weight:600; }
+
+  .lrow { display:grid; grid-template-columns:1fr 210px auto; gap:12px; align-items:center;
+    padding:11px 13px; border:1px solid var(--line); border-radius:9px; margin-bottom:7px; }
+  .lrow.bad { border-color:var(--err); background:var(--err-c); }
+  .lrow .nm { font-weight:600; }
+  .lrow .sub { color:var(--muted); font-size:12px; }
+  .lrow .does { font-size:12px; }
+  .lrow .does.bad { color:#A33; font-weight:600; }
+
+  .split2 { display:grid; grid-template-columns:290px 1fr; border:1px solid var(--line);
+    border-radius:10px; overflow:hidden; min-height:420px; }
+  .split2 .l { border-right:1px solid var(--line); background:var(--alt); overflow:auto; }
+  .split2 .l .it { padding:10px 13px; border-bottom:1px solid var(--line); font-size:13px; }
+  .split2 .l .it.on { background:var(--page); box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  .split2 .l .it.bad { background:var(--err-c); }
+  .split2 .r { padding:14px 16px; overflow:auto; }
+  .f { margin-bottom:11px; }
+  .f label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .ctl { display:flex; align-items:center; min-height:40px; border:1px solid var(--line);
+    border-radius:8px; padding:0 12px; background:var(--page); }
+  .ctl.sel::after { content:"⌄"; margin-left:auto; color:var(--muted); }
+  .dupmark { background:var(--warn-c); color:var(--warn); font-size:11px; padding:1px 7px;
+    border-radius:999px; margin-left:7px; font-weight:600; }
+  .note { color:var(--muted); font-size:12px; margin-top:10px; }
+  .sec { border:1px solid var(--line); border-radius:10px; margin-bottom:12px; overflow:hidden; }
+  .sec > h3 { margin:0; padding:10px 14px; background:var(--alt); font-size:13px;
+    border-bottom:1px solid var(--line); }
+  .sec .in { padding:12px 14px; }
+
+  .phone { width:375px; margin:0 auto; border:8px solid var(--ink); border-radius:28px;
+    overflow:hidden; background:#fff; min-height:700px; display:flex; flex-direction:column; }
+  .phone .bar375 { padding:11px 12px; border-bottom:1px solid var(--line); font-weight:600;
+    display:flex; gap:8px; align-items:center; font-size:14px; }
+  .phone .bar375 .back { color:var(--primary); font-weight:500; }
+  .phone .scroll { overflow:auto; flex:1; }
+
+  @media (max-width:900px) {
+    .shell { grid-template-columns:1fr; } nav.side { display:none; }
+    .settings { grid-template-columns:1fr; } .split2 { grid-template-columns:1fr; }
+    .lrow { grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>Phone › Numbers — layouts</h1>
+
+    <div class="locked">
+      <strong>Read from <code>numbers_pane.dart</code> — 1092 lines, the largest pane by a distance</strong>
+      <b>“The lines this business answers on, and what each one does.”</b> The pane is doing five
+      separate jobs: the <b>line list</b>, the <b>import</b> flow for numbers already on the Twilio
+      account, a <b>move</b> panel that shifts a line to another company, the <b>buy a number</b>
+      panel (its own file), and a <b>per-line form</b> that is inline here and is most of the bulk.
+      Opening a line does not scroll — <code>:273</code> returns <code>_LineForm</code> outright, so
+      the form <b>replaces the whole pane</b> and the list disappears.
+    </div>
+
+    <div class="found">
+      <strong>The finding: the same line settings are editable in two places, and five fields are identical</strong>
+      General has a <b>line dropdown</b> (<code>_lineId</code>) — it edits one line at a time.
+      Numbers' <code>_LineForm</code> edits a line too. Compared field by field:
+      <table class="dup">
+        <tr><th>Field</th><th>General</th><th>Numbers · line form</th></tr>
+        <tr><td>Forward to</td><td class="y">✓</td><td class="y">✓</td></tr>
+        <tr><td>Fallback number</td><td class="y">✓</td><td class="y">✓</td></tr>
+        <tr><td>Record calls on this line</td><td class="y">✓</td><td class="y">✓</td></tr>
+        <tr><td>What callers are told</td><td class="y">✓</td><td class="y">✓</td></tr>
+        <tr><td>Write down what is said</td><td class="y">✓</td><td class="y">✓</td></tr>
+        <tr><td>Opening hours / When it is closed</td><td class="n">as steps 1 &amp; 4</td><td class="y">✓</td></tr>
+        <tr><td>Who it rings</td><td class="n">as step 3</td><td class="y">✓</td></tr>
+        <tr><td>What this line is called</td><td class="n">—</td><td class="y">✓</td></tr>
+      </table>
+      <b>Five fields are literally the same control in two panes</b>, and the rest overlap in
+      substance. That is not a layout problem and no arrangement fixes it — it is one fact with two
+      editors, which is the condition where the two quietly disagree and nobody can say which is
+      right. It also explains the 1092 lines.
+    </div>
+
+    <div class="ask">
+      <strong>So the real choice here is not how to arrange Numbers — it is whether Numbers edits lines at all</strong>
+      <b>1 · Layout 1 says no.</b> Numbers becomes the <b>inventory</b>: what lines exist, what each
+      one does, import, move, buy. Editing a line opens <b>General</b> with that line selected —
+      one editor, which is the screen you already approved as the chain. Deletes roughly 270 lines
+      of duplicated form.
+      <b>2 · Layouts 2 and 3 say yes</b>, and keep both editors. They fix the replace-the-pane
+      problem and leave the duplication in place. I have drawn them honestly rather than
+      strawmanned them, because “two editors is fine if they are both good” is a real position —
+      but somebody has to hold it deliberately rather than by accident.
+      <b>3 · Whichever you pick, the silent-lines alarm moves to the top and names the line.</b>
+      The existing copy is already good — <em>“Nobody answers this line. Every call goes straight
+      to voicemail.”</em> and <em>“No ring groups exist yet, so there is nobody for a line to
+      ring.”</em> — but it currently sits below the list.
+    </div>
+
+    <p>Pick a number. <strong>1 is my recommendation.</strong> 4 is it at 375px.</p>
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+  <div id="stage"></div>
+</div>
+
+<script>
+const CAPTIONS = {
+  1: ["1 · Numbers is the inventory; General is the editor (recommended)",
+      "Numbers answers what lines exist, what each does, and lets you import, move and buy. It does not edit a line's call handling — 'Set up' opens General with that line already selected. One fact, one editor, and the editor is the chain you already approved. It deletes about 270 lines of form and removes the condition where two panes disagree about the same setting with no way to tell which is right. Weakness, and it is real: it costs a navigation. Somebody importing five numbers and configuring each now moves between two sections five times, where today they stay put. That is the price of not having two editors, and I think it is worth paying — but it is a genuine cost and not a free win."],
+  2: ["2 · Split pane — list on the left, the line's form on the right",
+      "Keeps both editors and fixes the worst symptom: the form no longer replaces the pane, so you keep the list, can see the line above the one you are changing, and come back to where you were rather than the top. Matches Customers, the house worked example. This is the smallest change that addresses the complaint that actually prompted the review. Weakness: the duplication survives untouched. Five fields still exist in two places, and the split makes Numbers a more comfortable second editor — which entrenches the thing worth removing rather than removing it."],
+  3: ["3 · Tabs inside the pane — Lines, Import, Moved",
+      "Separates the five jobs without touching the form: the list, the import flow and the move history each get their own tab, so none of them is a block of content you scroll past to reach another. Best at making a 1092-line pane comprehensible with the least behavioural change, and the import flow in particular stops competing with the list for the top of the screen. Weakness: tabs inside a pane that is already inside a rail inside a tab strip is three levels of navigation for one module, and the duplication is still there. It tidies the symptom and leaves the cause."],
+  4: ["4 · Layout 1 at 375px",
+      "The inventory reads well narrow because it is a list of short facts — name, number, what it does. What each line does moves under its name rather than into a second column. 'Set up' navigates to General, which at this width is already a full-screen push with Back, so the cost of the extra navigation is lower on a phone than on a desktop, not higher. The alarm stays pinned at the top and names the line."]
+};
+
+const RAIL = `
+  <h4>Connect</h4><a>General</a><a>Call flow</a><a>Connection</a><a class="on">Numbers</a><a>Porting</a>
+  <h4>Answering</h4><a>IVR menus</a><a>Hours</a><a>Ring groups</a><a>Voicemail</a>
+  <h4>Identity</h4><a>Trust &amp; caller identity</a>
+  <h4>Running it</h4><a>Tags</a><a>Cost</a><a>Messaging</a>`;
+
+const LINES = [
+  ['Old fax','(203) 555 0188','Nobody answers this line. Every call goes straight to voicemail.',1],
+  ['CT main','(203) 555 0142','Rings Front desk.',0],
+  ['Service line','(203) 555 0155','Answered by a call menu.',0],
+  ['Emergency','(203) 555 0161','Rings After hours.',0],
+  ['Sales CT','(203) 555 0170','Rings Front desk.',0]
+];
+
+const shell = (body) => `
+  <div class="shell">
+    <nav class="side"><div class="brand">EzBizi</div>
+      <a>Dashboard</a><a>Customers</a><a>Jobs</a><a class="on">Phone</a><a>Fleet</a></nav>
+    <div class="page">
+      <div class="tabs"><span>Call</span><span>Records</span><span class="on">Settings</span></div>
+      <div class="settings"><div class="rail">${RAIL}</div>${body}</div>
+    </div>
+  </div>`;
+
+const head = `
+  <div class="paneHead">
+    <div style="flex:1"><h2>Numbers</h2>
+      <p>The lines this business answers on, and what each one does.</p></div>
+    <button class="btn ghost sm" type="button">↻ Try again</button>
+  </div>`;
+
+const alarm = `
+  <div class="alarm">
+    <div class="g"><b>One line is not reaching anybody.</b>
+      <b style="display:inline;font-weight:700">Old fax · (203) 555 0188</b> has no ring group,
+      so every call to it goes straight to voicemail. It is first below.</div>
+    <button class="btn ghost sm" type="button">Set it up</button>
+  </div>`;
+
+const lineRow = (l, action) => `
+  <div class="lrow ${l[3] ? 'bad' : ''}">
+    <div><div class="nm">${l[0]}</div><div class="sub">${l[1]}</div></div>
+    <div class="does ${l[3] ? 'bad' : ''}">${l[2]}</div>
+    <button class="btn ghost sm" type="button">${action}</button>
+  </div>`;
+
+const L1 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      ${alarm}
+      <div class="seg"><span class="on">Lines · 5</span><span>Import · 2 waiting</span><span>Buy a number</span></div>
+      ${LINES.map(l => lineRow(l, 'Set up ↗')).join('')}
+      <p class="note"><b>“Set up” opens General with this line selected.</b> Numbers says what
+        exists; General says what a line does. One setting, one editor — the five fields that
+        currently live in both panes exist only in General.</p>
+      <div class="sec" style="margin-top:16px"><h3>Move a line to another company</h3>
+        <div class="in">
+          <p class="note" style="margin:0">The number keeps working and keeps its history —
+            past calls and messages come with it.</p>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn ghost sm" type="button">Move a line…</button></div>
+        </div></div>
+    </div>
+  </div>`);
+
+const dup = '<span class="dupmark">also in General</span>';
+
+const L2 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      ${alarm}
+      <div class="seg"><span class="on">Lines · 5</span><span>Import · 2 waiting</span><span>Buy a number</span></div>
+      <div class="split2">
+        <div class="l">
+          ${LINES.map((l,i) => `
+            <div class="it ${i===0 ? 'on bad' : ''}">
+              <b>${l[0]}</b><div style="color:var(--muted);font-size:12px">${l[1]}</div>
+              <div style="font-size:12px;margin-top:2px;color:${l[3] ? '#A33':'var(--muted)'}">${l[2]}</div>
+            </div>`).join('')}
+        </div>
+        <div class="r">
+          <div class="f"><label>What this line is called</label><div class="ctl">Old fax</div></div>
+          <div class="f"><label>Who it rings</label><div class="ctl sel">Nobody</div></div>
+          <div class="f"><label>Opening hours</label><div class="ctl sel">Always open</div></div>
+          <div class="f"><label>Fallback number ${dup}</label><div class="ctl">(203) 555 0170</div></div>
+          <div class="f"><label>What callers are told ${dup}</label>
+            <div class="ctl">This call may be recorded…</div></div>
+          <p class="note">The list stays. But two of these fields, and three more below, are the
+            same controls that exist in General — the split makes Numbers a more comfortable
+            second editor rather than removing the second editor.</p>
+        </div>
+      </div>
+    </div>
+  </div>`);
+
+const L3 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      ${alarm}
+      <div class="seg" style="max-width:520px">
+        <span class="on">Lines · 5</span><span>Import · 2 waiting</span>
+        <span>Moved</span><span>Buy a number</span></div>
+      ${LINES.map(l => lineRow(l, 'Open')).join('')}
+      <p class="note">Each job gets its own tab, so the import flow stops competing with the list
+        for the top of the screen. Opening a line still replaces this view with the form, and the
+        five duplicated fields are still in it — this tidies the symptom and leaves the cause.</p>
+    </div>
+  </div>`);
+
+const L4 = () => `
+  <div class="phone">
+    <div class="bar375"><span class="back">‹ Settings</span> Numbers</div>
+    <div class="scroll">
+      ${head}
+      <div class="paneBody">
+        ${alarm}
+        <div class="seg" style="max-width:none"><span class="on">Lines</span><span>Import</span><span>Buy</span></div>
+        ${LINES.map(l => `
+          <div class="lrow ${l[3] ? 'bad' : ''}" style="grid-template-columns:1fr">
+            <div><div class="nm">${l[0]}</div><div class="sub">${l[1]}</div></div>
+            <div class="does ${l[3] ? 'bad' : ''}">${l[2]}</div>
+            <button class="btn ghost sm" type="button" style="justify-self:start">Set up ↗</button>
+          </div>`).join('')}
+        <p class="note">“Set up” pushes General, which at this width is already a full-screen
+          push with Back — so the extra navigation costs less here than on a desktop.</p>
+      </div>
+    </div>
+  </div>`;
+
+const LAYOUTS = { 1:L1, 2:L2, 3:L3, 4:L4 };
+const nums = document.getElementById('nums'), stage = document.getElementById('stage'),
+      caption = document.getElementById('caption');
+Object.keys(LAYOUTS).forEach(k => {
+  const b = document.createElement('button'); b.type='button'; b.textContent=k;
+  b.addEventListener('click', () => show(+k)); nums.appendChild(b);
+});
+function show(i) {
+  [...nums.children].forEach((b,x) => b.setAttribute('aria-pressed', x+1===i ? 'true':'false'));
+  const e = CAPTIONS[i];
+  caption.innerHTML = '<strong>'+e[0]+'</strong>'+e[1];
+  stage.innerHTML = LAYOUTS[i]();
+}
+show(1);
+</script>
+</body>
+</html>

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import 'settings_pane.dart';
 import '../../widgets/refused.dart';
 import 'buy_number_panel.dart';
 import 'carrier_settings.dart';
@@ -234,6 +235,14 @@ class _NumbersPaneState extends State<NumbersPane> {
     await _load();
   }
 
+  /// Which of the three jobs this pane does is on screen.
+  ///
+  /// They used to be stacked: the import list and the buy panel sat ABOVE the
+  /// lines, so the thing you open Numbers to look at was below two things you
+  /// use once. Segments also make the split possible at all — a buy panel
+  /// cannot share a 320px column with a list of lines.
+  int _segment = 0;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -242,22 +251,7 @@ class _NumbersPaneState extends State<NumbersPane> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_error != null) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ErrorNote(_error!),
-            const SizedBox(height: 12),
-            TextButton(onPressed: _load, child: const Text('Try again')),
-          ],
-        ),
-      );
-    }
-
-    if (_connections.isEmpty) {
+    if (_connections.isEmpty && _error == null) {
       return Padding(
         padding: const EdgeInsets.all(24),
         child: Text(
@@ -268,80 +262,180 @@ class _NumbersPaneState extends State<NumbersPane> {
       );
     }
 
+    final silent = _lines.where((line) => !line.answers).length;
+
+    return SettingsPane(
+      title: 'Numbers',
+      subtitle: 'The lines this business answers on, and what each one does.',
+      error: _error,
+      onRetry: _load,
+      trailing: _connections.length > 1 ? _placePicker(theme) : null,
+
+      // No footer: each line saves from its own form, and the import and buy
+      // segments are actions rather than settings. A footer here would claim
+      // the pane as a whole is something you save.
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (silent > 0)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+              child: _silentLinesNote(theme),
+            ),
+
+          if (_formError != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+              child: ErrorNote(_formError!),
+            ),
+
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+            child: _segments(theme),
+          ),
+
+          Expanded(child: _segmentBody(theme)),
+        ],
+      ),
+    );
+  }
+
+  Widget _segments(ThemeData theme) {
+    final waiting = _importable.length;
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: SegmentedButton<int>(
+        showSelectedIcon: false,
+        segments: [
+          ButtonSegment(value: 0, label: Text('Lines · ${_lines.length}')),
+          ButtonSegment(
+            value: 1,
+            label: Text(
+              waiting == 0 ? 'Import' : 'Import · $waiting waiting',
+            ),
+          ),
+          if (_canEdit && _scope != null)
+            const ButtonSegment(value: 2, label: Text('Buy a number')),
+        ],
+        selected: {_segment},
+        onSelectionChanged: (picked) =>
+            setState(() => _segment = picked.first),
+      ),
+    );
+  }
+
+  Widget _segmentBody(ThemeData theme) {
+    return switch (_segment) {
+      1 => ListView(
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+        children: _importSection(theme),
+      ),
+      2 => ListView(
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+        children: [
+          if (_canEdit && _scope != null)
+            BuyNumberPanel(
+              key: ValueKey('buy:${_scope!.id}'),
+              api: widget.api,
+              scopeType: _scope!.scopeType,
+              scopeId: _scope!.scopeId,
+              onBought: _load,
+            ),
+        ],
+      ),
+      _ => _linesAndDetail(theme),
+    };
+  }
+
+  /// The list beside the line being edited.
+  ///
+  /// This used to return `_LineForm` outright, so opening a line REPLACED the
+  /// whole pane: you lost the list while editing, could not see the line above
+  /// the one you were changing, and came back to the top of the list rather
+  /// than to where you had been. On eleven lines that is the difference
+  /// between checking a neighbour and starting again.
+  Widget _linesAndDetail(ThemeData theme) {
     final editing = _editing;
 
-    if (editing != null) {
-      return _LineForm(
-        key: ValueKey(editing.id),
-        api: widget.api,
-        scopeType: _scope?.scopeType ?? '',
-        scopeId: _scope?.scopeId ?? '',
-        line: editing,
-        groups: _groups,
-        schedules: _schedules,
-        saving: _saving,
-        error: _formError,
-        onCancel: () => setState(() {
-          _editing = null;
-          _formError = null;
-        }),
-        onSave: (body) => _save(editing, body),
-      );
-    }
+    return LayoutBuilder(
+      builder: (context, box) {
+        // Below this there is not room for two columns, so the form pushes
+        // over the list and carries a Back — which is what it did everywhere
+        // before, and is right on a phone.
+        final split = box.maxWidth >= 600;
 
-    return ListView(
-      padding: const EdgeInsets.all(24),
-      children: [
-        Text('Numbers', style: theme.textTheme.titleMedium),
-        const SizedBox(height: 4),
-        Text(
-          'The lines this business answers on, and what each one does.',
+        if (!split) {
+          return editing == null
+              ? _linesList(theme)
+              : _lineForm(editing, showBack: true);
+        }
+
+        final listWidth = (box.maxWidth * 0.36).clamp(260.0, 420.0);
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(width: listWidth, child: _linesList(theme)),
+            VerticalDivider(
+              width: 1,
+              color: theme.colorScheme.outlineVariant,
+            ),
+            Expanded(
+              child: editing == null
+                  ? _noLineChosen(theme)
+                  : _lineForm(editing, showBack: false),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _noLineChosen(ThemeData theme) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          _lines.isEmpty
+              ? 'No lines yet. Import the ones this account already holds, or '
+                    'buy a new one.'
+              : 'Choose a line to set up what it does.',
+          textAlign: TextAlign.center,
           style: theme.textTheme.bodySmall,
         ),
+      ),
+    );
+  }
 
-        if (_connections.length > 1) ...[
-          const SizedBox(height: 16),
-          _placePicker(theme),
-        ],
+  Widget _lineForm(_Line editing, {required bool showBack}) {
+    return _LineForm(
+      key: ValueKey(editing.id),
+      api: widget.api,
+      scopeType: _scope?.scopeType ?? '',
+      scopeId: _scope?.scopeId ?? '',
+      line: editing,
+      groups: _groups,
+      schedules: _schedules,
+      saving: _saving,
+      error: _formError,
+      showBack: showBack,
+      onCancel: () => setState(() {
+        _editing = null;
+        _formError = null;
+      }),
+      onSave: (body) => _save(editing, body),
+    );
+  }
 
-        if (_formError != null) ...[
-          const SizedBox(height: 12),
-          ErrorNote(_formError!),
-        ],
-
-        const SizedBox(height: 20),
-        ..._importSection(theme),
-
-        // Importing is free and buying costs money, so what the account
-        // already holds is offered first — a company that has been paying
-        // for a line for a year should not buy a second one by accident.
-        if (_canEdit && _scope != null) ...[
-          const SizedBox(height: 24),
-          BuyNumberPanel(
-            key: ValueKey('buy:${_scope!.id}'),
-            api: widget.api,
-            scopeType: _scope!.scopeType,
-            scopeId: _scope!.scopeId,
-            onBought: _load,
-          ),
-        ],
-
-        const SizedBox(height: 24),
-        Text('Set up in EzBizi', style: theme.textTheme.labelLarge),
-        const SizedBox(height: 8),
-
-        // Said once at the top as well as per row, because the fix is not on
-        // this screen: with no ring group in existence there is nothing to
-        // pick, so pointing at the field would be a dead end.
-        if (_lines.any((line) => !line.answers)) ...[
-          _silentLinesNote(theme),
-          const SizedBox(height: 12),
-        ],
-
+  Widget _linesList(ThemeData theme) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+      children: [
         if (_lines.isEmpty)
           Text(
             'No lines yet. Import the ones this account already holds, or buy '
-            'a new one, above.',
+            'a new one.',
             style: theme.textTheme.bodySmall,
           )
         else
@@ -357,6 +451,7 @@ class _NumbersPaneState extends State<NumbersPane> {
         const SizedBox(width: 12),
         Expanded(
           child: DropdownButtonFormField<String>(
+            isExpanded: true,
             initialValue: _scope?.id,
             decoration: const InputDecoration(
               border: OutlineInputBorder(),
@@ -627,6 +722,23 @@ class _NumbersPaneState extends State<NumbersPane> {
 
 /// The form for one line. A separate widget so its controllers live and die
 /// with the line being edited rather than with the pane.
+/// Said about a control that also exists on the General pane.
+///
+/// Two editors for one fact is safe only if they cannot disagree, and here they
+/// cannot: both write the same fields through the same endpoint, and this pane
+/// reloads when it is opened, so whichever you open second shows what the other
+/// last saved.
+///
+/// What this fixes is the half that arrangement does NOT. Somebody changing a
+/// value here has no way to know the same control exists elsewhere, so the
+/// second editor reads as a trap — you change it in one place, find the old
+/// value in the other, and conclude the save failed.
+///
+/// A sentence rather than the chip the design drew: a Widget in `label:` reports
+/// its full intrinsic width to InputDecorator, which overflows the field on a
+/// narrow pane. Help text wraps, and is the same words in the same place.
+const _alsoInGeneral = 'Also on General.';
+
 class _LineForm extends StatefulWidget {
   const _LineForm({
     super.key,
@@ -638,6 +750,7 @@ class _LineForm extends StatefulWidget {
     required this.schedules,
     required this.saving,
     required this.error,
+    required this.showBack,
     required this.onCancel,
     required this.onSave,
   });
@@ -650,6 +763,9 @@ class _LineForm extends StatefulWidget {
   final List<_Schedule> schedules;
   final bool saving;
   final String? error;
+
+  /// False when the list is beside this form and Back would go nowhere.
+  final bool showBack;
   final VoidCallback onCancel;
   final void Function(Map<String, dynamic>) onSave;
 
@@ -703,12 +819,14 @@ class _LineFormState extends State<_LineForm> {
       children: [
         Row(
           children: [
-            IconButton(
-              tooltip: 'Back to the lines',
-              icon: const Icon(Icons.arrow_back),
-              onPressed: widget.onCancel,
-            ),
-            const SizedBox(width: 4),
+            if (widget.showBack) ...[
+              IconButton(
+                tooltip: 'Back to the lines',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: widget.onCancel,
+              ),
+              const SizedBox(width: 4),
+            ],
             Expanded(
               child: Text(widget.line.e164, style: theme.textTheme.titleMedium),
             ),
@@ -731,6 +849,10 @@ class _LineFormState extends State<_LineForm> {
 
         const SizedBox(height: 16),
         DropdownButtonFormField<String?>(
+          // The chosen item's text can grow — "Nobody — go straight to
+          // voicemail" — and without this the dropdown lays out at its
+          // natural width and overflows the field on a narrow pane.
+          isExpanded: true,
           initialValue: _groupId,
           decoration: const InputDecoration(
             labelText: 'Who it rings',
@@ -749,6 +871,10 @@ class _LineFormState extends State<_LineForm> {
 
         const SizedBox(height: 16),
         DropdownButtonFormField<String?>(
+          // The chosen item's text can grow — "Nobody — go straight to
+          // voicemail" — and without this the dropdown lays out at its
+          // natural width and overflows the field on a narrow pane.
+          isExpanded: true,
           initialValue: _scheduleId,
           decoration: const InputDecoration(
             labelText: 'Opening hours',
@@ -767,6 +893,10 @@ class _LineFormState extends State<_LineForm> {
 
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
+          // The chosen item's text can grow — "Nobody — go straight to
+          // voicemail" — and without this the dropdown lays out at its
+          // natural width and overflows the field on a narrow pane.
+          isExpanded: true,
           initialValue: _afterHours,
           decoration: const InputDecoration(
             labelText: 'When it is closed',
@@ -791,6 +921,7 @@ class _LineFormState extends State<_LineForm> {
             decoration: const InputDecoration(
               labelText: 'Forward to',
               hintText: '+12035550123',
+              helperText: _alsoInGeneral,
               border: OutlineInputBorder(),
             ),
           ),
@@ -804,8 +935,9 @@ class _LineFormState extends State<_LineForm> {
             labelText: 'Fallback number',
             hintText: '+17865550123',
             helperText:
-                'Dialled when the steps above reach nobody. Tried once, then '
-                'voicemail. Leave empty to go straight to voicemail.',
+                '$_alsoInGeneral Dialled when the steps above reach nobody. '
+                'Tried once, then voicemail. Leave empty to go straight to '
+                'voicemail.',
             helperMaxLines: 3,
             border: OutlineInputBorder(),
           ),
@@ -818,7 +950,8 @@ class _LineFormState extends State<_LineForm> {
           onChanged: (v) => setState(() => _record = v),
           title: const Text('Record calls on this line'),
           subtitle: Text(
-            'Callers are told out loud before the call connects.',
+            '$_alsoInGeneral Callers are told out loud before the call '
+            'connects.',
             style: theme.textTheme.bodySmall,
           ),
         ),
@@ -830,10 +963,11 @@ class _LineFormState extends State<_LineForm> {
           TextField(
             controller: _notice,
             maxLines: 2,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'What callers are told',
               hintText: 'This call may be recorded.',
               helperText:
+                  '$_alsoInGeneral '
                   'Spoken before the call connects. This wording is what gets '
                   'the caller’s consent, so it has to be true where you '
                   'operate. Left empty, callers hear the sentence above.',
@@ -849,7 +983,7 @@ class _LineFormState extends State<_LineForm> {
           onChanged: (v) => setState(() => _transcribe = v),
           title: const Text('Write down what is said'),
           subtitle: Text(
-            'Costs more per call. Off unless you need it.',
+            '$_alsoInGeneral Costs more per call. Off unless you need it.',
             style: theme.textTheme.bodySmall,
           ),
         ),

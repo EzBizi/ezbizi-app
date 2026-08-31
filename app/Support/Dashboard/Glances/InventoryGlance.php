@@ -8,7 +8,7 @@ use App\Models\InventoryLocation;
 use App\Models\InventoryPurchaseOrder;
 use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
-use App\Support\Dashboard\Glance;
+use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
 use App\Support\Inventory\InventoryItemStatus;
 use App\Support\Inventory\InventoryPurchaseOrderStatus;
@@ -24,37 +24,14 @@ use Illuminate\Support\Collection;
  * so the board does not grow a line when the first PO is cut. Stock value is
  * amount_minor only, and only with inventory.financials.
  */
-final class InventoryGlance implements Glance
+final class InventoryGlance extends DescribedGlance
 {
-    public function key(): string
-    {
-        return 'inventory';
-    }
-
-    public function label(): string
-    {
-        return 'Inventory';
-    }
-
-    public function permission(): string
-    {
-        return 'inventory.view';
-    }
-
-    public function allowedPresentations(): array
-    {
-        return ['pie', 'bar', 'text'];
-    }
-
-    public function defaultPresentation(): string
-    {
-        return 'pie';
-    }
-
-    public function snapshot(): bool
-    {
-        return true;
-    }
+    protected const KEY = 'inventory';
+    protected const LABEL = 'Inventory';
+    protected const PERMISSION = 'inventory.view';
+    protected const PRESENTATIONS = ['pie', 'bar', 'text'];
+    protected const DEFAULT_PRESENTATION = 'pie';
+    protected const SNAPSHOT = true;
 
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {

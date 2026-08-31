@@ -40,6 +40,14 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+
+        // Required by flutter_local_notifications, which schedules against
+        // java.time on API levels that predate it. Without this the Android
+        // build does not merely warn — it FAILS, at the AAR metadata check,
+        // with a message that names the dependency but not the two lines that
+        // fix it. Web, Windows and iOS are all unaffected, so the first sign of
+        // it is a release build that stops working on one platform only.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -80,6 +88,13 @@ android {
             }
         }
     }
+}
+
+dependencies {
+    // The other half of isCoreLibraryDesugaringEnabled above: the flag turns
+    // desugaring on, this supplies the backported library it desugars against.
+    // Neither does anything without the other.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 flutter {

@@ -4,6 +4,12 @@ import 'voice_device.dart';
 VoiceDevice create() => _SilentVoiceDevice();
 
 class _SilentVoiceDevice implements VoiceDevice {
+  /// The Voice SDK is a browser script, so this build has no way to place a
+  /// call at all — not a failure to connect, an absence of the thing that
+  /// would connect.
+  @override
+  bool get supported => false;
+
   @override
   Future<void> setup(String token) async {}
 

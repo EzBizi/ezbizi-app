@@ -77,6 +77,41 @@ final class ModuleDefinition
          */
         public readonly ?AutomationSubject $subject = null,
         /**
+         * Every model this module EMITS as an automation subject.
+         *
+         * A DIFFERENT QUESTION from `$subject` above, and conflating them is a
+         * mistake this codebase has already made once:
+         *
+         *   $subject  one per module, governs which model's FIELDS a rule may
+         *             set with `update_field`
+         *   $emits    every record type the module passes to `events->emit()`,
+         *             governing WHO GETS TOLD about it
+         *
+         * They coincide for a module that emits one kind of record, which is
+         * most of them. They come apart for HR, which raises events carrying
+         * invitations, onboardings and contract versions, and for Training,
+         * which carries progress, attempts and assignments. Both correctly
+         * declare NO `$subject`, because naming one would make the field picker
+         * silently wrong about the others — and a check built on `$subject`
+         * would have failed exactly the module that got scoping right first.
+         *
+         * WHY THIS EXISTS AT ALL. `NotificationDispatcher::audienceFor` notifies
+         * EVERY ACTIVE USER in the organization when a record cannot say where
+         * it sits. `notify` is not gated per trigger, so any raised trigger is
+         * an attachment point. The defect is an ABSENCE — a model that never
+         * implemented `CarriesAutomationScope` — with no route, no permission
+         * and no registry entry to review. It appears in no diff.
+         *
+         * Declaring what a module emits is the one thing that makes the absence
+         * checkable, because a test can then ask of each named model: can this
+         * say where it sits? Every control in this family that works — the
+         * bidirectional `isRaised` check, the dashboard icon gate — works
+         * because something was DECLARED and could be compared against reality.
+         *
+         * @var array<int, class-string>
+         */
+        public readonly array $emits = [],
+        /**
          * Which face of the app this grant belongs to. Default is a sidebar
          * tab of its own. See ROLES_* above.
          */

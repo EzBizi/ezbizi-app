@@ -1,8 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
-import '../../widgets/error_note.dart';
+import 'settings_pane.dart';
 
 /// Phone › Settings › Voicemail — the greeting, not the messages.
 ///
@@ -62,6 +63,15 @@ class _VoicemailPaneState extends State<VoicemailPane> {
 
   bool get _canEdit => widget.session.me?.can('phone.edit') ?? false;
 
+  /// Whichever company the switcher is on — the same words the top bar shows,
+  /// so a suggestion never names a business the reader does not work for.
+  String get _placeName {
+    final me = widget.session.me;
+    final label = me?.scope.label.trim() ?? '';
+
+    return label.isEmpty ? (me?.organization.name ?? 'us') : label;
+  }
+
   Future<void> _load() async {
     setState(() => _error = null);
 
@@ -92,6 +102,7 @@ class _VoicemailPaneState extends State<VoicemailPane> {
       _connectionId = box?.connectionId ?? _connectionId;
       _email.clear();
       _error = null;
+      _opened = _formValues();
     });
   }
 
@@ -153,44 +164,74 @@ class _VoicemailPaneState extends State<VoicemailPane> {
     if (response.ok) await _load();
   }
 
+  /// The values that get saved, in the shape used to compare them.
+  Map<String, Object?> _formValues() => {
+    'name': _name.text.trim(),
+    'greeting_text': _greeting.text.trim(),
+    'max_seconds': int.tryParse(_seconds.text.trim()) ?? 300,
+    'transcribe': _transcribe,
+    'notify_emails': _emails,
+  };
+
+  /// What this mailbox looked like when it was opened.
+  Map<String, Object?> _opened = const {};
+
+  /// Which fields differ from that, in words a person would use.
+  ///
+  /// Names rather than a count. "Two changes not saved" answers how many and
+  /// never answers which, and on a form with four sections the second question
+  /// is the one that makes somebody scroll.
+  List<String> get _unsaved {
+    const names = {
+      'name': 'the name',
+      'greeting_text': 'the greeting',
+      'max_seconds': 'the message length',
+      'transcribe': 'whether messages are written down',
+      'notify_emails': 'who is told',
+    };
+
+    final now = _formValues();
+
+    return [
+      for (final entry in names.entries)
+        if (!_sameValue(_opened[entry.key], now[entry.key])) entry.value,
+    ];
+  }
+
+  static bool _sameValue(Object? a, Object? b) {
+    if (a is List && b is List) return listEquals(a, b);
+
+    return a == b;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     if (_loading) return const Center(child: CircularProgressIndicator());
 
-    if (_editing != null) return _form(theme);
+    return _editing == null ? _list(theme) : _form(theme);
+  }
 
-    return ListView(
-      padding: const EdgeInsets.all(24),
+  Widget _list(ThemeData theme) {
+    return SettingsPane(
+      title: 'Voicemail',
+      subtitle: 'What a caller hears when nobody answers. Lines with no '
+          'mailbox use the built-in sentence.',
+      error: _error,
+      onRetry: _load,
+      trailing: _canEdit && _connections.isNotEmpty
+          ? OutlinedButton.icon(
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('New mailbox'),
+              onPressed: () => _open(null),
+            )
+          : null,
+
+      // No footer, on purpose. Nothing in this list is edited in place, so a
+      // Save here would say the opposite of what is true — and the footer's
+      // absence is the only thing telling you which kind of pane this is.
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text('Voicemail', style: theme.textTheme.titleMedium),
-            ),
-            if (_canEdit && _connections.isNotEmpty)
-              OutlinedButton.icon(
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('New mailbox'),
-                onPressed: () => _open(null),
-              ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'What a caller hears when nobody answers. Lines with no mailbox use '
-          'the built-in sentence.',
-          style: theme.textTheme.bodySmall,
-        ),
-
-        if (_error != null) ...[
-          const SizedBox(height: 16),
-          ErrorNote(_error!),
-        ],
-
-        const SizedBox(height: 20),
-
         if (_connections.isEmpty)
           Text(
             'No phone account is connected yet.',
@@ -261,180 +302,193 @@ class _VoicemailPaneState extends State<VoicemailPane> {
 
   Widget _form(ThemeData theme) {
     final editing = _editing!;
+    final fresh = editing.id.isEmpty;
 
-    return ListView(
-      padding: const EdgeInsets.all(24),
+    return SettingsPane(
+      title: fresh ? 'New mailbox' : editing.name,
+      subtitle: 'What this mailbox says, and who hears about it afterwards.',
+      leading: IconButton(
+        tooltip: 'Back to the mailboxes',
+        icon: const Icon(Icons.arrow_back),
+        onPressed: () => setState(() => _editing = null),
+      ),
+      error: _error,
+
+      // No retry here, deliberately, and this is the one place the skeleton's
+      // "every pane gets one" rule is worth breaking. The failure this form
+      // shows is a SAVE that was refused; the head's retry RELOADS, which
+      // would throw away what somebody just typed in the course of offering
+      // to recover it. Retrying a refused save is pressing Save again.
+      onRetry: null,
+
+      footer: SettingsPaneFooter(
+        unsaved: _unsaved,
+        saving: _saving,
+        onSave: _canEdit ? _save : null,
+        onDiscard: () => setState(() => _editing = null),
+        discardLabel: fresh ? 'Cancel' : 'Discard',
+      ),
       children: [
-        Row(
+        SettingsSection(
+          title: 'Mailbox',
           children: [
-            IconButton(
-              tooltip: 'Back to the mailboxes',
-              icon: const Icon(Icons.arrow_back),
-              onPressed: () => setState(() => _editing = null),
-            ),
-            const SizedBox(width: 4),
-            Text(
-              editing.id.isEmpty ? 'New mailbox' : editing.name,
-              style: theme.textTheme.titleMedium,
-            ),
-          ],
-        ),
-
-        if (_error != null) ...[
-          const SizedBox(height: 12),
-          ErrorNote(_error!),
-        ],
-
-        const SizedBox(height: 16),
-        TextField(
-          controller: _name,
-          decoration: const InputDecoration(
-            labelText: 'Name',
-            helperText: 'For your own list — callers never hear this.',
-            border: OutlineInputBorder(),
-          ),
-        ),
-
-        if (editing.id.isEmpty && _connections.length > 1) ...[
-          const SizedBox(height: 16),
-          DropdownButtonFormField<String>(
-            initialValue: _connectionId,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Phone account',
-              border: OutlineInputBorder(),
-            ),
-            items: [
-              for (final c in _connections)
-                DropdownMenuItem(value: c.id, child: Text(c.label)),
-            ],
-            onChanged: (id) => setState(() => _connectionId = id),
-          ),
-        ],
-
-        const SizedBox(height: 16),
-        TextField(
-          controller: _greeting,
-          maxLines: 4,
-          onChanged: (_) => setState(() {}),
-          decoration: const InputDecoration(
-            labelText: 'Greeting',
-            hintText: 'You have reached A-1 Chimney. Leave a number and we '
-                'will ring you back the same day.',
-            helperText: 'Spoken to the caller. Left empty, they hear the '
-                'built-in sentence.',
-            helperMaxLines: 2,
-            border: OutlineInputBorder(),
-          ),
-        ),
-
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.record_voice_over_outlined, size: 18),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'A caller hears exactly: “'
-                  '${_greeting.text.trim().isEmpty ? 'Please leave a message after the tone.' : _greeting.text.trim()}'
-                  '”',
-                  style: theme.textTheme.bodySmall,
-                ),
+            TextField(
+              controller: _name,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'Name',
+                helperText: 'For your own list — callers never hear this.',
+                border: OutlineInputBorder(),
               ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 16),
-        TextField(
-          controller: _seconds,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            labelText: 'Longest message (seconds)',
-            helperText: 'Between 10 and 3600. Twilio’s own limits.',
-            border: OutlineInputBorder(),
-          ),
-        ),
-
-        const SizedBox(height: 8),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          value: _transcribe,
-          onChanged: (v) => setState(() => _transcribe = v),
-          title: const Text('Write messages down'),
-          subtitle: Text(
-            'Twilio charges per transcription, and returns nothing at all for '
-            'audio it cannot make out — a blank transcript is not an error, so '
-            'the recording stays the record.',
-            style: theme.textTheme.bodySmall,
-          ),
-        ),
-
-        const Divider(height: 32),
-        Text('Tell these people', style: theme.textTheme.labelLarge),
-        const SizedBox(height: 2),
-        Text(
-          'Email addresses, not users — the person who should hear about a '
-          'sales voicemail is often not signed in here at all.',
-          style: theme.textTheme.bodySmall,
-        ),
-
-        const SizedBox(height: 12),
-        if (_emails.isNotEmpty)
-          Wrap(
-            spacing: 6,
-            runSpacing: 4,
-            children: [
-              for (final email in _emails)
-                InputChip(
-                  label: Text(email),
-                  onDeleted: () => setState(() => _emails = [
-                    for (final e in _emails)
-                      if (e != email) e,
-                  ]),
-                ),
-            ],
-          ),
-
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _email,
-                keyboardType: TextInputType.emailAddress,
-                onSubmitted: (_) => _addEmail(),
+            ),
+            if (fresh && _connections.length > 1) ...[
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                initialValue: _connectionId,
+                isExpanded: true,
                 decoration: const InputDecoration(
-                  labelText: 'Add an address',
-                  hintText: 'office@example.com',
+                  labelText: 'Phone account',
                   border: OutlineInputBorder(),
-                  isDense: true,
                 ),
+                items: [
+                  for (final c in _connections)
+                    DropdownMenuItem(value: c.id, child: Text(c.label)),
+                ],
+                onChanged: (id) => setState(() => _connectionId = id),
               ),
-            ),
-            const SizedBox(width: 12),
-            OutlinedButton(onPressed: _addEmail, child: const Text('Add')),
+            ],
           ],
         ),
 
-        const SizedBox(height: 24),
-        Row(
+        SettingsSection(
+          title: 'Greeting',
           children: [
-            FilledButton(
-              onPressed: _canEdit && !_saving ? _save : null,
-              child: Text(_saving ? 'Saving…' : 'Save'),
+            TextField(
+              controller: _greeting,
+              maxLines: 4,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText: 'Greeting',
+
+                // The place you are standing in, not a company from a
+                // screenshot. A suggestion naming somebody else's business is
+                // worse than no suggestion: it reads as a template nobody
+                // adapted, and it is exactly the kind of thing that gets saved
+                // unedited and then spoken to a real caller.
+                hintText: 'You have reached $_placeName. Leave a number and we '
+                    'will ring you back the same day.',
+                helperText: 'Spoken to the caller. Left empty, they hear the '
+                    'built-in sentence.',
+                helperMaxLines: 2,
+                border: const OutlineInputBorder(),
+              ),
             ),
-            const SizedBox(width: 12),
-            TextButton(
-              onPressed: () => setState(() => _editing = null),
-              child: const Text('Cancel'),
+
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.record_voice_over_outlined, size: 18),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'A caller hears exactly: “'
+                      '${_greeting.text.trim().isEmpty ? 'Please leave a message after the tone.' : _greeting.text.trim()}'
+                      '”',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+
+        SettingsSection(
+          title: 'Where messages go',
+          children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _transcribe,
+              onChanged: (v) => setState(() => _transcribe = v),
+              title: const Text('Write messages down'),
+              subtitle: Text(
+                'Twilio charges per transcription, and returns nothing at all '
+                'for audio it cannot make out — a blank transcript is not an '
+                'error, so the recording stays the record.',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+
+            const Divider(height: 32),
+            Text('Tell these people', style: theme.textTheme.labelLarge),
+            const SizedBox(height: 2),
+            Text(
+              'Email addresses, not users — the person who should hear about a '
+              'sales voicemail is often not signed in here at all.',
+              style: theme.textTheme.bodySmall,
+            ),
+
+            const SizedBox(height: 12),
+            if (_emails.isNotEmpty)
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: [
+                  for (final email in _emails)
+                    InputChip(
+                      label: Text(email),
+                      onDeleted: () => setState(
+                        () => _emails = [
+                          for (final e in _emails)
+                            if (e != email) e,
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _email,
+                    keyboardType: TextInputType.emailAddress,
+                    onSubmitted: (_) => _addEmail(),
+                    decoration: const InputDecoration(
+                      labelText: 'Add an address',
+                      hintText: 'office@example.com',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton(onPressed: _addEmail, child: const Text('Add')),
+              ],
+            ),
+          ],
+        ),
+
+        SettingsSection(
+          title: 'After the beep',
+          children: [
+            TextField(
+              controller: _seconds,
+              keyboardType: TextInputType.number,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'Longest message (seconds)',
+                helperText: 'Between 10 and 3600. Twilio’s own limits.',
+                border: OutlineInputBorder(),
+              ),
             ),
           ],
         ),

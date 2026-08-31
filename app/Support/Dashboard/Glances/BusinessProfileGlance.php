@@ -5,7 +5,7 @@ namespace App\Support\Dashboard\Glances;
 use App\Models\BusinessLocation;
 use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
-use App\Support\Dashboard\Glance;
+use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
@@ -21,37 +21,14 @@ use App\Support\Tenancy\TenantContext;
  * Maps. Nobody finds out from a chart — they find out when a customer says they
  * could not find the business. That gap is the whole reason this box exists.
  */
-final class BusinessProfileGlance implements Glance
+final class BusinessProfileGlance extends DescribedGlance
 {
-    public function key(): string
-    {
-        return 'business_profile';
-    }
-
-    public function label(): string
-    {
-        return 'Business Profile';
-    }
-
-    public function permission(): string
-    {
-        return 'business_profile.view';
-    }
-
-    public function allowedPresentations(): array
-    {
-        return ['text'];
-    }
-
-    public function defaultPresentation(): string
-    {
-        return 'text';
-    }
-
-    public function snapshot(): bool
-    {
-        return true;
-    }
+    protected const KEY = 'business_profile';
+    protected const LABEL = 'Business Profile';
+    protected const PERMISSION = 'business_profile.view';
+    protected const PRESENTATIONS = ['text'];
+    protected const DEFAULT_PRESENTATION = 'text';
+    protected const SNAPSHOT = true;
 
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {

@@ -5,6 +5,7 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import 'voice_device.dart';
+import 'staff_thread.dart';
 
 /// Call desk — layout 1: teammates, pad, person. Below 600px, one pane at a time.
 class CallTab extends StatefulWidget {
@@ -45,6 +46,14 @@ class _CallTabState extends State<CallTab> {
 
   String? _numberId;
   String? _teammateId;
+
+  /// The colleague whose thread has taken over the Team column, if any.
+  _Teammate? _chatWith;
+
+  /// Unread messages waiting, per sender. Counted per person rather than as
+  /// one total, because the roster is where you act on it — a single number
+  /// says you have messages without saying whose.
+  Map<String, int> _unread = const {};
   _CallPane _pane = _CallPane.pad;
   bool _dnd = false;
   bool _onCall = false;
@@ -87,6 +96,18 @@ class _CallTabState extends State<CallTab> {
     for (final number in _numbers) {
       if (number.id == _numberId) return number;
     }
+
+    // Nothing chosen: the line assigned to this person on Team, before the
+    // first on the account.
+    //
+    // Falling straight to `.first` is what made every outbound call in the
+    // business go out under one number — nobody ever changed the picker, so
+    // four people ringing four customers all showed the same line and every
+    // callback landed on whoever answered it.
+    for (final number in _numbers) {
+      if (number.assignedToMe) return number;
+    }
+
     return _numbers.isEmpty ? null : _numbers.first;
   }
 
@@ -149,6 +170,8 @@ class _CallTabState extends State<CallTab> {
       'connection_id': number.connectionId,
     });
     if (!mounted) return;
+
+    await _loadUnread();
 
     if (presence.ok) {
       setState(() {
@@ -282,7 +305,9 @@ class _CallTabState extends State<CallTab> {
 
     if (!results[0].ok || !results[1].ok) return;
 
-    final tags = _Tag.listFrom(results[0].body).where((t) => t.isActive).toList();
+    final tags = _Tag.listFrom(
+      results[0].body,
+    ).where((t) => t.isActive).toList();
     if (tags.isEmpty) return;
 
     final data = results[1].body['data'];
@@ -307,10 +332,9 @@ class _CallTabState extends State<CallTab> {
       _tagError = null;
     });
 
-    final response = await widget.api.patch(
-      '/phone/calls/$callId/tag',
-      {'tag_id': tagId},
-    );
+    final response = await widget.api.patch('/phone/calls/$callId/tag', {
+      'tag_id': tagId,
+    });
 
     if (!mounted) return;
 
@@ -380,6 +404,38 @@ class _CallTabState extends State<CallTab> {
     _loadMessages();
   }
 
+  Widget _badge(ThemeData theme, int count) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary,
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: Text(
+        '$count',
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: theme.colorScheme.onPrimary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _loadUnread() async {
+    final response = await widget.api.get('/staff-messages/unread');
+    if (!mounted || !response.ok) return;
+
+    final rows = response.body['data'];
+
+    setState(() {
+      _unread = {
+        if (rows is Map)
+          for (final entry in rows.entries)
+            entry.key.toString(): int.tryParse(entry.value.toString()) ?? 0,
+      };
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return AsyncBody(
@@ -433,18 +489,30 @@ class _CallTabState extends State<CallTab> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'This desk is not connected to the phone network, so it '
-                'cannot take or make calls. Reload the page; if it keeps '
-                'happening the network is blocking the connection.',
+                _device.supported
+                    ? 'This desk is not connected to the phone network, so it '
+                          'cannot take or make calls. Reload the page; if it '
+                          'keeps happening the network is blocking the '
+                          'connection.'
+                    // A PERMANENT FACT, NOT A FAULT.
+                    //
+                    // The Twilio Voice SDK is a browser script, so a desktop
+                    // build has no way to place a call at all. Saying "the
+                    // network is blocking the connection" and offering Retry
+                    // sends somebody to their firewall for something that can
+                    // never work, and they will go back tomorrow.
+                    : 'Calls are made in the browser. This app cannot place '
+                          'or take them — open EzBizi in a web browser to use '
+                          'the phone. Everything else here works normally.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onErrorContainer,
                 ),
               ),
             ),
-            TextButton(
-              onPressed: _register,
-              child: const Text('Try again'),
-            ),
+            // No Retry where retrying cannot succeed. A control that can
+            // only ever fail is worse than none: it reads as "not yet".
+            if (_device.supported)
+              TextButton(onPressed: _register, child: const Text('Try again')),
           ],
         ),
       ),
@@ -466,15 +534,9 @@ class _CallTabState extends State<CallTab> {
                 style: theme.textTheme.bodyMedium,
               ),
             ),
-            FilledButton(
-              onPressed: _accept,
-              child: const Text('Accept'),
-            ),
+            FilledButton(onPressed: _accept, child: const Text('Accept')),
             const SizedBox(width: 8),
-            OutlinedButton(
-              onPressed: _decline,
-              child: const Text('Decline'),
-            ),
+            OutlinedButton(onPressed: _decline, child: const Text('Decline')),
           ],
         ),
       ),
@@ -534,13 +596,35 @@ class _CallTabState extends State<CallTab> {
 
   Widget _teammatesPane() {
     final theme = Theme.of(context);
+    final chat = _chatWith;
+
+    // The column BECOMES the thread rather than the thread opening elsewhere.
+    // Somebody messaging a colleague from here is on a call or about to be,
+    // so evicting the pad or the customer would take away the thing the
+    // message is about.
+    if (chat != null) {
+      return StaffThread(
+        api: widget.api,
+        withUserId: chat.userId,
+        withName: chat.name,
+        onBack: () => setState(() => _chatWith = null),
+        onRead: _loadUnread,
+      );
+    }
+
+    final waiting = _unread.values.fold<int>(0, (sum, n) => sum + n);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-          child: Text('Team', style: theme.textTheme.titleSmall),
+          child: Row(
+            children: [
+              Expanded(child: Text('Team', style: theme.textTheme.titleSmall)),
+              if (waiting > 0) _badge(theme, waiting),
+            ],
+          ),
         ),
         Divider(height: 1, color: EzBiziTheme.edge(context)),
         Expanded(
@@ -580,7 +664,10 @@ class _CallTabState extends State<CallTab> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(row.name, style: theme.textTheme.bodyMedium),
+                                  Text(
+                                    row.name,
+                                    style: theme.textTheme.bodyMedium,
+                                  ),
                                   Text(
                                     _stateLabel(row.state),
                                     style: theme.textTheme.bodySmall?.copyWith(
@@ -589,6 +676,22 @@ class _CallTabState extends State<CallTab> {
                                   ),
                                 ],
                               ),
+                            ),
+
+                            // Messaging is its own control rather than the
+                            // row's tap, because the row already means "call
+                            // this person" and a colleague who is mid-job
+                            // wants the other one.
+                            if ((_unread[row.userId] ?? 0) > 0)
+                              _badge(theme, _unread[row.userId]!),
+                            IconButton(
+                              tooltip: 'Message ${row.name}',
+                              visualDensity: VisualDensity.compact,
+                              icon: const Icon(
+                                Icons.chat_bubble_outline,
+                                size: 18,
+                              ),
+                              onPressed: () => setState(() => _chatWith = row),
                             ),
                           ],
                         ),
@@ -631,7 +734,12 @@ class _CallTabState extends State<CallTab> {
     // "transcript stretches to the bottom" for "the Call button is always
     // reachable" is the right way round.
     return SingleChildScrollView(
-      child: _padColumn(theme, number, showBack: showBack, showPerson: showPerson),
+      child: _padColumn(
+        theme,
+        number,
+        showBack: showBack,
+        showPerson: showPerson,
+      ),
     );
   }
 
@@ -896,6 +1004,7 @@ class _Number {
     required this.label,
     required this.transcribe,
     required this.smsOutboundAllowed,
+    required this.assignedToMe,
   });
 
   final String id;
@@ -905,6 +1014,9 @@ class _Number {
   final bool transcribe;
   final bool smsOutboundAllowed;
 
+  /// Whether this is the line the person reading calls out from, set on Team.
+  final bool assignedToMe;
+
   factory _Number.fromJson(Map<String, dynamic> json) => _Number(
     id: json['id'] as String? ?? '',
     connectionId: json['connection_id'] as String? ?? '',
@@ -912,6 +1024,7 @@ class _Number {
     label: json['label'] as String? ?? json['e164'] as String? ?? '',
     transcribe: json['transcribe'] == true,
     smsOutboundAllowed: json['sms_outbound_allowed'] == true,
+    assignedToMe: json['assigned_to_me'] == true,
   );
 }
 
@@ -1011,10 +1124,18 @@ extension _Keypad on _CallTabState {
   /// on a phone. 46px tall with 8px gaps clears the 44px touch target.
   Widget _keypad(ThemeData theme) {
     const glyphs = <(String, String)>[
-      ('1', ''), ('2', 'ABC'), ('3', 'DEF'),
-      ('4', 'GHI'), ('5', 'JKL'), ('6', 'MNO'),
-      ('7', 'PQRS'), ('8', 'TUV'), ('9', 'WXYZ'),
-      ('*', ''), ('0', '+'), ('#', ''),
+      ('1', ''),
+      ('2', 'ABC'),
+      ('3', 'DEF'),
+      ('4', 'GHI'),
+      ('5', 'JKL'),
+      ('6', 'MNO'),
+      ('7', 'PQRS'),
+      ('8', 'TUV'),
+      ('9', 'WXYZ'),
+      ('*', ''),
+      ('0', '+'),
+      ('#', ''),
     ];
 
     return Center(

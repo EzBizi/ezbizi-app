@@ -89,11 +89,15 @@ void main() {
     // two literals makes the two disagree. Trust this number; it is the one the
     // gate enforces.
     //
-    // Roughly 11 of these are benign (`Colors.transparent`) and 2 are the
-    // sanctioned exception in signature_field.dart, which names black ink and
-    // white paper because they are the pixels of a printed document. They are
-    // inside the count deliberately: excluding them needs a second pattern that
-    // itself drifts, and the ratchet only cares about direction.
+    // SUPERSEDED, and left here because the reasoning was wrong in a way worth
+    // seeing. This used to say sanctioned literals were "inside the count
+    // deliberately", on the grounds that excluding them needs a second pattern
+    // that itself drifts. That was true about the mechanism and wrong about the
+    // consequence: a count that mixes allowed colours with owed ones cannot be
+    // acted on, because nobody can tell which is which — and the only way to add
+    // an allowed one is to raise the ceiling, which is the exact move the ratchet
+    // exists to prevent. They are excluded now. See `sanctioned` below.
+    //
     // Corrected 79 -> 80 on 2026-08-31. NOT a new literal: the count is
     // IDENTICAL at d0ce75a (where 79 was written) and at main, so nothing was
     // added after the baseline was declared. 79 was measured in a worktree that
@@ -132,20 +136,66 @@ void main() {
     // The second was used to measure the damage done by the first, and produced
     // "24 files were invisible" when the true answer was one. Two wrong numbers
     // in opposite directions, from the same wrong assumption about one tool.
-    const baseline = 80;
+    // SANCTIONED EXCEPTIONS are excluded from the count rather than absorbed
+    // into the baseline. A literal inside the number is invisible: nobody can
+    // tell an allowed one from a debt, and the only way to add another is to
+    // raise the ceiling -- which is the move this ratchet exists to prevent.
+    //
+    // Excluding them instead makes the escape hatch an ARGUMENT rather than an
+    // arithmetic edit. To add a colour literal legitimately you add your file
+    // here with a reason somebody can disagree with, in a diff that shows what
+    // you are claiming. Raising `baseline` says nothing and cannot be refused.
+    const sanctioned = <String, String>{
+      // Black ink and white paper are the pixels of a printed document. Theme
+      // colours would rasterise a signature as near-white in dark mode, and it
+      // would be invisible on paper. The reason lives at the constant too.
+      'screens/inspection/signature_field.dart':
+          'a signature is printed, so its colours are ink and paper, not theme',
+
+      // The pre-login surface. auth_shell paints a fixed dark gradient
+      // (#071018 -> #0A2233 -> #06384E) and everything on it is white. It is
+      // deliberately OUTSIDE the theme: it is what you see before you are in
+      // the app, and it looks the same in light and dark by design.
+      //
+      // Converting these would be an active regression, not a cleanup —
+      // `Colors.white` here means "on my own dark background", so mapping it to
+      // `onSurface` renders the login screen dark-on-dark in light mode.
+      'widgets/auth_shell.dart':
+          'a fixed dark pre-login surface; white here means on-my-own-background',
+      'widgets/auth_preview.dart':
+          'drawn on auth_shell dark gradient, same fixed surface',
+
+      // A printed document and the desk it sits on. The file already documents
+      // this itself — "Ink, and the paper it sits on. DocumentRenderer's
+      // stylesheet, in Dart" — and says why they do not follow the theme.
+      'screens/hr/contract_document_page.dart':
+          'renders paper and ink for print; already reasoned about at the constants',
+    };
+
+    // MEASURED AFTER EXCLUDING THE ABOVE, and the drop is the finding rather
+    // than an adjustment. The count was never that much DEBT: roughly half of it
+    // was three surfaces that are deliberately outside the theme and say so in
+    // their own code. A ratchet that counts documented, correct decisions as
+    // debt reports a number nobody can act on, and manufactures pressure to
+    // "clean up" things whose conversion would be a regression.
+    //
+    // What remains is the honest figure, and it is small enough to finish.
+    const baseline = 31;
 
     test('no new hardcoded colours outside theme.dart', () {
       final pattern = RegExp(r'Color\(0x|Colors\.[a-z]');
       var found = 0;
+      var scanned = 0;
       final worst = <String, int>{};
 
       for (final file in Directory('lib')
           .listSync(recursive: true)
           .whereType<File>()
           .where((f) => f.path.endsWith('.dart'))) {
-        if (file.path.replaceAll(r'\', '/').endsWith('core/theme.dart')) {
-          continue;
-        }
+        scanned++;
+        final rel = file.path.replaceAll(r'\', '/');
+        if (rel.endsWith('core/theme.dart')) continue;
+        if (sanctioned.keys.any(rel.endsWith)) continue;
         final hits = pattern.allMatches(file.readAsStringSync()).length;
         if (hits > 0) {
           found += hits;
@@ -155,6 +205,27 @@ void main() {
 
       final ranked = worst.entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
+
+      // A RATCHET THAT ONLY CHECKS AN UPPER BOUND PASSES WHEN ITS INSTRUMENT
+      // BREAKS. Break the regex, point `Directory` at the wrong cwd, or rename
+      // lib/, and `found` is 0 — comfortably under the baseline, green forever,
+      // and nobody is told the gate stopped looking.
+      //
+      // This is the failure the deploy desk hit an hour after this file was
+      // written: a grep with wrong escaping matched nothing, and "no match" was
+      // read as "no problem". It was caught only because the answer was too
+      // convenient. A gate cannot rely on someone finding its output suspicious.
+      //
+      // So the floors are asserted first and separately from the ceiling. They
+      // are not the rule — they are the proof that the rule was measured.
+      expect(scanned, greaterThan(100),
+          reason: 'Only $scanned .dart files scanned under lib/. The scan is '
+              'broken or the working directory is wrong — this test says '
+              'nothing about colour literals until that is fixed.');
+      expect(found, greaterThan(0),
+          reason: 'Zero colour literals matched anywhere outside theme.dart. '
+              'That has never been true; the pattern is broken. A ratchet that '
+              'matches nothing passes silently, which is worse than a red.');
 
       expect(
         found,

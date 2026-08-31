@@ -8,24 +8,132 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0128',
+      date: '31 Aug 2026',
+      items: [
+        'Tasks: a board can now be read four new ways as well as the table. '
+            'Kanban puts cards in columns you can drag between. Calendar '
+            'shows the month by due date. Timeline draws each task as a bar '
+            'from its start to its due date. Workload shows how many tasks '
+            'each person is holding, day by day or week by week.',
+        'Workload counts tasks, not hours. EzBizi does not know how long '
+            'anyone works, so it does not pretend to - there is no capacity '
+            'line and nothing turns red.',
+        'A task can be marked as blocked by another task on the same board. '
+            'The Timeline draws the line between them. It is a note about '
+            'order, not a rule: nothing stops you finishing work early.',
+        'A task can repeat, either a set time after you finish it - right '
+            'for servicing something - or on a fixed schedule whether or '
+            'not the last one was done, which is right for a filing '
+            'deadline.',
+        'Timeline, Calendar and Workload can also be opened across every '
+            'board you can see rather than one at a time. Those are for '
+            'reading; open the board itself to change anything.',
+        'A task can no longer be saved with a start date after its own due '
+            'date. It used to save quietly and read as wrong everywhere it '
+            'appeared.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0127',
+      date: '31 Aug 2026',
+      items: [
+        'Phone: the desktop app now says that calls are made in the browser, '
+            'instead of reporting that the network is blocking the connection. '
+            'Calls have never been possible outside a browser - the part that '
+            'places them only exists there - so the old message sent people to '
+            'check a firewall for something that could not work.',
+        'Social: a post can be sent later. Pick the day and time, and it goes '
+            'out on your own clock - the one for the company or branch you are '
+            'looking at, not the server clock.',
+        'A picture or video you attach is shown before you send it, so you can '
+            'check it is the right one. Video plays in the composer.',
+        'A post sent to TikTok lands in the drafts of that TikTok account, '
+            'the profile - open TikTok to finish and post it. TikTok has not '
+            'audited the app yet. This replaces what the 0.0.0113 note said.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0126',
+      date: '31 Aug 2026',
+      items: [
+        'Phone: a new Team tab shows each person, their extension, and the '
+            'number they call out from. Numbers were being bought with nobody '
+            'assigned to them, so every outbound call went out under the same '
+            'line - four people ringing four customers all showed one number, '
+            'and every callback landed on whoever picked up.',
+        'Phone: the call desk now gives each column a fair share of the window '
+            'rather than fixing the two busiest at their smallest useful size '
+            'and giving every extra pixel to the dial pad.',
+        'The sidebar scrolls. On a shorter screen the module list used to run '
+            'off the bottom and draw over Settings and Development, and the '
+            'modules underneath could not be reached at all - there was '
+            'nothing to scroll with. Settings and Development stay pinned at '
+            'the foot where they always were.',
+        'The brand cyan was too pale to read. As text on white it sat at about '
+            'half the contrast needed to be legible, and white text on a cyan '
+            'button was the same - which mattered most where a filled colour '
+            'carries words, like a task title on a Gantt bar. Buttons, links '
+            'and the box outline you get when you click into a field are all a '
+            'deeper shade now. Dark mode is unchanged.',
+        'Five modules were drawing a generic chart icon on the dashboard '
+            'because nobody had chosen one for them: Tasks, Reviews, Leads, '
+            'Business profile and Monitoring. They have their own now.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0125',
+      date: '31 Aug 2026',
+      items: [
+        'Phone: a ring group now shows who would actually be rung, not how many '
+            'people are in it. A group of four where everyone is on Do not '
+            'disturb rings nobody, and it used to look identical to a working '
+            'one.',
+        'Phone: a menu that no caller ever hears is now shown as skipped. A menu '
+            'can be built, named and attached to a line and still be stepped '
+            'past on every call, and nothing said so - the caller does not know '
+            'they missed it and you would never get a complaint about it.',
+        'Phone: each number lists its full routing, so you can see where a call '
+            'goes rather than inferring it.',
+        'Notifications: the bell now refreshes on its own and raises desktop and '
+            'phone notifications, instead of only checking once when you signed '
+            'in.',
+        'Notifications: turning notifications off now turns all of them off. The '
+            'setting was only being honoured in one of the four places that '
+            'send, so an organization that switched it off kept receiving most '
+            'of them.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0124',
+      date: '31 Aug 2026',
+      items: [
+        'Scheduling: set how many jobs you can take, per time slot, per day, '
+            'for each service area. Most businesses run the same hours '
+            'everywhere, so Settings shows your pattern first and lists the '
+            'areas that differ from it, rather than making you set the same '
+            'thing thirty times.',
+        'A service area holds its own zip codes, and a zip belongs to exactly '
+            'one of them - so searching a zip has one answer rather than two. '
+            'A zip another area already covers is refused, and says which area '
+            'has it.',
+        'Closing a day removes it rather than setting it to zero, because "we '
+            'do not work Sundays" and "Sunday is full" are different things '
+            'and should not look the same.',
+        'Availability: search a zip code or an area and see that week. The '
+            'numbers are what you are set up to take - booked jobs are not '
+            'counted yet, and the screen says so rather than implying the '
+            'week is empty.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0123',
       date: '31 Aug 2026',
       items: [
-        'Tasks: four new ways to look at a board - Kanban, Calendar, '
-            'Timeline, and Workload - alongside the table, all reading the '
-            'same boards and the same permissions.',
-        'Tasks: a task can now repeat on its own schedule, either a fixed '
-            'calendar cadence or a fixed gap after you finish the one '
-            'before it.',
-        'Tasks: draw a line between two tasks on the Timeline to show one '
-            'blocks the other. It is a visual note, not a rule - finishing '
-            'the blocked task is never refused because of it.',
-        'Tasks: Workload shows how many tasks land on each day, not how '
-            'many hours they add up to.',
-        'Tasks: a start date can no longer be set after the due date. This '
-            'was always meant to be refused and now actually is - it may '
-            'catch a date pair you set earlier that should not have gone '
-            'through.',
+        'Web Management: "Get the plugin" now fetches the current version from '
+            'wordpress.org. It used to hand you whatever copy this server was '
+            'built with, which could be older than the one the page was '
+            'describing.',
       ],
     ),
     VersionRelease(
@@ -147,8 +255,11 @@ class VersionHistory {
       items: [
         'Social: write a post, choose the accounts, and send it. Publishing '
             'was a console command; it is a button now.',
-        'A post sent to TikTok lands on your profile privately, because TikTok '
-            'has not audited the app yet. Everywhere else posts publicly.',
+        'A post sent to TikTok lands in the drafts of that TikTok account - '
+            'TikTok to finish and post it. (Corrected 31 Aug 2026: this note '
+            'used to say the post landed on your profile privately. It did '
+            'not, and somebody checking their profile would have concluded '
+            'publishing was broken.)',
         'Inspections: take photographs while you walk the job, and download the '
             'finished report as a PDF.',
         'A customer found by search says which company owns the franchise — on '

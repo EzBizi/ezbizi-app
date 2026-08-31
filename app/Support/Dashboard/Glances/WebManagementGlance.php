@@ -6,7 +6,7 @@ use App\Models\Company;
 use App\Models\User;
 use App\Models\WebSite;
 use App\Support\Dashboard\DashboardPeriod;
-use App\Support\Dashboard\Glance;
+use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
@@ -28,37 +28,14 @@ use App\Support\Tenancy\TenantContext;
  * promised a website editor. That was never what got built and the sentence had
  * become false, which on a dashboard is worse than an empty space.
  */
-final class WebManagementGlance implements Glance
+final class WebManagementGlance extends DescribedGlance
 {
-    public function key(): string
-    {
-        return 'web_management';
-    }
-
-    public function label(): string
-    {
-        return 'Web Management';
-    }
-
-    public function permission(): string
-    {
-        return 'web_management.view';
-    }
-
-    public function allowedPresentations(): array
-    {
-        return ['text'];
-    }
-
-    public function defaultPresentation(): string
-    {
-        return 'text';
-    }
-
-    public function snapshot(): bool
-    {
-        return true;
-    }
+    protected const KEY = 'web_management';
+    protected const LABEL = 'Web Management';
+    protected const PERMISSION = 'web_management.view';
+    protected const PRESENTATIONS = ['text'];
+    protected const DEFAULT_PRESENTATION = 'text';
+    protected const SNAPSHOT = true;
 
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {

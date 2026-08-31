@@ -814,11 +814,24 @@ class ActionRunner
         return [
             'type' => 'notify',
             'ok' => true,
+            // Zero is not a failure, but it stopped meaning one thing.
+            //
+            // It has always meant "nobody has reach over that record" — a rule
+            // scoped to a franchise nobody is assigned to. Since the in-app
+            // gate moved inside dispatch() it ALSO means "this company has
+            // automation notifications switched off", and those two send a
+            // person debugging a rule to opposite places: one is a scoping
+            // problem in the rule, the other is a settings screen the rule
+            // author may not even be able to open.
+            //
+            // allows() is public for this. Asking it costs one settings read on
+            // the zero path only, which is the path somebody is already staring
+            // at because their rule looks broken.
             'detail' => $sent === 0
-                // Not a failure. A rule scoped to a franchise nobody is assigned
-                // to has nobody to tell, and saying so is more useful than a
-                // success that quietly reached no one.
-                ? "Nobody has reach over that record, so there was no one to tell: {$title}"
+                ? ($this->notifications->allows('automation', $subject)
+                    ? "Nobody has reach over that record, so there was no one to tell: {$title}"
+                    : 'Automation notifications are switched off for this company, so nobody '
+                        ."was told: {$title}")
                 : "Told {$sent} ".($sent === 1 ? 'person' : 'people').": {$title}",
         ];
     }

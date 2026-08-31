@@ -155,6 +155,21 @@ class ClientModuleScreensTest extends TestCase
                 && $m->key !== 'dashboard')
             ->keys()->all();
 
+        /*
+         * A FLOOR ON THE REGISTRY SIDE, not only on the Dart side.
+         *
+         * `array_diff($tabs, ...)` over an EMPTY $tabs is empty, so this test
+         * passes green while checking nothing at all -- and nothing says the
+         * scan stopped working. Rename ROLES_TAB, change the `sidebar` flag, or
+         * break the filter, and the gate reports success forever.
+         *
+         * An upper bound alone is not a gate; it needs proof that the
+         * measurement ran. Found by reading another session's post-mortem of
+         * the identical hole in the colour-literal ratchet (f31d990) and asking
+         * whether it described this test too. It did.
+         */
+        $this->assertGreaterThan(5, count($tabs), 'Found almost no sidebar modules — the registry filter has stopped matching, so this test is no longer checking anything.');
+
         $missing = array_values(array_diff($tabs, $withIcons, self::PANELS_WITHOUT_AN_ICON));
 
         sort($missing);

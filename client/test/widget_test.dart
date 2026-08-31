@@ -513,6 +513,90 @@ void main() {
   //
   // Asserting on the painted width is the only check that distinguishes "faint"
   // from "not there", which is exactly the distinction that was missed.
+  testWidgets('a short window scrolls the destinations and keeps the tail', (
+    tester,
+  ) async {
+    // The defect this exists for: NavigationRail lays its destinations out in a
+    // Column and cannot scroll. In a bare Expanded, a sidebar shorter than its
+    // contents OVERFLOWED -- the destinations drew over Settings, and the ones
+    // underneath were unreachable rather than hidden, because there was nothing
+    // to scroll with. Reported from a 900px screen.
+    //
+    // 320px of height against sixteen destinations is well past the threshold.
+    tester.view.physicalSize = const Size(1200, 320);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: Row(
+            children: [
+              NavigationSidebar(
+                expanded: true,
+                width: 220,
+                destinations: [
+                  for (final name in const [
+                    'Dashboard', 'Tasks', 'Human Resources', 'Customers',
+                    'Jobs', 'Scheduling', 'Inspection', 'Marketing',
+                    'Web Management', 'Phone', 'Fleet Management', 'Inventory',
+                    'Services', 'Email', 'Automations', 'Monitoring',
+                  ])
+                    Destination(name, Icons.circle_outlined, const SizedBox()),
+                ],
+                pinned: [
+                  Destination(
+                    'Settings',
+                    Icons.settings_outlined,
+                    const SizedBox(),
+                  ),
+                ],
+                staffOnly: const [],
+                selectedIndex: 0,
+                pinnedIndex: null,
+                staffIndex: null,
+                onSelected: (_) {},
+                onPinnedSelected: (_) {},
+                onStaffSelected: (_) {},
+              ),
+              const Expanded(child: SizedBox()),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // 1. It does not overflow. A RenderFlex overflow is an exception in a test,
+    //    so this is what actually fails if the scroll view is removed.
+    expect(
+      tester.takeException(),
+      isNull,
+      reason:
+          'The sidebar overflowed at 320px tall. The destinations need to '
+          'scroll -- a NavigationRail has no scrolling of its own.',
+    );
+
+    // 2. The destinations are genuinely scrollable rather than merely clipped.
+    //    Clipping would hide them with no way to reach them, which is the
+    //    defect wearing a tidier appearance.
+    final scroller = find.descendant(
+      of: find.byType(NavigationSidebar),
+      matching: find.byType(Scrollable),
+    );
+    expect(scroller, findsWidgets);
+
+    // 3. And the tail did NOT scroll away with them. Going to Settings is often
+    //    what somebody does because they could not find a module in the list.
+    expect(
+      find.text('Settings'),
+      findsOneWidget,
+      reason: 'Settings must stay pinned when the destinations scroll.',
+    );
+  });
+
   testWidgets('the sidebar rule is actually drawn, not zero-width', (
     tester,
   ) async {

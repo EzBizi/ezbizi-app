@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi — Your account, on a phone</title>
+<style>
+  :root {
+    --cyan:#00AEEF; --primary:#00708F; --cyan-deep:#00708F;
+    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+    --ok:#0B8F5B; --err:#E07070; --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1200px; margin:0 auto; padding:16px 16px 48px; }
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:18px; margin:0 0 4px; }
+  header.picker p { margin:0 0 12px; color:var(--muted); max-width:82ch; }
+  .locked, .ask, .found { font-size:13px; border-radius:8px; padding:10px 12px;
+    margin-bottom:12px; max-width:96ch; }
+  .locked { background:var(--info-c); } .ask { background:var(--warn-c); } .found { background:var(--err-c); }
+  .locked strong, .ask strong, .found strong { display:block; margin-bottom:4px; }
+  .locked strong { color:var(--cyan-deep); } .ask strong { color:var(--warn); } .found strong { color:#A33; }
+  .ask b, .found b { display:block; margin-top:7px; }
+  .nums { display:flex; flex-wrap:wrap; gap:8px; }
+  .nums button { min-width:44px; min-height:44px; border-radius:8px;
+    border:1px solid var(--line); background:var(--page); color:var(--ink); }
+  .nums button[aria-pressed="true"] { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:94ch; }
+  .caption strong { display:block; margin-bottom:4px; }
+
+  .stage { display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; }
+  .phone { width:375px; border:8px solid var(--ink); border-radius:30px; overflow:hidden;
+    background:var(--page); height:720px; display:flex; flex-direction:column; }
+  .phlab { font-size:11px; color:var(--muted); text-align:center; margin-top:7px; }
+  .bar { padding:12px 14px; border-bottom:1px solid var(--line); display:flex;
+    align-items:center; gap:9px; font-weight:600; font-size:15px; flex:none; }
+  .bar .back { color:var(--primary); font-weight:500; font-size:14px; }
+  .bar .act { margin-left:auto; color:var(--primary); font-weight:600; font-size:14px; }
+  .scroll { overflow:auto; flex:1; }
+
+  /* the settings-row idiom */
+  .grp { margin:14px 0 0; }
+  .grp .gh { font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--muted); padding:0 16px 6px; font-weight:700; }
+  .rows { background:var(--page); border-top:1px solid var(--line);
+    border-bottom:1px solid var(--line); }
+  .r { display:flex; align-items:center; gap:12px; padding:13px 16px;
+    border-bottom:1px solid var(--line); min-height:52px; }
+  .r:last-child { border-bottom:0; }
+  .r .ic { width:26px; height:26px; border-radius:7px; background:var(--alt);
+    border:1px solid var(--line); flex:none; }
+  .r .lab { flex:1; min-width:0; }
+  .r .lab b { display:block; font-weight:500; font-size:14px; }
+  .r .val { color:var(--muted); font-size:13px; text-align:right; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; max-width:150px; }
+  .r .chev { color:#C9D3DB; flex:none; }
+  .r.ro { background:var(--alt); }
+  .r.ro .val { color:var(--ink); }
+
+  .hero { padding:20px 16px 16px; text-align:center; border-bottom:1px solid var(--line); }
+  .hero .av { width:82px; height:82px; border-radius:50%; background:#C9D3DB; margin:0 auto 10px; }
+  .hero h2 { margin:0 0 2px; font-size:19px; }
+  .hero .sub { color:var(--muted); font-size:13px; }
+  .hero .edit { display:inline-block; margin-top:10px; color:var(--primary);
+    font-size:13px; font-weight:600; }
+
+  .acc { border-bottom:1px solid var(--line); }
+  .acc .ah { display:flex; align-items:center; gap:10px; padding:14px 16px;
+    font-weight:600; font-size:14px; min-height:50px; }
+  .acc .ah .chev { margin-left:auto; color:var(--muted); }
+  .acc .ab { padding:0 16px 14px; }
+
+  .f { margin-bottom:13px; }
+  .f label { display:block; font-size:12px; color:var(--muted); margin-bottom:5px; }
+  .ctl { display:flex; align-items:center; min-height:46px; border:1px solid var(--line);
+    border-radius:10px; padding:0 13px; background:var(--page); font-size:15px; }
+  .ctl.ph { color:#9AA5AF; }
+  .hintline { font-size:12px; color:var(--muted); margin-top:6px; }
+  .chips { display:flex; gap:7px; flex-wrap:wrap; }
+  .chips b { font-weight:500; font-size:13px; padding:8px 13px; border-radius:999px;
+    border:1px solid var(--line); min-height:40px; display:flex; align-items:center; }
+  .chips b.on { background:var(--info-c); border-color:transparent; color:var(--cyan-deep); font-weight:600; }
+  .places { display:flex; flex-wrap:wrap; gap:6px; }
+  .places span { font-size:12px; padding:4px 10px; border-radius:999px; background:var(--alt);
+    border:1px solid var(--line); }
+  .foot { border-top:1px solid var(--line); background:var(--alt); padding:11px 14px;
+    display:flex; gap:8px; align-items:center; flex:none; }
+  .foot .state { color:var(--muted); font-size:12px; margin-right:auto; }
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:9px;
+    padding:9px 15px; min-height:42px; }
+  .btn.ghost { background:transparent; color:var(--primary); border:1px solid var(--line); }
+  .btn.sm { min-height:36px; padding:6px 12px; font-size:13px; }
+  .pill { font-size:11px; padding:2px 9px; border-radius:999px; background:var(--ok-c);
+    color:var(--ok); font-weight:600; }
+  .note { color:var(--muted); font-size:12px; margin-top:10px; max-width:94ch; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>Your account — the phone version</h1>
+
+    <div class="locked">
+      <strong>The premise, and it is Jose's correction rather than mine</strong>
+      Choosing layout 3 for the desktop does <b>not</b> mean the phone gets layout 3 narrowed.
+      A phone version can be a <b>completely different design for a different user in a different
+      situation</b> — and every “at 375px” I have drawn until now has been a desktop layout
+      squeezed, which is a habit rather than a decision.
+      <b>So this is not derived from layout 3.</b> Desktop layout 3 stays exactly as approved.
+    </div>
+
+    <div class="ask">
+      <strong>What a phone user actually does here, which is not what a desktop user does</strong>
+      <b>They came to change ONE thing.</b> A photo, a phone number, turn on two-factor, change a
+      password after a prompt. Nobody opens their account page on a phone to read their role and
+      the ten places they can act on.
+      <b>So the desktop question and the phone question are different.</b> Desktop answers
+      <em>“show me everything about my account”</em> — which is why a two-column layout with the
+      facts always visible is right there. A phone should answer <em>“what do you want to
+      change?”</em>, and a long scrolling form answers that badly: you scroll past nine things you
+      did not come for to reach the one you did.
+      <b>The read-only facts drop to the bottom, or behind a tap.</b> On desktop they cost nothing
+      because they sit in space that was empty anyway. On a phone every one of them is something
+      between you and the thing you opened the app to do.
+    </div>
+
+    <div class="found">
+      <strong>One thing that is a phone problem and does not exist on desktop</strong>
+      <b>A form with one Save at the bottom is hostile on a phone.</b> The keyboard covers roughly
+      half the screen, so a footer at the end of a scroll is behind the keyboard exactly while you
+      are typing — and “two changes not saved” is invisible at the moment it matters most.
+      Layouts 1 and 2 avoid it entirely by making each screen do <b>one</b> thing, so Save is
+      always in the bar and always reachable. Layout 3 keeps a single form and has to pin its
+      footer above the keyboard, which is possible and is one more thing to get right.
+    </div>
+
+    <p>Pick a number. <strong>1 is my recommendation.</strong> 4 shows what a detail screen
+      looks like, which is the same in 1 and 2.</p>
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+  <div class="stage" id="stage"></div>
+</div>
+
+<script>
+const CAPTIONS = {
+  1: ["1 · Rows that open one screen each (recommended)",
+      "The native idiom on both platforms: a short list of rows, each showing its CURRENT VALUE, each opening a focused screen with one job. It answers 'what do you want to change?' in one screen with no scrolling, and the value on the row means most visits end without opening anything — you came to check your number was right, and it is right there. Save lives in the bar of the detail screen, so it is never behind the keyboard. The read-only facts are one row, 'Role and access', because on a phone they are the least likely reason to be here. Weakness: changing three things is three pushes and three returns, where a single form would be one scroll — this optimises for the common visit at the expense of the rare one."],
+  2: ["2 · A profile header, then rows",
+      "Layout 1 with an identity block on top — photo, name, role — before the rows begin. Confirms you are in the right account, which matters more than it sounds when somebody has a staff account and an admin account, and makes the photo directly tappable rather than hidden one level down. Weakness: it spends about 150px of a 720px screen on information you already knew, pushing the rows you came for below the fold on smaller phones. Worth it only if being in the wrong account is a real risk here."],
+  3: ["3 · One scrolling form, sections collapsed",
+      "Everything on one screen, each section collapsed to a header you expand. Closest to the desktop mental model, so nothing is learned twice, and changing several things is one visit with no navigation at all. Weakness, and it is the reason this is not the recommendation: the keyboard. A single Save at the end of a long scroll sits behind the keyboard exactly while you type, so the footer has to be pinned above it — solvable, but it is a phone-only problem the other two simply do not have. Collapsed sections also hide the current values, so 'is my number right' needs a tap."],
+  4: ["4 · A detail screen — the same in layouts 1 and 2",
+      "What opens when a row is tapped. One job, a title that says which, and Save in the bar where the keyboard cannot reach it. Fields are full width because at 375 there is one column and nothing is gained by making them smaller. This is also where the masked date of birth earns its place a second time: a picker here would be a dialog over a phone screen, which is the worst version of the thing this app already forbids."]
+};
+
+const phone = (label, inner) => `
+  <div><div class="phone">${inner}</div><div class="phlab">${label}</div></div>`;
+
+const row = (icon, label, value, ro) => `
+  <div class="r ${ro?'ro':''}"><span class="ic"></span>
+    <span class="lab"><b>${label}</b></span>
+    ${value ? `<span class="val">${value}</span>` : ''}
+    <span class="chev">›</span></div>`;
+
+const ROWS = `
+  <div class="grp"><div class="gh">You</div><div class="rows">
+    ${row('','Photo','')}
+    ${row('','Name','Jose Luis Demasi')}
+    ${row('','Phone number','+1 (305) 724-2199')}
+    ${row('','Home address','Not given')}
+    ${row('','Gender and date of birth','Male · 1994')}
+  </div></div>
+  <div class="grp"><div class="gh">Signing in</div><div class="rows">
+    ${row('','Password','')}
+    ${row('','Two-factor','On · 8 codes left')}
+  </div></div>
+  <div class="grp"><div class="gh">Appearance</div><div class="rows">
+    ${row('','Theme','Match my device')}
+    ${row('','Sidebar','List')}
+  </div></div>
+  <div class="grp"><div class="gh">Assigned to you</div><div class="rows">
+    ${row('','Role and access','Administrator · 10 places', true)}
+    ${row('','Email','jose@ezbizi.com', true)}
+  </div></div>
+  <div style="height:16px"></div>`;
+
+const L1 = () => phone('Layout 1 — rows, each opening one screen',
+  `<div class="bar">Your account</div>
+   <div class="scroll">
+     <div style="padding:12px 16px 0;color:var(--muted);font-size:12px">
+       Yours, not the organization's.</div>
+     ${ROWS}
+   </div>`);
+
+const L2 = () => phone('Layout 2 — identity first, then rows',
+  `<div class="bar">Your account</div>
+   <div class="scroll">
+     <div class="hero">
+       <div class="av"></div>
+       <h2>Jose Luis Demasi</h2>
+       <div class="sub">Administrator · A1-Group</div>
+       <span class="edit">Change photo</span>
+     </div>
+     ${ROWS}
+   </div>`);
+
+const L3 = () => phone('Layout 3 — one form, sections collapsed',
+  `<div class="bar">Your account</div>
+   <div class="scroll">
+     <div class="acc">
+       <div class="ah">Who you are <span class="chev">⌄</span></div>
+       <div class="ab">
+         <div class="f"><label>First name</label><div class="ctl">Jose</div></div>
+         <div class="f"><label>Last name</label><div class="ctl">Demasi</div></div>
+         <div class="f"><label>Phone number</label><div class="ctl">+1 (305) 724-2199</div></div>
+         <div class="f"><label>Home address <span style="opacity:.7">optional</span></label>
+           <div class="ctl ph">Not given</div></div>
+       </div>
+     </div>
+     <div class="acc"><div class="ah">Gender and date of birth <span class="chev">›</span></div></div>
+     <div class="acc"><div class="ah">Signing in <span class="chev">›</span></div></div>
+     <div class="acc"><div class="ah">Appearance <span class="chev">›</span></div></div>
+     <div class="acc"><div class="ah">Assigned to you <span class="chev">›</span></div></div>
+   </div>
+   <div class="foot">
+     <span class="state"><b style="color:var(--warn)">1 change not saved</b></span>
+     <button class="btn ghost sm" type="button">Discard</button>
+     <button class="btn sm" type="button">Save</button>
+   </div>`);
+
+const L4 = () => `
+  ${phone('A detail screen — Phone number',
+    `<div class="bar"><span class="back">‹ Account</span> Phone number
+       <span class="act">Save</span></div>
+     <div class="scroll">
+       <div style="padding:16px">
+         <div class="f"><label>Phone number</label><div class="ctl">+1 (305) 724-2199</div>
+           <div class="hintline">Shown the way the rest of the app shows numbers. Used for
+             sign-in prompts, not for customers to reach you.</div></div>
+       </div>
+     </div>`)}
+  ${phone('A detail screen — Gender and date of birth',
+    `<div class="bar"><span class="back">‹ Account</span> About you
+       <span class="act">Save</span></div>
+     <div class="scroll">
+       <div style="padding:16px">
+         <div class="f"><label>Gender <span style="opacity:.7">optional</span></label>
+           <div class="chips"><b>Female</b><b class="on">Male</b><b>Non-binary</b>
+             <b>Prefer not to say</b></div></div>
+         <div class="f"><label>Date of birth <span style="opacity:.7">optional</span></label>
+           <div class="ctl" style="width:190px">14 / 04 / 1994</div>
+           <div class="hintline">Typed, not picked — a picker here would be a dialog over a
+             phone screen, and thirty years is a lot of months to page back through.</div></div>
+       </div>
+     </div>`)}
+  ${phone('Assigned to you — read only, so no Save',
+    `<div class="bar"><span class="back">‹ Account</span> Role and access</div>
+     <div class="scroll">
+       <div style="padding:16px">
+         <div class="f"><label>Role</label><div class="ctl" style="background:var(--alt)">Administrator</div></div>
+         <div class="f"><label>Organization</label><div class="ctl" style="background:var(--alt)">A1-Group</div></div>
+         <div class="f"><label>You can act on · 10 places</label>
+           <div class="places">${['Connecticut','DMV','Georgia','Illinois','New Jersey','Ohio',
+             'Texas','Washington','Nationwide','Florida'].map(p=>`<span>${p}</span>`).join('')}</div>
+           <div class="hintline">Permissions decide <b>what</b> you may do; this decides
+             <b>where</b>. An administrator changes these in Settings.</div></div>
+       </div>
+     </div>`)}
+  <p class="note"><b>No Save in the bar on the third one</b>, and that is the same signal the
+    desktop footer carries: nothing here can be changed, so nothing offers to change it.</p>`;
+
+const LAYOUTS = { 1:L1, 2:L2, 3:L3, 4:L4 };
+const nums = document.getElementById('nums'), stage = document.getElementById('stage'),
+      caption = document.getElementById('caption');
+Object.keys(LAYOUTS).forEach(k => {
+  const b = document.createElement('button'); b.type='button'; b.textContent=k;
+  b.addEventListener('click', () => show(+k)); nums.appendChild(b);
+});
+function show(i) {
+  [...nums.children].forEach((b,x) => b.setAttribute('aria-pressed', x+1===i ? 'true':'false'));
+  const e = CAPTIONS[i];
+  caption.innerHTML = '<strong>'+e[0]+'</strong>'+e[1];
+  stage.innerHTML = LAYOUTS[i]();
+}
+show(1);
+</script>
+</body>
+</html>
