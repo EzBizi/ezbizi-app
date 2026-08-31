@@ -1,5 +1,6 @@
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// Reads this machine's hardware/OS/network specs over the Windows native
@@ -16,13 +17,16 @@ class SpecsReader {
     try {
       final result = await _channel.invokeMapMethod<String, dynamic>('readSpecs');
       return (result == null || result.isEmpty) ? null : result;
-    } catch (_) {
+    } catch (e) {
       // Any failure degrades to activity-only rather than crashing the
       // heartbeat's unawaited refresh — a missing native handler
       // (MissingPluginException), a channel error (PlatformException), and,
       // in a plain `test()` block that never initializes the Flutter test
       // binding, ServicesBinding.instance itself throwing, are all the same
-      // case from this reader's point of view: no specs this time.
+      // case from this reader's point of view: no specs this time. Logged in
+      // debug only so a genuinely broken native channel is not silently
+      // invisible during development.
+      if (kDebugMode) debugPrint('SpecsReader.read failed: $e');
       return null;
     }
   }
