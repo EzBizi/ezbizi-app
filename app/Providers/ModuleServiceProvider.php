@@ -2184,8 +2184,11 @@ class ModuleServiceProvider extends ServiceProvider
              * nothing emitted any of them yet, and `isRaised: false` is what puts
              * "nothing raises this yet" on the row a tenant reads. `training.completed`
              * has since been flipped to `isRaised: true` (task 7's ProgressController
-             * raises it on a guide's final screen) — the other four are still
-             * `isRaised: false`; nothing else in this module emits yet.
+             * raises it on a guide's final screen), and `training.passed` /
+             * `training.failed` have since been flipped to `isRaised: true` as well
+             * (task 8's LearnController::submit emits both) — the other two,
+             * `training.assigned` and `training.expired`, are still `isRaised: false`;
+             * nothing else in this module emits yet.
              * ModuleRegistryTest holds the claim to the source for every one of the
              * five independently: the day any of them is emitted, the build fails
              * until its own flag is dropped, rather than the builder going on
@@ -2222,9 +2225,10 @@ class ModuleServiceProvider extends ServiceProvider
                             .'this.',
                         // Raised by ProgressController::seen (task 7), on the
                         // outbox and inside the same transaction as the
-                        // progress row — see its docblock. The other four
-                        // triggers in this module are still declared
-                        // isRaised: false; see the block comment above.
+                        // progress row — see its docblock. `training.passed` /
+                        // `training.failed` are raised too (task 8). Only
+                        // `training.assigned` and `training.expired` are still
+                        // declared isRaised: false; see the block comment above.
                         isRaised: true,
                     ),
                     new TriggerDefinition(

@@ -8,6 +8,7 @@ use App\Models\AutomationVersion;
 use App\Models\Notification;
 use App\Models\TrainingAttempt;
 use App\Models\TrainingGuide;
+use App\Models\TrainingProgress;
 use App\Models\TrainingTest;
 use App\Models\User;
 use App\Support\Automations\AutomationEngine;
@@ -64,6 +65,36 @@ class TrainingGradingTest extends TestCase
             ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [1]])
             ->assertStatus(403)
             ->assertJsonPath('message', fn (string $m) => str_contains($m, 'guide'));
+    }
+
+    /**
+     * The other half of the gate — review round 1 caught that nothing built
+     * a genuinely FINISHED `TrainingProgress` row anywhere in this file, so
+     * `test_a_gated_test_refuses_until_the_guide_is_finished` passed for the
+     * wrong reason: that learner has no progress row at all, and would have
+     * been refused identically by code that let nobody through, ever — the
+     * module's own no-dead-ends rule violated exactly. This test writes a
+     * real completed row and asserts the gate opens; together with the
+     * refusal test above, the two now differ by the one fact that actually
+     * matters (`completed_at` set or not), which is what makes inverting the
+     * `whereNotNull('completed_at')` check in `guideFinishedBy` show up as a
+     * failure — see this class's own mutation check in the task report.
+     */
+    public function test_a_gated_test_is_takeable_once_the_guide_is_finished(): void
+    {
+        [$learner, $guide, $test, $tenant] = $this->aGatedTest();
+
+        $this->inTenant($tenant['org'], fn () => TrainingProgress::create([
+            'user_id' => $learner->id,
+            'guide_id' => $guide->id,
+            'last_screen' => 0,
+            'completed_at' => now(),
+        ]));
+
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [1, 0]])
+            ->assertOk()
+            ->assertJsonPath('passed', true);
     }
 
     public function test_the_pass_mark_is_the_tests_own_and_not_a_platform_constant(): void
@@ -140,6 +171,47 @@ class TrainingGradingTest extends TestCase
             ->assertOk()
             ->assertJsonPath('passed', false)
             ->assertJsonPath('expires_on', null);
+    }
+
+    /**
+     * An answer naming a choice index that does not exist on the question
+     * scores as wrong, not as a fatal error and not as a free point —
+     * `$question['choices'][$chosen]['correct'] ?? false` in TestGrader
+     * falls through the missing array offset to `false` via the null
+     * coalescing operator. Not pinned anywhere else: every other fixture in
+     * this file submits an index that genuinely exists on the question.
+     */
+    public function test_an_out_of_range_answer_index_scores_as_wrong_not_a_crash_or_a_point(): void
+    {
+        [$learner, $test] = $this->aTwoQuestionTest(passMark: 40);
+
+        // Both questions here have exactly two choices, indices 0 and 1.
+        // Index 5 exists on neither.
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [5, 0]])
+            ->assertOk()
+            ->assertJsonPath('score', 0)
+            ->assertJsonPath('passed', false);
+    }
+
+    /**
+     * More answers than the test has questions — the grading loop is driven
+     * by `$test->questions`, never by `count($answers)`, so trailing entries
+     * with no matching question are simply never read rather than causing
+     * an error or shifting the score.
+     */
+    public function test_more_answers_than_questions_are_silently_ignored(): void
+    {
+        [$learner, $test] = $this->aTwoQuestionTest(passMark: 40);
+
+        // Two real questions, then three extra entries with nothing to
+        // match them — the score must come out identical to submitting
+        // just [1, 0] (one of two right, 50%).
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [1, 0, 1, 1, 1]])
+            ->assertOk()
+            ->assertJsonPath('score', 50)
+            ->assertJsonPath('passed', true);
     }
 
     /** Decision 3: zero questions scores 0 and fails — never a trivial 100%. */

@@ -212,13 +212,21 @@ class LearnController extends Controller
                     : null,
             ]);
 
+            // Deliberately NOT 'answers' — §9 ACTIVITY personal data, and the
+            // published trigger description promises only "the score and,
+            // when the test expires, the date the pass runs out." A
+            // `webhook` action ships this payload verbatim to a URL the
+            // tenant chose, and AutomationsController surfaces payload
+            // values through condition_trace.actual — either would leak a
+            // named person's individual answers off a sentence that never
+            // said it would. The attempt row itself still holds them, for
+            // the Dashboard.
             $this->events->emit($result['passed'] ? 'training.passed' : 'training.failed', $attempt, [
                 'after' => [
                     'test_id' => $lockedTest->getKey(),
                     'user_id' => $user->getKey(),
                     'score' => $attempt->score,
                     'passed' => $attempt->passed,
-                    'answers' => $attempt->answers,
                     'expires_on' => $attempt->expires_on?->toDateString(),
                 ],
             ]);
