@@ -690,6 +690,32 @@ This is not scepticism about results you dislike. A believable-shaped answer tha
 happens to be unwelcome still needs acting on; an implausible one needs checking
 first, and usually turns out to be the instrument.
 
+### A finding can be neutralised by being filed under one already forgiven
+
+The believable-shape rule above asks whether the ANSWER is plausible. This is the
+same failure one level up, where the answer is implausible but the CITATION makes
+it look already-decided.
+
+A live disclosure — an automation subject that broadcast one franchise's record to
+every user in the organization — was filed as "mirrors a known, already-deferred
+gap", pointing at a real note in `ModuleServiceProvider` about subjects-per-
+trigger. Different interface, different methods; they never touch. And the note it
+cited priced its own gap as harmless: *"what null costs is one affordance and
+nothing else."* So a disclosure inherited a cosmetic verdict, and the person
+reading the review saw a finding that had apparently already been considered.
+
+**The mis-filing is invisible, because the note it points at genuinely exists and
+genuinely was accepted.** Nothing in the citation is false. Only the match is.
+
+So: when a finding is dismissed as covered by a known issue, open the known issue
+and read what it actually says. "Similar in shape" and "the same problem" are
+different claims, and the second one is doing all the work.
+
+Related, from the same case: the reviewer classified it as a missing
+*affordance* — franchise-scoped rules never firing — and did not notice it was
+also a *disclosure*. One defect can sit in two categories, and being right about
+the boring one is how the other gets closed.
+
 ### After a merge, verify the TREE — not your diff
 
 `--filter` to the files you touched is the right discipline for your own work,
@@ -780,34 +806,29 @@ different if the thing I am assuming were false, and does anything look there?"*
 
 ### Anchoring a regex with `$` makes the test depend on who checked the file out
 
-`$` in multiline mode matches before `
-` and NOT before `
-`, and a greedy
-token cannot consume the `` to reach it. So on a Windows checkout this fails
-against a file that is byte-for-byte correct:
+`$` in multiline mode matches before a bare LF and NOT before a CRLF pair, and a
+greedy token cannot consume the CR to reach it. So on a Windows checkout this
+fails against a file that is byte-for-byte correct:
 
 ```
-/^Stable tag:\s*(\S+)$/m   vs  "Stable tag: 1.0.2
-"   ->  0
-                            vs  "Stable tag: 1.0.2
-"     ->  1
+/^Stable tag:\s*(\S+)$/m   against  Stable tag: 1.0.2<CR><LF>   ->  0
+                           against  Stable tag: 1.0.2<LF>       ->  1
 ```
 
-**`^` is safe** — the stray `` sits at the END of the previous line, not the
+**`^` is safe** — the stray CR sits at the END of the previous line, not the
 start of the next. That one sentence classifies any regex in five seconds.
 
-Use `[^
-]+` rather than `\S+$`. Three independent sweeps agree the whole
-population was two occurrences, both in `WebManagementTest`, both fixed in
-`7149803`, and zero in shipping code — which matters, because a test that misreads
-a line ending goes red and somebody investigates, whereas the WordPress plugin
-would quietly render the wrong thing on a customer's page forever.
+Use a negated class that excludes CR and LF, rather than `\S+$`. Three
+independent sweeps agree the whole population was two occurrences, both in
+`WebManagementTest`, both fixed in `7149803`, and zero in shipping code — which
+matters, because a test that misreads a line ending goes red and somebody
+investigates, whereas the WordPress plugin would quietly render the wrong thing
+on a customer's page forever.
 
-**The trap while diagnosing it:** `grep "Stable tag" file | od -c` shows the line
-ending in a bare `
-` with no CR, because grep strips it. That is how somebody
-talks themselves out of a correct diagnosis. Read it with `file_get_contents` and
-the actual pattern.
+**The trap while diagnosing it:** piping the file through `grep` before `od -c`
+shows the line ending in a bare LF with no CR, because grep strips it. That is
+how somebody talks themselves out of a correct diagnosis. Read it with
+`file_get_contents` and the actual pattern.
 
 ---
 
