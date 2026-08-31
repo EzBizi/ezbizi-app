@@ -16,13 +16,41 @@ namespace App\Support\Web;
  * Adding a field is one line here. There is no migration behind it, because
  * `web_values` stores key/value rows rather than a column per fact — which is
  * the whole reason the table is shaped that way.
+ *
+ * ── Why each key says whether blank is a problem ──
+ *
+ * A blank `phone` and a blank `license` are OPPOSITE facts. One is a setup
+ * somebody has not finished; the other is the finished answer for a trade or a
+ * state that licenses nothing. Stored, they are the same thing — an absent row
+ * — so without this property any empty treatment on the screen is wrong for one
+ * of them: quiet-and-grey lies about the missing phone number, and
+ * amber-and-prompting nags forever about a licence that is never coming, which
+ * is how somebody learns to ignore the whole screen.
+ *
+ * The user never sets this. The CATALOGUE asserts it, which is why it sits
+ * beside `label` and `hint` rather than in a column.
+ *
+ *   REQUIRED     blank means unfinished; say so
+ *   CONDITIONAL  blank is legitimate, but common enough to offer once, quietly
+ *   OPTIONAL     blank is legitimate; say nothing at all
+ *
+ * THE SPLIT BELOW IS REASONING, NOT USAGE DATA, and is meant to be corrected.
+ * No customer has filled in more than two of these fields, so every assignment
+ * here is a guess about what a trade business publishes. It is one line per key
+ * precisely so being wrong costs a line rather than a migration.
  */
 class SeoFields
 {
+    public const REQUIRED = 'required';
+
+    public const CONDITIONAL = 'conditional';
+
+    public const OPTIONAL = 'optional';
+
     /**
-     * Key => [label, hint].
+     * Key => [label, hint, requirement].
      *
-     * @return array<string, array{label: string, hint: string}>
+     * @return array<string, array{label: string, hint: string, requirement: string}>
      */
     public static function all(): array
     {
@@ -30,34 +58,50 @@ class SeoFields
             'company_name' => [
                 'label' => 'Company name',
                 'hint' => 'The trading name this site answers under.',
+                // A site publishing no company name is not finished.
+                'requirement' => self::REQUIRED,
             ],
             'phone' => [
                 'label' => 'Phone number',
                 'hint' => 'The number this site should show. Each subdomain can differ.',
+                // The number is the reason this module exists.
+                'requirement' => self::REQUIRED,
             ],
             'email' => [
                 'label' => 'Email address',
                 'hint' => 'The address customers should write to.',
+                // Plenty of trades take calls and no email.
+                'requirement' => self::CONDITIONAL,
             ],
             'address' => [
                 'label' => 'Address',
                 'hint' => 'The address shown in the footer and on contact pages.',
+                // The footer and the structured data both want it.
+                'requirement' => self::REQUIRED,
             ],
             'hours' => [
                 'label' => 'Hours of operation',
                 'hint' => 'Written the way it should read on the page.',
+                // An appointment-only business has none worth publishing.
+                'requirement' => self::CONDITIONAL,
             ],
             'license' => [
                 'label' => 'License number',
                 'hint' => 'The licence this site must display.',
+                // Required in some trades and states, absent in others.
+                'requirement' => self::CONDITIONAL,
             ],
             'service_area' => [
                 'label' => 'Service area',
                 'hint' => 'The towns or counties this site covers.',
+                // Nice to publish, and no site is worse without it.
+                'requirement' => self::OPTIONAL,
             ],
             'booking_url' => [
                 'label' => 'Booking link',
                 'hint' => 'Where a "Book now" button should go.',
+                // Most companies take no online bookings at all.
+                'requirement' => self::OPTIONAL,
             ],
         ];
     }
@@ -88,6 +132,7 @@ class SeoFields
                 'key' => $key,
                 'label' => $field['label'],
                 'hint' => $field['hint'],
+                'requirement' => $field['requirement'],
                 'shortcode' => '[ezbizi_'.$key.']',
             ],
             self::keys(),

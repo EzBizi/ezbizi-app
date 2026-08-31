@@ -4,6 +4,7 @@ namespace Tests\Feature\Web;
 
 use App\Models\WebSite;
 use App\Support\Modules\ModuleRegistry;
+use App\Support\Web\SeoFields;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\BuildsTenants;
@@ -794,6 +795,56 @@ class WebManagementTest extends TestCase
             ])
             ->assertOk()
             ->assertSee('"values":{}', escape: false);
+    }
+
+    /**
+     * Every field says whether blank is a problem, and the answer is one of three.
+     *
+     * A blank `phone` and a blank `license` are opposite facts stored as the
+     * same absent row, so without this the screen cannot draw an empty state
+     * that is correct for both — it either lies about the missing phone or
+     * nags forever about a licence that is never coming.
+     */
+    public function test_every_field_declares_whether_blank_is_a_problem(): void
+    {
+        $catalogue = SeoFields::catalogue();
+
+        $this->assertNotEmpty($catalogue);
+
+        foreach ($catalogue as $field) {
+            $this->assertArrayHasKey(
+                'requirement',
+                $field,
+                "{$field['key']} does not say whether blank is a problem.",
+            );
+            $this->assertContains(
+                $field['requirement'],
+                [SeoFields::REQUIRED, SeoFields::CONDITIONAL, SeoFields::OPTIONAL],
+                "{$field['key']} declares a requirement nothing knows how to draw.",
+            );
+        }
+    }
+
+    /**
+     * The three that make a site unfinished when blank.
+     *
+     * Pinned deliberately: this is the assignment a screen's empty state is
+     * built on, so moving a key between tiers should be a decision somebody
+     * makes on purpose rather than a side effect of editing the catalogue.
+     * The split is reasoning rather than usage data and is meant to change —
+     * changing it should just cost this line too.
+     */
+    public function test_the_required_three_are_the_ones_a_site_cannot_publish_without(): void
+    {
+        $required = array_values(array_map(
+            fn (array $f) => $f['key'],
+            array_filter(
+                SeoFields::catalogue(),
+                fn (array $f) => $f['requirement'] === SeoFields::REQUIRED,
+            ),
+        ));
+
+        $this->assertSame(['company_name', 'phone', 'address'], $required);
     }
 
     // ── helpers ─────────────────────────────────────────────────────
