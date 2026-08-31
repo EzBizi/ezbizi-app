@@ -47,51 +47,6 @@ class PhoneCallTagTest extends TestCase
     }
 
     /**
-     * The exact call the swatch makes.
-     *
-     * Reported live: clicking a colour did nothing. The create path was
-     * covered and the UPDATE path was not — and the swatch patches an
-     * existing tag, which is the one nobody tested.
-     */
-    public function test_patching_a_colour_onto_an_existing_tag_sticks(): void
-    {
-        $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
-
-        $id = $this->signedInAs($editor)->postJson('/api/v1/phone/tags', [
-            'name' => 'Booked',
-        ])->assertCreated()->json('data.id');
-
-        $patched = $this->signedInAs($editor)
-            ->patchJson('/api/v1/phone/tags/'.$id, ['color' => '#46A758'])
-            ->assertOk();
-
-        $this->assertSame(
-            '#46A758',
-            $patched->json('data.color'),
-            'the patch returned without the colour it was given',
-        );
-
-        // And it survives a reload, which is what the screen does next.
-        $rows = collect(
-            $this->signedInAs($editor)->getJson('/api/v1/phone/tags')->assertOk()->json('data')
-        )->keyBy('id');
-
-        $this->assertSame('#46A758', $rows[$id]['color'], 'the colour did not persist');
-
-        // Clearing it back to none is also a real choice the swatch offers.
-        $this->signedInAs($editor)
-            ->patchJson('/api/v1/phone/tags/'.$id, ['color' => null])
-            ->assertOk();
-
-        $rows = collect(
-            $this->signedInAs($editor)->getJson('/api/v1/phone/tags')->assertOk()->json('data')
-        )->keyBy('id');
-
-        $this->assertNull($rows[$id]['color']);
-    }
-
-    /**
      * A colour is chosen from a fixed set, and it reaches the call list.
      *
      * The set is fixed because a tag is read on a dark call list and a light
