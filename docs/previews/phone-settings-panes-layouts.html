@@ -152,6 +152,13 @@
       failed load is a dead end, and the only recovery is to navigate to another section and
       back. The other eight all offer “Try again”. This is not a design preference; it is
       eight panes agreeing and four disagreeing, and the four are wrong.
+      <b>CORRECTED, by the Phone session, while building it:</b> “every pane gets a retry in the
+      head” is too broad and would have destroyed work. The head's retry <b>RELOADS</b>. A FORM's
+      error is usually a refused <b>SAVE</b>, so offering a reload there throws away what somebody
+      just typed in the course of offering to recover it — retrying a refused save is pressing
+      Save again. The rule is: <b>a pane whose error is a failed LOAD gets a retry in the head; a
+      refused SAVE is reported at the footer and retried with Save.</b> Most panes can do both, so
+      most need both treatments and must tell the two errors apart.
     </div>
 
     <div class="ask">
@@ -189,7 +196,7 @@
       <tr><td>IVR menus</td><td>658</td><td>List + editor</td><td class="ok">Try again</td><td>Split pane</td></tr>
       <tr><td>Hours</td><td>699</td><td>Form (grid)</td><td class="ok">Try again</td><td>Footer save; week grid unchanged</td></tr>
       <tr><td>Ring groups</td><td>700</td><td>List + detail</td><td class="bad">none</td><td><b>Gains retry</b>; split pane</td></tr>
-      <tr><td>Voicemail</td><td>545</td><td>Form</td><td class="bad">none</td><td><b>Gains retry</b></td></tr>
+      <tr><td>Voicemail</td><td>545</td><td class="bad">List + detail — NOT a form</td><td class="ok">list had one; form correctly has none</td><td><b>Corrected after the fact.</b> It manages MULTIPLE mailboxes — <code>_boxes</code>, New mailbox, per-row Edit and Delete, “Back to the mailboxes”. I classified it from string samples and structural counts and drew it as one form; building that would have deleted multi-mailbox support. Caught by the Phone session before it shipped.</td></tr>
       <tr><td>Tags</td><td>429</td><td>List + form</td><td class="ok">Try again</td><td>Split pane</td></tr>
       <tr><td>Trust &amp; caller identity</td><td>375</td><td>Composite</td><td class="ok">Try again</td><td><b>Already approved separately</b> — not re-proposed</td></tr>
       <tr><td>Number quality</td><td>287</td><td>Tool</td><td class="bad">none</td><td><b>Gains retry</b>; being absorbed into Trust</td></tr>

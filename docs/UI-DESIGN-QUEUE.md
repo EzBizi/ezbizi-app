@@ -112,6 +112,22 @@ codebase has no modals. Times are a **masked text field** — validated as real 
 from-before-to, equal refused, masking as it is typed (`8910b88`). Any Hours layout
 that assumes a picker affordance is designing against a rule, not a gap.
 
+**A retry belongs where the error was a failed LOAD, not on every error.** The pane
+head's retry *reloads*. A form's error is usually a refused **save**, so putting a
+reload there offers to recover somebody's work by discarding it — retrying a refused
+save is pressing Save again. So: **failed load → retry in the head; refused save →
+reported at the footer, retried with Save.** Most panes can do both and must tell them
+apart. Found by the Phone session while building Voicemail, against a rule I had
+written too broadly.
+
+**Classify a pane by reading it, not by sampling its strings.** Voicemail was recorded
+as a *form* in a 13-pane audit and drawn as one. It manages **multiple mailboxes** —
+`_boxes`, New mailbox, per-row Edit and Delete, "Back to the mailboxes". Building the
+approved drawing would have deleted multi-mailbox support; the module session caught it.
+The audit classified from string samples and widget counts, which is a measurement
+narrower than the claim built on it — the same failure this file records five other
+times, committed by the person recording them.
+
 **Never express a state by fading the element that carries text.** Transparency attacks
 legibility directly, and it always bites hardest in the state where legibility matters
 most — dragging, disabled, loading, pending. Express it with elevation, an outline, a
