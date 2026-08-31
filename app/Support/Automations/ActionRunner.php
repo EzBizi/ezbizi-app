@@ -444,14 +444,26 @@ class ActionRunner
         $assigneeType = $action['assignee_type'] ?? ($subject instanceof User ? TrainingAssignment::USER : null);
         $assigneeId = $action['assignee_id'] ?? ($subject instanceof User ? $subject->getKey() : null);
 
+        $assignmentInput = [
+            'guide_id' => $action['guide_id'] ?? null,
+            'test_id' => $action['test_id'] ?? null,
+            'assignee_type' => $assigneeType,
+            'assignee_id' => $assigneeId,
+        ];
+
+        // KEY present only when the rule's OWN action config set one — never
+        // `$action['due_on'] ?? null`, which would put the key there
+        // unconditionally and, for a REPEAT assignment, read as "clear the
+        // stored date" every time the rule fires without one configured.
+        // AssignmentWriter::create's own docblock, "Absent is not the same
+        // as null" (round 3): a rule with no date, firing a second time,
+        // must not silently wipe a date a person set by hand.
+        if (array_key_exists('due_on', $action)) {
+            $assignmentInput['due_on'] = $action['due_on'];
+        }
+
         try {
-            $assignment = $this->trainingAssignments->create($actor, [
-                'guide_id' => $action['guide_id'] ?? null,
-                'test_id' => $action['test_id'] ?? null,
-                'assignee_type' => $assigneeType,
-                'assignee_id' => $assigneeId,
-                'due_on' => $action['due_on'] ?? null,
-            ], causedBy: $event);
+            $assignment = $this->trainingAssignments->create($actor, $assignmentInput, causedBy: $event);
         } catch (ValidationException $e) {
             return [
                 'type' => 'training.assign',

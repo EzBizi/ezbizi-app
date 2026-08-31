@@ -188,7 +188,18 @@ final class AssignmentReach
         $assignments = $assignee->assignments;
 
         if ($assignments->isEmpty()) {
-            return Refusal::noReach($assigner, Refusal::AT_ORGANIZATION, $act, $assigner->organization->name);
+            // Restored, round 3: unifying mayAssignTo/explain into this one
+            // function (round 2) dropped the arm the old, separate
+            // `coversEveryAssignment` had — an unplaced assignee always
+            // refused here regardless of the assigner's own reach, wrongly
+            // (403, "outside where you are assigned" for somebody assigned
+            // at the very organization named). The docblock above already
+            // says the right answer ("only somebody who reaches the whole
+            // organization may assign to somebody unplaced") — the code is
+            // fixed to match it, not the other way around.
+            return $assigner->canActOnOrganization($assigner->organization)
+                ? null
+                : Refusal::noReach($assigner, Refusal::AT_ORGANIZATION, $act, $assigner->organization->name);
         }
 
         foreach ($assignments as $assignment) {

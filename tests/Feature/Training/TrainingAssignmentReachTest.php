@@ -15,6 +15,7 @@ use App\Models\TrainingGuide;
 use App\Models\TrainingTest;
 use App\Models\User;
 use App\Support\Automations\AutomationEngine;
+use App\Support\Training\AssignmentReach;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Tests\Concerns\BuildsTenants;
@@ -89,6 +90,55 @@ class TrainingAssignmentReachTest extends TestCase
         $this->signedInAs($regional)->postJson('/api/v1/training/assignments', [
             'guide_id' => $guide->id, 'assignee_type' => 'user', 'assignee_id' => $atNorthgate->id,
         ])->assertCreated();
+    }
+
+    // ── Round 3: an unplaced assignee is the organization's to bound, not always-refused ──
+
+    /**
+     * Round 3 review: unifying `mayAssignTo`/`explain` (round 2) dropped
+     * the `canActOnOrganization` arm the old, separate `coversEveryAssignment`
+     * had for an assignee with NO `Assignment` row at all — `explain` fell
+     * straight to `Refusal::noReach`, so an assigner who genuinely reaches
+     * the whole organization was refused for a person assigned nowhere,
+     * with a sentence naming their OWN organization as "outside where you
+     * are assigned". Tested directly against `AssignmentReach`, not through
+     * the HTTP endpoint, because `assertLearnerCanSee` also refuses an
+     * unplaced learner downstream (zero place reach means zero
+     * `InventoryVisibility`) — routing through HTTP would prove the request
+     * still 422s either way and say nothing about which check produced it,
+     * which is exactly what round 3 found wrong.
+     */
+    public function test_an_organization_reach_assigner_may_assign_to_a_completely_unplaced_person(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $unplaced = $this->userAssignedNowhere($tenant, 'Unplaced');
+
+        // AssignmentReach::mayAssignTo reads the assignee's `assignments`
+        // relation, which is tenant-scoped (BelongsToTenant) — called
+        // directly rather than through a request, so it needs the same
+        // TenantContext a real request would already have resolved.
+        $this->inTenant($tenant['org'], function () use ($tenant, $unplaced) {
+            $this->assertTrue(
+                AssignmentReach::mayAssignTo($tenant['admin'], $unplaced),
+                'An assigner with organization-level reach must reach somebody assigned nowhere at all.',
+            );
+        });
+    }
+
+    /** The other half of the same restored branch: somebody NOT at organization reach is still refused. */
+    public function test_a_franchise_level_assigner_may_not_assign_to_a_completely_unplaced_person(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $supervisor = $this->userInFranchise($tenant, $tenant['franchise'], 'Supervisor', ['training.assign']);
+        $unplaced = $this->userAssignedNowhere($tenant, 'Unplaced');
+
+        $this->inTenant($tenant['org'], function () use ($tenant, $supervisor, $unplaced) {
+            $this->assertFalse(AssignmentReach::mayAssignTo($supervisor, $unplaced));
+
+            $message = trim(AssignmentReach::explain($supervisor, $unplaced)->message());
+            $this->assertNotSame('', $message);
+            $this->assertStringContainsString($tenant['org']->name, $message);
+        });
     }
 
     // ── Decision 2: exactly one of guide_id/test_id ──────────────────
@@ -371,6 +421,132 @@ class TrainingAssignmentReachTest extends TestCase
                     ->where('assignee_id', $learner->id)->count(),
                 'Still one row — the date changed on the SAME row, not a second one.',
             );
+        });
+    }
+
+    /**
+     * Round 3 review: the round-2 fix wrote `$input['due_on'] ?? null`,
+     * which read "the field was not sent" and "the field was sent as
+     * null" as the same thing — a repeat with NO `due_on` key at all
+     * erased a stored date rather than leaving it alone, silently, under a
+     * `200`. This is the exact regression, proven directly: the second
+     * `POST` omits `due_on` entirely.
+     */
+    public function test_a_repeat_assignment_with_no_due_on_field_leaves_the_stored_date_alone(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $guide = $this->aPublishedOrgGuide($tenant);
+        $learner = $this->userInFranchise($tenant, $tenant['franchise'], 'Learner', ['training.view']);
+
+        $this->signedInAs($tenant['admin'])->postJson('/api/v1/training/assignments', [
+            'guide_id' => $guide->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id, 'due_on' => '2026-09-01',
+        ])->assertCreated();
+
+        // No 'due_on' key at all — not even null.
+        $second = $this->signedInAs($tenant['admin'])->postJson('/api/v1/training/assignments', [
+            'guide_id' => $guide->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id,
+        ])->assertOk();
+
+        $this->assertSame(
+            '2026-09-01',
+            $second->json('data.due_on'),
+            'A repeat that never mentioned due_on must not erase the one already stored.',
+        );
+
+        $this->inTenant($tenant['org'], function () use ($guide, $learner) {
+            $this->assertDatabaseHas('training_assignments', [
+                'assignee_type' => TrainingAssignment::USER, 'assignee_id' => $learner->id,
+                'guide_id' => $guide->id, 'due_on' => '2026-09-01',
+            ]);
+        });
+    }
+
+    /** The third state: due_on sent as an EXPLICIT null clears a stored date on purpose. */
+    public function test_a_repeat_assignment_explicitly_sending_a_null_due_on_clears_it(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $guide = $this->aPublishedOrgGuide($tenant);
+        $learner = $this->userInFranchise($tenant, $tenant['franchise'], 'Learner', ['training.view']);
+
+        $this->signedInAs($tenant['admin'])->postJson('/api/v1/training/assignments', [
+            'guide_id' => $guide->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id, 'due_on' => '2026-09-01',
+        ])->assertCreated();
+
+        $second = $this->signedInAs($tenant['admin'])->postJson('/api/v1/training/assignments', [
+            'guide_id' => $guide->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id, 'due_on' => null,
+        ])->assertOk();
+
+        $this->assertNull($second->json('data.due_on'));
+
+        $this->inTenant($tenant['org'], function () use ($guide, $learner) {
+            $this->assertDatabaseHas('training_assignments', [
+                'assignee_type' => TrainingAssignment::USER, 'assignee_id' => $learner->id,
+                'guide_id' => $guide->id, 'due_on' => null,
+            ]);
+        });
+    }
+
+    /**
+     * The automation path is where round 3 says this is serious, not
+     * cosmetic: `ActionRunner::assignTraining` used to pass a `due_on` key
+     * unconditionally (`$action['due_on'] ?? null`), so a rule that never
+     * configured a date wiped one a person had set by hand, every time it
+     * fired against an existing assignment. Proven directly: a person sets
+     * a due date, then a rule with NO `due_on` in its own action config
+     * fires against the SAME (guide, learner) pair, and the date survives.
+     */
+    public function test_the_training_assign_automation_action_does_not_erase_a_due_date_the_rule_never_mentioned(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $riverside = $tenant['franchise'];
+
+        $triggerGuide = $this->aPublishedOrgGuide($tenant, 'Trigger Guide');
+        $targetGuide = $this->aPublishedOrgGuide($tenant, 'Target Guide');
+        $learner = $this->userInFranchise($tenant, $riverside, 'Learner', ['training.view']);
+
+        // A person set a due date by hand first.
+        $this->signedInAs($tenant['admin'])->postJson('/api/v1/training/assignments', [
+            'guide_id' => $targetGuide->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id,
+            'due_on' => '2026-12-01',
+        ])->assertCreated();
+
+        // A rule with no due_on in its own action config.
+        $automationId = $this->signedInAs($tenant['admin'])->postJson('/api/v1/automations', [
+            'name' => 'Auto-assign, no date',
+            'trigger_key' => 'training.completed',
+            'actions' => [
+                [
+                    'type' => 'training.assign',
+                    'guide_id' => $targetGuide->id,
+                    'assignee_type' => 'user',
+                    'assignee_id' => $learner->id,
+                ],
+            ],
+        ])->assertCreated()->json('data.id');
+
+        $this->signedInAs($tenant['admin'])
+            ->patchJson("/api/v1/automations/{$automationId}", ['is_active' => true])
+            ->assertOk();
+
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/guides/{$triggerGuide->id}/seen", ['screen' => 0])
+            ->assertOk();
+
+        $this->inTenant($tenant['org'], function () use ($automationId, $targetGuide, $learner) {
+            $event = AutomationEvent::query()
+                ->where('event_key', 'training.completed')
+                ->latest('occurred_at')
+                ->firstOrFail();
+
+            app(AutomationEngine::class)->deliver($event);
+
+            $run = AutomationRun::query()->where('automation_id', $automationId)->firstOrFail();
+            $this->assertSame(AutomationRun::SUCCEEDED, $run->status, json_encode($run->action_results));
+
+            $this->assertDatabaseHas('training_assignments', [
+                'assignee_type' => TrainingAssignment::USER, 'assignee_id' => $learner->id,
+                'guide_id' => $targetGuide->id, 'due_on' => '2026-12-01',
+            ]);
         });
     }
 
@@ -925,6 +1101,28 @@ class TrainingAssignmentReachTest extends TestCase
             ]);
 
             return $user;
+        });
+    }
+
+    /**
+     * A user with NO `Assignment` row at all — `userWithRole` always
+     * creates one (organization-level by default), so this is the one
+     * shape it cannot build. Same fixture `TrainingProgressTest` owns under
+     * this name, duplicated here per the constraint on shared test helpers.
+     */
+    private function userAssignedNowhere(array $tenant, string $roleName): User
+    {
+        return $this->inTenant($tenant['org'], function () use ($tenant, $roleName) {
+            $role = Role::create([
+                'organization_id' => $tenant['org']->id, 'name' => $roleName, 'is_system' => false,
+            ]);
+            $role->syncPermissionKeys(['training.view']);
+
+            return User::create([
+                'organization_id' => $tenant['org']->id, 'role_id' => $role->id,
+                'name' => $roleName, 'email' => $this->emailFor($tenant, $roleName),
+                'password' => 'a-real-password', 'is_active' => true,
+            ]);
         });
     }
 

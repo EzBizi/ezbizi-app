@@ -94,13 +94,40 @@ use Illuminate\Validation\ValidationException;
  * nothing new the second time.
  *
  * So a repeat is answered by handing back the assignment that already
- * exists — updating its `due_on` when the repeat names a different one,
- * rather than silently keeping the first request's date and saying nothing
- * (review, round 2: a `201` with the OLD date on a request that named a NEW
- * one told the caller nothing was wrong). `AssignmentsController::store`
- * reads Eloquent's own `wasRecentlyCreated` to answer `200` for the
+ * exists — updating its `due_on` when the repeat NAMES one, rather than
+ * silently keeping the first request's date and saying nothing (review,
+ * round 2: a `201` with the OLD date on a request that named a NEW one told
+ * the caller nothing was wrong). `AssignmentsController::store` reads
+ * Eloquent's own `wasRecentlyCreated` to answer `200` for the
  * updated-in-place case and `201` only for a genuine insert — no second flag
  * to carry, since that property already means exactly this.
+ *
+ * ── Absent is not the same as null (review, round 3) ────────────────
+ *
+ * Round 2's fix wrote `$input['due_on'] ?? null` for the repeat branch,
+ * which reads "the field was not sent" and "the field was sent as null" as
+ * the identical case — so a repeat with NO `due_on` at all erased a stored
+ * date rather than leaving it alone. Reachable, and worse than cosmetic,
+ * through `ActionRunner::assignTraining`: that arm always passed a
+ * `due_on` KEY (`$action['due_on'] ?? null`), present even when the rule
+ * author never configured one, so a rule with no date firing a second time
+ * silently wiped a date a person had set by hand, and the response — `200`
+ * — gave no sign anything had changed.
+ *
+ * Fixed by checking presence, not merely value: `array_key_exists('due_on',
+ * $input)` (`AssignmentsController`'s `sometimes` rule already means the
+ * validated array simply omits the key when the field was not sent, and
+ * `ActionRunner::assignTraining` now only includes the key when the rule's
+ * OWN action config set one — see its own comment). Three states, all
+ * tested:
+ *
+ *   - KEY ABSENT      → the stored `due_on` is left exactly as it was.
+ *   - KEY PRESENT, null → cleared deliberately (a caller that already had a
+ *     date and now sends an explicit `null` is saying "no due date any
+ *     more", not "I forgot to mention one" — the same present/absent
+ *     distinction a `PATCH` makes, applied to a `POST` that happens to be
+ *     idempotent for an existing target).
+ *   - KEY PRESENT, a date → updated, as round 2 already did.
  *
  * The check has to be race-free the same way `LearnController::submit`'s
  * retake cap is: two requests for the SAME guide/test racing each other must
@@ -174,11 +201,15 @@ final class AssignmentWriter
                 ->first();
 
             if ($existing !== null) {
-                $incomingDueOn = $input['due_on'] ?? null;
+                // Absent means "leave it alone", not "clear it" — see this
+                // class's own docblock, "Absent is not the same as null".
+                if (array_key_exists('due_on', $input)) {
+                    $incomingDueOn = $input['due_on'];
 
-                if (optional($existing->due_on)->toDateString() !== $incomingDueOn) {
-                    $existing->due_on = $incomingDueOn;
-                    $existing->save();
+                    if (optional($existing->due_on)->toDateString() !== $incomingDueOn) {
+                        $existing->due_on = $incomingDueOn;
+                        $existing->save();
+                    }
                 }
 
                 return $existing;
