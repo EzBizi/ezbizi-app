@@ -76,11 +76,17 @@
   h3.grp { font-size:12px; text-transform:uppercase; letter-spacing:.05em;
     color:var(--muted); margin:18px 0 8px; font-weight:600; display:flex; gap:8px; align-items:center; }
   h3.grp:first-child { margin-top:0; }
-  .tagrow { display:flex; align-items:center; gap:11px; padding:11px 12px;
+  .tagrow { display:grid; grid-template-columns:14px minmax(0,1fr) auto auto;
+    align-items:center; gap:11px; padding:11px 12px;
     border:1px solid var(--line); border-radius:9px; margin-bottom:7px; background:var(--page); }
+  /* Bars and counts get their OWN tracks, so they start at the same x on every
+     row regardless of how long the tag name is. A bar that moves with the name
+     cannot be compared down the column, which is the entire point of drawing it. */
+  .tagrow.bars { grid-template-columns:14px minmax(0,1fr) 132px 96px auto; }
   .tagrow .dot { width:14px; height:14px; border-radius:4px; flex:none; }
   .tagrow .nm { font-weight:600; }
-  .tagrow .use { margin-left:auto; color:var(--muted); font-size:12px; white-space:nowrap; }
+  .tagrow .use { color:var(--muted); font-size:12px; white-space:nowrap; text-align:right; }
+  .tagrow .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .tagrow.retired { background:var(--alt); }
   .tagrow.retired .nm { color:var(--muted); font-weight:500; }
   .tagrow.unused .use { color:var(--warn); }
@@ -212,18 +218,19 @@ const addbar = `
   </div>`;
 
 const row = (t, bar) => `
-  <div class="tagrow ${t[2]===0 ? 'unused' : ''}">
+  <div class="tagrow ${bar ? 'bars' : ''} ${t[2]===0 ? 'unused' : ''}">
     <span class="dot" style="background:${C[t[1]]}"></span>
     <span class="nm">${t[0]}</span>
-    ${bar ? `<span class="bar" style="flex:0 0 120px;margin-left:14px"><i style="width:${t[3]*2.7}%"></i></span>` : ''}
+    ${bar ? `<span class="bar"><i style="width:${t[3]*2.7}%"></i></span>` : ''}
     <span class="use">${t[2] === 0 ? 'Not used yet' : `On ${t[2]} calls`}</span>
     <button class="btn ghost sm" type="button">Retire</button>
   </div>`;
 
-const retiredRow = (t) => `
-  <div class="tagrow retired">
+const retiredRow = (t, bars) => `
+  <div class="tagrow retired ${bars ? 'bars' : ''}">
     <span class="dot" style="background:${C[t[1]]};opacity:.55"></span>
     <span class="nm">${t[0]}</span>
+    ${bars ? '<span></span>' : ''}
     <span class="use">Still naming ${t[2]} calls</span>
     <button class="btn ghost sm" type="button">Offer again</button>
   </div>`;
@@ -238,7 +245,7 @@ const L1 = () => shell(`
       <h3 class="grp">Offered when a call ends <span class="use" style="color:var(--muted);font-size:11px">8</span></h3>
       ${TAGS.map(t => row(t, false)).join('')}
       <h3 class="grp">Retired <span class="use" style="color:var(--muted);font-size:11px">2</span></h3>
-      ${RETIRED.map(retiredRow).join('')}
+      ${RETIRED.map(t => retiredRow(t, false)).join('')}
       ${retiredNote}
     </div>
   </div>`);
@@ -252,7 +259,7 @@ const L2 = () => shell(`
       <p class="note">One tag has never been picked. Bars are share of tagged calls, so the
         pane answers “which of these is anyone actually using” without reading eight numbers.</p>
       <h3 class="grp">Retired <span class="use" style="color:var(--muted);font-size:11px">2</span></h3>
-      ${RETIRED.map(retiredRow).join('')}
+      ${RETIRED.map(t => retiredRow(t, true)).join('')}
       ${retiredNote}
     </div>
   </div>`);
