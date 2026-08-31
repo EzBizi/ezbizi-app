@@ -77,6 +77,8 @@ use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ReviewsController;
 use App\Http\Controllers\Api\RolesController;
+use App\Http\Controllers\Api\SchedulingAreasController;
+use App\Http\Controllers\Api\SchedulingPatternController;
 use App\Http\Controllers\Api\SendingIdentitiesController;
 use App\Http\Controllers\Api\ServiceGroupsController;
 use App\Http\Controllers\Api\ServiceLabelsController;
@@ -641,6 +643,23 @@ Route::prefix('v1')
         Route::post('services/labels', [ServiceLabelsController::class, 'store']);
         Route::delete('services/labels/{id}', [ServiceLabelsController::class, 'destroy']);
         Route::apiResource('services', ServicesController::class);
+
+        /*
+         * Scheduling — capacity per slot, per weekday, per service area
+         * (docs/superpowers/specs/2026-08-31-scheduling-availability-design.md,
+         * design docs/previews/scheduling-layouts.html #7).
+         *
+         * `pattern/*` is declared BEFORE the apiResource, because
+         * `scheduling/areas/{area}` would otherwise swallow anything nested
+         * under it that arrives first. Ordering here is load-bearing, not
+         * tidiness.
+         */
+        Route::put('scheduling/areas/{area}/slots', [SchedulingAreasController::class, 'slots']);
+        Route::put('scheduling/areas/{area}/zips', [SchedulingAreasController::class, 'zips']);
+        Route::post('scheduling/pattern/preview', [SchedulingPatternController::class, 'preview']);
+        Route::post('scheduling/pattern/apply', [SchedulingPatternController::class, 'apply']);
+        Route::apiResource('scheduling/areas', SchedulingAreasController::class)
+            ->parameters(['areas' => 'area']);
 
         // ── The shape of the business (§3) ───────────────────────
         //
