@@ -146,6 +146,31 @@ overflow a narrow field (measured: 81px at 560). Markers that belong *to* a fiel
 "also in General", "needs Financials" — go in the help text, which wraps, unless the
 design deliberately spends vertical rhythm to put them outside the decoration.
 
+**Grouping a list reorders it, so anything keyed on POSITION breaks silently.**
+Adding headings to the Phone rail moved Trust above Tags, and the body switched on the
+section's *index* — so one move repointed every section below it. You tap Trust, you get
+Tags, and it reads as a rendering bug rather than an off-by-one. Keying on position had
+been *safe rather than correct*, for exactly as long as nobody reordered a flat list.
+**Any design that regroups or reorders an existing list should say so explicitly**, because
+the implementation may be relying on the old order without anybody knowing it.
+
+**Group and order must live in ONE declaration, and headings must be derived from it.**
+Two lists cannot be made to agree. A section listed under *Answering* but drawn between
+two *Connect* entries is a heading that lies — worse than no headings at all, when the
+point of headings is to let somebody stop reading early.
+
+**A group of one still earns its heading when the heading is the finding aid.** Phone's
+*Identity* group holds one section. It stays a group: it is the answer to "why are my
+calls marked spam", and being buried among housekeeping is how it went unfound.
+
+**A sabotage that does not apply looks exactly like a passing test.** Verifying a check by
+breaking the thing it guards only proves something if the break landed. Caught three times
+in one day — twice from CRLF, where a pattern written with `
+` silently fails to match a
+file with `
+`, the replace does nothing, and the run passes green. **Confirming the
+sabotage applied is part of doing one.**
+
 **Never express a state by fading the element that carries text.** Transparency attacks
 legibility directly, and it always bites hardest in the state where legibility matters
 most — dragging, disabled, loading, pending. Express it with elevation, an outline, a
