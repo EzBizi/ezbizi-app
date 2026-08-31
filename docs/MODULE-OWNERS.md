@@ -93,14 +93,16 @@ Name these rather than assuming a module covers them.
 
 - **`Api/StaffClientVersionsController.php`**, `Middleware/EnforceMinimumClientVersion.php`, `Models/PlatformMinimumClientVersion.php` — control plane. A minimum client version is a **database row**: it needs no deploy, passes no gate, and 426s every client that falls below it. It has no module owner, so nobody is watching it.
 - **The store consoles** are not code and appear in no file list, so an unowned one does not read as unowned — it just goes quiet. They carry real deadlines: Meta Tech Provider has a hard 2026-10-26 cutoff, and **EU trader status needs the Account Holder and blocks App Store submission outright**.
-- **Signing material is single-disk and outside every backup this project has.**
+- **Signing material lives outside git and must stay there.**
   `H:/Development/Credentials/` holds the Apple signing artefacts and the Android
-  upload key. It is not in git, so the GitHub push does not cover it, and the
-  App Store Connect `.p8` **downloads exactly once from Apple** — the copy there is
-  the only one. Losing the Android upload key means a key-reset request to Google;
-  losing the `.p8` cannot be undone by anyone. Do not commit any of it — this repo
-  is pushed to production. It needs a backup that is not this machine, and it does
-  not have one.
+  upload key. The GitHub push does not cover it and must not: this repo is pushed to
+  production, so committing any of it publishes it. The App Store Connect `.p8`
+  **downloads exactly once from Apple**, and losing the Android upload key means a
+  key-reset request to Google.
+  **Confirmed 2026-08-31: the owner holds a physical USB backup**, so this is not the
+  single point of failure an earlier version of this file called it. Recorded because
+  the absence of a backup is unprovable from inside the repo — the next reader would
+  otherwise re-derive the same alarm from the same evidence.
 
 ## Contested files, edited in regions
 
