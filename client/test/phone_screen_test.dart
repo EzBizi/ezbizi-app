@@ -1637,6 +1637,74 @@ void main() {
       expect(find.textContaining('It is not live'), findsOneWidget);
     });
   });
+
+  group('Settings › Connection', () {
+    /// The inheritance rule, drawn once.
+    ///
+    /// It used to be six sentences across three branches — each correct, each
+    /// chosen by which state you stood in — because one sentence tried to say
+    /// two things: where calls go, which never changes, and whether you may
+    /// change it here, which depends on your view. Splitting them is what
+    /// collapses the six.
+    testWidgets('a company with no account of its own says what it inherits', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        approvedCompanyIds: const ['co-a1'],
+        connections: const [
+          {
+            'id': 'cx-org',
+            'scope_type': 'organization',
+            'scope_id': 'org-1',
+            'scope_name': 'A-1 Group',
+            'kind': 'subaccount',
+            'status': 'connected',
+          },
+        ],
+        companies: const [
+          {'id': 'co-a1', 'name': 'A-1 Chimney', 'parent_company_id': null},
+        ],
+      );
+
+      await _tap(tester, _tab('Settings'));
+
+      expect(find.text('Uses the organization'), findsOneWidget);
+      expect(
+        find.textContaining("use the organization's connection above"),
+        findsOneWidget,
+      );
+    });
+
+    /// The sentence above must not be said when there is nothing to inherit.
+    ///
+    /// "uses the organization's connection" with no organization connection
+    /// points at nothing, and it reads as working to somebody whose calls
+    /// actually reach no account at all.
+    testWidgets('a company with nothing above it says calls reach nobody', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        approvedCompanyIds: const ['co-a1'],
+        companies: const [
+          {'id': 'co-a1', 'name': 'A-1 Chimney', 'parent_company_id': null},
+        ],
+      );
+
+      await _tap(tester, _tab('Settings'));
+
+      expect(
+        find.textContaining('reach nobody'),
+        findsOneWidget,
+        reason: 'a company with no account anywhere read as inheriting one',
+      );
+      expect(
+        find.textContaining("use the organization's connection above"),
+        findsNothing,
+      );
+    });
+  });
 }
 Finder _tab(String label) => find.widgetWithText(ChoiceChip, label);
 

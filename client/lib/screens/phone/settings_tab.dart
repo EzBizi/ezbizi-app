@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
-import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/tag.dart';
@@ -20,6 +19,7 @@ import 'trust_pane.dart';
 import 'usage_pane.dart';
 import 'voicemail_pane.dart';
 import 'service_request_pane.dart';
+import 'settings_pane.dart';
 
 /// Phone › Settings — layout 6: a rail of sections, and the form beside it.
 ///
@@ -478,12 +478,23 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
   }
 
   Widget _connectionBody() {
-    return AsyncBody(
-      loading: _loading,
+    if (_loading) return const Center(child: CircularProgressIndicator());
+
+    final companies = _places.where((p) => p.type == 'company').toList();
+    final organization = _places.firstWhere((p) => p.type == 'organization');
+
+    return SettingsPane(
+      title: 'Connection',
+      subtitle: "Which Twilio account each company's calls run on.",
       error: _error,
+
+      // Its error is a failed LOAD, so a reload discards nothing.
       onRetry: _load,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+
+      // No footer: nothing on this pane is saved. Connecting is one button on
+      // one row, and a Save here would claim the pane as a whole is a form.
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         children: [
           // Gate 2 first: until EzBizi has said yes to a company by name there
           // is nothing here to connect, and the only useful control is asking.
@@ -496,12 +507,45 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
             },
           ),
 
-          // Companies only. Phone service is bought and switched on per
-          // company — each gets its own Twilio subaccount, because A2P brand
-          // registration and caller-ID trust are per business, not per group.
-          for (final place in _places.where((p) => p.type == 'company')) ...[
-            _connectionCard(place),
-            const SizedBox(height: 12),
+          const SizedBox(height: 12),
+
+          // ── One rule, drawn once ────────────────────────────────
+          //
+          // A company's numbers use the organization's connection unless that
+          // company has its own. That was six sentences — each correct, each
+          // chosen by which state you happened to be standing in, so the rule
+          // read differently depending on where you were.
+          //
+          // Six because two different facts were braided into one sentence:
+          // WHERE CALLS GO, which never changes, and WHETHER YOU MAY CHANGE
+          // IT HERE, which depends on your view. Splitting them is what
+          // collapses the six — the indent carries the routing rule and the
+          // permission gets its own line only when it bites.
+          // THE ROOT IS DRAWN ONLY IF IT EXISTS.
+          //
+          // The design drew an organization node at the top of the tree, and
+          // it was drawn without knowing that phone service is sold per
+          // company — each gets its own subaccount, because A2P registration
+          // and caller-ID trust are per business. There is deliberately no
+          // organization card to activate, and a test guards that.
+          //
+          // But the INHERITANCE is real: ConnectionResolver still walks
+          // company → organization, so an organization-level connection can
+          // exist and a company's numbers really do fall back to it. Drawing
+          // the root when one exists keeps the rule honest; drawing it when
+          // none does would invent a parent for numbers to fall back to and
+          // point every company's sentence at nothing.
+          if (_connectionFor(organization) != null) ...[
+            _connectionCard(organization),
+            const SizedBox(height: 8),
+          ],
+
+          for (final place in companies) ...[
+            Padding(
+              padding: const EdgeInsets.only(left: 24),
+              child: _connectionCard(place),
+            ),
+            const SizedBox(height: 8),
           ],
         ],
       ),
@@ -526,12 +570,36 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
           children: [
             Text(place.name, style: theme.textTheme.titleMedium),
             const SizedBox(height: 4),
+
+            // Where this row's calls go. One sentence, same shape on every
+            // row, and true regardless of who is looking at it.
             Text(
-              _blurb(place, row),
+              _usesLine(place, row),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
+
+            // A company with no account of its own is not broken and must not
+            // read as an empty slot — it is inheriting, which is the ordinary
+            // case and the whole point of the tree.
+            if (place.type == 'company' && row == null) ...[
+              const SizedBox(height: 8),
+              const Tag('Uses the organization'),
+            ],
+
+            // The permission, said separately and only where it applies.
+            // Folding it into the sentence above is what produced two
+            // variants of the routing rule for every view somebody stood in.
+            if (!_canModifyPlace(place)) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Switch to the whole organization to change this.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
             if (row != null) ...[
               const SizedBox(height: 8),
               Wrap(
@@ -589,20 +657,32 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     );
   }
 
-  String _blurb(_Place place, _Connection? row) {
+  /// Where this row's calls go — the ONE rule, stated the same way everywhere.
+  ///
+  /// This was `_blurb()`: six returns across three branches, each correct and
+  /// each different, because it also tried to say whether the reader was
+  /// allowed to change what they were looking at. Two facts in one sentence
+  /// needs a sentence per combination, and the rule ends up sounding different
+  /// depending on where somebody happens to be standing.
+  ///
+  /// Permission is now its own line on the card. This says only where calls go.
+  String _usesLine(_Place place, _Connection? row) {
     if (place.type == 'organization') {
-      if (!_canModifyPlace(place)) {
-        return row == null
-            ? 'Organization line. Switch to the group to connect or change it. Company numbers use this unless this company has its own.'
-            : 'Organization line. Switch to the group to change it. Company numbers use this unless this company has its own.';
-      }
-      return row == null
-          ? 'No connection. Company numbers use this unless that company has its own.'
-          : 'Numbers without their own company connection use this.';
+      return 'Numbers held at the organization use this.';
     }
-    return row == null
-        ? 'No connection. Numbers here use the organization until this exists.'
-        : 'This company has its own Twilio.';
+
+    if (row != null) return "This company's numbers use its own Twilio.";
+
+    // Only claim inheritance when there is something to inherit FROM.
+    // "uses the organization's connection above" with no organization
+    // connection is a sentence pointing at nothing, and it would read as
+    // working to somebody whose calls reach no account at all.
+    return _connectionFor(
+              _places.firstWhere((p) => p.type == 'organization'),
+            ) ==
+            null
+        ? 'No phone account yet, so calls to this company reach nobody.'
+        : "This company's numbers use the organization's connection above.";
   }
 }
 
