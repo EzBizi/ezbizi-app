@@ -614,6 +614,54 @@ deletion above was found because "matches no commit" is a strange thing to say
 about a file sitting right there at HEAD — nothing had failed, the output just
 read oddly.
 
+### After a merge, verify the TREE — not your diff
+
+`--filter` to the files you touched is the right discipline for your own work,
+and it stops being right the instant a merge arrives. A merge is not a change to
+your module; it is a change to the whole tree, and the moment it feels most
+reasonable to carry on doing what you have done all day is exactly the moment it
+is wrong.
+
+On 2026-08-31 a session merged 118 commits of main into its branch, ran its own
+three test files, got 96/96 and reported that as verified. The branch would have
+gone red at the gate. The full suite — 1121/1121 — was two minutes away and
+would have caught it in seconds instead of in a handover.
+
+The full run also says something a scoped run structurally cannot: main was at
+1117, the branch at 1121, so the four extra were the branch's own and nothing of
+anybody else's went missing in the merge. A module-scoped pass cannot tell you
+that no other module broke.
+
+### A coupled pair where only one half conflicts is sprung by resolving correctly
+
+`client/VERSION` and the newest entry in `version_history.dart` must agree —
+`version_history_test` asserts it. When two branches both bump VERSION, git
+raises a conflict on VERSION and says NOTHING about the note, because the note
+did not collide. Resolving the conflict correctly is what creates the mismatch.
+
+That is the trap: the fix for the thing git told you about breaks the thing it
+did not. Whenever you resolve a conflict, ask what else moves with the file you
+just decided — the answer is not in the conflict markers.
+
+### "Did nothing" and "did the wrong thing" need different detection
+
+Most of the silent failures in this codebase are DEAD ENDS: a value saved and
+never read, a screen that displays a setting nothing consults, a menu that could
+be built and attached to nothing. The thing did not happen. Somebody eventually
+notices, because they are waiting for an outcome that never comes.
+
+A WRONG ANSWER is worse and rarer. `?label=SENT` on an Outlook mailbox returned
+RECEIVED mail — 200, no error, no indication. Somebody checking what the business
+had sent a customer would have been reading what the customer sent them, with
+nothing to wonder about. Graph had the inbox hardcoded and IMAP ignored the
+argument; only Gmail honoured it.
+
+**They are found by different questions.** A dead end answers to *does this value
+ever get read?* — static, greppable, findable by reading. A wrong answer needs
+*does this path return what its name claims?*, which only a test that knows the
+right answer can ask. That is why the label bug survived every review that read
+the code and died the moment something asserted which URL got fetched.
+
 ---
 
 ## 9 · Deploying
