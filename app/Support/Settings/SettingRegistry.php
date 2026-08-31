@@ -601,7 +601,48 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'notifications.in_app_enabled', label: 'Show in-app notifications',
                 type: SettingDefinition::TYPE_BOOL, default: true,
+                help: 'The master switch. Off silences every notification below, including '
+                    .'the ones a company cannot otherwise turn off.',
             ),
+
+            /*
+             * Per-SOURCE, which is the axis a company actually complains along.
+             *
+             * Nobody asks to be told less in general; they ask to stop hearing
+             * about one KIND of thing — "the task board is noisy, the automation
+             * alerts are not". `source` is already the column that separates
+             * those, so it is what these key on rather than a second taxonomy
+             * invented to sit beside it.
+             *
+             * Finer control than this already exists and is owned elsewhere: a
+             * single noisy automation is switched off by its own `is_active`
+             * (Automation::86), and a single noisy task by a TaskWatchPreference.
+             * A per-rule toggle here would be a third place to look when
+             * somebody asks why they stopped hearing about something.
+             *
+             * There is deliberately no `system` toggle. That source carries
+             * "your trial ends tomorrow" and the things a business is worse off
+             * for having silenced — the master switch above can still do it, but
+             * it cannot be done by accident while tidying up task noise.
+             */
+            new SettingDefinition(
+                key: 'notifications.automation_enabled', label: 'Notifications from automations',
+                type: SettingDefinition::TYPE_BOOL, default: true,
+                help: 'The notify action on automation rules. Off leaves the rules running '
+                    .'and their other actions working — it silences only the telling.',
+            ),
+            new SettingDefinition(
+                key: 'notifications.task_enabled', label: 'Notifications from tasks',
+                type: SettingDefinition::TYPE_BOOL, default: true,
+                help: 'Assignments, mentions, due reminders and overdue warnings.',
+            ),
+            new SettingDefinition(
+                key: 'notifications.hr_enabled', label: 'Notifications from HR',
+                type: SettingDefinition::TYPE_BOOL, default: true,
+                help: 'Contract amendments and onboarding. These are addressed to one named '
+                    .'person rather than broadcast, so they are quiet by nature.',
+            ),
+
             new SettingDefinition(
                 key: 'tasks.due_reminders_enabled', label: 'Send task due reminders',
                 type: SettingDefinition::TYPE_BOOL, default: true,

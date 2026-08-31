@@ -67,10 +67,18 @@ final class TaskNotificationIntentDispatcher
                 }
 
                 [$title, $body] = $this->copy($intent->kind, $task);
-                $this->notifications->dispatchUnique($recipient, $title, $body, $task, 'task', $intent->id);
-                $this->finish($intentId, $claim['token'], 'delivered');
 
-                return true;
+                // Null means the organization has task notifications switched
+                // off. That is a settled outcome, not a failure to retry: the
+                // setting will still be off in ten seconds, and an intent parked
+                // in `pending` would deliver the moment somebody switched it back
+                // on — telling them about a task assignment from last month.
+                $delivered = $this->notifications
+                    ->dispatchUnique($recipient, $title, $body, $task, 'task', $intent->id) !== null;
+
+                $this->finish($intentId, $claim['token'], $delivered ? 'delivered' : 'suppressed');
+
+                return $delivered;
             }));
         } catch (Throwable $exception) {
             $current = TaskNotificationIntent::withoutGlobalScopes()->find($intentId);

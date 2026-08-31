@@ -1205,10 +1205,10 @@ class HrOnboardingsController extends Controller
             return;
         }
 
-        if (! $this->notifications->enabled($onboarding->organization)) {
-            return;
-        }
-
+        // The switch used to be asked about here, and this was the only place in
+        // the system that asked. It is now checked inside dispatch() itself,
+        // where no caller can leave it out — so a guard here would be a second
+        // copy of a rule that has exactly one correct answer.
         $this->notifications->dispatch(
             title: 'A signed contract was amended',
             body: sprintf(

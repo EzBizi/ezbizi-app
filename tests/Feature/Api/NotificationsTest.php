@@ -11,7 +11,10 @@ use App\Models\Notification;
 use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Automations\AutomationEngine;
+use App\Support\Notifications\NotificationDispatcher;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -215,5 +218,86 @@ class NotificationsTest extends TestCase
             0,
             $this->inTenant(fn () => Notification::where('user_id', $other->id)->whereNotNull('read_at')->count()),
         );
+    }
+
+    // ── The switches a company actually gets to throw ─────────────
+    //
+    // Each of these fails if the check is lifted back out of dispatch() to a
+    // method call sites are trusted to remember, which is the state this system
+    // shipped in: the settings screen offered a master switch that three of the
+    // system's four notification producers never read.
+
+    private function set(string $key, mixed $value, ?Model $scope = null): void
+    {
+        $this->inTenant(fn () => app(SettingsResolver::class)
+            ->set($key, $scope ?? $this->org['organization'], $value));
+    }
+
+    private function notificationCount(): int
+    {
+        return $this->inTenant(fn () => Notification::query()->count());
+    }
+
+    public function test_the_master_switch_stops_an_automation_notification(): void
+    {
+        $this->set('notifications.in_app_enabled', false);
+
+        $this->ruleThatNotifies();
+        $this->makeJob();
+        $this->drain();
+
+        $this->assertSame(0, $this->notificationCount());
+    }
+
+    public function test_silencing_automations_does_not_silence_the_system(): void
+    {
+        $this->set('notifications.automation_enabled', false);
+
+        $this->ruleThatNotifies();
+        $this->makeJob();
+        $this->drain();
+
+        $this->assertSame(0, $this->notificationCount(), 'the automation was told to be quiet');
+
+        // The same dispatcher, the same franchise, the source with no toggle.
+        // "Your trial ends tomorrow" is not something a company gets to lose
+        // while tidying up automation noise, so this is the assertion that a
+        // future refactor turning SOURCE_SETTINGS into a built key would break.
+        $sent = $this->inTenant(fn () => app(NotificationDispatcher::class)->dispatch(
+            title: 'Your trial ends tomorrow',
+            subject: $this->org['franchise'],
+            onlyTo: $this->org['admin'],
+            source: 'system',
+        ));
+
+        $this->assertSame(1, $sent);
+    }
+
+    public function test_a_franchise_can_switch_itself_off_while_the_organization_stays_on(): void
+    {
+        // The organization says yes. The franchise the record belongs to says no,
+        // and it is the record's franchise that decides — resolving this against
+        // the organization would leave the franchise override dead in the code
+        // while still rendering as set in the settings screen.
+        $this->set('notifications.task_enabled', false, $this->org['franchise']);
+
+        $sent = $this->inTenant(fn () => app(NotificationDispatcher::class)->dispatch(
+            title: 'Task assigned',
+            subject: $this->org['franchise'],
+            onlyTo: $this->org['admin'],
+            source: 'task',
+        ));
+
+        $this->assertSame(0, $sent);
+
+        // Same organization, same source, a subject that is not in that franchise.
+        $sent = $this->inTenant(fn () => app(NotificationDispatcher::class)->dispatch(
+            title: 'Task assigned',
+            subject: null,
+            onlyTo: $this->org['admin'],
+            source: 'task',
+        ));
+
+        $this->assertSame(1, $sent, 'the override belongs to one franchise, not the organization');
     }
 }

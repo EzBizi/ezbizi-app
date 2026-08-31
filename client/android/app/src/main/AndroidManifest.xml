@@ -9,6 +9,18 @@
       Caught here on the first Android build, before any tester saw it.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!--
+      Notifications, and the reason this is declared rather than left to the
+      plugin: Android 13 made POST_NOTIFICATIONS a runtime permission, and a
+      runtime permission that is not in the manifest cannot be requested — the
+      request returns "denied" immediately, without ever showing a prompt.
+
+      The failure looks exactly like a person having said no. Nothing throws,
+      nothing logs, the app carries on and the handset is simply silent, on the
+      one OS version that covers most of the phones in use. Below 13 the
+      permission is granted at install and this line changes nothing.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
         android:label="EzBizi"
         android:name="${applicationName}"
