@@ -38,20 +38,114 @@ class PhoneSettingsTab extends StatefulWidget {
 }
 
 class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
-  static const _sections = <(String, IconData)>[
-    ('General', Icons.tune_outlined),
-    ('Call flow', Icons.account_tree_outlined),
-    ('Connection', Icons.link_outlined),
-    ('Numbers', Icons.dialpad_outlined),
-    ('Porting', Icons.swap_horiz_outlined),
-    ('IVR menus', Icons.touch_app_outlined),
-    ('Hours', Icons.schedule_outlined),
-    ('Ring groups', Icons.groups_outlined),
-    ('Voicemail', Icons.voicemail_outlined),
-    ('Tags', Icons.sell_outlined),
-    ('Trust & caller identity', Icons.verified_outlined),
-    ('Cost', Icons.receipt_long_outlined),
-    ('Messaging', Icons.sms_outlined),
+  /// The rail: order, grouping and identity, declared once.
+  ///
+  /// ── Why `id` exists ─────────────────────────────────────────────
+  ///
+  /// The body used to switch on the INDEX. That was fine while the rail was a
+  /// flat list nobody reordered, and it became a trap the moment grouping
+  /// arrived: moving Trust up one place repoints every section below it, and
+  /// nothing fails — you land on Tags and get Cost, which reads as a rendering
+  /// bug rather than an off-by-one. So the index is a position now, and the id
+  /// is what the body is keyed on.
+  ///
+  /// ── Why `group` is here and not in the rail widget ──────────────
+  ///
+  /// Because the order and the grouping have to agree, and two lists cannot be
+  /// made to. A section listed under Answering and rendered between two
+  /// Connect entries would be a heading that lies, which is worse than no
+  /// headings at all — the reason for grouping thirteen items is to let
+  /// somebody stop reading once they know which group they want.
+  static const _sections =
+      <({String id, String label, IconData icon, String group})>[
+    // Getting calls to arrive at all.
+    (
+      id: 'general',
+      label: 'General',
+      icon: Icons.tune_outlined,
+      group: 'Connect',
+    ),
+    (
+      id: 'call-flow',
+      label: 'Call flow',
+      icon: Icons.account_tree_outlined,
+      group: 'Connect',
+    ),
+    (
+      id: 'connection',
+      label: 'Connection',
+      icon: Icons.link_outlined,
+      group: 'Connect',
+    ),
+    (
+      id: 'numbers',
+      label: 'Numbers',
+      icon: Icons.dialpad_outlined,
+      group: 'Connect',
+    ),
+    (
+      id: 'porting',
+      label: 'Porting',
+      icon: Icons.swap_horiz_outlined,
+      group: 'Connect',
+    ),
+
+    // What happens once one has.
+    (
+      id: 'flows',
+      label: 'IVR menus',
+      icon: Icons.touch_app_outlined,
+      group: 'Answering',
+    ),
+    (
+      id: 'hours',
+      label: 'Hours',
+      icon: Icons.schedule_outlined,
+      group: 'Answering',
+    ),
+    (
+      id: 'ring-groups',
+      label: 'Ring groups',
+      icon: Icons.groups_outlined,
+      group: 'Answering',
+    ),
+    (
+      id: 'voicemail',
+      label: 'Voicemail',
+      icon: Icons.voicemail_outlined,
+      group: 'Answering',
+    ),
+
+    // How the business looks to a carrier, which is its own subject and the
+    // only member of its group. A group of one is still worth drawing: it is
+    // the answer to "why are my calls marked spam", and burying it among the
+    // housekeeping is how it went unfound.
+    (
+      id: 'trust',
+      label: 'Trust & caller identity',
+      icon: Icons.verified_outlined,
+      group: 'Identity',
+    ),
+
+    // Housekeeping, and the things you read rather than set.
+    (
+      id: 'tags',
+      label: 'Tags',
+      icon: Icons.sell_outlined,
+      group: 'Running it',
+    ),
+    (
+      id: 'cost',
+      label: 'Cost',
+      icon: Icons.receipt_long_outlined,
+      group: 'Running it',
+    ),
+    (
+      id: 'messaging',
+      label: 'Messaging',
+      icon: Icons.sms_outlined,
+      group: 'Running it',
+    ),
   ];
 
   /// Connection, not Call flow.
@@ -217,7 +311,21 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
       children: [
-        for (var i = 0; i < _sections.length; i++)
+        for (var i = 0; i < _sections.length; i++) ...[
+          // A heading wherever the group changes, which is derived from the
+          // order rather than listed separately — the two cannot disagree.
+          if (i == 0 || _sections[i].group != _sections[i - 1].group)
+            Padding(
+              padding: EdgeInsets.fromLTRB(12, i == 0 ? 4 : 16, 12, 6),
+              child: Text(
+                _sections[i].group.toUpperCase(),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  letterSpacing: 0.8,
+                ),
+              ),
+            ),
+
           Padding(
             padding: const EdgeInsets.only(bottom: 2),
             child: Material(
@@ -238,7 +346,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
                     child: Row(
                       children: [
                         Icon(
-                          _sections[i].$2,
+                          _sections[i].icon,
                           size: 18,
                           color: i == _section
                               ? theme.colorScheme.primary
@@ -247,7 +355,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            _sections[i].$1,
+                            _sections[i].label,
                             style: theme.textTheme.bodyMedium?.copyWith(
                               fontWeight: i == _section
                                   ? FontWeight.w600
@@ -265,6 +373,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
               ),
             ),
           ),
+        ],
       ],
     );
   }
@@ -285,7 +394,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
                 ),
                 Expanded(
                   child: Text(
-                    _sections[_section].$1,
+                    _sections[_section].label,
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
@@ -312,22 +421,25 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
   /// PhoneScreenTest has a test that a pane refetches when it is opened again,
   /// so this is enforced rather than remembered.
   Widget _sectionBody() {
-    return switch (_section) {
+    // Keyed on the section's id, not its position. The rail is grouped and
+    // therefore reorderable, and an index would quietly repoint every section
+    // below a move.
+    return switch (_sections[_section].id) {
       // General leads and Call flow follows it. They answer the same question
       // — one as the form you fill in, one as the report of what that did —
       // and the form comes first because that is the order somebody works in.
-      0 => GeneralPane(api: widget.api, session: widget.session),
-      1 => CallFlowPane(api: widget.api),
-      2 => _connectionBody(),
-      3 => NumbersPane(api: widget.api, session: widget.session),
-      4 => PortingPane(api: widget.api, session: widget.session),
-      5 => FlowsPane(api: widget.api, session: widget.session),
-      6 => HoursPane(api: widget.api, session: widget.session),
-      7 => RingGroupsPane(api: widget.api, session: widget.session),
-      8 => VoicemailPane(api: widget.api, session: widget.session),
-      9 => TagsPane(api: widget.api, session: widget.session),
-      10 => TrustPane(api: widget.api, session: widget.session),
-      11 => UsagePane(
+      'general' => GeneralPane(api: widget.api, session: widget.session),
+      'call-flow' => CallFlowPane(api: widget.api),
+      'connection' => _connectionBody(),
+      'numbers' => NumbersPane(api: widget.api, session: widget.session),
+      'porting' => PortingPane(api: widget.api, session: widget.session),
+      'flows' => FlowsPane(api: widget.api, session: widget.session),
+      'hours' => HoursPane(api: widget.api, session: widget.session),
+      'ring-groups' => RingGroupsPane(api: widget.api, session: widget.session),
+      'voicemail' => VoicemailPane(api: widget.api, session: widget.session),
+      'trust' => TrustPane(api: widget.api, session: widget.session),
+      'tags' => TagsPane(api: widget.api, session: widget.session),
+      'cost' => UsagePane(
         api: widget.api,
         session: widget.session,
         scopeType: _places.first.type,
@@ -347,7 +459,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
           spacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Text(_sections[_section].$1, style: theme.textTheme.titleMedium),
+            Text(_sections[_section].label, style: theme.textTheme.titleMedium),
             const Tag('Not built yet', warn: true),
           ],
         ),

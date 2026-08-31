@@ -1174,6 +1174,68 @@ void main() {
       expect(find.text('Try again'), findsOneWidget);
     });
   });
+
+  group('Settings › the rail', () {
+    const conn = {
+      'id': 'cx-1',
+      'scope_type': 'company',
+      'scope_id': 'co-1',
+      'scope_name': 'A-1 Chimney',
+      'kind': 'subaccount',
+      'status': 'connected',
+    };
+
+    /// Thirteen sections in four groups, so somebody can stop reading once
+    /// they know which group they want.
+    testWidgets('sections are grouped under headings', (tester) async {
+      await _pump(tester);
+
+      await _tap(tester, find.text('Settings'));
+
+      for (final heading in ['CONNECT', 'ANSWERING', 'IDENTITY', 'RUNNING IT']) {
+        expect(find.text(heading), findsOneWidget, reason: heading);
+      }
+    });
+
+    /// Grouping REORDERED the rail: Trust moved above Tags. The body used to
+    /// be keyed on the index, so that move repointed every section below it —
+    /// you would tap Trust and get Tags, with nothing failing anywhere.
+    ///
+    /// These two are the pair the move actually swapped, which is why they are
+    /// the pair worth asserting rather than a section in the middle of a group
+    /// that could not have shifted.
+    testWidgets("each rail entry opens its own pane, not its neighbour's", (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        trust: const {
+          'customer_profile': 'pending',
+          'shaken_stir': 'twilio-approved',
+          'cnam': 'noop',
+          'voice_integrity': 'twilio-rejected',
+        },
+      );
+
+      await _tap(tester, find.text('Settings'));
+
+      await _tap(tester, find.text('Trust & caller identity'));
+      expect(
+        find.textContaining('Twilio Business Profile'),
+        findsOneWidget,
+        reason: 'Trust opened something else',
+      );
+
+      await _tap(tester, find.text('Tags'));
+      expect(
+        find.textContaining('Twilio Business Profile'),
+        findsNothing,
+        reason: 'Tags opened Trust, which is the index-repointing bug',
+      );
+    });
+  });
 }
 Finder _tab(String label) => find.widgetWithText(ChoiceChip, label);
 
