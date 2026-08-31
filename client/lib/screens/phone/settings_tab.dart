@@ -40,8 +40,8 @@ class PhoneSettingsTab extends StatefulWidget {
 
 class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
   static const _sections = <(String, IconData)>[
-    ('Call flow', Icons.account_tree_outlined),
     ('General', Icons.tune_outlined),
+    ('Call flow', Icons.account_tree_outlined),
     ('Connection', Icons.link_outlined),
     ('Numbers', Icons.dialpad_outlined),
     ('Porting', Icons.swap_horiz_outlined),
@@ -301,13 +301,11 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
 
   Widget _sectionBody() {
     return switch (_section) {
-      // Call flow leads, because it is the only screen that says whether any
-      // of the others are doing anything.
-      0 => CallFlowPane(api: widget.api),
-
-      // General writes what Call flow reads. Adjacent on purpose: the two
-      // answer the same question, one as a report and one as a form.
-      1 => GeneralPane(api: widget.api, session: widget.session),
+      // General leads and Call flow follows it. They answer the same question
+      // — one as the form you fill in, one as the report of what that did —
+      // and the form comes first because that is the order somebody works in.
+      0 => GeneralPane(api: widget.api, session: widget.session),
+      1 => CallFlowPane(api: widget.api),
       2 => _connectionBody(),
       3 => NumbersPane(api: widget.api, session: widget.session),
       4 => PortingPane(api: widget.api, session: widget.session),

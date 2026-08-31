@@ -337,7 +337,17 @@ class _RecordsTabState extends State<RecordsTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('$kind · $who', style: theme.textTheme.bodyMedium),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '$kind · $who',
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    ),
+                    if (call.tag != null) _tagChip(call, theme),
+                  ],
+                ),
                 Text(
                   _subtitle(call),
                   style: theme.textTheme.bodySmall?.copyWith(
@@ -348,6 +358,31 @@ class _RecordsTabState extends State<RecordsTab> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// The tag, tinted. An untinted tag still reads — colour is what makes a
+  /// list scannable, not what makes it legible, so the name is never carried
+  /// by the colour alone.
+  Widget _tagChip(_Call call, ThemeData theme) {
+    final hex = call.tagColor?.replaceFirst('#', '');
+    final value = hex == null ? null : int.tryParse(hex, radix: 16);
+    final colour = value == null ? null : Color(0xFF000000 | value);
+
+    return Container(
+      margin: const EdgeInsets.only(left: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: colour?.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: colour ?? theme.colorScheme.outlineVariant,
+        ),
+      ),
+      child: Text(
+        call.tag!,
+        style: theme.textTheme.labelSmall,
       ),
     );
   }
@@ -559,6 +594,8 @@ class _Call {
     required this.recordingSid,
     required this.transcript,
     required this.createdAt,
+    this.tag,
+    this.tagColor,
   });
 
   final String id;
@@ -572,6 +609,12 @@ class _Call {
   final String? transcript;
   final String createdAt;
 
+  /// What the call was about, and the colour picked for it. Shown here rather
+  /// than only counted in Reports: a call list you can read at a glance is the
+  /// reason anybody bothers to tag a call at all.
+  final String? tag;
+  final String? tagColor;
+
   factory _Call.fromJson(Map<String, dynamic> json) => _Call(
     id: json['id'] as String? ?? '',
     numberId: json['number_id'] as String? ?? '',
@@ -583,6 +626,8 @@ class _Call {
     recordingSid: json['recording_sid'] as String?,
     transcript: json['transcript'] as String?,
     createdAt: json['created_at'] as String? ?? '',
+    tag: json['tag'] as String?,
+    tagColor: json['tag_color'] as String?,
   );
 }
 
