@@ -46,7 +46,11 @@ class ExtensionsController extends Controller
         $connections = $this->connectionsInReach($request->user());
 
         if ($connections->isEmpty()) {
-            return response()->json(['data' => [], 'connection_id' => null]);
+            return response()->json([
+                'data' => [],
+                'connection_id' => null,
+                'numbers' => [],
+            ]);
         }
 
         $connection = $connections->first();
@@ -64,6 +68,11 @@ class ExtensionsController extends Controller
                 'user_id' => $user->id,
                 'name' => $user->name,
                 'extension' => $held[$user->id]->extension ?? null,
+
+                // Which line this person calls out from. Null means they fall
+                // back to whichever line the Call tab has selected, which is
+                // how every person behaved before this existed.
+                'number_id' => $held[$user->id]->number_id ?? null,
             ])
             ->values()
             ->all();
@@ -71,6 +80,21 @@ class ExtensionsController extends Controller
         return response()->json([
             'data' => $rows,
             'connection_id' => $connection->id,
+
+            // The lines that can be assigned. Sent with the roster rather
+            // than fetched separately, because a picker offering a number
+            // this account does not own produces a call the carrier rejects
+            // — and the two lists would have to be reconciled anyway.
+            'numbers' => PhoneNumber::query()
+                ->where('connection_id', $connection->id)
+                ->orderBy('e164')
+                ->get()
+                ->map(fn (PhoneNumber $number) => [
+                    'id' => $number->id,
+                    'e164' => $number->e164,
+                    'label' => $number->label,
+                ])
+                ->all(),
         ]);
     }
 
@@ -91,6 +115,12 @@ class ExtensionsController extends Controller
             // Digits only. Letters would be unreachable from a phone keypad,
             // which is the one place this has to work.
             'extension' => ['present', 'nullable', 'string', 'regex:/^\d{2,8}$/'],
+
+            // The line this person's outbound calls go out from. Independent
+            // of the extension: somebody can be given a number to call from
+            // without being reachable on a short code, and requiring an
+            // extension for that would force made-up digits on them.
+            'number_id' => ['sometimes', 'nullable', 'uuid'],
         ]);
 
         $connection = PhoneConnection::query()->find($input['connection_id']);
@@ -101,8 +131,29 @@ class ExtensionsController extends Controller
         abort_if($user === null, Response::HTTP_NOT_FOUND);
 
         $digits = $input['extension'] ?? null;
+        $digits = $digits === '' ? null : $digits;
 
-        if ($digits === null || $digits === '') {
+        $numberId = array_key_exists('number_id', $input) ? $input['number_id'] : null;
+
+        // A number from another phone account would be accepted by Twilio and
+        // then rejected at call time as a caller ID the account does not own —
+        // an outbound call that fails in the carrier rather than here.
+        if ($numberId !== null) {
+            $number = PhoneNumber::query()
+                ->where('connection_id', $connection->id)
+                ->find($numberId);
+
+            if ($number === null) {
+                throw ValidationException::withMessages([
+                    'number_id' => 'That number is not on this phone account.',
+                ]);
+            }
+        }
+
+        // Nothing to hold. The row exists to carry an extension or a number,
+        // so with neither it is deleted rather than left as an empty record
+        // that reads like a person who has been set up.
+        if ($digits === null && $numberId === null) {
             PhoneExtension::query()
                 ->where('connection_id', $connection->id)
                 ->where('user_id', $user->id)
@@ -112,31 +163,38 @@ class ExtensionsController extends Controller
                 'user_id' => $user->id,
                 'name' => $user->name,
                 'extension' => null,
+                'number_id' => null,
             ]]);
         }
 
         // Refused rather than silently reassigned. Two people on one extension
         // makes "call 101" ambiguous, and the unique index would throw a 500
         // here rather than say which person already holds it.
-        $taken = PhoneExtension::query()
-            ->where('connection_id', $connection->id)
-            ->where('extension', $digits)
-            ->where('user_id', '!=', $user->id)
-            ->first();
+        if ($digits !== null) {
+            $taken = PhoneExtension::query()
+                ->where('connection_id', $connection->id)
+                ->where('extension', $digits)
+                ->where('user_id', '!=', $user->id)
+                ->first();
 
-        if ($taken !== null) {
-            throw ValidationException::withMessages([
-                'extension' => $taken->user?->name
-                    ? $taken->user->name.' already has extension '.$digits.'.'
-                    : 'Extension '.$digits.' is already taken.',
-            ]);
+            if ($taken !== null) {
+                throw ValidationException::withMessages([
+                    'extension' => $taken->user?->name
+                        ? $taken->user->name.' already has extension '.$digits.'.'
+                        : 'Extension '.$digits.' is already taken.',
+                ]);
+            }
         }
 
+        // Deliberately NOT unique. Several people calling out from one
+        // published line is the ordinary small-business setup, and forbidding
+        // it would model a rule nobody asked for.
         $row = PhoneExtension::query()->updateOrCreate(
             ['connection_id' => $connection->id, 'user_id' => $user->id],
             [
                 'organization_id' => $this->tenant->idOrFail(),
                 'extension' => $digits,
+                'number_id' => $numberId,
             ],
         );
 
@@ -144,6 +202,7 @@ class ExtensionsController extends Controller
             'user_id' => $user->id,
             'name' => $user->name,
             'extension' => $row->extension,
+            'number_id' => $row->number_id,
         ]]);
     }
 }

@@ -20,6 +20,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 use Twilio\Security\RequestValidator;
+use App\Models\PhoneExtension;
 
 /**
  * Public Voice / status webhooks write call rows and raise automations (Task 10).
@@ -77,6 +78,129 @@ class VoiceWebhookTest extends TestCase
         // The symptom that was reported: the caller's own line answering them.
         $this->assertStringNotContainsString('<Record', $xml);
         $this->assertStringNotContainsString('leave a message', $xml);
+    }
+
+    /**
+     * A person calls out from the number assigned to them on Team.
+     *
+     * Before this, the caller ID was whatever the Call tab had selected — and
+     * nobody ever changed it, so every outbound call in the business went out
+     * under the first line on the account. Four people ringing four customers
+     * all showed the same number, and every callback landed on whoever
+     * answered that one line.
+     *
+     * The client normally sends its selection and that is honoured. This
+     * covers the case that actually fails: a call arriving with NO usable
+     * caller ID. Without the assignment it goes out as `client:<identity>`,
+     * which is not a number the account owns, so the carrier rejects it — a
+     * call that never connects and never says why.
+     */
+    public function test_an_outbound_call_uses_the_number_assigned_to_the_caller(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$connection, $authToken, $identity] = $this->inTenant($t['org'], function () use ($t) {
+            // Two lines, so "the assigned one" is a real choice rather than
+            // the only thing it could have picked.
+            [$connection, , $authToken, $identity] = $this->openLine($t, e164: '+12035551020');
+
+            $mine = PhoneNumber::factory()->create([
+                'connection_id' => $connection->id,
+                'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'e164' => '+12035559999',
+            ]);
+
+            $caller = User::query()->get()->first(
+                fn (User $user) => ClientIdentity::of($user) === $identity,
+            );
+
+            PhoneExtension::query()->create([
+                'organization_id' => $t['org']->id,
+                'connection_id' => $connection->id,
+                'user_id' => $caller->id,
+                'number_id' => $mine->id,
+            ]);
+
+            return [$connection, $authToken, $identity];
+        });
+
+        $xml = $this->signedPost($this->voiceUrl($t['org']->id, $connection->id), [
+            'CallSid' => 'CA55555555555555555555555555555555',
+            'AccountSid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'Direction' => 'inbound',
+            'From' => 'client:'.$identity,
+            'To' => '+13057242199',
+            'EzBiziDirection' => 'outbound',
+            'CallStatus' => 'ringing',
+        ], $authToken)->assertOk()->getContent();
+
+        $this->assertStringContainsString('+13057242199', $xml);
+        $this->assertStringContainsString(
+            'callerId="+12035559999"',
+            $xml,
+            'the call went out under some other line than the one assigned',
+        );
+
+        // Not the account's first line, which is what it used to fall to.
+        $this->assertStringNotContainsString('callerId="+12035551020"', $xml);
+    }
+
+    /**
+     * Somebody with no assignment must not borrow a colleague's number.
+     *
+     * Picking "some line on the account" would put one person's calls out
+     * under another person's number, and the customer rings back the wrong
+     * colleague — worse than a call that does not connect, because it looks
+     * like it worked.
+     */
+    public function test_an_unassigned_caller_does_not_borrow_somebody_elses_number(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$connection, $authToken, $identities] = $this->inTenant($t['org'], function () use ($t) {
+            [$connection, , $authToken, , $identities] = $this->openLine(
+                $t, e164: '+12035551030', desks: 2,
+            );
+
+            $mine = PhoneNumber::factory()->create([
+                'connection_id' => $connection->id,
+                'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'e164' => '+12035558888',
+            ]);
+
+            // Assigned to the FIRST desk only.
+            $assigned = User::query()->get()->first(
+                fn (User $user) => ClientIdentity::of($user) === $identities[0],
+            );
+
+            PhoneExtension::query()->create([
+                'organization_id' => $t['org']->id,
+                'connection_id' => $connection->id,
+                'user_id' => $assigned->id,
+                'number_id' => $mine->id,
+            ]);
+
+            return [$connection, $authToken, $identities];
+        });
+
+        // The SECOND desk calls out, holding no assignment of their own.
+        $xml = $this->signedPost($this->voiceUrl($t['org']->id, $connection->id), [
+            'CallSid' => 'CA66666666666666666666666666666666',
+            'AccountSid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'Direction' => 'inbound',
+            'From' => 'client:'.$identities[1],
+            'To' => '+13057242199',
+            'EzBiziDirection' => 'outbound',
+            'CallStatus' => 'ringing',
+        ], $authToken)->assertOk()->getContent();
+
+        $this->assertStringNotContainsString(
+            'callerId="+12035558888"',
+            $xml,
+            "an unassigned caller went out under a colleague's number",
+        );
     }
 
     public function test_inbound_creates_a_call_row_and_returns_twiml(): void

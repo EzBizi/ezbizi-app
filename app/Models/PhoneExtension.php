@@ -16,7 +16,7 @@ class PhoneExtension extends Model implements StatesRetention
     use HasUuids;
 
     protected $fillable = [
-        'organization_id', 'connection_id', 'user_id', 'extension',
+        'organization_id', 'connection_id', 'user_id', 'number_id', 'extension',
     ];
 
     /**
@@ -34,6 +34,17 @@ class PhoneExtension extends Model implements StatesRetention
             .'the digits and who they ring. Deleted with the phone account, and '
             .'with the person it belongs to.'
         );
+    }
+
+    /**
+     * The line this person's outbound calls go out from.
+     *
+     * Null is not a gap: it means they call out from whichever line the Call
+     * tab has selected, which is how everybody behaved before this existed.
+     */
+    public function number(): BelongsTo
+    {
+        return $this->belongsTo(PhoneNumber::class, 'number_id');
     }
 
     public function user(): BelongsTo

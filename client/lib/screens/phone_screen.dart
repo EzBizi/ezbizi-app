@@ -7,6 +7,7 @@ import 'phone/call_tab.dart';
 import 'phone/records_tab.dart';
 import 'phone/reports_tab.dart';
 import 'phone/settings_tab.dart';
+import 'phone/team_tab.dart';
 
 /// Phone — Call, Records, Reports, Settings.
 ///
@@ -38,6 +39,11 @@ class _PhoneScreenState extends State<PhoneScreen> {
       'Call',
       Icons.phone_outlined,
       () => CallTab(api: widget.api, session: widget.session),
+    ),
+    (
+      'Team',
+      Icons.groups_outlined,
+      () => TeamTab(api: widget.api, session: widget.session),
     ),
     (
       'Records',

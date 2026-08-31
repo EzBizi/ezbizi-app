@@ -19,7 +19,7 @@ void main() {
     await _pump(tester);
 
     expect(find.text('Coming soon'), findsNothing);
-    expect(_chips(tester), ['Call', 'Records', 'Reports', 'Settings']);
+    expect(_chips(tester), ['Call', 'Team', 'Records', 'Reports', 'Settings']);
     expect(find.widgetWithText(ChoiceChip, 'Call'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'Records'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'Settings'), findsOneWidget);
@@ -35,7 +35,7 @@ void main() {
     expect(find.byType(ComingSoonScreen), findsNothing);
     expect(find.text('Coming soon'), findsNothing);
     expect(find.byType(PhoneScreen), findsOneWidget);
-    expect(_chips(tester), ['Call', 'Records', 'Reports', 'Settings']);
+    expect(_chips(tester), ['Call', 'Team', 'Records', 'Reports', 'Settings']);
   });
 
   testWidgets('Records is an empty list, not Coming soon', (tester) async {
@@ -1453,7 +1453,7 @@ void main() {
     });
   });
 
-  group('Settings › Extensions', () {
+  group('Team', () {
     const conn = {
       'id': 'cx-1',
       'scope_type': 'company',
@@ -1469,8 +1469,7 @@ void main() {
     ];
 
     Future<void> openExtensions(WidgetTester tester) async {
-      await _tap(tester, find.text('Settings'));
-      await _tap(tester, find.text('Extensions'));
+      await _tap(tester, _tab('Team'));
     }
 
     /// Somebody opens this asking "what is Bar's number", and the answer is

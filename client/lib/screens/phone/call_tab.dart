@@ -96,6 +96,18 @@ class _CallTabState extends State<CallTab> {
     for (final number in _numbers) {
       if (number.id == _numberId) return number;
     }
+
+    // Nothing chosen: the line assigned to this person on Team, before the
+    // first on the account.
+    //
+    // Falling straight to `.first` is what made every outbound call in the
+    // business go out under one number — nobody ever changed the picker, so
+    // four people ringing four customers all showed the same line and every
+    // callback landed on whoever answered it.
+    for (final number in _numbers) {
+      if (number.assignedToMe) return number;
+    }
+
     return _numbers.isEmpty ? null : _numbers.first;
   }
 
@@ -978,6 +990,7 @@ class _Number {
     required this.label,
     required this.transcribe,
     required this.smsOutboundAllowed,
+    required this.assignedToMe,
   });
 
   final String id;
@@ -987,6 +1000,9 @@ class _Number {
   final bool transcribe;
   final bool smsOutboundAllowed;
 
+  /// Whether this is the line the person reading calls out from, set on Team.
+  final bool assignedToMe;
+
   factory _Number.fromJson(Map<String, dynamic> json) => _Number(
     id: json['id'] as String? ?? '',
     connectionId: json['connection_id'] as String? ?? '',
@@ -994,6 +1010,7 @@ class _Number {
     label: json['label'] as String? ?? json['e164'] as String? ?? '',
     transcribe: json['transcribe'] == true,
     smsOutboundAllowed: json['sms_outbound_allowed'] == true,
+    assignedToMe: json['assigned_to_me'] == true,
   );
 }
 
