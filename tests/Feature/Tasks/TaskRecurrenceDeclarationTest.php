@@ -46,7 +46,7 @@ final class TaskRecurrenceDeclarationTest extends TestCase
 
     public function test_after_completion_mode_round_trips_through_parse_and_encode(): void
     {
-        $raw = ['mode' => 'after_completion', 'every' => 3, 'unit' => 'day', 'until' => null, 'count' => 5];
+        $raw = ['mode' => 'after_completion', 'every' => 3, 'unit' => 'day', 'until' => null, 'count' => 5, 'declared_on' => null];
 
         $recurrence = TaskRecurrenceCodec::parse($raw);
 
@@ -56,7 +56,7 @@ final class TaskRecurrenceDeclarationTest extends TestCase
 
     public function test_on_schedule_mode_round_trips_through_parse_and_encode(): void
     {
-        $raw = ['mode' => 'on_schedule', 'every' => 1, 'unit' => 'month', 'until' => '2027-01-01', 'count' => null];
+        $raw = ['mode' => 'on_schedule', 'every' => 1, 'unit' => 'month', 'until' => '2027-01-01', 'count' => null, 'declared_on' => null];
 
         $recurrence = TaskRecurrenceCodec::parse($raw);
 
@@ -204,6 +204,58 @@ final class TaskRecurrenceDeclarationTest extends TestCase
                 ->where('action', 'task.recurrence_declared')
                 ->exists()
         );
+    }
+
+    /**
+     * `declared_on` (whole-branch review finding 1) is stamped by the
+     * server at the moment recurrence is FIRST declared, floors
+     * TaskRecurrenceWorker's on_schedule walk, and is never taken from
+     * client input — a caller supplying its own `declared_on` in the raw
+     * payload must not be able to move the floor backward.
+     */
+    public function test_declared_on_is_stamped_server_side_and_ignores_client_input(): void
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-08-31 12:00:00');
+        $task = $this->createTask('Recurring');
+
+        $declared = app(TaskWriter::class)->setRecurrence(
+            $this->tenant['admin'],
+            $task,
+            ['mode' => 'on_schedule', 'every' => 1, 'unit' => 'day', 'declared_on' => '2020-01-01'],
+            (int) $task->version,
+        );
+
+        $this->assertSame('2026-08-31', $declared->recurrence['declared_on']);
+        \Illuminate\Support\Carbon::setTestNow();
+    }
+
+    /**
+     * Editing an already-declared recurrence (still declared, just a
+     * different interval) must keep the ORIGINAL declaration date — only
+     * a fresh declaration (previously null) gets stamped anew.
+     */
+    public function test_declared_on_is_preserved_across_an_edit_of_an_existing_declaration(): void
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-08-01 12:00:00');
+        $task = $this->createTask('Recurring');
+        $declared = app(TaskWriter::class)->setRecurrence(
+            $this->tenant['admin'],
+            $task,
+            ['mode' => 'on_schedule', 'every' => 1, 'unit' => 'day'],
+            (int) $task->version,
+        );
+        $this->assertSame('2026-08-01', $declared->recurrence['declared_on']);
+
+        \Illuminate\Support\Carbon::setTestNow('2026-08-31 12:00:00');
+        $edited = app(TaskWriter::class)->setRecurrence(
+            $this->tenant['admin'],
+            $declared,
+            ['mode' => 'on_schedule', 'every' => 2, 'unit' => 'day'],
+            (int) $declared->version,
+        );
+
+        $this->assertSame('2026-08-01', $edited->recurrence['declared_on'], 'Editing an interval must not move the declaration floor.');
+        \Illuminate\Support\Carbon::setTestNow();
     }
 
     public function test_clearing_to_null_is_allowed_and_audited(): void

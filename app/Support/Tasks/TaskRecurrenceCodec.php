@@ -22,7 +22,7 @@ final class TaskRecurrenceCodec
 
     private const UNITS = ['day', 'week', 'month'];
 
-    private const KEYS = ['mode', 'every', 'unit', 'until', 'count'];
+    private const KEYS = ['mode', 'every', 'unit', 'until', 'count', 'declared_on'];
 
     public static function parse(?array $raw): ?TaskRecurrence
     {
@@ -55,8 +55,9 @@ final class TaskRecurrenceCodec
         if ($until !== null && $count !== null) {
             self::invalid('A recurrence may end on a date or after a count, not both.');
         }
+        $declaredOn = self::declaredOn($raw);
 
-        return new TaskRecurrence($mode, $every, $unit, $until, $count);
+        return new TaskRecurrence($mode, $every, $unit, $until, $count, $declaredOn);
     }
 
     public static function encode(TaskRecurrence $recurrence): array
@@ -67,6 +68,7 @@ final class TaskRecurrenceCodec
             'unit' => $recurrence->unit,
             'until' => $recurrence->until,
             'count' => $recurrence->count,
+            'declared_on' => $recurrence->declaredOn,
         ];
     }
 
@@ -79,6 +81,26 @@ final class TaskRecurrenceCodec
         $date = is_string($value) ? DateTimeImmutable::createFromFormat('!Y-m-d', $value) : false;
         if ($date === false || $date->format('Y-m-d') !== $value) {
             self::invalid('A recurrence "until" must use a real YYYY-MM-DD date.');
+        }
+
+        return $value;
+    }
+
+    /**
+     * Validates the shape only. `declared_on` is never trusted from client
+     * input for what it MEANS — TaskWriter::setRecurrence always
+     * overwrites the parsed value with a server-stamped date before
+     * saving. This only guards the value read back out of storage.
+     */
+    private static function declaredOn(array $raw): ?string
+    {
+        if (! array_key_exists('declared_on', $raw) || $raw['declared_on'] === null) {
+            return null;
+        }
+        $value = $raw['declared_on'];
+        $date = is_string($value) ? DateTimeImmutable::createFromFormat('!Y-m-d', $value) : false;
+        if ($date === false || $date->format('Y-m-d') !== $value) {
+            self::invalid('A recurrence "declared_on" must use a real YYYY-MM-DD date.');
         }
 
         return $value;

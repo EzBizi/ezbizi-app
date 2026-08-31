@@ -120,7 +120,10 @@ final class TaskRecurrenceWorkerTest extends TestCase
         $this->assertNotNull($generationTwo->recurrence, 'The instance must carry recurrence forward, or the series dies here.');
         // Read by key, not position: MySQL does not preserve JSON key order
         // (same rule TaskRecurrenceCodec's own comment documents).
-        $this->assertEquals(['mode' => 'after_completion', 'every' => 3, 'unit' => 'month', 'until' => null, 'count' => null], $generationTwo->recurrence);
+        $this->assertEquals([
+            'mode' => 'after_completion', 'every' => 3, 'unit' => 'month', 'until' => null, 'count' => null,
+            'declared_on' => '2026-09-01',
+        ], $generationTwo->recurrence);
 
         // Generation 2 -> 3. The series root for occurrence bookkeeping is
         // STILL the original task (task_id on the occurrence row never
@@ -308,6 +311,64 @@ final class TaskRecurrenceWorkerTest extends TestCase
         $this->enterTenant();
         $occurrence = TaskRecurrenceOccurrence::where('task_id', $task->id)->firstOrFail();
         $this->assertSame('2026-09-01', $occurrence->occurrence_date->format('Y-m-d'));
+    }
+
+    // ── declaration floor (whole-branch review, finding 1) ──────────
+
+    /**
+     * The core regression: declaring on_schedule on a task whose start_on
+     * is months in the past must NOT walk every occurrence between then
+     * and now. Floored at the declaration date, the walk produces exactly
+     * one instance — the next occurrence on/after today — not a backlog
+     * of ~243 tasks.
+     */
+    public function test_on_schedule_declared_long_after_the_tasks_baseline_creates_only_the_next_occurrence(): void
+    {
+        Carbon::setTestNow('2026-01-01 12:00:00');
+        $task = $this->createTask('Old task', startOn: '2026-01-01');
+
+        // Recurrence is declared 243 days later, on an ordinary task that
+        // was never meant to be recurring until now.
+        Carbon::setTestNow('2026-08-31 12:00:00');
+        $this->declareRecurrence($task, 'on_schedule', 1, 'day');
+        $this->artisan('ezbizi:create-recurring-tasks')->assertSuccessful();
+
+        $this->enterTenant();
+        $this->assertSame(
+            1,
+            TaskRecurrenceOccurrence::where('task_id', $task->id)->count(),
+            'Declaring recurrence on a months-old task must not backfill every occurrence since its start_on.'
+        );
+        $occurrence = TaskRecurrenceOccurrence::where('task_id', $task->id)->firstOrFail();
+        $this->assertSame('2026-08-31', $occurrence->occurrence_date->format('Y-m-d'));
+        $this->assertNotNull($occurrence->created_task_id);
+        $instances = Task::where('board_id', $this->board->id)
+            ->where('title', 'Old task')->where('id', '!=', $task->id)->get();
+        $this->assertSame(1, $instances->count());
+    }
+
+    /**
+     * `count` must still be measured from the declaration forward, not
+     * from the task's historical baseline — a series declared long after
+     * its baseline must get its full `count` of future occurrences, not
+     * exhaust immediately because the raw cycle number (baseline to now)
+     * already exceeds `count`.
+     */
+    public function test_count_exhaustion_is_measured_from_the_declaration_not_the_historical_baseline(): void
+    {
+        Carbon::setTestNow('2026-01-01 12:00:00');
+        $task = $this->createTask('Old bounded task', startOn: '2026-01-01');
+
+        Carbon::setTestNow('2026-08-31 12:00:00');
+        $this->declareRecurrenceWithBounds($task, 'on_schedule', 1, 'day', count: 2);
+
+        Carbon::setTestNow('2026-09-10 12:00:00');
+        $this->artisan('ezbizi:create-recurring-tasks')->assertSuccessful();
+
+        $this->enterTenant();
+        $created = TaskRecurrenceOccurrence::where('task_id', $task->id)->whereNotNull('created_task_id')->count();
+        $this->assertSame(2, $created, 'A count of 2 declared today must still produce 2 occurrences, not zero.');
+        $this->assertNotNull(TaskRecurrenceOccurrence::where('task_id', $task->id)->whereNull('created_task_id')->first());
     }
 
     // ── until / count exhaustion ─────────────────────────────────

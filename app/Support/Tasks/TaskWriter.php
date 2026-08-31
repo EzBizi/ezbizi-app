@@ -259,6 +259,23 @@ final class TaskWriter
             }
 
             $recurrence = TaskRecurrenceCodec::parse($raw);
+            if ($recurrence !== null) {
+                // `declared_on` is never taken from the client (parse()
+                // only validates its shape for reads out of storage). A
+                // recurrence that is merely being edited keeps its
+                // original declaration date; only a fresh declaration (the
+                // task previously had none) gets stamped with today —
+                // finding 1 of the Tasks Phase 2 whole-branch review.
+                $previous = TaskRecurrenceCodec::parse($locked->recurrence);
+                $recurrence = new TaskRecurrence(
+                    $recurrence->mode,
+                    $recurrence->every,
+                    $recurrence->unit,
+                    $recurrence->until,
+                    $recurrence->count,
+                    $previous?->declaredOn ?? now()->toDateString(),
+                );
+            }
             $before = $this->auditFields($locked);
             $locked->forceFill([
                 'recurrence' => $recurrence === null ? null : TaskRecurrenceCodec::encode($recurrence),

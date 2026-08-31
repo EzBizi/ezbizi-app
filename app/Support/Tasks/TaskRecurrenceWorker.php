@@ -283,14 +283,34 @@ final class TaskRecurrenceWorker
             return 0;
         }
         $today = Carbon::now($this->timezone($root))->toDateString();
+        // Floor at the moment recurrence was DECLARED, not at the task's
+        // own (possibly months- or years-old) start_on/due_on —
+        // whole-branch review finding 1. Without this, declaring
+        // on_schedule on an ordinary past-dated task walks every
+        // occurrence between then and now and creates all of them in one
+        // sweep. Jump straight to the first cycle on/after the floor
+        // (rather than iterating cycle-by-cycle from the historical
+        // baseline) so a series declared years after its baseline doesn't
+        // burn the whole MAX_CYCLES_PER_SERIES budget just walking past
+        // dates it will never create — and never actually reach today. A
+        // null floor (a recurrence saved before this field existed) walks
+        // unfloored, matching the old behaviour rather than silently
+        // discarding a live series.
+        $startCycle = $this->firstCycleOnOrAfter($baseline, $recurrence, $recurrence->declaredOn);
 
+        // `$occurrenceIndex` — not `$rawCycle` — is what `until`/`count`
+        // exhaustion is measured against: cycle 1 is the series' first
+        // occurrence AFTER the floor, not its position relative to a
+        // baseline that may predate the declaration by years.
         $created = 0;
-        for ($cycle = 1; $cycle <= self::MAX_CYCLES_PER_SERIES; $cycle++) {
-            $date = $this->step($baseline, $recurrence, $cycle);
+        $occurrenceIndex = 0;
+        for ($rawCycle = $startCycle; $occurrenceIndex < self::MAX_CYCLES_PER_SERIES; $rawCycle++) {
+            $date = $this->step($baseline, $recurrence, $rawCycle);
             if ($date > $today) {
                 break;
             }
-            $result = $this->attemptOccurrence($root, $root->id, $recurrence, $date, $cycle);
+            $occurrenceIndex++;
+            $result = $this->attemptOccurrence($root, $root->id, $recurrence, $date, $occurrenceIndex);
             if ($result === 'terminal') {
                 break;
             }
@@ -300,6 +320,39 @@ final class TaskRecurrenceWorker
         }
 
         return $created;
+    }
+
+    /**
+     * Smallest cycle number N ("$baseline` stepped N times) whose date is
+     * on/after `$floor`, without walking there one cycle at a time —
+     * exponential search for an upper bound, then binary search within it.
+     * `step()` is strictly increasing in the cycle number (every >= 1, a
+     * positive unit), so both searches are valid. Null floor (or a floor
+     * at/before the very first cycle) short-circuits to cycle 1, matching
+     * the walk's pre-floor behaviour exactly.
+     */
+    private function firstCycleOnOrAfter(string $baseline, TaskRecurrence $recurrence, ?string $floor): int
+    {
+        if ($floor === null || $this->step($baseline, $recurrence, 1) >= $floor) {
+            return 1;
+        }
+
+        $lo = 1;
+        $hi = 1;
+        while ($this->step($baseline, $recurrence, $hi) < $floor) {
+            $lo = $hi;
+            $hi *= 2;
+        }
+        while ($lo + 1 < $hi) {
+            $mid = intdiv($lo + $hi, 2);
+            if ($this->step($baseline, $recurrence, $mid) < $floor) {
+                $lo = $mid;
+            } else {
+                $hi = $mid;
+            }
+        }
+
+        return $hi;
     }
 
     /**
