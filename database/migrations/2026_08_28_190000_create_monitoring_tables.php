@@ -31,17 +31,7 @@ return new class extends Migration
             $table->index(['organization_id', 'last_seen_at']);
         });
 
-        Schema::create('monitoring_activity', function (Blueprint $table) {
-            $table->uuid('id')->primary();
-            $table->foreignUuid('organization_id')->constrained()->cascadeOnDelete();
-            $table->foreignUuid('device_id')->constrained('monitored_devices')->cascadeOnDelete();
-            $table->foreignUuid('user_id')->constrained()->cascadeOnDelete();
-            $table->string('module_key', 64);
-            $table->unsignedInteger('dwell_seconds');
-            // Append-only: timed by when it happened, not by row creation. The sweep
-            // measures the 3-month window from this column.
-            $table->timestamp('occurred_at')->index();
-        });
+        // monitoring_activity is created in Task 2 (same migration file).
     }
 
     public function down(): void
