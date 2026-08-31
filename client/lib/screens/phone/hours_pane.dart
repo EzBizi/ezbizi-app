@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
@@ -444,9 +445,12 @@ class _HoursPaneState extends State<HoursPane> {
               child: TextFormField(
                 key: ValueKey('from:$key'),
                 initialValue: day.from,
+                keyboardType: TextInputType.datetime,
+                inputFormatters: _timeInput,
                 decoration: const InputDecoration(
                   labelText: 'From',
                   hintText: '09:00',
+                  helperText: '24-hour',
                   border: OutlineInputBorder(),
                   isDense: true,
                 ),
@@ -458,9 +462,12 @@ class _HoursPaneState extends State<HoursPane> {
               child: TextFormField(
                 key: ValueKey('to:$key'),
                 initialValue: day.to,
+                keyboardType: TextInputType.datetime,
+                inputFormatters: _timeInput,
                 decoration: const InputDecoration(
                   labelText: 'To',
                   hintText: '17:00',
+                  helperText: '24-hour',
                   border: OutlineInputBorder(),
                   isDense: true,
                 ),
@@ -473,6 +480,36 @@ class _HoursPaneState extends State<HoursPane> {
     );
   }
 }
+
+/// Keeps a time field to something that IS a time.
+///
+/// These were plain text boxes. "08:00 sd asdasd" typed straight in, saved,
+/// and HoursClock then compared it as a string — a schedule that looks set and
+/// answers wrongly on every call. The server refuses it now; this stops it
+/// being typed at all, which is the half a person actually experiences.
+///
+/// A mask rather than a picker: the house rule is no modals, and Flutter's
+/// time picker is a dialog.
+final List<TextInputFormatter> _timeInput = <TextInputFormatter>[
+  FilteringTextInputFormatter.allow(RegExp(r'[0-9:]')),
+  LengthLimitingTextInputFormatter(5),
+
+  // Insert the colon as they type, so 0900 becomes 09:00 without anybody
+  // having to know the format is the thing being enforced.
+  TextInputFormatter.withFunction((old, updated) {
+    final digits = updated.text.replaceAll(':', '');
+    if (digits.length < 3) return updated;
+
+    final head = digits.substring(0, 2);
+    final tail = digits.substring(2, digits.length.clamp(0, 4));
+    final text = '$head:$tail';
+
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }),
+];
 
 /// Whole-hour UTC offsets, stored as zone names PHP accepts.
 ///
