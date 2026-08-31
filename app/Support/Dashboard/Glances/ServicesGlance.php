@@ -5,7 +5,7 @@ namespace App\Support\Dashboard\Glances;
 use App\Models\Service;
 use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
-use App\Support\Dashboard\Glance;
+use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
 use App\Support\Scoping\ViewScope;
 use App\Support\Services\ServiceVisibility;
@@ -14,37 +14,14 @@ use App\Support\Tenancy\TenantContext;
 /**
  * Services box: groups as a pie (snapshot), count as a sentence.
  */
-final class ServicesGlance implements Glance
+final class ServicesGlance extends DescribedGlance
 {
-    public function key(): string
-    {
-        return 'services';
-    }
-
-    public function label(): string
-    {
-        return 'Services';
-    }
-
-    public function permission(): string
-    {
-        return 'services.view';
-    }
-
-    public function allowedPresentations(): array
-    {
-        return ['pie', 'bar', 'text'];
-    }
-
-    public function defaultPresentation(): string
-    {
-        return 'pie';
-    }
-
-    public function snapshot(): bool
-    {
-        return true;
-    }
+    protected const KEY = 'services';
+    protected const LABEL = 'Services';
+    protected const PERMISSION = 'services.view';
+    protected const PRESENTATIONS = ['pie', 'bar', 'text'];
+    protected const DEFAULT_PRESENTATION = 'pie';
+    protected const SNAPSHOT = true;
 
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {
