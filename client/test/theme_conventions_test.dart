@@ -121,6 +121,17 @@ void main() {
     // filed it as the ratchet having slack -- which would have invited somebody
     // to "correct" 80 down to 78 and turn the gate red for everybody. A wrong
     // number measured twice by the same broken method reads like corroboration.
+    //
+    // GIT PATHSPECS ARE NOT SHELL GLOBS, and they fail in BOTH directions here:
+    //
+    //   client/lib/**/*.dart   too narrow  -- `**/` needs a directory segment,
+    //                                         so it skips lib/main.dart
+    //   client/lib/*.dart      too wide    -- `*` matches slashes, so this is
+    //                                         recursive, not top-level
+    //
+    // The second was used to measure the damage done by the first, and produced
+    // "24 files were invisible" when the true answer was one. Two wrong numbers
+    // in opposite directions, from the same wrong assumption about one tool.
     const baseline = 80;
 
     test('no new hardcoded colours outside theme.dart', () {
