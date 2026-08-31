@@ -128,6 +128,24 @@ The audit classified from string samples and widget counts, which is a measureme
 narrower than the claim built on it — the same failure this file records five other
 times, committed by the person recording them.
 
+**A layout that narrows something will expose overflow that was always there.**
+Splitting Numbers put its line form in a 320px column for the first time and three
+dropdowns plus the place picker overflowed — no `isExpanded`, so "Nobody — go straight
+to voicemail" laid out at its natural width. The defect was real the whole time; the
+form had simply never *been* narrow, because it always had the whole pane.
+
+> This is the day's measurement theme running backwards. Everywhere else the
+> instrument was too narrow for the claim. Here the **condition** was never created,
+> so a correct instrument was never pointed at it. When a design narrows a container
+> that was previously full-width, expect latent overflow, and treat it as
+> **pre-existing rather than caused** — the split did not break those dropdowns, it
+> made them ordinary.
+
+**A `Widget` in an `InputDecoration.label` reports its full intrinsic width** and will
+overflow a narrow field (measured: 81px at 560). Markers that belong *to* a field —
+"also in General", "needs Financials" — go in the help text, which wraps, unless the
+design deliberately spends vertical rhythm to put them outside the decoration.
+
 **Never express a state by fading the element that carries text.** Transparency attacks
 legibility directly, and it always bites hardest in the state where legibility matters
 most — dragging, disabled, loading, pending. Express it with elevation, an outline, a
