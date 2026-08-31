@@ -36,6 +36,27 @@ void main() {
     );
   });
 
+  testWidgets(
+    'a card shows which board it belongs to only when the caller supplies '
+    'that map — a single board\'s own Calendar never does',
+    (tester) async {
+      await tester.pumpWidget(_harness(
+        month: DateTime.utc(2026, 9),
+        rows: [_dueSep5],
+        boardNamesByTaskId: const {'task-1': 'Operations'},
+      ));
+      expect(find.text('Operations'), findsOneWidget);
+
+      // Same task, same title, no map — the single-board shape this widget
+      // has always had, unaffected by the cross-board caller's addition.
+      await tester.pumpWidget(_harness(
+        month: DateTime.utc(2026, 9),
+        rows: [_dueSep5],
+      ));
+      expect(find.text('Operations'), findsNothing);
+    },
+  );
+
   testWidgets('the undated count is stated on screen, including at zero', (
     tester,
   ) async {
@@ -221,6 +242,8 @@ Widget _harness({
   required List<TaskRow> rows,
   TaskOmitted omitted = TaskOmitted.zero,
   TaskCalendarMove? onMove,
+  bool readOnly = false,
+  Map<String, String>? boardNamesByTaskId,
 }) => MaterialApp(
   theme: EzBiziTheme.light(),
   home: Scaffold(
@@ -230,6 +253,8 @@ Widget _harness({
       omitted: omitted,
       onMove: onMove ?? (_, _) async => null,
       onMonthChanged: (_) {},
+      readOnly: readOnly,
+      boardNamesByTaskId: boardNamesByTaskId,
     ),
   ),
 );

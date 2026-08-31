@@ -1739,6 +1739,16 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     ],
   );
 
+  /// Cross-board only (task-14 brief, fix round 1): a `task.id -> board
+  /// name` map so a Calendar/Timeline card can say which board it belongs
+  /// to — the same `TaskMyTask.boardName` Table's `MyTasksView` already
+  /// shows per row, surfaced here too rather than only there. A single
+  /// board's own Calendar/Timeline (`_calendarContent()`/`_timelineContent()`)
+  /// never builds this map, so its cards are unaffected.
+  Map<String, String> _boardNamesByTaskId(List<TaskMyTask> items) => {
+    for (final item in items) item.task.id: item.boardName,
+  };
+
   Widget _myTasksBody() => switch (_myTasksPresentation) {
     TaskPresentation.calendar => _myTasksPresentationLoading &&
             _myTasksCalendarItems.isEmpty
@@ -1751,6 +1761,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
             omitted: _myTasksPresentationOmitted,
             onMonthChanged: _changeMyTasksCalendarMonth,
             readOnly: true,
+            boardNamesByTaskId: _boardNamesByTaskId(_myTasksCalendarItems),
           ),
     TaskPresentation.timeline => _myTasksPresentationLoading &&
             _myTasksTimelineItems.isEmpty
@@ -1763,6 +1774,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
             omitted: _myTasksPresentationOmitted,
             onMonthChanged: _changeMyTasksTimelineMonth,
             readOnly: true,
+            boardNamesByTaskId: _boardNamesByTaskId(_myTasksTimelineItems),
           ),
     TaskPresentation.workload => TaskWorkloadView(
         month: _myTasksWorkloadMonth,

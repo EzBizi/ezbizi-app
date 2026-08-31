@@ -114,6 +114,35 @@ class MyTasksApiTest extends TestCase
     }
 
     /**
+     * Kanban is refused across boards, documented in
+     * `MyTasksController::CROSS_BOARD_PRESENTATIONS` — a bucket field is
+     * board-structure-specific (columns, custom fields, option lists) and
+     * has no cross-board meaning. Fix round 1: this was documented but
+     * untested; a stripped guard would likely surface as a crash in
+     * `TaskListQuery::applyWindow()`'s Kanban branch on a null `$board`
+     * rather than a leak, but an untested documented behaviour is still
+     * only a claim.
+     */
+    public function test_cross_board_kanban_presentation_is_refused(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        app(TenantContext::class)->set($alpha['org']);
+        $this->artisan('ezbizi:sync-permissions')->assertSuccessful();
+        $alpha['admin']->forceFill(['preferences' => [
+            'navigation.scope' => ViewScope::COMPANY.':'.$alpha['company']->id,
+        ]])->save();
+        $this->signedInAs($alpha['admin']->fresh());
+
+        $this->getJson('/api/v1/tasks/my?'.http_build_query([
+            'configuration' => json_encode([
+                'presentation' => 'kanban',
+                'window' => ['bucket_field' => 'status', 'buckets' => []],
+            ]),
+        ]))->assertUnprocessable()
+            ->assertJsonValidationErrors(['configuration.presentation']);
+    }
+
+    /**
      * ONLY boards the viewer may already open come back — the exact leaks
      * `TaskBoardAccess::constrainVisible` (reused verbatim, not
      * reimplemented) exists to close: a board on a sibling company that is

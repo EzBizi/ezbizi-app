@@ -62,6 +62,7 @@ class TaskTimelineView extends StatefulWidget {
     this.onMove,
     required this.onMonthChanged,
     this.readOnly = false,
+    this.boardNamesByTaskId,
   });
 
   /// The displayed month. Only `.year`/`.month` are read; the day and any
@@ -87,6 +88,12 @@ class TaskTimelineView extends StatefulWidget {
   /// `Draggable`/`DragTarget` is built ANYWHERE in this widget's tree — not
   /// a disabled one, none — rather than merely ignoring drops.
   final bool readOnly;
+
+  /// `null` for a single board's own Timeline (unchanged) — the cross-board
+  /// caller (task-14 brief, fix round 1) supplies a `task.id -> board name`
+  /// map instead, so the same "which board" gap `TaskCalendarView` closes
+  /// is closed here too.
+  final Map<String, String>? boardNamesByTaskId;
 
   @override
   State<TaskTimelineView> createState() => _TaskTimelineViewState();
@@ -303,15 +310,38 @@ class _TaskTimelineViewState extends State<TaskTimelineView> {
               decoration: BoxDecoration(
                 border: Border(bottom: BorderSide(color: EzBiziTheme.edge(context))),
               ),
-              child: Text(
-                '${row.number} ${row.title}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12, color: scheme.onSurface),
-              ),
+              // `null` for a single board's own Timeline — unchanged, one
+              // line. The cross-board caller (task-14 brief, fix round 1)
+              // supplies a board name, so the label grows to two lines
+              // rather than merging it into the same ellipsized line.
+              child: _label(scheme, row, widget.boardNamesByTaskId?[row.id]),
             ),
         ],
       ),
+    );
+  }
+
+  Widget _label(ColorScheme scheme, TaskRow row, String? boardName) {
+    final title = Text(
+      '${row.number} ${row.title}',
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(fontSize: 12, color: scheme.onSurface),
+    );
+    if (boardName == null) return title;
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        title,
+        Text(
+          boardName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: 10, color: scheme.onSurfaceVariant),
+        ),
+      ],
     );
   }
 

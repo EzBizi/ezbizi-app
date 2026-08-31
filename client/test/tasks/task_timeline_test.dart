@@ -48,6 +48,27 @@ void main() {
     });
 
     testWidgets(
+      'a bar\'s label shows which board it belongs to only when the caller '
+      'supplies that map — a single board\'s own Timeline never does',
+      (tester) async {
+        await tester.pumpWidget(_harness(
+          month: DateTime.utc(2026, 9),
+          rows: [_bothDates],
+          boardNamesByTaskId: const {'task-1': 'Operations'},
+        ));
+        expect(find.text('Operations'), findsOneWidget);
+
+        // Same row, no map — the single-board shape this widget has always
+        // had, unaffected by the cross-board caller's addition.
+        await tester.pumpWidget(_harness(
+          month: DateTime.utc(2026, 9),
+          rows: [_bothDates],
+        ));
+        expect(find.text('Operations'), findsNothing);
+      },
+    );
+
+    testWidgets(
       'a task with neither date is not drawn, and counted in the omitted total',
       (tester) async {
         await tester.pumpWidget(
@@ -496,6 +517,8 @@ Widget _harness({
   required List<TaskRow> rows,
   TaskOmitted omitted = TaskOmitted.zero,
   TaskTimelineMove? onMove,
+  bool readOnly = false,
+  Map<String, String>? boardNamesByTaskId,
 }) => MaterialApp(
   theme: EzBiziTheme.light(),
   home: Scaffold(
@@ -505,6 +528,8 @@ Widget _harness({
       omitted: omitted,
       onMove: onMove ?? (_, {startOn, dueOn}) async => null,
       onMonthChanged: (_) {},
+      readOnly: readOnly,
+      boardNamesByTaskId: boardNamesByTaskId,
     ),
   ),
 );

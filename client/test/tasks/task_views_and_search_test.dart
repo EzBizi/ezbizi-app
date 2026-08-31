@@ -758,6 +758,11 @@ void main() {
       await tester.pump();
       expect(find.text('Task from board A'), findsOneWidget);
       expect(find.text('Task from board B'), findsOneWidget);
+      // Fix round 1: a card on a shared cross-board grid says which board
+      // it came from — the reader would otherwise have to click through
+      // just to find out, which undermines "read here, act there".
+      expect(find.text('Board A'), findsOneWidget);
+      expect(find.text('Board B'), findsOneWidget);
       expect(find.byType(DragTarget<TaskRow>), findsNothing);
       expect(find.byType(Draggable<TaskRow>), findsNothing);
 
@@ -766,6 +771,8 @@ void main() {
       await tester.pump();
       expect(find.text('TASK-1 Task from board A'), findsOneWidget);
       expect(find.text('TASK-1 Task from board B'), findsOneWidget);
+      expect(find.text('Board A'), findsOneWidget);
+      expect(find.text('Board B'), findsOneWidget);
       expect(find.byType(DragTarget<TaskRow>), findsNothing);
       expect(find.byType(Draggable<TaskRow>), findsNothing);
       // The finder types above are `TaskCalendarView`'s own drag generics —

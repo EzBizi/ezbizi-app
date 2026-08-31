@@ -39,6 +39,7 @@ class TaskCalendarView extends StatefulWidget {
     this.onMove,
     required this.onMonthChanged,
     this.readOnly = false,
+    this.boardNamesByTaskId,
   });
 
   /// The displayed month. Only `.year`/`.month` are read; the day and any
@@ -64,6 +65,15 @@ class TaskCalendarView extends StatefulWidget {
   /// `Draggable`/`DragTarget` is built ANYWHERE in this widget's tree — not
   /// a disabled one, none — rather than merely ignoring drops.
   final bool readOnly;
+
+  /// `null` for a single board's own Calendar (unchanged, no extra text on
+  /// the card) — the cross-board caller (task-14 brief, fix round 1)
+  /// passes a `task.id -> board name` map instead so a card can say which
+  /// board it belongs to. Read-only removes the drag path that would
+  /// normally answer "which board" by dropping the card there; without a
+  /// board name a card on a shared grid gives no way to tell two same-
+  /// titled tasks from different boards apart, or where to click through to.
+  final Map<String, String>? boardNamesByTaskId;
 
   @override
   State<TaskCalendarView> createState() => _TaskCalendarViewState();
@@ -273,6 +283,7 @@ class _TaskCalendarViewState extends State<TaskCalendarView> {
                                       ? null
                                       : (task) => _handleDrop(task, day),
                                   readOnly: widget.readOnly,
+                                  boardNamesByTaskId: widget.boardNamesByTaskId,
                                 ),
                         ),
                     ],
@@ -323,6 +334,7 @@ class _TaskCalendarViewState extends State<TaskCalendarView> {
                         ? null
                         : (task) => _handleDrop(task, day),
                     readOnly: widget.readOnly,
+                    boardNamesByTaskId: widget.boardNamesByTaskId,
                   ),
                 ),
             ],
@@ -341,6 +353,7 @@ class _DayCell extends StatelessWidget {
     required this.movingTaskId,
     required this.onDropped,
     this.readOnly = false,
+    this.boardNamesByTaskId,
   });
 
   final DateTime day;
@@ -348,6 +361,7 @@ class _DayCell extends StatelessWidget {
   final String? movingTaskId;
   final ValueChanged<TaskRow>? onDropped;
   final bool readOnly;
+  final Map<String, String>? boardNamesByTaskId;
 
   Widget _body(BuildContext context, {required bool highlighted}) {
     final scheme = Theme.of(context).colorScheme;
@@ -377,6 +391,7 @@ class _DayCell extends StatelessWidget {
                     task: task,
                     dragging: movingTaskId == task.id,
                     readOnly: readOnly,
+                    boardName: boardNamesByTaskId?[task.id],
                   ),
               ],
             ),
@@ -406,6 +421,7 @@ class _DayRow extends StatelessWidget {
     required this.movingTaskId,
     required this.onDropped,
     this.readOnly = false,
+    this.boardNamesByTaskId,
   });
 
   final DateTime day;
@@ -413,6 +429,7 @@ class _DayRow extends StatelessWidget {
   final String? movingTaskId;
   final ValueChanged<TaskRow>? onDropped;
   final bool readOnly;
+  final Map<String, String>? boardNamesByTaskId;
 
   static const _weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -456,6 +473,7 @@ class _DayRow extends StatelessWidget {
                     task: task,
                     dragging: movingTaskId == task.id,
                     readOnly: readOnly,
+                    boardName: boardNamesByTaskId?[task.id],
                   ),
               ],
             ),
@@ -482,11 +500,17 @@ class _CalendarCard extends StatelessWidget {
     required this.task,
     required this.dragging,
     this.readOnly = false,
+    this.boardName,
   });
 
   final TaskRow task;
   final bool dragging;
   final bool readOnly;
+
+  /// `null` on a single board's own Calendar — only the cross-board caller
+  /// (task-14 brief, fix round 1) supplies this, so a single-board card's
+  /// look is byte-identical to before.
+  final String? boardName;
 
   @override
   Widget build(BuildContext context) {
@@ -517,10 +541,22 @@ class _CalendarCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: EzBiziTheme.edge(context)),
       ),
-      child: Text(
-        task.title,
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-        overflow: TextOverflow.ellipsis,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            task.title,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            overflow: TextOverflow.ellipsis,
+          ),
+          if (boardName case final name?)
+            Text(
+              name,
+              style: TextStyle(fontSize: 10, color: scheme.onSurfaceVariant),
+              overflow: TextOverflow.ellipsis,
+            ),
+        ],
       ),
     );
   }
