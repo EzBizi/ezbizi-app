@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EzBizi — Phone › Settings panes, reviewed and redesigned</title>
+  <style>
+    :root {
+      --cyan:#00AEEF; --primary:#00708F; --cyan-deep:#00708F;
+      --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+      --ok:#0B8F5B; --err:#E07070; --warn:#B5730B;
+      --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+    }
+    * { box-sizing:border-box; }
+    html,body { margin:0; background:#DDE3E8; color:var(--ink);
+      font:14px/1.45 system-ui, "Segoe UI", sans-serif; }
+    button { font:inherit; cursor:pointer; }
+    .app { max-width:1280px; margin:0 auto; padding:16px 16px 48px; }
+    header.picker { background:var(--page); border:1px solid var(--line);
+      border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+    header.picker h1 { font-size:18px; margin:0 0 4px; }
+    header.picker p { margin:0 0 12px; color:var(--muted); max-width:82ch; }
+    .locked, .ask, .found { font-size:13px; border-radius:8px; padding:10px 12px;
+      margin-bottom:12px; max-width:94ch; }
+    .locked { background:var(--info-c); }
+    .ask { background:var(--warn-c); }
+    .found { background:var(--err-c); }
+    .locked strong, .ask strong, .found strong { display:block; margin-bottom:4px; }
+    .locked strong { color:var(--cyan-deep); } .ask strong { color:var(--warn); }
+    .found strong { color:#A33; }
+    .ask b, .found b { display:block; margin-top:7px; }
+    .nums { display:flex; flex-wrap:wrap; gap:8px; }
+    .nums button { min-width:44px; min-height:44px; border-radius:8px;
+      border:1px solid var(--line); background:var(--page); color:var(--ink); }
+    .nums button[aria-pressed="true"] { background:var(--primary); color:#fff; border-color:var(--primary); }
+    .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:92ch; }
+    .caption strong { display:block; margin-bottom:4px; }
+
+    table.audit { border-collapse:collapse; font-size:12px; width:100%; margin:6px 0 12px; }
+    table.audit th, table.audit td { border:1px solid var(--line); padding:5px 8px; text-align:left; }
+    table.audit th { background:var(--alt); color:var(--muted); font-weight:600; }
+    table.audit td.bad { background:var(--err-c); color:#A33; font-weight:600; }
+    table.audit td.ok { color:var(--ok); }
+
+    .shell { display:grid; grid-template-columns:200px 1fr; min-height:640px;
+      background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+    nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px; }
+    nav.side .brand { font-weight:700; color:var(--cyan-deep); margin-bottom:16px; padding:0 8px; }
+    nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+      text-decoration:none; margin-bottom:2px; }
+    nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+    .page { display:flex; flex-direction:column; min-width:0; }
+    .tabs { display:flex; gap:8px; padding:12px 16px; border-bottom:1px solid var(--line); }
+    .tabs span { padding:8px 14px; border-radius:999px; border:1px solid var(--line);
+      background:var(--page); color:var(--muted); }
+    .tabs span.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+    .settings { display:grid; grid-template-columns:210px 1fr; flex:1; min-height:0; }
+    .rail { border-right:1px solid var(--line); padding:10px 8px; overflow:auto; }
+    .rail a { display:flex; align-items:center; gap:9px; padding:8px 11px; border-radius:8px;
+      color:var(--ink); text-decoration:none; font-size:13px; min-height:36px; }
+    .rail a.on { background:var(--info-c); color:var(--cyan-deep); font-weight:600; }
+    .rail h4 { font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+      color:var(--muted); margin:12px 0 4px; padding:0 11px; font-weight:600; }
+    .rail h4:first-child { margin-top:0; }
+
+    /* THE PANE PATTERN */
+    .pane { padding:0; overflow:auto; min-width:0; display:flex; flex-direction:column; }
+    .paneHead { padding:16px 20px 12px; border-bottom:1px solid var(--line); }
+    .paneHead h2 { font-size:17px; margin:0 0 2px; }
+    .paneHead p { margin:0; color:var(--muted); font-size:13px; max-width:70ch; }
+    .paneBody { padding:16px 20px 24px; }
+    .paneFoot { margin-top:auto; padding:12px 20px; border-top:1px solid var(--line);
+      background:var(--alt); display:flex; gap:8px; align-items:center; }
+    .paneFoot .state { color:var(--muted); font-size:12px; margin-right:auto; }
+
+    .sec { border:1px solid var(--line); border-radius:10px; margin-bottom:12px; overflow:hidden; }
+    .sec > h3 { font-size:13px; margin:0; padding:10px 14px; background:var(--alt);
+      border-bottom:1px solid var(--line); display:flex; gap:8px; align-items:center; }
+    .sec .in { padding:12px 14px; }
+    .flat h3 { font-size:12px; text-transform:uppercase; letter-spacing:.05em;
+      color:var(--muted); margin:18px 0 8px; font-weight:600; }
+    .flat h3:first-child { margin-top:0; }
+    .flat .rule { border-top:1px solid var(--line); margin:16px 0; }
+
+    .f { margin-bottom:12px; }
+    .f label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+    .f .ctl { display:flex; align-items:center; min-height:42px; border:1px solid var(--line);
+      border-radius:8px; padding:0 12px; background:var(--page); }
+    .f .ctl.sel::after { content:"⌄"; margin-left:auto; color:var(--muted); }
+    .row { display:flex; align-items:center; gap:10px; padding:10px 0;
+      border-bottom:1px solid var(--line); }
+    .row:last-child { border-bottom:0; }
+    .row .grow { flex:1; min-width:0; }
+    .row .sub { color:var(--muted); font-size:12px; }
+    .sw { width:38px; height:22px; border-radius:999px; background:var(--primary);
+      position:relative; flex:none; }
+    .sw::after { content:""; position:absolute; right:2px; top:2px; width:18px; height:18px;
+      border-radius:50%; background:#fff; }
+    .sw.off { background:#C9D3DB; } .sw.off::after { left:2px; right:auto; }
+    .btn { background:var(--primary); color:#fff; border:0; border-radius:8px;
+      padding:9px 14px; min-height:42px; }
+    .btn.ghost { background:transparent; color:var(--primary); border:1px solid var(--line); }
+    .btn.sm { min-height:34px; padding:5px 11px; font-size:13px; }
+    .pill { font-size:11px; padding:2px 8px; border-radius:999px; background:var(--page);
+      border:1px solid var(--line); color:var(--muted); font-weight:600; }
+    .pill.warn { background:var(--warn-c); color:var(--warn); border-color:transparent; }
+    .pill.ok { background:var(--ok-c); color:var(--ok); border-color:transparent; }
+    .errbox { background:var(--err-c); border-radius:9px; padding:12px 14px; font-size:13px;
+      display:flex; gap:12px; align-items:flex-start; margin-bottom:14px; }
+    .errbox .grow { flex:1; }
+    .errbox b { display:block; margin-bottom:2px; }
+    .meta { color:var(--muted); font-size:12px; margin-top:8px; }
+    .split2 { display:grid; grid-template-columns:230px 1fr; border:1px solid var(--line);
+      border-radius:10px; overflow:hidden; min-height:330px; }
+    .split2 .l { border-right:1px solid var(--line); background:var(--alt); }
+    .split2 .l .it { padding:10px 13px; border-bottom:1px solid var(--line); font-size:13px; }
+    .split2 .l .it.on { background:var(--page); box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+    .split2 .r { padding:13px 15px; }
+
+    .phone { width:375px; margin:0 auto; border:8px solid var(--ink); border-radius:28px;
+      overflow:hidden; background:#fff; min-height:660px; display:flex; flex-direction:column; }
+    .phone .bar375 { padding:11px 12px; border-bottom:1px solid var(--line); font-weight:600;
+      display:flex; gap:8px; align-items:center; font-size:14px; }
+    .phone .bar375 .back { color:var(--primary); font-weight:500; }
+    .phone .scroll { padding:0; overflow:auto; flex:1; display:flex; flex-direction:column; }
+
+    @media (max-width:900px) {
+      .shell { grid-template-columns:1fr; } nav.side { display:none; }
+      .settings { grid-template-columns:1fr; } .split2 { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>Phone › Settings panes — reviewed, then redesigned</h1>
+
+    <div class="locked">
+      <strong>What I read before drawing anything</strong>
+      All 11,243 lines of <code>client/lib/screens/phone/</code> — every pane, both settings
+      tabs, and the shared widgets they import. The rail itself is already approved as
+      <b>layout 1 of <code>phone-settings-rail-layouts.html</code></b> and Trust is approved
+      and being built, so neither is re-proposed here. This is about <b>what happens inside
+      a section once you click it.</b>
+    </div>
+
+    <div class="found">
+      <strong>One real defect, found by reading rather than by looking</strong>
+      <b>Four of twelve panes show an error and offer no way out of it.</b>
+      <code>porting</code>, <code>ring_groups</code>, <code>voicemail</code> and
+      <code>number_quality</code> render <code>ErrorNote</code> with no retry control — so a
+      failed load is a dead end, and the only recovery is to navigate to another section and
+      back. The other eight all offer “Try again”. This is not a design preference; it is
+      eight panes agreeing and four disagreeing, and the four are wrong.
+    </div>
+
+    <div class="ask">
+      <strong>Three findings I had to correct on myself, because the first version of each was wrong</strong>
+      <b>1 · “No shared skeleton” — false.</b> <code>widgets/async_body.dart</code> exists and
+      is well documented. What is true is narrower and still worth fixing: <b>0 of 13 settings
+      panes use it</b>, while all three tabs do. Thirteen hand-rolled copies of loading /
+      failed / loaded.
+      <b>2 · “So the bug AsyncBody prevents is live” — also false.</b> Its docblock warns that
+      setting the flag on every fetch makes “saving one field tear the whole page down to a
+      spinner”. I checked all thirteen: none sets <code>_loading</code> inside a save. They
+      duplicate the pattern and implement it <em>correctly</em>. It is a consistency cost and
+      thirteen places to change, not a live defect — and saying otherwise would have been the
+      more dramatic and less true report.
+      <b>3 · “<code>number_quality</code> has no loading state” — false.</b> It uses
+      <code>_looking</code>, and my grep looked for <code>_loading</code>. A measurement whose
+      instrument was narrower than the claim, which is the thing this codebase has spent all
+      day cataloguing.
+    </div>
+
+    <p>
+      <b>Thirteen panes, four shapes.</b> Rather than thirteen unrelated drawings, the audit
+      below sorts every pane into the shape it actually is; layouts 4–6 draw the pattern
+      carrying each shape. <strong>1 is the recommended pattern.</strong> 2 and 3 are the
+      alternatives it beat. 7 is 375px.
+    </p>
+
+    <table class="audit">
+      <tr><th>Section</th><th>Lines</th><th>Shape</th><th>Error recovery</th><th>What the redesign changes</th></tr>
+      <tr><td>General</td><td>520</td><td>Form</td><td class="ok">Try again</td><td>Sections gain headers; save moves to a footer that states what is unsaved</td></tr>
+      <tr><td>Call flow</td><td>316</td><td>Report</td><td class="ok">Try again</td><td>Read-only, so it loses the save footer entirely</td></tr>
+      <tr><td>Connection</td><td>inline</td><td>Status + action</td><td class="ok">—</td><td>Becomes a Form pane with one status section</td></tr>
+      <tr><td>Numbers</td><td><b>1092</b></td><td>List + detail</td><td class="ok">Try again</td><td>The outlier. Split pane, so the list is not scrolled past to reach a form</td></tr>
+      <tr><td>Porting</td><td>368</td><td>List + form</td><td class="bad">none</td><td><b>Gains retry</b></td></tr>
+      <tr><td>IVR menus</td><td>658</td><td>List + editor</td><td class="ok">Try again</td><td>Split pane</td></tr>
+      <tr><td>Hours</td><td>699</td><td>Form (grid)</td><td class="ok">Try again</td><td>Footer save; week grid unchanged</td></tr>
+      <tr><td>Ring groups</td><td>700</td><td>List + detail</td><td class="bad">none</td><td><b>Gains retry</b>; split pane</td></tr>
+      <tr><td>Voicemail</td><td>545</td><td>Form</td><td class="bad">none</td><td><b>Gains retry</b></td></tr>
+      <tr><td>Tags</td><td>429</td><td>List + form</td><td class="ok">Try again</td><td>Split pane</td></tr>
+      <tr><td>Trust &amp; caller identity</td><td>375</td><td>Composite</td><td class="ok">Try again</td><td><b>Already approved separately</b> — not re-proposed</td></tr>
+      <tr><td>Number quality</td><td>287</td><td>Tool</td><td class="bad">none</td><td><b>Gains retry</b>; being absorbed into Trust</td></tr>
+      <tr><td>Cost</td><td>286</td><td>Report</td><td class="ok">Try again</td><td>Loses the save footer</td></tr>
+      <tr><td>Messaging</td><td>—</td><td colspan="3">Not built. Stays visible, last, badged — settled with the rail.</td></tr>
+    </table>
+
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+  <div id="stage"></div>
+</div>
+
+<script>
+const CAPTIONS = {
+  1: ["1 · Head / body / footer — one skeleton, four fillings (recommended)",
+      "Every pane gets the same three parts: a HEAD naming the section and what it is for, a BODY of bordered sections, and a FOOTER that appears only when a pane can be saved. The footer is the load-bearing idea. Today a save button sits wherever the pane's author put it, so on a long pane you scroll to find out whether your change is even saveable — and the footer also has somewhere honest to say 'Two changes not saved', which nothing currently says anywhere. Read-only panes (Call flow, Cost) simply have no footer, which is how you can tell at a glance whether a section is something you change or something you read. The head carries the retry control, so the four panes missing one inherit it by construction rather than by remembering."],
+  2: ["2 · Flat sections, no boxes",
+      "Same three parts, but the body uses typographic headers and hairlines instead of bordered cards. Lighter, less nested, and much closer to what General and Cost already do today — those two use no cards at all, so this is the smallest migration for some panes. Weakness: with no border, a section holding a list of things (ring groups, tags, numbers) has no edge to contain it, and a long pane becomes an undifferentiated column — which is the complaint about the Fleet card, one level up. Boxes are doing work when the content inside them is a set rather than a few fields."],
+  3: ["3 · Boxes everywhere, no footer — save inline per section",
+      "Each section is a box with its own save, so one section's change never blocks another's and a slow save does not lock the pane. Genuinely better for very long panes and closest to what Ring groups already does. Weakness, and it is decisive: thirteen panes with a save button per section means a user has no single answer to 'have I saved?', and the pane cannot state its own dirty state. It also multiplies the 403 problem — every one of those buttons needs the server's refusal sentence rather than one footer carrying it once."],
+  4: ["4 · The pattern carrying a FORM pane — Voicemail",
+      "Four of the thirteen are forms: General, Voicemail, Hours, Connection. Bordered sections, footer with the dirty state named, and the retry control in the head. Voicemail is drawn because it is one of the four with NO error recovery today — the head is where it gains one, without anyone having to remember to add it."],
+  5: ["5 · The pattern carrying a LIST + DETAIL pane — Ring groups",
+      "Five of the thirteen are a list beside a detail: Numbers, Ring groups, IVR menus, Tags, Porting. Today most of them stack the list above a form, so on a long list you scroll past everything to reach the thing you are editing. A split inside the pane fixes that and matches Customers, which is the house worked example. Numbers at 1092 lines is the pane this matters most for and the one I would build first."],
+  6: ["6 · The pattern carrying a REPORT and a TOOL — Cost, and Number quality",
+      "Two shapes that must NOT get a save footer, because they have nothing to save. Cost is a report: you read it and leave. Number quality is a tool — type a number, get an answer — where the primary control belongs in the head, not buried in the body, because it is the reason you opened the section. Drawing them together makes the rule visible: the footer's presence is the signal that a pane is editable at all."],
+  7: ["7 · The pattern at 375px",
+      "Head and footer both pin; only the body scrolls. That is the whole reason to have a footer rather than a trailing button — on a phone a save at the end of a long form is below the fold on every visit, and 'Two changes not saved' is invisible exactly when it matters most. Split panes collapse to list-then-detail with Back, which is the existing sub-600 behaviour and unchanged."]
+};
+
+const RAIL = `
+  <h4>Connect</h4>
+  <a>General</a><a>Call flow</a><a>Connection</a><a>Numbers</a><a>Porting</a>
+  <h4>Answering</h4>
+  <a>IVR menus</a><a>Hours</a><a>Ring groups</a><a class="on">Voicemail</a>
+  <h4>Identity</h4>
+  <a>Trust &amp; caller identity</a>
+  <h4>Running it</h4>
+  <a>Tags</a><a>Cost</a><a>Messaging</a>`;
+
+const shell = (rail, pane) => `
+  <div class="shell">
+    <nav class="side"><div class="brand">EzBizi</div>
+      <a>Dashboard</a><a>Customers</a><a>Jobs</a><a class="on">Phone</a><a>Fleet</a></nav>
+    <div class="page">
+      <div class="tabs"><span>Call</span><span>Records</span><span class="on">Settings</span></div>
+      <div class="settings"><div class="rail">${rail}</div>${pane}</div>
+    </div>
+  </div>`;
+
+const head = (title, sub, retry) => `
+  <div class="paneHead">
+    <div style="display:flex;align-items:flex-start;gap:12px">
+      <div style="flex:1"><h2>${title}</h2><p>${sub}</p></div>
+      ${retry ? '<button class="btn ghost sm" type="button">↻ Try again</button>' : ''}
+    </div>
+  </div>`;
+
+const foot = (dirty) => `
+  <div class="paneFoot">
+    <span class="state">${dirty
+      ? '<b style="color:var(--warn)">Two changes not saved</b> — greeting, and where messages go'
+      : 'Everything saved · 12 Aug, 4:02pm'}</span>
+    <button class="btn ghost sm" type="button">Discard</button>
+    <button class="btn sm" type="button">Save</button>
+  </div>`;
+
+const sec = (title, pill, inner) => `
+  <div class="sec"><h3>${title}${pill ? ` <span class="pill ${pill[1]||''}">${pill[0]}</span>` : ''}</h3>
+    <div class="in">${inner}</div></div>`;
+
+const swRow = (t, s, on) => `
+  <div class="row"><div class="grow"><div>${t}</div><div class="sub">${s}</div></div>
+    <span class="sw ${on ? '' : 'off'}"></span></div>`;
+
+const field = (l, v, sel) => `
+  <div class="f"><label>${l}</label><div class="ctl ${sel ? 'sel' : ''}">${v}</div></div>`;
+
+const VM_BODY = `
+  ${sec('Greeting', ['Recorded 12 Aug'], `
+    ${swRow('Use a recorded greeting', 'Otherwise callers hear the standard message', true)}
+    ${swRow('Play it on lines with no greeting of their own', 'Nine of eleven lines', true)}`)}
+  ${sec('Where messages go', null, `
+    ${field('Transcribe and deliver to', 'The Records tab', true)}
+    ${field('Also email to', "The line's owner", true)}`)}
+  ${sec('After the beep', null, `
+    ${field('Hang up after', '3 minutes of silence', true)}`)}`;
+
+const L1 = () => shell(RAIL, `
+  <div class="pane">
+    ${head('Voicemail', 'What a caller hears when nobody picks up, and where the message goes.', true)}
+    <div class="paneBody">${VM_BODY}</div>
+    ${foot(true)}
+  </div>`);
+
+const L2 = () => shell(RAIL, `
+  <div class="pane">
+    ${head('Voicemail', 'What a caller hears when nobody picks up, and where the message goes.', true)}
+    <div class="paneBody flat">
+      <h3>Greeting</h3>
+      ${swRow('Use a recorded greeting', 'Otherwise callers hear the standard message', true)}
+      ${swRow('Play it on lines with no greeting of their own', 'Nine of eleven lines', true)}
+      <div class="rule"></div>
+      <h3>Where messages go</h3>
+      ${field('Transcribe and deliver to', 'The Records tab', true)}
+      ${field('Also email to', "The line's owner", true)}
+      <div class="rule"></div>
+      <h3>After the beep</h3>
+      ${field('Hang up after', '3 minutes of silence', true)}
+      <p class="meta">No borders. Lightest, and closest to what General and Cost already do —
+        but a section holding a <em>list</em> has no edge to contain it.</p>
+    </div>
+    ${foot(true)}
+  </div>`);
+
+const L3 = () => shell(RAIL, `
+  <div class="pane">
+    ${head('Voicemail', 'What a caller hears when nobody picks up, and where the message goes.', true)}
+    <div class="paneBody">
+      ${sec('Greeting', ['Recorded 12 Aug'], `
+        ${swRow('Use a recorded greeting', 'Otherwise callers hear the standard message', true)}
+        <div style="display:flex;gap:8px;margin-top:10px"><button class="btn sm" type="button">Save greeting</button></div>`)}
+      ${sec('Where messages go', null, `
+        ${field('Transcribe and deliver to', 'The Records tab', true)}
+        <div style="display:flex;gap:8px"><button class="btn sm" type="button">Save delivery</button></div>`)}
+      ${sec('After the beep', null, `
+        ${field('Hang up after', '3 minutes of silence', true)}
+        <div style="display:flex;gap:8px"><button class="btn sm" type="button">Save timing</button></div>`)}
+      <p class="meta">Three saves, and no single answer to “have I saved?”. Each one also needs
+        its own copy of the server's refusal sentence when the answer would be 403.</p>
+    </div>
+  </div>`);
+
+const L4 = () => shell(RAIL, `
+  <div class="pane">
+    ${head('Voicemail', 'What a caller hears when nobody picks up, and where the message goes.', true)}
+    <div class="paneBody">
+      <div class="errbox">
+        <div class="grow"><b>Could not load voicemail settings.</b>
+          The server said: the phone service is not connected for this company.</div>
+        <button class="btn ghost sm" type="button">↻ Try again</button>
+      </div>
+      ${VM_BODY}
+    </div>
+    ${foot(true)}
+  </div>`);
+
+const L5 = () => shell(RAIL.replace('class="on">Voicemail', '>Voicemail').replace('<a>Ring groups</a>', '<a class="on">Ring groups</a>'), `
+  <div class="pane">
+    ${head('Ring groups', 'Who rings, in what order, when a call comes in on a line.', true)}
+    <div class="paneBody">
+      <div class="split2">
+        <div class="l">
+          <div class="it on">Front desk<div class="sub" style="color:var(--muted);font-size:12px">4 people · Dial</div></div>
+          <div class="it">Service<div class="sub" style="color:var(--muted);font-size:12px">3 people · Dial</div></div>
+          <div class="it">After hours<div class="sub" style="color:var(--muted);font-size:12px">1 person</div></div>
+          <div class="it" style="color:var(--primary)">+ New ring group</div>
+        </div>
+        <div class="r">
+          ${field('Name', 'Front desk')}
+          ${field('Ring style', 'Dial — everyone at once', true)}
+          <div class="row"><div class="grow">Maya Chen<div class="sub">Available</div></div><span class="pill">1st</span></div>
+          <div class="row"><div class="grow">Luis Ortega<div class="sub">On a call</div></div><span class="pill">2nd</span></div>
+          <div class="row"><div class="grow">Sam Wright<div class="sub">Do not disturb</div></div><span class="pill">3rd</span></div>
+        </div>
+      </div>
+      <p class="meta">Today this pane stacks the list above the form, so on a long list you
+        scroll past every group to reach the one you are editing. Same split Customers uses.</p>
+    </div>
+    ${foot(false)}
+  </div>`);
+
+const L6 = () => shell(RAIL.replace('class="on">Voicemail', '>Voicemail').replace('<a>Cost</a>', '<a class="on">Cost</a>'), `
+  <div class="pane">
+    ${head('Cost', 'What this phone service has cost, and where it went.', true)}
+    <div class="paneBody">
+      ${sec('This month', ['$41.18', 'ok'], `
+        <div class="row"><div class="grow">Calls · 1,204 minutes</div><b>$18.06</b></div>
+        <div class="row"><div class="grow">Numbers · 11 lines</div><b>$12.10</b></div>
+        <div class="row"><div class="grow">Messages · 318</div><b>$2.39</b></div>
+        <div class="row"><div class="grow">Recordings and transcription</div><b>$8.63</b></div>`)}
+      <p class="meta"><b>No footer.</b> There is nothing here to save, and the absence of the
+        footer is how you know that before you start looking for a button.</p>
+
+      <div style="height:20px"></div>
+      <div class="sec"><h3>Number quality <span class="pill">a tool, not a form</span></h3>
+        <div class="in">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+            <div class="f" style="flex:1;margin:0"><div class="ctl">+1 203 555 0142</div></div>
+            <button class="btn sm" type="button">Look it up</button>
+          </div>
+          <p class="meta">The control that IS the section belongs in the head, not below a
+            paragraph. You opened this section to type a number.</p>
+        </div>
+      </div>
+    </div>
+  </div>`);
+
+const L7 = () => `
+  <div class="phone">
+    <div class="bar375"><span class="back">‹ Settings</span> Voicemail</div>
+    <div class="scroll">
+      ${head('Voicemail', 'What a caller hears when nobody picks up.', true)}
+      <div class="paneBody" style="flex:1">${VM_BODY}</div>
+      ${foot(true)}
+    </div>
+  </div>`;
+
+const LAYOUTS = { 1:L1, 2:L2, 3:L3, 4:L4, 5:L5, 6:L6, 7:L7 };
+const nums = document.getElementById('nums');
+const stage = document.getElementById('stage');
+const caption = document.getElementById('caption');
+Object.keys(LAYOUTS).forEach(k => {
+  const b = document.createElement('button');
+  b.type = 'button'; b.textContent = k;
+  b.addEventListener('click', () => show(+k));
+  nums.appendChild(b);
+});
+function show(i) {
+  [...nums.children].forEach((b, idx) => b.setAttribute('aria-pressed', idx + 1 === i ? 'true' : 'false'));
+  const e = CAPTIONS[i];
+  caption.innerHTML = '<strong>' + e[0] + '</strong>' + e[1];
+  stage.innerHTML = LAYOUTS[i]();
+}
+show(1);
+</script>
+</body>
+</html>
