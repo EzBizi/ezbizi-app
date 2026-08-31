@@ -2,8 +2,12 @@
 
 namespace App\Support\Fleet;
 
+use App\Support\Enums\HasValues;
+
 enum VehiclePaymentMethod: string
 {
+    use HasValues;
+
     case Cash = 'cash';
     case Check = 'check';
     case CreditCard = 'credit_card';
@@ -11,10 +15,4 @@ enum VehiclePaymentMethod: string
     case Ach = 'ach';
     case Net30 = 'net_30';
     case Other = 'other';
-
-    /** @return list<string> */
-    public static function values(): array
-    {
-        return array_column(self::cases(), 'value');
-    }
 }
