@@ -52,15 +52,16 @@ sessions either. The SHA is the only handle that survives a rename.
 | **iOS · Apple** | `client/ios/` · the ios path of `scripts/build-app.sh` · the Mac relay · App Store Connect, TestFlight, the Apple Developer consoles | **blank — and it is mid-review** |
 | **Website** | `www/` — **every page under it**, plus `robots.txt`, `sitemap.xml`, `check-site.py`, and the `www/favicon.ico` size list in `scripts/make-brand-assets.py`. Public copy, page structure, meta and structured data. *Not* `scripts/deploy-www.sh` or `/var/www/www` — publishing is the deploy session's. | `3b5b79f` `57b4502` `436fd6f` |
 
-> **iOS is unowned and it is not idle — it is mid-App-Store-review.** The session
-> that held it is gone. What the next owner inherits: App Store Connect status
-> *Waiting for Review* on build `0.0.0112`; `./scripts/build-app.sh ios --upload`
-> ships a new one, signing and validation already wired; signing material lives on
-> the Mac relay and in `H:/Development/Credentials/` (see below — it has no backup);
-> and **EU trader status needs the Account Holder and blocks submission outright**.
-> Fuller detail is on the board under `ios-build-and-testflight`.
-> **Do not delete `docs/ACTIVE-CONSTRAINTS.md` while that review is open** — it is
-> the only durable record of the freeze.
+> **iOS is unowned, and as of 2026-08-31 there is new Apple work waiting for an
+> owner.** Review **cleared** — the row said *mid-review* until then, and that is
+> the ordinary way an annotation goes stale: the fact moved and the file did not.
+> What the next owner inherits: `./scripts/build-app.sh ios --upload` ships a
+> build, signing and validation already wired; signing material lives on the Mac
+> relay and in `H:/Development/Credentials/`, which is **not** in git and must never
+> be (the owner holds a physical USB backup, confirmed 2026-08-31); the App Store
+> Connect `.p8` **downloads exactly once from Apple**; and **EU trader status needs
+> the Account Holder and blocks submission outright** — that one is unchanged by the
+> review clearing. Fuller detail is on the board under `ios-build-and-testflight`.
 >
 > **These two were split from one session and neither could see the other.** Each
 > reported the other's half as orphaned within minutes — and at that moment both
@@ -110,7 +111,7 @@ sessions either. The SHA is the only handle that survives a rename.
 | **Marketing** | `Api/Social*Controller.php` · `Models/Social*.php` · `Jobs/PublishSocialTarget.php` · `Support/Social/` · `screens/marketing/` · `tests/Feature/Social/` | — |
 | **EZ Leads** — `leads`, `reviews`, `business_profile` | `Models/{Lead,Review,ReviewReply,BusinessLocation}.php` · their policies and controllers · `Services/{Leads,Reviews,BusinessProfile}/` · `widgets/connect_account.dart` | — |
 | **Email — inbound** | Shared mailboxes, IMAP, tenant OAuth. `Support/Email/` · `Api/Mailbox*Controller.php` · `Api/{GoogleMail,MicrosoftMail,GoogleWorkspace}AuthController.php` · `Models/{Mailbox*,MessageSeen,GoogleMailSignIn,MicrosoftMailSignIn}.php` · `screens/email/` · `test/email_*.dart` · `tests/Feature/{Email*,Imap*,MailboxWatch,GmailMailboxWatch,HtmlEmailSanitiser}Test.php` · `tests/Feature/Api/Mailbox*Test.php` | `ezbizi-22` |
-| **Platform outbound mail (SES)** | **Not the same module as Email — this is the platform's own outgoing transport.** `Support/Mail/` · `resources/views/vendor/mail/` · `Notifications/{PasswordResetLink,InvitationLink}.php` · `Console/Commands/SendTestEmail.php` · the mail block of `config/mail.php`. Off-repo and also theirs: the `MAIL_*` and `EZBIZI_BACKUP_ALERT_TO` keys in the server `.env` (a release rollback does **not** revert these), `/usr/local/bin/ezbizi-mail-warmup.sh` and its root cron, the `_dmarc` record in the BIND zone, and the AWS SES/SNS/IAM consoles | `ezbizi-77` |
+| **Platform outbound mail (SES)** | **Not the same module as Email — this is the platform's own outgoing transport.** `Support/Mail/` · `resources/views/vendor/mail/` · `Notifications/{PasswordResetLink,InvitationLink}.php` · `Console/Commands/SendTestEmail.php` · the mail block of `config/mail.php`. Off-repo and also theirs: the `MAIL_*` and `EZBIZI_BACKUP_ALERT_TO` keys in the server `.env` (a release rollback does **not** revert these), `/usr/local/bin/ezbizi-mail-warmup.sh` and its root cron, the `_dmarc` record in the BIND zone, and the AWS SES/SNS/IAM consoles | **name dead — `ezbizi-77` did not survive the 2026-08-31 restart. The FILE LIST is the handle; whoever picks these up owns SES.** |
 | **Automations** | `Support/Automations/` · `Api/AutomationsController.php` · `Jobs/DeliverAutomationEvent.php` · `Models/Automation{,Version,Event,Run}.php` · `Policies/AutomationPolicy.php` · `Console/Commands/DispatchAutomationEvents.php` · `Support/Modules/{Trigger,Action}Definition.php` · `Support/Modules/{AutomationDeclaration,AutomationSubject}.php` · `screens/{automations_screen,automation_builder}.dart` · `tests/Feature/ModuleRegistryTest.php` · `tests/Feature/Api/Automation*Test.php`. **Not theirs:** `Providers/ModuleServiceProvider.php` — every module writes its own block; shared, announce before editing | `ezbizi-b0` |
 
 ## Files nobody owns
