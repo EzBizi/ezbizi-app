@@ -29,6 +29,7 @@ import 'tasks/task_table.dart';
 import 'tasks/task_timeline_view.dart';
 import 'tasks/task_transfer_flow.dart';
 import 'tasks/task_views_bar.dart';
+import 'tasks/task_workload_view.dart';
 
 /// Dense Grid Tasks shell. Address IDs are held as opaque intents until their
 /// own authorized board/task reads complete.
@@ -111,6 +112,11 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     DateTime.now().year,
     DateTime.now().month,
   );
+  DateTime _workloadMonth = DateTime.utc(
+    DateTime.now().year,
+    DateTime.now().month,
+  );
+  List<TaskWorkloadRow> _workloadRows = const [];
   TaskOmitted _omitted = TaskOmitted.zero;
   String? _boardEtag;
   TaskMyTasksPage? _myTasks;
@@ -260,6 +266,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _error = null;
       _board = board;
       _rows = const [];
+      _workloadRows = const [];
       _detail = null;
       _selectedTaskId = null;
       _page = 1;
@@ -303,6 +310,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     setState(() {
       _loading = false;
       _rows = result.data.rows;
+      _workloadRows = result.data.workloadRows;
       _page = result.data.page;
       _lastPage = result.data.lastPage;
       _total = result.data.total;
@@ -459,6 +467,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     }
     setState(() {
       _rows = page.rows;
+      _workloadRows = page.workloadRows;
       _page = page.page;
       _lastPage = page.lastPage;
       _total = page.total;
@@ -1491,19 +1500,19 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       : _presentationBody(mobile, wide);
 
   /// A generic switch on `TaskPresentation` (Ruling 1, progress.md) — not a
-  /// Kanban-specific branch off `_content`. Tasks 11-13 each add their own
+  /// Kanban-specific branch off `_content`. Tasks 11-13 each added their own
   /// case here for Calendar/Timeline/Workload rather than restructuring this
-  /// dispatcher. A presentation with no case yet (recognised by the enum,
-  /// just not built) falls back to the table body Phase 1 already has —
-  /// distinct from THE ONE RULE's "unknown value degrades to table", but the
-  /// same defensive shape: never a screen that renders nothing.
+  /// dispatcher; every enum value now has one. `TaskPresentation` itself has
+  /// no `unknown` case (see `_presentationFromWire`) — an unrecognised wire
+  /// value degrades to `table` before it ever reaches this switch, so this
+  /// one stays exhaustive rather than needing a defensive fallback arm.
   Widget _presentationBody(bool mobile, bool wide) =>
       switch (_configuration.presentation) {
         TaskPresentation.kanban => _kanbanContent(),
         TaskPresentation.calendar => _calendarContent(),
         TaskPresentation.timeline => _timelineContent(),
-        TaskPresentation.table ||
-        TaskPresentation.workload => mobile
+        TaskPresentation.workload => _workloadContent(),
+        TaskPresentation.table => mobile
             ? _mobileTableContent()
             : _workspace(wide),
       };
@@ -1624,6 +1633,34 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     );
   }
 
+  Widget _workloadContent() {
+    final board = _board!;
+    return Column(
+      children: [
+        _boardControls(),
+        if (_showFilters)
+          SizedBox(
+            height: 330,
+            child: TaskFiltersPanel(
+              board: board,
+              configuration: _configuration,
+              people: _people,
+              onChanged: _changeConfiguration,
+              onClose: () => setState(() => _showFilters = false),
+            ),
+          ),
+        Expanded(
+          child: TaskWorkloadView(
+            month: _workloadMonth,
+            window: _workloadWindowFor(_workloadMonth),
+            rows: _workloadRows,
+            onMonthChanged: _changeWorkloadMonth,
+          ),
+        ),
+      ],
+    );
+  }
+
   /// Switches the active view's presentation. Kanban additionally needs a
   /// `window` (`bucket_field` + the current field's buckets) and a matching
   /// `group_by`, so `meta.group_counts` — which Kanban headers read their
@@ -1642,6 +1679,10 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     }
     if (presentation == TaskPresentation.timeline) {
       _applyTimelineWindow(_timelineMonth);
+      return;
+    }
+    if (presentation == TaskPresentation.workload) {
+      _applyWorkloadWindow(_workloadMonth);
       return;
     }
     _changeConfiguration(
@@ -1685,6 +1726,29 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   }
 
   void _changeTimelineMonth(DateTime month) => _applyTimelineWindow(month);
+
+  /// Re-windows Workload to [month] — same month-bounded shape as
+  /// [_applyCalendarWindow] / [_applyTimelineWindow], but `unit: day` always
+  /// (task-13 brief scopes this view to a day axis; a week toggle is a
+  /// later, additive change to this one method, not a redesign).
+  void _applyWorkloadWindow(DateTime month) {
+    final start = DateTime.utc(month.year, month.month);
+    setState(() => _workloadMonth = start);
+    _changeConfiguration(
+      _configuration.copyWith(
+        presentation: TaskPresentation.workload,
+        window: _workloadWindowFor(start),
+      ),
+    );
+  }
+
+  TaskWorkloadWindow _workloadWindowFor(DateTime month) => TaskWorkloadWindow(
+    from: DateTime.utc(month.year, month.month, 1),
+    to: DateTime.utc(month.year, month.month + 1, 0),
+    unit: TaskWorkloadUnit.day,
+  );
+
+  void _changeWorkloadMonth(DateTime month) => _applyWorkloadWindow(month);
 
   void _changeKanbanField(TaskKanbanField field) {
     setState(() => _kanbanField = field);

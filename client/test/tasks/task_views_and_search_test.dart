@@ -923,7 +923,13 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 20));
       expect(detailReads, 1);
-      expect(find.text('Description'), findsOneWidget);
+      // Proves the detail panel actually loaded — not the description
+      // field specifically. Task 13 added a recurrence panel above the
+      // collaborators section, so content further down the now-longer
+      // ListView (like the description field) is outside this test's
+      // default-size viewport until scrolled; the task title near the top
+      // is not.
+      expect(find.text('Still visible'), findsWidgets);
       await tester.pump(const Duration(milliseconds: 220));
       await tester.pump(const Duration(milliseconds: 20));
       await tester.pump(const Duration(milliseconds: 20));

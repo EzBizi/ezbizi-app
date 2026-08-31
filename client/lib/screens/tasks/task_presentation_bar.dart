@@ -5,11 +5,13 @@ import 'task_models.dart';
 
 /// The presentation switcher Task 10 is required to build so Tasks 11-13
 /// (Calendar, Timeline, Workload) have a bar to plug their tab into instead
-/// of each inventing their own (Ruling 1, progress.md). Table, Kanban,
-/// Calendar, and (Task 12) Timeline are wired to real screens; Workload is
-/// shown but disabled — there is nothing yet for it to switch to, and an
-/// enabled tab that does nothing would be a worse experience than an
-/// honestly-disabled one.
+/// of each inventing their own (Ruling 1, progress.md). All five tabs are
+/// now wired to real screens — Workload (task-13 brief) was the last one
+/// shown disabled with a "not available yet" tooltip; `_tabs`' fourth
+/// element stays as an explicit per-tab availability flag rather than being
+/// deleted now that every entry happens to be `true`, so the next
+/// presentation this bar grows can ship disabled the same honest way this
+/// one did, instead of the tab silently doing nothing.
 ///
 /// Inline only — no popup menu, no dialog. When Kanban is the active
 /// presentation, an inline bucket-field selector appears alongside the
@@ -33,7 +35,7 @@ class TaskPresentationBar extends StatelessWidget {
     (TaskPresentation.kanban, 'Kanban', Icons.view_kanban_outlined, true),
     (TaskPresentation.calendar, 'Calendar', Icons.calendar_month_outlined, true),
     (TaskPresentation.timeline, 'Timeline', Icons.view_timeline_outlined, true),
-    (TaskPresentation.workload, 'Workload', Icons.bar_chart_outlined, false),
+    (TaskPresentation.workload, 'Workload', Icons.bar_chart_outlined, true),
   ];
 
   /// Below this the tabs never fit five-wide (measured: five chips clip mid-

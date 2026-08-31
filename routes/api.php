@@ -112,6 +112,7 @@ use App\Http\Controllers\Api\Tasks\TaskParticipantsController;
 use App\Http\Controllers\Api\Tasks\TaskPrioritiesController;
 use App\Http\Controllers\Api\Tasks\TaskQuickSearchController;
 use App\Http\Controllers\Api\Tasks\TaskRecordLinksController;
+use App\Http\Controllers\Api\Tasks\TaskRecurrenceController;
 use App\Http\Controllers\Api\Tasks\TasksController;
 use App\Http\Controllers\Api\Tasks\TaskStatusesController;
 use App\Http\Controllers\Api\Tasks\TaskUpdateAttachmentsController;
@@ -477,6 +478,7 @@ Route::prefix('v1')
             Route::patch('tasks/{task}', [TasksController::class, 'update']);
             Route::put('tasks/{task}/collaborators', [TaskCollaboratorsController::class, 'update']);
             Route::put('tasks/{task}/watch', [TaskWatchPreferencesController::class, 'update']);
+            Route::put('tasks/{task}/recurrence', [TaskRecurrenceController::class, 'update']);
             Route::post('tasks/{task}/update-attachments', [TaskUpdateAttachmentsController::class, 'store']);
             Route::post('tasks/{task}/updates', [TaskUpdatesController::class, 'store']);
             Route::patch('tasks/{task}/updates/{update}', [TaskUpdatesController::class, 'update']);

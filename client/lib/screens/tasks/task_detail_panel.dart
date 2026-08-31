@@ -4,6 +4,7 @@ import 'task_api.dart';
 import 'task_dependency_panel.dart';
 import 'task_participants.dart';
 import 'task_record_links.dart';
+import 'task_recurrence_panel.dart';
 
 class TaskDetailPanel extends StatelessWidget {
   const TaskDetailPanel({
@@ -78,6 +79,12 @@ class TaskDetailPanel extends StatelessWidget {
                 ),
                 const SizedBox(height: 24),
                 TaskDependencyPanel(
+                  api: taskApi,
+                  snapshot: task!,
+                  onChanged: onTaskChanged,
+                ),
+                const SizedBox(height: 24),
+                TaskRecurrencePanel(
                   api: taskApi,
                   snapshot: task!,
                   onChanged: onTaskChanged,
