@@ -1077,6 +1077,33 @@ how somebody talks themselves out of a correct diagnosis. Read it with
 
 ## 9 · Deploying
 
+### A comment claiming a guarantee the code does not provide
+
+The most expensive stale comment is not the one that is merely out of date. It is
+the one that ASSERTS A MECHANISM, because a reviewer reads the assertion instead
+of checking the mechanism, and the comment becomes the evidence.
+
+Measured 2026-08-31, in Tasks Phase 2: a `ConstrainedBox` with a `minHeight`
+carried a comment saying it prevented silent row loss. It could not — its parent
+was an `Expanded`, which passes TIGHT constraints, so the floor can never bite.
+**Two separate reviews accepted it**, and three documents plus that comment all
+asserted the mitigation worked. The code said otherwise and nobody did the
+constraint math, because the comment had already answered the question.
+
+The same session then shipped a fix wave that left the identical trap in another
+file — a docblock repeating a claim they had just deleted from a status document
+as untrue.
+
+**A correction that reaches the document and not the code leaves the codebase
+asserting something everybody has already agreed is false — and the comment
+outlives the document.**
+
+So: when a comment states that something is prevented, guaranteed or impossible,
+that sentence is a CLAIM to verify, not context to absorb. The stronger the
+guarantee it asserts, the more it is worth ten seconds against the actual
+mechanism. A comment saying "this is why" is orientation. A comment saying "this
+prevents X" is a test that was never written.
+
 ### The defect nobody will ever report: a healthy-looking row nobody checked
 
 Everything else in this section is about a measurement that MISLEADS. This is the
