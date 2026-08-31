@@ -8,6 +8,20 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0127',
+      date: '31 Aug 2026',
+      items: [
+        'Social: a post can be sent later. Pick the day and time, and it goes '
+            'out on your own clock - the one for the company or branch you are '
+            'looking at, not the server clock.',
+        'A picture or video you attach is shown before you send it, so you can '
+            'check it is the right one. Video plays in the composer.',
+        'A post sent to TikTok lands in the drafts of that TikTok account, '
+            'the profile - open TikTok to finish and post it. TikTok has not '
+            'audited the app yet. This replaces what the 0.0.0113 note said.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0126',
       date: '31 Aug 2026',
       items: [
@@ -209,8 +223,11 @@ class VersionHistory {
       items: [
         'Social: write a post, choose the accounts, and send it. Publishing '
             'was a console command; it is a button now.',
-        'A post sent to TikTok lands on your profile privately, because TikTok '
-            'has not audited the app yet. Everywhere else posts publicly.',
+        'A post sent to TikTok lands in the drafts of that TikTok account - '
+            'TikTok to finish and post it. (Corrected 31 Aug 2026: this note '
+            'used to say the post landed on your profile privately. It did '
+            'not, and somebody checking their profile would have concluded '
+            'publishing was broken.)',
         'Inspections: take photographs while you walk the job, and download the '
             'finished report as a PDF.',
         'A customer found by search says which company owns the franchise — on '
