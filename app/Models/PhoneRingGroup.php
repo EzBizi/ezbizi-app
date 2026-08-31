@@ -56,6 +56,7 @@ class PhoneRingGroup extends Model implements StatesRetention
     }
 
     protected $fillable = [
+        'scope_type', 'scope_id',
         'organization_id', 'connection_id', 'name', 'mode', 'timeout_seconds',
         'member_user_ids', 'member_role_ids',
         'overflow', 'overflow_group_id', 'overflow_number',

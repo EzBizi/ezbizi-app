@@ -842,9 +842,16 @@ class ScriptedMailboxReader implements MailboxReader
         $this->answerOrFail();
     }
 
-    public function send(Mailbox $mailbox, array $to, string $subject, string $body): void
+    public function send(Mailbox $mailbox, array $to, string $subject, string $body, array $attachments = []): void
     {
         $this->answerOrFail();
+    }
+
+    public function availableFolders(Mailbox $mailbox): array
+    {
+        $this->answerOrFail();
+
+        return ['INBOX'];
     }
 
     public function trash(Mailbox $mailbox, string $messageId): void

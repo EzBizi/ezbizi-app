@@ -53,7 +53,7 @@ class PhoneReportTest extends TestCase
             ]);
 
             foreach ($statuses as $i => $status) {
-                PhoneCall::query()->create([
+                $call = PhoneCall::query()->create([
                     'organization_id' => $t['org']->id,
                     'number_id' => $n->id,
                     'connection_id' => $c->id,
@@ -63,6 +63,14 @@ class PhoneReportTest extends TestCase
                     'to_e164' => '+12035550300',
                     'status' => $status,
                     'duration_seconds' => $status === 'completed' ? 60 : 0,
+                ]);
+
+                // created_at is NOT fillable, so passing it to create() was
+                // silently dropped and every "yesterday" call was stamped
+                // now(). That is why this file never noticed the window bug:
+                // a call at now() sits inside a wrong window as happily as a
+                // right one, until the wall clock crosses the offset.
+                PhoneCall::query()->whereKey($call->getKey())->update([
                     'created_at' => Carbon::now()->subDays(1),
                 ]);
             }
@@ -84,6 +92,60 @@ class PhoneReportTest extends TestCase
             'number_id' => $number->id,
             'role_id' => $user->role_id,
         ]));
+    }
+
+    /**
+     * A call made this evening still belongs to today.
+     *
+     * ── The bug this pins ────────────────────────────────────────
+     *
+     * `created_at` is UTC. The window is built in the ORGANIZATION's timezone,
+     * and a Carbon binds as its own wall-clock string with no conversion — so
+     * for a UTC-5 org the query compared UTC timestamps against Eastern
+     * strings and the window sat five hours late.
+     *
+     * Every call made in the last five hours of the local day fell past the
+     * upper bound and vanished from "today" — then reappeared next morning
+     * inside the following day's window. Wrong only in the evening, right
+     * again by the time anybody looked. It is not the kind of thing that gets
+     * reported; it is the kind that quietly makes a report untrustworthy.
+     *
+     * The clock is FROZEN here on purpose. This defect is wall-clock
+     * dependent: the rest of this file passed all day and went red at 20:07
+     * local, which is not a property a test should have.
+     */
+    public function test_a_call_made_this_evening_is_still_counted_today(): void
+    {
+        // 01:07 UTC is 20:07 the previous day at UTC-5 — inside the local day,
+        // and past the naive upper bound the bug compared against.
+        Carbon::setTestNow(Carbon::parse('2026-08-29 01:07:00', 'UTC'));
+
+        try {
+            [$t, $number] = $this->lineWithCalls(['completed']);
+
+            $this->inTenant($t['org'], fn () => PhoneCall::query()
+                ->where('number_id', $number->id)
+                ->update(['created_at' => Carbon::parse('2026-08-29 00:30:00', 'UTC')]));
+
+            $admin = $this->userWithRole($t, 'Phone', ['phone.view', 'phone.edit']);
+            $this->grant($t, $number, $admin);
+
+            $response = $this->signedInAs($admin)
+                ->getJson('/api/v1/phone/reports/run?period=last_7&group_by=day')
+                ->assertOk();
+
+            // If the timezone ever stops being UTC-5 this assertion goes
+            // first, so the test cannot quietly stop testing anything.
+            $this->assertSame('Etc/GMT+5', $response->json('data.window.timezone'));
+
+            $this->assertSame(
+                1,
+                $response->json('data.totals.calls'),
+                'an evening call fell outside the window and was not counted',
+            );
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     public function test_missed_rate_counts_every_way_a_call_goes_unanswered(): void

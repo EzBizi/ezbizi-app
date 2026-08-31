@@ -417,6 +417,214 @@ void main() {
     expect(find.text('New message'), findsOneWidget);
   });
 
+  /// With nothing attached the message travels as JSON, not as a form.
+  ///
+  /// Pinned because the panel has two send shapes and the empty case is the one
+  /// that would silently switch to multipart without anybody noticing — it
+  /// works either way, right up until a field name differs.
+  testWidgets('a message with no files is sent as JSON', (tester) async {
+    String? contentType;
+
+    await _pump(tester, _handler(onSendRequest: (r) => contentType = r.headers['content-type']));
+
+    await _tap(
+      tester,
+      find.descendant(
+        of: find.byType(MailboxRail),
+        matching: find.text('info@a-1chimney.com'),
+      ).first,
+    );
+    await _tap(tester, find.text('New message'));
+
+    await tester.enterText(find.widgetWithText(TextField, 'To'), 'bob@example.com');
+    await tester.enterText(find.widgetWithText(TextField, 'Message'), 'Morning.');
+    await tester.pumpAndSettle();
+
+    await _tap(tester, find.textContaining('Send as'));
+
+    expect(contentType, contains('application/json'));
+  });
+
+  /// A file reaches the wire in the SAME request as the message.
+  ///
+  /// Not uploaded first and referenced: there is no half-sent state to recover
+  /// from, because until this one request succeeds nothing has been sent and
+  /// nothing has been stored.
+  testWidgets('an attached file is sent with the message as multipart',
+      (tester) async {
+    http.Request? sent;
+
+    await _pump(tester, _handler(onSendRequest: (r) => sent = r));
+
+    await _tap(
+      tester,
+      find.descendant(
+        of: find.byType(MailboxRail),
+        matching: find.text('info@a-1chimney.com'),
+      ).first,
+    );
+    await _tap(tester, find.text('New message'));
+
+    expect(find.text('Attach a file'), findsOneWidget);
+
+    // Drive the panel's own state: the OS file picker cannot be opened from a
+    // widget test, and stubbing it would test the stub. What is being asserted
+    // is what the panel DOES with a picked file, which starts here.
+    final state = tester.state<ComposePanelState>(find.byType(ComposePanel));
+    state.debugAddFile('quote.pdf', 'PDF-BYTES'.codeUnits);
+    await tester.pumpAndSettle();
+
+    expect(find.text('quote.pdf'), findsOneWidget);
+    expect(find.textContaining('1 of 5 files'), findsOneWidget);
+
+    await tester.enterText(find.widgetWithText(TextField, 'To'), 'bob@example.com');
+    await tester.enterText(find.widgetWithText(TextField, 'Message'), 'Attached.');
+    await tester.pumpAndSettle();
+
+    await _tap(tester, find.textContaining('Send as'));
+
+    // MockClient finalises a MultipartRequest into a plain Request before the
+    // handler ever sees it, so this asserts the WIRE BYTES rather than the
+    // request type. That is the stronger check anyway: it is exactly what the
+    // server will parse, field names and all.
+    expect(sent!.headers['content-type'], contains('multipart/form-data'));
+
+    final body = sent!.body;
+
+    expect(body, contains('name="attachments[]"; filename="quote.pdf"'));
+    expect(body, contains('PDF-BYTES'));
+    expect(body, contains('name="to[0]"'));
+    expect(body, contains('bob@example.com'));
+    expect(body, contains('name="body"'));
+    expect(body, contains('Attached.'));
+  });
+
+  /// A folder list is what the SERVER said, not a table this client keeps.
+  ///
+  /// Outlook has no Starred — Graph offers a flag filter over the inbox, which
+  /// is a different query rather than a folder — and it does have Archive,
+  /// which Gmail does not. The screen does not know that and must not: it
+  /// draws what came back from `/folders`, which is the only arrangement that
+  /// can also be right for an IMAP server nobody has seen.
+  testWidgets('an Outlook inbox offers Archive and not Starred', (tester) async {
+    await _pump(
+      tester,
+      _handler(
+        mailboxes: [
+          {
+            'id': 'mb-1',
+            'address': 'info@a-1chimney.com',
+            'display_name': 'Info',
+            'provider': 'microsoft_oauth',
+            'unread': 0,
+            'can_reply': true,
+            'shared_read': true,
+          },
+        ],
+        // What MicrosoftMailboxReader::availableFolders answers.
+        folders: const ['INBOX', 'SENT', 'DRAFT', 'TRASH', 'SPAM', 'ARCHIVE'],
+      ),
+      size: const Size(1400, 900),
+    );
+
+    expect(find.text('Archive'), findsOneWidget);
+    expect(
+      find.text('Starred'),
+      findsNothing,
+      reason: 'Outlook is offered a folder Graph cannot address, so picking it '
+          'returns a refusal instead of mail.',
+    );
+
+    // The control: the folder list is drawn at all, so this is "Starred is
+    // absent" rather than "no folders were rendered".
+    expect(find.text('Sent'), findsOneWidget);
+    expect(find.text('LABELS'), findsOneWidget);
+  });
+
+  /// IMAP opens only the Inbox, so it is offered no folder list at all.
+  ///
+  /// The server refuses anything else — folder names differ per server and
+  /// discovering them is real work — so drawing the list would be offering
+  /// six refusals.
+  testWidgets('an IMAP inbox is offered no folder list', (tester) async {
+    await _pump(
+      tester,
+      _handler(mailboxes: [
+        {
+          'id': 'mb-1',
+          'address': 'info@a-1chimney.com',
+          'display_name': 'Info',
+          'provider': 'imap',
+          'unread': 0,
+          'can_reply': true,
+          'shared_read': true,
+        },
+      ]),
+      size: const Size(1400, 900),
+    );
+
+    expect(find.text('LABELS'), findsNothing);
+    expect(find.text('Sent'), findsNothing);
+    expect(find.text('Starred'), findsNothing);
+
+    // The control: the mailbox itself is on screen.
+    expect(find.text('info@a-1chimney.com'), findsWidgets);
+  });
+
+  /// An IMAP mailbox draws the folders THAT SERVER has — no more, no fewer.
+  ///
+  /// The guess for IMAP is the Inbox alone, because nothing else is knowable
+  /// without asking. Once asked, the answer replaces the guess: this server
+  /// has Sent and Trash and no Archive, so Archive is not offered. Offering it
+  /// and refusing on the click is the broken promise this module keeps
+  /// declining to make.
+  testWidgets('an IMAP inbox draws the folders its own server reported',
+      (tester) async {
+    await _pump(
+      tester,
+      _handler(
+        mailboxes: [
+          {
+            'id': 'mb-1',
+            'address': 'info@a-1chimney.com',
+            'display_name': 'Info',
+            'provider': 'imap',
+            'unread': 0,
+            'can_reply': true,
+            'shared_read': true,
+          },
+        ],
+        folders: const ['INBOX', 'SENT', 'TRASH'],
+      ),
+      size: const Size(1400, 900),
+    );
+
+    // Before it is asked, the guess is the Inbox alone — so nothing here can
+    // be coming from a provider table.
+    await _tap(
+      tester,
+      find.descendant(
+        of: find.byType(MailboxRail),
+        matching: find.text('info@a-1chimney.com'),
+      ).first,
+    );
+
+    expect(find.text('Sent'), findsOneWidget);
+    expect(find.text('Trash'), findsOneWidget);
+
+    expect(
+      find.text('Archive'),
+      findsNothing,
+      reason: 'A folder this server did not report is on screen, so picking it '
+          'would come back refused.',
+    );
+    expect(
+      find.text('Starred'),
+      findsNothing,
+      reason: 'Starred is a Gmail idea and this is an IMAP mailbox.',
+    );
+  });
+
   /// Gate four of four: if the answer would be 403, the button is not drawn.
   testWidgets('an inbox somebody may read and not answer offers no New '
       'message button', (tester) async {
@@ -742,7 +950,9 @@ MockClientHandler _handler({
   List<Map<String, Object?>>? mailboxes,
   void Function(String path, Map<String, dynamic> body)? onReply,
   void Function(String path, Map<String, dynamic> body)? onSend,
+  void Function(http.Request request)? onSendRequest,
   void Function(String url)? onFile,
+  List<String>? folders,
 }) {
   return (request) async {
     final path = request.url.path;
@@ -756,6 +966,11 @@ MockClientHandler _handler({
         200,
         headers: {'content-type': 'application/octet-stream'},
       );
+    }
+
+    // What folders this mailbox actually has, asked when it is opened.
+    if (path.endsWith('/folders')) {
+      return _json({'data': folders ?? const ['INBOX']});
     }
 
     if (path.endsWith('/email/mailboxes')) {
@@ -806,7 +1021,13 @@ MockClientHandler _handler({
     // .../mailboxes/{mailbox}/messages — POST is a NEW message, not the list.
     // Checked before the GET branch below, which matches the same path.
     if (path.endsWith('/messages') && request.method == 'POST') {
-      onSend?.call(path, jsonDecode(request.body) as Map<String, dynamic>);
+      onSendRequest?.call(request);
+
+      // Only JSON bodies decode; a multipart send is inspected via
+      // onSendRequest instead.
+      if ((request.headers['content-type'] ?? '').contains('application/json')) {
+        onSend?.call(path, jsonDecode(request.body) as Map<String, dynamic>);
+      }
 
       return _json({'data': {'sent_at': '2026-08-12T10:00:00Z'}});
     }

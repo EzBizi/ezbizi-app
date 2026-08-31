@@ -9,6 +9,7 @@ use App\Models\BusinessLocation;
 use App\Models\InventoryItem;
 use App\Models\Job;
 use App\Models\Lead;
+use App\Models\MonitoredDevice;
 use App\Models\Organization;
 use App\Models\Review;
 use App\Models\Service;
@@ -546,6 +547,7 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'hr',
                 label: 'Human Resources',
+                auditActionPrefixes: ['onboarding', 'invitation', 'contract'],
                 actions: ['view', 'create', 'edit'],
                 triggers: [
                     /*
@@ -937,6 +939,20 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A job’s date was set, moved, or cleared. Clearing it counts '
                             .'— the event fires with an empty new date.',
                     ),
+                    new TriggerDefinition(
+                        key: 'job.assigned',
+                        label: 'Assigned to a role',
+                        description: 'A job’s role was set, changed or cleared. It carries the '
+                            .'old role as well as the new one. Naming a role says whose trade '
+                            .'the work is — it does not decide who may open the job.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'job.completed',
+                        label: 'Completed',
+                        description: 'A job reached one of the statuses your organization counts '
+                            .'as earned. Set that list in Settings. This fires only on the way '
+                            .'IN, so a job corrected back and forth does not fire twice.',
+                    ),
                 ],
                 automationActions: [
                     new ActionDefinition(
@@ -963,6 +979,34 @@ class ModuleServiceProvider extends ServiceProvider
                             .'the rule.',
                     ),
                 ],
+            ),
+
+            /*
+             * Scheduling — a shell, and this comment is the honest label on it.
+             *
+             * Three tabs stand (Availability, Schedule, Settings) and all three
+             * are placeholders. There is no table, no endpoint and no model
+             * behind any of them yet, so the only thing this declaration buys
+             * today is the rail slot and the four permissions — which is the
+             * point: the permissions exist before the screens do, so nobody
+             * ships a screen and grants it to everybody by accident.
+             *
+             * It sits next to Jobs because that is the work it will eventually
+             * be about. Whether Availability turns out to mean staff, equipment
+             * or customer-facing slots is undecided, and this file is not the
+             * place that decides it.
+             */
+            new ModuleDefinition(
+                key: 'scheduling',
+                label: 'Scheduling',
+                auditExemptBecause: 'NOT AUDITED. A create, edit or delete here leaves no '
+                    .'audit_events row, so there is no record of who changed what or when. '
+                    .'This states a defect, not a decision, and it is not permission to stay '
+                    .'this way — see TODO #35 for how to close it and delete this line.',
+                actions: ModuleDefinition::DEFAULT_ACTIONS,
+                automationExemptBecause: 'Nothing is scheduled yet — this module is a shell. '
+                    .'Replace this with real triggers when Availability becomes real; do not '
+                    .'read it as a ruling that scheduling has nothing to automate.',
             ),
 
             /*
@@ -1073,6 +1117,7 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'marketing',
                 label: 'Marketing',
+                auditActionPrefixes: ['social'],
                 actions: ['view', 'edit'],
                 triggers: [
                     /*
@@ -1212,6 +1257,10 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'web_management',
                 label: 'Web Management',
+                auditExemptBecause: 'NOT AUDITED. A create, edit or delete here leaves no '
+                    .'audit_events row, so there is no record of who changed what or when. '
+                    .'This states a defect, not a decision, and it is not permission to stay '
+                    .'this way — see TODO #35 for how to close it and delete this line.',
                 actions: ['view', 'edit'],
                 automationExemptBecause: 'Nothing here happens on its own. A value changes because '
                     .'somebody typed it, and a plugin reading it is a machine polling on a timer — '
@@ -1245,6 +1294,10 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'phone',
                 label: 'Phone',
+                auditExemptBecause: 'NOT AUDITED. A create, edit or delete here leaves no '
+                    .'audit_events row, so there is no record of who changed what or when. '
+                    .'This states a defect, not a decision, and it is not permission to stay '
+                    .'this way — see TODO #35 for how to close it and delete this line.',
                 actions: ['view', 'edit'],
                 triggers: [
                     new TriggerDefinition(
@@ -1333,6 +1386,10 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'fleet_management',
                 label: 'Fleet Management',
+                auditExemptBecause: 'NOT AUDITED. A create, edit or delete here leaves no '
+                    .'audit_events row, so there is no record of who changed what or when. '
+                    .'This states a defect, not a decision, and it is not permission to stay '
+                    .'this way — see TODO #35 for how to close it and delete this line.',
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'assign', 'financials'],
                 subject: new AutomationSubject(Vehicle::class, 'Vehicle'),
                 triggers: [
@@ -1450,6 +1507,10 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'inventory',
                 label: 'Inventory',
+                auditExemptBecause: 'NOT AUDITED. A create, edit or delete here leaves no '
+                    .'audit_events row, so there is no record of who changed what or when. '
+                    .'This states a defect, not a decision, and it is not permission to stay '
+                    .'this way — see TODO #35 for how to close it and delete this line.',
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'financials'],
                 subject: new AutomationSubject(InventoryItem::class, 'Item', key: 'item'),
                 triggers: [
@@ -1523,6 +1584,10 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'services',
                 label: 'Services',
+                auditExemptBecause: 'NOT AUDITED. A create, edit or delete here leaves no '
+                    .'audit_events row, so there is no record of who changed what or when. '
+                    .'This states a defect, not a decision, and it is not permission to stay '
+                    .'this way — see TODO #35 for how to close it and delete this line.',
                 actions: ModuleDefinition::DEFAULT_ACTIONS,
                 subject: new AutomationSubject(Service::class, 'Service'),
                 /*
@@ -1783,6 +1848,7 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key:     'business_profile',
                 label:   'Business Profile',
+                auditActionPrefixes: ['business_location'],
                 // Drawn as a tab inside Marketing rather than as a row of its own
                 // in a sidebar that already holds fifteen. Its permissions are
                 // untouched by that: this says where it appears, not who reaches it.
@@ -1879,6 +1945,7 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'email',
                 label: 'Email',
+                auditActionPrefixes: ['mailbox', 'sending_identity'],
                 triggers: [
                     /*
                      * THE ONE THIS MODULE EXISTS FOR, AND IT FIRES.
@@ -2073,6 +2140,55 @@ class ModuleServiceProvider extends ServiceProvider
                 // the loop guards count actions, not rules, so a rule that
                 // writes rules escapes them entirely. It stays a human act.
                 automationExemptBecause: 'An automation that could write automations would escape the loop guards.',
+            ),
+
+            /*
+             * Monitoring — 2026-08-28-monitoring-pc-specs.
+             *
+             * Not CRUD. A device is reported by the machine that runs the
+             * client, never created or edited by an admin, so the only
+             * standing grant is `view`. `specs.view` is a second, narrower
+             * grant so an organization can let a manager see who is online
+             * without also handing them the hardware inventory underneath.
+             *
+             * The subject names 'monitoring' explicitly rather than letting
+             * it derive from the class: MonitoredDevice would default to
+             * `monitoreddevice`, and the triggers below are keyed
+             * `monitoring.*` — the same compound-name case InventoryItem
+             * documents itself (it keys as `item`, not `inventoryitem`).
+             *
+             * Both triggers started `isRaised: false` — this module was
+             * registered before anything under app/ emitted either event, and
+             * ModuleRegistryTest's standing check refuses `isRaised: true`
+             * until something does (its own failure message: "declared as
+             * raised, but nothing in app/ mentions it... declare isRaised:
+             * false until something emits it"). `new_device_seen` flipped to
+             * true (the default — the parameter is omitted below) once
+             * HeartbeatController::store() started calling
+             * EventEmitter::emit('monitoring.new_device_seen', ...) on a
+             * newly-created device (2026-08-28-monitoring-pc-specs, task 4).
+             * `device_offline` flipped the same way once DeviceOfflineWorker
+             * started calling EventEmitter::emit('monitoring.device_offline',
+             * ...) from its scheduled sweep (task 6).
+             */
+            new ModuleDefinition(
+                key: 'monitoring',
+                label: 'Monitoring',
+                actions: ['view', 'specs.view'],
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'monitoring.new_device_seen',
+                        label: 'New device seen',
+                        description: 'A person signed in from a device not seen before.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'monitoring.device_offline',
+                        label: 'Device went offline',
+                        description: 'A device stopped reporting for longer than the allowed gap.',
+                    ),
+                ],
+                subject: new AutomationSubject(MonitoredDevice::class, 'Device', key: 'monitoring'),
+                sidebar: true,
             ),
 
             /*

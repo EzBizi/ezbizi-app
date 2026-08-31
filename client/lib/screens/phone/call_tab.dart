@@ -205,11 +205,20 @@ class _CallTabState extends State<CallTab> {
       if (value.isNotEmpty) await _device.setup(value);
     }
 
+    // Say so when the desk did not actually come up. setup() returns on a
+    // refused token and on signalling that never connected as well as on
+    // success, so "it returned" is not "it is ready" — and a dial pad that
+    // looks ready but can never ring is the failure this whole path had.
+    if (mounted) setState(() => _deskDown = !_device.registered);
+
     await widget.api.put('/phone/presence', {
       'connection_id': number.connectionId,
       'state': _dnd ? 'dnd' : 'registered',
     });
   }
+
+  /// The Voice device never registered, so this desk cannot take a call.
+  bool _deskDown = false;
 
   Future<void> _toggleDnd() async {
     final number = _selected;
@@ -395,11 +404,50 @@ class _CallTabState extends State<CallTab> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     if (_incomingFrom != null) _banner(),
+                    if (_deskDown) _deskDownBanner(),
                     Expanded(child: wide ? _wide() : _narrow()),
                   ],
                 );
               },
             ),
+    );
+  }
+
+  /// Said out loud, because the alternative is a dial pad that looks perfectly
+  /// ready and never rings — and a desk that never rings is indistinguishable
+  /// from a quiet afternoon until somebody asks why nobody called back.
+  Widget _deskDownBanner() {
+    final theme = Theme.of(context);
+
+    return Material(
+      color: theme.colorScheme.errorContainer,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        child: Row(
+          children: [
+            Icon(
+              Icons.wifi_off_outlined,
+              size: 18,
+              color: theme.colorScheme.onErrorContainer,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'This desk is not connected to the phone network, so it '
+                'cannot take or make calls. Reload the page; if it keeps '
+                'happening the network is blocking the connection.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onErrorContainer,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: _register,
+              child: const Text('Try again'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

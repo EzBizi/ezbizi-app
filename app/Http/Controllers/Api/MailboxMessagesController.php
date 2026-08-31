@@ -305,6 +305,9 @@ class MailboxMessagesController extends Controller
      *  THE SAME "info sends as info" RULE AS reply(), AND THE SAME
      *  READ GATE.
      *
+     *  (See also `folders()` below, which is the same read gate for
+     *  the same reason.)
+     *
      *  There is deliberately no `email.send` permission. Replying
      *  already decided this: an inbox somebody can read and not
      *  answer is not a shared inbox, and the same reasoning covers
@@ -328,7 +331,40 @@ class MailboxMessagesController extends Controller
             'to.*'    => ['required', 'string', 'email', 'max:254'],
             'subject' => ['nullable', 'string', 'max:255'],
             'body'    => ['required', 'string', 'max:50000'],
+
+            /*
+             * Files arrive INSIDE this request and are never written down.
+             *
+             * No `attachments` record, no `attachables` row, no disk. An
+             * outgoing file that outlives the send is a second copy of the
+             * correspondence — the same store decision that keeps the words
+             * out of the audit log, and the reason there is nothing here to
+             * clean up later.
+             *
+             * `max:2048` is kilobytes, per file AND as the total checked
+             * below. It sits under the 3MB transport backstop with room for
+             * base64's third, and under Graph's inline-attachment ceiling, so
+             * a message that passes here sends the same on all three
+             * providers rather than on two of them.
+             */
+            'attachments'   => ['sometimes', 'array', 'max:5'],
+            'attachments.*' => ['file', 'max:2048'],
         ]);
+
+        $attachments = $this->attachmentsFrom($request);
+
+        if ($attachments === null) {
+            return response()->json([
+                // The same sentence the panel shows before the upload starts.
+                // Two copies of a refusal is normally a smell; here the client
+                // one saves a person waiting for 2MB to travel before hearing
+                // no, and this one is the check that actually holds. They must
+                // agree, so they are written to agree.
+                'message' => 'Those files come to more than 2 MB together. Mail services cap '
+                    .'what can travel inside a single message, so send fewer, or share '
+                    .'the large ones as a link instead.',
+            ], 422);
+        }
 
         try {
             $this->readers->for($mailbox)->send(
@@ -336,6 +372,7 @@ class MailboxMessagesController extends Controller
                 array_values($input['to']),
                 (string) ($input['subject'] ?? ''),
                 $input['body'],
+                $attachments,
             );
         } catch (CannotReadMailbox $e) {
             return $this->refused($e);
@@ -352,11 +389,16 @@ class MailboxMessagesController extends Controller
             // second copy of the correspondence, arriving through a side door.
             'recipients' => count($input['to']),
             'characters' => strlen($input['body']),
+            // How many files, never their names. A filename is content —
+            // "Smith-eviction-notice.pdf" says as much as a sentence of the
+            // body would, and the body is deliberately not here.
+            'files'      => count($attachments),
         ]);
 
         $this->events->emit('email.sent', $mailbox, [
             'address'    => $mailbox->address,
             'recipients' => count($input['to']),
+            'files'      => count($attachments),
         ]);
 
         return response()->json([
@@ -366,6 +408,90 @@ class MailboxMessagesController extends Controller
                 $mailbox->address,
             ),
         ]);
+    }
+
+    /**
+     * GET /api/v1/email/mailboxes/{mailbox}/folders
+     *
+     * Which folders this mailbox can open — asked, not assumed.
+     *
+     * ── Why this is its own request ──────────────────────────────
+     *
+     * IMAP is the reason. Gmail and Outlook answer from a constant, but an
+     * IMAP server has to be ASKED, and asking means a connection. Folding that
+     * into the mailbox listing would open one connection per mailbox every
+     * time somebody looked at the Email tab, before they had chosen any of
+     * them. This is asked once, when a mailbox is opened.
+     *
+     * The read gate, because a folder list is a fact about somebody's mail.
+     * That an inbox has an Archive folder is not much on its own, and it is
+     * not nothing, and there is no reason for it to be reachable by somebody
+     * who may not open the inbox.
+     */
+    public function folders(Request $request, Mailbox $mailbox): JsonResponse
+    {
+        $this->assertMayRead($request->user(), $mailbox, 'open this inbox');
+
+        try {
+            $folders = $this->readers->for($mailbox)->availableFolders($mailbox);
+        } catch (CannotReadMailbox $e) {
+            return $this->refused($e);
+        } catch (CannotReachHost $e) {
+            return response()->json(['message' => $e->getMessage()], $e->status());
+        }
+
+        return response()->json(['data' => array_values($folders)]);
+    }
+
+    /**
+     * The uploaded files as name/mime/bytes, or null if they are too big together.
+     *
+     * ── Why the TOTAL is checked here and not by a rule ──────────
+     *
+     * `attachments.*` => `max:2048` bounds each file on its own, and five
+     * files each just under the limit is 10MB — every one of them individually
+     * valid and the message unsendable. Per-item validation cannot express
+     * "these, added up", so the sum is checked here and refused with a
+     * sentence about the sum.
+     *
+     * ── The MIME type is the server's, not the browser's ─────────
+     *
+     * `getMimeType()` reads the file; `getClientMimeType()` repeats whatever
+     * the client claimed. A recipient's mail program decides how to treat a
+     * part by its Content-Type, so taking the client's word lets the sender
+     * label anything as anything.
+     *
+     * @return list<array{name: string, mime: string, bytes: string}>|null
+     */
+    private function attachmentsFrom(Request $request): ?array
+    {
+        $files = $request->file('attachments', []);
+
+        if ($files === []) {
+            return [];
+        }
+
+        $total = 0;
+        $out   = [];
+
+        foreach ($files as $file) {
+            $bytes  = (string) file_get_contents($file->getRealPath());
+            $total += strlen($bytes);
+
+            if ($total > 2 * 1024 * 1024) {
+                return null;
+            }
+
+            $out[] = [
+                // The name the person sees on the file, not the temporary path
+                // PHP parked it at.
+                'name'  => $file->getClientOriginalName(),
+                'mime'  => $file->getMimeType() ?: 'application/octet-stream',
+                'bytes' => $bytes,
+            ];
+        }
+
+        return $out;
     }
 
     /**

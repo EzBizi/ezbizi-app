@@ -150,7 +150,28 @@ TREE=$(git write-tree)
 git diff-tree -p "$BASE" "$TREE" -- <your paths>    # ← READ THE HUNKS. Not the stat.
 COMMIT=$(git commit-tree "$TREE" -p "$BASE" -F msg)
 git update-ref refs/heads/main "$COMMIT" "$BASE"     # fails if main moved
+
+unset GIT_INDEX_FILE
+git reset -q HEAD -- <your paths>          # ← STEP 8. Not optional. See below.
+scripts/index-landmines.sh                 # must read 0 stale, 0 live
 ```
+
+**Step 8 is not tidying — it disarms a revert your own commit just created.**
+The private index leaves the SHARED `.git/index` untouched, which is the whole
+point of it. So that index still holds every one of your paths at its
+*pre-commit* blob, and the instant `update-ref` moves HEAD those untouched
+entries become an armed revert **of the commit you just made**. The next bare
+`git commit` by any session re-applies them, under a message about something
+else.
+
+It does not take two sessions and it is not bad luck. Observed on a five-line,
+comment-only commit: `index-landmines.sh` read `0 stale, 0 live` before, and
+`+0 -5` against that very file after, with nobody having staged anything.
+Every careful private-index commit leaves one behind for every path it touches.
+
+`git reset` writes the index and never the working tree. Its "Unstaged changes
+after reset:" output lists every path where worktree and index differ repo-wide,
+not what it touched — ignore it and let the landmines script confirm instead.
 
 **Read hunks, not a stat, and read them against the tree you are about to commit.**
 Every other check here counts files; only this one shows you *whose lines* they
@@ -267,6 +288,29 @@ work-in-progress, so prefer a private index, which never touches it.
 separate call with a human decision after it. Piped into the commit, the file
 count scrolls past above output nobody reads until afterwards.
 
+### Isolation and durability are different properties
+
+Per-session worktrees (`./scripts/session-worktree.sh <module>`) give each session
+its own working tree and its own index, and they genuinely remove a whole class of
+failure: two sessions sharing one index, one carrying another's staging, a stale
+blob overwriting a good one before it is committed. All of that goes.
+
+**They do not remove the revert class.** Once merged, your content sits on `main`
+like everyone else's, and a later commit built from a stale base reverts it there
+exactly as before. Every revert on the day this was written hit content that was
+**already committed** — not content anyone was holding in a working tree — so
+worktrees would not have prevented a single one.
+
+The dangerous reading is "the revert problem is solved", followed by the content
+check being dropped at precisely the point it becomes the only thing left standing.
+`git show <sha>:<path>` against the deploy pin stays mandatory.
+
+This is the day's shape once more, and it caught the person announcing the fix in
+the message announcing it: **a control that removes *some* failure modes gets
+described as removing *the* failure, and the description is what people act on.**
+The same shape as an exit code that "means pass", a private index that "was
+immune", and a branch-protection rule sitting in settings enforcing nothing.
+
 ### A clean check is a photograph, not a guarantee
 
 Every failure this section describes is one shape: **a reading whose scope was
@@ -350,6 +394,28 @@ Inventory/Fleet/Phone". Do not ship a fourth leak. A company-view widget test
 with a sibling in `/me` is the proof — `client/test/inventory_screen_test.dart`
 ("a company view does not offer sibling companies on New location") is the shape
 to copy.
+
+### A view-timezone window must be converted before it reaches a UTC column
+
+`DashboardPeriod::$startsOn`, and anything from `Carbon::now($timezone)`, is a
+**wall clock in the organisation's timezone**. A Carbon binds to a query as its own
+wall-clock string with no conversion, so handing one straight to a comparison
+against a UTC column puts the whole window out by the offset. Convert first:
+
+```php
+$period->startsOn->copy()->utc()
+```
+
+Seven glances in `app/Support/Dashboard/Glances/` do this, and `JobsGlance:107`
+states the rule beside the call. It is worth knowing both directions this fails in,
+because finding one will not find the other: a two-sided `whereBetween` binds late
+and **drops** rows at the upper edge (Phone's `CallReport`, fixed in `1fb67ba` —
+every evening call vanished from "today" and reappeared next morning), while a
+one-sided `>=` binds early and **over-counts** (`HrGlance:93`, open as TODO #34).
+
+Both are invisible in the morning and wrong in the evening, which is why neither
+was ever reported by a user. A `DATE` column has no timezone to get wrong; only
+datetimes are exposed.
 
 ### §6 — settings cascade upward
 
@@ -519,6 +585,178 @@ Treat review findings the same way — including your own, and including a
 confident one from another agent. On one change two independent reviewers
 "confirmed" a defect that did not reproduce; the test written to prove it passed
 against unmodified code.
+
+### A guard is strongest exactly where it needs to be weakest
+
+The other half of the rule above. A test that cannot fail is useless; a guard
+that fires hardest on the case it exists to catch is worse, because it looks
+like it is working.
+
+Six of these turned up on 2026-08-28 alone, all in code behaving exactly as
+designed, with the design pointed the wrong way:
+
+- **The backup verifier could not go red.** `restore-check.sh` compared six
+  named tables to catch "a dump interrupted partway through". Those six —
+  organizations, companies, franchises, users, roles, permissions — are the
+  FOUNDATION set, the first thing any dump writes, so a truncated dump leaves
+  exactly them full. Six of the sixty-four non-empty tables, and it had chosen
+  the six least capable of failing.
+- **The landmine detector protected the landmine.** `index-landmines.sh` looks a
+  staged blob up in history: recognised means a stale snapshot, safe to clear;
+  unrecognised means somebody's live work, protect it. A staged DELETION has no
+  blob, so an armed deletion of a 368-line file committed minutes earlier came
+  back "live" and the clearing command was withheld — for the one entry on the
+  list that most needed clearing, and the four beside it.
+- **The report was wrong only in the evening.** A window built in the view
+  timezone and bound against a UTC column dropped every call after 19:00 local,
+  and those calls reappeared the next morning inside the following day's window.
+  Correct again by the time anybody checked, which is why it survived in
+  production and nobody ever reported it.
+- **The gate tested a tree that no longer existed.** A hand-written list of
+  directories to wipe before extracting the archive was missing `public`, so a
+  file deleted by a commit survived in the sandbox and failed the very commit
+  that deleted it. It fails honest work, and — the dangerous direction — it
+  would equally have PASSED a deletion that live code still referenced.
+- **The suite proved the first hop and said nothing about the feature.** Eight
+  green tests on a recurring-task worker, not one of which completed a
+  second-generation instance. "Service the truck every 3 months" serviced it
+  twice and never again.
+- **`/version.json` reports `1.0.0` build `1`.** It is pubspec's default, it has
+  never changed, and it is the first file anybody reaches for to confirm what is
+  deployed. It would report healthy for a build that was never shipped.
+
+**The question that finds them:** *what does this look like when it is doing its
+job, and is that distinguishable from it not being there at all?* If the answer
+is no, the check is decoration. Prove it can say something other than "fine" —
+doctor the input, watch it complain, then put the input back.
+
+And when a check reports something implausible, suspect the check. The staged
+deletion above was found because "matches no commit" is a strange thing to say
+about a file sitting right there at HEAD — nothing had failed, the output just
+read oddly.
+
+### `git log -- <path>` will not show you the commit that deleted your work
+
+The standing advice is to verify with `git show HEAD:<path>` rather than
+`git log`, because a commit can sit in the log looking fine while its content is
+gone. This is the next step: once you know content is missing, **`git log --
+<path>` may not tell you who took it.**
+
+Default history simplification hides commits that are not "interesting" for a
+path. A stale whole-file write that removed your lines can be one of them:
+
+```bash
+git log a69e62d..main -- wordpress-plugin/tests/plugin-check.php               # 0 commits
+git log --full-history a69e62d..main -- wordpress-plugin/tests/plugin-check.php # 5157df0
+```
+
+Same range, same path, and only the second finds the commit that took the lines
+out. Measured on 2026-08-31, tracing 220 deletions across two modules.
+
+**And before you conclude a whole file was rewritten, diff it with
+`--strip-trailing-cr`.** On this tree two versions of a 250-line file appeared to
+differ on every line and were identical apart from line endings. A session
+nearly abandoned a correct restore on that evidence.
+
+### Ask whether the answer is a BELIEVABLE SHAPE, not just whether you checked
+
+"Verify before you claim" is about whether you looked. This is about whether what
+came back could be true. It is the cheaper check and it fires earlier, because it
+needs no second measurement — only a moment spent asking what a real answer would
+look like.
+
+Two on 2026-08-31, both caught this way and neither by a better method:
+
+- A sweep reported TWELVE entries of `IMPLEMENTED_ACTIONS` as unreachable,
+  including `task.create` and `time_clock.clock_in`. Twelve dead constants in
+  shipped, working code is not a thing that quietly happens. The sweep had
+  iterated `$m->actions`, which holds PERMISSION strings — view, create, edit —
+  rather than `$m->automationActions`, which holds the ActionDefinition objects.
+  A confident, precise, complete answer to the wrong question. The real number
+  was two, and both were global action types offered by a different path.
+- `scripts/index-landmines.sh` classified a file as "matches no commit —
+  somebody is working on it" while that file sat at HEAD with 368 lines. Nothing
+  had failed and no test was red; the sentence was merely strange. It was a
+  staged DELETION, which has no blob to look up, so the rule protecting other
+  people's work was protecting an armed revert of somebody's finished feature.
+
+**The tell is usually a number or a claim that is too round, too large, or too
+confident for the situation.** Twelve of anything wrong at once. Zero rows in a
+table somebody is actively using. A file that both exists and does not. When the
+shape is wrong, suspect the measurement before the system — the system has been
+running longer than your query has.
+
+This is not scepticism about results you dislike. A believable-shaped answer that
+happens to be unwelcome still needs acting on; an implausible one needs checking
+first, and usually turns out to be the instrument.
+
+### After a merge, verify the TREE — not your diff
+
+`--filter` to the files you touched is the right discipline for your own work,
+and it stops being right the instant a merge arrives. A merge is not a change to
+your module; it is a change to the whole tree, and the moment it feels most
+reasonable to carry on doing what you have done all day is exactly the moment it
+is wrong.
+
+On 2026-08-31 a session merged 118 commits of main into its branch, ran its own
+three test files, got 96/96 and reported that as verified. The branch would have
+gone red at the gate. The full suite — 1121/1121 — was two minutes away and
+would have caught it in seconds instead of in a handover.
+
+The full run also says something a scoped run structurally cannot: main was at
+1117, the branch at 1121, so the four extra were the branch's own and nothing of
+anybody else's went missing in the merge. A module-scoped pass cannot tell you
+that no other module broke.
+
+### Anything edited while staging is untested, however careful the run before it
+
+`client/VERSION` and its `version_history.dart` note must agree, and a test says
+so. Four separate sessions shipped the mismatch in three days. None of them was
+careless and none had missed the rule — the file's own docblock states it.
+
+The cause is ORDER. You run the gates, they pass, and THEN you bump VERSION
+while putting the commit together. So the one file coupled to a test is the one
+file the test never saw. Everything you ran was green and none of it covered the
+change you made last.
+
+**Bump the version and write its note BEFORE you run the gates, never while
+staging.**
+
+The general form matters more than the instance: a green run is evidence about
+the tree as it stood when the run started. Every edit after that point is
+unverified, and edits made during staging feel like packaging rather than
+changes — which is exactly why they escape the instinct to re-run. If you touch
+anything after the gates, the gates are stale.
+
+### A coupled pair where only one half conflicts is sprung by resolving correctly
+
+`client/VERSION` and the newest entry in `version_history.dart` must agree —
+`version_history_test` asserts it. When two branches both bump VERSION, git
+raises a conflict on VERSION and says NOTHING about the note, because the note
+did not collide. Resolving the conflict correctly is what creates the mismatch.
+
+That is the trap: the fix for the thing git told you about breaks the thing it
+did not. Whenever you resolve a conflict, ask what else moves with the file you
+just decided — the answer is not in the conflict markers.
+
+### "Did nothing" and "did the wrong thing" need different detection
+
+Most of the silent failures in this codebase are DEAD ENDS: a value saved and
+never read, a screen that displays a setting nothing consults, a menu that could
+be built and attached to nothing. The thing did not happen. Somebody eventually
+notices, because they are waiting for an outcome that never comes.
+
+A WRONG ANSWER is worse and rarer. `?label=SENT` on an Outlook mailbox returned
+RECEIVED mail — 200, no error, no indication. Somebody checking what the business
+had sent a customer would have been reading what the customer sent them, with
+nothing to wonder about. Graph had the inbox hardcoded and IMAP ignored the
+argument; only Gmail honoured it.
+
+**They are found by different questions.** A dead end answers to *does this value
+ever get read?* — static, greppable, findable by reading. A wrong answer needs
+*does this path return what its name claims?*, which only a test that knows the
+right answer can ask. That is why the label bug survived every review that read
+the code and died the moment something asserted which URL got fetched.
 
 ---
 

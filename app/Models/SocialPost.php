@@ -36,7 +36,46 @@ class SocialPost extends Model implements StatesRetention
         );
     }
 
-    protected $fillable = ['body', 'title', 'media_path', 'media_disk', 'created_by'];
+    protected $fillable = [
+        'body', 'title', 'media_path', 'media_disk', 'created_by',
+        'scheduled_for', 'scheduled_timezone',
+    ];
+
+    /**
+     * Is this post's moment here yet?
+     *
+     * Resolved fresh rather than compared to a stored instant: the wall time is
+     * the promise, and `Carbon::parse($wall, $zone)` is what turns it into a
+     * moment using the clock as it stands NOW. See the migration for why that
+     * matters more than an indexable column would.
+     *
+     * A post with no schedule is due immediately — "Publish now" is the absence
+     * of a time, not a special case.
+     */
+    public function isDue(): bool
+    {
+        if ($this->scheduled_for === null || $this->scheduled_for === '') {
+            return true;
+        }
+
+        return \Illuminate\Support\Carbon::parse(
+            (string) $this->scheduled_for,
+            (string) ($this->scheduled_timezone ?: config('app.timezone')),
+        )->lte(now());
+    }
+
+    /** The moment this is promised for, as an instant, or null when immediate. */
+    public function dueAt(): ?\Illuminate\Support\Carbon
+    {
+        if ($this->scheduled_for === null || $this->scheduled_for === '') {
+            return null;
+        }
+
+        return \Illuminate\Support\Carbon::parse(
+            (string) $this->scheduled_for,
+            (string) ($this->scheduled_timezone ?: config('app.timezone')),
+        );
+    }
 
     public function targets(): HasMany
     {

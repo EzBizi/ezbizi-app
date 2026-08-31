@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Phone;
 
 use App\Http\Controllers\Api\Controller;
+use App\Support\Phone\PhoneScope;
 use App\Http\Controllers\Api\Phone\Concerns\ResolvesPhoneConnections;
 use App\Models\Franchise;
 use App\Models\PhoneConnection;
@@ -39,6 +40,7 @@ class HoursController extends Controller
         $connectionIds = $this->connectionsInReach($request->user())->pluck('id')->all();
 
         $rows = PhoneHoursSchedule::query()
+            ->tap(fn ($q) => PhoneScope::apply($q, $request->user()))
             ->whereIn('connection_id', $connectionIds)
             ->orderBy('name')
             ->get()
@@ -83,8 +85,15 @@ class HoursController extends Controller
             ]);
         }
 
-        $schedule = DB::transaction(function () use ($input, $connection, $number, $timezone) {
+        // Resolved OUTSIDE the transaction: it reads the caller's view, which
+        // is a property of the request rather than of the write.
+        [$scopeType, $scopeId] = PhoneScope::filing($request->user());
+
+        $schedule = DB::transaction(function () use ($input, $connection, $number, $timezone, $scopeType, $scopeId) {
+
             $schedule = PhoneHoursSchedule::query()->create([
+                'scope_type' => $scopeType,
+                'scope_id' => $scopeId,
                 'organization_id' => $this->tenant->idOrFail(),
                 'connection_id' => $connection->id,
                 'name' => $input['name'],

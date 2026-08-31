@@ -60,6 +60,114 @@ class ModuleRegistryTest extends TestCase
         $this->assertTrue(true);
     }
 
+    // ── the audit trail (§2.2) ───────────────────────────────────
+
+    /**
+     * §2.2 is "every action, every error, every crash", and its only stated
+     * exception is the Lead Developer account — not a module.
+     *
+     * It rotted anyway: five shipped modules wrote no audit rows at all while
+     * four wrote them inside the write transaction, and nothing failed. The
+     * difference between audit and automation was never care — it was that
+     * `automationExemptBecause` made silence impossible and §2.2 had no
+     * equivalent. This is the equivalent.
+     *
+     * Only a module that can write owes anything here. A read-only one is
+     * outside the rule rather than exempt from it.
+     */
+    public function test_every_writing_module_satisfies_the_audit_rule(): void
+    {
+        $violations = [];
+
+        foreach (app(ModuleRegistry::class)->all() as $key => $module) {
+            if (! $module->satisfiesAuditRule($this->writesAnyAuditRow($module))) {
+                $violations[] = $key;
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $violations,
+            'Plan §2.2: a module that can create, edit or delete must write audit rows, or '
+            .'state auditExemptBecause. Offending module(s): '.implode(', ', $violations)
+        );
+    }
+
+    /**
+     * Does anything under app/ write an audit row for this module?
+     *
+     * Asks the source rather than a declaration, so the answer cannot go stale
+     * the way a stored list would — add an `audit->log()` call and this notices
+     * without anybody remembering to update anything.
+     *
+     * Matches the CALL, not the string, which is the difference that matters:
+     * several audit actions share a name with an automation trigger, so looking
+     * for `'job.created'` anywhere in app/ would count an `emit()` as an audit
+     * row and pass a module that audits nothing.
+     */
+    private function writesAnyAuditRow(ModuleDefinition $module): bool
+    {
+        foreach ($module->auditPrefixes() as $prefix) {
+            $pattern = '/audit\s*->\s*log(Change|Staff)?\(\s*[\'"]'.preg_quote($prefix, '/').'\./';
+
+            foreach ($this->applicationPhpFiles() as $file) {
+                if (preg_match($pattern, (string) file_get_contents($file)) === 1) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /** @return string[] */
+    private function applicationPhpFiles(): array
+    {
+        static $files = null;
+
+        if ($files === null) {
+            $files = [];
+            $it = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator(app_path(), \FilesystemIterator::SKIP_DOTS)
+            );
+
+            foreach ($it as $entry) {
+                if ($entry->isFile() && $entry->getExtension() === 'php') {
+                    $files[] = $entry->getPathname();
+                }
+            }
+        }
+
+        return $files;
+    }
+
+    /**
+     * An exemption that stops being true is worse than the gap it described.
+     *
+     * If a module declares `auditExemptBecause` and then somebody wires audit
+     * calls into it, the registry goes on saying it is outside §2.2 — and the
+     * next reader takes that as settled rather than reopening it. Same failure
+     * as a trigger that keeps saying "nothing raises this yet" after the
+     * emission lands, and caught the same way: both directions asserted.
+     */
+    public function test_an_audit_exemption_is_dropped_once_the_module_audits(): void
+    {
+        foreach (app(ModuleRegistry::class)->all() as $key => $module) {
+            if ($module->auditExemptBecause === null) {
+                continue;
+            }
+
+            $this->assertFalse(
+                $this->writesAnyAuditRow($module),
+                "Module '{$key}' states auditExemptBecause, but app/ writes audit rows under "
+                .implode(' / ', $module->auditPrefixes()).'. The exemption outlived the gap — '
+                .'drop it, or the registry keeps claiming this module is outside §2.2.'
+            );
+        }
+
+        $this->assertTrue(true);
+    }
+
     // ── the wording (§5.5) ───────────────────────────────────────
 
     /**

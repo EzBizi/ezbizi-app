@@ -59,6 +59,7 @@ IconData dashboardPanelIcon(String key) {
     'hr': Icons.badge_outlined,
     'customers': Icons.people_outline,
     'jobs': Icons.construction_outlined,
+    'scheduling': Icons.calendar_month_outlined,
     'inspection': Icons.fact_check_outlined,
     'marketing': Icons.campaign_outlined,
     'web_management': Icons.language_outlined,

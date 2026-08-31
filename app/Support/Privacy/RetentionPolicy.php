@@ -75,11 +75,12 @@ final class RetentionPolicy
      * silently matched nothing in exactly the table that grows fastest, which is
      * indistinguishable from a table that was already clean.
      *
-     * The six tables this governs today are `automation_events` (occurred_at),
-     * `invitations` (created_at), `notifications` (created_at),
-     * `password_resets` (created_at), `phone_calls` (created_at) and
-     * `phone_messages` (created_at). It said four before Phone added call and
-     * SMS rows with the same three-month window as business audit (spec §11).
+     * The seven tables this governs today are `automation_events` (occurred_at),
+     * `invitations` (created_at), `monitoring_activity` (occurred_at),
+     * `notifications` (created_at), `password_resets` (created_at),
+     * `phone_calls` (created_at) and `phone_messages` (created_at). It said four
+     * before Phone added call and SMS rows with the same three-month window as
+     * business audit (spec §11).
      *
      * Others time their rows by something other than creation — `audit_events`
      * by `occurred_at`, `automation_runs` by `started_at` — but neither is swept

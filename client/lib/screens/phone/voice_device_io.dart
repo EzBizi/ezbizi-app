@@ -7,6 +7,11 @@ class _SilentVoiceDevice implements VoiceDevice {
   @override
   Future<void> setup(String token) async {}
 
+  /// False, and honestly so: off the web there is no Voice SDK to register
+  /// with, so this device can never take a call.
+  @override
+  bool get registered => false;
+
   @override
   Future<void> connect({required String to, String? callerId}) async {}
 

@@ -31,6 +31,9 @@ class TagsPane extends StatefulWidget {
 }
 
 class _TagsPaneState extends State<TagsPane> {
+  /// Which tag has its palette open, if any.
+  String? _colouring;
+
   bool _loading = true;
   String? _error;
   String? _note;
@@ -242,34 +245,146 @@ class _TagsPaneState extends State<TagsPane> {
     );
   }
 
+  /// The eight the server accepts. Kept in step with PhoneCallTag::COLORS —
+  /// a colour this list offers and the server refuses would save as nothing
+  /// and read as "the tag did not keep my choice".
+  static const _palette = <String>[
+    '#E5484D',
+    '#E8912A',
+    '#F5C518',
+    '#46A758',
+    '#12A594',
+    '#00AEEF',
+    '#3E63DD',
+    '#8E4EC6',
+  ];
+
+  static Color? _parse(String? hex) {
+    if (hex == null) return null;
+
+    final cleaned = hex.replaceFirst('#', '');
+    final value = int.tryParse(cleaned, radix: 16);
+
+    return value == null ? null : Color(0xFF000000 | value);
+  }
+
+  Widget _swatch(String? hex, ThemeData theme, {required bool ringed}) {
+    final colour = _parse(hex);
+
+    return Container(
+      width: 24,
+      height: 24,
+      decoration: BoxDecoration(
+        // No colour is drawn as an outline rather than as grey: grey is a
+        // colour somebody might have chosen, and "none" should not look like
+        // a choice they made.
+        color: colour ?? Colors.transparent,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: colour == null
+              ? theme.colorScheme.outline
+              : theme.colorScheme.outlineVariant,
+          width: colour == null ? 1.5 : 1,
+        ),
+      ),
+      child: colour == null && ringed
+          ? Icon(Icons.add, size: 14, color: theme.colorScheme.outline)
+          : null,
+    );
+  }
+
+  /// Opens in place under the row rather than over it — the house rule is no
+  /// modals, and a colour is chosen by comparing it with the tags around it.
+  Future<void> _pickColour(_Tag tag) async {
+    setState(() => _colouring = _colouring == tag.id ? null : tag.id);
+  }
+
+  Future<void> _setColour(_Tag tag, String? hex) async {
+    setState(() => _colouring = null);
+
+    final response = await widget.api.patch('/phone/tags/${tag.id}', {
+      'color': hex,
+    });
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() => _error = response.reason);
+      return;
+    }
+
+    await _load();
+  }
+
+  Widget _palettePicker(_Tag tag, ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final hex in _palette)
+            InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: () => _setColour(tag, hex),
+              child: _swatch(hex, theme, ringed: false),
+            ),
+          InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: () => _setColour(tag, null),
+            child: _swatch(null, theme, ringed: false),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _row(_Tag tag, ThemeData theme, {required bool retired}) {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        key: ValueKey('tag:${tag.id}'),
-        title: Text(tag.name),
-        subtitle: Text(
-          tag.callCount == 0
-              ? 'Not used yet'
-              : 'On ${tag.callCount} call${tag.callCount == 1 ? '' : 's'}',
-          style: theme.textTheme.bodySmall,
-        ),
-        trailing: !_canEdit
-            ? null
-            : Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextButton(
-                    onPressed: () => _setActive(tag, retired),
-                    child: Text(retired ? 'Offer again' : 'Retire'),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            key: ValueKey('tag:${tag.id}'),
+
+            // The swatch IS the control. A tag's colour is the thing you are
+            // looking at when you decide to change it, so the dot you can see is
+            // the dot you press rather than a separate button somewhere else.
+            leading: _canEdit
+                ? InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: () => _pickColour(tag),
+                    child: _swatch(tag.color, theme, ringed: true),
+                  )
+                : _swatch(tag.color, theme, ringed: false),
+            title: Text(tag.name),
+            subtitle: Text(
+              tag.callCount == 0
+                  ? 'Not used yet'
+                  : 'On ${tag.callCount} call${tag.callCount == 1 ? '' : 's'}',
+              style: theme.textTheme.bodySmall,
+            ),
+            trailing: !_canEdit
+                ? null
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextButton(
+                        onPressed: () => _setActive(tag, retired),
+                        child: Text(retired ? 'Offer again' : 'Retire'),
+                      ),
+                      if (tag.callCount == 0)
+                        TextButton(
+                          onPressed: () => _remove(tag),
+                          child: const Text('Remove'),
+                        ),
+                    ],
                   ),
-                  if (tag.callCount == 0)
-                    TextButton(
-                      onPressed: () => _remove(tag),
-                      child: const Text('Remove'),
-                    ),
-                ],
-              ),
+          ),
+
+          if (_colouring == tag.id) _palettePicker(tag, theme),
+        ],
       ),
     );
   }
@@ -282,12 +397,17 @@ class _Tag {
     required this.name,
     required this.isActive,
     required this.callCount,
+    this.color,
   });
 
   final String id;
   final String name;
   final bool isActive;
   final int callCount;
+
+  /// Hex the customer picked, from a fixed set the server validates. Null is
+  /// a real choice — an untinted tag — not a missing value.
+  final String? color;
 
   static List<_Tag> listFrom(dynamic payload) {
     final data = payload is Map ? payload['data'] : payload;
@@ -301,6 +421,7 @@ class _Tag {
             name: r['name']?.toString() ?? '',
             isActive: r['is_active'] != false,
             callCount: (r['call_count'] as num?)?.toInt() ?? 0,
+            color: r['color'] as String?,
           ),
         )
         .toList(growable: false);

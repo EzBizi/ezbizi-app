@@ -63,7 +63,27 @@ Create post + targets. Schedule wall-clock. Queue lists targets. Publish now enq
 
 The stub worker in the paragraph above was never needed. Pinterest and TikTok publishers already existed (27 Aug, reachable only from `social:post-test`), so Publish now sends for real on those two and refuses **before writing a row** for the rest — `Publishers::refusalFor()` is the one map, and `GET /social/connections` carries `can_publish` so the composer greys the account rather than queueing something that cannot go.
 
-Still open from this task: **scheduling** (`scheduled_for` in the view's wall clock — the calendar beside the composer has nothing to draw until it lands) and **per-network body limits** (one 5,000-character cap for now; Bluesky's 300 and X's 280 belong on `SocialProvider` when either gets a publisher).
+**Fixed 28 Aug, from a real publish on production.** Three defects the tests could not have found, because all three needed a live network:
+
+1. **TikTok refused every post** — "Please review our integration guidelines", which names no field and reads like the video was rejected. It was not. `Publishers::for()` defaulted to Direct Post, which requires TikTok's audit; the app is unaudited, so that endpoint was never going to answer anything else. Circular, too: the audit submission needs a filmed demo of a working publish. `services.tiktok.direct_post` (default **false**) now sends posts to the creator's drafts, which needs only `video.upload` and works from day one — so there is a real publish to film.
+2. **"Waiting to send" was a lie.** The composer read the Sent list once and never again, so a target that failed two seconds later sat on screen claiming to be in flight. A failure displayed as progress is worse than an error: an error sends somebody looking. It now polls until the queue answers, and says so plainly if the queue stops answering rather than spinning forever.
+3. **An attached file showed only its name.** It is displayed now — images decode from the bytes in hand, video gets its name and size. A filename is not confirmation when the cost of the wrong file is a public account under the tenant's own name.
+
+4. **A refusal that arrived too late.** Pinterest ACCEPTS video, so the network-level check passed and a row was written — and only the publisher knew it sends images only. `SocialPublisher::cannotSend()` now answers that up front, so all three refusals (no publisher · the network will not take this kind · we have not built that half) happen before anything is queued. The order matters and is pinned in `SocialPostsController`: telling somebody with a text-only post that our video poster is missing is true and not their problem.
+
+**Known gap, not a defect: Pinterest video publishing does not exist.** The connection is healthy, which makes it very easy to mistake for a failure — which is exactly what the sentence says. Whoever builds it: `PinterestPublisher::cannotSend()` is the one place that claims it cannot, and `publish()` reads that rather than repeating it.
+
+**Scheduling done 28 Aug — Task 5 is complete.** `scheduled_for` + `scheduled_timezone` on `social_posts`, a `scheduled` target status distinct from `queued`, and `ezbizi:publish-due-social-posts` every minute.
+
+Wall clock, per TODO #20: the time is stored exactly as typed and the CLOCK is stored beside it, resolved fresh at dispatch. An instant computed at compose time would drift if a branch's timezone were ever corrected — and the promise somebody made was about a clock on a wall, not a moment in physics. The clock comes from the VIEW and is never sent by the client, which could otherwise send one the screen was not showing.
+
+A sweep rather than a delayed job, for the reason the automations outbox gives: changing your mind means a row stops being due, not hunting a job to cancel. `scheduled` is deliberately not `queued` — "waiting to send" for a post due next Tuesday is the same lie the composer told in August, only slower — and the client does not poll a scheduled post for the same reason.
+
+A time already past is REFUSED rather than published immediately: somebody who mistypes the day has made a mistake, and a post cannot be unsent.
+
+**Video playback done 28 Aug.** `video_player`, fed from an object URL over the bytes already in hand — nothing is uploaded to preview, which matters because the file is being looked at precisely because nobody is sure it is the right one. Web only; off the web `Files.previewUrl` answers null and the name-and-size label stands, which is honest rather than a broken player.
+
+Still open from this task: **per-network body limits** (one 5,000-character cap for now; Bluesky's 300 and X's 280 belong on `SocialProvider` when either gets a publisher).
 
 ### Task 6 — Facebook Page publish (sandbox)
 

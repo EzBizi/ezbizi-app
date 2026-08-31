@@ -20,13 +20,59 @@ use App\Support\Social\SocialProvider;
  */
 final class Publishers
 {
-    public static function for(?SocialProvider $provider, bool $toDrafts = false): ?SocialPublisher
+    /**
+     * @param  bool|null  $toDrafts  TikTok only. Null asks the installation,
+     *                               which is the right answer for everything
+     *                               except `social:post-test --draft`, where a
+     *                               person is deliberately choosing.
+     */
+    public static function for(?SocialProvider $provider, ?bool $toDrafts = null): ?SocialPublisher
     {
         return match ($provider) {
             SocialProvider::Pinterest => new PinterestPublisher,
-            SocialProvider::TikTok    => new TikTokPublisher(toDrafts: $toDrafts),
+            SocialProvider::TikTok    => new TikTokPublisher(
+                toDrafts: $toDrafts ?? ! self::tiktokIsAudited(),
+            ),
             default                   => null,
         };
+    }
+
+    /**
+     * Has this installation's TikTok app passed audit?
+     *
+     * The default is NO, deliberately. An unaudited app sent down Direct Post
+     * is refused with a sentence that blames the video, so the safe default has
+     * to be the path that works rather than the one we would prefer. See
+     * `config/services.php` for the whole reason.
+     */
+    public static function tiktokIsAudited(): bool
+    {
+        return (bool) config('services.tiktok.direct_post', false);
+    }
+
+    /**
+     * What actually happens when this network takes a post, when that is not
+     * what somebody would assume, or null when it holds no surprise.
+     *
+     * ── Why this is on the server ────────────────────────────────
+     *
+     * Same argument as `refusalFor`: whether TikTok posts to the profile or to
+     * the drafts is decided by an installation flag the client cannot see, and
+     * a screen that guessed would tell somebody their video is live when it is
+     * sitting in a drafts folder nobody opened.
+     *
+     * Told BEFORE publishing, not after. "Sent" and "sent, but you must go and
+     * finish it elsewhere" are different enough that finding out afterwards is
+     * finding out too late.
+     */
+    public static function postingNoteFor(?SocialProvider $provider): ?string
+    {
+        if ($provider === SocialProvider::TikTok && ! self::tiktokIsAudited()) {
+            return 'Goes to this account’s TikTok drafts, not straight to the profile. '
+                .'Open TikTok to finish and post it.';
+        }
+
+        return null;
     }
 
     /**

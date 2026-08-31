@@ -57,6 +57,13 @@ class SocialConnectionsController extends Controller
                  */
                 'can_publish'            => Publishers::refusalFor($c->providerEnum()) === null,
                 'cannot_publish_because' => Publishers::refusalFor($c->providerEnum()),
+
+                /*
+                 * What posting here actually does, when it is not what somebody
+                 * would assume. Null for every network that holds no surprise,
+                 * so the screen draws nothing rather than a reassurance.
+                 */
+                'posting_note'           => Publishers::postingNoteFor($c->providerEnum()),
             ])->all(),
         ]);
     }

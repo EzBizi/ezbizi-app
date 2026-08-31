@@ -17,6 +17,19 @@
 <meta property="og:title" content="Download EzBizi">
 <meta property="og:description" content="Install EzBizi on Windows, or use it in any browser.">
 <meta property="og:image" content="https://www.ezbizi.com/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="theme-color" content="#00aeef">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Download EzBizi">
+<meta name="twitter:description" content="Install EzBizi on Windows, or use it in any browser.">
+<meta name="twitter:image" content="https://www.ezbizi.com/og.png">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+  {"@type":"SoftwareApplication","@id":"https://www.ezbizi.com/download/#win","name":"EzBizi for Windows","applicationCategory":"BusinessApplication","operatingSystem":"Windows 10, Windows 11","downloadUrl":"https://www.ezbizi.com/download/EzBizi-setup.exe","softwareHelp":"https://www.ezbizi.com/download/","publisher":{"@type":"Organization","name":"EZBIZI LLC","url":"https://www.ezbizi.com/"}},
+  {"@type":"WebPage","@id":"https://www.ezbizi.com/download/#page","url":"https://www.ezbizi.com/download/","name":"Download EzBizi","isPartOf":{"@type":"WebSite","url":"https://www.ezbizi.com/","name":"EzBizi"},"inLanguage":"en-US"}
+]}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -116,6 +129,7 @@ footer p{font-size:.83rem;color:var(--muted-2)}
     <div class="navlinks">
       <a href="/#workspace">Workspace</a>
       <a href="/#platform">Platform</a>
+      <a href="/download/" aria-current="page">Download</a>
       <a href="/#faq">FAQ</a>
     </div>
     <div class="navcta">
@@ -168,8 +182,8 @@ footer p{font-size:.83rem;color:var(--muted-2)}
         <span class="tag off">In testing</span>
         <h2>Android</h2>
         <p>
-          The Android app is built and going through Google Play review with a small
-          group of testers. It will appear on Google Play once that finishes.
+          The Android app is built and working its way through Google Play. It will
+          appear there once that finishes — we would rather post the link than a date.
         </p>
         <div class="foot">
           <span class="btn btn-lg" aria-disabled="true">Coming to Google Play</span>
@@ -177,7 +191,23 @@ footer p{font-size:.83rem;color:var(--muted-2)}
         </div>
       </article>
 
-      <!-- iOS — not started, and says so -->
+      <!-- Neither app is on a public store. That is not taken on trust from a
+           session - it is two commands, and they are the cheapest way to find out
+           that a listing went live and this page did not notice:
+
+             curl -s "https://itunes.apple.com/lookup?bundleId=com.ezbizi.app" 
+             curl -sI "https://play.google.com/store/apps/details?id=com.ezbizi.app"
+
+           resultCount 0 and HTTP 404 mean not published. The moment either answers,
+           these two cards owe the public a link. -->
+      <!-- iOS says only what is checkable: built and signed (true - a signed .ipa
+           exists), and not on the store (true - the lookup below returns nothing).
+           It deliberately does NOT say "in review". docs/MODULE-OWNERS.md records
+           App Store Connect reading "Waiting for Review" AND, in the same list, that
+           EU trader status "blocks submission outright". Those two cannot both
+           describe the same moment, nobody owns that console today, and a public
+           status page is the wrong place to guess between them. -->
+      <!-- iPhone and iPad -->
       <article class="card soon">
         <div class="ico" aria-hidden="true">
           <svg viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 5.4h3"/></svg>
@@ -185,12 +215,12 @@ footer p{font-size:.83rem;color:var(--muted-2)}
         <span class="tag off">Not yet</span>
         <h2>iPhone and iPad</h2>
         <p>
-          The iOS app has not been released. It needs an Apple Developer account and
-          App Store review, and we would rather say so than promise a date we have
-          not earned.
+          The iOS app is built and signed. It is not on the App Store yet — the
+          remaining steps are Apple's, and we would rather post the link when it is
+          there than promise a date we have not earned.
         </p>
         <div class="foot">
-          <span class="btn btn-lg" aria-disabled="true">Coming later</span>
+          <span class="btn btn-lg" aria-disabled="true">Coming to the App Store</span>
           <p class="meta">Use EzBizi in Safari meanwhile.</p>
         </div>
       </article>

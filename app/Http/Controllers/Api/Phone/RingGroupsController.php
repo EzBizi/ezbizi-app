@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Phone;
 
 use App\Http\Controllers\Api\Controller;
+use App\Support\Phone\PhoneScope;
 use App\Http\Controllers\Api\Phone\Concerns\ResolvesPhoneConnections;
 use App\Models\PhoneConnection;
 use App\Models\PhoneNumber;
@@ -49,8 +50,10 @@ class RingGroupsController extends Controller
 
         $connectionIds = $this->connectionsInReach($request->user())->pluck('id')->all();
 
-        $rows = PhoneRingGroup::query()
-            ->whereIn('connection_id', $connectionIds)
+        $rows = PhoneScope::apply(
+            PhoneRingGroup::query()->whereIn('connection_id', $connectionIds),
+            $request->user(),
+        )
             ->orderBy('name')
             ->get()
             ->map(fn (PhoneRingGroup $group) => $this->row($group))
@@ -108,7 +111,11 @@ class RingGroupsController extends Controller
         $this->authorize('create', [PhoneRingGroup::class, $connection]);
         $this->assertOverflowIsUsable($input, $connection, null);
 
+        [$scopeType, $scopeId] = PhoneScope::filing($request->user());
+
         $group = PhoneRingGroup::create([
+            'scope_type' => $scopeType,
+            'scope_id' => $scopeId,
             'connection_id' => $connection->id,
             'name' => trim((string) $input['name']),
             'mode' => $input['mode'] ?? PhoneRingGroup::MODE_SIMULTANEOUS,

@@ -7,9 +7,13 @@ use App\Models\InspectionDefinition;
 use App\Models\InspectionReport;
 use App\Models\InspectionRun;
 use App\Models\Job;
+use App\Models\Service;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Inspection\BoundAnswers;
+use App\Support\Inspection\FieldType;
+use App\Support\Inspection\OptionSet;
+use App\Support\Inspection\RecommendedWork;
 use App\Support\Inspection\InspectionAccess;
 use App\Support\Inspection\LooksLikeJobNumber;
 use App\Support\Inspection\RequiredFields;
@@ -189,11 +193,71 @@ class InspectionRunsController extends Controller
             'answers' => ['required', 'array'],
         ]);
 
+        /*
+         * Recommended work is resolved HERE, as it is picked, not at submit.
+         *
+         * Two reasons. A service that is not this organization's is refused
+         * while the technician is still looking at the screen, rather than at
+         * the end of a form they have spent twenty minutes on. And the answer
+         * is stored as a SNAPSHOT — name and price as they are today — so the
+         * report and the job line agree with what was on screen when the
+         * recommendation was made.
+         */
+        $inspectionRun->loadMissing('version');
+
+        $input['answers'] = self::resolveRecommendedWork(
+            $inspectionRun->version?->screens ?? [],
+            $input['answers'],
+        );
+
         $inspectionRun->forceFill(['answers' => $input['answers']])->save();
 
         return response()->json([
             'data' => $this->present($inspectionRun->fresh()->load(['version', 'customer', 'job', 'definition'])),
         ]);
+    }
+
+    /**
+     * Turn every `services` answer into priced snapshots.
+     *
+     * Walks nested fields too — the recommendation usually lives inside the
+     * FAILING option, which is the whole point of that pattern.
+     *
+     * @param  list<array<string, mixed>>  $screens
+     * @param  array<string, mixed>  $answers
+     * @return array<string, mixed>
+     */
+    private static function resolveRecommendedWork(array $screens, array $answers): array
+    {
+        foreach ($screens as $si => $screen) {
+            if (! is_array($screen)) {
+                continue;
+            }
+
+            foreach ((is_array($screen['fields'] ?? null) ? $screen['fields'] : []) as $field) {
+                if (! is_array($field)) {
+                    continue;
+                }
+
+                foreach ([$field, ...OptionSet::revealedBy($field, $answers)] as $candidate) {
+                    if (($candidate['type'] ?? '') !== FieldType::SERVICES) {
+                        continue;
+                    }
+
+                    $key = (string) ($candidate['key'] ?? '');
+                    if ($key === '' || ! array_key_exists($key, $answers)) {
+                        continue;
+                    }
+
+                    $answers[$key] = RecommendedWork::resolve(
+                        $answers[$key],
+                        "answers.{$key}",
+                    );
+                }
+            }
+        }
+
+        return $answers;
     }
 
     public function restart(Request $request, InspectionRun $inspectionRun): JsonResponse
@@ -270,6 +334,32 @@ class InspectionRunsController extends Controller
              * at all — the file stays exactly where it was written and only the
              * row that says what it belongs to moves.
              */
+            /*
+             * The recommendation becomes a quote, if there is a job to quote on.
+             *
+             * A customer-only inspection has no job and must not fail for it —
+             * the finding is still on the report, which is what the technician
+             * actually produced, and there is simply nowhere to put the price
+             * yet. Appended rather than replacing: a second inspection on one
+             * job adds to the quote, because two visits found two things.
+             */
+            if ($inspectionRun->job !== null) {
+                $written = RecommendedWork::quoteOnto(
+                    $inspectionRun->job,
+                    RecommendedWork::fromAnswers(
+                        $inspectionRun->version?->screens ?? [],
+                        $answers,
+                    ),
+                );
+
+                if ($written > 0) {
+                    $this->audit->log('job.line_added', $inspectionRun->job, metadata: [
+                        'lines' => $written,
+                        'from_inspection' => $report->id,
+                    ]);
+                }
+            }
+
             $inspectionRun->attachments()->update([
                 'attachable_type' => $report->getMorphClass(),
                 'attachable_id' => $report->getKey(),
@@ -379,6 +469,62 @@ class InspectionRunsController extends Controller
             'intro' => $run->version?->intro,
             'answers' => $run->answers ?? [],
             'scope_key' => $run->scope_key,
+
+            /*
+             * The priced catalogue, carried WITH the run.
+             *
+             * A `services` field needs something to offer, and a picker that
+             * fetched on tap would be a spinner on a roof with one bar of
+             * signal. Sent only when the version actually asks for work, so an
+             * inspection with no `services` field does not carry a catalogue it
+             * will never show.
+             */
+            'services' => self::wantsServices($run->version?->screens ?? [])
+                ? Service::query()
+                    ->whereNotNull('price_minor')
+                    ->orderBy('name')
+                    ->get(['id', 'name', 'price_minor'])
+                    ->map(fn (Service $s) => [
+                        'id' => $s->getKey(),
+                        'name' => $s->name,
+                        'price_minor' => (int) $s->price_minor,
+                    ])->values()
+                : [],
         ];
+    }
+
+    /**
+     * Does this version ask for recommended work anywhere?
+     *
+     * Nested fields included — the recommendation usually lives inside the
+     * failing option, which is the whole point of that pattern.
+     *
+     * @param  list<array<string, mixed>>  $screens
+     */
+    private static function wantsServices(array $screens): bool
+    {
+        foreach ($screens as $screen) {
+            foreach ((is_array($screen['fields'] ?? null) ? $screen['fields'] : []) as $field) {
+                if (! is_array($field)) {
+                    continue;
+                }
+
+                if (($field['type'] ?? '') === FieldType::SERVICES) {
+                    return true;
+                }
+
+                foreach ((is_array($field['options'] ?? null) ? $field['options'] : []) as $option) {
+                    $option = OptionSet::normalise($option);
+
+                    foreach (($option['fields'] ?? []) as $nested) {
+                        if (is_array($nested) && ($nested['type'] ?? '') === FieldType::SERVICES) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 }

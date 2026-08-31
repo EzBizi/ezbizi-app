@@ -1,13 +1,39 @@
 # ── secrets: never commit ──────────────────────────────
+#
+# Case matters, and it nearly cost us. `*credentials*` alone does NOT match
+# CREDENTIALS.md on a case-sensitive filesystem — it matched on this Windows box
+# only because core.ignorecase=true. Every Linux checkout, CI runner and GitHub
+# Action loses the protection, and the 2026-08-17 near-miss (StartUp.md §13) was
+# stopped by a control that only works on one developer's machine. Globs here are
+# spelled case-insensitively rather than trusting the filesystem.
 .env
 .env.*
 !.env.example
 *.pem
 *.key
 *.p12
+*.pfx
+*.p8
+*.jks
+*.keystore
 auth.json
 oauth2*.json
-*credentials*
+.netrc
+.npmrc
+id_rsa*
+*[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]*
+*[Ss][Ee][Cc][Rr][Ee][Tt]*
+*.stackdump
+
+# Stray sqlite databases from the DB_DATABASE trap. `DB_DATABASE=x artisan ...`
+# outside the test runner names a FILE, not a schema, because .env says sqlite —
+# so it silently creates one here and exits 0 listing every migration as run.
+# A 925 KB `ezbizi_testing_twilio` was sitting in this directory, untracked and
+# unignored, when this rule was written. See docs/ACTIVE-CONSTRAINTS.md.
+ezbizi_testing*
+*.sqlite
+*.sqlite3
+database/*.db
 
 # ── dependencies / build ──────────────────────────────
 /vendor

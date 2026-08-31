@@ -126,3 +126,19 @@ Future<PickedBytes?> pickBytes({String accept = ''}) {
 
   return completer.future;
 }
+
+/// An object URL over bytes we already hold, so the browser can play or show
+/// them without an upload. See `Files.previewUrl`.
+String? previewUrl(List<int> bytes, String mime) {
+  final blob = web.Blob(
+    [Uint8List.fromList(bytes).toJS].toJS,
+    web.BlobPropertyBag(type: mime),
+  );
+
+  // NOT revoked here, unlike `download` above: that one is finished with the
+  // URL the instant the click happens, whereas a <video> element needs it to
+  // stay valid for as long as it is on screen. The caller releases it.
+  return web.URL.createObjectURL(blob);
+}
+
+void releasePreviewUrl(String url) => web.URL.revokeObjectURL(url);

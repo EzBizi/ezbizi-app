@@ -4,6 +4,8 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
 use App\Models\Concerns\HasAttachments;
+use App\Support\Privacy\RetentionPolicy;
+use App\Support\Privacy\StatesRetention;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Time\FranchiseWallTime;
 use Database\Factories\JobFactory;
@@ -25,14 +27,15 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * customer.
  *
  * `performed_by_user_id` **is** personal data (spec §5, §9): the record of who
- * performed work for a customer, kept as long as the job is, and nulled on
- * erasure while the job survives.
+ * performed work for a customer. See Job::retention() for what erasure does
+ * to it — the key is KEPT; the person's own row is anonymised instead.
  */
 #[Fillable([
     'franchise_id', 'customer_id', 'number', 'title', 'description',
     'status', 'scheduled_for', 'duration_minutes', 'amount_minor', 'currency',
+    'assigned_role_id', 'performed_by_user_id',
 ])]
-class Job extends Model
+class Job extends Model implements StatesRetention
 {
     /** @use HasFactory<JobFactory> */
     use HasFactory;
@@ -50,6 +53,42 @@ class Job extends Model
      */
     use HasAttachments;
 
+    /**
+     * The row is kept on the same terms as the customer it was done for — see
+     * Customer::retention(), which this mirrors on purpose: there is no age at
+     * which last year's job stops being what an invoice refers to, and tax law
+     * wants the invoices this table is found through.
+     *
+     * `performed_by_user_id` is the one column on this row that is personal
+     * data, and it is why `jobs` states a policy at all rather than leaning on
+     * that shared reasoning the way `organizations`/`companies`/`franchises` do
+     * (see RetentionTest::test_every_table_in_the_schema_has_been_decided_about).
+     *
+     * It is KEPT, not nulled, when that person is erased. §9 erasure of a user
+     * anonymises their own row in place — see User::retention(): "erasing one
+     * means anonymising it rather than removing the row" — it is never a
+     * delete, so the migration's `nullOnDelete()` FK is not what enforces
+     * this; it is a database backstop for a row deletion §9's normal path
+     * never takes. The real mechanism is the one
+     * Attachment::personalDataHeld() already states for `uploaded_by_user_id`,
+     * the closest existing analogue: the person's own row is anonymised at
+     * its one home, and this key goes on pointing at that now-nameless row —
+     * so the provenance of who did the work survives without identifying
+     * anybody.
+     */
+    public static function retention(): RetentionPolicy
+    {
+        return RetentionPolicy::forever(
+            'The work itself (§5.2), kept on the same terms as the customer it was done for '
+            .'— there is no age at which last year\'s job stops being what an invoice refers '
+            .'to. `performed_by_user_id` is personal data: who performed the work. It is kept, '
+            .'not nulled, when that person is erased — their own row is anonymised at its one '
+            .'home (`users`) rather than deleted, so this key goes on pointing at a real row '
+            .'with no name left in it. The customer, in `customers`, and any photographs, in '
+            .'`attachments`, each decide about themselves the same way.'
+        );
+    }
+
     protected function casts(): array
     {
         return [
@@ -58,6 +97,11 @@ class Job extends Model
             // Integer minor units (§7). Casting it keeps a string '1999' from a
             // JSON body out of arithmetic that would silently concatenate.
             'amount_minor'     => 'integer',
+            // When the money was earned (§8.1). Cast so present() can call
+            // ?->toIso8601String() and so a bare assignment of now() in
+            // JobsController::update() serialises correctly on save — see
+            // AutomationEvent::casts() for the same reasoning on delivered_at.
+            'earned_at'        => 'datetime',
         ];
     }
 

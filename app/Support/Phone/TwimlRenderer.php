@@ -6,6 +6,7 @@ use App\Models\PhoneFlow;
 use App\Models\PhoneHoursSchedule;
 use App\Models\PhoneNumber;
 use App\Models\PhoneRingGroup;
+use App\Models\PhoneVoicemailBox;
 use DateTimeImmutable;
 use DateTimeInterface;
 use Twilio\TwiML\VoiceResponse;
@@ -34,7 +35,7 @@ final class TwimlRenderer
         }
 
         if ($number->record) {
-            $response->say(RecordingNotice::sentence(), ['language' => $language]);
+            $response->say(RecordingNotice::forNumber($number), ['language' => $language]);
         }
 
         if (! $outbound && $this->closed($number, $context)) {
@@ -105,6 +106,134 @@ final class TwimlRenderer
         $this->ringOrVoicemail($response, $number, $context);
 
         return (string) $response;
+    }
+
+    /**
+     * What an inbound call to this line actually does, step by step.
+     *
+     * ── Why this lives in the renderer ───────────────────────────────
+     *
+     * It answers "what happens when somebody rings this number", and the only
+     * honest answer is the one the thing that answers the phone would give. A
+     * second copy of these conditions in a controller would be a second rule,
+     * and rules drift — the Numbers screen spent an afternoon telling five
+     * lines they were fine while every call went to voicemail, because what
+     * was displayed and what was dialled were worked out separately.
+     *
+     * So this calls the SAME private predicates `inbound()` branches on. If a
+     * step is judged usable here it is usable there, by construction.
+     *
+     * Read-only, and it must stay that way: it is called to draw a screen.
+     *
+     * @param  array<string, mixed>  $context
+     * @return list<array{step: string, title: string, detail: string, usable: bool}>
+     */
+    public function describe(PhoneNumber $number, array $context = []): array
+    {
+        $steps = [];
+
+        // Step 0. Nothing below matters if the carrier never reaches us.
+        $pointed = filled($number->twilio_sid);
+        $steps[] = [
+            'step' => 'arrival',
+            'title' => $pointed
+                ? 'A call arrives on '.$number->e164
+                : 'A call arrives — but this line is not pointed at EzBizi yet',
+            'detail' => $pointed
+                ? 'Twilio posts it to EzBizi and the steps below run in order.'
+                : 'Nothing below runs until the number is imported or bought here.',
+            'usable' => $pointed,
+        ];
+
+        $schedule = $number->hours_schedule_id === null
+            ? null
+            : PhoneHoursSchedule::query()->find($number->hours_schedule_id);
+
+        if ($schedule === null) {
+            $steps[] = [
+                'step' => 'hours',
+                'title' => 'Business hours: always open',
+                'detail' => 'No schedule is set, so the call is never treated as after hours.',
+                'usable' => true,
+            ];
+        } else {
+            $closed = $this->closed($number, $context);
+            $steps[] = [
+                'step' => 'hours',
+                'title' => 'Business hours: '.$schedule->name.' — '
+                    .($closed ? 'CLOSED right now' : 'OPEN right now'),
+                'detail' => $closed
+                    ? match ($number->after_hours) {
+                        'forward' => 'Closed, so the call is forwarded to '
+                            .($number->after_hours_number ?: 'nowhere — no number is set').'.',
+                        'closed' => 'Closed, so the caller is told so and the call ends here.',
+                        default => 'Closed, so the caller goes straight to voicemail. Nothing below runs.',
+                    }
+                    : 'Open, so the call carries on to the steps below.',
+                'usable' => true,
+            ];
+        }
+
+        // Judged by the renderer's own prompt lookup: a flow with no menu node
+        // returns null there and is skipped, however it looks in the builder.
+        $prompt = $this->menuPrompt($number);
+        $steps[] = [
+            'step' => 'menu',
+            'title' => $prompt === null
+                ? 'IVR menu: none'
+                : 'IVR menu plays',
+            'detail' => $prompt === null
+                ? ($number->flow_id === null
+                    ? 'No menu is set on this line, so the call goes straight to whoever answers.'
+                    : 'A menu is set but has no usable menu step, so it is skipped.')
+                : 'The caller hears it and presses a key: “'.$prompt.'”',
+            'usable' => true,
+        ];
+
+        $connection = $number->connection;
+        $group = $number->ring_group_id === null
+            ? null
+            : PhoneRingGroup::query()->find($number->ring_group_id);
+
+        // The same three conditions ringOrVoicemail() checks before it can
+        // emit a Dial. Any one of them missing means every call is voicemail.
+        $reaches = $group !== null
+            && $connection !== null
+            && DialPlan::batches($group, $connection) !== [];
+
+        $steps[] = [
+            'step' => 'answer',
+            'title' => $reaches
+                ? 'Rings '.$group->name
+                : 'Nobody answers this line',
+            'detail' => match (true) {
+                $group === null => 'No ring group is set, so every call goes straight to voicemail.',
+                $connection === null => 'This line has no phone account, so nobody can be dialled.',
+                ! $reaches => $group->name.' has nobody available to ring, so every call goes to voicemail.',
+                default => 'Whoever is on duty in that group is dialled.',
+            },
+            'usable' => $reaches,
+        ];
+
+        // Only worth a line when it changes the answer — a fallback on a line
+        // that already reaches somebody is never heard, and saying so would
+        // suggest it is doing something.
+        $fallback = trim((string) $number->fallback_number);
+        if ($fallback !== '') {
+            $steps[] = [
+                'step' => 'fallback',
+                'title' => $reaches
+                    ? 'Otherwise falls back to '.$fallback
+                    : 'Falls back to '.$fallback,
+                'detail' => $reaches
+                    ? 'Only if that group does not pick up. Tried once, then voicemail.'
+                    : 'Nobody above answers, so this number is dialled instead. '
+                        .'Tried once, then voicemail.',
+                'usable' => true,
+            ];
+        }
+
+        return $steps;
     }
 
     /**
@@ -188,6 +317,50 @@ final class TwimlRenderer
     }
 
     /**
+     * The steps above named nobody usable: dial the fallback, else take a message.
+     *
+     * ── Why this can only fire on the first pass ─────────────────
+     *
+     * `dialAttributes` sets an `action`, so when this Dial ends Twilio posts
+     * back to afterDial(), which calls ringOrVoicemail() again — which reaches
+     * here again. Dialling the fallback unconditionally would ring it forever,
+     * billed per attempt, for as long as the caller held on.
+     *
+     * The batch counter already in the context is the guard: the action URL
+     * carries batch+1, so the second pass arrives with batch > 0 and takes a
+     * message instead. One fallback attempt, then voicemail, no loop.
+     *
+     * Distinct from after-hours forwarding, which answers a different question
+     * — that one is "we are closed", this one is "we are open and nobody is
+     * there".
+     *
+     * @param  array<string, mixed>  $context
+     */
+    private function noneUsable(
+        VoiceResponse $response,
+        PhoneNumber $number,
+        string $language,
+        array $context,
+    ): void {
+        $fallback = trim((string) $number->fallback_number);
+        $firstPass = (int) ($context['batch'] ?? 0) === 0;
+
+        if ($fallback === '' || ! $firstPass) {
+            $this->voicemail($response, $number, $language, $context);
+
+            return;
+        }
+
+        $dial = $response->dial(null, $this->dialAttributes(
+            $number,
+            timeout: null,
+            sequential: false,
+            context: $context,
+        ));
+        $dial->number($fallback);
+    }
+
+    /**
      * @param  array<string, mixed>  $context
      */
     private function forward(VoiceResponse $response, PhoneNumber $number, array $context): void
@@ -210,7 +383,7 @@ final class TwimlRenderer
                 : PhoneRingGroup::query()->find($number->ring_group_id));
 
         if ($group === null || $connection === null) {
-            $this->voicemail($response, $number, $language, $context);
+            $this->noneUsable($response, $number, $language, $context);
 
             return;
         }
@@ -274,7 +447,7 @@ final class TwimlRenderer
             }
         }
 
-        $this->voicemail($response, $number, $language, $context);
+        $this->noneUsable($response, $number, $language, $context);
     }
 
     /**
@@ -346,9 +519,33 @@ final class TwimlRenderer
         string $language,
         array $context = [],
     ): void {
-        $response->say('Please leave a message after the tone.', ['language' => $language]);
+        // The line's own box, if it has one. A greeting is the last thing a
+        // caller hears before deciding whether to ring a competitor, so a
+        // business that has written one must actually get it — this used to
+        // be the same sentence for every line in every organization.
+        $box = $number->voicemail_box_id === null
+            ? null
+            : PhoneVoicemailBox::query()->find($number->voicemail_box_id);
+
+        $greeting = $box?->spokenGreeting();
+
+        if ($box !== null && $box->greeting_mode === 'audio'
+            && filled($box->greeting_audio_url)) {
+            $response->play((string) $box->greeting_audio_url);
+        } else {
+            $response->say(
+                $greeting ?? 'Please leave a message after the tone.',
+                ['language' => $box?->greeting_language ?: $language],
+            );
+        }
 
         $attributes = ['playBeep' => true];
+
+        // Twilio's own bounds, clamped rather than trusted: a maxLength of 0
+        // records nothing and a caller would hear a beep and then silence.
+        if ($box !== null) {
+            $attributes['maxLength'] = max(10, min(3600, (int) $box->max_seconds));
+        }
         if (is_string($context['recording_status_callback'] ?? null)
             && $context['recording_status_callback'] !== '') {
             $attributes['recordingStatusCallback'] = $context['recording_status_callback'];
@@ -358,7 +555,7 @@ final class TwimlRenderer
         // down a live call, and a different switch on the line — `transcribe`
         // starts a real-time stream on the conversation and never touches the
         // recording somebody leaves after everyone has hung up.
-        if ($number->voicemail_transcribe) {
+        if ($number->voicemail_transcribe || $box?->transcribe) {
             $attributes['transcribe'] = true;
 
             if (is_string($context['transcription_status_callback'] ?? null)

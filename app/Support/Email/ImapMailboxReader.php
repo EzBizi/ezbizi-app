@@ -142,8 +142,15 @@ final class ImapMailboxReader implements MailboxReader
     {
         $limit = max(1, min($limit, self::MAX_PAGE));
 
-        return $this->withConnection($mailbox, function (ImapConnection $imap) use ($cursor, $limit) {
-            $box = $imap->examineInbox();
+        return $this->withConnection($mailbox, function (ImapConnection $imap) use ($mailbox, $cursor, $limit, $label) {
+            // Discovery only when it is needed. The Inbox is the one folder
+            // every IMAP server has under that exact name, so the common path
+            // costs no extra round trip.
+            $folder = strtoupper($label) === 'INBOX'
+                ? 'INBOX'
+                : $this->folderFor($mailbox, $label, $imap->folders());
+
+            $box = $imap->examine($folder);
 
             if ($box['exists'] === 0) {
                 // A genuinely empty inbox, and the only place this module is
@@ -187,8 +194,12 @@ final class ImapMailboxReader implements MailboxReader
     {
         $limit = max(1, min($limit, self::MAX_PAGE));
 
-        return $this->withConnection($mailbox, function (ImapConnection $imap) use ($query, $cursor, $limit) {
-            $box = $imap->examineInbox();
+        return $this->withConnection($mailbox, function (ImapConnection $imap) use ($mailbox, $query, $cursor, $limit, $label) {
+            $folder = strtoupper($label) === 'INBOX'
+                ? 'INBOX'
+                : $this->folderFor($mailbox, $label, $imap->folders());
+
+            $box = $imap->examine($folder);
 
             $term = '"'.str_replace(['\\', '"'], ['\\\\', '\\"'], trim($query)).'"';
 
@@ -576,7 +587,7 @@ final class ImapMailboxReader implements MailboxReader
      * threading headers, and there is nothing here to fetch. So this is the
      * SMTP half on its own — guard, then compose, then send.
      */
-    public function send(Mailbox $mailbox, array $to, string $subject, string $body): void
+    public function send(Mailbox $mailbox, array $to, string $subject, string $body, array $attachments = []): void
     {
         $smtp = $mailbox->smtpHost();
 
@@ -599,8 +610,60 @@ final class ImapMailboxReader implements MailboxReader
             password: (string) $mailbox->credential(),
             from: $mailbox->address,
             to: $to,
-            message: $this->composer->composeNew($mailbox, $to, $subject, $body),
+            message: $this->composer->composeNew($mailbox, $to, $subject, $body, $attachments),
         ));
+    }
+
+    /**
+     * What this particular server has, which is the only way to know.
+     *
+     * One LIST, and only when somebody opens the mailbox — not on the inbox
+     * listing, which would mean a connection per mailbox before anybody had
+     * asked to look at any of them.
+     */
+    public function availableFolders(Mailbox $mailbox): array
+    {
+        return $this->withConnection(
+            $mailbox,
+            fn (ImapConnection $imap) => ImapFolders::available($imap->folders()),
+        );
+    }
+
+    /**
+     * The folder to open, or a refusal saying why there is none.
+     *
+     * ── Ask the server; do not assume ────────────────────────────
+     *
+     * This used to refuse everything but the Inbox, which was honest and
+     * useless. Before that it accepted the label and returned the Inbox, which
+     * was neither. What it does now is ask — {@see ImapConnection::folders} —
+     * and hand the answer to {@see ImapFolders}, which holds the recognising
+     * and can be tested without a mail server.
+     *
+     * What is left here is the sentence, because only this layer knows which
+     * mailbox somebody was looking at when it happened.
+     *
+     * @param  list<array{name: string, attributes: list<string>}>  $folders
+     *
+     * @throws CannotReadMailbox
+     */
+    private function folderFor(Mailbox $mailbox, string $label, array $folders): string
+    {
+        $folder = ImapFolders::resolve($folders, $label);
+
+        if ($folder !== null) {
+            return $folder;
+        }
+
+        throw CannotReadMailbox::providerRefused(
+            $mailbox,
+            sprintf(
+                'This mail server has no %s folder, so there is nothing to show. It may be '
+                .'called something EzBizi does not recognise — the mail is still there in '
+                .'your own mail program.',
+                strtolower($label),
+            ),
+        );
     }
 
     // ── the preflight, which was already real ────────────────────

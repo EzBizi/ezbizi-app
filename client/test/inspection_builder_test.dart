@@ -66,9 +66,17 @@ void main() {
   testWidgets('a choice field can be given its choices', (tester) async {
     await _pump(tester, size: const Size(1400, 900), list: _choiceList);
 
-    expect(find.byKey(const Key('field-options')), findsOneWidget);
+    // Scrolled into view first. The settings pane grew a "Belongs to" picker,
+    // which pushed this below the fold at this window size. The field is still
+    // built and still works — it is simply no longer above the fold, and
+    // enterText cannot type into a widget that is off screen.
+    final options = find.byKey(const Key('field-options'), skipOffstage: false);
+    await tester.ensureVisible(options);
+    await tester.pumpAndSettle();
 
-    final box = tester.widget<TextField>(find.byKey(const Key('field-options')));
+    expect(options, findsOneWidget);
+
+    final box = tester.widget<TextField>(options);
     expect(box.controller?.text, 'Clay\nMetal',
         reason: 'the options already on the field should be in the box');
 
@@ -85,6 +93,50 @@ void main() {
     expect(find.text('Brick'), findsWidgets,
         reason: 'the first choice, trimmed, should be the sample answer');
     expect(find.text('  Brick  '), findsNothing);
+  });
+
+  /// Every part of a ported inspection has to be editable here.
+  ///
+  /// The A1 form is 2,818 lines of TypeScript precisely because nobody could
+  /// edit it. If the Builder cannot express a condition, a print mode or an
+  /// alert, the port is a second hardcoded form in a different language.
+  /// Every part of a ported inspection has to be editable here.
+  ///
+  /// The A1 form is 2,818 lines of TypeScript precisely because nobody could
+  /// edit it. If the Builder cannot express a condition or a print mode, the
+  /// port is a second hardcoded form in a different language.
+  testWidgets('a field can be given a condition and a print mode', (tester) async {
+    await _pump(tester, size: const Size(1400, 2400), list: _twoFieldList);
+
+    // The condition points at the OTHER field. Reaching across is the whole
+    // point — answering on screen one is what removes questions from screen
+    // four — so the picker is not limited to this screen.
+    final condField = find.byKey(const Key('cond-field'));
+    await tester.ensureVisible(condField);
+    await tester.pumpAndSettle();
+
+    final picker = tester.widget<DropdownButtonFormField<String>>(condField);
+    expect(picker.initialValue, isNull, reason: 'no condition yet');
+
+    // And how it prints, which defaults to a plain line so no existing report
+    // is restyled.
+    final print = find.byKey(const Key('field-print-insp-1-0-0'));
+    await tester.ensureVisible(print);
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<DropdownButtonFormField<String>>(print).initialValue,
+      'text',
+    );
+  });
+
+  /// With nothing else to point at, the editor says so rather than offering an
+  /// empty dropdown that writes a condition naming no field.
+  testWidgets('a lone field is told there is nothing to condition on', (tester) async {
+    await _pump(tester, size: const Size(1400, 2400), list: _choiceList);
+
+    expect(find.text('Add another field first.'), findsOneWidget);
+    expect(find.byKey(const Key('cond-field')), findsNothing);
   });
 
   testWidgets('a never-published draft can be deleted', (tester) async {
@@ -117,6 +169,31 @@ void main() {
     );
     expect(find.text('Untitled inspection'), findsNothing);
   });
+
+  /// Where an inspection belongs is chosen here, not in a config file.
+  ///
+  /// The organization is a real option rather than the absence of one:
+  /// "belongs to nobody" and "belongs to everybody" read identically on screen
+  /// otherwise, and the second is what a null scope actually means.
+  testWidgets('the scope picker offers the organization and the places you reach',
+      (tester) async {
+    await _pump(tester, size: const Size(1400, 900));
+
+    expect(find.byKey(const Key('inspection-scope-picker')), findsOneWidget);
+
+    // Opened, because the options are what matter and the closed control shows
+    // only the selection.
+    await tester.tap(find.byKey(const Key('inspection-scope-picker')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Whole organization'), findsWidgets);
+
+    // The company and its franchise are BOTH called "A1Chimney" — the ordinary
+    // case, not a contrived one — which is why the dropdown keys on type:id and
+    // never on the label. Two entries, one name.
+    expect(find.text('A1Chimney'), findsNWidgets(2));
+  });
+
 }
 
 Future<void> _pump(
@@ -186,6 +263,26 @@ const _list = '''
 }
 ''';
 
+const _twoFieldList = '''
+{
+  "data": [
+    {
+      "id": "insp-1",
+      "name": "Level 1",
+      "scope": {"type": null, "id": null},
+      "layout_preset": "step_strip",
+      "published": false,
+      "screens": [
+        {"name": "System", "fields": [
+          {"key": "flue", "label": "Flue", "type": "choice", "options": ["Clay", "Metal"]},
+          {"key": "notes", "label": "Notes", "type": "text"}
+        ]}
+      ]
+    }
+  ]
+}
+''';
+
 const _choiceList = '''
 {
   "data": [
@@ -245,6 +342,11 @@ const _catalogue = '''
     ],
     "bindable": [
       {"key": "customer.name", "label": "Client name"}
+    ],
+    "scopes": [
+      {"type": null, "id": null, "label": "Whole organization"},
+      {"type": "company", "id": "c-1", "label": "A1Chimney"},
+      {"type": "franchise", "id": "f-1", "label": "A1Chimney"}
     ]
   }
 }

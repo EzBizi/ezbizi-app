@@ -6,15 +6,22 @@ use App\Http\Controllers\Api\Controller;
 use App\Http\Controllers\Api\Phone\Concerns\ResolvesPhoneConnections;
 use App\Models\Company;
 use App\Models\Franchise;
+use App\Models\PhoneFlow;
 use App\Models\PhoneNumber;
 use App\Models\PhoneRingGroup;
+use App\Models\PhoneUsageDaily;
+use App\Models\PhoneNumberGrant;
+use App\Support\Scoping\ViewScope;
+use Illuminate\Support\Facades\DB;
 use App\Support\Phone\ConnectionResolver;
 use App\Support\Phone\PhoneNumberAccess;
 use App\Support\Phone\TwilioGateway;
+use App\Support\Phone\TwimlRenderer;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
@@ -122,6 +129,340 @@ class NumbersController extends Controller
         ]);
 
         return response()->json(['data' => $this->row($number)], Response::HTTP_CREATED);
+    }
+
+    /**
+     * GET /api/v1/phone/call-flow
+     *
+     * What actually happens when somebody rings each line — the order the
+     * renderer evaluates, with each step saying whether it is usable.
+     *
+     * Everything built on the other screens is inert until a line points at
+     * it, and until today nothing said so anywhere. Five production lines had
+     * a ring group of null since import; the Numbers screen reported them in
+     * grey as a caption, and every caller heard voicemail for months without
+     * one person noticing. This is the screen that answers the question those
+     * five lines were silently getting wrong.
+     *
+     * The trace comes from TwimlRenderer::describe(), which branches on the
+     * same private predicates inbound() does — so what this draws and what
+     * answers the phone cannot disagree.
+     */
+    public function callFlow(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', PhoneNumber::class);
+
+        $renderer = new TwimlRenderer;
+
+        $rows = $this->access->visibleTo($request->user())
+            ->map(fn (PhoneNumber $number) => [
+                'id' => $number->id,
+                'e164' => $number->e164,
+                'label' => $number->label,
+                'record' => $number->record,
+                'transcribe' => $number->transcribe,
+                'steps' => $renderer->describe($number),
+            ])
+            ->values()
+            ->all();
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /**
+     * POST /api/v1/phone/numbers/{number}/move
+     *
+     * Hand a line to a different company.
+     *
+     * ── Why only from an organization view ──────────────────────
+     *
+     * Moving a number is the one action here whose whole point is to cross a
+     * company boundary, and a company view cannot see the company it would be
+     * moving to. Somebody standing in A-1 Chimney giving a number to Everdoors
+     * would be acting on a place their screen does not show them. So this is
+     * refused anywhere but the organization view, where both sides are visible.
+     *
+     * ── What must be cleared, and why ───────────────────────────
+     *
+     * A number points at a ring group, an opening-hours schedule, an IVR menu
+     * and a voicemail box, and all four are now owned by a company. Carrying
+     * them across would leave Everdoors' line ringing A-1 Chimney's staff and
+     * reading A-1 Chimney's greeting — reintroducing, one line at a time, the
+     * exact leak that scoping them was meant to close.
+     *
+     * Grants go for the same reason: a role was given this line when it
+     * belonged to A-1, and that consent does not transfer with the number.
+     *
+     * ── What does NOT move ──────────────────────────────────────
+     *
+     * Call history. phone_calls carries no scope, so past calls follow the
+     * number to its new owner. That is a deliberate consequence and it is
+     * worth knowing: recordings of calls made to A-1 become audible to whoever
+     * can read Everdoors' lines. Both companies belong to one organization and
+     * this is an organization-level action, so it is defensible — but it is a
+     * decision, not an accident, and the alternative needs a scope column on
+     * phone_calls that does not exist yet.
+     */
+    public function move(Request $request, PhoneNumber $number): JsonResponse
+    {
+        $this->authorize('update', $number);
+
+        $input = $request->validate([
+            'scope_type' => ['required', Rule::in([
+                PhoneNumber::SCOPE_ORGANIZATION,
+                PhoneNumber::SCOPE_COMPANY,
+                PhoneNumber::SCOPE_FRANCHISE,
+            ])],
+            'scope_id' => ['required', 'uuid'],
+        ]);
+
+        if (! ViewScope::forUser($request->user())->isOrganization()) {
+            throw ValidationException::withMessages([
+                'scope_id' => 'Switch to the whole organization to move a number '
+                    .'between companies — from inside one company the other is not visible.',
+            ]);
+        }
+
+        $this->assertScopeExists($input['scope_type'], $input['scope_id']);
+
+        // Reach on the DESTINATION as well as the source. Being able to edit
+        // A-1's lines is not permission to give one to a company this person
+        // has no authority over.
+        $this->authorize('create', [PhoneNumber::class, $input['scope_type'], $input['scope_id']]);
+
+        if ($number->scope_type === $input['scope_type']
+            && $number->scope_id === $input['scope_id']) {
+            return response()->json(['data' => $this->row($number)]);
+        }
+
+        $target = $this->resolver->forScope(
+            $this->tenant->idOrFail(),
+            $input['scope_type'],
+            $input['scope_id'],
+        );
+
+        if ($target === null) {
+            throw ValidationException::withMessages([
+                'scope_id' => 'That place has no phone account, so there is nowhere '
+                    .'for the number to go. Connect one first.',
+            ]);
+        }
+
+        $from = $number->connection;
+        $crossesAccounts = $from !== null && $from->id !== $target->id;
+
+        if ($crossesAccounts) {
+            $host = rtrim((string) config('app.url'), '/');
+            $base = $host.'/api/v1/phone';
+            $orgId = $target->organization_id;
+
+            try {
+                // The webhooks move WITH the number, in the same call. Our URLs
+                // carry the connection in their path, so a moved line left on
+                // the old URL keeps being answered by the old company.
+                $this->twilio->moveIncomingToAccount(
+                    $from,
+                    (string) $number->twilio_sid,
+                    (string) $target->account_sid,
+                    [
+                        'voiceUrl' => $base.'/voice/'.$orgId.'/'.$target->id,
+                        'voiceMethod' => 'POST',
+                        'smsUrl' => $base.'/sms/'.$orgId.'/'.$target->id,
+                        'smsMethod' => 'POST',
+                        'statusCallback' => $base.'/status/'.$orgId.'/'.$target->id,
+                        'statusCallbackMethod' => 'POST',
+                    ],
+                );
+            } catch (Throwable $e) {
+                // Nothing is written. A row saying the number moved while
+                // Twilio still routes it to the old company is worse than a
+                // refusal, because the screen would stop anybody looking.
+                throw ValidationException::withMessages([
+                    'scope_id' => 'Twilio would not move the number: '.$e->getMessage(),
+                ]);
+            }
+        }
+
+        DB::transaction(function () use ($number, $input, $target, $crossesAccounts) {
+            $number->forceFill([
+                'scope_type' => $input['scope_type'],
+                'scope_id' => $input['scope_id'],
+                'connection_id' => $target->id,
+            ]);
+
+            // Only when the account changes do the pointers become another
+            // company's. Within one account they are still valid — and a move
+            // between two companies sharing the organization's Twilio is the
+            // common case, so clearing there would destroy working setup for
+            // no reason.
+            if ($crossesAccounts) {
+                $number->forceFill([
+                    'ring_group_id' => null,
+                    'hours_schedule_id' => null,
+                    'flow_id' => null,
+                    'voicemail_box_id' => null,
+                ]);
+            }
+
+            $number->save();
+
+            // The line belongs to somebody else now; who could read it does
+            // not carry over.
+            PhoneNumberGrant::query()->where('number_id', $number->id)->delete();
+        });
+
+        return response()->json(['data' => $this->row($number->fresh())]);
+    }
+
+    /**
+     * GET /api/v1/phone/lookup
+     *
+     * What a number actually is — valid or not, mobile or landline, and whose
+     * carrier. Twilio Lookup v2.
+     *
+     * ── Why it is cached, and why the cache can be bypassed ──────
+     *
+     * Every fresh lookup is billed. A number's line type barely changes, so
+     * asking twice in a day is money for the same answer — but it DOES change
+     * when somebody ports, and a stale "landline" is how a text silently goes
+     * nowhere. So the default is the cached answer and `force` buys a fresh
+     * one, with the screen saying which it gave you.
+     *
+     * `cached` travels in the response for that reason: a figure whose age is
+     * unknown gets trusted like a fresh one.
+     *
+     * phone.edit, because a fresh lookup spends the tenant's money.
+     */
+    public function lookup(Request $request): JsonResponse
+    {
+        $input = $request->validate([
+            'e164' => ['required', 'string', 'max:24'],
+            'force' => ['sometimes'],
+        ]);
+
+        $this->authorize('viewAny', PhoneNumber::class);
+        abort_unless($request->user()->hasPermission('phone.edit'), Response::HTTP_FORBIDDEN);
+
+        $e164 = trim($input['e164']);
+        $force = filter_var($request->query('force'), FILTER_VALIDATE_BOOL);
+
+        $key = 'phone:lookup:'.$this->tenant->idOrFail().':'.$e164;
+
+        if (! $force) {
+            $hit = Cache::get($key);
+
+            if (is_array($hit)) {
+                return response()->json(['data' => $hit, 'cached' => true]);
+            }
+        }
+
+        try {
+            $result = $this->twilio->lookupDetailed($e164);
+        } catch (Throwable) {
+            // Not a 500: "we could not ask" is a different answer from "that
+            // number is not real", and conflating them would have somebody
+            // delete a customer's good number.
+            return response()->json([
+                'data' => null,
+                'cached' => false,
+                'message' => 'EzBizi could not reach Twilio to check that number.',
+            ]);
+        }
+
+        // Thirty days: long enough that repeat checks are free, short enough
+        // that a ported number corrects itself within a billing cycle.
+        Cache::put($key, $result, now()->addDays(30));
+
+        return response()->json(['data' => $result, 'cached' => false]);
+    }
+
+    /**
+     * GET /api/v1/phone/usage
+     *
+     * What this place's phone service has cost, by day and category.
+     *
+     * Gated on `phone.edit`, not `phone.view`. Not because edit is the natural
+     * home for a read, but because it is the same authority that BUYS a line
+     * and thereby incurs the cost — whoever can spend the money can see what
+     * was spent, and whoever answers the phone need not.
+     *
+     * A dedicated `phone.financials` would be the better gate, and Fleet and
+     * Inventory both have one. It is not added here: a new action changes what
+     * PermissionCatalogue answers for the whole registry, and App Store review
+     * is running a frozen 0.0.0112 binary against live production. This is a
+     * tighter gate than phone.view in the meantime, not a looser one, so
+     * moving to phone.financials later can only narrow access further.
+     */
+    public function usage(Request $request): JsonResponse
+    {
+        $input = $request->validate([
+            'scope_type' => ['required', Rule::in([
+                PhoneNumber::SCOPE_ORGANIZATION,
+                PhoneNumber::SCOPE_COMPANY,
+                PhoneNumber::SCOPE_FRANCHISE,
+            ])],
+            'scope_id' => ['required', 'uuid'],
+            'from' => ['sometimes', 'date_format:Y-m-d'],
+            'to' => ['sometimes', 'date_format:Y-m-d'],
+        ]);
+
+        $this->assertScopeExists($input['scope_type'], $input['scope_id']);
+        $this->authorize('create', [PhoneNumber::class, $input['scope_type'], $input['scope_id']]);
+
+        $connection = $this->resolver->forScope(
+            $this->tenant->idOrFail(),
+            $input['scope_type'],
+            $input['scope_id'],
+        );
+
+        if ($connection === null) {
+            return response()->json(['data' => [], 'totals' => [], 'message' => self::NO_CONNECTION]);
+        }
+
+        // Thirty days, because that is the window somebody actually asks about
+        // and an unbounded default would read every row a tenant ever had.
+        $to = $input['to'] ?? now()->toDateString();
+        $from = $input['from'] ?? now()->subDays(30)->toDateString();
+
+        $rows = PhoneUsageDaily::query()
+            ->where('connection_id', $connection->id)
+            ->whereBetween('day', [$from, $to])
+            ->orderBy('day')
+            ->orderBy('category')
+            ->get();
+
+        // Summed with bcmath, not floats. These are the figures somebody may
+        // one day invoice from, and 0.1 + 0.2 is not 0.3 in binary.
+        $totals = [];
+        foreach ($rows as $row) {
+            $unit = $row->price_unit ?: 'USD';
+            $totals[$unit] = bcadd($totals[$unit] ?? '0', (string) $row->price, 6);
+        }
+
+        return response()->json([
+            'data' => $rows->map(fn (PhoneUsageDaily $row) => [
+                'day' => $row->day?->toDateString(),
+                'category' => $row->category,
+                'description' => $row->description,
+                'usage' => (string) $row->usage,
+                'usage_unit' => $row->usage_unit,
+                'count' => (int) $row->count,
+                'count_unit' => $row->count_unit,
+                'price' => (string) $row->price,
+                'price_unit' => $row->price_unit,
+            ])->all(),
+            // Cast to an object, and this is not cosmetic. An empty PHP array
+            // encodes as `[]`, not `{}` — so on a tenant with no usage yet
+            // this key changed TYPE from map to list. The client cast it to a
+            // map, the cast threw inside the load, and the spinner never
+            // cleared: a screen that hung rather than one that said anything.
+            //
+            // A keyed collection must serialise as an object at every size, or
+            // its empty case is a different contract from its normal one.
+            'totals' => (object) $totals,
+            'from' => $from,
+            'to' => $to,
+        ]);
     }
 
     /**
@@ -470,10 +811,32 @@ class NumbersController extends Controller
             'label' => ['sometimes', 'string', 'max:191'],
             'ring_group_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('phone_ring_groups')],
             'hours_schedule_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('phone_hours_schedules')],
+
+            // Which IVR menu answers this line.
+            //
+            // Nothing could set this. `flow_id` was fillable, the renderer
+            // read it, and no endpoint in the module ever wrote it — the only
+            // writes anywhere were FlowsController clearing it on delete. So a
+            // menu could be built, named, given digits and options, and then
+            // never attached to anything: the column was permanently null and
+            // every menu in the system was decoration.
+            'flow_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('phone_flows')],
+
+            // Which greeting a caller hears when nobody answers.
+            'voicemail_box_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('phone_voicemail_boxes')],
             'record' => ['sometimes', 'boolean'],
             'transcribe' => ['sometimes', 'boolean'],
             'after_hours' => ['sometimes', Rule::in(PhoneNumber::AFTER_HOURS)],
             'after_hours_number' => ['sometimes', 'nullable', 'string', 'max:16'],
+
+            // Spoken before a recorded call connects. Blank means the built-in
+            // sentence — never silence, because this is the wording that
+            // discharges all-party consent.
+            'recording_notice' => ['sometimes', 'nullable', 'string', 'max:500'],
+
+            // Dialled when the steps above reach nobody while the line is
+            // OPEN. Distinct from after_hours_number, which is for CLOSED.
+            'fallback_number' => ['sometimes', 'nullable', 'string', 'max:16'],
 
             // Carrier-side settings. These are pushed to Twilio below, so a
             // save that Twilio refuses must not leave our row disagreeing.
@@ -490,6 +853,19 @@ class NumbersController extends Controller
             if ($group === null || $group->connection_id !== $number->connection_id) {
                 throw ValidationException::withMessages([
                     'ring_group_id' => 'That group belongs to a different phone account.',
+                ]);
+            }
+        }
+
+        // Same rule for the menu, and for the same reason: a flow on another
+        // account names groups this line cannot reach, so the menu would read
+        // its prompt, take a key, and dial nobody.
+        if (filled($input['flow_id'] ?? null)) {
+            $flow = PhoneFlow::query()->find($input['flow_id']);
+
+            if ($flow === null || $flow->connection_id !== $number->connection_id) {
+                throw ValidationException::withMessages([
+                    'flow_id' => 'That menu belongs to a different phone account.',
                 ]);
             }
         }
@@ -654,6 +1030,8 @@ class NumbersController extends Controller
             'after_hours' => $number->after_hours,
             'after_hours_number' => $number->after_hours_number,
             'ring_group_id' => $number->ring_group_id,
+            'flow_id' => $number->flow_id,
+            'voicemail_box_id' => $number->voicemail_box_id,
             'hours_schedule_id' => $number->hours_schedule_id,
             'language' => $number->language,
             'sms_outbound_allowed' => (bool) $number->sms_outbound_allowed,
@@ -664,10 +1042,29 @@ class NumbersController extends Controller
             'voicemail_transcribe' => (bool) $number->voicemail_transcribe,
             'capabilities' => $number->capabilities ?? [],
 
-            // A line with nowhere to ring answers every call with voicemail.
-            // The renderer decides this by `ring_group_id === null`, so the
-            // screen must judge it the same way rather than by its own rule.
-            'answers' => $number->ring_group_id !== null || $number->flow_id !== null,
+            'fallback_number' => $number->fallback_number,
+
+            // Null, not the default sentence: the field must come back empty
+            // so the form can show the placeholder rather than presenting the
+            // built-in wording as something this line chose.
+            'recording_notice' => $number->recording_notice,
+
+            // Whether a call reaches anybody.
+            //
+            // This used to be `ring_group_id !== null || flow_id !== null`,
+            // computed right here — a second rule, and a weaker one: it called
+            // a line healthy when its group existed but every member was at
+            // Do Not Disturb, which is the state that answers no calls while
+            // looking perfectly configured. Exactly the drift the Call flow
+            // screen exists to prevent, sitting in the payload that screen's
+            // sibling reads.
+            //
+            // ponytail: describe() runs a few finds per number, so this is
+            // O(n) queries over the visible lines. Fine at five; if an
+            // organization ever holds hundreds, eager-load the groups and
+            // presences rather than reintroducing a separate rule here.
+            'answers' => collect((new TwimlRenderer)->describe($number))
+                ->firstWhere('step', 'answer')['usable'] ?? false,
         ];
     }
 }

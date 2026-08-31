@@ -57,6 +57,9 @@ class _NumbersPaneState extends State<NumbersPane> {
   /// Which connection's account we are looking at. Null until loaded.
   _Conn? _scope;
 
+  /// The line whose Move panel is open, if any.
+  _Line? _moving;
+
   _Line? _editing;
   bool _saving = false;
   String? _formError;
@@ -70,6 +73,11 @@ class _NumbersPaneState extends State<NumbersPane> {
   Me get _me => widget.session.me!;
 
   bool get _canEdit => _me.can('phone.edit');
+
+  /// Moving a line crosses a company boundary, and a company view cannot see
+  /// the company it would be moving to. The server refuses anywhere else, so
+  /// offering the control there would be a button that argues back.
+  bool get _canMove => _canEdit && _me.scope.type == 'organization';
 
   String? get _editRefusal => _me.refusal('phone.edit', 'change a line');
 
@@ -168,6 +176,35 @@ class _NumbersPaneState extends State<NumbersPane> {
 
     _picked.clear();
     setState(() => _importing = false);
+    await _load();
+  }
+
+  Future<void> _move(_Line line, String companyId) async {
+    setState(() {
+      _saving = true;
+      _formError = null;
+    });
+
+    final response = await widget.api.post(
+      '/phone/numbers/${line.id}/move',
+      {'scope_type': 'company', 'scope_id': companyId},
+    );
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() {
+        _saving = false;
+        _formError = response.reason;
+      });
+      return;
+    }
+
+    setState(() {
+      _saving = false;
+      _moving = null;
+    });
+
     await _load();
   }
 
@@ -484,7 +521,10 @@ class _NumbersPaneState extends State<NumbersPane> {
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
         key: ValueKey('line:${line.id}'),
         leading: silent
             ? Icon(Icons.warning_amber_rounded, color: theme.colorScheme.error)
@@ -502,15 +542,84 @@ class _NumbersPaneState extends State<NumbersPane> {
             fontWeight: silent ? FontWeight.w600 : null,
           ),
         ),
-        trailing: _canEdit
-            ? TextButton(
-                onPressed: () => setState(() {
-                  _editing = line;
-                  _formError = null;
-                }),
-                child: const Text('Edit'),
-              )
-            : null,
+        trailing: !_canEdit
+            ? null
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_canMove)
+                    TextButton(
+                      onPressed: () => setState(() {
+                        _moving = _moving?.id == line.id ? null : line;
+                        _formError = null;
+                      }),
+                      child: const Text('Move'),
+                    ),
+                  TextButton(
+                    onPressed: () => setState(() {
+                      _editing = line;
+                      _formError = null;
+                    }),
+                    child: const Text('Edit'),
+                  ),
+                ],
+              ),
+          ),
+
+          if (_moving?.id == line.id) _movePanel(line, theme),
+        ],
+      ),
+    );
+  }
+
+  /// Where a line goes, and what it costs to send it there.
+  ///
+  /// Opens in the row rather than over it — no modals — and says the two
+  /// things somebody would otherwise find out afterwards: the line's routing
+  /// is let go when the companies keep separate Twilio accounts, and the call
+  /// history goes with the number.
+  Widget _movePanel(_Line line, ThemeData theme) {
+    final elsewhere = _me.companiesInView
+        .where((c) => c.id != line.scopeId)
+        .toList();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Move this line', style: theme.textTheme.labelLarge),
+          const SizedBox(height: 4),
+          Text(
+            'The number keeps working and keeps its history — past calls and '
+            'recordings go with it, and become readable by whoever can read '
+            'the new company’s lines. If the two companies keep separate '
+            'phone accounts, its ring group, hours, menu and voicemail stay '
+            'behind and it will need setting up again.',
+            style: theme.textTheme.bodySmall,
+          ),
+
+          const SizedBox(height: 12),
+
+          if (elsewhere.isEmpty)
+            Text(
+              'There is no other company to move it to.',
+              style: theme.textTheme.bodySmall,
+            )
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final company in elsewhere)
+                  OutlinedButton(
+                    onPressed: _saving ? null : () => _move(line, company.id),
+                    child: Text('Move to ${company.name}'),
+                  ),
+              ],
+            ),
+        ],
       ),
     );
   }
@@ -551,6 +660,8 @@ class _LineForm extends StatefulWidget {
 class _LineFormState extends State<_LineForm> {
   late final TextEditingController _label;
   late final TextEditingController _forwardTo;
+  late final TextEditingController _fallback;
+  late final TextEditingController _notice;
   late String? _groupId;
   late String? _scheduleId;
   late bool _record;
@@ -565,6 +676,8 @@ class _LineFormState extends State<_LineForm> {
     super.initState();
     _label = TextEditingController(text: widget.line.label);
     _forwardTo = TextEditingController(text: widget.line.afterHoursNumber ?? '');
+    _fallback = TextEditingController(text: widget.line.fallbackNumber ?? '');
+    _notice = TextEditingController(text: widget.line.recordingNotice ?? '');
     _groupId = widget.line.ringGroupId;
     _scheduleId = widget.line.hoursScheduleId;
     _record = widget.line.record;
@@ -576,6 +689,8 @@ class _LineFormState extends State<_LineForm> {
   void dispose() {
     _label.dispose();
     _forwardTo.dispose();
+    _fallback.dispose();
+    _notice.dispose();
     super.dispose();
   }
 
@@ -681,6 +796,21 @@ class _LineFormState extends State<_LineForm> {
           ),
         ],
 
+        const SizedBox(height: 16),
+        TextField(
+          controller: _fallback,
+          keyboardType: TextInputType.phone,
+          decoration: const InputDecoration(
+            labelText: 'Fallback number',
+            hintText: '+17865550123',
+            helperText:
+                'Dialled when the steps above reach nobody. Tried once, then '
+                'voicemail. Leave empty to go straight to voicemail.',
+            helperMaxLines: 3,
+            border: OutlineInputBorder(),
+          ),
+        ),
+
         const SizedBox(height: 8),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
@@ -692,6 +822,27 @@ class _LineFormState extends State<_LineForm> {
             style: theme.textTheme.bodySmall,
           ),
         ),
+        // Only when recording is on: this sentence is what makes the recording
+        // lawful, so it is shown next to the switch that starts it rather than
+        // filed away somewhere the person turning recording on will not look.
+        if (_record) ...[
+          const SizedBox(height: 8),
+          TextField(
+            controller: _notice,
+            maxLines: 2,
+            decoration: const InputDecoration(
+              labelText: 'What callers are told',
+              hintText: 'This call may be recorded.',
+              helperText:
+                  'Spoken before the call connects. This wording is what gets '
+                  'the caller’s consent, so it has to be true where you '
+                  'operate. Left empty, callers hear the sentence above.',
+              helperMaxLines: 4,
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ],
+
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           value: _transcribe,
@@ -731,6 +882,12 @@ class _LineFormState extends State<_LineForm> {
                       'after_hours_number': _afterHours == 'forward'
                           ? _forwardTo.text.trim()
                           : null,
+                      'fallback_number': _fallback.text.trim(),
+
+                      // Sent even when recording is off, so the wording a
+                      // business already chose survives switching it off and
+                      // on again.
+                      'recording_notice': _notice.text.trim(),
 
                       // Only what the carrier panel actually reports having
                       // changed — sending an untouched emergency address back
@@ -758,17 +915,24 @@ class _Line {
     required this.transcribe,
     required this.afterHours,
     required this.answers,
+    required this.scopeId,
     required this.voiceCallerIdLookup,
     required this.voicemailTranscribe,
     this.afterHoursNumber,
     this.ringGroupId,
     this.hoursScheduleId,
     this.emergencyAddressSid,
+    this.fallbackNumber,
+    this.recordingNotice,
   });
 
   final String id;
   final String e164;
   final String label;
+
+  /// Which company owns this line today — used to leave it out of its own
+  /// "move to" list.
+  final String scopeId;
   final bool record;
   final bool transcribe;
   final String afterHours;
@@ -787,6 +951,10 @@ class _Line {
   final bool voiceCallerIdLookup;
   final bool voicemailTranscribe;
   final String? emergencyAddressSid;
+  final String? fallbackNumber;
+
+  /// Null means the built-in consent sentence, never silence.
+  final String? recordingNotice;
 
   String get heading => label.trim().isEmpty || label == e164
       ? e164
@@ -812,12 +980,15 @@ class _Line {
         // branches on. Only when it does not say — an older server — is it
         // worked out here, and then by that same rule rather than by assuming
         // the line is fine: assuming fine is how this went unnoticed before.
+        scopeId: (row['scope_id'] ?? '').toString(),
         answers:
             row['answers'] as bool? ??
             (row['ring_group_id'] != null || row['flow_id'] != null),
         voiceCallerIdLookup: row['voice_caller_id_lookup'] == true,
         voicemailTranscribe: row['voicemail_transcribe'] == true,
         emergencyAddressSid: row['emergency_address_sid'] as String?,
+        fallbackNumber: row['fallback_number'] as String?,
+        recordingNotice: row['recording_notice'] as String?,
       );
     }).toList(growable: false);
   }

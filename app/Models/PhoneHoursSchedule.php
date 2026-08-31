@@ -28,6 +28,7 @@ class PhoneHoursSchedule extends Model implements StatesRetention
     }
 
     protected $fillable = [
+        'scope_type', 'scope_id',
         'organization_id', 'connection_id', 'name', 'timezone', 'weeks', 'exceptions',
     ];
 

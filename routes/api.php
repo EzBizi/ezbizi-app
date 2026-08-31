@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AccountDeletionController;
 use App\Http\Controllers\Api\AddressLookupController;
 use App\Http\Controllers\Api\AttachmentsController;
 use App\Http\Controllers\Api\AuthController;
@@ -22,6 +23,7 @@ use App\Http\Controllers\Api\HrDashboardController;
 use App\Http\Controllers\Api\HrInvitationsController;
 use App\Http\Controllers\Api\HrOnboardingsController;
 use App\Http\Controllers\Api\HrPeopleController;
+use App\Http\Controllers\Api\InspectionCodesController;
 use App\Http\Controllers\Api\InspectionDefinitionsController;
 use App\Http\Controllers\Api\InspectionReportsController;
 use App\Http\Controllers\Api\InspectionRunsController;
@@ -43,6 +45,8 @@ use App\Http\Controllers\Api\MailboxMessagesController;
 use App\Http\Controllers\Api\MarketingController;
 use App\Http\Controllers\Api\MetaCallbacksController;
 use App\Http\Controllers\Api\MicrosoftMailAuthController;
+use App\Http\Controllers\Api\Monitoring\DevicesController as MonitoringDevicesController;
+use App\Http\Controllers\Api\Monitoring\HeartbeatController as MonitoringHeartbeatController;
 use App\Http\Controllers\Api\NotificationsController;
 use App\Http\Controllers\Api\OrganizationCanvasController;
 use App\Http\Controllers\Api\OrganizationProfileController;
@@ -65,6 +69,7 @@ use App\Http\Controllers\Api\Phone\ServiceRequestsController as PhoneServiceRequ
 use App\Http\Controllers\Api\Phone\SmsWebhookController as PhoneSmsWebhookController;
 use App\Http\Controllers\Api\Phone\StatusWebhookController as PhoneStatusWebhookController;
 use App\Http\Controllers\Api\Phone\TokensController as PhoneTokensController;
+use App\Http\Controllers\Api\Phone\VoicemailBoxesController as PhoneVoicemailBoxesController;
 use App\Http\Controllers\Api\Phone\TranscriptionWebhookController as PhoneTranscriptionWebhookController;
 use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookController;
 use App\Http\Controllers\Api\PreferencesController;
@@ -123,6 +128,8 @@ use App\Http\Controllers\Api\VehiclePaymentsController;
 use App\Http\Controllers\Api\VehiclesController;
 use App\Http\Controllers\Api\VehicleServiceController;
 use App\Http\Controllers\Api\Web\PluginController as WebPluginController;
+use App\Http\Controllers\Api\Web\PublicValuesController as WebPublicValuesController;
+use App\Http\Controllers\Api\Web\SnippetController as WebSnippetController;
 use App\Http\Controllers\Api\Web\SitesController as WebSitesController;
 use App\Http\Controllers\Api\Web\ValuesController as WebValuesController;
 use App\Http\Middleware\EnsureTaskRouteAccess;
@@ -332,6 +339,39 @@ Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callba
 Route::get('v1/web/plugin/values', [WebPluginController::class, 'values'])
     ->middleware('throttle:web-plugin')
     ->name('web.plugin.values');
+
+/*
+|--------------------------------------------------------------------------
+| What a BROWSER may read — for sites with nowhere to keep a secret
+|--------------------------------------------------------------------------
+|
+| The route above is for a plugin on a server, holding a secret token. This one
+| is for a `<script>` on a static page, where nothing is secret: it takes the
+| site's PUBLIC key instead, and returns only values and the field list — never
+| the host, label or company name the authenticated route includes.
+|
+| Throttled per IP, and that is the opposite choice from the route above for the
+| opposite reason. A plugin is one server making one request for a whole site,
+| so its IP is a shared host and the token is the only fair key. This one is
+| called by every VISITOR's browser, so the IP is one person and per-IP is
+| exactly right — a key-based limit here would let one popular site exhaust its
+| own visitors' allowance.
+|
+| Takes no custom header, deliberately: a request with an Authorization header
+| would trip a CORS preflight and double the traffic for no benefit.
+*/
+Route::get('v1/web/public/values', [WebPublicValuesController::class, 'show'])
+    ->middleware('throttle:60,1')
+    ->name('web.public.values');
+
+/*
+| The browser snippet itself. Under /api because nginx roots this host at the
+| Flutter build and never serves Laravel's public/ — see SnippetController for
+| why that is not worked around with an nginx location.
+*/
+Route::get('v1/web/ezbizi.js', [WebSnippetController::class, 'show'])
+    ->middleware('throttle:120,1')
+    ->name('web.snippet');
 
 /*
 |--------------------------------------------------------------------------
@@ -572,6 +612,9 @@ Route::prefix('v1')
         Route::apiResource('web/sites', WebSitesController::class)
             ->parameters(['sites' => 'site']);
         Route::post('web/sites/{site}/token', [WebSitesController::class, 'rotateToken']);
+        // The browser key. Separate from the token above because they are different
+        // credentials with different blast radii — see rotatePublicKey.
+        Route::post('web/sites/{site}/public-key', [WebSitesController::class, 'rotatePublicKey']);
         Route::get('web/sites/{site}/values', [WebValuesController::class, 'index']);
         Route::put('web/sites/{site}/values', [WebValuesController::class, 'update']);
         Route::post('inventory/purchase-orders/{purchase_order}/open', [InventoryPurchaseOrdersController::class, 'open']);
@@ -897,6 +940,18 @@ Route::prefix('v1')
 
         // Shopping for a new line: what Twilio has, and where it can sell.
         // Both are phone.edit — the only reason to look is to buy.
+        // What actually happens when somebody rings each line, in the order
+        // the renderer evaluates. phone.view: it is a read of our own rows.
+        Route::get('phone/call-flow', [PhoneNumbersController::class, 'callFlow']);
+
+        // What this company's phone service cost. phone.edit, because that is
+        // the authority that spends the money in the first place.
+        Route::get('phone/usage', [PhoneNumbersController::class, 'usage']);
+
+        // What a number actually is — Twilio Lookup v2. phone.edit, because a
+        // fresh lookup is billed; the cached answer is free.
+        Route::get('phone/lookup', [PhoneNumbersController::class, 'lookup']);
+
         Route::get('phone/numbers/available', [PhoneNumbersController::class, 'available']);
         Route::get('phone/numbers/countries', [PhoneNumbersController::class, 'countries']);
 
@@ -915,6 +970,11 @@ Route::prefix('v1')
         // How a line behaves — above all which group answers it. Without this
         // `ring_group_id` could never be set and every inbound call fell
         // through to voicemail.
+        // Hand a line to a different company. Organization view only — the
+        // controller refuses elsewhere, because a company view cannot see the
+        // company it would be moving to.
+        Route::post('phone/numbers/{number}/move', [PhoneNumbersController::class, 'move']);
+
         Route::patch('phone/numbers/{number}', [PhoneNumbersController::class, 'update']);
         Route::delete('phone/numbers/{number}', [PhoneNumbersController::class, 'destroy']);
 
@@ -937,6 +997,16 @@ Route::prefix('v1')
         Route::delete('phone/ring-groups/{group}', [PhoneRingGroupsController::class, 'destroy']);
 
         // Port-in: start via gateway; status webhooks update phone_port_requests.
+        // Reading them was never possible: a port could be started, its
+        // status updated by webhook for weeks, and no screen could show it.
+        // Voicemail boxes: the greeting, not the messages. Recordings live on
+        // the call rows and keep their own retention there.
+        Route::get('phone/voicemail-boxes', [PhoneVoicemailBoxesController::class, 'index']);
+        Route::post('phone/voicemail-boxes', [PhoneVoicemailBoxesController::class, 'store']);
+        Route::patch('phone/voicemail-boxes/{box}', [PhoneVoicemailBoxesController::class, 'update']);
+        Route::delete('phone/voicemail-boxes/{box}', [PhoneVoicemailBoxesController::class, 'destroy']);
+
+        Route::get('phone/ports', [PhonePortsController::class, 'index']);
         Route::post('phone/ports', [PhonePortsController::class, 'store']);
 
         // Named open-hours schedules on a connection. Create may take a number
@@ -993,6 +1063,14 @@ Route::prefix('v1')
         // one). DELETE is only a never-published draft; unpublish hides a
         // published one from the picker without touching versions or reports.
         Route::get('inspections/catalogue', [InspectionDefinitionsController::class, 'catalogue']);
+
+        // The building-code library. Before `{inspection_definition}`, which
+        // would otherwise happily bind the word "codes".
+        Route::get('inspections/codes', [InspectionCodesController::class, 'index']);
+        Route::post('inspections/codes', [InspectionCodesController::class, 'store']);
+        Route::get('inspections/codes/{inspection_code}', [InspectionCodesController::class, 'show']);
+        Route::patch('inspections/codes/{inspection_code}', [InspectionCodesController::class, 'update']);
+        Route::delete('inspections/codes/{inspection_code}', [InspectionCodesController::class, 'destroy']);
         Route::get('inspections/search', [InspectionRunsController::class, 'search']);
         Route::get('inspections/startable', [InspectionRunsController::class, 'startable']);
         Route::get('inspections', [InspectionDefinitionsController::class, 'index']);
@@ -1117,6 +1195,7 @@ Route::prefix('v1')
         Route::post('email/workspace/oauth/start', [GoogleWorkspaceAuthController::class, 'start']);
         Route::get('email/workspace/oauth/status', [GoogleWorkspaceAuthController::class, 'status']);
 
+        Route::get('email/mailboxes/{mailbox}/folders', [MailboxMessagesController::class, 'folders']);
         Route::get('email/mailboxes/{mailbox}/messages', [MailboxMessagesController::class, 'index']);
         Route::post('email/mailboxes/{mailbox}/messages', [MailboxMessagesController::class, 'store']);
         Route::post('email/mailboxes/{mailbox}/messages/bulk', [MailboxMessagesController::class, 'bulk']);
@@ -1232,6 +1311,15 @@ Route::prefix('v1')
             ->parameters(['automations' => 'automation']);
         Route::post('automations', [AutomationsController::class, 'store']);
 
+        // ── Monitoring: the devices roster (2026-08-28-monitoring-pc-specs) ──
+        //
+        // Deliberately in THIS group rather than the heartbeat's idle-less one
+        // above (routes/api.php ~line 1552): an admin reading this tab IS
+        // navigation, and SlideIdleWindow should treat it as such. The
+        // heartbeat is a background beat with no screen behind it, which is
+        // the one case idle must NOT extend on.
+        Route::get('monitoring/devices', [MonitoringDevicesController::class, 'index']);
+
         // Changing it while signed in. Needs the current password: a session
         // proves somebody sat down at an unlocked laptop, not that they are the
         // account holder.
@@ -1251,6 +1339,19 @@ Route::prefix('v1')
         Route::delete('me/avatar', [ProfileController::class, 'destroyAvatar']);
         Route::get('users/{user}/avatar', [ProfileController::class, 'avatar']);
         Route::get('me/sessions', [ProfileController::class, 'sessions']);
+
+        // ── Deleting your own account ────────────────────────────
+        //
+        // No policy and no id in the path, for the same reason as the routes
+        // above: the subject is read off the token, so there is nobody else to
+        // authorize against and no way to aim this at a colleague.
+        //
+        // The GET is not decoration. A purge is irreversible and its report is
+        // the only place anybody learns what does NOT go - the same argument
+        // PurgePersonalData makes for its mandatory dry run, and it applies
+        // twice over when the person erasing themselves has to live with it.
+        Route::get('me/deletion', [AccountDeletionController::class, 'show']);
+        Route::delete('me', [AccountDeletionController::class, 'destroy']);
         Route::delete('me/sessions', [ProfileController::class, 'revokeOtherSessions']);
 
         // ── Your own preferences (§2.1 category 6) ───────────────
@@ -1498,6 +1599,22 @@ Route::prefix('v1')
                 ],
             ]);
         });
+    });
+
+/*
+ * Monitoring heartbeat — a person reports their own presence. Deliberately
+ * OUTSIDE `idle`: SlideIdleWindow pushes the token's expiry forward on every
+ * authenticated call, so a timer-driven beat would keep a walked-away session
+ * alive forever and silently void security.session_timeout_minutes. Presence is
+ * not user activity for the idle clock; genuine navigation (which hits the
+ * idle-bearing group above) is. No `subscription` or `two-factor` either — a
+ * background beat should not be interrupted by either gate.
+ */
+Route::prefix('v1')
+    ->middleware(['auth:sanctum', 'tenant'])
+    ->group(function () {
+        Route::post('monitoring/heartbeat', [MonitoringHeartbeatController::class, 'store'])
+            ->middleware('throttle:120,1');
     });
 
 /*

@@ -39,10 +39,8 @@ final class TikTokPublisher implements SocialPublisher
 
     public function publish(SocialConnection $connection, PostPayload $post): string
     {
-        $kind = $post->kind();
-
-        if ($kind !== SocialMediaKind::Video) {
-            throw SocialPublishFailed::notImplemented('TikTok', $kind->label());
+        if (($why = $this->cannotSend($post->kind())) !== null) {
+            throw new SocialPublishFailed($why);
         }
 
         $token = $this->token($connection);
@@ -63,6 +61,15 @@ final class TikTokPublisher implements SocialPublisher
         $this->upload($uploadUrl, $bytes, $post->mime());
 
         return $publishId;
+    }
+
+    public function cannotSend(SocialMediaKind $kind): ?string
+    {
+        // TikTok learned photos; this publisher has not. Same distinction as
+        // Pinterest's — the network's limit and ours are different sentences.
+        return $kind === SocialMediaKind::Video
+            ? null
+            : SocialPublishFailed::notImplemented('TikTok', $kind->label())->getMessage();
     }
 
     /**

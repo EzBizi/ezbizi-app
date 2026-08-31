@@ -139,4 +139,69 @@ class HrGlanceTest extends TestCase
         $this->assertSame(1, $slices->firstWhere('label', 'Inactive')['total'] ?? null);
         $this->assertContains('2 people on the books.', $payload['data']['sentences']);
     }
+
+    /**
+     * A view-timezone wall clock must be converted before it meets a UTC column.
+     *
+     * `DashboardPeriod::startsOn` is local midnight in the ORGANIZATION timezone;
+     * `users.created_at` is UTC. A Carbon binds as its own wall-clock string with
+     * no conversion, so an unconverted bound sits EARLY by the offset and drags in
+     * people who joined the evening before the period began.
+     *
+     * The clock is frozen in the EVENING deliberately. Freeze it at midday and the
+     * gap this guards does not exist, and the test passes against the bug — which
+     * is the only reason it is written this way.
+     *
+     * Direction matters too: this defect OVER-counts. CallReport had the same
+     * class as a two-sided window that DROPPED evening rows. A test shaped for
+     * one does not catch the other.
+     */
+    public function test_somebody_who_joined_before_the_period_began_is_not_counted_as_a_starter(): void
+    {
+        // Settings are tenant-scoped, so this write needs a tenant in context.
+        $this->inTenant(fn () => app(\App\Support\Settings\SettingsResolver::class)
+            ->set('timezone', $this->alpha['org'], 'Etc/GMT+5'));   // UTC-5; POSIX sign
+
+        // Monday 2026-08-31, 21:00 in the view timezone — an evening inside the week.
+        Carbon::setTestNow(Carbon::parse('2026-08-31 21:00:00', 'Etc/GMT+5'));
+
+        $period = DashboardPeriod::for($this->alpha['admin'], 'week');
+
+        // Two hours BEFORE the week began, in real time. In New York terms this is
+        // the previous evening; as an unconverted wall-clock string it looks like
+        // it is inside the window, which is the bug.
+        $before = $period->startsOn->copy()->utc()->subHours(2);
+
+        $this->inTenant(function () use ($before) {
+            $person = User::create([
+                'organization_id' => $this->alpha['org']->id,
+                'role_id'         => $this->alpha['admin']->role_id,
+                'name' => 'Early', 'email' => 'early@alpha.test',
+                'password' => 'a-real-password', 'is_active' => true,
+            ]);
+
+            Assignment::create([
+                'organization_id' => $this->alpha['org']->id,
+                'user_id' => $person->id,
+                'assigned_franchise_id' => $this->alpha['franchise']->id,
+            ]);
+
+            // created_at is not fillable, so set it explicitly or the row is
+            // stamped now() and the test asserts nothing.
+            $person->forceFill(['created_at' => $before])->save();
+        });
+
+        // Through the GLANCE, which is where the conversion lives. Calling the
+        // widget directly with an already-converted bound would assert nothing
+        // about HrGlance and would pass against the bug.
+        $sentences = app(HrGlance::class)
+            ->resolve($this->alpha['admin'], $period, [])
+            ->toArray()['data']['sentences'];
+
+        $this->assertContains(
+            '1 person joined this week.',   // the founder, and NOT the early joiner
+            $sentences,
+            'somebody who joined before the period began was counted as a starter',
+        );
+    }
 }

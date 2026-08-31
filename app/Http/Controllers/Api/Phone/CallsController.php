@@ -122,6 +122,11 @@ class CallsController extends Controller
         return [
             'tag_id' => $call->tag_id,
             'tag' => $call->tag?->name,
+
+            // Sent with the name so a call list can be read at a glance. A
+            // colour set in Settings and invisible everywhere else would be
+            // decoration, which is the shape this module keeps producing.
+            'tag_color' => $call->tag?->color,
             'id' => $call->id,
             'number_id' => $call->number_id,
             'connection_id' => $call->connection_id,
