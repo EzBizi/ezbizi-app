@@ -216,6 +216,17 @@ client that has no screen for it.
 From `StartUp.md` §6 and the departed rules desk. `docs/ACTIVE-CONSTRAINTS.md` is the
 live one — read it rather than this summary.
 
+> **THE APP STORE FREEZE IS OVER** (2026-08-31, confirmed by Jose via the deploy desk).
+> `ACTIVE-CONSTRAINTS` §1 — no change to an existing response shape while a frozen
+> `.ipa` ran against production — is **gone**. Anything a design deferred for that
+> reason is unblocked, and "additive only" is no longer a constraint on a proposal.
+> §2 (minimum client version) and §3 (SES sandbox) outlive it.
+>
+> Designs drawn under it and now free to ask for more: widening
+> `describe()`'s trace instead of keeping one boolean (Phone · General), the
+> distinct `skipped` bool, Training's `summary` roll-up, and the Numbers
+> recommendation that moves line editing into General.
+
 1. **No modals. Ever.** A new screen or a right-side panel, including
    confirm-before-destructive and including text entry. `customer_detail_panel.dart`
    is the worked example of the panel pattern; do not invent a second dialect.
