@@ -7,6 +7,33 @@ import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 
+/// The absolute base a copied snippet must carry, and why it cannot be blank.
+///
+/// `ApiClient.baseUrl` is deliberately EMPTY in the same-origin web build — see
+/// api_client.dart, which argues at length that a hostname must never be baked
+/// in. That is right for the app talking to itself and exactly wrong for a
+/// string somebody pastes into a DIFFERENT website: interpolating an empty base
+/// produced `src="/api/v1/web/ezbizi.js"`, which resolves against whatever host
+/// the snippet was pasted into. On www.ezbizi.com that is a 404; it only ever
+/// worked on app.ezbizi.com, the one host that will never need it.
+///
+/// So the snippet takes the ORIGIN the app is being served from when no base is
+/// configured. Pure and parameterised because the interesting cases — a blank
+/// base, a native build with a real base, a test process whose `Uri.base` is a
+/// `file:` URL with no origin at all — are worth asserting rather than eyeballing.
+String snippetApiBase({required String configured, required Uri pageUrl}) {
+  if (configured.isNotEmpty) return configured;
+
+  // `Uri.origin` throws on anything that is not http/https, and a widget test
+  // runs with a `file:` base. Falling back to the canonical host is better than
+  // handing somebody a relative URL that silently does nothing.
+  if (pageUrl.scheme == 'http' || pageUrl.scheme == 'https') {
+    return pageUrl.origin;
+  }
+
+  return 'https://app.ezbizi.com';
+}
+
 /// SEO — the hosts a company owns, and the business facts each one publishes.
 ///
 /// ── What this screen is actually for ─────────────────────────────
@@ -785,8 +812,13 @@ class _SiteCardState extends State<_SiteCard> {
 
     if (key.isEmpty) return const SizedBox.shrink();
 
+    final base = snippetApiBase(
+      configured: ApiClient.baseUrl,
+      pageUrl: Uri.base,
+    );
+
     final snippet =
-        '<script src="${ApiClient.baseUrl}/api/v1/web/ezbizi.js" '
+        '<script src="$base/api/v1/web/ezbizi.js" '
         'data-key="$key"></script>';
 
     return Container(

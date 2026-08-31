@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/screens/web/seo_tab.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
@@ -117,9 +118,55 @@ void main() {
     // a web root on this host, so /ezbizi.js at the domain root is not it.
     expect(find.textContaining('/api/v1/web/ezbizi.js'), findsOneWidget);
 
+    // And it is ABSOLUTE. A relative src resolves against whatever site the
+    // snippet was pasted into, which is never this one.
+    expect(find.textContaining('src="https://'), findsOneWidget);
+
     // And it says which key is safe in public, because that is the whole
     // distinction somebody has to get right.
     expect(find.textContaining('ezb_'), findsOneWidget);
+  });
+
+  /// The pasted snippet must carry an ABSOLUTE url.
+  ///
+  /// It shipped relative — `src="/api/v1/web/ezbizi.js"` — because the
+  /// same-origin web build leaves ApiClient.baseUrl empty on purpose. That
+  /// resolves against whichever site the snippet was pasted into, so it 404d
+  /// on www.ezbizi.com and worked only on app.ezbizi.com, the single host that
+  /// will never need it. Verified against production at the time: www gave 404,
+  /// app gave 200 application/javascript.
+  group('the snippet url a customer pastes', () {
+    test('uses the configured base when there is one', () {
+      expect(
+        snippetApiBase(
+          configured: 'https://app.ezbizi.com',
+          pageUrl: Uri.parse('https://irrelevant.example/'),
+        ),
+        'https://app.ezbizi.com',
+      );
+    });
+
+    test('falls back to the origin serving the app, never to nothing', () {
+      expect(
+        snippetApiBase(
+          configured: '',
+          pageUrl: Uri.parse('https://app.ezbizi.com/web_management'),
+        ),
+        'https://app.ezbizi.com',
+      );
+    });
+
+    test('never returns a relative base, even off the web', () {
+      // A `file:` Uri has no origin and would throw; a blank result here is
+      // what produced the original bug.
+      final base = snippetApiBase(
+        configured: '',
+        pageUrl: Uri.parse('file:///C:/build/app'),
+      );
+
+      expect(base, isNotEmpty);
+      expect(base, startsWith('https://'));
+    });
   });
 
   /// The browser key must be rotatable FROM THE SCREEN, not only from the API.
