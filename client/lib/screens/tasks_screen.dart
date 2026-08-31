@@ -15,6 +15,7 @@ import 'tasks/name_entry_panel.dart';
 import 'tasks/task_api.dart';
 import 'tasks/task_board_administration.dart';
 import 'tasks/task_board_members.dart';
+import 'tasks/task_calendar_view.dart';
 import 'tasks/task_detail_panel.dart';
 import 'tasks/task_duplicate_flow.dart';
 import 'tasks/task_filters_panel.dart';
@@ -89,6 +90,11 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   int _activeViewVersion = 1;
   TaskViewConfiguration _configuration = TaskViewConfiguration.empty;
   TaskKanbanField _kanbanField = TaskKanbanField.status;
+  DateTime _calendarMonth = DateTime.utc(
+    DateTime.now().year,
+    DateTime.now().month,
+  );
+  TaskOmitted _omitted = TaskOmitted.zero;
   String? _boardEtag;
   TaskMyTasksPage? _myTasks;
   final Map<int, TaskMyTasksPage> _myTaskPages = <int, TaskMyTasksPage>{};
@@ -252,6 +258,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _total = 0;
       _statusSummaries = const [];
       _groupCounts = const [];
+      _omitted = TaskOmitted.zero;
       _privacyGeneration++;
       _viewDirty = false;
       _dirtyDraftIds.clear();
@@ -284,6 +291,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _total = result.data.total;
       _statusSummaries = result.data.statusSummaries;
       _groupCounts = result.data.groupCounts;
+      _omitted = result.data.omitted;
       _activeViewId = result.data.viewId;
       _activeViewVersion = result.data.viewVersion;
       _configuration = result.data.configuration;
@@ -439,6 +447,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _total = page.total;
       _statusSummaries = page.statusSummaries;
       _groupCounts = page.groupCounts;
+      _omitted = page.omitted;
       _boardEtag = page.etag;
       _activeViewVersion = page.viewVersion;
       if (!_viewDirty) _configuration = page.configuration;
@@ -1359,6 +1368,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _total = 0;
       _statusSummaries = const [];
       _groupCounts = const [];
+      _omitted = TaskOmitted.zero;
       _dirtyDraftIds.clear();
       _privacyGeneration++;
     });
@@ -1451,8 +1461,8 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   Widget _presentationBody(bool mobile, bool wide) =>
       switch (_configuration.presentation) {
         TaskPresentation.kanban => _kanbanContent(),
+        TaskPresentation.calendar => _calendarContent(),
         TaskPresentation.table ||
-        TaskPresentation.calendar ||
         TaskPresentation.timeline ||
         TaskPresentation.workload => mobile
             ? _mobileTableContent()
@@ -1517,20 +1527,75 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     );
   }
 
+  Widget _calendarContent() {
+    final board = _board!;
+    return Column(
+      children: [
+        _boardControls(),
+        if (_showFilters)
+          SizedBox(
+            height: 330,
+            child: TaskFiltersPanel(
+              board: board,
+              configuration: _configuration,
+              people: _people,
+              onChanged: _changeConfiguration,
+              onClose: () => setState(() => _showFilters = false),
+            ),
+          ),
+        Expanded(
+          child: TaskCalendarView(
+            month: _calendarMonth,
+            rows: _rows,
+            omitted: _omitted,
+            onMove: _calendarMove,
+            onMonthChanged: _changeCalendarMonth,
+          ),
+        ),
+      ],
+    );
+  }
+
   /// Switches the active view's presentation. Kanban additionally needs a
   /// `window` (`bucket_field` + the current field's buckets) and a matching
   /// `group_by`, so `meta.group_counts` — which Kanban headers read their
   /// complete accessible total from — is computed for the same field the
-  /// columns bucket by, not the board's default grouping.
+  /// columns bucket by, not the board's default grouping. Calendar needs a
+  /// `window` too (`{from, to}` bounding the visible month) but no
+  /// `group_by` — `TaskDateRangeWindow` (schema:2) is what carries it.
   void _changePresentation(TaskPresentation presentation) {
     if (presentation == TaskPresentation.kanban) {
       _applyKanbanField(_kanbanField);
+      return;
+    }
+    if (presentation == TaskPresentation.calendar) {
+      _applyCalendarWindow(_calendarMonth);
       return;
     }
     _changeConfiguration(
       _configuration.copyWith(presentation: presentation, window: null),
     );
   }
+
+  /// Re-windows Calendar to [month] — called both when the tab is first
+  /// selected and whenever `TaskCalendarView` asks to page to another month.
+  /// The server bounds any calendar window at 400 days and refuses wider
+  /// (task-11 brief); a single month is always far under that, so there is
+  /// nothing to pre-validate here.
+  void _applyCalendarWindow(DateTime month) {
+    final start = DateTime.utc(month.year, month.month);
+    final from = DateTime.utc(start.year, start.month, 1);
+    final to = DateTime.utc(start.year, start.month + 1, 0);
+    setState(() => _calendarMonth = start);
+    _changeConfiguration(
+      _configuration.copyWith(
+        presentation: TaskPresentation.calendar,
+        window: TaskDateRangeWindow(from: from, to: to),
+      ),
+    );
+  }
+
+  void _changeCalendarMonth(DateTime month) => _applyCalendarWindow(month);
 
   void _changeKanbanField(TaskKanbanField field) {
     setState(() => _kanbanField = field);
@@ -1573,6 +1638,36 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       current.id,
       expectedTaskVersion: current.version,
       changes: <String, Object?>{field.writeField: bucketId},
+    );
+    if (!_isCurrentPrivacy(privacy)) return null;
+    if (result is TaskApiSuccess<TaskRow>) {
+      _putRow(_mergeServerRow(current, result.data));
+      return null;
+    }
+    if (result is TaskApiUnavailable<TaskRow>) {
+      _evict(result.message);
+      return result.message;
+    }
+    if (result is TaskApiConflictResult<TaskRow>) setState(() => _conflict = true);
+    return result.message ?? 'The change could not be saved.';
+  }
+
+  /// Drags a Calendar card to another day. THE PHASE 1 DUE-DATE WRITE — the
+  /// same `PATCH tasks/{id}` core-field write `_saveCoreNow`/`_kanbanMove`
+  /// already issue, carrying `task.version` as `expected_version`. Phase 2
+  /// adds no new write path for Calendar; [day] is only ever the calendar
+  /// date the card was dropped on, formatted the same `YYYY-MM-DD` way
+  /// `_Date` in `task_table.dart` already writes `due_on` as.
+  Future<String?> _calendarMove(TaskRow task, DateTime day) async {
+    if (_bulkLockedTaskIds.contains(task.id)) {
+      return 'Finish the bulk change before editing this task.';
+    }
+    final current = _rows.where((row) => row.id == task.id).firstOrNull ?? task;
+    final privacy = _privacyGeneration;
+    final result = await _tasks.updateTask(
+      current.id,
+      expectedTaskVersion: current.version,
+      changes: <String, Object?>{'due_on': _wireDate(day)},
     );
     if (!_isCurrentPrivacy(privacy)) return null;
     if (result is TaskApiSuccess<TaskRow>) {
@@ -2010,6 +2105,14 @@ class _ResizeDetailIntent extends Intent {
 extension _TasksFirstOrNull<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
 }
+
+/// Same `YYYY-MM-DD` shape `_dateOnly` in `task_models.dart` writes and
+/// `_Date` in `task_table.dart` submits — kept local rather than exported
+/// since only this file's Calendar drag write needs it client-side.
+String _wireDate(DateTime date) =>
+    '${date.year.toString().padLeft(4, '0')}-'
+    '${date.month.toString().padLeft(2, '0')}-'
+    '${date.day.toString().padLeft(2, '0')}';
 
 class _EmptyDirectory extends StatelessWidget {
   const _EmptyDirectory({this.onCreate, this.onRecover, this.onManageFolders});
