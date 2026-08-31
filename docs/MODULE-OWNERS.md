@@ -29,6 +29,30 @@ watching, which is not. The integrations row is blank on purpose: two distinct
 message pipes are both presenting as `ezbizi-3d`, and the real owner is not yet
 known.
 
+**ONE SESSION CAN APPEAR AS TWO SENDERS, AND THE RECIPIENT CANNOT TELL.**
+
+There are two ways to message a session on this machine and they show different
+identities for the same sender:
+
+    SendMessage                      shows a ROTATING pipe name (ezbizi-5b,
+                                     ezbizi-28, ezbizi-a1 — same session, hours apart)
+    ccd_session_mgmt send_message    shows the STABLE session title
+
+On 2026-08-31 the deploy desk swept every session using both, within minutes. A
+session that received both concluded **two deploy desks were running**, warned
+that they would either collide or each assume the other had deployed, and could
+not reach the "other" one to check. It was one session. `get_session("self")`
+settled it in one call.
+
+The warning was reasonable and nothing the recipient could have checked would
+have shown otherwise. **Neither message carried anything identifying it as the
+same sender.**
+
+So: the SESSION ID is the only durable identity. Pipe names are per-hour handles;
+titles are stable but not unique across transports; and "who is this" is
+answerable only by asking, or by a session id. **Sign messages with a session id
+when it matters, and use one transport per correspondent per conversation.**
+
 **SESSION NAMES ARE RECYCLED, NOT JUST RETIRED — and that is why this file
 records SHAs.**
 
