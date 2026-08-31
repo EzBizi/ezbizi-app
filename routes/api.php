@@ -77,6 +77,7 @@ use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ReviewsController;
 use App\Http\Controllers\Api\RolesController;
 use App\Http\Controllers\Api\SchedulingAreasController;
+use App\Http\Controllers\Api\SchedulingAvailabilityController;
 use App\Http\Controllers\Api\SchedulingPatternController;
 use App\Http\Controllers\Api\SendingIdentitiesController;
 use App\Http\Controllers\Api\ServiceGroupsController;
@@ -653,6 +654,7 @@ Route::prefix('v1')
          * under it that arrives first. Ordering here is load-bearing, not
          * tidiness.
          */
+        Route::get('scheduling/availability', [SchedulingAvailabilityController::class, 'show']);
         Route::put('scheduling/areas/{area}/slots', [SchedulingAreasController::class, 'slots']);
         Route::put('scheduling/areas/{area}/zips', [SchedulingAreasController::class, 'zips']);
         Route::post('scheduling/pattern/preview', [SchedulingPatternController::class, 'preview']);
