@@ -1,0 +1,50 @@
+<?php
+
+namespace App\Models;
+
+use App\Models\Concerns\BelongsToTenant;
+use App\Support\Privacy\RetentionPolicy;
+use App\Support\Privacy\StatesRetention;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+/**
+ * An ordered run of screens somebody reads.
+ *
+ * Screens are a JSON array rather than a table — see the migration for why.
+ */
+class TrainingGuide extends Model implements StatesRetention
+{
+    use HasUuids;
+    use BelongsToTenant;
+
+    public const DRAFT = 'draft';
+
+    public const PUBLISHED = 'published';
+
+    protected $fillable = [
+        'company_id', 'franchise_id', 'title', 'summary', 'status', 'screens',
+    ];
+
+    protected $casts = ['screens' => 'array'];
+
+    public static function retention(): RetentionPolicy
+    {
+        return RetentionPolicy::forever(
+            'Authored content, not a record of anybody. A guide is deleted when its '
+            .'organization deletes it; ageing one out would silently remove training '
+            .'people are still recorded as having passed.'
+        );
+    }
+
+    public function tests(): HasMany
+    {
+        return $this->hasMany(TrainingTest::class, 'guide_id');
+    }
+
+    public function screenCount(): int
+    {
+        return count($this->screens ?? []);
+    }
+}
