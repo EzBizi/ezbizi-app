@@ -10,10 +10,15 @@ use App\Models\TaskColumnValue;
 use App\Models\TaskDependency;
 use App\Models\TaskRecurrenceOccurrence;
 use App\Models\TaskUpdate;
+use App\Models\User;
+use App\Support\Audit\AuditLogger;
+use App\Support\Automations\EventEmitter;
+use App\Support\Modules\ModuleRegistry;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tasks\StatusCategory;
 use App\Support\Tasks\TaskWriter;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\Concerns\BuildsTenants;
@@ -154,6 +159,84 @@ final class TaskRecurrenceWorkerTest extends TestCase
         );
         $this->assertSame('2027-03-01', $generationThree->due_on?->format('Y-m-d'));
         $this->assertSame($generationTwo->recurrence, $generationThree->recurrence);
+    }
+
+    /**
+     * Whole-branch review finding 9: TaskWriter::recordRecurrenceOnCompletion()
+     * used to catch bare `\Throwable` around `EventEmitter::emit()`'s own
+     * INSERT, which runs inside the SAME transaction as the completion
+     * itself — Ruling 28's exact hazard (progress.md), one write further
+     * down: a database-level failure there must propagate so the
+     * transaction rolls back honestly, not be swallowed while the API
+     * reports success on a completion that silently never happened.
+     * Simulates that failure the same deterministic way
+     * TaskOverdueTest.php already does — intercepting EventEmitter for
+     * this one trigger/task — rather than trying to provoke a real
+     * deadlock.
+     */
+    public function test_a_database_failure_relaying_the_next_occurrence_fails_the_completion_instead_of_being_swallowed(): void
+    {
+        Carbon::setTestNow('2026-09-01 12:00:00');
+        $task = $this->createTask('Service the truck');
+        $this->declareRecurrence($task, 'after_completion', 3, 'day');
+        $completed = $this->statusOf(StatusCategory::Completed);
+
+        $this->app->bind(EventEmitter::class, function ($app) use ($task) {
+            return new class(
+                $app->make(\App\Support\Tenancy\TenantContext::class),
+                $app->make(ModuleRegistry::class),
+                $app->make(AuditLogger::class),
+                $task->id,
+            ) extends EventEmitter {
+                public function __construct(
+                    \App\Support\Tenancy\TenantContext $tenant,
+                    ModuleRegistry $registry,
+                    AuditLogger $audit,
+                    private readonly string $recurringTaskId,
+                ) {
+                    parent::__construct($tenant, $registry, $audit);
+                }
+
+                public function emit(
+                    string $eventKey,
+                    ?Model $subject = null,
+                    array $payload = [],
+                    ?User $actor = null,
+                    ?AutomationEvent $causedBy = null,
+                    ?\DateTimeInterface $availableAt = null,
+                ): AutomationEvent {
+                    if ($eventKey === \App\Support\Tasks\TaskRecurrenceWorker::RELAY_TRIGGER
+                        && $subject?->getKey() === $this->recurringTaskId) {
+                        throw new \RuntimeException('Simulated database-level failure relaying the next occurrence.');
+                    }
+
+                    return parent::emit($eventKey, $subject, $payload, $actor, $causedBy, $availableAt);
+                }
+            };
+        });
+
+        // withoutExceptionHandling(): the point of this test is that the
+        // exception itself propagates out of the transaction rather than
+        // being swallowed — asserting a 500 status alone would also pass
+        // if some UNRELATED handler caught and re-wrapped it, which is not
+        // the same claim.
+        $this->withoutExceptionHandling();
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Simulated database-level failure relaying the next occurrence.');
+        try {
+            $this->patchJson("/api/v1/tasks/{$task->id}", [
+                'expected_version' => Task::findOrFail($task->id)->version, 'status_option_id' => $completed->id,
+            ]);
+        } finally {
+            $this->enterTenant();
+            // Propagating aborts DB::transaction()'s whole block — the
+            // completion itself must not have been silently half-applied,
+            // even though the exception is about to fail this test (by
+            // design: expectException() below asserts on it).
+            $this->assertNull(Task::findOrFail($task->id)->completed_at);
+            $this->assertSame(0, AutomationEvent::where('event_key', 'task.recurrence_instance_due')
+                ->where('subject_id', $task->id)->count());
+        }
     }
 
     // ── on_schedule ───────────────────────────────────────────────

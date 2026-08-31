@@ -666,9 +666,19 @@ final class TaskWriter
      * consumer of that row; it does the lock-heavy work in its own
      * transaction, never the user's.
      *
-     * Caught and swallowed, not rethrown: a failing recurrence rule must
-     * never be able to fail the completion that triggered it. If this ever
-     * throws, the completion itself has already been saved above.
+     * Only `ValidationException` from `TaskRecurrenceCodec::parse()` is
+     * caught and swallowed (whole-branch review finding 9 — Ruling 28
+     * removed the lock but this bare `catch (\Throwable)` kept the same
+     * hazard class open one write further down): a malformed `recurrence`
+     * column is bad DATA, not a broken transaction, and re-reading a value
+     * this class itself always writes through the same codec should never
+     * happen in practice — safe to skip relaying rather than fail a
+     * completion over. `$this->events->emit()`'s own INSERT is a real
+     * database write in the SAME transaction as the completion; a failure
+     * there — a deadlock, a lost connection — is exactly Ruling 28's
+     * hazard: the outer COMMIT would land on a transaction the server
+     * already discarded, silently losing the completion itself while the
+     * API reports success. That must propagate, not be swallowed.
      */
     private function recordRecurrenceOnCompletion(Task $task): void
     {
@@ -677,17 +687,19 @@ final class TaskWriter
         }
         try {
             $recurrence = TaskRecurrenceCodec::parse($task->recurrence);
-            if ($recurrence === null || $recurrence->mode !== 'after_completion') {
-                return;
-            }
-            $this->events->emit(TaskRecurrenceWorker::RELAY_TRIGGER, $task, [
-                'organization_id' => $task->organization_id,
-                'board_id' => $task->board_id,
-                'task_id' => $task->id,
-            ]);
-        } catch (\Throwable $e) {
+        } catch (ValidationException $e) {
             report($e);
+
+            return;
         }
+        if ($recurrence === null || $recurrence->mode !== 'after_completion') {
+            return;
+        }
+        $this->events->emit(TaskRecurrenceWorker::RELAY_TRIGGER, $task, [
+            'organization_id' => $task->organization_id,
+            'board_id' => $task->board_id,
+            'task_id' => $task->id,
+        ]);
     }
 
     private function lockBoardFor(User $actor, TaskBoard $board, ViewScope $scope, string $permission, string $act): TaskBoard
