@@ -85,11 +85,19 @@ minutes. It has already overturned three confident guesses — including one of 
   because a **filter** excludes the member from the response entirely, and a filter
   can be relaxed. "Safe" flattens three claims with different shelf lives.
 
-  *Precision correction: an earlier version of this said the dashboard dispatches on
-  presentation rather than on glance key. Imprecise. `dashboard_panels.dart:74-76`
-  looks the icon up **by glance key** — `byModule[key] ?? byModule[key.split('.').first]
-  ?? Icons.insights_outlined`. The safety is the `??` chain, not the dispatch. Same
-  verdict, different mechanism, and the mechanism is what tells you when to re-check.*
+  *Precision correction, twice. An earlier version said the dashboard dispatches on
+  presentation rather than glance key — wrong. The replacement said it looks up by
+  key with a default fallback — two-thirds right. `dashboard_panels.dart:73-77` has
+  **three arms**, and the middle one is a distinct second fallback:*
+
+      byModule[key]                      // exact glance key
+          ?? byModule[key.split('.').first]  // MODULE PREFIX — 13 icons registered here
+          ?? Icons.insights_outlined         // default
+
+  *So `training.progress` finds a `training` icon if one exists, and only then falls
+  through. Two fallbacks, not one. Recorded at this length because a mechanism that is
+  two-thirds right decays into a wrong one the moment somebody reasons from it — which
+  is exactly how the first error got made.*
 
   **And declaring a thing is often only half of it.** `AutomationsController:50`
   holds a private `IMPLEMENTED_ACTIONS`; an action absent from it is published as
