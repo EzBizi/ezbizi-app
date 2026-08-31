@@ -8,6 +8,19 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0118',
+      date: '31 Aug 2026',
+      items: [
+        'Email: attach files to a message you are starting. Up to five, two '
+            'megabytes together — and if they come to more than that, it says '
+            'so before you have waited for them to upload rather than after.',
+        'Email: pick a folder and get that folder. Outlook inboxes now open '
+            'Sent, Drafts, Trash, Spam and Archive; a mail server connected by '
+            'password still opens only the Inbox, and says so plainly instead '
+            'of handing back the Inbox under another name.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0117',
       date: '28 Aug 2026',
       items: [
