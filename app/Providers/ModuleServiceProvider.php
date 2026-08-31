@@ -2113,14 +2113,18 @@ class ModuleServiceProvider extends ServiceProvider
              * well as to ModuleDefinition. Recorded where HR records it, and not
              * done quietly here.
              *
-             * ── Every trigger is declared as not raised yet ──
+             * ── `isRaised` is declared per trigger, and checked against reality ──
              *
-             * Nothing emits any of these: this task declares the module and the
-             * emitters arrive with the write paths. `isRaised: false` is what
-             * puts "nothing raises this yet" on the row a tenant reads, and
-             * ModuleRegistryTest holds the claim to the source — so the day one
-             * is emitted the build fails until the flag is dropped, rather than
-             * the builder going on promising a working rule will never run.
+             * This task declared the module with every trigger `isRaised: false`:
+             * nothing emitted any of them yet, and `isRaised: false` is what puts
+             * "nothing raises this yet" on the row a tenant reads. `training.completed`
+             * has since been flipped to `isRaised: true` (task 7's ProgressController
+             * raises it on a guide's final screen) — the other four are still
+             * `isRaised: false`; nothing else in this module emits yet.
+             * ModuleRegistryTest holds the claim to the source for every one of the
+             * five independently: the day any of them is emitted, the build fails
+             * until its own flag is dropped, rather than the builder going on
+             * promising a working rule will never run.
              */
             new ModuleDefinition(
                 key: 'training',
