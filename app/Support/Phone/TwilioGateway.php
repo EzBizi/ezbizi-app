@@ -175,6 +175,29 @@ interface TwilioGateway
     /**
      * @return array{phone_number: string, caller_name: ?string}
      */
+    /**
+     * Move a number from one subaccount to another under the same parent.
+     *
+     * Twilio does this by updating the IncomingPhoneNumber's AccountSid, and
+     * it only works between subaccounts of one parent — which is exactly the
+     * shape EzBizi provisions, so a number can follow a company without being
+     * released and re-bought. Releasing would lose the number: somebody else
+     * can buy it within the hour, and the business's printed vans still say it.
+     *
+     * `$params` rewrites the webhooks in the same call. They must move with
+     * the number: EzBizi's voice and SMS URLs carry the organization and the
+     * CONNECTION in their path, so a moved number left pointing at the old URL
+     * keeps being answered by the old company's ring groups and hours.
+     *
+     * @param  array<string, mixed>  $params
+     */
+    public function moveIncomingToAccount(
+        PhoneConnection $from,
+        string $incomingSid,
+        string $targetAccountSid,
+        array $params = [],
+    ): void;
+
     public function lookup(string $e164): array;
 
     /**

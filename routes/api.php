@@ -970,6 +970,11 @@ Route::prefix('v1')
         // How a line behaves — above all which group answers it. Without this
         // `ring_group_id` could never be set and every inbound call fell
         // through to voicemail.
+        // Hand a line to a different company. Organization view only — the
+        // controller refuses elsewhere, because a company view cannot see the
+        // company it would be moving to.
+        Route::post('phone/numbers/{number}/move', [PhoneNumbersController::class, 'move']);
+
         Route::patch('phone/numbers/{number}', [PhoneNumbersController::class, 'update']);
         Route::delete('phone/numbers/{number}', [PhoneNumbersController::class, 'destroy']);
 

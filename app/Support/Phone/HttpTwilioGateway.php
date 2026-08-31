@@ -443,6 +443,23 @@ final class HttpTwilioGateway implements TwilioGateway
             ->update($params);
     }
 
+    public function moveIncomingToAccount(
+        PhoneConnection $from,
+        string $incomingSid,
+        string $targetAccountSid,
+        array $params = [],
+    ): void {
+        // Authenticated as the PARENT, acting as the source subaccount. The
+        // source's own API key can update its numbers but cannot hand one to a
+        // sibling — only the parent sees both sides of the move.
+        $this->platformClientForAccount((string) $from->account_sid)
+            ->incomingPhoneNumbers($incomingSid)
+            ->update([
+                'accountSid' => $targetAccountSid,
+                ...$params,
+            ]);
+    }
+
     public function releaseIncoming(PhoneConnection $connection, string $incomingSid): void
     {
         $this->connectionClient($connection)
