@@ -273,6 +273,17 @@ void main() {
         final decoration = container.decoration! as BoxDecoration;
         expect(decoration.color, scheme.primary);
 
+        // The in-motion outline has to actually be visible against the
+        // fill it sits on. A border painted in the same colour as the fill
+        // beneath it composites to nothing — the identical failure as the
+        // alpha fade this test already rules out, just one layer down. A
+        // border is present at all while dragging, and its colour differs
+        // from the fill it's drawn over.
+        final border = decoration.border as Border?;
+        expect(border, isNotNull);
+        expect(border!.top.width, 2);
+        expect(border.top.color, isNot(equals(decoration.color)));
+
         pending.complete(null);
         await tester.pumpAndSettle();
       },

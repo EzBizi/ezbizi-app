@@ -1331,7 +1331,9 @@ void main() {
     await tester.tap(find.text('Private assignment'));
     await tester.pump(const Duration(milliseconds: 220));
     await tester.pump();
-    expect(find.text('This task board is unavailable.'), findsOneWidget);
+    // The server's own sentence from the second `/my` poll (404), not the
+    // client's generic fallback — `_evict` now passes `message` through.
+    expect(find.text('Tasks are unavailable.'), findsOneWidget);
 
     boardOpen.complete(
       _json(200, <String, Object?>{'data': _boardWithColumns()}),
@@ -1340,7 +1342,7 @@ void main() {
     await tester.pump();
 
     expect(rowReads, 0);
-    expect(find.text('This task board is unavailable.'), findsOneWidget);
+    expect(find.text('Tasks are unavailable.'), findsOneWidget);
   });
 }
 

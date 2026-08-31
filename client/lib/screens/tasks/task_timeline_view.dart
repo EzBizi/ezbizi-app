@@ -495,6 +495,14 @@ class TaskTimelineBar extends StatelessWidget {
   // a 2px outline plus a touch of elevation instead of a faded fill; at 50%
   // alpha the fill used to composite to roughly #7FD6F7, putting white text
   // on it at ~1.6:1 contrast right when a user most needed to read it.
+  //
+  // The outline is `scheme.surface`, not `scheme.primary` — a border drawn
+  // in the same colour as the fill it sits on paints over itself and reads
+  // as no border at all, the identical mistake as the alpha fade this
+  // replaces, just one layer down: an indicator with zero contrast against
+  // its own background. `TaskTimelineMarker` below already gets this right
+  // (`Border.all(color: scheme.surface, width: 2)` against a coloured
+  // fill); this follows the same pattern.
   Widget _bar(ColorScheme scheme, {required bool marked}) => Material(
     color: Colors.transparent,
     elevation: marked ? 3 : 0,
@@ -503,7 +511,7 @@ class TaskTimelineBar extends StatelessWidget {
       decoration: BoxDecoration(
         color: scheme.primary,
         borderRadius: BorderRadius.circular(6),
-        border: marked ? Border.all(color: scheme.primary, width: 2) : null,
+        border: marked ? Border.all(color: scheme.surface, width: 2) : null,
       ),
       alignment: Alignment.centerLeft,
       padding: const EdgeInsets.symmetric(horizontal: 6),

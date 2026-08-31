@@ -32,19 +32,27 @@ void main() {
     expect(find.text('New board'), findsOneWidget);
   });
 
-  testWidgets('a refusal stays a refusal rather than looking empty', (
-    tester,
-  ) async {
-    await _pump(
-      tester,
-      (_) async =>
-          _json({'message': 'Tasks are not available for this view.'}, 403),
-    );
+  testWidgets(
+    'a refusal shows the SERVER sentence, and stays a refusal rather than '
+    'looking empty',
+    (tester) async {
+      await _pump(
+        tester,
+        (_) async =>
+            _json({'message': 'Tasks are not available for this view.'}, 403),
+      );
 
-    expect(find.text('This task board is unavailable.'), findsOneWidget);
-    expect(find.text('Tasks are not available for this view.'), findsNothing);
-    expect(find.text('No task boards yet'), findsNothing);
-  });
+      // House rule 4: the client renders the server's sentence, never its
+      // own. The generic client fallback only ever appears when the server
+      // sent no message at all (see tasks_screen_test.dart).
+      expect(
+        find.text('Tasks are not available for this view.'),
+        findsOneWidget,
+      );
+      expect(find.text('This task board is unavailable.'), findsNothing);
+      expect(find.text('No task boards yet'), findsNothing);
+    },
+  );
 }
 
 Future<void> _pump(

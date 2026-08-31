@@ -70,7 +70,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final sentence = find.text('This task board is unavailable.');
+      // The server's own sentence — house rule 4 — not a client-written
+      // fallback (see the "server sentence vs. fallback" tests below).
+      final sentence = find.text('Tasks are not available for this view.');
       expect(sentence, findsOneWidget);
 
       final padding = tester.widget<Padding>(
@@ -83,6 +85,91 @@ void main() {
       // screen uses, rather than centered in the remaining height.
       final sentenceTop = tester.getTopLeft(sentence).dy;
       expect(sentenceTop, lessThan(300));
+    },
+  );
+
+  testWidgets(
+    'an eviction carrying a server message renders that message verbatim',
+    (tester) async {
+      final api = ApiClient(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/v1/tasks/boards') {
+            return _json(<String, Object?>{
+              'message': 'Your access to this board was removed.',
+            }, 403);
+          }
+          return _json(<String, Object?>{'message': 'Unexpected request'}, 500);
+        }),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: EzBiziTheme.light(),
+          home: Scaffold(
+            body: TasksScreen(api: api, session: Session(api)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Your access to this board was removed.'),
+        findsOneWidget,
+      );
+      expect(find.text('This task board is unavailable.'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'an eviction with no server message falls back to the client sentence',
+    (tester) async {
+      // `ApiResponse.message` always synthesizes a fallback string for a
+      // response with no `message` field (`'Something went wrong (HTTP
+      // …)'`), so the network path never actually produces a null message.
+      // The only real `null` comes from a handful of local UI decisions —
+      // quick search discovering its result is gone is one of them
+      // (`onUnavailable: () => _evict(null)` in `_titleBar`) — so this
+      // drives that path end-to-end rather than faking the eviction.
+      final api = ApiClient(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/v1/tasks/boards') {
+            return _json(<String, Object?>{'data': <Object?>[], 'meta': _directoryMeta});
+          }
+          if (request.url.path == '/api/v1/tasks/folders') {
+            return _json(<String, Object?>{'data': <Object?>[]});
+          }
+          if (request.url.path == '/api/v1/tasks/search') {
+            return _json(<String, Object?>{
+              'message': 'Search is not available for this view.',
+            }, 403);
+          }
+          return _json(<String, Object?>{'message': 'Unexpected request'}, 500);
+        }),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: EzBiziTheme.light(),
+          home: Scaffold(
+            body: TasksScreen(api: api, session: Session(api)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.bySemanticsLabel('Search all tasks'),
+        'liner',
+      );
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+
+      // The 403's own sentence is discarded by design at this call site —
+      // `_evict(null)`, not `_evict(result.message)` — so the client's
+      // fallback renders, not the server's "Search is not available…"
+      expect(find.text('This task board is unavailable.'), findsOneWidget);
+      expect(
+        find.text('Search is not available for this view.'),
+        findsNothing,
+      );
     },
   );
 

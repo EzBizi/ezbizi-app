@@ -70,6 +70,15 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   bool _creating = false;
   bool _showDirectory = false;
   bool _unavailable = false;
+  // House rule 4: the client shows the SERVER's refusal sentence, never its
+  // own. `_evict` is called from ~30 sites across every kind of access loss
+  // (403, 404, revoked reach mid-poll, etc.) and each carries whatever
+  // sentence `Refusal.php` wrote for that specific case — this is what the
+  // refusal screen renders. The fallback below covers only the sites that
+  // pass `null` on purpose (a local decision with no server response to
+  // quote, e.g. a stale search result the user already navigated away
+  // from).
+  String? _unavailableMessage;
   bool _conflict = false;
   String? _announcement;
   List<TaskParticipant> _owners = const [];
@@ -1360,6 +1369,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _selectedTaskId = null;
       _error = null;
       _unavailable = true;
+      _unavailableMessage = message;
       _views = const [];
       _canCreatePersonalView = false;
       _canCreateSharedView = false;
@@ -1401,7 +1411,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
               error: _error,
               onRetry: _loadDirectory,
               child: _unavailable
-                  ? const Align(
+                  ? Align(
                       alignment: Alignment.topLeft,
                       // The refusal sentence is the entire payload of this
                       // screen — it does not sit inside a Center the way a
@@ -1416,8 +1426,11 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
                       // chip row, flush with everything else on this
                       // screen.
                       child: Padding(
-                        padding: EdgeInsets.fromLTRB(20, 16, 16, 16),
-                        child: Text('This task board is unavailable.'),
+                        padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
+                        child: Text(
+                          _unavailableMessage ??
+                              'This task board is unavailable.',
+                        ),
                       ),
                     )
                   : Column(
