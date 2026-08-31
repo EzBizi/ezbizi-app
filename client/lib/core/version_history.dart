@@ -11,6 +11,11 @@ class VersionHistory {
       version: '0.0.0127',
       date: '31 Aug 2026',
       items: [
+        'Phone: the desktop app now says that calls are made in the browser, '
+            'instead of reporting that the network is blocking the connection. '
+            'Calls have never been possible outside a browser - the part that '
+            'places them only exists there - so the old message sent people to '
+            'check a firewall for something that could not work.',
         'Social: a post can be sent later. Pick the day and time, and it goes '
             'out on your own clock - the one for the company or branch you are '
             'looking at, not the server clock.',

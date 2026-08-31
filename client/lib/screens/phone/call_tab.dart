@@ -305,7 +305,9 @@ class _CallTabState extends State<CallTab> {
 
     if (!results[0].ok || !results[1].ok) return;
 
-    final tags = _Tag.listFrom(results[0].body).where((t) => t.isActive).toList();
+    final tags = _Tag.listFrom(
+      results[0].body,
+    ).where((t) => t.isActive).toList();
     if (tags.isEmpty) return;
 
     final data = results[1].body['data'];
@@ -330,10 +332,9 @@ class _CallTabState extends State<CallTab> {
       _tagError = null;
     });
 
-    final response = await widget.api.patch(
-      '/phone/calls/$callId/tag',
-      {'tag_id': tagId},
-    );
+    final response = await widget.api.patch('/phone/calls/$callId/tag', {
+      'tag_id': tagId,
+    });
 
     if (!mounted) return;
 
@@ -488,18 +489,30 @@ class _CallTabState extends State<CallTab> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'This desk is not connected to the phone network, so it '
-                'cannot take or make calls. Reload the page; if it keeps '
-                'happening the network is blocking the connection.',
+                _device.supported
+                    ? 'This desk is not connected to the phone network, so it '
+                          'cannot take or make calls. Reload the page; if it '
+                          'keeps happening the network is blocking the '
+                          'connection.'
+                    // A PERMANENT FACT, NOT A FAULT.
+                    //
+                    // The Twilio Voice SDK is a browser script, so a desktop
+                    // build has no way to place a call at all. Saying "the
+                    // network is blocking the connection" and offering Retry
+                    // sends somebody to their firewall for something that can
+                    // never work, and they will go back tomorrow.
+                    : 'Calls are made in the browser. This app cannot place '
+                          'or take them — open EzBizi in a web browser to use '
+                          'the phone. Everything else here works normally.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onErrorContainer,
                 ),
               ),
             ),
-            TextButton(
-              onPressed: _register,
-              child: const Text('Try again'),
-            ),
+            // No Retry where retrying cannot succeed. A control that can
+            // only ever fail is worse than none: it reads as "not yet".
+            if (_device.supported)
+              TextButton(onPressed: _register, child: const Text('Try again')),
           ],
         ),
       ),
@@ -521,15 +534,9 @@ class _CallTabState extends State<CallTab> {
                 style: theme.textTheme.bodyMedium,
               ),
             ),
-            FilledButton(
-              onPressed: _accept,
-              child: const Text('Accept'),
-            ),
+            FilledButton(onPressed: _accept, child: const Text('Accept')),
             const SizedBox(width: 8),
-            OutlinedButton(
-              onPressed: _decline,
-              child: const Text('Decline'),
-            ),
+            OutlinedButton(onPressed: _decline, child: const Text('Decline')),
           ],
         ),
       ),
@@ -657,7 +664,10 @@ class _CallTabState extends State<CallTab> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(row.name, style: theme.textTheme.bodyMedium),
+                                  Text(
+                                    row.name,
+                                    style: theme.textTheme.bodyMedium,
+                                  ),
                                   Text(
                                     _stateLabel(row.state),
                                     style: theme.textTheme.bodySmall?.copyWith(
@@ -681,8 +691,7 @@ class _CallTabState extends State<CallTab> {
                                 Icons.chat_bubble_outline,
                                 size: 18,
                               ),
-                              onPressed: () =>
-                                  setState(() => _chatWith = row),
+                              onPressed: () => setState(() => _chatWith = row),
                             ),
                           ],
                         ),
@@ -725,7 +734,12 @@ class _CallTabState extends State<CallTab> {
     // "transcript stretches to the bottom" for "the Call button is always
     // reachable" is the right way round.
     return SingleChildScrollView(
-      child: _padColumn(theme, number, showBack: showBack, showPerson: showPerson),
+      child: _padColumn(
+        theme,
+        number,
+        showBack: showBack,
+        showPerson: showPerson,
+      ),
     );
   }
 
@@ -1110,10 +1124,18 @@ extension _Keypad on _CallTabState {
   /// on a phone. 46px tall with 8px gaps clears the 44px touch target.
   Widget _keypad(ThemeData theme) {
     const glyphs = <(String, String)>[
-      ('1', ''), ('2', 'ABC'), ('3', 'DEF'),
-      ('4', 'GHI'), ('5', 'JKL'), ('6', 'MNO'),
-      ('7', 'PQRS'), ('8', 'TUV'), ('9', 'WXYZ'),
-      ('*', ''), ('0', '+'), ('#', ''),
+      ('1', ''),
+      ('2', 'ABC'),
+      ('3', 'DEF'),
+      ('4', 'GHI'),
+      ('5', 'JKL'),
+      ('6', 'MNO'),
+      ('7', 'PQRS'),
+      ('8', 'TUV'),
+      ('9', 'WXYZ'),
+      ('*', ''),
+      ('0', '+'),
+      ('#', ''),
     ];
 
     return Center(

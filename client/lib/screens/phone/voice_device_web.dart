@@ -61,6 +61,9 @@ class TwilioVoiceDevice implements VoiceDevice {
   bool _registered = false;
 
   @override
+  bool get supported => true;
+
+  @override
   bool get registered => _registered;
 
   @override

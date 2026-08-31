@@ -83,23 +83,24 @@ void main() {
     expect(find.text('Calling as'), findsOneWidget);
   });
 
-  testWidgets('SMS send is disabled with the 10DLC sentence when the line cannot send', (
-    tester,
-  ) async {
-    await _pump(tester, size: const Size(900, 800));
+  testWidgets(
+    'SMS send is disabled with the 10DLC sentence when the line cannot send',
+    (tester) async {
+      await _pump(tester, size: const Size(900, 800));
 
-    expect(
-      find.text('This line cannot send texts until messaging is approved.'),
-      findsOneWidget,
-    );
+      expect(
+        find.text('This line cannot send texts until messaging is approved.'),
+        findsOneWidget,
+      );
 
-    final send = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'Send'),
-    );
-    expect(send.onPressed, isNull);
-    expect(find.text('Messages'), findsOneWidget);
-    expect(find.byType(Dialog), findsNothing);
-  });
+      final send = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Send'),
+      );
+      expect(send.onPressed, isNull);
+      expect(find.text('Messages'), findsOneWidget);
+      expect(find.byType(Dialog), findsNothing);
+    },
+  );
 
   testWidgets('incoming is an in-page banner, not a dialog', (tester) async {
     final device = _FakeDevice();
@@ -177,12 +178,7 @@ void main() {
     final seen = <http.Request>[];
     addTearDown(device.dispose);
 
-    await _pump(
-      tester,
-      device: device,
-      size: const Size(900, 800),
-      seen: seen,
-    );
+    await _pump(tester, device: device, size: const Size(900, 800), seen: seen);
 
     seen.clear();
     device.ring('+12035550199');
@@ -225,10 +221,7 @@ void main() {
       tester,
       size: const Size(900, 800),
       numbers: [
-        {
-          ..._number,
-          'sms_outbound_allowed': true,
-        },
+        {..._number, 'sms_outbound_allowed': true},
       ],
     );
 
@@ -266,7 +259,9 @@ void main() {
     expect(key.height, greaterThanOrEqualTo(44));
   });
 
-  testWidgets('the pad is the same size on a phone as on a monitor', (tester) async {
+  testWidgets('the pad is the same size on a phone as on a monitor', (
+    tester,
+  ) async {
     await _pump(tester, size: const Size(375, 800));
 
     expect(tester.getSize(find.byKey(const ValueKey('key:5'))).width, 56);
@@ -278,6 +273,57 @@ void main() {
 
     expect(find.text('ABC'), findsOneWidget);
     expect(find.text('PQRS'), findsOneWidget);
+  });
+
+  /// The desktop app cannot place calls, and must say THAT rather than
+  /// blaming the network.
+  ///
+  /// The Twilio Voice SDK is a browser script, so the Windows and macOS
+  /// builds have no way to make a call at all. The desk detected this
+  /// correctly — `registered` is false — but said "reload the page; if it
+  /// keeps happening the network is blocking the connection", with a Try
+  /// again button. That is a transient-sounding diagnosis and a retry
+  /// control for a permanent platform fact, so somebody goes and looks at
+  /// their firewall, finds nothing, and comes back tomorrow.
+  testWidgets(
+    'a build with no Voice SDK says so instead of blaming the network',
+    (tester) async {
+      final device = _FakeDevice()
+        ..supported = false
+        ..registered = false;
+
+      await _pump(tester, device: device);
+
+      expect(
+        find.textContaining('Calls are made in the browser'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('the network is blocking'),
+        findsNothing,
+        reason: 'a permanent platform limit was reported as a network fault',
+      );
+      expect(
+        find.text('Try again'),
+        findsNothing,
+        reason: 'offered a retry for something that can never succeed',
+      );
+    },
+  );
+
+  /// And a genuine registration failure keeps the retry, because retrying is
+  /// exactly what might fix it.
+  testWidgets('a browser build that failed to register still offers a retry', (
+    tester,
+  ) async {
+    final device = _FakeDevice()
+      ..supported = true
+      ..registered = false;
+
+    await _pump(tester, device: device);
+
+    expect(find.textContaining('the network is blocking'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
   });
 }
 
@@ -294,6 +340,12 @@ class _FakeDevice implements VoiceDevice {
   /// usable is the precondition for almost every case in this file.
   @override
   var registered = true;
+
+  /// A browser build unless a test says otherwise. Separate from [registered]
+  /// because they mean different things: this build CANNOT call, versus this
+  /// build did not manage to this time.
+  @override
+  var supported = true;
 
   @override
   Future<void> setup(String token) async {}
@@ -372,9 +424,7 @@ MockClientHandler _handler({required List<Map<String, Object?>> numbers}) {
     final path = request.url.path;
 
     if (path.endsWith('/me')) {
-      return _json({
-        'data': _me,
-      });
+      return _json({'data': _me});
     }
 
     if (path.endsWith('/phone/numbers') && request.method == 'GET') {
