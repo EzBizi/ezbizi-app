@@ -2,14 +2,12 @@
 
 namespace App\Support\Tasks;
 
+use App\Support\Enums\HasValues;
+
 enum BoardMemberRole: string
 {
+    use HasValues;
+
     case Owner = 'owner';
     case Member = 'member';
-
-    /** @return list<string> */
-    public static function values(): array
-    {
-        return array_column(self::cases(), 'value');
-    }
 }

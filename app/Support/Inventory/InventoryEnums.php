@@ -2,8 +2,12 @@
 
 namespace App\Support\Inventory;
 
+use App\Support\Enums\HasValues;
+
 enum InventoryUnit: string
 {
+    use HasValues;
+
     case Each = 'each';
     case Box = 'box';
     case Ft = 'ft';
@@ -12,91 +16,61 @@ enum InventoryUnit: string
     case Lb = 'lb';
     case Kit = 'kit';
     case Other = 'other';
-
-    /** @return list<string> */
-    public static function values(): array
-    {
-        return array_column(self::cases(), 'value');
-    }
 }
 
 enum InventoryItemStatus: string
 {
+    use HasValues;
+
     case Active = 'active';
     case Discontinued = 'discontinued';
-
-    /** @return list<string> */
-    public static function values(): array
-    {
-        return array_column(self::cases(), 'value');
-    }
 }
 
 enum InventoryLocationKind: string
 {
+    use HasValues;
+
     case Warehouse = 'warehouse';
     case Shop = 'shop';
     case Cage = 'cage';
     case Receiving = 'receiving';
     case Van = 'van';
     case Other = 'other';
-
-    /** @return list<string> */
-    public static function values(): array
-    {
-        return array_column(self::cases(), 'value');
-    }
 }
 
 enum InventoryLocationStatus: string
 {
+    use HasValues;
+
     case Active = 'active';
     case Closed = 'closed';
-
-    /** @return list<string> */
-    public static function values(): array
-    {
-        return array_column(self::cases(), 'value');
-    }
 }
 
 enum InventoryPurchaseOrderStatus: string
 {
+    use HasValues;
+
     case Draft = 'draft';
     case Open = 'open';
     case Received = 'received';
     case Cancelled = 'cancelled';
-
-    /** @return list<string> */
-    public static function values(): array
-    {
-        return array_column(self::cases(), 'value');
-    }
 }
 
 enum InventorySaleStatus: string
 {
+    use HasValues;
+
     case Draft = 'draft';
     case Open = 'open';
     case Partial = 'partial';
     case Fulfilled = 'fulfilled';
     case Cancelled = 'cancelled';
-
-    /** @return list<string> */
-    public static function values(): array
-    {
-        return array_column(self::cases(), 'value');
-    }
 }
 
 enum InventorySalePaymentStatus: string
 {
+    use HasValues;
+
     case Unpaid = 'unpaid';
     case Paid = 'paid';
-
-    /** @return list<string> */
-    public static function values(): array
-    {
-        return array_column(self::cases(), 'value');
-    }
 }

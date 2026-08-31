@@ -2,8 +2,12 @@
 
 namespace App\Support\Tasks;
 
+use App\Support\Enums\HasValues;
+
 enum ColumnType: string
 {
+    use HasValues;
+
     case Text = 'text';
     case Number = 'number';
     case Checkbox = 'checkbox';
@@ -12,10 +16,4 @@ enum ColumnType: string
     case Label = 'label';
     case Link = 'link';
     case File = 'file';
-
-    /** @return list<string> */
-    public static function values(): array
-    {
-        return array_column(self::cases(), 'value');
-    }
 }

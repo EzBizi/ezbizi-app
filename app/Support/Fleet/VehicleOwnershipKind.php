@@ -2,14 +2,12 @@
 
 namespace App\Support\Fleet;
 
+use App\Support\Enums\HasValues;
+
 enum VehicleOwnershipKind: string
 {
+    use HasValues;
+
     case Owned = 'owned';
     case Rented = 'rented';
-
-    /** @return list<string> */
-    public static function values(): array
-    {
-        return array_column(self::cases(), 'value');
-    }
 }
