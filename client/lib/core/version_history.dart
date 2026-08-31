@@ -8,6 +8,20 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0118',
+      date: '28 Aug 2026',
+      items: [
+        'Web Management: your websites are a list down the left and the '
+            'details of the one you picked fill the right, instead of cards '
+            'you open one at a time.',
+        'Web Management: every field shows its shortcode as a button that '
+            'copies it, rather than as text you had to select by hand.',
+        'Web Management: hours of operation has a day-by-day editor with a '
+            'clock, and still lets you type your own wording if your hours do '
+            'not fit a grid.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0117',
       date: '28 Aug 2026',
       items: [

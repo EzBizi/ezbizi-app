@@ -6,6 +6,7 @@ import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
+import 'hours.dart';
 
 /// The absolute base a copied snippet must carry, and why it cannot be blank.
 ///
@@ -54,13 +55,26 @@ String snippetApiBase({required String configured, required Uri pageUrl}) {
 /// and was wrong — worth writing down, because the dialog version is the one
 /// that comes to mind first every time.
 ///
-/// ── Why one column of expanding cards rather than list-and-detail ─
+/// ── List and detail, and what that cost ──────────────────────────
 ///
-/// A company has three or four sites, not three hundred. A master/detail split
-/// would need a wide layout, a narrow layout and a navigation stack for a list
-/// that fits on screen — and each is a place for the two panes to disagree
-/// about which site is selected. Expanding in place has one code path at every
-/// width, including 375.
+/// This was one column of expanding cards, and the comment here argued for it:
+/// a company has three or four sites, and a split needs a wide layout, a narrow
+/// layout, and a selection two panes can disagree about. Jose asked for the
+/// split on 2026-08-28. The argument was about COST rather than correctness, so
+/// it is recorded here rather than defended — and the cost was real, so the
+/// three things it predicted are each answered rather than hoped away:
+///
+///   · the wide layout is `_split`, two panes that each scroll inside
+///     themselves — the first attempt let the row size to its tallest child
+///     and overflowed the viewport by however far the form ran past it;
+///   · the narrow layout is `_stacked`, where the rail IS the screen and
+///     choosing a site pushes the detail (§6 allows a screen, not a modal);
+///   · the panes cannot disagree because there is ONE `_selectedId`, and at
+///     narrow width only one of them is on screen at a time.
+///
+/// The move also broke something the old shape hid: fetching a site's values
+/// was tied to EXPANDING its card, so a pane with no expand fetched nothing and
+/// every site rendered empty. See `_SiteDetailState.initState`.
 ///
 /// ── The token is shown once, and the screen says so ──────────────
 ///
@@ -88,6 +102,10 @@ class _SeoTabState extends State<SeoTab> {
   /// until the person dismisses them. Never fetched, because the server cannot
   /// answer for one.
   final Map<String, String> _freshTokens = {};
+
+  /// Which site the detail pane is showing. Null until the first load, and
+  /// falls back to the first site rather than an empty pane.
+  String? _selectedId;
 
   bool get _canEdit => widget.session.me!.can('web_management.edit');
 
@@ -118,66 +136,240 @@ class _SeoTabState extends State<SeoTab> {
     });
   }
 
+  /// Below this, two panes do not fit and the rail becomes the screen.
+  ///
+  /// 900 rather than a tidier number because the detail pane needs about 560
+  /// for a field row plus its shortcode chip without the chip wrapping, and the
+  /// rail needs 280 to show a subdomain without truncating it.
+  static const double _splitFrom = 900;
+
+  Map<String, dynamic>? get _selected {
+    if (_sites.isEmpty) return null;
+
+    for (final site in _sites) {
+      if (site['id'] == _selectedId) return site;
+    }
+
+    return _sites.first;
+  }
+
   @override
   Widget build(BuildContext context) {
     return AsyncBody(
       loading: _loading,
       error: _error,
       onRetry: _load,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          PanelHeader(
-            title: 'Websites',
-            note:
-                'Every website and subdomain this company runs. Each one keeps '
-                'its own details, so a branch site can answer its own phone '
-                'number.',
-            action: _canEdit && !_adding
-                ? FilledButton.icon(
-                    onPressed: () => setState(() => _adding = true),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add a website'),
-                  )
-                : null,
+      child: LayoutBuilder(
+        builder: (context, constraints) => constraints.maxWidth >= _splitFrom
+            ? _split()
+            : _stacked(context),
+      ),
+    );
+  }
+
+  /// Wide: list left, detail right, one selection shared by both.
+  Widget _split() {
+    final selected = _selected;
+
+    /*
+     * `stretch` rather than `start`: each pane must take the full height and
+     * scroll INSIDE itself. With `start` the row was as tall as its tallest
+     * child, so a site with eight fields overflowed the viewport by however
+     * much the form exceeded it — three pixels in the test fixture, and a lot
+     * more with real content.
+     */
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          width: 288,
+          child: _rail(
+            onOpen: (site) async =>
+                setState(() => _selectedId = site['id'] as String),
           ),
-          const SizedBox(height: 12),
-          if (_adding)
-            _AddSiteForm(
-              api: widget.api,
-              session: widget.session,
-              onCancel: () => setState(() => _adding = false),
-              onAdded: (site, token) async {
-                setState(() {
-                  _adding = false;
-                  _freshTokens[site['id'] as String] = token;
-                });
-                await _load();
-              },
-            ),
-          if (_sites.isEmpty && !_adding)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 32),
-              child: Center(
-                child: Text(
-                  'No websites yet. Add the first one to get its plugin token.',
+        ),
+        const VerticalDivider(width: 1),
+        Expanded(
+          child: selected == null
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Text('Add a website to set what it publishes.'),
+                  ),
+                )
+              : SingleChildScrollView(child: _detailFor(selected)),
+        ),
+      ],
+    );
+  }
+
+  /// Narrow: the rail IS the screen, and choosing a site pushes the detail.
+  ///
+  /// §6 allows a new screen and forbids a modal, so this is a push rather than
+  /// a sheet. It is also why the two panes never disagree about the selection
+  /// at this width — there is only ever one of them on screen.
+  Widget _stacked(BuildContext context) {
+    return _rail(
+      onOpen: (site) async {
+        setState(() => _selectedId = site['id'] as String);
+
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => Scaffold(
+              appBar: AppBar(title: Text(site['host'] as String)),
+              body: SafeArea(
+                child: SingleChildScrollView(
+                  child: _detailFor(site),
                 ),
               ),
             ),
-          for (final site in _sites)
-            _SiteCard(
-              key: ValueKey(site['id']),
-              api: widget.api,
-              site: site,
-              canEdit: _canEdit,
-              freshToken: _freshTokens[site['id'] as String],
-              onForgetToken: () =>
-                  setState(() => _freshTokens.remove(site['id'] as String)),
-              onToken: (token) =>
-                  setState(() => _freshTokens[site['id'] as String] = token),
-              onChanged: _load,
+          ),
+        );
+
+        // The detail can rename, remove or reconnect a site, so the list it
+        // came back to has to be re-read rather than trusted.
+        await _load();
+      },
+    );
+  }
+
+  Widget _rail({required Future<void> Function(Map<String, dynamic>) onOpen}) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        PanelHeader(
+          title: 'Websites',
+          note:
+              'Every website and subdomain this company runs. Each one keeps '
+              'its own details, so a branch site can answer its own phone '
+              'number.',
+          action: _canEdit && !_adding
+              ? FilledButton.icon(
+                  onPressed: () => setState(() => _adding = true),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add a website'),
+                )
+              : null,
+        ),
+        const SizedBox(height: 12),
+        if (_adding)
+          _AddSiteForm(
+            api: widget.api,
+            session: widget.session,
+            onCancel: () => setState(() => _adding = false),
+            onAdded: (site, token) async {
+              setState(() {
+                _adding = false;
+                _selectedId = site['id'] as String;
+                _freshTokens[site['id'] as String] = token;
+              });
+              await _load();
+            },
+          ),
+        if (_sites.isEmpty && !_adding)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 32),
+            child: Center(
+              child: Text(
+                'No websites yet. Add the first one to get its plugin token.',
+              ),
             ),
-        ],
+          ),
+        for (final site in _sites)
+          _SiteTile(
+            key: ValueKey('tile-${site['id']}'),
+            site: site,
+            selected: site['id'] == _selected?['id'],
+            onTap: () => onOpen(site),
+          ),
+      ],
+    );
+  }
+
+  Widget _detailFor(Map<String, dynamic> site) => _SiteDetail(
+        key: ValueKey('detail-${site['id']}'),
+        api: widget.api,
+        site: site,
+        canEdit: _canEdit,
+        freshToken: _freshTokens[site['id'] as String],
+        onForgetToken: () =>
+            setState(() => _freshTokens.remove(site['id'] as String)),
+        onToken: (token) =>
+            setState(() => _freshTokens[site['id'] as String] = token),
+        onChanged: _load,
+      );
+}
+
+/// One row in the rail: host, whether a plugin has ever read it, and nothing
+/// else. The detail pane is where everything about a site lives, so a tile that
+/// summarised more would be a second place to keep in step.
+class _SiteTile extends StatelessWidget {
+  const _SiteTile({
+    super.key,
+    required this.site,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final Map<String, dynamic> site;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final connected = site['connected_at'] != null;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Material(
+        color: selected
+            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.45)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 6, right: 10),
+                  child: Icon(
+                    connected ? Icons.circle : Icons.circle_outlined,
+                    size: 9,
+                    color: connected
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.outline,
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        site['host'] as String,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                        connected
+                            ? 'Connected'
+                            : 'Waiting for the plugin',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.outline,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -278,6 +470,10 @@ class _AddSiteFormState extends State<_AddSiteForm> {
                 padding: const EdgeInsets.only(bottom: 12),
                 child: DropdownButtonFormField<String>(
                   initialValue: _companyId,
+                  // The form sits in the 288px rail now. Without this a company
+                  // name wider than the rail overflows the row instead of
+                  // ellipsizing.
+                  isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Company'),
                   items: [
                     for (final company in me.companiesInView)
@@ -342,8 +538,8 @@ String firstApiError(ApiResponse response) {
   return response.message;
 }
 
-class _SiteCard extends StatefulWidget {
-  const _SiteCard({
+class _SiteDetail extends StatefulWidget {
+  const _SiteDetail({
     super.key,
     required this.api,
     required this.site,
@@ -363,11 +559,10 @@ class _SiteCard extends StatefulWidget {
   final Future<void> Function() onChanged;
 
   @override
-  State<_SiteCard> createState() => _SiteCardState();
+  State<_SiteDetail> createState() => _SiteDetailState();
 }
 
-class _SiteCardState extends State<_SiteCard> {
-  bool _open = false;
+class _SiteDetailState extends State<_SiteDetail> {
   bool _loading = false;
   String? _error;
   String? _saved;
@@ -389,10 +584,14 @@ class _SiteCardState extends State<_SiteCard> {
   void initState() {
     super.initState();
 
-    // A site that was just registered opens showing its token and its install
-    // steps, because that is the only moment either is needed.
-    _open = widget.freshToken != null;
-    if (_open) _loadValues();
+    /*
+     * Unconditionally, which it did not used to be: fetching was tied to
+     * EXPANDING the card, and when the card became a detail pane that has no
+     * expand, the fetch went with it. The pane rendered its heading and no
+     * fields at all — every site looked empty. The pane is keyed by site id, so
+     * choosing another site remounts this state and fetches for that one.
+     */
+    _loadValues();
   }
 
   @override
@@ -568,61 +767,60 @@ class _SiteCardState extends State<_SiteCard> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+    return Padding(
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ListTile(
-            leading: Icon(
-              _connected ? Icons.check_circle_outline : Icons.link_off,
-              color: _connected
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.outline,
-            ),
-            title: Text(_host),
-            subtitle: Text(
-              _connected
-                  ? 'Connected · ${widget.site['company']?['name'] ?? ''}'
-                  : 'Waiting for the plugin · ${widget.site['company']?['name'] ?? ''}',
-            ),
-            trailing: Icon(_open ? Icons.expand_less : Icons.expand_more),
-            onTap: () {
-              setState(() => _open = !_open);
-              if (_open && _fields.isEmpty) _loadValues();
-            },
-          ),
-          if (_open) ...[
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: _loading
-                  ? const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(24),
-                        child: CircularProgressIndicator(),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(_host, style: theme.textTheme.titleLarge),
+                    Text(
+                      _connected
+                          ? 'Connected · ${widget.site['company']?['name'] ?? ''}'
+                          : 'Waiting for the plugin · ${widget.site['company']?['name'] ?? ''}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.outline,
                       ),
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (widget.freshToken != null) _tokenBlock(theme),
-                        if (!_connected) _installGuide(theme),
-                        _snippetBlock(theme),
-                        for (final field in _fields)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: TextField(
-                              controller: _controllers[field['key'] as String],
-                              enabled: widget.canEdit,
-                              decoration: InputDecoration(
-                                labelText: field['label'] as String,
-                                helperText:
-                                    '${field['hint']}  ·  ${field['shortcode']}',
-                              ),
-                            ),
-                          ),
-                        if (_error != null) ErrorNote(_error!),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (_loading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else ...[
+            if (widget.freshToken != null) _tokenBlock(theme),
+
+            /*
+             * An unconnected site cannot publish anything, so the instructions
+             * for connecting it come FIRST. Once it is connected they drop
+             * below the fields: setting up happens once, and editing the
+             * details is what somebody opens this screen for every time after.
+             */
+            if (!_connected) _installGuide(theme),
+
+            for (final field in _fields) _fieldRow(theme, field),
+
+            if (_connected) ...[
+              const SizedBox(height: 8),
+              _installGuide(theme),
+            ],
+            _snippetBlock(theme),
+
+            if (_error != null) ErrorNote(_error!),
                         if (_saved != null)
                           Text(_saved!, style: theme.textTheme.bodySmall),
                         const SizedBox(height: 8),
@@ -651,11 +849,72 @@ class _SiteCardState extends State<_SiteCard> {
                                 ),
                               ],
                             ),
-                      ],
-                    ),
-            ),
           ],
         ],
+      ),
+    );
+  }
+
+  /// One field: its box, its hint, and its shortcode as a button that copies.
+  ///
+  /// The shortcode used to sit in the helper text, where it was readable and
+  /// not usable — somebody had to select `[ezbizi_phone]` out of a sentence by
+  /// hand, and selecting text inside a helper line is fiddly on a desktop and
+  /// near impossible on a phone. Making it the control means you click the
+  /// thing you just read.
+  ///
+  /// Hours is the one field that is not a text box; it gets the grid below.
+  Widget _fieldRow(ThemeData theme, Map<String, dynamic> field) {
+    final key = field['key'] as String;
+    final controller = _controllers[key]!;
+
+    final input = key == 'hours'
+        ? HoursField(
+            controller: controller,
+            enabled: widget.canEdit,
+            label: field['label'] as String,
+            hint: field['hint'] as String,
+          )
+        : TextField(
+            controller: controller,
+            enabled: widget.canEdit,
+            decoration: InputDecoration(
+              labelText: field['label'] as String,
+              helperText: field['hint'] as String,
+            ),
+          );
+
+    final shortcode = _ShortcodeButton(code: field['shortcode'] as String);
+
+    /*
+     * Beside the field when there is room, underneath it when there is not.
+     * `[ezbizi_company_name]` in a monospace chip is about 190 logical pixels,
+     * so on a phone it would either overflow the row or squeeze the input it
+     * belongs to down to nothing.
+     */
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: LayoutBuilder(
+        builder: (context, constraints) => constraints.maxWidth >= 520
+            ? Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: input),
+                  const SizedBox(width: 12),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: shortcode,
+                  ),
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  input,
+                  const SizedBox(height: 6),
+                  shortcode,
+                ],
+              ),
       ),
     );
   }
@@ -923,6 +1182,54 @@ class _SiteCardState extends State<_SiteCard> {
             style: theme.textTheme.bodySmall,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// A shortcode you click rather than select.
+///
+/// It shows the code itself rather than a copy icon beside a label, because the
+/// thing being copied is short, meaningful, and the only reason the control
+/// exists. Confirming in place — the code becomes "Copied" for a moment — keeps
+/// §6: a snackbar for this would be a notification about the thing you are
+/// looking at.
+class _ShortcodeButton extends StatefulWidget {
+  const _ShortcodeButton({required this.code});
+
+  final String code;
+
+  @override
+  State<_ShortcodeButton> createState() => _ShortcodeButtonState();
+}
+
+class _ShortcodeButtonState extends State<_ShortcodeButton> {
+  bool _copied = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return OutlinedButton.icon(
+      onPressed: () async {
+        await Clipboard.setData(ClipboardData(text: widget.code));
+
+        if (!mounted) return;
+
+        setState(() => _copied = true);
+        await Future<void>.delayed(const Duration(milliseconds: 1200));
+
+        if (mounted) setState(() => _copied = false);
+      },
+      icon: Icon(_copied ? Icons.check : Icons.copy_outlined, size: 15),
+      label: Text(
+        _copied ? 'Copied' : widget.code,
+        style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+      ),
+      style: OutlinedButton.styleFrom(
+        foregroundColor:
+            _copied ? theme.colorScheme.primary : theme.colorScheme.outline,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       ),
     );
   }

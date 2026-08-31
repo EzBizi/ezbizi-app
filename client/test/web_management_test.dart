@@ -30,7 +30,9 @@ void main() {
 
     expect(find.text('SEO'), findsOneWidget);
     expect(find.text('Websites'), findsOneWidget);
-    expect(find.text('a-1chimney.com'), findsOneWidget);
+    // The selected host appears twice by design — once in the rail, once as
+    // the detail heading. That is the split working, not a duplicate.
+    expect(find.text('a-1chimney.com'), findsWidgets);
     expect(find.text('nj.a-1chimney.com'), findsOneWidget);
   });
 
@@ -39,8 +41,8 @@ void main() {
   ) async {
     await _pumpDestination(tester, permissions: ['web_management.view']);
 
-    expect(find.textContaining('Connected'), findsOneWidget);
-    expect(find.textContaining('Waiting for the plugin'), findsOneWidget);
+    expect(find.textContaining('Connected'), findsWidgets);
+    expect(find.textContaining('Waiting for the plugin'), findsWidgets);
   });
 
   testWidgets('view alone cannot add a website', (tester) async {
@@ -56,9 +58,6 @@ void main() {
       tester,
       permissions: ['web_management.view', 'web_management.edit'],
     );
-
-    await tester.tap(find.text('a-1chimney.com'));
-    await tester.pumpAndSettle();
 
     expect(find.text('Phone number'), findsOneWidget);
     expect(find.textContaining('[ezbizi_phone]'), findsOneWidget);
@@ -85,9 +84,6 @@ void main() {
       emptyValues: true,
     );
 
-    await tester.tap(find.text('a-1chimney.com'));
-    await tester.pumpAndSettle();
-
     // The panel is open and usable rather than spinning.
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(find.text('Phone number'), findsOneWidget);
@@ -109,9 +105,6 @@ void main() {
       permissions: ['web_management.view', 'web_management.edit'],
     );
 
-    await tester.tap(find.text('a-1chimney.com'));
-    await tester.pumpAndSettle();
-
     expect(find.textContaining('pk_fixture_browser_key'), findsWidgets);
 
     // The snippet points at the route that is actually served — public/ is not
@@ -125,6 +118,46 @@ void main() {
     // And it says which key is safe in public, because that is the whole
     // distinction somebody has to get right.
     expect(find.textContaining('ezb_'), findsOneWidget);
+  });
+
+  /// The split has a narrow half, and it is the half most likely to rot.
+  ///
+  /// The old one-column screen worked at every width by construction. A split
+  /// does not: below the breakpoint the rail becomes the screen and the detail
+  /// is PUSHED, which is a second code path nobody looks at on a desktop.
+  testWidgets('on a phone the list is the screen and a site pushes', (
+    tester,
+  ) async {
+    await _pumpSeoTab(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      size: const Size(390, 844),
+    );
+
+    // No detail beside the list at this width — just the list.
+    expect(find.text('a-1chimney.com'), findsOneWidget);
+    expect(find.text('Phone number'), findsNothing);
+
+    await tester.tap(find.text('a-1chimney.com'));
+    await tester.pumpAndSettle();
+
+    // Pushed a screen, not opened a modal.
+    expect(find.byType(Dialog), findsNothing);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('Phone number'), findsOneWidget);
+  });
+
+  testWidgets('the wide layout shows a site without being asked', (
+    tester,
+  ) async {
+    await _pumpDestination(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+    );
+
+    // The first site is selected for you rather than leaving an empty pane.
+    expect(find.text('Phone number'), findsOneWidget);
+    expect(find.textContaining('[ezbizi_phone]'), findsOneWidget);
   });
 
   /// The pasted snippet must carry an ABSOLUTE url.
@@ -183,9 +216,6 @@ void main() {
       permissions: ['web_management.view', 'web_management.edit'],
     );
 
-    await tester.tap(find.text('a-1chimney.com'));
-    await tester.pumpAndSettle();
-
     await tester.tap(find.text('New key'));
     await tester.pumpAndSettle();
 
@@ -197,9 +227,6 @@ void main() {
 
   testWidgets('view alone cannot reissue a browser key', (tester) async {
     await _pumpDestination(tester, permissions: ['web_management.view']);
-
-    await tester.tap(find.text('a-1chimney.com'));
-    await tester.pumpAndSettle();
 
     expect(find.text('New key'), findsNothing);
   });
@@ -230,9 +257,10 @@ void main() {
       permissions: ['web_management.view', 'web_management.edit'],
     );
 
-    await tester.tap(find.text('a-1chimney.com'));
+    // The actions sit below eight fields in a scrolling pane now, so they have
+    // to be brought into view before they can be tapped.
+    await tester.ensureVisible(find.text('Remove website'));
     await tester.pumpAndSettle();
-
     await tester.tap(find.text('Remove website'));
     await tester.pumpAndSettle();
 
@@ -269,13 +297,46 @@ void main() {
   });
 }
 
+/// Pump the SEO tab on its own, at a chosen size.
+///
+/// `_pumpDestination` goes through HomeShell, which replaces NavigationSidebar
+/// with a different navigation on a phone — so a narrow test driven through the
+/// shell ends up testing the shell. This mounts the tab directly, which is what
+/// the narrow-layout tests are actually about.
+Future<void> _pumpSeoTab(
+  WidgetTester tester, {
+  required List<String> permissions,
+  required Size size,
+  bool emptyValues = false,
+}) async {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+
+  final api = ApiClient(
+    client: MockClient(_respond(permissions, false, emptyValues)),
+  );
+  final session = Session(api);
+
+  await tester.runAsync(() => session.adopt('tok'));
+
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: Scaffold(body: SeoTab(api: api, session: session)),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
 Future<void> _pumpDestination(
   WidgetTester tester, {
   required List<String> permissions,
   bool scopedToCompany = false,
   bool emptyValues = false,
+  Size size = const Size(1280, 900),
 }) async {
-  tester.view.physicalSize = const Size(1280, 900);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
