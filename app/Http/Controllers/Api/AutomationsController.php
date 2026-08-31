@@ -67,24 +67,16 @@ class AutomationsController extends Controller
         'time_clock.clock_in',
         'time_clock.clock_out',
         /*
-         * THE ONE ENTRY THE DOCBLOCK ABOVE IS NOT YET TRUE OF.
+         * `ActionRunner::assignTraining` (task 9) is the real arm — the same
+         * `App\Support\Training\AssignmentWriter` a person's own POST
+         * /training/assignments calls, so a rule reaches no further than §4
+         * already lets the rule's own creator reach by hand
+         * (AssignmentWriter's own docblock: "the ONE write path").
          *
-         * `ActionRunner` has NO arm for this. It falls to the `default =>
-         * throw new InvalidArgumentException` at the end of `run()`, so a rule
-         * that saves with this action records a FAILED run rather than doing
-         * anything. The arm lands with the assignment write path in Task 9, and
-         * this line stops being an exception the moment it does. Declared here
-         * ahead of the arm because the module and the const have to agree — an
-         * action in one and not the other publishes as implemented:false and is
-         * refused at save, silently, with nothing red anywhere.
-         *
-         * This is NOT the state time_clock is in: `run()` has real arms for both
-         * of those. They are merely absent from `actionTypes()`, which is a
-         * different list and a different gap.
-         *
-         * Spelled out here for the same reason time_clock is spelled out above:
-         * the module declares executionType: 'training.assign', or this entry
-         * would never match the bare `assign` that type() would default to.
+         * Spelled out here for the same reason time_clock is spelled out
+         * above: the module declares executionType: 'training.assign', or
+         * this entry would never match the bare `assign` that type() would
+         * default to.
          */
         'training.assign',
     ];

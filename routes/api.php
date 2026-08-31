@@ -122,6 +122,7 @@ use App\Http\Controllers\Api\Tasks\TaskUpdatesController;
 use App\Http\Controllers\Api\Tasks\TaskViewsController;
 use App\Http\Controllers\Api\Tasks\TaskWatchPreferencesController;
 use App\Http\Controllers\Api\TimeClockController;
+use App\Http\Controllers\Api\Training\AssignmentsController as TrainingAssignmentsController;
 use App\Http\Controllers\Api\Training\GuidesController as TrainingGuidesController;
 use App\Http\Controllers\Api\Training\LearnController as TrainingLearnController;
 use App\Http\Controllers\Api\Training\ProgressController as TrainingProgressController;
@@ -687,6 +688,10 @@ Route::prefix('v1')
         // gate and the same place-scope/published-only filter as the reads
         // above; see ProgressController's docblock.
         Route::post('training/learn/guides/{guide}/seen', [TrainingProgressController::class, 'seen']);
+        // Giving a guide or a test to a person or a role (task 9) —
+        // `training.assign`, bounded by §4 reach; see AssignmentsController
+        // and AssignmentReach.
+        Route::post('training/assignments', [TrainingAssignmentsController::class, 'store']);
 
         // ── The shape of the business (§3) ───────────────────────
         //
