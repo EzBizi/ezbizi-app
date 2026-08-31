@@ -2,6 +2,7 @@
 
 namespace App\Support\Modules;
 
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 /**
@@ -122,6 +123,41 @@ final class ModuleDefinition
          * editor and the tab strip both recursive to answer a question nobody
          * has asked, and `ModuleRegistry::register` refuses it.
          */
+        /**
+         * The prefixes this module's audit actions use, when they are not its key.
+         *
+         * §2.2 is "every action, every error, every crash", and its only stated
+         * exception is the Lead Developer account — not a module. Nothing enforced
+         * it, and six modules that can write turned out to write no audit rows at
+         * all while fourteen wrote 121 between them. Automations did not rot the
+         * same way, and the only difference is that `automationExemptBecause` made
+         * silence impossible. This is the equivalent.
+         *
+         * PREFIXES rather than a list of actions, deliberately. A per-module list
+         * of all 121 would be a second copy of what the code already says, and it
+         * would drift in the direction nothing catches: add an `audit->log()` call
+         * and forget the list, and the list is still "valid". A prefix lets
+         * `ModuleRegistryTest` ask the source the actual question — does this
+         * module write ANY audit row — so the answer stays true without
+         * maintenance.
+         *
+         * Defaults to the module key, which is right for eleven of the fourteen.
+         * Only a module whose actions are named after its records rather than
+         * itself declares this: HR writes `onboarding.*`, `invitation.*` and
+         * `contract.*`; Email writes `mailbox.*`; Marketing writes `social.*`.
+         *
+         * @var string[]
+         */
+        public readonly array $auditActionPrefixes = [],
+        /**
+         * Non-null = this module deliberately writes no audit rows, with a reason.
+         *
+         * A reason that describes an unclosed gap is legitimate and should say so
+         * plainly; one that invents a design rationale is not. A fabricated
+         * decision record is worse than a blank, because the next reader takes it
+         * as settled and never reopens it.
+         */
+        public readonly ?string $auditExemptBecause = null,
         public readonly ?string $parent = null,
     ) {
         if ($parent !== null && $parent === $key) {
@@ -291,6 +327,48 @@ final class ModuleDefinition
         return $this->automationExemptBecause !== null
             || $this->triggers !== []
             || $this->automationActions !== [];
+    }
+
+    /**
+     * Can this module change anything? Only a module that writes can owe an
+     * audit trail, so a read-only one is outside the rule rather than exempt
+     * from it — there is nothing for it to state a reason about.
+     */
+    public function writesRecords(): bool
+    {
+        return array_intersect(['create', 'edit', 'delete'], $this->actions) !== [];
+    }
+
+    /**
+     * The prefixes an audit action from this module would start with.
+     *
+     * @return string[]
+     */
+    public function auditPrefixes(): array
+    {
+        if ($this->auditActionPrefixes !== []) {
+            return $this->auditActionPrefixes;
+        }
+
+        // Module keys are plural and audit actions are singular — the `jobs`
+        // module writes `job.created`. Both are tried so the common case needs
+        // no declaration at all; `inspection` and `scheduling` are already
+        // singular and Str::singular leaves them alone.
+        return array_values(array_unique([$this->key, Str::singular($this->key)]));
+    }
+
+    /**
+     * Does this module satisfy §2.2, given what the source actually contains?
+     *
+     * `$writesAudit` is the answer the test derives by reading `app/`, rather
+     * than a claim stored here. A module owes an audit trail only if it can
+     * write; if it can and does not, it has to say why.
+     */
+    public function satisfiesAuditRule(bool $writesAudit): bool
+    {
+        return ! $this->writesRecords()
+            || $writesAudit
+            || $this->auditExemptBecause !== null;
     }
 
     /**
