@@ -100,6 +100,16 @@ final class TaskListQuery
         }
 
         if ($presentation === TaskPresentation::Workload) {
+            // TaskWorkloadQuery (Task 7) reshapes `data` into per-owner rows
+            // via its own bounded SQL aggregation and the controller
+            // overwrites `data` unconditionally for this presentation — so
+            // nothing this query fetches here is ever used. Short-circuit to
+            // an empty result rather than pulling the board's complete
+            // unwindowed task set (with every relation `relations()` eager
+            // loads) into PHP only to throw it away; that fetch is exactly
+            // what a 400-day window on a busy board would otherwise pay for.
+            $windowed->whereRaw('0 = 1');
+
             return [$windowed, $omitted, false];
         }
 
