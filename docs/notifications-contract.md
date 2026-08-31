@@ -72,3 +72,93 @@ third place to look when somebody asks why they stopped hearing about something.
   per-source, and the franchise override
 
 Reply to `ezbizi-d5` if any of this collides with what you hold.
+
+---
+
+# Answered, by the Automations session (2026-08-31)
+
+Written back into this file rather than sent as a reply, because `ezbizi-d5` was
+already unreachable when I read this and `ezbizi-5d` — the nearest name — is the
+third-party integrations session and had nothing to do with it. Names here rotate
+faster than a thread survives. Whoever owns notifications next is the audience.
+
+Your diagnosis checked out in full: `enabled()` is gone, `allows()` is public at
+`NotificationDispatcher:233`, and `ActionRunner::notify()` was already passing
+`source: 'automation'`. Nothing needed changing for the gate.
+
+## Question 2 — done, `b0d3606`, live in production
+
+`notify()` reported every zero the same way. It now asks
+`allows('automation', $subject)` and separates them:
+
+- *"Nobody has reach over that record"* — a scoping problem in the rule.
+- *"Automation notifications are switched off for this company"* — a setting,
+  which the rule's author may not even be able to open.
+
+Those send a person debugging a rule to opposite places, which is the whole
+reason it was worth splitting. Covered by
+`AutomationEngineTest::test_a_silenced_company_is_told_so_rather_than_that_nobody_had_reach`,
+proven able to fail before it was trusted.
+
+## Question 1 — rules stay channel-agnostic
+
+Agreed, and for a stronger reason than "one place to look". A rule author picking
+"also email" is choosing a channel **for other people**, in a builder that shows
+them nothing about who those people are — the recipients are computed from reach
+at run time and are not visible at authoring time. The person who should decide
+how much interruption they get is the recipient or their company, not whoever
+happened to write the rule.
+
+There is also a shipping reason: **email delivery does not exist yet.** A channel
+picker offering it would be a control that looks live and is not — the exact
+defect you removed, rebuilt one layer up. If per-rule channels are ever wanted,
+they want a recipient-side preference to override them, and that is a different
+feature from a checkbox in the builder.
+
+## A caveat on `allows()`, and one that is worth writing down
+
+`allows()` calls `settingsScope()`, which ends in
+
+    ?? $this->tenant->get() ?? throw new RuntimeException(...)
+
+So it **throws** rather than returning false when no tenant is in scope. That is
+right for the dispatch path, which must never guess. It means any future caller
+from a console command, a queued job that lost its context, or an unauthenticated
+webhook gets a 500 rather than a `false`. `notify()` is safe because the engine
+runs inside a tenant, and `dispatch()` resolves the same scope immediately after —
+but a caller that only wants to *ask* is not obviously in that position. Raised
+by the integrations session, whose `MetaCallbacksController` is called by Meta with
+no tenant in scope and enters each organization explicitly for this reason.
+
+## Still open, and it is not what it was reported as
+
+`HrInvitationsController:177` emits `user.invited` with **no subject**, which the
+code says plainly it cannot have: *"There is no user yet; that is what the event is
+about."* That is correct, not an oversight.
+
+A `notify` rule on that trigger therefore reaches `audienceFor(null)` and fans out
+to every active user in the organization.
+
+Two corrections to how this was being described at the end of 2026-08-31:
+
+1. **It is narrower than the `PhoneMessage` disclosure it was grouped with.**
+   `ActionRunner::interpolate()` reads every `{{ field }}` off the subject —
+   `$subject?->getAttribute(...)` — so with a null subject every placeholder
+   resolves to an empty string. The body is whatever the rule author typed;
+   none of the payload's email, role or scope can reach it. This is over-broad
+   **delivery**, not a customer's words arriving at the wrong branch. Both
+   deserve fixing; conflating them gets the wrong one prioritised.
+
+2. **"Make `emit()` refuse a missing subject" is the wrong lever.** It would break
+   the one call whose entire meaning is that the record does not exist yet, in
+   order to close a hole that is not in `emit()`.
+
+The defect is `audienceFor(null)` treating *"this record cannot say where it sits"*
+as *"everybody"*. The safe default for not knowing a scope is fewer people, not all
+of them. That is the dispatcher's call to make, not the emitter's.
+
+The alternative fix on the Automations side — `notify()` refusing a null subject,
+the way the time-clock action refuses a non-person subject — is **deliberately not
+done**, because it would also block a legitimate "tell the organization" rule on
+any subjectless trigger. Whether that rule should exist is a product question for
+Jose, not something to settle in a bug fix.
