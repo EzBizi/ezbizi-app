@@ -19,6 +19,20 @@ class VersionHistory {
         'Phone: the call desk now gives each column a fair share of the window '
             'rather than fixing the two busiest at their smallest useful size '
             'and giving every extra pixel to the dial pad.',
+        'The sidebar scrolls. On a shorter screen the module list used to run '
+            'off the bottom and draw over Settings and Development, and the '
+            'modules underneath could not be reached at all - there was '
+            'nothing to scroll with. Settings and Development stay pinned at '
+            'the foot where they always were.',
+        'The brand cyan was too pale to read. As text on white it sat at about '
+            'half the contrast needed to be legible, and white text on a cyan '
+            'button was the same - which mattered most where a filled colour '
+            'carries words, like a task title on a Gantt bar. Buttons, links '
+            'and the box outline you get when you click into a field are all a '
+            'deeper shade now. Dark mode is unchanged.',
+        'Five modules were drawing a generic chart icon on the dashboard '
+            'because nobody had chosen one for them: Tasks, Reviews, Leads, '
+            'Business profile and Monitoring. They have their own now.',
       ],
     ),
     VersionRelease(
