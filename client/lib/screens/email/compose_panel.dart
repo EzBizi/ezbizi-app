@@ -125,9 +125,13 @@ class ComposePanelState extends State<ComposePanel> {
 
     if (_totalBytes + picked.bytes.length > _maxTotalBytes) {
       setState(() {
-        _error = 'Those files come to more than 2 MB together, which is more than '
-            'this inbox can send in one message. Send fewer, or share the large '
-            'ones as a link.';
+        // Says WHY, not only what. The limit is not a number somebody picked
+        // — it is the tightest of the three mail services this can send
+        // through, and a person who hits it can act on that ("share a link")
+        // where they cannot act on "no".
+        _error = 'Those files come to more than 2 MB together. Mail services cap '
+            'what can travel inside a single message, so send fewer, or share '
+            'the large ones as a link instead.';
       });
       return;
     }

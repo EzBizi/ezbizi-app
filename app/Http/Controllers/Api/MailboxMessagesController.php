@@ -352,9 +352,14 @@ class MailboxMessagesController extends Controller
 
         if ($attachments === null) {
             return response()->json([
-                'message' => 'Those files come to more than 2 MB together, which is more than '
-                    .'this inbox can send in one message. Send fewer, or share the large '
-                    .'ones as a link.',
+                // The same sentence the panel shows before the upload starts.
+                // Two copies of a refusal is normally a smell; here the client
+                // one saves a person waiting for 2MB to travel before hearing
+                // no, and this one is the check that actually holds. They must
+                // agree, so they are written to agree.
+                'message' => 'Those files come to more than 2 MB together. Mail services cap '
+                    .'what can travel inside a single message, so send fewer, or share '
+                    .'the large ones as a link instead.',
             ], 422);
         }
 
