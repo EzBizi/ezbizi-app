@@ -187,49 +187,15 @@ Committing safely on this shared tree is **not** temporary and lives in
 
 ---
 
-## 5 · A green suite does not prove the sandbox matches production
+## 5 · CRLF — moved, because it outlives this file
 
-Until 2026-08-31 the deploy gate shipped its sandbox copy with `git archive`,
-which runs on the Windows machine, where `core.autocrlf=true` — and applies it.
-**1791 of 2131 files differed from what production receives**, 430 KB of pure CR,
-on every deploy the gate had ever run. Production is fed by `git push` and checks
-out on the box, in LF.
+The `git archive` bug and the `$`-anchored-regex hazard now live in
+**`StartUp.md` §8**, under "A green suite proves the code works, not that it is
+what you shipped".
 
-Fixed in `b0a4c4e`. The lesson outlived the bug: 2500 tests ran green for months
-against a tree production never receives, because **PHP does not care about line
-endings**. The suite was not confirming the trees matched; it was demonstrating
-that almost nothing in it can tell.
+They were written here first and that was a mistake: this file's own header says
+to delete it when App Store review clears, and CRLF checkouts have nothing to do
+with App Store review. Whoever eventually deletes this file will be following the
+instruction correctly, and durable knowledge must not be sitting in it.
 
-**On Windows this still bites you locally.** Your checkout has CRLF on disk, so
-any assertion anchored with `$` fails on a file that is correct in git:
-
-```
-/^Stable tag:\s*(\S+)$/m   against "Stable tag: 1.0.2
-"  ->  0
-                            against "Stable tag: 1.0.2
-"    ->  1
-```
-
-**Swept twice, independently, and the class is closed.** Across the whole repo:
-
-| shape | count | verdict |
-|---|---|---|
-| `$`-anchored, multiline | **2** | both `WebManagementTest`, the plugin's `Stable tag` and `Version` headers |
-| `/m` but `^`-anchored only | 3 | safe — the stray CR sits at the END of the previous line, so `^` still matches |
-| Dart `RegExp(multiLine: true)` | 0 | — |
-
-Web Management fixed both in `7149803`, with `[^
-]+` — which cannot match a CR
-rather than merely tolerating one — proven in both directions by converting the
-files to CRLF, running green, reverting and running green again.
-
-**The right response to this red is to merge that fix, not to tolerate it.**
-A red recorded as "known false" is a red people stop reading, and this one is one
-merge away from not existing. Until it lands, main is red on every Windows
-checkout.
-
-**If you write a new one, this is the trap.** `grep "Stable tag" file | od -c`
-shows the line ending in a bare `
-` with no CR, because grep strips it — which
-is how somebody talks themselves out of a correct diagnosis. The only reading to
-trust is `file_get_contents` plus the actual pattern.
+Raised by ezbizi-ea, who noticed the header contradicted the content.

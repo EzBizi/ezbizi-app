@@ -758,6 +758,57 @@ ever get read?* — static, greppable, findable by reading. A wrong answer needs
 right answer can ask. That is why the label bug survived every review that read
 the code and died the moment something asserted which URL got fetched.
 
+### A green suite proves the code works, not that it is what you shipped
+
+The tests measure the CODE. Until 2026-08-31 nothing measured the DELIVERY, and
+they are not the same claim.
+
+The deploy gate copied its sandbox with `git archive`, which runs on the Windows
+machine, where `core.autocrlf=true` — and applies it. **1791 of 2131 files
+differed from what production receives**, 430 KB of injected CR, on every deploy
+the gate had ever run. Production was never affected: it is fed by `git push` and
+checks out on the box, in LF.
+
+2500 tests ran green against that tree for months, because PHP does not care
+about line endings. The suite was not confirming the sandbox matched production;
+it was demonstrating that almost nothing in it could tell. What finally noticed
+was one anchored regex, by accident. Fixed in `b0a4c4e` with
+`-c core.autocrlf=false` at the two archive call sites.
+
+**The question to carry forward is not "are the tests green" but "what would be
+different if the thing I am assuming were false, and does anything look there?"**
+
+### Anchoring a regex with `$` makes the test depend on who checked the file out
+
+`$` in multiline mode matches before `
+` and NOT before `
+`, and a greedy
+token cannot consume the `` to reach it. So on a Windows checkout this fails
+against a file that is byte-for-byte correct:
+
+```
+/^Stable tag:\s*(\S+)$/m   vs  "Stable tag: 1.0.2
+"   ->  0
+                            vs  "Stable tag: 1.0.2
+"     ->  1
+```
+
+**`^` is safe** — the stray `` sits at the END of the previous line, not the
+start of the next. That one sentence classifies any regex in five seconds.
+
+Use `[^
+]+` rather than `\S+$`. Three independent sweeps agree the whole
+population was two occurrences, both in `WebManagementTest`, both fixed in
+`7149803`, and zero in shipping code — which matters, because a test that misreads
+a line ending goes red and somebody investigates, whereas the WordPress plugin
+would quietly render the wrong thing on a customer's page forever.
+
+**The trap while diagnosing it:** `grep "Stable tag" file | od -c` shows the line
+ending in a bare `
+` with no CR, because grep strips it. That is how somebody
+talks themselves out of a correct diagnosis. Read it with `file_get_contents` and
+the actual pattern.
+
 ---
 
 ## 9 · Deploying
