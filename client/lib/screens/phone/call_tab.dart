@@ -5,6 +5,7 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import 'voice_device.dart';
+import 'staff_thread.dart';
 
 /// Call desk — layout 1: teammates, pad, person. Below 600px, one pane at a time.
 class CallTab extends StatefulWidget {
@@ -45,6 +46,14 @@ class _CallTabState extends State<CallTab> {
 
   String? _numberId;
   String? _teammateId;
+
+  /// The colleague whose thread has taken over the Team column, if any.
+  _Teammate? _chatWith;
+
+  /// Unread messages waiting, per sender. Counted per person rather than as
+  /// one total, because the roster is where you act on it — a single number
+  /// says you have messages without saying whose.
+  Map<String, int> _unread = const {};
   _CallPane _pane = _CallPane.pad;
   bool _dnd = false;
   bool _onCall = false;
@@ -149,6 +158,8 @@ class _CallTabState extends State<CallTab> {
       'connection_id': number.connectionId,
     });
     if (!mounted) return;
+
+    await _loadUnread();
 
     if (presence.ok) {
       setState(() {
@@ -380,6 +391,38 @@ class _CallTabState extends State<CallTab> {
     _loadMessages();
   }
 
+  Widget _badge(ThemeData theme, int count) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary,
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: Text(
+        '$count',
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: theme.colorScheme.onPrimary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _loadUnread() async {
+    final response = await widget.api.get('/staff-messages/unread');
+    if (!mounted || !response.ok) return;
+
+    final rows = response.body['data'];
+
+    setState(() {
+      _unread = {
+        if (rows is Map)
+          for (final entry in rows.entries)
+            entry.key.toString(): int.tryParse(entry.value.toString()) ?? 0,
+      };
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return AsyncBody(
@@ -534,13 +577,35 @@ class _CallTabState extends State<CallTab> {
 
   Widget _teammatesPane() {
     final theme = Theme.of(context);
+    final chat = _chatWith;
+
+    // The column BECOMES the thread rather than the thread opening elsewhere.
+    // Somebody messaging a colleague from here is on a call or about to be,
+    // so evicting the pad or the customer would take away the thing the
+    // message is about.
+    if (chat != null) {
+      return StaffThread(
+        api: widget.api,
+        withUserId: chat.userId,
+        withName: chat.name,
+        onBack: () => setState(() => _chatWith = null),
+        onRead: _loadUnread,
+      );
+    }
+
+    final waiting = _unread.values.fold<int>(0, (sum, n) => sum + n);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-          child: Text('Team', style: theme.textTheme.titleSmall),
+          child: Row(
+            children: [
+              Expanded(child: Text('Team', style: theme.textTheme.titleSmall)),
+              if (waiting > 0) _badge(theme, waiting),
+            ],
+          ),
         ),
         Divider(height: 1, color: EzBiziTheme.edge(context)),
         Expanded(
@@ -589,6 +654,23 @@ class _CallTabState extends State<CallTab> {
                                   ),
                                 ],
                               ),
+                            ),
+
+                            // Messaging is its own control rather than the
+                            // row's tap, because the row already means "call
+                            // this person" and a colleague who is mid-job
+                            // wants the other one.
+                            if ((_unread[row.userId] ?? 0) > 0)
+                              _badge(theme, _unread[row.userId]!),
+                            IconButton(
+                              tooltip: 'Message ${row.name}',
+                              visualDensity: VisualDensity.compact,
+                              icon: const Icon(
+                                Icons.chat_bubble_outline,
+                                size: 18,
+                              ),
+                              onPressed: () =>
+                                  setState(() => _chatWith = row),
                             ),
                           ],
                         ),

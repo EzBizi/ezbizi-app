@@ -1236,6 +1236,151 @@ void main() {
       );
     });
   });
+
+  group('Call › messaging a colleague', () {
+    const conn = {
+      'id': 'cx-1',
+      'scope_type': 'company',
+      'scope_id': 'co-1',
+      'scope_name': 'A-1 Chimney',
+      'kind': 'subaccount',
+      'status': 'connected',
+    };
+
+    const line = {
+      'id': 'n-1',
+      'e164': '+15612323929',
+      'label': 'EZBZ',
+      'record': false,
+      'transcribe': false,
+      'after_hours': 'voicemail',
+      'ring_group_id': null,
+    };
+
+    const team = [
+      {'user_id': 'u-ana', 'name': 'Ana', 'state': 'available'},
+      {'user_id': 'u-bar', 'name': 'Bar', 'state': 'dnd'},
+    ];
+
+    /// The constraint the whole feature rests on.
+    ///
+    /// Somebody messaging a colleague from the Call tab is on a call or about
+    /// to be — "can you take this", "is the van back". A thread that evicted
+    /// the dial pad or the customer would take away the thing the message is
+    /// about, which is why the ROSTER becomes the thread and the other two
+    /// columns are untouched.
+    ///
+    /// Asserting the thread opened is only half. The half that matters is the
+    /// pad still being there.
+    testWidgets('the thread takes the Team column and nothing else', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        numbers: const [line],
+        presence: team,
+      );
+
+      expect(find.byKey(const Key('phone-call-pad')), findsOneWidget);
+
+      await _tap(tester, find.byTooltip('Message Ana'));
+
+      expect(find.byTooltip('Back to the team'), findsOneWidget);
+      expect(
+        find.byKey(const Key('phone-call-pad')),
+        findsOneWidget,
+        reason: 'the thread evicted the dial pad',
+      );
+      expect(
+        find.byKey(const Key('phone-call-person')),
+        findsOneWidget,
+        reason: 'the thread evicted the customer column',
+      );
+    });
+
+    /// One total says you have messages without saying whose, and the roster
+    /// is where you act on it.
+    testWidgets('what is waiting is counted against the person', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        numbers: const [line],
+        presence: team,
+        unread: const {'u-ana': 2},
+      );
+
+      // Against Ana, and not against Bar, who has sent nothing.
+      final ana = find.ancestor(
+        of: find.text('Ana'),
+        matching: find.byType(Row),
+      );
+
+      expect(
+        find.descendant(of: ana.first, matching: find.text('2')),
+        findsOneWidget,
+        reason: 'the count was not shown against the person who is waiting',
+      );
+    });
+
+    /// Sent and seen, and nothing else — no delivered, no typing indicator.
+    /// Those are claims this system cannot honestly make. "Seen" is the one
+    /// thing the server knows, because opening the thread records it.
+    testWidgets('seen is shown on a read message and not on an unread one', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        numbers: const [line],
+        presence: team,
+        staffMessages: const [
+          {'id': 'm-1', 'body': 'Is the van back?', 'mine': true,
+            'read_at': '2026-08-31T10:00:00+00:00'},
+        ],
+      );
+
+      await _tap(tester, find.byTooltip('Message Ana'));
+
+      expect(find.text('Is the van back?'), findsOneWidget);
+      expect(find.text('Seen'), findsOneWidget);
+      expect(
+        find.text('Delivered'),
+        findsNothing,
+        reason: 'delivered is a claim the phone system cannot make',
+      );
+    });
+
+    testWidgets('sending posts the body and who it is for', (tester) async {
+      Map<String, dynamic>? sent;
+
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        numbers: const [line],
+        presence: team,
+        onStaffMessage: (body) => sent = body,
+      );
+
+      await _tap(tester, find.byTooltip('Message Ana'));
+
+      await tester.enterText(
+        find.byKey(const Key('staff-message-composer')),
+        'Ten minutes.',
+      );
+      await _tap(tester, find.byTooltip('Send'));
+
+      expect(sent, isNotNull);
+      expect(sent!['to'], 'u-ana');
+      expect(sent!['body'], 'Ten minutes.');
+    });
+  });
 }
 Finder _tab(String label) => find.widgetWithText(ChoiceChip, label);
 
@@ -1314,6 +1459,10 @@ Future<void> _pump(
   void Function(Map<String, dynamic> body)? onNumberPatch,
   void Function()? onDelete,
   List<String>? requestLog,
+  List<Map<String, Object?>> presence = const [],
+  List<Map<String, Object?>> staffMessages = const [],
+  Map<String, Object?> unread = const {},
+  void Function(Map<String, dynamic> body)? onStaffMessage,
   List<Map<String, Object?>> voicemailBoxes = const [],
   bool voicemailFails = false,
   void Function(Map<String, dynamic> body)? onVoicemailSave,
@@ -1344,6 +1493,10 @@ Future<void> _pump(
         onNumberPatch: onNumberPatch,
         onDelete: onDelete,
         requestLog: requestLog,
+        presence: presence,
+        staffMessages: staffMessages,
+        unread: unread,
+        onStaffMessage: onStaffMessage,
         voicemailBoxes: voicemailBoxes,
         voicemailFails: voicemailFails,
         onVoicemailSave: onVoicemailSave,
@@ -1432,6 +1585,10 @@ MockClientHandler _handler({
   void Function(Map<String, dynamic> body)? onNumberPatch,
   void Function()? onDelete,
   List<String>? requestLog,
+  List<Map<String, Object?>> presence = const [],
+  List<Map<String, Object?>> staffMessages = const [],
+  Map<String, Object?> unread = const {},
+  void Function(Map<String, dynamic> body)? onStaffMessage,
   List<Map<String, Object?>> voicemailBoxes = const [],
   bool voicemailFails = false,
   void Function(Map<String, dynamic> body)? onVoicemailSave,
@@ -1570,7 +1727,24 @@ MockClientHandler _handler({
     }
 
     if (path.endsWith('/phone/presence')) {
-      return _json({'data': <Map<String, Object?>>[]});
+      return _json({'data': presence});
+    }
+
+    if (path.endsWith('/staff-messages/unread') && request.method == 'GET') {
+      var total = 0;
+      for (final value in unread.values) {
+        total += int.tryParse(value.toString()) ?? 0;
+      }
+      return _json({'data': unread, 'total': total});
+    }
+
+    if (path.endsWith('/staff-messages') && request.method == 'GET') {
+      return _json({'data': staffMessages});
+    }
+
+    if (path.endsWith('/staff-messages') && request.method == 'POST') {
+      onStaffMessage?.call(jsonDecode(request.body) as Map<String, dynamic>);
+      return _json({'data': {'id': 'sm-new'}}, 201);
     }
 
     if (path.endsWith('/phone/tokens') && request.method == 'POST') {
