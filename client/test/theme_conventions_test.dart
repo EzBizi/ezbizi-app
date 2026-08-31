@@ -132,7 +132,24 @@ void main() {
     // The second was used to measure the damage done by the first, and produced
     // "24 files were invisible" when the true answer was one. Two wrong numbers
     // in opposite directions, from the same wrong assumption about one tool.
-    const baseline = 80;
+    // SANCTIONED EXCEPTIONS are excluded from the count rather than absorbed
+    // into the baseline. A literal inside the number is invisible: nobody can
+    // tell an allowed one from a debt, and the only way to add another is to
+    // raise the ceiling -- which is the move this ratchet exists to prevent.
+    //
+    // Excluding them instead makes the escape hatch an ARGUMENT rather than an
+    // arithmetic edit. To add a colour literal legitimately you add your file
+    // here with a reason somebody can disagree with, in a diff that shows what
+    // you are claiming. Raising `baseline` says nothing and cannot be refused.
+    const sanctioned = <String, String>{
+      // Black ink and white paper are the pixels of a printed document. Theme
+      // colours would rasterise a signature as near-white in dark mode, and it
+      // would be invisible on paper. The reason lives at the constant too.
+      'screens/inspection/signature_field.dart':
+          'a signature is printed, so its colours are ink and paper, not theme',
+    };
+
+    const baseline = 78;
 
     test('no new hardcoded colours outside theme.dart', () {
       final pattern = RegExp(r'Color\(0x|Colors\.[a-z]');
@@ -145,9 +162,9 @@ void main() {
           .whereType<File>()
           .where((f) => f.path.endsWith('.dart'))) {
         scanned++;
-        if (file.path.replaceAll(r'\', '/').endsWith('core/theme.dart')) {
-          continue;
-        }
+        final rel = file.path.replaceAll(r'\', '/');
+        if (rel.endsWith('core/theme.dart')) continue;
+        if (sanctioned.keys.any(rel.endsWith)) continue;
         final hits = pattern.allMatches(file.readAsStringSync()).length;
         if (hits > 0) {
           found += hits;
