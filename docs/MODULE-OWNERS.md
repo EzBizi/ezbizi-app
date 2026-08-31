@@ -50,7 +50,7 @@ sessions either. The SHA is the only handle that survives a rename.
 | **Tasks** | `screens/tasks/` · `screens/tasks_screen.dart` · `Models/Task*.php` · `Policies/Task*.php` · `Support/Tasks/` · `Providers/TaskServiceProvider.php` · `Jobs/DeliverTaskNotificationIntent.php` · `Middleware/EnsureTaskRouteAccess.php` · `tests/Feature/Tasks/` | `ezbizi-13` |
 | **Android · Play** | `client/android/` · the android path of `scripts/build-app.sh` · `build-web.sh` · `release.sh` · `windows-installer.iss` · `assets/logo` · `assets/installer` · `client/integration_test/store_screenshots_test.dart` · `client/test_driver/screenshots.dart` · the **Play** Console | `ezbizi-16` |
 | **iOS · Apple** | `client/ios/` · the ios path of `scripts/build-app.sh` · the Mac relay · App Store Connect, TestFlight, the Apple Developer consoles | **blank — and it is mid-review** |
-| **Website** | `www/` — `index.html` · `download/` · `terms/` · `privacy/` · `social-media/` · `delete-account/` · `robots.txt` · `sitemap.xml` · `check-site.py` · `scripts/deploy-www.sh` · the **`/var/www/www`** document root | `3b5b79f` `57b4502` |
+| **Website** | `www/` — **every page under it**, plus `robots.txt`, `sitemap.xml`, `check-site.py`, and the `www/favicon.ico` size list in `scripts/make-brand-assets.py`. Public copy, page structure, meta and structured data. *Not* `scripts/deploy-www.sh` or `/var/www/www` — publishing is the deploy session's. | `3b5b79f` `57b4502` `436fd6f` |
 
 > **iOS is unowned and it is not idle — it is mid-App-Store-review.** The session
 > that held it is gone. What the next owner inherits: App Store Connect status
