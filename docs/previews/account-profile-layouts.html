@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi — Your account</title>
+<style>
+  :root {
+    --cyan:#00AEEF; --primary:#00708F; --cyan-deep:#00708F;
+    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+    --ok:#0B8F5B; --err:#E07070; --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1240px; margin:0 auto; padding:16px 16px 48px; }
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:18px; margin:0 0 4px; }
+  header.picker p { margin:0 0 12px; color:var(--muted); max-width:82ch; }
+  .locked, .ask, .found { font-size:13px; border-radius:8px; padding:10px 12px;
+    margin-bottom:12px; max-width:96ch; }
+  .locked { background:var(--info-c); } .ask { background:var(--warn-c); } .found { background:var(--err-c); }
+  .locked strong, .ask strong, .found strong { display:block; margin-bottom:4px; }
+  .locked strong { color:var(--cyan-deep); } .ask strong { color:var(--warn); } .found strong { color:#A33; }
+  .ask b, .found b { display:block; margin-top:7px; }
+  .nums { display:flex; flex-wrap:wrap; gap:8px; }
+  .nums button { min-width:44px; min-height:44px; border-radius:8px;
+    border:1px solid var(--line); background:var(--page); color:var(--ink); }
+  .nums button[aria-pressed="true"] { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:94ch; }
+  .caption strong { display:block; margin-bottom:4px; }
+  .dupe { background:#FFE9A8; border-radius:3px; padding:0 3px; font-weight:700; }
+
+  .shell { background:var(--alt); border:1px solid var(--line); border-radius:12px;
+    padding:20px 22px 26px; }
+  .shell > h2 { font-size:20px; margin:0 0 2px; }
+  .shell > .sub { color:var(--muted); margin:0 0 18px; font-size:13px; }
+
+  .card { background:var(--page); border:1px solid var(--line); border-radius:12px;
+    margin-bottom:14px; overflow:hidden; }
+  .card > h3 { margin:0; font-size:15px; padding:14px 18px 12px; }
+  .card > h3 .hint { display:block; font-size:12px; color:var(--muted); font-weight:400; margin-top:2px; }
+  .card .in { padding:0 18px 16px; }
+  .card .foot { border-top:1px solid var(--line); background:var(--alt);
+    padding:11px 18px; display:flex; gap:8px; align-items:center; }
+  .card .foot .state { color:var(--muted); font-size:12px; margin-right:auto; }
+
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:8px;
+    padding:9px 16px; min-height:40px; }
+  .btn.ghost { background:transparent; color:var(--primary); border:1px solid var(--line); }
+  .btn.sm { min-height:32px; padding:5px 11px; font-size:13px; }
+
+  /* fields sized to their content */
+  .grid { display:grid; gap:12px 14px; }
+  .g-name { grid-template-columns:180px 180px 150px; }
+  .g-contact { grid-template-columns:220px 1fr; }
+  .f label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .ctl { display:flex; align-items:center; min-height:42px; border:1px solid var(--line);
+    border-radius:9px; padding:0 12px; background:var(--page); font-size:14px; }
+  .ctl.ph { color:#9AA5AF; }
+  .ctl.sel::after { content:"⌄"; margin-left:auto; color:var(--muted); }
+  .hintline { font-size:12px; color:var(--muted); margin-top:5px; }
+  .chips { display:flex; gap:7px; flex-wrap:wrap; }
+  .chips b { font-weight:500; font-size:13px; padding:7px 13px; border-radius:999px;
+    border:1px solid var(--line); background:var(--page); min-height:36px; display:flex;
+    align-items:center; }
+  .chips b.on { background:var(--info-c); border-color:transparent; color:var(--cyan-deep); font-weight:600; }
+  .dob { display:flex; gap:8px; align-items:center; }
+  .dob .mask { width:120px; min-height:42px; border:1px solid var(--line); border-radius:9px;
+    display:flex; align-items:center; padding:0 12px; font-variant-numeric:tabular-nums; }
+
+  .avatar { width:74px; height:74px; border-radius:50%; background:#C9D3DB; flex:none; }
+  .idrow { display:flex; gap:18px; align-items:flex-start; }
+
+  /* facts you cannot change */
+  .facts { display:grid; grid-template-columns:150px 1fr; gap:11px 16px; font-size:13px; }
+  .facts dt { color:var(--muted); }
+  .facts dd { margin:0; }
+  .facts dd .why { color:var(--muted); font-size:12px; margin-top:2px; }
+  .places { display:flex; flex-wrap:wrap; gap:6px; }
+  .places span { font-size:12px; padding:3px 9px; border-radius:999px; background:var(--alt);
+    border:1px solid var(--line); }
+  .readonly { background:var(--alt); }
+
+  .seg { display:flex; gap:7px; flex-wrap:wrap; }
+  .seg b { font-weight:500; font-size:13px; padding:7px 13px; border-radius:9px;
+    border:1px solid var(--line); background:var(--page); min-height:36px;
+    display:flex; align-items:center; gap:6px; }
+  .seg b.on { background:var(--info-c); border-color:transparent; color:var(--cyan-deep); font-weight:600; }
+  .row { display:flex; gap:12px; align-items:center; padding:11px 0;
+    border-bottom:1px solid var(--line); }
+  .row:last-child { border-bottom:0; }
+  .row .g { flex:1; }
+  .row .g b { display:block; font-size:14px; }
+  .row .g span { color:var(--muted); font-size:12px; }
+  .pill { font-size:11px; padding:2px 9px; border-radius:999px; background:var(--ok-c);
+    color:var(--ok); font-weight:600; }
+  .note { color:var(--muted); font-size:12px; margin-top:10px; }
+
+  .cols { display:grid; grid-template-columns:1fr 330px; gap:14px; align-items:start; }
+  .phone { width:375px; margin:0 auto; border:8px solid var(--ink); border-radius:28px;
+    overflow:hidden; background:var(--alt); min-height:700px; }
+  .phone .bar375 { padding:11px 12px; border-bottom:1px solid var(--line); font-weight:600;
+    font-size:14px; background:var(--page); }
+  .phone .scroll { padding:12px; overflow:auto; }
+
+  @media (max-width:900px) {
+    .g-name, .g-contact, .cols { grid-template-columns:1fr; }
+    .facts { grid-template-columns:1fr; gap:3px 0; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>Your account — layouts</h1>
+
+    <div class="found">
+      <strong>A data defect, not a layout one — “You can act on” repeats itself</strong>
+      The list currently reads: Connecticut, DMV, Georgia, Illinois, New Jersey, Ohio, Texas,
+      Washington, Nationwide, <span class="dupe">Connecticut</span>, <span class="dupe">DMV</span>,
+      <span class="dupe">Connecticut</span>, <span class="dupe">Connecticut</span>, Florida.
+      <b>Connecticut four times and DMV twice — fourteen entries for ten places.</b>
+      Almost certainly one row per grant rather than one per place, so somebody with several roles
+      touching Connecticut is shown Connecticut several times. It reads as a rendering fault and it
+      is a query that needs a DISTINCT — and it matters more than it looks, because this list is
+      the answer to “where am I allowed to work”, and a list that repeats itself is one nobody
+      trusts the rest of. Every layout here de-duplicates and shows the count.
+    </div>
+
+    <div class="ask">
+      <strong>Three things the current screen does that the layouts undo</strong>
+      <b>1 · A field is as wide as the card, not as wide as its content.</b> “Jose” sits in a box
+      about 700px across; the whole first card is one column stretched to 1650px. A field that wide
+      stops looking like a field for a first name and starts looking like a mistake — and the eye
+      has to travel the full width to find the next label.
+      <b>2 · Two kinds of information are dressed the same and behave differently.</b> Name, phone
+      and address are editable. Email, Role, Organization and “You can act on” are <em>facts about
+      your account that you cannot change here</em> — but they sit in the same card, under the same
+      heading, above the same Save button. The Save applies to some of what is above it and not the
+      rest, and nothing on screen says which.
+      <b>3 · Gender is two controls for one value</b> — a text box reading “Male”, and four chips
+      underneath. Whichever is authoritative, the other is a second way to set the same thing.
+    </div>
+
+    <div class="locked">
+      <strong>One rule this screen is currently on the wrong side of</strong>
+      The date of birth has a <b>calendar icon</b>. If that opens a date picker, it is a
+      <b>dialog</b> — and this codebase has none: Hours was explicitly built with a
+      <b>masked text field</b> rather than a time picker for exactly this reason
+      (<code>8910b88</code>), and every Tasks screen asserts <code>findsNothing</code> for
+      <code>showDialog</code>. A date of birth is also the worst possible case for a picker:
+      it is thirty years ago and nobody wants to page back through 360 months. <b>All three
+      layouts use a masked field</b> — you type it, the same way Hours works.
+      Otherwise unchanged: Appearance, Two-factor and Password keep their own cards and their own
+      controls, and the footer rule holds — a card that can be saved has a footer, a card that
+      cannot does not.
+    </div>
+
+    <p>Pick a number. <strong>1 is my recommendation.</strong> 4 is it at 375px.</p>
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+  <div id="stage"></div>
+</div>
+
+<script>
+const CAPTIONS = {
+  1: ["1 · Split by what you can change (recommended)",
+      "Two cards. 'Who you are' holds only editable things and carries the Save footer; 'Your account' holds the facts assigned to you — email, role, organization, where you can act — and has no footer at all, because there is nothing on it to save. That is the same rule already approved for the Phone panes: the footer's ABSENCE is what tells you a thing is read-only, before you go hunting for a button. It also answers the current screen's worst ambiguity, which is a Save button sitting under four fields it does not apply to. Fields are sized to their content, so a first name gets a first-name-sized box and the eye stops travelling 700px to reach the next label."],
+  2: ["2 · One card, with the facts in a distinct block",
+      "Keeps a single 'Who you are' card and separates the read-only facts into a tinted block at its foot, below a rule, with the Save above them rather than below. Smallest change from what exists — same card count, same heading, same order of information — and it does fix the specific confusion of Save appearing to apply to the facts. Weakness: it relies on a tint and a rule to say what a missing footer says structurally, and 'read-only' expressed as a background colour is the kind of thing that survives one redesign and not two."],
+  3: ["3 · Form on the left, account facts as a sidebar on the right",
+      "Editable fields in a column on the left, the assigned facts in a narrow card on the right, both visible at once. Uses the width the screen actually has rather than stretching one column across it, and the facts read like a reference card you glance at while filling the form. Weakness: the facts are not reference material for the form — you do not need your role to type your phone number — so this places them prominently for no reason, and at narrower windows it collapses back into layout 1 anyway."],
+  4: ["4 · Layout 1 at 375px",
+      "The two cards stack, which is the arrangement they already imply, so nothing needs to change shape. Name fields go full width here because at 375 there is only one column — the point of sizing them was never small-for-its-own-sake, it was that a 700px box for a first name is absurd, and 375 is not. The 'where you can act' chips wrap rather than truncating, and the masked date field is the control that survives narrow best — which is the accidental benefit of a rule imposed for a different reason."]
+};
+
+const PLACES = ['Connecticut','DMV','Georgia','Illinois','New Jersey','Ohio','Texas',
+                'Washington','Nationwide','Florida'];
+
+const idFields = `
+  <div class="idrow">
+    <div>
+      <div class="avatar"></div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:2px">
+        <button class="btn ghost sm" type="button">Change</button>
+        <button class="btn ghost sm" type="button" style="border:0;color:var(--muted)">Remove</button>
+      </div>
+    </div>
+    <div style="flex:1;min-width:0">
+      <div class="grid g-name">
+        <div class="f"><label>First name</label><div class="ctl">Jose</div></div>
+        <div class="f"><label>Last name</label><div class="ctl">Demasi</div></div>
+        <div class="f"><label>Middle name <span style="opacity:.7">optional</span></label>
+          <div class="ctl">Luis</div></div>
+      </div>
+      <div class="grid g-contact" style="margin-top:12px">
+        <div class="f"><label>Phone number</label><div class="ctl">+1 (305) 724-2199</div>
+          <div class="hintline">Shown the way the rest of the app shows numbers.</div></div>
+        <div class="f"><label>Home address <span style="opacity:.7">optional</span></label>
+          <div class="ctl ph">Not given</div></div>
+      </div>
+      <div class="grid" style="grid-template-columns:auto auto;gap:12px 28px;margin-top:12px">
+        <div class="f"><label>Gender <span style="opacity:.7">optional</span></label>
+          <div class="chips"><b>Female</b><b class="on">Male</b><b>Non-binary</b>
+            <b>Prefer not to say</b></div>
+          <div class="hintline">One control, not two — the chips are the field.</div></div>
+        <div class="f"><label>Date of birth <span style="opacity:.7">optional</span></label>
+          <div class="dob"><span class="mask">14 / 04 / 1994</span></div>
+          <div class="hintline">Typed, not picked. No calendar to page back thirty years through.</div></div>
+      </div>
+    </div>
+  </div>`;
+
+const facts = (compact) => `
+  <dl class="facts" ${compact ? 'style="grid-template-columns:1fr;gap:2px 0"' : ''}>
+    <dt>Email</dt>
+    <dd>jose@ezbizi.com
+      <div class="why">Your sign-in address, and where a password reset goes. Changing it needs a
+        confirmation email, which is not wired up yet.</div></dd>
+    <dt>Role</dt><dd>Administrator</dd>
+    <dt>Organization</dt><dd>A1-Group</dd>
+    <dt>You can act on <span style="display:block;font-size:11px">10 places</span></dt>
+    <dd>
+      <div class="places">${PLACES.map(p => `<span>${p}</span>`).join('')}</div>
+      <div class="why">Permissions decide <b>what</b> you may do; this decides <b>where</b>.</div>
+    </dd>
+  </dl>`;
+
+const saveFoot = `
+  <div class="foot">
+    <span class="state">Everything saved · a moment ago</span>
+    <button class="btn ghost sm" type="button">Discard</button>
+    <button class="btn sm" type="button">Save</button>
+  </div>`;
+
+const otherCards = `
+  <div class="card"><h3>Appearance
+      <span class="hint">Yours alone — nobody else in your organization sees these.</span></h3>
+    <div class="in">
+      <div class="f" style="margin-bottom:12px"><label>Theme</label>
+        <div class="seg"><b class="on">✓ Match my device</b><b>Light</b><b>Dark</b>
+          <b>Dark sidebar</b><b>Light sidebar</b></div></div>
+      <div class="f"><label>Sidebar</label>
+        <div class="seg"><b class="on">✓ List</b><b>Blocks</b></div>
+        <div class="hintline">A list puts the icon and label side by side. Blocks stack them and
+          take less width.</div></div>
+    </div></div>
+
+  <div class="card"><h3>Signing in</h3>
+    <div class="in">
+      <div class="row"><div class="g"><b>Two-factor authentication <span class="pill">On</span></b>
+        <span>8 recovery codes left. Covers both your sign-ins. Changing or removing it needs your
+          password and a current code.</span></div>
+        <button class="btn ghost sm" type="button">Change</button>
+        <button class="btn ghost sm" type="button">Turn off</button></div>
+      <div class="row"><div class="g"><b>Password</b>
+        <span>One password covers the app and the control plane. Changing it signs out every other
+          session, including this tab's Development section.</span></div>
+        <button class="btn ghost sm" type="button">Change</button></div>
+    </div></div>`;
+
+const shell = (inner) => `
+  <div class="shell">
+    <h2>Your account</h2>
+    <p class="sub">Yours, not the organization's. What an administrator controls is in Settings.</p>
+    ${inner}
+  </div>`;
+
+const L1 = () => shell(`
+  <div class="card"><h3>Who you are<span class="hint">The things you can change.</span></h3>
+    <div class="in">${idFields}</div>
+    ${saveFoot}
+  </div>
+  <div class="card readonly"><h3>Your account
+      <span class="hint">Assigned to you. An administrator changes these in Settings.</span></h3>
+    <div class="in">${facts(false)}</div>
+  </div>
+  ${otherCards}
+  <p class="note"><b>No footer on the second card, and that is the signal.</b> Nothing on it can
+    be saved, so nothing offers to save it — the same rule already approved for the Phone panes.</p>`);
+
+const L2 = () => shell(`
+  <div class="card"><h3>Who you are</h3>
+    <div class="in">${idFields}
+      <div style="border-top:1px solid var(--line);margin:16px 0 0;padding-top:14px;
+                  background:var(--alt);margin-left:-18px;margin-right:-18px;padding:14px 18px 4px">
+        <div style="font-size:12px;color:var(--muted);font-weight:600;margin-bottom:10px">
+          ASSIGNED TO YOU — an administrator changes these in Settings</div>
+        ${facts(false)}
+      </div>
+    </div>
+    ${saveFoot}
+  </div>
+  ${otherCards}
+  <p class="note">Smallest change, and it does fix Save appearing to apply to the facts. But
+    “read-only” is carried by a tint rather than by structure, and a tint survives one redesign
+    and not two.</p>`);
+
+const L3 = () => shell(`
+  <div class="cols">
+    <div>
+      <div class="card"><h3>Who you are</h3><div class="in">${idFields}</div>${saveFoot}</div>
+      ${otherCards}
+    </div>
+    <div class="card readonly"><h3>Your account
+        <span class="hint">Assigned to you.</span></h3>
+      <div class="in">${facts(true)}</div></div>
+  </div>
+  <p class="note">Uses the width. But your role is not reference material for typing your phone
+    number, so this gives the facts a prominence they do not earn.</p>`);
+
+const L4 = () => `
+  <div class="phone">
+    <div class="bar375">Your account</div>
+    <div class="scroll">
+      <div class="card"><h3>Who you are</h3>
+        <div class="in">
+          <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">
+            <div class="avatar" style="width:54px;height:54px"></div>
+            <button class="btn ghost sm" type="button">Change</button>
+            <button class="btn ghost sm" type="button" style="border:0;color:var(--muted)">Remove</button>
+          </div>
+          <div class="f" style="margin-bottom:11px"><label>First name</label><div class="ctl">Jose</div></div>
+          <div class="f" style="margin-bottom:11px"><label>Last name</label><div class="ctl">Demasi</div></div>
+          <div class="f" style="margin-bottom:11px"><label>Phone number</label>
+            <div class="ctl">+1 (305) 724-2199</div></div>
+          <div class="f" style="margin-bottom:11px"><label>Gender <span style="opacity:.7">optional</span></label>
+            <div class="chips"><b>Female</b><b class="on">Male</b><b>Non-binary</b><b>Prefer not to say</b></div></div>
+          <div class="f"><label>Date of birth <span style="opacity:.7">optional</span></label>
+            <div class="dob"><span class="mask">14 / 04 / 1994</span></div></div>
+        </div>
+        ${saveFoot}
+      </div>
+      <div class="card readonly"><h3>Your account<span class="hint">Assigned to you.</span></h3>
+        <div class="in">${facts(true)}</div></div>
+    </div>
+  </div>`;
+
+const LAYOUTS = { 1:L1, 2:L2, 3:L3, 4:L4 };
+const nums = document.getElementById('nums'), stage = document.getElementById('stage'),
+      caption = document.getElementById('caption');
+Object.keys(LAYOUTS).forEach(k => {
+  const b = document.createElement('button'); b.type='button'; b.textContent=k;
+  b.addEventListener('click', () => show(+k)); nums.appendChild(b);
+});
+function show(i) {
+  [...nums.children].forEach((b,x) => b.setAttribute('aria-pressed', x+1===i ? 'true':'false'));
+  const e = CAPTIONS[i];
+  caption.innerHTML = '<strong>'+e[0]+'</strong>'+e[1];
+  stage.innerHTML = LAYOUTS[i]();
+}
+show(1);
+</script>
+</body>
+</html>

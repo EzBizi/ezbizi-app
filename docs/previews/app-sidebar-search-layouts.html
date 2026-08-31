@@ -131,7 +131,7 @@
 <script>
 const CAPTIONS = {
   1: ["1 · A field at the top that filters the list in place (recommended)",
-      "One field under the brand, always there, filtering the destinations beneath it as you type. Matching letters are highlighted so it is obvious WHY a row survived — 'ma' matching both Marketing and Fleet Management is confusing until you can see which letters matched. The tail never filters: Settings and Development are always there, because they are the things you go to when the list did not have what you wanted. Chosen because it costs one row of height, needs no new surface, no overlay, and no rule changed — and because the list it filters is the list you were already looking at, so nothing moves anywhere unexpected. Collapsed, the field becomes an icon that expands the sidebar and focuses the field, which is one tap for a state you were in anyway."],
+      "One field under the brand, always there, filtering the destinations beneath it as you type. Matching letters are highlighted so it is obvious WHY a row survived — 'ma' matching both Marketing and Fleet Management is confusing until you can see which letters matched. The tail never filters: Settings and Development are always there, because they are the things you go to when the list did not have what you wanted. Chosen because it costs one row of height, needs no new surface, no overlay, and no rule changed — and because the list it filters is the list you were already looking at, so nothing moves anywhere unexpected. APPROVED WITH ONE CHANGE, and it is the right one: collapsed, there is NO search at all — not even an icon. The collapsed rail is for somebody who already knows where things are and wants their screen back; search is for finding, which implies wanting labels. An icon there would have been a control that only makes sense by first undoing the state you deliberately chose."],
   2: ["2 · The field appears only when you ask for it",
       "A search icon in the brand row; pressing it or hitting / slides a field in above the list. Zero permanent cost — on the tall screens where everything already fits, the sidebar is exactly as it is today. Weakness: search that is invisible until invoked is search most people never discover, and this is aimed at somebody who cannot find a module — precisely the person not looking for a hidden control. It optimises for the users who do not need it."],
   3: ["3 · No field — type into the sidebar directly",
@@ -178,14 +178,14 @@ const L1 = () => `
       <kbd class="k">/</kbd></div></div>
     <div class="navwrap">${NAV.map(n => item(n, n==='Human Resources')).join('')}</div>
     ${tail()}`)}
-  ${win('<b>Collapsed</b> · the field becomes an icon', `
+  ${win('<b>Collapsed</b> · no search at all', `
     <div class="brandrow" style="justify-content:center"><span class="tog">&#8677;</span></div>
-    <div class="searchicon">&#9906;</div>
     <div class="navwrap">${NAV.map(n => item(n, n==='Human Resources')).join('')}</div>
     ${tail()}`, 'collapsed')}
-  <p class="note">One row of height. The tail never filters — Settings and Development are what
-    you reach for when the list did not have what you wanted, so they must not be filtered out
-    of reach by a search that failed.</p>`;
+  <p class="note"><b>Approved.</b> One row of height when expanded, nothing when collapsed.
+    The tail never filters — Settings and Development are what you reach for when the list did
+    not have what you wanted, so they must not be filtered out of reach by a search that
+    failed.</p>`;
 
 const L2 = () => `
   ${win('<b>Layout 2</b> · icon only, until asked', `
