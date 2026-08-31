@@ -87,8 +87,7 @@ class _PcSpecsTabState extends State<PcSpecsTab> {
         return;
       }
 
-      _devices = (response.data as List<dynamic>)
-          .cast<Map<String, dynamic>>();
+      _devices = (response.data as List<dynamic>).cast<Map<String, dynamic>>();
     });
   }
 
@@ -112,7 +111,11 @@ class _PcSpecsTabState extends State<PcSpecsTab> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final wide = constraints.maxWidth >= PcSpecsTab.splitAbove;
-          final roster = _Roster(people: people, isOnline: _isOnline);
+          final roster = _Roster(
+            people: people,
+            isOnline: _isOnline,
+            session: widget.session,
+          );
           final panel = _GlancePanel(people: people, isOnline: _isOnline);
 
           if (!wide) {
@@ -176,6 +179,50 @@ bool _declaresSpecs(Map<String, dynamic> device) =>
         .cast<String>()
         .contains('specs');
 
+/// "just now" / "3m ago" / "2h ago" / "yesterday" / "5d ago" for a
+/// `last_seen_at` stamp — never the raw ISO-8601 string a device row used to
+/// show verbatim. `null` (and anything unparseable) reads as "never", the
+/// same word this app already uses for "has not happened yet" elsewhere.
+///
+/// No shared "ago" helper exists to import: leads_screen.dart and
+/// profile_screen.dart each carry their own private formatter, slightly
+/// different from one another, and core/timestamps.dart's [formatStamp] is
+/// deliberately NOT this — its own doc comment says a wrong "2 hours ago" is
+/// worse than an exact stamp, which is the opposite tradeoff a glance-only
+/// roster wants. So this stays local rather than reaching for either.
+String _seenAgo(String? iso) {
+  if (iso == null) return 'never';
+
+  final at = DateTime.tryParse(iso)?.toLocal();
+  if (at == null) return 'never';
+
+  final ago = DateTime.now().difference(at);
+  if (ago.isNegative || ago.inMinutes < 1) return 'just now';
+  if (ago.inMinutes < 60) return '${ago.inMinutes}m ago';
+  if (ago.inHours < 24) return '${ago.inHours}h ago';
+  if (ago.inHours < 48) return 'yesterday';
+  return '${ago.inDays}d ago';
+}
+
+/// The module's human label, read from the session's own catalogue — the
+/// same `Me.module` lookup the sidebar uses (session.dart), so `jobs` reads
+/// as whatever the server actually called it rather than as its wire key.
+///
+/// Falls back to a title-cased rendering of the key itself only when the
+/// session's module list does not carry it (an older server, or a module
+/// this person cannot reach), so the roster never shows a raw snake_case
+/// key either way.
+String _moduleLabel(Session session, String key) {
+  final label = session.me?.module(key)?.label;
+  if (label != null && label.isNotEmpty) return label;
+
+  return key
+      .split('_')
+      .where((word) => word.isNotEmpty)
+      .map((word) => word[0].toUpperCase() + word.substring(1))
+      .join(' ');
+}
+
 num? _diskFreeGb(Map<String, dynamic> device) {
   final specs = device['specs'];
   if (specs is! Map<String, dynamic>) return null;
@@ -186,10 +233,15 @@ num? _diskFreeGb(Map<String, dynamic> device) {
 /// The people-first roster: a card per person, expanded inline to their
 /// devices — never a dialog.
 class _Roster extends StatelessWidget {
-  const _Roster({required this.people, required this.isOnline});
+  const _Roster({
+    required this.people,
+    required this.isOnline,
+    required this.session,
+  });
 
   final List<_Person> people;
   final bool Function(Map<String, dynamic>) isOnline;
+  final Session session;
 
   @override
   Widget build(BuildContext context) {
@@ -211,7 +263,11 @@ class _Roster extends StatelessWidget {
         children: [
           for (var i = 0; i < people.length; i++) ...[
             if (i > 0) Divider(height: 1, color: EzBiziTheme.edge(context)),
-            _PersonTile(person: people[i], isOnline: isOnline),
+            _PersonTile(
+              person: people[i],
+              isOnline: isOnline,
+              session: session,
+            ),
           ],
         ],
       ),
@@ -220,10 +276,15 @@ class _Roster extends StatelessWidget {
 }
 
 class _PersonTile extends StatelessWidget {
-  const _PersonTile({required this.person, required this.isOnline});
+  const _PersonTile({
+    required this.person,
+    required this.isOnline,
+    required this.session,
+  });
 
   final _Person person;
   final bool Function(Map<String, dynamic>) isOnline;
+  final Session session;
 
   @override
   Widget build(BuildContext context) {
@@ -256,7 +317,7 @@ class _PersonTile extends StatelessWidget {
           Flexible(
             child: Text(
               anyOnline && current != null && current.isNotEmpty
-                  ? 'on $current'
+                  ? 'on ${_moduleLabel(session, current)}'
                   : 'offline',
               overflow: TextOverflow.ellipsis,
               maxLines: 1,
@@ -324,8 +385,7 @@ class _DeviceRow extends StatelessWidget {
     final hasSpecsKey = device.containsKey('specs');
     final specs = device['specs'];
     final label =
-        device['label'] as String? ?? device['platform'] as String? ??
-        'Device';
+        device['label'] as String? ?? device['platform'] as String? ?? 'Device';
     final platform = (device['platform'] as String? ?? '').toUpperCase();
     final seen = device['last_seen_at'] as String?;
 
@@ -357,7 +417,10 @@ class _DeviceRow extends StatelessWidget {
                           color: scheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: Text(platform, style: theme.textTheme.labelSmall),
+                        child: Text(
+                          platform,
+                          style: theme.textTheme.labelSmall,
+                        ),
                       ),
                     Text(label, style: theme.textTheme.titleSmall),
                   ],
@@ -382,10 +445,11 @@ class _DeviceRow extends StatelessWidget {
                     'This device has not reported hardware details yet.',
                     style: theme.textTheme.bodyMedium,
                   ),
-                if (seen != null) ...[
-                  const SizedBox(height: 4),
-                  Text('seen $seen', style: theme.textTheme.labelSmall),
-                ],
+                const SizedBox(height: 4),
+                Text(
+                  'seen ${_seenAgo(seen)}',
+                  style: theme.textTheme.labelSmall,
+                ),
               ],
             ),
           ),
@@ -417,9 +481,7 @@ class _SpecsLine extends StatelessWidget {
     final ssid = specs['wifi_ssid'];
     final signal = specs['wifi_signal_dbm'];
     if (ssid != null) {
-      parts.add(
-        signal != null ? 'Wi-Fi "$ssid" $signal dBm' : 'Wi-Fi "$ssid"',
-      );
+      parts.add(signal != null ? 'Wi-Fi "$ssid" $signal dBm' : 'Wi-Fi "$ssid"');
     }
 
     final apps = specs['open_apps'];
@@ -439,8 +501,7 @@ class _SpecsLine extends StatelessWidget {
       children: [
         if (parts.isNotEmpty)
           Text(parts.join(' · '), style: theme.textTheme.bodyMedium),
-        if (appsLine != null)
-          Text(appsLine, style: theme.textTheme.bodyMedium),
+        if (appsLine != null) Text(appsLine, style: theme.textTheme.bodyMedium),
       ],
     );
   }
@@ -545,8 +606,7 @@ class _GlancePanel extends StatelessWidget {
                           Expanded(
                             child: Text(
                               (entry.$2['label'] as String?) ??
-                                  (entry.$2['platform'] as String? ??
-                                      'Device'),
+                                  (entry.$2['platform'] as String? ?? 'Device'),
                               style: theme.textTheme.bodyMedium,
                               overflow: TextOverflow.ellipsis,
                             ),

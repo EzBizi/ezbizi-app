@@ -51,12 +51,10 @@ void main() {
       expect(webRow, findsOneWidget);
 
       expect(
-        find.descendant(
-          of: webRow,
-          matching: find.textContaining('no specs'),
-        ),
+        find.descendant(of: webRow, matching: find.textContaining('no specs')),
         findsOneWidget,
-        reason: 'A device that declared no specs capability rendered no '
+        reason:
+            'A device that declared no specs capability rendered no '
             'explicit sentence — the row would read as blank, which is the '
             'bug this tab exists to not have.',
       );
@@ -66,7 +64,8 @@ void main() {
       expect(
         find.descendant(of: webRow, matching: find.textContaining('RAM')),
         findsNothing,
-        reason: 'A web session has no specs capability, so it must not show '
+        reason:
+            'A web session has no specs capability, so it must not show '
             'a hardware value that only an agent device can report.',
       );
 
@@ -87,10 +86,7 @@ void main() {
     expect(agentRow, findsOneWidget);
 
     expect(
-      find.descendant(
-        of: agentRow,
-        matching: find.textContaining('16 GB RAM'),
-      ),
+      find.descendant(of: agentRow, matching: find.textContaining('16 GB RAM')),
       findsOneWidget,
     );
   });
@@ -104,8 +100,7 @@ void main() {
       // `monitoring.specs.view`. `device['specs']` and a genuinely-null value
       // are indistinguishable through plain map access, which is why the
       // withheld branch has to test `containsKey` rather than nullness.
-      final withheld = Map<String, dynamic>.from(_agentDevice)
-        ..remove('specs');
+      final withheld = Map<String, dynamic>.from(_agentDevice)..remove('specs');
 
       await _pumpScreen(tester, devices: [withheld]);
 
@@ -143,6 +138,88 @@ void main() {
   });
 
   testWidgets(
+    'the roster shows a relative seen-time, never the raw ISO stamp',
+    (tester) async {
+      final threeMinutesAgo = DateTime.now()
+          .toUtc()
+          .subtract(const Duration(minutes: 3))
+          .toIso8601String();
+      final device = {..._agentDevice, 'last_seen_at': threeMinutesAgo};
+
+      await _pumpScreen(tester, devices: [device]);
+
+      final row = find.byKey(const ValueKey('monitoring-device-dev-agent'));
+
+      // Non-vacuous: this is exactly what the old code rendered — the raw
+      // ISO-8601 string handed straight to Text('seen $seen').
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.textContaining(threeMinutesAgo),
+        ),
+        findsNothing,
+        reason:
+            'The roster rendered the raw ISO-8601 timestamp instead of '
+            'a human relative time.',
+      );
+
+      expect(
+        find.descendant(of: row, matching: find.text('seen 3m ago')),
+        findsOneWidget,
+        reason:
+            'A device seen 3 minutes ago should read "seen 3m ago", not '
+            'the raw stamp and not a different bucket.',
+      );
+    },
+  );
+
+  testWidgets(
+    'the roster shows the human module label, never the raw module key',
+    (tester) async {
+      await _pumpScreen(tester, devices: [_agentDevice, _webDevice]);
+
+      // _agentDevice's current_module is 'jobs', which the fixture's /me
+      // does not declare — the fallback path (title-cased key) exercises
+      // the same guarantee: no raw snake_case key ever reaches the screen.
+      expect(
+        find.text('on jobs'),
+        findsNothing,
+        reason:
+            'The roster rendered the raw module key instead of a human '
+            'label.',
+      );
+      expect(find.textContaining('on Jobs'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'a module key present in the session catalogue renders its server label',
+    (tester) async {
+      await _pumpScreen(
+        tester,
+        devices: [_agentDevice, _webDevice],
+        meModules: [
+          {
+            'key': 'monitoring',
+            'label': 'Monitoring',
+            'available': true,
+            'reachable': true,
+          },
+          {
+            'key': 'jobs',
+            'label': 'Work Orders',
+            'available': true,
+            'reachable': true,
+          },
+        ],
+      );
+
+      expect(find.text('on jobs'), findsNothing);
+      expect(find.textContaining('on Work Orders'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'the sub-tab strip shows PC Specs active and the other two as soon',
     (tester) async {
       await _pumpScreen(tester, devices: [_agentDevice, _webDevice]);
@@ -168,11 +245,14 @@ void main() {
       expect(find.textContaining('people online'), findsOneWidget);
 
       final rosterCenter = tester.getCenter(find.text('Marco Reyes'));
-      final panelCenter = tester.getCenter(find.textContaining('people online'));
+      final panelCenter = tester.getCenter(
+        find.textContaining('people online'),
+      );
       expect(
         panelCenter.dy,
         greaterThan(rosterCenter.dy),
-        reason: 'Below 720px the panel is meant to drop under the roster, '
+        reason:
+            'Below 720px the panel is meant to drop under the roster, '
             'not sit beside it.',
       );
     },
@@ -222,6 +302,7 @@ Future<void> _pumpScreen(
   List<Map<String, dynamic>> devices = const [],
   Size size = const Size(1280, 900),
   http.Response? Function(http.Request request)? onRequest,
+  List<Map<String, Object?>>? meModules,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -236,6 +317,8 @@ Future<void> _pumpScreen(
         device,
   ];
 
+  final me = meModules == null ? _me : {..._me, 'modules': meModules};
+
   final api = ApiClient(
     client: MockClient((request) async {
       final override = onRequest?.call(request);
@@ -244,7 +327,7 @@ Future<void> _pumpScreen(
       final path = request.url.path;
 
       if (path.endsWith('/me')) {
-        return _json({'data': _me});
+        return _json({'data': me});
       }
 
       if (path.endsWith('/monitoring/devices')) {
