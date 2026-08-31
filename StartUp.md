@@ -664,6 +664,26 @@ The full run also says something a scoped run structurally cannot: main was at
 anybody else's went missing in the merge. A module-scoped pass cannot tell you
 that no other module broke.
 
+### Anything edited while staging is untested, however careful the run before it
+
+`client/VERSION` and its `version_history.dart` note must agree, and a test says
+so. Four separate sessions shipped the mismatch in three days. None of them was
+careless and none had missed the rule — the file's own docblock states it.
+
+The cause is ORDER. You run the gates, they pass, and THEN you bump VERSION
+while putting the commit together. So the one file coupled to a test is the one
+file the test never saw. Everything you ran was green and none of it covered the
+change you made last.
+
+**Bump the version and write its note BEFORE you run the gates, never while
+staging.**
+
+The general form matters more than the instance: a green run is evidence about
+the tree as it stood when the run started. Every edit after that point is
+unverified, and edits made during staging feel like packaging rather than
+changes — which is exactly why they escape the instinct to re-run. If you touch
+anything after the gates, the gates are stale.
+
 ### A coupled pair where only one half conflicts is sprung by resolving correctly
 
 `client/VERSION` and the newest entry in `version_history.dart` must agree —
