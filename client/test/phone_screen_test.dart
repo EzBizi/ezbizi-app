@@ -188,6 +188,16 @@ void main() {
     expect(find.text('Hours'), findsOneWidget);
     expect(find.text('Ring groups'), findsOneWidget);
     expect(find.text('Trust & caller identity'), findsOneWidget);
+
+    // The rail is a lazy list and grew past one screen when it gained group
+    // headings and a fourteenth section, so the last entry is no longer built
+    // until it is scrolled to. Not being able to reach it WOULD be a defect,
+    // which is why this scrolls rather than dropping the assertion.
+    await _scrollTo(
+      tester,
+      find.text('Messaging'),
+      within: find.byType(ListView).first,
+    );
     expect(find.text('Messaging'), findsOneWidget);
     expect(find.text('Activate phone service'), findsNothing);
 
@@ -1381,6 +1391,113 @@ void main() {
       expect(sent!['body'], 'Ten minutes.');
     });
   });
+
+  group('Settings › Extensions', () {
+    const conn = {
+      'id': 'cx-1',
+      'scope_type': 'company',
+      'scope_id': 'co-1',
+      'scope_name': 'A-1 Chimney',
+      'kind': 'subaccount',
+      'status': 'connected',
+    };
+
+    const roster = [
+      {'user_id': 'u-ana', 'name': 'Analorena', 'extension': '101'},
+      {'user_id': 'u-bar', 'name': 'Bar', 'extension': null},
+    ];
+
+    Future<void> openExtensions(WidgetTester tester) async {
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('Extensions'));
+    }
+
+    /// Somebody opens this asking "what is Bar's number", and the answer is
+    /// often "she has not got one". A list of only the assigned cannot say
+    /// that — an absent name reads as a loading problem, so everybody is
+    /// listed and a blank field is the answer.
+    testWidgets('a person with no extension is listed with an empty field', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        extensions: roster,
+      );
+
+      await openExtensions(tester);
+
+      expect(find.text('Analorena'), findsOneWidget);
+      expect(
+        find.text('Bar'),
+        findsOneWidget,
+        reason: 'somebody without an extension was left out of the list',
+      );
+
+      final bar = tester.widget<TextField>(
+        find.byKey(const Key('extension:u-bar')),
+      );
+      expect(bar.controller!.text, isEmpty);
+    });
+
+    /// The server refuses a clash by NAMING who already holds the number,
+    /// because "already taken" leaves somebody hunting through the roster for
+    /// the one field that matches. That sentence has to reach the screen
+    /// rather than being replaced by a generic failure.
+    testWidgets('a clash says who already holds the number', (tester) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        extensions: roster,
+        extensionRefusal: 'Analorena already has extension 101.',
+      );
+
+      await openExtensions(tester);
+
+      await tester.enterText(
+        find.byKey(const Key('extension:u-bar')),
+        '101',
+      );
+      await tester.pumpAndSettle();
+
+      await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+
+      expect(
+        find.textContaining('Analorena already has extension 101'),
+        findsOneWidget,
+      );
+    });
+
+    /// Clearing is a real edit, not an absence of one. The endpoint takes a
+    /// present-but-null extension, so a blanked field has to post null rather
+    /// than be skipped as "nothing typed".
+    testWidgets('clearing a number posts null rather than being skipped', (
+      tester,
+    ) async {
+      final sent = <Map<String, dynamic>>[];
+
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        extensions: roster,
+        onExtension: sent.add,
+      );
+
+      await openExtensions(tester);
+
+      await tester.enterText(find.byKey(const Key('extension:u-ana')), '');
+      await tester.pumpAndSettle();
+
+      await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+
+      expect(sent, hasLength(1));
+      expect(sent.single['user_id'], 'u-ana');
+      expect(sent.single['extension'], isNull);
+    });
+  });
 }
 Finder _tab(String label) => find.widgetWithText(ChoiceChip, label);
 
@@ -1459,6 +1576,9 @@ Future<void> _pump(
   void Function(Map<String, dynamic> body)? onNumberPatch,
   void Function()? onDelete,
   List<String>? requestLog,
+  List<Map<String, Object?>> extensions = const [],
+  String? extensionRefusal,
+  void Function(Map<String, dynamic> body)? onExtension,
   List<Map<String, Object?>> presence = const [],
   List<Map<String, Object?>> staffMessages = const [],
   Map<String, Object?> unread = const {},
@@ -1493,6 +1613,9 @@ Future<void> _pump(
         onNumberPatch: onNumberPatch,
         onDelete: onDelete,
         requestLog: requestLog,
+        extensions: extensions,
+        extensionRefusal: extensionRefusal,
+        onExtension: onExtension,
         presence: presence,
         staffMessages: staffMessages,
         unread: unread,
@@ -1585,6 +1708,9 @@ MockClientHandler _handler({
   void Function(Map<String, dynamic> body)? onNumberPatch,
   void Function()? onDelete,
   List<String>? requestLog,
+  List<Map<String, Object?>> extensions = const [],
+  String? extensionRefusal,
+  void Function(Map<String, dynamic> body)? onExtension,
   List<Map<String, Object?>> presence = const [],
   List<Map<String, Object?>> staffMessages = const [],
   Map<String, Object?> unread = const {},
@@ -1802,6 +1928,18 @@ MockClientHandler _handler({
     if (path.contains('/phone/voicemail-boxes/') && request.method == 'PATCH') {
       onVoicemailSave?.call(jsonDecode(request.body) as Map<String, dynamic>);
       return _json({'data': voicemailBoxes.isEmpty ? {} : voicemailBoxes.first});
+    }
+
+    if (path.endsWith('/phone/extensions') && request.method == 'GET') {
+      return _json({'data': extensions, 'connection_id': 'cx-1'});
+    }
+
+    if (path.endsWith('/phone/extensions') && request.method == 'PUT') {
+      onExtension?.call(jsonDecode(request.body) as Map<String, dynamic>);
+      if (extensionRefusal != null) {
+        return _json({'message': extensionRefusal}, 422);
+      }
+      return _json({'data': <String, Object?>{}});
     }
 
     return _json({'message': 'Unexpected ${request.method} $path'}, 500);

@@ -8,6 +8,7 @@ import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/tag.dart';
 import 'call_flow_pane.dart';
+import 'extensions_pane.dart';
 import 'flows_pane.dart';
 import 'general_pane.dart';
 import 'hours_pane.dart';
@@ -107,6 +108,12 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
       id: 'ring-groups',
       label: 'Ring groups',
       icon: Icons.groups_outlined,
+      group: 'Answering',
+    ),
+    (
+      id: 'extensions',
+      label: 'Extensions',
+      icon: Icons.pin_outlined,
       group: 'Answering',
     ),
     (
@@ -436,6 +443,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
       'flows' => FlowsPane(api: widget.api, session: widget.session),
       'hours' => HoursPane(api: widget.api, session: widget.session),
       'ring-groups' => RingGroupsPane(api: widget.api, session: widget.session),
+      'extensions' => ExtensionsPane(api: widget.api, session: widget.session),
       'voicemail' => VoicemailPane(api: widget.api, session: widget.session),
       'trust' => TrustPane(api: widget.api, session: widget.session),
       'tags' => TagsPane(api: widget.api, session: widget.session),
