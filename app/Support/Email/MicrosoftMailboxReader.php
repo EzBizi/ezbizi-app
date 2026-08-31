@@ -315,6 +315,21 @@ final class MicrosoftMailboxReader implements MailboxReader
      * leaves the next colleague unable to see that the customer was already
      * answered.
      */
+    /**
+     * Graph's well-known folders, which every Outlook mailbox has.
+     *
+     * Taken from the same map the reader addresses, so the offer and what can
+     * be opened cannot drift apart. DRAFTS is filtered out because it is an
+     * alias for DRAFT rather than a folder of its own.
+     */
+    public function availableFolders(Mailbox $mailbox): array
+    {
+        return array_values(array_filter(
+            array_keys(self::FOLDERS),
+            fn (string $label) => $label !== 'DRAFTS',
+        ));
+    }
+
     public function send(Mailbox $mailbox, array $to, string $subject, string $body, array $attachments = []): void
     {
         $message = [

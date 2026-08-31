@@ -192,74 +192,14 @@ class EmailFoldersTest extends TestCase
     // ── IMAP: honest about offering only the Inbox ───────────────
 
     /**
-     * IMAP has folders and this reader does not open them, so it says so.
+     * IMAP asks the server, so the refusal is now about THIS server.
      *
-     * The alternative — accept the label, return the Inbox — is what it used
-     * to do, and is the same lie as the Outlook case with nothing on screen
-     * to reveal it.
+     * The recognising itself is covered by {@see \Tests\Feature\ImapFoldersTest},
+     * which needs no socket. What is left to assert here is the wiring: that a
+     * label reaches the resolver at all, and that an unconnected mailbox
+     * refuses for the connection reason rather than the folder one.
      */
-    public function test_an_imap_folder_other_than_the_inbox_is_refused(): void
-    {
-        $t       = $this->provisionTenant('A1-Group');
-        $mailbox = $this->mailbox($t, 'imap');
-
-        try {
-            $this->inTenant($t['org'], fn () => app(ImapMailboxReader::class)->list($mailbox, label: 'SENT'));
-
-            $this->fail('An IMAP folder request was accepted, so the Inbox was shown as Sent.');
-        } catch (CannotReadMailbox $e) {
-            $this->assertStringContainsString('only open the Inbox', $e->getMessage());
-
-            // R8: says where the mail actually is, rather than only refusing.
-            $this->assertStringContainsString('your own mail program', $e->getMessage());
-        }
-    }
-
-    /**
-     * INBOX is not caught by the folder guard — it gets past it.
-     *
-     * Proved WITHOUT a socket, by using a mailbox with no credential: that
-     * refusal comes from the connection preflight, so seeing it means the
-     * folder guard let INBOX through. Reaching for a real server here instead
-     * would spend a connection timeout to learn the same thing, and would fail
-     * differently on a machine with no route out.
-     */
-    public function test_the_inbox_gets_past_the_folder_guard_on_imap(): void
-    {
-        $t = $this->provisionTenant('A1-Group');
-
-        $mailbox = $this->inTenant($t['org'], fn () => Mailbox::create([
-            'organization_id' => $t['org']->id,
-            'scope_type'      => 'organization',
-            'scope_id'        => $t['org']->id,
-            'address'         => 'info@a-1chimney.com',
-            'display_name'    => 'Info',
-            'provider'        => 'imap',
-            // No mail_server and no credential: the preflight refuses.
-        ]));
-
-        try {
-            $this->inTenant($t['org'], fn () => app(ImapMailboxReader::class)->list($mailbox, label: 'INBOX'));
-
-            $this->fail('An unconnected mailbox was read.');
-        } catch (CannotReadMailbox $e) {
-            $this->assertStringNotContainsString(
-                'only open the Inbox',
-                $e->getMessage(),
-                'INBOX was caught by the folder guard, so the Inbox itself is unreachable.',
-            );
-        }
-    }
-
-    /**
-     * And the folder guard fires BEFORE that preflight.
-     *
-     * Same unconnected mailbox, a different label: if the ordering were the
-     * other way round, somebody asking for Sent on a half-configured mailbox
-     * would be told to check their password — advice for a problem they do not
-     * have.
-     */
-    public function test_the_folder_refusal_precedes_the_connection_preflight(): void
+    public function test_an_unconnected_imap_mailbox_refuses_before_it_looks_for_folders(): void
     {
         $t = $this->provisionTenant('A1-Group');
 
@@ -272,12 +212,38 @@ class EmailFoldersTest extends TestCase
             'provider'        => 'imap',
         ]));
 
-        try {
-            $this->inTenant($t['org'], fn () => app(ImapMailboxReader::class)->list($mailbox, label: 'SENT'));
+        foreach (['INBOX', 'SENT'] as $label) {
+            try {
+                $this->inTenant($t['org'], fn () => app(ImapMailboxReader::class)->list($mailbox, label: $label));
 
-            $this->fail('Accepted.');
-        } catch (CannotReadMailbox $e) {
-            $this->assertStringContainsString('only open the Inbox', $e->getMessage());
+                $this->fail("An unconnected mailbox was read for {$label}.");
+            } catch (CannotReadMailbox $e) {
+                // The connection reason, not a folder one. A mailbox with no
+                // password has not got a folder problem, and telling somebody
+                // it has no Sent folder would send them looking in the wrong
+                // place entirely.
+                $this->assertStringContainsString('not connected', $e->getMessage());
+                $this->assertStringNotContainsString('folder', $e->getMessage());
+            }
         }
+    }
+
+    /**
+     * Asking for the folder list is the same read gate as reading the mail.
+     *
+     * A folder list is a small fact about somebody's mail, and small is not
+     * none — there is no reason for it to be reachable by somebody who may not
+     * open the inbox.
+     */
+    public function test_the_folder_list_needs_the_same_permission_as_the_mail(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+
+        $mailbox = $this->mailbox($t, 'microsoft_oauth');
+        $clerk   = $this->userWithRole($t, 'Clerk', ['email.view']);
+
+        $this->signedInAs($clerk)
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/folders")
+            ->assertForbidden();
     }
 }

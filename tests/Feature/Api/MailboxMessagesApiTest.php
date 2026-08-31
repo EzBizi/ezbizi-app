@@ -1481,6 +1481,14 @@ class FakeMailboxReader implements MailboxReader
     /** @var array<int, array{to: list<string>, subject: string, body: string}> */
     public static array $sent = [];
 
+    /** @var list<string> */
+    public static array $folders = ['INBOX', 'SENT'];
+
+    public function availableFolders(Mailbox $mailbox): array
+    {
+        return self::$folders;
+    }
+
     public function send(Mailbox $mailbox, array $to, string $subject, string $body, array $attachments = []): void
     {
         self::$sent[] = [

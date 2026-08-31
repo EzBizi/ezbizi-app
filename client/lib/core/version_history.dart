@@ -8,6 +8,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0119',
+      date: '31 Aug 2026',
+      items: [
+        'Email: a mailbox connected by password now opens its other folders '
+            'too. EzBizi asks your mail server what it has rather than '
+            'guessing, so Sent is found whether your server calls it Sent, '
+            'Sent Items or something in your own language - and a folder your '
+            'server does not have is simply not offered.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0118',
       date: '31 Aug 2026',
       items: [
