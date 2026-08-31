@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0123',
+      date: '31 Aug 2026',
+      items: [
+        'Web Management: "Get the plugin" now fetches the current version from '
+            'wordpress.org. It used to hand you whatever copy this server was '
+            'built with, which could be older than the one the page was '
+            'describing.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0122',
       date: '31 Aug 2026',
       items: [
