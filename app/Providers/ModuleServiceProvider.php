@@ -2232,14 +2232,14 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Test passed',
                         description: 'Somebody took a test and met its pass mark. It carries the '
                             .'score and, when the test expires, the date the pass runs out.',
-                        isRaised: false,
+                        isRaised: true,
                     ),
                     new TriggerDefinition(
                         key: 'training.failed',
                         label: 'Test failed',
                         description: 'Somebody took a test and did not meet the pass mark. '
                             .'Whether they may try again is the test\'s own retake setting.',
-                        isRaised: false,
+                        isRaised: true,
                     ),
                     /*
                      * Expiry is a fact about the CLOCK, and this is the event

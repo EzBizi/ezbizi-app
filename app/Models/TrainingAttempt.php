@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Automations\CarriesAutomationScope;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
@@ -15,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * One graded run at a test.
  */
-class TrainingAttempt extends Model implements HoldsPersonalData
+class TrainingAttempt extends Model implements CarriesAutomationScope, HoldsPersonalData
 {
     use HasUuids;
     use BelongsToTenant;
@@ -81,5 +82,35 @@ class TrainingAttempt extends Model implements HoldsPersonalData
     public function test(): BelongsTo
     {
         return $this->belongsTo(TrainingTest::class, 'test_id');
+    }
+
+    /**
+     * Where this attempt belongs, for §4 reach and for `NotificationDispatcher`
+     * — the LEARNER'S place, not the test's. Copied from
+     * `TrainingProgress::automationScope()` exactly; that shape was reviewed
+     * and is the settled one for this module — see its own docblock for the
+     * full reasoning (the org-wide-guide case that motivates resolving from
+     * the person's own assignment rather than the record's).
+     *
+     * Not optional: `training_attempts` carries no `franchise_id`/`company_id`
+     * of its own (see the migration), so without this every `training.passed`
+     * / `training.failed` event would arrive at `NotificationDispatcher`
+     * claiming no scope — which `audienceFor` reads as "every active user in
+     * the organization" (see its own docblock). A `notify` rule on either
+     * trigger would then broadcast a named person's test score and answers to
+     * the whole company. That leak was proven live in this codebase today, on
+     * Human Resources — see `HrAutomationsTest`.
+     *
+     * @return array{0: string|null, 1: string|null}
+     */
+    public function automationScope(): array
+    {
+        $assignment = $this->user?->assignments()->first();
+
+        return match ($assignment?->scopeType()) {
+            Assignment::SCOPE_FRANCHISE => ['franchise', $assignment->scopeId()],
+            Assignment::SCOPE_COMPANY => ['company', $assignment->scopeId()],
+            default => [null, null],
+        };
     }
 }

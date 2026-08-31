@@ -678,6 +678,11 @@ Route::prefix('v1')
         // see LearnController's docblock for the answer-key trust boundary.
         Route::get('training/learn', [TrainingLearnController::class, 'index']);
         Route::get('training/learn/tests/{test}', [TrainingLearnController::class, 'showTest']);
+        // Marking a submitted test (task 8) — same `training.view` gate; the
+        // gate, the pass mark, the retake cap and the expiry date are all
+        // decided server-side against the stored test. See
+        // LearnController::submit.
+        Route::post('training/learn/tests/{test}/attempts', [TrainingLearnController::class, 'submit']);
         // Reading progress through a guide (task 7) — same `training.view`
         // gate and the same place-scope/published-only filter as the reads
         // above; see ProgressController's docblock.
