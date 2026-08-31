@@ -19,8 +19,10 @@ import 'tasks/task_detail_panel.dart';
 import 'tasks/task_duplicate_flow.dart';
 import 'tasks/task_filters_panel.dart';
 import 'tasks/task_folder_administration.dart';
+import 'tasks/task_kanban_view.dart';
 import 'tasks/task_mobile_list.dart';
 import 'tasks/task_models.dart';
+import 'tasks/task_presentation_bar.dart';
 import 'tasks/task_quick_search.dart';
 import 'tasks/task_table.dart';
 import 'tasks/task_transfer_flow.dart';
@@ -86,6 +88,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   String? _activeViewId;
   int _activeViewVersion = 1;
   TaskViewConfiguration _configuration = TaskViewConfiguration.empty;
+  TaskKanbanField _kanbanField = TaskKanbanField.status;
   String? _boardEtag;
   TaskMyTasksPage? _myTasks;
   final Map<int, TaskMyTasksPage> _myTaskPages = <int, TaskMyTasksPage>{};
@@ -1436,33 +1439,153 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
         )
       : _showDirectory || _board == null
       ? _directoryOnly()
-      : mobile
-      ? Column(
-          children: [
-            _boardControls(),
-            if (_showFilters)
-              SizedBox(
-                height: 330,
-                child: TaskFiltersPanel(
-                  board: _board!,
-                  configuration: _configuration,
-                  people: _people,
-                  onChanged: _changeConfiguration,
-                  onClose: () => setState(() => _showFilters = false),
-                ),
-              ),
-            Expanded(
-              child: TaskMobileList(
-                board: _board!,
-                rows: _rows,
-                onSelected: _selectTask,
-                onAddTask: _board!.can('create_task') ? _addTaskToGroup : null,
-              ),
+      : _presentationBody(mobile, wide);
+
+  /// A generic switch on `TaskPresentation` (Ruling 1, progress.md) — not a
+  /// Kanban-specific branch off `_content`. Tasks 11-13 each add their own
+  /// case here for Calendar/Timeline/Workload rather than restructuring this
+  /// dispatcher. A presentation with no case yet (recognised by the enum,
+  /// just not built) falls back to the table body Phase 1 already has —
+  /// distinct from THE ONE RULE's "unknown value degrades to table", but the
+  /// same defensive shape: never a screen that renders nothing.
+  Widget _presentationBody(bool mobile, bool wide) =>
+      switch (_configuration.presentation) {
+        TaskPresentation.kanban => _kanbanContent(),
+        TaskPresentation.table ||
+        TaskPresentation.calendar ||
+        TaskPresentation.timeline ||
+        TaskPresentation.workload => mobile
+            ? _mobileTableContent()
+            : _workspace(wide),
+      };
+
+  Widget _mobileTableContent() => Column(
+    children: [
+      _boardControls(),
+      if (_showFilters)
+        SizedBox(
+          height: 330,
+          child: TaskFiltersPanel(
+            board: _board!,
+            configuration: _configuration,
+            people: _people,
+            onChanged: _changeConfiguration,
+            onClose: () => setState(() => _showFilters = false),
+          ),
+        ),
+      Expanded(
+        child: TaskMobileList(
+          board: _board!,
+          rows: _rows,
+          onSelected: _selectTask,
+          onAddTask: _board!.can('create_task') ? _addTaskToGroup : null,
+        ),
+      ),
+      _pagination(),
+    ],
+  );
+
+  Widget _kanbanContent() {
+    final board = _board!;
+    return Column(
+      children: [
+        _boardControls(),
+        if (_showFilters)
+          SizedBox(
+            height: 330,
+            child: TaskFiltersPanel(
+              board: board,
+              configuration: _configuration,
+              people: _people,
+              onChanged: _changeConfiguration,
+              onClose: () => setState(() => _showFilters = false),
             ),
-            _pagination(),
-          ],
-        )
-      : _workspace(wide);
+          ),
+        Expanded(
+          child: TaskKanbanView(
+            board: board,
+            field: _kanbanField,
+            buckets: TaskKanbanBuckets.forField(_kanbanField, board, _owners),
+            rows: _rows,
+            groupCounts: _groupCounts,
+            owners: _owners,
+            hiddenColumns: _configuration.hiddenColumns,
+            onMove: _kanbanMove,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Switches the active view's presentation. Kanban additionally needs a
+  /// `window` (`bucket_field` + the current field's buckets) and a matching
+  /// `group_by`, so `meta.group_counts` — which Kanban headers read their
+  /// complete accessible total from — is computed for the same field the
+  /// columns bucket by, not the board's default grouping.
+  void _changePresentation(TaskPresentation presentation) {
+    if (presentation == TaskPresentation.kanban) {
+      _applyKanbanField(_kanbanField);
+      return;
+    }
+    _changeConfiguration(
+      _configuration.copyWith(presentation: presentation, window: null),
+    );
+  }
+
+  void _changeKanbanField(TaskKanbanField field) {
+    setState(() => _kanbanField = field);
+    _applyKanbanField(field);
+  }
+
+  void _applyKanbanField(TaskKanbanField field) {
+    final board = _board;
+    if (board == null) return;
+    final buckets = TaskKanbanBuckets.forField(field, board, _owners)
+        .map((bucket) => bucket.id)
+        .toList(growable: false);
+    _changeConfiguration(
+      _configuration.copyWith(
+        presentation: TaskPresentation.kanban,
+        window: TaskKanbanWindow(bucketField: field.wire, buckets: buckets),
+        groupBy: field.wire,
+      ),
+    );
+  }
+
+  /// Drags a Kanban card between columns. This performs THE WRITE THE FIELD
+  /// ALREADY HAS — the exact same `PATCH tasks/{id}` core-field write
+  /// `_saveCoreNow` issues for the table, with the same `expected_version`
+  /// carried on `task.version`. Phase 2 adds no new write path for Kanban;
+  /// a field with no write path (read-only or archived) is refused by that
+  /// same endpoint, and its message — never a second, invented copy of the
+  /// reason — is what this returns for `TaskKanbanView` to display.
+  Future<String?> _kanbanMove(
+    TaskRow task,
+    TaskKanbanField field,
+    String bucketId,
+  ) async {
+    if (_bulkLockedTaskIds.contains(task.id)) {
+      return 'Finish the bulk change before editing this task.';
+    }
+    final current = _rows.where((row) => row.id == task.id).firstOrNull ?? task;
+    final privacy = _privacyGeneration;
+    final result = await _tasks.updateTask(
+      current.id,
+      expectedTaskVersion: current.version,
+      changes: <String, Object?>{field.writeField: bucketId},
+    );
+    if (!_isCurrentPrivacy(privacy)) return null;
+    if (result is TaskApiSuccess<TaskRow>) {
+      _putRow(_mergeServerRow(current, result.data));
+      return null;
+    }
+    if (result is TaskApiUnavailable<TaskRow>) {
+      _evict(result.message);
+      return result.message;
+    }
+    if (result is TaskApiConflictResult<TaskRow>) setState(() => _conflict = true);
+    return result.message ?? 'The change could not be saved.';
+  }
 
   Widget _pagination() => _lastPage <= 1
       ? const SizedBox.shrink()
@@ -1647,6 +1770,12 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
             onDuplicate: _duplicateView,
             onDelete: _deleteView,
           ),
+        TaskPresentationBar(
+          presentation: _configuration.presentation,
+          kanbanField: _kanbanField,
+          onPresentationChanged: _changePresentation,
+          onKanbanFieldChanged: _changeKanbanField,
+        ),
         Material(
           color: Theme.of(context).colorScheme.surfaceContainerLowest,
           child: SingleChildScrollView(
