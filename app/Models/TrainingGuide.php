@@ -5,7 +5,9 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTenant;
 use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
+use Database\Factories\TrainingGuideFactory;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -18,6 +20,9 @@ class TrainingGuide extends Model implements StatesRetention
 {
     use HasUuids;
     use BelongsToTenant;
+
+    /** @use HasFactory<TrainingGuideFactory> */
+    use HasFactory;
 
     public const DRAFT = 'draft';
 

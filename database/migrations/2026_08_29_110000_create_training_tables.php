@@ -64,7 +64,8 @@ return new class extends Migration
             $table->string('assignee_type', 8);          // user | role
             $table->uuid('assignee_id');
             $table->date('due_on')->nullable();
-            $table->foreignUuid('assigned_by_user_id')->constrained('users')->cascadeOnDelete();
+            $table->foreignUuid('assigned_by_user_id')->nullable()
+                ->constrained('users')->nullOnDelete();
             $table->timestamps();
 
             $table->index(['organization_id', 'assignee_type', 'assignee_id'], 'training_assignments_org_assignee_index');

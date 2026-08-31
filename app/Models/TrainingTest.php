@@ -5,7 +5,9 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTenant;
 use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
+use Database\Factories\TrainingTestFactory;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -21,6 +23,9 @@ class TrainingTest extends Model implements StatesRetention
 {
     use HasUuids;
     use BelongsToTenant;
+
+    /** @use HasFactory<TrainingTestFactory> */
+    use HasFactory;
 
     public const DRAFT = 'draft';
 

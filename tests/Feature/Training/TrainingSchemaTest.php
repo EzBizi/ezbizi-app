@@ -3,6 +3,7 @@
 namespace Tests\Feature\Training;
 
 use App\Models\TrainingGuide;
+use App\Models\TrainingTest as TrainingTestModel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -33,5 +34,20 @@ class TrainingSchemaTest extends TestCase
         $this->assertSame('Why this exists', $screens[0]['title']);
         $this->assertSame('The four-to-one rule', $screens[1]['title']);
         $this->assertSame('video', $screens[1]['media_kind']);
+    }
+
+    public function test_the_guide_and_test_factories_are_wired_up(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        [$guide, $test] = $this->inTenant($tenant['org'], fn () => [
+            TrainingGuide::factory()->create(['company_id' => $tenant['company']->id]),
+            TrainingTestModel::factory()->create(['company_id' => $tenant['company']->id]),
+        ]);
+
+        $this->assertInstanceOf(TrainingGuide::class, $guide);
+        $this->assertTrue($guide->exists);
+        $this->assertInstanceOf(TrainingTestModel::class, $test);
+        $this->assertTrue($test->exists);
     }
 }
