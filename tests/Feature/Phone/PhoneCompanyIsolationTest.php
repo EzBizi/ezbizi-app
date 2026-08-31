@@ -151,4 +151,106 @@ class PhoneCompanyIsolationTest extends TestCase
             );
         }
     }
+
+    /**
+     * An organization VIEW is not organization-wide AUTHORITY.
+     *
+     * ── The case the sibling test cannot express ────────────────
+     *
+     * ViewScope::forUser falls back to an organization view whenever no
+     * navigation preference is stored, which is the state every user is in
+     * until they touch the switcher. So "the view says organization" tells you
+     * nothing about what this person may actually reach.
+     *
+     * Somebody assigned to two companies out of three is exactly that: their
+     * view resolves to the organization, and the third company is still none
+     * of their business. Filtering on the view alone would hand it to them.
+     *
+     * PhoneScope::apply short-circuits ONLY when the view is organization AND
+     * the user can act on the whole organization; otherwise it falls through
+     * to the reachable ids. This test is what holds that second condition in
+     * place — drop it and the third company's menu appears.
+     */
+    public function test_an_organization_view_still_stops_at_the_edge_of_reach(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$reachable, $outOfReach, $theirs, $notTheirs] = $this->inTenant($t['org'], function () use ($t) {
+            $reachable = Company::query()->create([
+                'organization_id' => $t['org']->id,
+                'name' => 'Everdoors Co',
+            ]);
+
+            $outOfReach = Company::query()->create([
+                'organization_id' => $t['org']->id,
+                'name' => 'Third Co',
+            ]);
+
+            // Each company keeps its own phone account, so reach is the only
+            // thing that can tell them apart.
+            $theirs = PhoneConnection::factory()->create([
+                'scope_type' => PhoneConnection::SCOPE_COMPANY,
+                'scope_id' => $reachable->id,
+            ]);
+
+            $notTheirs = PhoneConnection::factory()->create([
+                'scope_type' => PhoneConnection::SCOPE_COMPANY,
+                'scope_id' => $outOfReach->id,
+            ]);
+
+            foreach ([[$theirs, $reachable, 'Everdoors Menu'], [$notTheirs, $outOfReach, 'Third Menu']] as [$c, $company, $name]) {
+                PhoneFlow::query()->create([
+                    'organization_id' => $t['org']->id,
+                    'connection_id' => $c->id,
+                    'scope_type' => 'company',
+                    'scope_id' => $company->id,
+                    'name' => $name,
+                    'nodes' => ['type' => 'menu', 'prompt' => 'Press one.', 'options' => []],
+                ]);
+            }
+
+            return [$reachable, $outOfReach, $theirs, $notTheirs];
+        });
+
+        // Assigned to A-1 Chimney AND Everdoors — two companies, so there is
+        // no single company view and ViewScope falls back to the organization.
+        $user = $this->inTenant($t['org'], function () use ($t, $reachable) {
+            $role = Role::query()->create([
+                'organization_id' => $t['org']->id,
+                'name' => 'Two companies',
+                'is_system' => false,
+            ]);
+            $role->syncPermissionKeys(['phone.view', 'phone.edit']);
+
+            $user = User::query()->create([
+                'organization_id' => $t['org']->id,
+                'role_id' => $role->id,
+                'name' => 'Two companies',
+                'email' => 'two@'.$t['org']->slug.'.test',
+                'password' => 'a-real-password',
+                'is_active' => true,
+            ]);
+
+            foreach ([$t['company']->id, $reachable->id] as $companyId) {
+                Assignment::query()->create([
+                    'organization_id' => $t['org']->id,
+                    'user_id' => $user->id,
+                    'assigned_company_id' => $companyId,
+                ]);
+            }
+
+            return $user;
+        });
+
+        $names = collect(
+            $this->signedInAs($user)->getJson('/api/v1/phone/flows')->assertOk()->json('data')
+        )->pluck('name')->all();
+
+        $this->assertContains('Everdoors Menu', $names);
+        $this->assertNotContains(
+            'Third Menu',
+            $names,
+            'an organization view showed a company this person has no reach over',
+        );
+    }
 }
