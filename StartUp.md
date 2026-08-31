@@ -635,6 +635,29 @@ deletion above was found because "matches no commit" is a strange thing to say
 about a file sitting right there at HEAD — nothing had failed, the output just
 read oddly.
 
+### `git log -- <path>` will not show you the commit that deleted your work
+
+The standing advice is to verify with `git show HEAD:<path>` rather than
+`git log`, because a commit can sit in the log looking fine while its content is
+gone. This is the next step: once you know content is missing, **`git log --
+<path>` may not tell you who took it.**
+
+Default history simplification hides commits that are not "interesting" for a
+path. A stale whole-file write that removed your lines can be one of them:
+
+```bash
+git log a69e62d..main -- wordpress-plugin/tests/plugin-check.php               # 0 commits
+git log --full-history a69e62d..main -- wordpress-plugin/tests/plugin-check.php # 5157df0
+```
+
+Same range, same path, and only the second finds the commit that took the lines
+out. Measured on 2026-08-31, tracing 220 deletions across two modules.
+
+**And before you conclude a whole file was rewritten, diff it with
+`--strip-trailing-cr`.** On this tree two versions of a 250-line file appeared to
+differ on every line and were identical apart from line endings. A session
+nearly abandoned a correct restore on that evidence.
+
 ### Ask whether the answer is a BELIEVABLE SHAPE, not just whether you checked
 
 "Verify before you claim" is about whether you looked. This is about whether what
