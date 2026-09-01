@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:ezbizi_client/screens/tasks/task_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -318,6 +320,46 @@ void main() {
         expect(timelineRow.blockedBy, hasLength(1));
         expect(timelineRow.blockedBy!.single.taskId, 'task-0');
         expect(timelineRow.blockedBy!.single.title, 'Pour the slab');
+      },
+    );
+
+    test(
+      'custom_values arriving as a JSON array (not an object) is rejected, not silently tolerated',
+      () {
+        // Regression guard for a production incident: PHP's json_encode()
+        // renders an empty PHP array as `[]`, never `{}` — so a task with
+        // no custom column values used to reach the client as
+        // `"custom_values":[]` and broke the whole Tasks screen. The fix
+        // is server-side (TaskListQuery::present() and
+        // TaskDetailsController::customValues() now emit `(object) $custom`
+        // so an empty result always serializes as `{}`). This test does
+        // NOT add client-side tolerance for the array shape — it locks in
+        // that the client keeps rejecting it. `_expectMap` is the single
+        // contract enforcement point; if the server contract regresses
+        // again, this must fail loudly instead of rendering a task with
+        // silently-dropped custom values.
+        //
+        // Round-trips through jsonEncode/jsonDecode (rather than a
+        // hand-built Dart map literal) because that is the one difference
+        // that let the real bug slip past every hand-built fixture in this
+        // file: a literal `<String, Object?>{}` is already a Dart Map and
+        // can never reproduce what the wire actually sent.
+        final wire = jsonEncode(
+          Map<String, Object?>.from(_minimalTaskJson())
+            ..['custom_values'] = <Object?>[],
+        );
+        final json = jsonDecode(wire) as Map<String, Object?>;
+
+        expect(
+          () => TaskRow.fromJson(json),
+          throwsA(
+            isA<FormatException>().having(
+              (error) => error.message,
+              'message',
+              'custom_values must be an object.',
+            ),
+          ),
+        );
       },
     );
 

@@ -38,7 +38,7 @@ final class TaskDetailsController extends TaskApiController
             'subtasks' => fn ($query) => $query->active()->orderBy('position'),
         ])->findOrFail($taskId);
         $data = $this->presentTask($task);
-        $data['custom_values'] = $this->customValues($task);
+        $data['custom_values'] = (object) $this->customValues($task);
         // `presentTask()` (TaskApiController) never carries `recurrence` —
         // every OTHER caller of it is a list/board row where a per-owner
         // recurrence badge has never been asked for (spec §11 scopes it to
