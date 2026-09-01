@@ -45,6 +45,7 @@ use App\Http\Controllers\Api\MailboxMessagesController;
 use App\Http\Controllers\Api\MarketingController;
 use App\Http\Controllers\Api\MetaCallbacksController;
 use App\Http\Controllers\Api\MicrosoftMailAuthController;
+use App\Http\Controllers\Api\Monitoring\CamerasController as MonitoringCamerasController;
 use App\Http\Controllers\Api\Monitoring\DevicesController as MonitoringDevicesController;
 use App\Http\Controllers\Api\Monitoring\HeartbeatController as MonitoringHeartbeatController;
 use App\Http\Controllers\Api\Monitoring\ScreenshotsController as MonitoringScreenshotsController;
@@ -1414,6 +1415,16 @@ Route::prefix('v1')
         // the heartbeat instead — see ScreenshotsController's docblock.
         Route::get('monitoring/screenshots', [MonitoringScreenshotsController::class, 'index']);
         Route::get('monitoring/screenshots/{id}', [MonitoringScreenshotsController::class, 'show']);
+
+        // ── Monitoring: cameras (2026-09-01-monitoring-cameras, generic-protocol v1) ──
+        //
+        // A normal admin action (register/edit/remove a camera config), not a
+        // background beat, so all four routes stay in THIS idle-bearing group —
+        // see CamerasController's docblock.
+        Route::get('monitoring/cameras', [MonitoringCamerasController::class, 'index']);
+        Route::post('monitoring/cameras', [MonitoringCamerasController::class, 'store']);
+        Route::patch('monitoring/cameras/{id}', [MonitoringCamerasController::class, 'update']);
+        Route::delete('monitoring/cameras/{id}', [MonitoringCamerasController::class, 'destroy']);
 
         // Changing it while signed in. Needs the current password: a session
         // proves somebody sat down at an unlocked laptop, not that they are the
