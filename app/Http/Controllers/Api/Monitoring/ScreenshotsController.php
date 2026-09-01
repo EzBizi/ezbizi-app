@@ -18,6 +18,22 @@ use Illuminate\Http\Response;
  * capture of itself. `routes/api.php` keeps this OUTSIDE the `idle` middleware
  * group next to the heartbeat — a background upload must not slide the
  * session idle window either.
+ *
+ * ── Why this never creates the device ─────────────────────────────
+ *
+ * Device creation, its `capabilities`, and the `monitoring.new_device_seen`
+ * emission all belong in exactly one place: `HeartbeatController`. This
+ * controller and the heartbeat share the same `device_key` from the same
+ * desktop app, which heartbeats every 60s from launch while the first
+ * screenshot capture is ~5 minutes in — so by the time a screenshot can
+ * possibly land, a heartbeat already has. An earlier version of this
+ * controller bootstrapped the device defensively for a case that cannot
+ * happen, and that bootstrap was wrong twice over: it guessed
+ * `capabilities = ['screenshot']`, which the heartbeat's later
+ * `fill(['capabilities' => ...])` can clobber, and it never emitted
+ * `monitoring.new_device_seen`, so a screenshot-first device silently
+ * bypassed that automation trigger. Requiring the device to already exist
+ * removes both failure modes instead of patching either one.
  */
 class ScreenshotsController extends Controller
 {
@@ -44,25 +60,29 @@ class ScreenshotsController extends Controller
         $userId = $request->user()->getKey();
 
         // Same three-key resolution as HeartbeatController::store() — this
-        // MUST land on the identical row a heartbeat would, never a divergent
-        // one. It is only ever new here if a capture races ahead of this
-        // device's first heartbeat; the FK to monitored_devices still needs a
-        // row to point at, so it is created with the minimum a heartbeat
-        // would have filled in rather than left dangling.
-        $device = MonitoredDevice::query()->firstOrNew([
+        // MUST land on the identical row a heartbeat would, never a
+        // divergent one. Not found is a real rejection, not a row to create:
+        // see the class docblock for why.
+        $device = MonitoredDevice::query()->where([
             'organization_id' => $organizationId,
             'user_id' => $userId,
             'device_key' => $data['device_key'],
-        ]);
-        if (! $device->exists) {
-            $device->platform = 'unknown';
-            $device->capabilities = ['screenshot'];
-            $device->save();
+        ])->first();
+
+        if ($device === null) {
+            abort(404, 'No registered device for this session — send a heartbeat first.');
         }
 
         $image = $request->file('image');
-        $bytes = (string) file_get_contents($image->getRealPath());
-        $dimensions = getimagesize($image->getRealPath()) ?: [0, 0];
+        $bytes = file_get_contents($image->getRealPath());
+        $dimensions = getimagesize($image->getRealPath());
+        if ($bytes === false || $dimensions === false) {
+            // The `image` rule already passed, so a read failure here means
+            // the tmp upload vanished or is unreadable mid-request — that is
+            // exceptional, not a valid zero-byte/zero-dimension row.
+            abort(422, 'The uploaded image could not be read.');
+        }
+
         $capturedAt = now();
 
         $path = $this->store->put(
