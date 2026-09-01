@@ -98,6 +98,19 @@ final class GoogleApiRefusal
                 .'step from switching them on. Connecting again will get the same answer.';
         }
 
+        /*
+         * How this one actually presented: production sat on v21 for weeks
+         * after Google retired it, every call 404'd on a path that no longer
+         * existed, and because a dead version never reaches the service the
+         * Cloud console showed zero traffic — no requests, no errors, nothing
+         * to find. It looked like an access problem and was a URL problem.
+         */
+        if ($status === 404) {
+            return "EzBizi is asking {$network} for a version of the API that Google has retired, "
+                .'so the address answers 404 to everything. Nothing is wrong with your account and '
+                .'connecting again will not help — the version EzBizi points at has to move.';
+        }
+
         if ($status === 401 || $state === 'UNAUTHENTICATED') {
             return "{$network} accepted the sign-in and then rejected the token that came out of it, "
                 .'so nothing has been connected. Connecting again is worth one try; if it repeats, '

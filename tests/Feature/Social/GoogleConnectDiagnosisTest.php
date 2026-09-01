@@ -88,6 +88,42 @@ class GoogleConnectDiagnosisTest extends TestCase
         $this->assertStringNotContainsString('Wait a moment', $said);
     }
 
+    /**
+     * The one that actually happened, and the reason this file exists.
+     *
+     * Production sat on v21 after Google retired it. Every call 404'd on a path
+     * that no longer existed, and a dead version never reaches the service, so
+     * the Cloud console recorded no requests and no errors at all — thirty days
+     * of nothing to find. It read as an access problem for weeks and was a URL.
+     */
+    public function test_a_retired_api_version_says_so_rather_than_looking_like_a_permission_problem(): void
+    {
+        $e = $this->adsFails([], 404);
+
+        $said = $e->getMessage();
+
+        $this->assertStringContainsString('retired', $said);
+        $this->assertStringNotContainsString('Wait a moment', $said);
+    }
+
+    public function test_the_pinned_ads_api_version_is_not_one_google_has_retired(): void
+    {
+        /*
+         * Pinned rather than fetched. A test that asked Google which versions
+         * are live would go red on their retirement schedule rather than on a
+         * change of ours, and would need the network to run at all. This asserts
+         * the narrower thing that was actually wrong: the default must not be a
+         * version already known to be gone.
+         */
+        $retired = ['v18', 'v19', 'v20', 'v21'];
+
+        $this->assertNotContains(
+            trim((string) config('services.google_ads.version'), '/'),
+            $retired,
+            'The Google Ads API version is one Google has retired; every call will 404.',
+        );
+    }
+
     public function test_signing_in_with_an_account_that_has_no_ads_accounts_is_not_a_failure_to_identify(): void
     {
         config(['services.google_ads.developer_token' => 'dev-token']);

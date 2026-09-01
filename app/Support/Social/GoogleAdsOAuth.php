@@ -253,6 +253,6 @@ final class GoogleAdsOAuth implements SocialOAuth
     public static function endpoint(): string
     {
         return 'https://googleads.googleapis.com/'
-            .trim((string) config('services.google_ads.version', 'v21'), '/');
+            .trim((string) config('services.google_ads.version', 'v24'), '/');
     }
 }

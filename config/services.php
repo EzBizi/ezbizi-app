@@ -284,7 +284,7 @@ return [
         // Google retires Ads API versions on a published schedule and a retired
         // one answers 404 to everything. Pinned here so the day it moves is an
         // env change on the box, not a release.
-        'version' => env('GOOGLE_ADS_API_VERSION', 'v21'),
+        'version' => env('GOOGLE_ADS_API_VERSION', 'v24'),
     ],
 
     /*
