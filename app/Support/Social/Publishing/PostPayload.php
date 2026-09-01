@@ -40,7 +40,20 @@ final readonly class PostPayload
 
     public function mime(): string
     {
-        return match (strtolower(pathinfo((string) $this->filePath, PATHINFO_EXTENSION))) {
+        return self::mimeForExtension(pathinfo((string) $this->filePath, PATHINFO_EXTENSION));
+    }
+
+    /**
+     * The MIME type for a file extension.
+     *
+     * Static as well as instance, because MediaHandoff serves these bytes back
+     * over HTTP later and has a handle rather than a payload. Meta reads the
+     * type off the response headers, so the two answers have to be the same
+     * answer - a second copy of this map is a second copy that drifts.
+     */
+    public static function mimeForExtension(string $extension): string
+    {
+        return match (strtolower($extension)) {
             'png'         => 'image/png',
             'webp'        => 'image/webp',
             'gif'         => 'image/gif',

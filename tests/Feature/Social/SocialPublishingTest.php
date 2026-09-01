@@ -4,6 +4,8 @@ namespace Tests\Feature\Social;
 
 use App\Models\SocialConnection;
 use App\Support\Social\Publishing\FacebookPublisher;
+use App\Support\Social\Publishing\InstagramPublisher;
+use App\Support\Social\Publishing\MediaHandoff;
 use App\Support\Social\Publishing\PinterestPublisher;
 use App\Support\Social\Publishing\PostPayload;
 use App\Support\Social\Publishing\Publishers;
@@ -13,6 +15,8 @@ use App\Support\Social\Publishing\TikTokPublisher;
 use App\Support\Social\SocialMediaKind;
 use App\Support\Social\SocialProvider;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 use Tests\TestCase;
 
 /**
@@ -379,26 +383,304 @@ class SocialPublishingTest extends TestCase
         );
     }
 
-    public function test_threads_says_media_is_not_built_rather_than_not_accepted(): void
+    public function test_threads_no_longer_says_media_is_unbuilt(): void
     {
-        // Threads takes images perfectly well; EzBizi does not send them,
-        // because that needs a public image_url. The wording has to separate
-        // "we have not built it" from "they refuse it".
-        $why = (new ThreadsPublisher)->cannotSend(SocialMediaKind::Image);
+        // It said so until 2026-09-01, when MediaHandoff gave it somewhere to
+        // point image_url at. Left as a test rather than deleted: "we do send
+        // this now" is worth one assertion, because the wording it replaced is
+        // still the right answer for any network we have not built.
+        foreach (SocialMediaKind::cases() as $kind) {
+            $this->assertNull((new ThreadsPublisher)->cannotSend($kind), $kind->value);
+            $this->assertNull((new FacebookPublisher)->cannotSend($kind), $kind->value);
+        }
 
-        $this->assertNotNull($why);
-        $this->assertNull((new ThreadsPublisher)->cannotSend(SocialMediaKind::Text));
+        $this->assertNotNull((new InstagramPublisher)->cannotSend(SocialMediaKind::Text));
+    }
+    public function test_instagram_hands_the_photo_over_at_a_signed_url_and_takes_it_back(): void
+    {
+        $this->reachable();
+        $file = $this->temp('jpg', 'JPEGBYTES');
+
+        Http::fake([
+            'graph.instagram.com/*/media_publish' => Http::response(['id' => 'ig-post-1']),
+            'graph.instagram.com/*/media'         => Http::response(['id' => 'container-1']),
+            'graph.instagram.com/*'               => Http::response(['status_code' => 'FINISHED']),
+        ]);
+
+        $id = (new InstagramPublisher(pollSeconds: 0))->publish(
+            $this->connection(SocialProvider::InstagramProfessional, remoteId: 'ig-1'),
+            new PostPayload(body: 'Swept and safe.', filePath: $file),
+        );
+
+        $this->assertSame('ig-post-1', $id);
+
+        Http::assertSent(function ($request) {
+            if (! str_ends_with($request->url(), '/media')) {
+                return false;
+            }
+
+            $url = (string) ($request->data()['image_url'] ?? '');
+
+            // The handoff, and everything that makes it narrow: our own host,
+            // a signature, and an expiry. A bare public path would satisfy
+            // Instagram and would be the thing this was careful not to build.
+            return str_starts_with($url, 'https://app.ezbizi.com/api/v1/social/media/')
+                && str_contains($url, 'signature=')
+                && str_contains($url, 'expires=')
+                && ! isset($request->data()['video_url']);
+        });
+
+        // And it is gone. The window is the length of one fetch, not the hour
+        // it was signed for - the signature is the ceiling, this is the plan.
+        $this->assertSame([], Storage::disk('local')->allFiles('social-handoff'));
     }
 
-    public function test_instagram_has_no_publisher_and_says_so_honestly(): void
+    public function test_instagram_posts_video_as_a_reel_and_waits_before_publishing(): void
     {
-        // Deliberate: every Instagram publish path needs a public image_url or
-        // video_url, which is a privacy decision nobody has made. Falling
-        // through to null gives the honest "the poster is not built" rather
-        // than a class whose only job is to refuse.
-        $this->assertNull(Publishers::for(SocialProvider::InstagramProfessional));
-        $this->assertNotNull(Publishers::for(SocialProvider::FacebookPage));
-        $this->assertNotNull(Publishers::for(SocialProvider::Threads));
+        $this->reachable();
+        $file = $this->temp('mp4', 'MP4BYTES');
+
+        Http::fake([
+            'graph.instagram.com/*/media_publish' => Http::response(['id' => 'ig-reel-1']),
+            'graph.instagram.com/*/media'         => Http::response(['id' => 'container-1']),
+            'graph.instagram.com/*'               => Http::response(['status_code' => 'FINISHED']),
+        ]);
+
+        $id = (new InstagramPublisher(pollSeconds: 0))->publish(
+            $this->connection(SocialProvider::InstagramProfessional, remoteId: 'ig-1'),
+            new PostPayload(body: 'A reel', filePath: $file),
+        );
+
+        $this->assertSame('ig-reel-1', $id);
+
+        // The wait sits between the two, and that ordering is the whole point:
+        // publishing a container Instagram has not finished ingesting is
+        // refused, which would break every video and no photo.
+        Http::assertSentInOrder([
+            fn ($r) => str_ends_with($r->url(), '/media')
+                && $r->data()['media_type'] === 'REELS'
+                && ! isset($r->data()['image_url'])
+                && str_contains((string) $r->data()['video_url'], '/api/v1/social/media/'),
+            fn ($r) => str_contains($r->url(), 'container-1') && str_contains($r->url(), 'status_code'),
+            fn ($r) => str_ends_with($r->url(), '/media_publish'),
+        ]);
+    }
+
+    public function test_instagram_passes_on_the_reason_the_media_was_rejected(): void
+    {
+        $this->reachable();
+        $file = $this->temp('mp4', 'MP4BYTES');
+
+        Http::fake([
+            'graph.instagram.com/*/media' => Http::response(['id' => 'container-1']),
+            'graph.instagram.com/*'       => Http::response([
+                'status_code' => 'ERROR',
+                'status'      => 'The video is longer than 15 minutes.',
+            ]),
+        ]);
+
+        try {
+            (new InstagramPublisher(pollSeconds: 0))->publish(
+                $this->connection(SocialProvider::InstagramProfessional, remoteId: 'ig-1'),
+                new PostPayload(body: 'Too long', filePath: $file),
+            );
+            $this->fail('a rejected container should have thrown');
+        } catch (SocialPublishFailed $e) {
+            // Instagram's own sentence, not "publish failed". It names the fix.
+            $this->assertStringContainsString('longer than 15 minutes', $e->getMessage());
+        }
+
+        // Released on the way out. A refused post is exactly when a tenant's
+        // video must stop being fetchable, not a moment later.
+        $this->assertSame([], Storage::disk('local')->allFiles('social-handoff'));
+        Http::assertNotSent(fn ($r) => str_ends_with($r->url(), '/media_publish'));
+    }
+
+    public function test_instagram_releases_the_handoff_when_the_container_is_refused(): void
+    {
+        $this->reachable();
+        $file = $this->temp('jpg', 'JPEGBYTES');
+
+        Http::fake(['graph.instagram.com/*' => Http::response(
+            ['error' => ['message' => 'Unsupported aspect ratio.']], 400
+        )]);
+
+        $this->expectException(SocialPublishFailed::class);
+
+        try {
+            (new InstagramPublisher(pollSeconds: 0))->publish(
+                $this->connection(SocialProvider::InstagramProfessional, remoteId: 'ig-1'),
+                new PostPayload(body: 'Nope', filePath: $file),
+            );
+        } finally {
+            $this->assertSame([], Storage::disk('local')->allFiles('social-handoff'));
+        }
+    }
+
+    public function test_instagram_refuses_words_alone_before_anything_is_written(): void
+    {
+        $this->reachable();
+        Http::fake();
+
+        $this->expectException(SocialPublishFailed::class);
+        $this->expectExceptionMessageMatches('/does not post words on their own/');
+
+        (new InstagramPublisher(pollSeconds: 0))->publish(
+            $this->connection(SocialProvider::InstagramProfessional, remoteId: 'ig-1'),
+            new PostPayload(body: 'Just words'),
+        );
+    }
+
+    public function test_a_handoff_url_serves_the_file_and_an_unsigned_one_does_not(): void
+    {
+        $this->reachable();
+        $handoff = MediaHandoff::hold(new PostPayload(filePath: $this->temp('png', 'PNGBYTES')));
+
+        $signed = $this->get($handoff->url);
+        $signed->assertOk();
+
+        // Meta reads the type off the RESPONSE, not off the URL. Serving a good
+        // PNG as octet-stream gets the container rejected for its format.
+        $this->assertStringContainsString('image/png', (string) $signed->headers->get('Content-Type'));
+        $this->assertSame('PNGBYTES', $signed->streamedContent());
+
+        // Strip the signature and it is refused. The random name is not the
+        // only thing standing between a stranger and a tenant's photo.
+        $this->get(strtok($handoff->url, '?'))->assertStatus(403);
+
+        $handoff->release();
+        $this->get($handoff->url)->assertNotFound();
+    }
+
+    public function test_a_server_publishing_links_to_localhost_says_so_instead_of_blaming_the_photo(): void
+    {
+        // APP_URL ships as http://localhost and every .env starts life that
+        // way. Meta would fetch the loopback, reach nothing, and report a media
+        // error - so the tenant would be told their picture was the problem.
+        URL::forceRootUrl('http://localhost');
+
+        $this->expectException(SocialPublishFailed::class);
+        $this->expectExceptionMessageMatches('/APP_URL/');
+
+        MediaHandoff::hold(new PostPayload(filePath: $this->temp('png', 'PNGBYTES')));
+    }
+
+    public function test_a_handoff_must_be_https_even_on_a_reachable_host(): void
+    {
+        // A reachable host is not enough. Over http the photo crosses the
+        // internet in the clear, to a URL whose entire security - the
+        // unguessable name and the signature - is in the query string an
+        // eavesdropper is reading. There is no certificate worth saving.
+        URL::forceScheme('http');
+        URL::forceRootUrl('http://app.ezbizi.com');
+
+        $this->expectException(SocialPublishFailed::class);
+        $this->expectExceptionMessageMatches('/https/');
+
+        MediaHandoff::hold(new PostPayload(filePath: $this->temp('png', 'PNGBYTES')));
+    }
+
+    public function test_the_sweep_only_takes_handoffs_that_already_stopped_working(): void
+    {
+        $this->reachable();
+
+        $fresh = MediaHandoff::hold(new PostPayload(filePath: $this->temp('png', 'A')));
+        $stale = MediaHandoff::hold(new PostPayload(filePath: $this->temp('png', 'B')));
+
+        touch(
+            Storage::disk('local')->path(MediaHandoff::pathFor($stale->handle)),
+            now()->subMinutes(MediaHandoff::MINUTES + 30)->getTimestamp(),
+        );
+
+        $this->assertSame(1, MediaHandoff::sweep());
+        $this->assertTrue(Storage::disk('local')->exists(MediaHandoff::pathFor($fresh->handle)));
+        $this->assertFalse(Storage::disk('local')->exists(MediaHandoff::pathFor($stale->handle)));
+    }
+
+    public function test_facebook_posts_a_video_by_url_and_calls_the_words_a_description(): void
+    {
+        $this->reachable();
+        $file = $this->temp('mp4', 'MP4BYTES');
+
+        Http::fake(['graph.facebook.com/*/videos' => Http::response(['id' => 'video-1'])]);
+
+        $id = (new FacebookPublisher)->publish(
+            $this->connection(SocialProvider::FacebookPage, remoteId: 'page-1'),
+            new PostPayload(body: 'A chimney sweep', filePath: $file),
+        );
+
+        $this->assertSame('video-1', $id);
+
+        Http::assertSent(function ($request) {
+            // `description` - not `message` (feed) and not `caption` (photos).
+            // Facebook accepts the wrong one and silently drops the words, so
+            // the post succeeds missing half of itself.
+            return str_ends_with($request->url(), '/videos')
+                && $request->data()['description'] === 'A chimney sweep'
+                && str_contains((string) $request->data()['file_url'], '/api/v1/social/media/');
+        });
+
+        $this->assertSame([], Storage::disk('local')->allFiles('social-handoff'));
+    }
+
+    public function test_threads_posts_a_picture_as_an_image_container(): void
+    {
+        $this->reachable();
+        $file = $this->temp('jpg', 'JPEGBYTES');
+
+        Http::fake([
+            'graph.threads.net/*/threads_publish' => Http::response(['id' => 'thread-9']),
+            'graph.threads.net/*/threads'         => Http::response(['id' => 'container-1']),
+        ]);
+
+        $id = (new ThreadsPublisher(pollSeconds: 0))->publish(
+            $this->connection(SocialProvider::Threads, remoteId: 'user-1'),
+            new PostPayload(body: 'With a picture', filePath: $file),
+        );
+
+        $this->assertSame('thread-9', $id);
+
+        Http::assertSent(function ($request) {
+            return str_ends_with($request->url(), '/threads')
+                && $request->data()['media_type'] === 'IMAGE'
+                && $request->data()['text'] === 'With a picture'
+                && str_contains((string) $request->data()['image_url'], '/api/v1/social/media/');
+        });
+
+        // An image container is NOT polled - only video is ingested
+        // asynchronously, and polling a ready container would be a wasted round
+        // trip on every photo anybody posts.
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), 'fields=status'));
+
+        $this->assertSame([], Storage::disk('local')->allFiles('social-handoff'));
+    }
+
+    public function test_instagram_now_has_a_publisher_and_the_map_says_so(): void
+    {
+        $this->assertNotNull(Publishers::for(SocialProvider::InstagramProfessional));
+        $this->assertNull(Publishers::refusalFor(SocialProvider::InstagramProfessional));
+    }
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Handoffs are written to the private disk. Faking it keeps a test run
+        // from leaving a tenant's picture in storage/app/private.
+        Storage::fake('local');
+    }
+
+    /**
+     * A server whose signed URLs a network could actually fetch.
+     *
+     * The suite's APP_URL is http://localhost, which MediaHandoff refuses on
+     * purpose - so every test that hands media over has to say what the
+     * server's real address is, exactly as production does.
+     */
+    private function reachable(): void
+    {
+        URL::forceScheme('https');
+        URL::forceRootUrl('https://app.ezbizi.com');
     }
 
     private function temp(string $extension, string $contents): string

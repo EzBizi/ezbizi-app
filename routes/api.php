@@ -89,6 +89,7 @@ use App\Http\Controllers\Api\ServicesController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\SocialAuthController;
 use App\Http\Controllers\Api\SocialConnectionsController;
+use App\Http\Controllers\Api\SocialMediaHandoffController;
 use App\Http\Controllers\Api\SocialPostsController;
 use App\Http\Controllers\Api\SocialProvidersController;
 use App\Http\Controllers\Api\StaffAccountsController;
@@ -323,6 +324,20 @@ Route::post('v1/social/meta/deauthorize', [MetaCallbacksController::class, 'deau
 Route::post('v1/social/meta/data-deletion', [MetaCallbacksController::class, 'dataDeletion'])
     ->middleware('throttle:60,1')
     ->name('social.meta.data-deletion');
+
+/*
+| The media handoff. Instagram will not take an upload - it fetches an
+| image_url or video_url with an anonymous crawler - so this serves one
+| tenant's file to one fetch, then publishing deletes it. `signed` is the
+| authentication and there is no other; MediaHandoff spells out what makes
+| that safe enough to have chosen.
+|
+| Throttled tight. A real post causes ONE fetch, occasionally a retry.
+*/
+Route::get('v1/social/media/{handle}', [SocialMediaHandoffController::class, 'show'])
+    ->middleware(['signed', 'throttle:30,1'])
+    ->where('handle', '[0-9A-Za-z]+(\.[0-9a-z]+)?')
+    ->name('social.media');
 
 Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callback'])
     ->middleware('throttle:30,1')

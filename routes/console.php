@@ -47,6 +47,14 @@ Schedule::command('ezbizi:dispatch-automation-events')->everyMinute()->withoutOv
 // first.
 Schedule::command('ezbizi:publish-due-social-posts')->everyMinute()->withoutOverlapping(5);
 
+// Media handed to Instagram, Threads or Facebook to fetch, and not cleaned up
+// because the worker died between the fetch and the `finally` that deletes it.
+//
+// Hourly is deliberately slower than the hour a handoff is signed for: this
+// only ever finds files that already stopped working, so racing it against a
+// live post would be the only way to make it dangerous.
+Schedule::command('ezbizi:expire-social-handoffs')->hourly()->withoutOverlapping(10);
+
 // Watching the shared inboxes, so `email.received` can fire (§5.5).
 //
 // Every minute, and that is NOT the cadence. A mailbox is looked at every five

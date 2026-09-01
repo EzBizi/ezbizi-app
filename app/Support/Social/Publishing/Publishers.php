@@ -32,13 +32,13 @@ final class Publishers
             SocialProvider::FacebookPage => new FacebookPublisher,
             SocialProvider::Threads      => new ThreadsPublisher,
 
-            // Instagram is deliberately absent. Its Content Publishing API has
-            // no text-only post and no binary upload — every path needs a
-            // PUBLIC image_url or video_url that Instagram fetches from.
-            // Serving a tenant's media unauthenticated is a privacy decision
-            // nobody has made, and PinterestPublisher refuses the same trade.
-            // Falling through to null gives the honest "the poster is not
-            // built" rather than a class that exists only to refuse.
+            // Instagram was absent until 2026-09-01, because its Content
+            // Publishing API has no binary upload at all — every path needs a
+            // PUBLIC image_url or video_url that Instagram fetches from, and
+            // serving a tenant's media unauthenticated was a decision nobody
+            // had made. It has now been made: see MediaHandoff, which is the
+            // narrowest shape of that yes and the place the reasoning lives.
+            SocialProvider::InstagramProfessional => new InstagramPublisher,
 
             SocialProvider::Pinterest => new PinterestPublisher,
             SocialProvider::TikTok    => new TikTokPublisher(

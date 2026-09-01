@@ -25,12 +25,20 @@ use Illuminate\Support\Facades\Http;
  * `caption` — a different field name for the same idea, which is a detail worth
  * stating once here rather than rediscovering.
  *
- * ── Why video is refused ────────────────────────────────────────
+ * ── Three endpoints, because Facebook has three ─────────────────
  *
- * Facebook takes video perfectly well, through a resumable upload that is a
- * different protocol again: start, transfer, finish. EzBizi has not built it.
- * The refusal says "not built" rather than "not accepted" because those are
- * different facts and only one of them is ours to fix.
+ * Text goes to /feed with `message`. A photo goes to /photos with the bytes and
+ * `caption` — a different field name for the same idea, which is a detail worth
+ * stating once here rather than rediscovering. A video goes to /videos with a
+ * `file_url` and `description`, a third name for the third one.
+ *
+ * ── Why video is a URL when the photo is bytes ──────────────────
+ *
+ * Because the alternative is Facebook's resumable upload — start, transfer,
+ * finish, a whole third protocol — and `file_url` is one call. The photo stays
+ * as bytes because it CAN: there is no reason to expose a file, however
+ * briefly, to save nothing. Video gets a MediaHandoff and gets it released in
+ * a `finally`, so the window is the length of one fetch.
  */
 final class FacebookPublisher implements SocialPublisher
 {
@@ -46,16 +54,23 @@ final class FacebookPublisher implements SocialPublisher
         $token = $this->token($connection);
         $page  = $connection->remote_id;
 
-        return $post->kind() === SocialMediaKind::Image
-            ? $this->photo($page, $token, $post)
-            : $this->text($page, $token, $post);
+        return match ($post->kind()) {
+            SocialMediaKind::Image => $this->photo($page, $token, $post),
+            SocialMediaKind::Video => $this->video($page, $token, $post),
+            SocialMediaKind::Text  => $this->text($page, $token, $post),
+        };
     }
 
+    /**
+     * Nothing. Facebook is the one network where EzBizi sends all three kinds.
+     *
+     * Kept rather than dropped: the interface asks every publisher this, and a
+     * publisher that answers "nothing is missing" is a different statement from
+     * a publisher that was never asked.
+     */
     public function cannotSend(SocialMediaKind $kind): ?string
     {
-        return $kind === SocialMediaKind::Video
-            ? SocialPublishFailed::notImplemented('Facebook', $kind->label())->getMessage()
-            : null;
+        return null;
     }
 
     private function text(string $page, string $token, PostPayload $post): string
@@ -91,6 +106,27 @@ final class FacebookPublisher implements SocialPublisher
                     'access_token' => $token,
                 ]),
         ));
+    }
+
+    private function video(string $page, string $token, PostPayload $post): string
+    {
+        $handoff = MediaHandoff::hold($post);
+
+        try {
+            // `description`, not `message` and not `caption`. Facebook uses a
+            // different field name on all three endpoints; sending the wrong one
+            // is accepted and silently drops the words, which is a post that
+            // succeeds and is missing half of itself.
+            return $this->idFrom($this->call(
+                fn () => Http::timeout(self::TIMEOUT)->asForm()->post(self::API.'/'.$page.'/videos', [
+                    'file_url'     => $handoff->url,
+                    'description'  => $post->body,
+                    'access_token' => $token,
+                ]),
+            ));
+        } finally {
+            $handoff->release();
+        }
     }
 
     /** @param  callable(): \Illuminate\Http\Client\Response  $send */
