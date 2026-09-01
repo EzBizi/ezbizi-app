@@ -325,6 +325,80 @@ void main() {
     expect(find.textContaining('the network is blocking'), findsOneWidget);
     expect(find.text('Try again'), findsOneWidget);
   });
+
+  /// The bug that made outbound calling fail for weeks.
+  ///
+  /// "305 724 2199" is how a phone number is written here. Stripping the
+  /// spaces and putting a `+` in front turns it into `+3057242199`, which is
+  /// not that number — the country code is missing, and +305 is not a country.
+  /// Every outbound call went to it. Nothing rejected it, because it is
+  /// well-formed enough to pass a length check, so it was dialled and the
+  /// carrier could not route it.
+  ///
+  /// Three real defects were found and fixed on the way to this one and none
+  /// of them was the reason. This is the assertion that would have said so on
+  /// day one.
+  testWidgets('a number typed the ordinary way keeps its country code', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    addTearDown(device.dispose);
+
+    await _pump(tester, device: device, size: const Size(900, 800));
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Number'),
+      '305 724 2199',
+    );
+    await tester.pumpAndSettle();
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Call'));
+
+    expect(
+      device.connectedTo,
+      '+13057242199',
+      reason: 'the country code was dropped, so the call went nowhere',
+    );
+  });
+
+  /// A number already in E.164 says which country itself, so it is passed
+  /// through rather than second-guessed.
+  testWidgets('an international number is not given a country code', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    addTearDown(device.dispose);
+
+    await _pump(tester, device: device, size: const Size(900, 800));
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Number'),
+      '+44 20 7946 0000',
+    );
+    await tester.pumpAndSettle();
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Call'));
+
+    expect(device.connectedTo, '+442079460000');
+  });
+
+  /// Too short to complete, so it is refused rather than guessed at —
+  /// guessing a country code is precisely what produced +3057242199.
+  testWidgets('a number too short to complete is not dialled at all', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    addTearDown(device.dispose);
+
+    await _pump(tester, device: device, size: const Size(900, 800));
+
+    await tester.enterText(find.widgetWithText(TextField, 'Number'), '724 2199');
+    await tester.pumpAndSettle();
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Call'));
+
+    expect(device.connectedTo, isNull);
+  });
 }
 
 class _FakeDevice implements VoiceDevice {

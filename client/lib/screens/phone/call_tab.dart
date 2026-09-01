@@ -111,15 +111,51 @@ class _CallTabState extends State<CallTab> {
     return _numbers.isEmpty ? null : _numbers.first;
   }
 
+  /// The number to dial, in E.164, or null when the typed text is not one.
+  ///
+  /// ── The bug this existed as for weeks ────────────────────────────
+  ///
+  /// This used to strip the non-digits and put a `+` in front. So "305 724
+  /// 2199" — how anybody in the United States writes a phone number — became
+  /// `+3057242199`, which is not that number. It is missing the country code,
+  /// and +305 is not a country. Every outbound call went to it.
+  ///
+  /// Nothing rejected it. It is well-formed enough to pass a length check, so
+  /// the client sent it, the server dialled it, and the carrier could not
+  /// route it — and the failure surfaced as the line's own voicemail, then as
+  /// silence, then as "that call could not be connected". Three separate
+  /// defects were found and fixed on the way to this one, each of them real,
+  /// none of them the reason.
+  ///
+  /// ── Why a ten-digit number gets +1 and a nine-digit one gets refused ──
+  ///
+  /// Ten digits is the North American Numbering Plan and is unambiguous.
+  /// Anything shorter is not a number we can complete, and guessing a country
+  /// code is exactly what produced +3057242199. A refusal is recoverable; a
+  /// plausible wrong number is what cost the week.
   String? get _peer {
     final text = _destination.text.trim();
     if (text.isEmpty) return null;
+
+    // Already E.164: the person said which country, so it is not ours to
+    // second-guess.
     if (text.startsWith('+')) {
       final digits = text.substring(1).replaceAll(RegExp(r'\D'), '');
-      return digits.length >= 7 ? '+$digits' : null;
+
+      return digits.length >= 8 ? '+$digits' : null;
     }
+
     final digits = text.replaceAll(RegExp(r'\D'), '');
-    return digits.length >= 8 ? '+$digits' : null;
+
+    // 1-305-724-2199, written out with its country code but no plus.
+    if (digits.length == 11 && digits.startsWith('1')) return '+$digits';
+
+    // 305 724 2199 — the ordinary way it is written here.
+    if (digits.length == 10) return '+1$digits';
+
+    // Anything else, including a bare 11+ digits that is not NANP, needs the
+    // country said out loud. Refusing is the whole point of this function.
+    return null;
   }
 
   bool get _canSend {
