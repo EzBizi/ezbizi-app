@@ -203,6 +203,105 @@ class VoiceWebhookTest extends TestCase
         );
     }
 
+    /**
+     * Ringing a customer must not end in your own voicemail.
+     *
+     * ── The bug Jose reported twice, reproduced end to end ───────────
+     *
+     * Press Call, hear "This call may be recorded" — correct, that is the
+     * outbound TwiML — then hear "please leave a message after the tone" in
+     * your own greeting. Both fixes before this one touched the FIRST request,
+     * which was already right, so the symptom survived them both.
+     *
+     * The second request is where it went wrong. Twilio does not resend custom
+     * parameters to a `<Dial>` action URL, so the `EzBiziDirection` the client
+     * sent is gone, and `afterDial()` called `ringOrVoicemail()` for every
+     * call regardless of direction — which on an outbound leg means the
+     * caller's OWN line answers them.
+     *
+     * This drives the real two-request exchange rather than asserting on
+     * afterDial() directly, because the thing that was broken is what Twilio
+     * is told to come back to, and a unit test on the renderer would have
+     * passed against the bug.
+     */
+    public function test_an_outbound_call_that_is_not_answered_does_not_reach_your_own_voicemail(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$connection, $authToken, $identity] = $this->inTenant($t['org'], function () use ($t) {
+            [$connection, , $authToken, $identity] = $this->openLine($t, e164: '+12035551040');
+
+            return [$connection, $authToken, $identity];
+        });
+
+        $first = $this->signedPost($this->voiceUrl($t['org']->id, $connection->id), [
+            'CallSid' => 'CA77777777777777777777777777777777',
+            'AccountSid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'Direction' => 'inbound',
+            'From' => 'client:'.$identity,
+            'To' => '+13057242199',
+            'CallerId' => '+12035551040',
+            'EzBiziDirection' => 'outbound',
+            'CallStatus' => 'ringing',
+        ], $authToken)->assertOk()->getContent();
+
+        // Twilio comes back to whatever WE put in the action attribute, so the
+        // test follows it rather than assuming the shape.
+        $this->assertMatchesRegularExpression('/action="([^"]+)"/', $first);
+        preg_match('/action="([^"]+)"/', $first, $matches);
+        $action = html_entity_decode($matches[1]);
+
+        $this->assertStringContainsString(
+            'direction=outbound',
+            $action,
+            'the action URL does not carry the direction, so the second '
+                .'request has no way to know this call was outbound',
+        );
+
+        // The second request, exactly as Twilio sends it: its own parameters
+        // only, and NO EzBiziDirection.
+        $second = $this->signedPost($action, [
+            'CallSid' => 'CA77777777777777777777777777777777',
+            'AccountSid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'From' => 'client:'.$identity,
+            'To' => '+13057242199',
+            'CallStatus' => 'in-progress',
+            'DialCallStatus' => 'no-answer',
+        ], $authToken)->assertOk()->getContent();
+
+        $this->assertStringNotContainsString('<Record', $second,
+            'the caller was put through to voicemail on their own outgoing call');
+        $this->assertStringNotContainsString('leave a message', $second);
+        $this->assertStringContainsString('There was no answer', $second);
+    }
+
+    /** An INBOUND call that nobody answers still takes a message, as before. */
+    public function test_an_inbound_call_that_is_not_answered_still_reaches_voicemail(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$connection, $authToken] = $this->inTenant($t['org'], function () use ($t) {
+            [$connection, , $authToken] = $this->openLine($t, e164: '+12035551050');
+
+            return [$connection, $authToken];
+        });
+
+        $url = $this->voiceUrl($t['org']->id, $connection->id).'?batch=1';
+
+        $xml = $this->signedPost($url, [
+            'CallSid' => 'CA88888888888888888888888888888888',
+            'AccountSid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'Direction' => 'inbound',
+            'From' => '+15551110000',
+            'To' => '+12035551050',
+            'CallStatus' => 'in-progress',
+            'DialCallStatus' => 'no-answer',
+        ], $authToken)->assertOk()->getContent();
+
+        $this->assertStringContainsString('<Record', $xml,
+            'a customer nobody answered was not offered voicemail');
+    }
+
     public function test_inbound_creates_a_call_row_and_returns_twiml(): void
     {
         $t = $this->provisionTenant();

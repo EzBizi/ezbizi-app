@@ -218,7 +218,7 @@ class VoiceWebhookController extends Controller
             // reads its prompt, accepts a digit, and then does exactly what it
             // would have done for every other digit — which is not a menu.
             'digits' => (string) $request->input('Digits', ''),
-            'dial_action' => $this->voiceAction($connection, $batch + 1),
+            'dial_action' => $this->voiceAction($connection, $batch + 1, $outbound),
             'recording_status_callback' => $this->webhookUrl($connection, 'recording'),
             'transcription_status_callback' => $this->webhookUrl($connection, 'transcription'),
         ];
@@ -271,6 +271,17 @@ class VoiceWebhookController extends Controller
 
     private function isOutbound(Request $request): bool
     {
+        // OUR OWN URL SAYS SO, and that is the most reliable signal there is.
+        //
+        // Twilio does not resend custom parameters to a `<Dial>` action URL,
+        // so `EzBiziDirection` is absent on every request after the first.
+        // The action URL is one WE generated during the outbound leg, so the
+        // direction travels with it and does not depend on anything Twilio
+        // chooses to echo back.
+        if ($request->query('direction') === 'outbound') {
+            return true;
+        }
+
         // The client says so, and that is authoritative.
         //
         // Everything below is inference about how Twilio describes a call, and
@@ -401,9 +412,24 @@ class VoiceWebhookController extends Controller
         return str_contains($xml, 'This line is closed.');
     }
 
-    private function voiceAction(PhoneConnection $connection, int $batch): string
-    {
-        return $this->webhookUrl($connection, 'voice').'?batch='.$batch;
+    /**
+     * The URL Twilio requests when a `<Dial>` ends.
+     *
+     * The direction is carried IN THE URL because we are the ones who mint it,
+     * and nothing else on that request can be relied on to say so. Twilio does
+     * not resend custom parameters to an action URL — only its own — so the
+     * `EzBiziDirection` the client sent on the first request is simply not
+     * there on the second, and the call would be judged by inference again.
+     * That is how an outbound call came to be answered by its own voicemail.
+     */
+    private function voiceAction(
+        PhoneConnection $connection,
+        int $batch,
+        bool $outbound = false,
+    ): string {
+        $url = $this->webhookUrl($connection, 'voice').'?batch='.$batch;
+
+        return $outbound ? $url.'&direction=outbound' : $url;
     }
 
     private function webhookUrl(PhoneConnection $connection, string $kind): string

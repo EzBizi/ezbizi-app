@@ -118,6 +118,28 @@ final class TwimlRenderer
      *
      * @param  array<string, mixed>  $context
      */
+    /**
+     * What happens after a `<Dial>` ends without connecting.
+     *
+     * ── The outbound branch, and why its absence was the whole bug ───
+     *
+     * This used to call `ringOrVoicemail()` unconditionally. On an INBOUND
+     * call that is right: the group did not pick up, so take a message.
+     *
+     * On an OUTBOUND call it is the defect somebody reported twice. You press
+     * Call, hear "This call may be recorded" — which is correct, it is the
+     * outbound TwiML — the dial then fails or is not answered, Twilio requests
+     * the `action` URL, and this played the caller THEIR OWN LINE'S VOICEMAIL.
+     * So ringing a customer ended with "please leave a message after the tone"
+     * in your own voice.
+     *
+     * The first request was never the problem and a fix there could not help,
+     * which is why the symptom survived one.
+     *
+     * The status is named rather than generalised to "the call failed",
+     * because busy, no answer and rejected are three different things to do
+     * next and the caller already knows which one they heard.
+     */
     public function afterDial(PhoneNumber $number, array $context = []): string
     {
         $response = new VoiceResponse;
@@ -126,9 +148,31 @@ final class TwimlRenderer
             return (string) $response;
         }
 
+        if ((bool) ($context['outbound'] ?? false)) {
+            $response->say(
+                self::outboundEnding($status),
+                ['language' => $this->language($number)],
+            );
+            $response->hangup();
+
+            return (string) $response;
+        }
+
         $this->ringOrVoicemail($response, $number, $context);
 
         return (string) $response;
+    }
+
+    /** What to tell somebody whose own outgoing call did not connect. */
+    private static function outboundEnding(string $status): string
+    {
+        return match ($status) {
+            'busy' => 'That number is busy. Nothing has been recorded.',
+            'no-answer' => 'There was no answer. Nothing has been recorded.',
+            'canceled' => 'The call was cancelled.',
+            default => 'That call could not be connected. Check the number, and '
+                .'that the line you are calling from is set up to make calls.',
+        };
     }
 
     /**
