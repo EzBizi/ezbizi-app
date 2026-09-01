@@ -348,6 +348,70 @@ class VoiceWebhookTest extends TestCase
         $this->assertStringNotContainsString('leave a message', $xml);
     }
 
+    /**
+     * A failed call records WHY, not just that it failed.
+     *
+     * Outbound calling was reported broken four times across two days and
+     * every round was a guess, because the system threw the evidence away.
+     * Twilio said why both times it could — `DialCallStatus` on the dial's
+     * action request and `ErrorCode` on the status callback — and the module
+     * read both and kept neither: the code only to decide whether the whole
+     * LINE was broken, which a caller-ID fault is not.
+     *
+     * So "failed" and "nobody picked up" left identical rows. On an outbound
+     * call that is the difference between "they were out" and "this could
+     * never have worked", which is the entire question being asked.
+     */
+    public function test_a_dial_that_fails_records_why(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$connection, $authToken, $identity] = $this->inTenant($t['org'], function () use ($t) {
+            [$connection, , $authToken, $identity] = $this->openLine($t, e164: '+12035551070');
+
+            return [$connection, $authToken, $identity];
+        });
+
+        $sid = 'CAbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+
+        $first = $this->signedPost($this->voiceUrl($t['org']->id, $connection->id), [
+            'CallSid' => $sid,
+            'AccountSid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'Direction' => 'inbound',
+            'From' => 'client:'.$identity,
+            'To' => '+13057242199',
+            'CallerId' => '+12035551070',
+            'EzBiziDirection' => 'outbound',
+            'CallStatus' => 'ringing',
+        ], $authToken)->assertOk()->getContent();
+
+        preg_match('/action="([^"]+)"/', $first, $matches);
+        $action = html_entity_decode($matches[1]);
+
+        $this->signedPost($action, [
+            'CallSid' => $sid,
+            'AccountSid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'From' => 'client:'.$identity,
+            'To' => '+13057242199',
+            'CallStatus' => 'in-progress',
+
+            // Twilio refused it — the shape a bad caller ID takes.
+            'DialCallStatus' => 'failed',
+        ], $authToken)->assertOk();
+
+        $call = $this->inTenant(
+            $t['org'],
+            fn () => PhoneCall::query()->where('twilio_sid', $sid)->first(),
+        );
+
+        $this->assertNotNull($call, 'the outbound call was never recorded at all');
+        $this->assertSame(
+            'dial:failed',
+            $call->error_code,
+            'a refused call is indistinguishable from one nobody answered',
+        );
+    }
+
     public function test_inbound_creates_a_call_row_and_returns_twiml(): void
     {
         $t = $this->provisionTenant();

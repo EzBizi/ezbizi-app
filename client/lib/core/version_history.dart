@@ -11,6 +11,10 @@ class VersionHistory {
       version: '0.0.0128',
       date: '1 Sep 2026',
       items: [
+        'Phone: a call that fails now says why, on the Records list, instead '
+            'of only saying it failed. Twilio always told us the reason and '
+            'the app was discarding it, which is why outbound calling took '
+            'four rounds to diagnose.',
         'Phone: calling a customer no longer drops you into your own '
             'voicemail. The first call went through; a second one to the same '
             'person was treated as a call arriving at your line rather than '

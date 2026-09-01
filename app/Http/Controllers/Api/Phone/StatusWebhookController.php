@@ -86,6 +86,23 @@ class StatusWebhookController extends Controller
                 $call->attestation = $grade;
             }
 
+            // WHY IT FAILED, KEPT.
+            //
+            // This was already read a few lines further down, and used only to
+            // decide whether the whole LINE was broken. A caller-ID fault is
+            // not a line fault, so the one code that explains why an outbound
+            // call never connected was the one guaranteed to be discarded.
+            //
+            // Only ever written, never cleared: a later callback for the same
+            // call carries no ErrorCode, and blanking would erase the reason
+            // the first one gave — the same rule attestation follows above.
+            $errorCode = trim((string) $request->input('ErrorCode', ''));
+            if ($errorCode !== '') {
+                $call->error_code = $errorCode;
+                $call->error_message = trim((string) $request->input('ErrorMessage', ''))
+                    ?: null;
+            }
+
             $previous = $call->status;
             $wasMiss = $this->isMiss($previous) || $call->voicemail;
             $incoming = $this->storedStatus($status);

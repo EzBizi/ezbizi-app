@@ -101,6 +101,23 @@ class VoiceWebhookController extends Controller
             : $this->renderer->afterDial($number, $context + ['dial_status' => (string) $dialStatus]);
 
         $call = $this->findCall($request);
+
+        // WHAT THE DIAL ACTUALLY DID, kept on the call.
+        //
+        // `DialCallStatus` was read to choose a branch and then dropped, so a
+        // call that failed and a call nobody picked up left identical rows —
+        // both "failed", neither saying which. On an outbound leg that is the
+        // difference between "they were out" and "this could never have
+        // worked", and it is the whole question when somebody reports that
+        // calling out does not work.
+        if ($call !== null && $dialStatus !== null && $dialStatus !== 'completed'
+            && $call->error_code === null) {
+            $call->forceFill([
+                'error_code' => 'dial:'.$dialStatus,
+                'error_message' => $call->error_message,
+            ])->save();
+        }
+
         if ($call !== null && $this->unanswered($dialStatus)
             && ($this->isVoicemailDocument($xml) || $this->isClosedDocument($xml))) {
             DB::transaction(function () use ($call, $xml) {

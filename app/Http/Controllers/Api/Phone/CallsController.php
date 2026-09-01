@@ -135,6 +135,13 @@ class CallsController extends Controller
             'from_e164' => $call->from_e164,
             'to_e164' => $call->to_e164,
             'status' => $call->status,
+
+            // Why it failed, where Twilio said. A row that says "failed" and
+            // nothing else is what turned four separate outbound defects into
+            // four rounds of guessing.
+            'error_code' => $call->error_code,
+            'error_message' => $call->error_message,
+
             'duration_seconds' => $call->duration_seconds,
             'voicemail' => (bool) $call->voicemail,
             'recording_sid' => $call->recording_sid,
