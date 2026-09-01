@@ -1100,6 +1100,34 @@ how somebody talks themselves out of a correct diagnosis. Read it with
 
 ## 9 · Deploying
 
+### A stale OPEN item costs as much as a stale claim, and reads as diligence
+
+A resolved problem still written down as open sends the next person hunting
+something that is already fixed. It looks like conscientious tracking right up
+until somebody spends an evening on it.
+
+Two on one night, both mine, both from carrying forward a true-when-written note:
+
+- **"The Windows installer is many versions behind."** True at `0.0.0103` against
+  `0.0.0116`. Closed four times that day. One `curl` of `windows.json` answered it.
+- **"No compiler has seen the iOS AppDelegate changes."** I reasoned *there is no
+  Mac on this box, therefore nothing has compiled them* — a true premise, and the
+  Mac relay is exactly why the conclusion does not follow. `ls dist/` showed a
+  24 MB `.ipa` built four hours earlier from a commit containing them.
+
+I put both in front of other sessions, and one went to Apple as a live risk that
+had already been retired.
+
+**So: re-check an open item before you carry it forward, and cite the check.** An
+item that says *"still behind as of 22:14, manifest reads 0.0.0125"* is
+actionable. One that says *"still behind"* is a claim about an unspecified past.
+
+The related failure, from the same session: a verification **shaped like** a
+confirmation that measured something else entirely — comparing two commits' blobs
+to each other to prove something about the INDEX, which it never inspected. It
+returned a difference, the difference looked like the answer, and it settled a
+question it had not asked.
+
 ### A comment claiming a guarantee the code does not provide
 
 The most expensive stale comment is not the one that is merely out of date. It is
