@@ -3,10 +3,12 @@
 namespace Tests\Feature\Social;
 
 use App\Models\SocialConnection;
+use App\Support\Social\Publishing\FacebookPublisher;
 use App\Support\Social\Publishing\PinterestPublisher;
 use App\Support\Social\Publishing\PostPayload;
 use App\Support\Social\Publishing\Publishers;
 use App\Support\Social\Publishing\SocialPublishFailed;
+use App\Support\Social\Publishing\ThreadsPublisher;
 use App\Support\Social\Publishing\TikTokPublisher;
 use App\Support\Social\SocialMediaKind;
 use App\Support\Social\SocialProvider;
@@ -259,6 +261,146 @@ class SocialPublishingTest extends TestCase
         ]);
     }
 
+    public function test_facebook_posts_words_to_the_pages_feed_with_the_page_token(): void
+    {
+        Http::fake(['graph.facebook.com/*/feed' => Http::response(['id' => 'page_1_post_2'])]);
+
+        $id = (new FacebookPublisher)->publish(
+            $this->connection(SocialProvider::FacebookPage, remoteId: 'page-1'),
+            new PostPayload(body: 'Swept and safe.'),
+        );
+
+        $this->assertSame('page_1_post_2', $id);
+
+        Http::assertSent(function ($request) {
+            // The PAGE id in the path and the PAGE token in the body. A user
+            // token here fails with a permissions error that reads like a
+            // missing scope, which sends you looking in the wrong place.
+            return str_contains($request->url(), '/page-1/feed')
+                && $request->data()['message'] === 'Swept and safe.'
+                && $request->data()['access_token'] === 'a-token';
+        });
+    }
+
+    public function test_facebook_sends_an_image_as_bytes_rather_than_a_public_url(): void
+    {
+        $file = $this->temp('png', 'PNGBYTES');
+
+        Http::fake(['graph.facebook.com/*/photos' => Http::response(['id' => 'photo-1', 'post_id' => 'page_1_post_9'])]);
+
+        $id = (new FacebookPublisher)->publish(
+            $this->connection(SocialProvider::FacebookPage, remoteId: 'page-1'),
+            new PostPayload(body: 'A caption', filePath: $file),
+        );
+
+        // post_id, not the photo's own id: that is what identifies the thing a
+        // person would actually see on the Page.
+        $this->assertSame('page_1_post_9', $id);
+
+        Http::assertSent(function ($request) {
+            if (! str_contains($request->url(), '/photos')) {
+                return false;
+            }
+
+            // Multipart with the bytes attached, and no `url` field. Sending a
+            // url would mean publishing tenant media to an unauthenticated
+            // public address, which is the trade Pinterest refuses too.
+            $names = array_column($request->data(), 'name');
+
+            return $request->isMultipart()
+                && in_array('source', $names, true)
+                && ! in_array('url', $names, true);
+        });
+    }
+
+    public function test_facebook_refuses_an_empty_post_before_it_reaches_the_network(): void
+    {
+        Http::fake();
+
+        $this->expectException(SocialPublishFailed::class);
+        $this->expectExceptionMessageMatches('/empty post/');
+
+        (new FacebookPublisher)->publish(
+            $this->connection(SocialProvider::FacebookPage, remoteId: 'page-1'),
+            new PostPayload(body: '   '),
+        );
+    }
+
+    public function test_facebook_passes_through_the_sentence_graph_returned(): void
+    {
+        Http::fake(['graph.facebook.com/*' => Http::response(
+            ['error' => ['message' => 'The page is restricted.']], 400
+        )]);
+
+        $this->expectException(SocialPublishFailed::class);
+        $this->expectExceptionMessageMatches('/page is restricted/');
+
+        (new FacebookPublisher)->publish(
+            $this->connection(SocialProvider::FacebookPage, remoteId: 'page-1'),
+            new PostPayload(body: 'Hello'),
+        );
+    }
+
+    public function test_threads_creates_a_container_then_publishes_it(): void
+    {
+        Http::fake([
+            'graph.threads.net/*/threads_publish' => Http::response(['id' => 'thread-7']),
+            'graph.threads.net/*/threads'         => Http::response(['id' => 'container-1']),
+        ]);
+
+        $id = (new ThreadsPublisher)->publish(
+            $this->connection(SocialProvider::Threads, remoteId: 'user-1'),
+            new PostPayload(body: 'Hello Threads'),
+        );
+
+        $this->assertSame('thread-7', $id);
+
+        // BOTH calls, in order. A container that is never published is the
+        // failure that looks like success: 200 back, nothing on the profile.
+        Http::assertSentInOrder([
+            fn ($r) => str_contains($r->url(), '/user-1/threads') && $r->data()['media_type'] === 'TEXT',
+            fn ($r) => str_contains($r->url(), '/user-1/threads_publish') && $r->data()['creation_id'] === 'container-1',
+        ]);
+    }
+
+    public function test_threads_fails_loudly_when_the_container_is_never_published(): void
+    {
+        Http::fake([
+            'graph.threads.net/*/threads_publish' => Http::response([]),
+            'graph.threads.net/*/threads'         => Http::response(['id' => 'container-1']),
+        ]);
+
+        $this->expectException(SocialPublishFailed::class);
+        $this->expectExceptionMessageMatches('/publishing it returned nothing/');
+
+        (new ThreadsPublisher)->publish(
+            $this->connection(SocialProvider::Threads, remoteId: 'user-1'),
+            new PostPayload(body: 'Hello'),
+        );
+    }
+
+    public function test_threads_says_media_is_not_built_rather_than_not_accepted(): void
+    {
+        // Threads takes images perfectly well; EzBizi does not send them,
+        // because that needs a public image_url. The wording has to separate
+        // "we have not built it" from "they refuse it".
+        $why = (new ThreadsPublisher)->cannotSend(SocialMediaKind::Image);
+
+        $this->assertNotNull($why);
+        $this->assertNull((new ThreadsPublisher)->cannotSend(SocialMediaKind::Text));
+    }
+
+    public function test_instagram_has_no_publisher_and_says_so_honestly(): void
+    {
+        // Deliberate: every Instagram publish path needs a public image_url or
+        // video_url, which is a privacy decision nobody has made. Falling
+        // through to null gives the honest "the poster is not built" rather
+        // than a class whose only job is to refuse.
+        $this->assertNull(Publishers::for(SocialProvider::InstagramProfessional));
+        $this->assertNotNull(Publishers::for(SocialProvider::FacebookPage));
+        $this->assertNotNull(Publishers::for(SocialProvider::Threads));
+    }
+
     private function temp(string $extension, string $contents): string
     {
         $path = tempnam(sys_get_temp_dir(), 'social').'.'.$extension;
@@ -267,11 +409,12 @@ class SocialPublishingTest extends TestCase
         return $path;
     }
 
-    private function connection(SocialProvider $provider): SocialConnection
+    private function connection(SocialProvider $provider, string $remoteId = 'remote-1'): SocialConnection
     {
         $connection = new SocialConnection;
         $connection->forceFill([
             'provider'     => $provider->value,
+            'remote_id'    => $remoteId,
             'display_name' => 'Test account',
         ]);
         $connection->connect(['refresh_token' => 'r', 'access_token' => 'a-token']);

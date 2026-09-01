@@ -29,6 +29,17 @@ final class Publishers
     public static function for(?SocialProvider $provider, ?bool $toDrafts = null): ?SocialPublisher
     {
         return match ($provider) {
+            SocialProvider::FacebookPage => new FacebookPublisher,
+            SocialProvider::Threads      => new ThreadsPublisher,
+
+            // Instagram is deliberately absent. Its Content Publishing API has
+            // no text-only post and no binary upload — every path needs a
+            // PUBLIC image_url or video_url that Instagram fetches from.
+            // Serving a tenant's media unauthenticated is a privacy decision
+            // nobody has made, and PinterestPublisher refuses the same trade.
+            // Falling through to null gives the honest "the poster is not
+            // built" rather than a class that exists only to refuse.
+
             SocialProvider::Pinterest => new PinterestPublisher,
             SocialProvider::TikTok    => new TikTokPublisher(
                 toDrafts: $toDrafts ?? ! self::tiktokIsAudited(),
