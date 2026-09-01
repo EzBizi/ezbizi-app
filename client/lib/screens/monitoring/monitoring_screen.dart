@@ -3,35 +3,36 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/tag.dart';
+import 'camera_monitoring_tab.dart';
 import 'desktop_monitoring_tab.dart';
 import 'pc_specs_tab.dart';
 
-/// Monitoring — a sub-tab strip (spec §"Sub-project 1") holding PC Specs and
-/// Desktop Monitoring, with Camera Monitoring still declared and not built.
+/// Monitoring — a sub-tab strip (spec §"Sub-project 1") holding PC Specs,
+/// Desktop Monitoring, and Camera Monitoring.
 ///
-/// ── Why Camera Monitoring is a chip here rather than absent ─────────
+/// ── Why a locked chip rather than an absent one ──────────────────────
 ///
-/// The module design doc puts PC Specs first in the build order and sketches
-/// the other two for later (Sub-projects 2 and 3). A tab that silently does
-/// not exist reads as a permission somebody lost; this is the same "coming
-/// soon" answer ComingSoonScreen and Marketing's Newsletter chip already give
-/// at the size of a whole screen, applied here at the size of one chip inside
-/// a single-permission module — `monitoring.view` gates the tab, not which
-/// sub-tab inside it exists yet.
+/// A tab that silently does not exist reads as a permission somebody lost;
+/// this is the same "coming soon" answer ComingSoonScreen and Marketing's
+/// Newsletter chip already give at the size of a whole screen, applied here
+/// at the size of one chip inside a single-permission module —
+/// `monitoring.view` gates the tab, not which sub-tab inside it a given
+/// viewer may open.
 ///
-/// It carries no `onSelected` — there is no screen behind it to switch to,
-/// so an interactive-looking control that goes nowhere would be worse than a
-/// disabled one.
+/// A locked chip carries no `onSelected` — there is no screen behind it this
+/// viewer may switch to, so an interactive-looking control that goes nowhere
+/// would be worse than a disabled one.
 ///
-/// ── Desktop Monitoring's own gate ────────────────────────────────────
+/// ── Desktop Monitoring's and Camera Monitoring's own gates ───────────
 ///
-/// Its endpoints (`GET /monitoring/screenshots*`) are gated server-side by
-/// `monitoring.screenshots.view` — a SEPARATE grant from `specs.view`, added
-/// in the same slice this tab belongs to. Rather than let a caller who lacks
-/// it click through to a tab that would just 403 on every fetch, the chip
-/// itself falls back to the same "Soon"/no-permission look Camera Monitoring
-/// always has — [DesktopMonitoringTab] carries its own copy of this check
-/// too (`session.me.can(...)`, see its class doc comment), the same
+/// Their endpoints (`GET /monitoring/screenshots*`, `GET /monitoring/cameras`)
+/// are gated server-side by `monitoring.screenshots.view` and
+/// `monitoring.cameras.view` respectively — SEPARATE grants from `specs.view`,
+/// each added in the slice its tab belongs to. Rather than let a caller who
+/// lacks one click through to a tab that would just 403 on every fetch, the
+/// chip itself falls back to the locked "Soon" look — [DesktopMonitoringTab]
+/// and [CameraMonitoringTab] each carry their own copy of this same check too
+/// (`session.me.can(...)`, see their class doc comments), the same
 /// defence-in-depth every permission-gated screen in this app uses; this is
 /// only what decides whether the CHIP is worth making selectable at all.
 class MonitoringScreen extends StatefulWidget {
@@ -48,7 +49,7 @@ class MonitoringScreen extends StatefulWidget {
   State<MonitoringScreen> createState() => _MonitoringScreenState();
 }
 
-enum _SubTab { pcSpecs, desktopMonitoring }
+enum _SubTab { pcSpecs, desktopMonitoring, cameraMonitoring }
 
 class _MonitoringScreenState extends State<MonitoringScreen> {
   _SubTab _active = _SubTab.pcSpecs;
@@ -57,6 +58,8 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
   Widget build(BuildContext context) {
     final canViewScreenshots =
         widget.session.me?.can('monitoring.screenshots.view') ?? false;
+    final canViewCameras =
+        widget.session.me?.can('monitoring.cameras.view') ?? false;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -74,11 +77,19 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
                   selected: _active == _SubTab.pcSpecs,
                   onSelected: (_) => setState(() => _active = _SubTab.pcSpecs),
                 ),
-                const ChoiceChip(
-                  label: _SoonLabel('Camera Monitoring'),
-                  selected: false,
-                  onSelected: null,
-                ),
+                if (canViewCameras)
+                  ChoiceChip(
+                    label: const Text('Camera Monitoring'),
+                    selected: _active == _SubTab.cameraMonitoring,
+                    onSelected: (_) =>
+                        setState(() => _active = _SubTab.cameraMonitoring),
+                  )
+                else
+                  const ChoiceChip(
+                    label: _SoonLabel('Camera Monitoring'),
+                    selected: false,
+                    onSelected: null,
+                  ),
                 if (canViewScreenshots)
                   ChoiceChip(
                     label: const Text('Desktop Monitoring'),
@@ -97,14 +108,18 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
           ),
         ),
         const Divider(height: 1),
-        Expanded(child: _body(canViewScreenshots)),
+        Expanded(child: _body(canViewScreenshots, canViewCameras)),
       ],
     );
   }
 
-  Widget _body(bool canViewScreenshots) {
+  Widget _body(bool canViewScreenshots, bool canViewCameras) {
     if (_active == _SubTab.desktopMonitoring && canViewScreenshots) {
       return DesktopMonitoringTab(api: widget.api, session: widget.session);
+    }
+
+    if (_active == _SubTab.cameraMonitoring && canViewCameras) {
+      return CameraMonitoringTab(api: widget.api, session: widget.session);
     }
 
     return PcSpecsTab(api: widget.api, session: widget.session);

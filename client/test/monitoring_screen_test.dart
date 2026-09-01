@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/module_screens.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/screens/monitoring/camera_monitoring_tab.dart';
 import 'package:ezbizi_client/screens/monitoring/monitoring_screen.dart';
 import 'package:ezbizi_client/screens/monitoring/pc_specs_tab.dart';
 import 'package:flutter/material.dart';
@@ -220,7 +221,9 @@ void main() {
   );
 
   testWidgets(
-    'the sub-tab strip shows PC Specs active and the other two as soon',
+    'the sub-tab strip shows PC Specs active, and Camera Monitoring plus '
+    'Desktop Monitoring locked as soon — neither grant is in the default '
+    'fixture',
     (tester) async {
       await _pumpScreen(tester, devices: [_agentDevice, _webDevice]);
 
@@ -228,6 +231,45 @@ void main() {
       expect(find.text('Camera Monitoring'), findsOneWidget);
       expect(find.text('Desktop Monitoring'), findsOneWidget);
       expect(find.text('Soon'), findsNWidgets(2));
+    },
+  );
+
+  testWidgets(
+    'with monitoring.cameras.view granted, the Camera Monitoring sub-tab is '
+    'selectable and no longer locked behind "Soon"',
+    (tester) async {
+      await _pumpScreen(
+        tester,
+        devices: [_agentDevice, _webDevice],
+        permissions: [
+          'monitoring.view',
+          'monitoring.specs.view',
+          'monitoring.cameras.view',
+        ],
+      );
+
+      expect(find.text('Camera Monitoring'), findsOneWidget);
+      // Only Desktop Monitoring remains locked — its own grant is still
+      // absent from this fixture.
+      expect(find.text('Soon'), findsOneWidget);
+
+      await tester.tap(find.text('Camera Monitoring'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(CameraMonitoringTab.noPermissionNote),
+        findsNothing,
+        reason: 'A viewer holding monitoring.cameras.view switched to the '
+            'tab and should see the real tab, not the locked/no-permission '
+            'note the chip used to fall back to for everyone.',
+      );
+      expect(
+        find.text(CameraMonitoringTab.noCamerasNote),
+        findsOneWidget,
+        reason: 'Non-vacuous check that the real CameraMonitoringTab '
+            'actually mounted and fetched — this is its own empty-state '
+            'sentence, not just the absence of the no-permission one.',
+      );
     },
   );
 
@@ -449,6 +491,7 @@ Future<void> _pumpScreen(
   Size size = const Size(1280, 900),
   http.Response? Function(http.Request request)? onRequest,
   List<Map<String, Object?>>? meModules,
+  List<String>? permissions,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -463,7 +506,11 @@ Future<void> _pumpScreen(
         device,
   ];
 
-  final me = meModules == null ? _me : {..._me, 'modules': meModules};
+  final me = {
+    ..._me,
+    'modules': ?meModules,
+    'permissions': ?permissions,
+  };
 
   final api = ApiClient(
     client: MockClient((request) async {
@@ -478,6 +525,12 @@ Future<void> _pumpScreen(
 
       if (path.endsWith('/monitoring/devices')) {
         return _json({'data': live});
+      }
+
+      // Only ever reached by the Camera Monitoring grant test below — no
+      // other test here switches to that sub-tab.
+      if (path.endsWith('/monitoring/cameras')) {
+        return _json({'data': <Map<String, dynamic>>[]});
       }
 
       return _json({'message': 'Nothing stubbed for $path.'}, 500);
