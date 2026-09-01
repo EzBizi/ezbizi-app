@@ -45,13 +45,26 @@ class TwimlRendererTest extends TestCase
     {
         $t = $this->provisionTenant();
 
-        [$broken, $working] = $this->inTenant($t['org'], function () use ($t) {
+        [$broken, $working, $noCallerId] = $this->inTenant($t['org'], function () use ($t) {
             [$number] = $this->lineWithAvailableDesk($t, record: true);
             $renderer = new TwimlRenderer;
 
             return [
                 // Outbound, but the destination never arrived.
                 $renderer->inbound($number->fresh(), ['outbound' => true]),
+
+                // A real outbound call carries BOTH a destination and a
+                // caller ID. Twilio refuses a <Dial> whose callerId is not a
+                // number the account holds, so a call without one never
+                // reaches anybody — which is why the renderer declines it
+                // rather than making the attempt.
+                $renderer->inbound($number->fresh(), [
+                    'outbound' => true,
+                    'dial_to' => '+13057242199',
+                    'caller_id' => $number->e164,
+                ]),
+
+                // Destination, but nothing usable to call out from.
                 $renderer->inbound($number->fresh(), [
                     'outbound' => true,
                     'dial_to' => '+13057242199',
@@ -69,6 +82,14 @@ class TwimlRendererTest extends TestCase
         $this->assertStringContainsString('<Dial', $working);
         $this->assertStringContainsString('+13057242199', $working);
         $this->assertStringNotContainsString('<Record', $working);
+
+        // A caller ID this account does not hold is refused BEFORE the dial.
+        // Twilio would reject it the moment the dial started, and that
+        // rejection reaches the caller as a call that connects to nothing and
+        // explains nothing — so it is declined here, where it can say why.
+        $this->assertStringNotContainsString('<Dial', $noCallerId);
+        $this->assertStringContainsString('not one this phone account holds', $noCallerId);
+        $this->assertStringNotContainsString('leave a message', $noCallerId);
     }
 
     public function test_recording_notice_is_spoken_when_the_number_records(): void

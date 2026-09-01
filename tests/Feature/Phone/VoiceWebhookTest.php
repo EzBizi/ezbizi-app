@@ -302,6 +302,52 @@ class VoiceWebhookTest extends TestCase
             'a customer nobody answered was not offered voicemail');
     }
 
+    /**
+     * A caller ID this account does not hold is refused before the dial.
+     *
+     * Twilio requires the `callerId` on an outbound `<Dial>` to be a number
+     * the account owns or has verified, and refuses the moment the dial
+     * starts otherwise. The refusal is not something we ever see: it reaches
+     * the caller as a call that connects to nothing and explains nothing, and
+     * then — before this — as their own voicemail.
+     *
+     * The browser's selection is checked rather than trusted for the same
+     * reason anything else from a client is: the pad's choice can be stale,
+     * and a line can move between accounts while somebody has the tab open.
+     *
+     * A-1 Tools, which has a working softphone across web, desktop and mobile,
+     * validates the same thing in the same place. This was the piece EzBizi
+     * did not have.
+     */
+    public function test_a_caller_id_this_account_does_not_hold_is_refused(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$connection, $authToken, $identity] = $this->inTenant($t['org'], function () use ($t) {
+            [$connection, , $authToken, $identity] = $this->openLine($t, e164: '+12035551060');
+
+            return [$connection, $authToken, $identity];
+        });
+
+        $xml = $this->signedPost($this->voiceUrl($t['org']->id, $connection->id), [
+            'CallSid' => 'CA99999999999999999999999999999999',
+            'AccountSid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'Direction' => 'inbound',
+            'From' => 'client:'.$identity,
+            'To' => '+13057242199',
+
+            // A perfectly well-formed number that this account does not hold.
+            'CallerId' => '+14045550000',
+            'EzBiziDirection' => 'outbound',
+            'CallStatus' => 'ringing',
+        ], $authToken)->assertOk()->getContent();
+
+        $this->assertStringNotContainsString('<Dial', $xml,
+            'dialled with a caller ID Twilio would have rejected');
+        $this->assertStringContainsString('not one this phone account holds', $xml);
+        $this->assertStringNotContainsString('leave a message', $xml);
+    }
+
     public function test_inbound_creates_a_call_row_and_returns_twiml(): void
     {
         $t = $this->provisionTenant();

@@ -92,18 +92,39 @@ final class TwimlRenderer
             //
             // Nobody rings out in order to leave themselves a message. If the
             // destination did not arrive, that is a fault and it says so.
-            if (is_string($context['dial_to'] ?? null) && $context['dial_to'] !== '') {
-                $this->dialParty($response, $number, $context);
+            if (! is_string($context['dial_to'] ?? null) || $context['dial_to'] === '') {
+                $response->say(
+                    'This call could not be placed, because the number to dial '
+                    .'did not reach the phone system. Nothing has been charged.',
+                    ['language' => $language],
+                );
+                $response->hangup();
 
                 return (string) $response;
             }
 
-            $response->say(
-                'This call could not be placed, because the number to dial did '
-                .'not reach the phone system. Nothing has been charged.',
-                ['language' => $language],
-            );
-            $response->hangup();
+            // NO USABLE CALLER ID MEANS THE DIAL WOULD FAIL, so say that
+            // rather than make the attempt.
+            //
+            // Twilio requires the callerId on an outbound <Dial> to be a
+            // number the account owns or has verified, and refuses the moment
+            // the dial starts otherwise. That refusal reaches the caller as a
+            // call that connects to nothing and explains nothing. Declining
+            // here costs the same and can say why.
+            if (! is_string($context['caller_id'] ?? null) || $context['caller_id'] === '') {
+                $response->say(
+                    'This call cannot be placed, because the line it would go '
+                    .'out from is not one this phone account holds. Choose a '
+                    .'line on the Call screen, or set the number you call out '
+                    .'from on the Team screen.',
+                    ['language' => $language],
+                );
+                $response->hangup();
+
+                return (string) $response;
+            }
+
+            $this->dialParty($response, $number, $context);
 
             return (string) $response;
         }

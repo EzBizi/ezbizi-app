@@ -241,10 +241,26 @@ class VoiceWebhookController extends Controller
             // identity — not a number the account owns, so the carrier
             // rejects it and the call simply fails. That is a call that never
             // connects and never says why.
+            // THE CALLER ID MUST BE A NUMBER THIS ACCOUNT OWNS.
+            //
+            // Twilio rejects a `callerId` the account does not own or has not
+            // verified, and the rejection is not a validation error we ever
+            // see: the <Dial> simply fails the moment it starts. Passing the
+            // client's value through unchecked is how an outbound call came
+            // to end instantly with no explanation.
+            //
+            // Checked here rather than trusted, for the same reason the
+            // browser's claim about anything else is checked — the pad's
+            // selection can be stale, and a line can move between accounts.
             $callerId = $this->callerId($request);
+            if ($callerId !== '' && ! $this->ownsNumber($connection, $callerId)) {
+                $callerId = '';
+            }
+
             if ($callerId === '') {
                 $callerId = $this->assignedCallerId($request, $connection);
             }
+
             if ($callerId !== '') {
                 $context['caller_id'] = $callerId;
             }
@@ -263,10 +279,27 @@ class VoiceWebhookController extends Controller
                 ->first();
         }
 
-        return PhoneNumber::query()
+        $line = PhoneNumber::query()
             ->where('connection_id', $connection->id)
             ->where('e164', $e164)
             ->first();
+
+        // AN OUTBOUND CALL STILL NEEDS A VOICE even when we cannot identify
+        // the line it claims to come from.
+        //
+        // Returning null here produced a bare `<Response/>` — no audio at all.
+        // Somebody pressed Call, the phone went silent, and nothing anywhere
+        // said why. The line on an outbound leg is only context (language,
+        // whether to announce recording); failing to match one is a reason to
+        // explain the problem, not a reason to lose the ability to speak.
+        if ($line === null && $outbound) {
+            return PhoneNumber::query()
+                ->where('connection_id', $connection->id)
+                ->orderBy('e164')
+                ->first();
+        }
+
+        return $line;
     }
 
     private function isOutbound(Request $request): bool
@@ -338,6 +371,15 @@ class VoiceWebhookController extends Controller
                 && ClientIdentity::of($row->user) === $identity);
 
         return (string) ($extension?->number?->e164 ?? '');
+    }
+
+    /** Whether this connection actually holds the number, in E.164. */
+    private function ownsNumber(PhoneConnection $connection, string $e164): bool
+    {
+        return PhoneNumber::query()
+            ->where('connection_id', $connection->id)
+            ->where('e164', $e164)
+            ->exists();
     }
 
     private function callerId(Request $request): string
