@@ -48,6 +48,43 @@ void main() {
     expect(find.byTooltip('Back to the team'), findsNothing);
   });
 
+  testWidgets('the desk is 25 / 25 / 50, not 19 / 57 / 24', (tester) async {
+    // It was SizedBox(220) - Expanded - SizedBox(280): the two panes holding
+    // the most content pinned at their smallest, and every extra pixel handed
+    // to the dial pad. The pad is capped at 184px of buttons, so the middle
+    // column was more than half the window around a keypad while the roster
+    // and the customer thread were squeezed either side.
+    await _pump(tester, size: const Size(1600, 900));
+
+    final team = tester.getRect(find.byKey(const Key('phone-call-teammates')));
+    final pad = tester.getRect(find.byKey(const Key('phone-call-pad')));
+    final person = tester.getRect(find.byKey(const Key('phone-call-person')));
+
+    // 1598 after the two dividers.
+    expect((team.width - 399.5).abs(), lessThan(1.5));
+    expect((pad.width - 399.5).abs(), lessThan(1.5));
+    expect((person.width - 799.0).abs(), lessThan(1.5));
+  });
+
+  testWidgets('the pad stops shrinking before the other two do', (
+    tester,
+  ) async {
+    // Below about 1050 of desk width the ratio alone would give the pad 224px,
+    // and a keypad at 224px stops being tappable. A roster or a message thread
+    // just gets narrower and stays usable, so the pad is the only one of the
+    // three with a hard floor.
+    await _pump(tester, size: const Size(900, 800));
+
+    final pad = tester.getRect(find.byKey(const Key('phone-call-pad')));
+    expect(
+      pad.width,
+      greaterThanOrEqualTo(280),
+      reason:
+          'A bare 25% of 898 is 224px. The floor is what keeps the keypad '
+          'usable at the widths where the ratio does not fit.',
+    );
+  });
+
   testWidgets('at 375 one pane at a time, with Back', (tester) async {
     await _pump(tester, size: const Size(375, 800));
 

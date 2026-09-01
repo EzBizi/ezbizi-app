@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -579,39 +581,77 @@ class _CallTabState extends State<CallTab> {
     );
   }
 
+  /// The three columns, at 25 · 25 · 50 with a floor under each.
+  ///
+  /// It was `SizedBox(220)` · `Expanded` · `SizedBox(280)`: the two panes
+  /// holding the most content were pinned at their smallest useful size and
+  /// every extra pixel went to the dial pad. On a 1440 screen that is about
+  /// 19 · 57 · 24, and the pad is capped at 184px of buttons besides — so the
+  /// middle column was 57% of the window around a keypad, with the roster and
+  /// the customer thread squeezed either side of it.
+  ///
+  /// The floors matter below about 1050 of desk width. Above that they never
+  /// bind and this is exactly the ratio. Below it the PAD stops shrinking
+  /// first, because it is the only one of the three with a hard minimum: a
+  /// roster or a message thread just gets narrower and stays usable, and a
+  /// keypad stops being tappable.
   Widget _wide() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(
-          key: const Key('phone-call-teammates'),
-          width: 220,
-          child: _teammatesPane(),
-        ),
-        VerticalDivider(
-          width: 1,
-          thickness: 1,
-          color: EzBiziTheme.edge(context),
-        ),
-        Expanded(
-          child: KeyedSubtree(
-            key: const Key('phone-call-pad'),
-            child: _padPane(showBack: false, showPerson: false),
-          ),
-        ),
-        VerticalDivider(
-          width: 1,
-          thickness: 1,
-          color: EzBiziTheme.edge(context),
-        ),
-        SizedBox(
-          key: const Key('phone-call-person'),
-          width: 280,
-          child: _personPane(showBack: false),
-        ),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // The two dividers are a real pixel each and come off the top, or the
+        // three panes add up to more than the row can give and it overflows.
+        final available = constraints.maxWidth - 2;
+
+        final pad = math.max(_padFloor, available * 0.25);
+        final rest = available - pad;
+
+        // Never more than half of what is left, so that between the stacking
+        // breakpoint at 600 and the width where the floors fit, the roster
+        // cannot starve the customer pane instead of sharing with it.
+        final team = math.min(math.max(_teamFloor, rest / 3), rest * 0.5);
+        final person = rest - team;
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              key: const Key('phone-call-teammates'),
+              width: team,
+              child: _teammatesPane(),
+            ),
+            VerticalDivider(
+              width: 1,
+              thickness: 1,
+              color: EzBiziTheme.edge(context),
+            ),
+            SizedBox(
+              key: const Key('phone-call-pad'),
+              width: pad,
+              child: _padPane(showBack: false, showPerson: false),
+            ),
+            VerticalDivider(
+              width: 1,
+              thickness: 1,
+              color: EzBiziTheme.edge(context),
+            ),
+            SizedBox(
+              key: const Key('phone-call-person'),
+              width: person,
+              child: _personPane(showBack: false),
+            ),
+          ],
+        );
+      },
     );
   }
+
+  /// Below these the panes stop giving width back.
+  ///
+  /// The customer pane has no constant of its own: it takes what is left, and
+  /// at the width where the other two are both exactly on their floors it
+  /// lands on 360, which is the third number the approved layout named.
+  static const double _teamFloor = 240;
+  static const double _padFloor = 280;
 
   Widget _narrow() {
     return switch (_pane) {

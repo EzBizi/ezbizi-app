@@ -36,6 +36,30 @@ class VersionHistory {
             'so, instead of connecting to silence. The call appeared to be in '
             'progress with nobody on either end - the number it claimed to be '
             'calling from was rejected, and nothing said that out loud.',
+        'Phone: the call desk gives each column a fair share of the window. '
+            'The two panes holding the most - the team list and the customer '
+            'thread - were fixed at their smallest, and every extra pixel went '
+            'to the dial pad, which is a fixed size anyway. On a wide screen '
+            'the middle column was more than half the window around a keypad. '
+            'A note in 0.0.0126 said this had been done; it had not been, and '
+            'this is it.',
+        'The sidebar has a box to find a module by name. Sixteen of them, and '
+            'the way to reach one was to read all sixteen - on a short screen, '
+            'after scrolling. The letters that matched are marked, so it is '
+            'clear why a module is still in the list. Collapsed there is no '
+            'box: at that width there are no names to search.',
+        'Your account is laid out again. The things an administrator assigns '
+            'you - your email, your role, and the places you can act on - sat '
+            'inside the form directly above its Save button, which suggested '
+            'Save applied to them. It never did. They are beside the form now, '
+            'or their own row on a phone.',
+        'Your account on a phone is a list of rows rather than one long form, '
+            'and each row shows what it currently says - so checking your own '
+            'number no longer means opening anything.',
+        'Two places with the same name now say which company each belongs to. '
+            'A list that reads Connecticut, Georgia, Connecticut looks like '
+            'the same place twice; they are two different ones, and it is the '
+            'answer to where you are allowed to work.',
       ],
     ),
     VersionRelease(
@@ -66,9 +90,6 @@ class VersionHistory {
             'assigned to them, so every outbound call went out under the same '
             'line - four people ringing four customers all showed one number, '
             'and every callback landed on whoever picked up.',
-        'Phone: the call desk now gives each column a fair share of the window '
-            'rather than fixing the two busiest at their smallest useful size '
-            'and giving every extra pixel to the dial pad.',
         'The sidebar scrolls. On a shorter screen the module list used to run '
             'off the bottom and draw over Settings and Development, and the '
             'modules underneath could not be reached at all - there was '
