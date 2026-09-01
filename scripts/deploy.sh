@@ -197,7 +197,14 @@ if [ "$CODE_ONLY" != "--code" ]; then
   # and the guard keeps its meaning for the case it was written for.
   git -C "$WORKTREE" checkout -- . 2>/dev/null || true
   echo "$CLIENT_OUT" | tail -2
-  CLIENT_TESTS=$(echo "$CLIENT_OUT" | grep -oE '\+[0-9]+' | tail -1 | tr -d '+')
+  # `|| true` because this file runs under `set -euo pipefail`, and with
+  # --skip-gates there is no "+1188" in the output to find. grep exits 1,
+  # pipefail promotes it to the pipeline's status, and set -e then kills the
+  # deploy — silently, between the pub get and the web build, with no error
+  # printed. That is exactly how the first v0.0.0129 run failed: web never
+  # shipped, and the only visible symptom was output stopping mid-file.
+  # An absent test count is expected here, not an error.
+  CLIENT_TESTS=$(echo "$CLIENT_OUT" | grep -oE '\+[0-9]+' | tail -1 | tr -d '+') || true
 
   echo "→ building web"
   # Same-origin by default, so the built app talks to whatever host serves it
