@@ -1,8 +1,18 @@
 #include "flutter_window.h"
 
 #include <optional>
+#include <utility>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "monitoring_screenshot.h"
+
+namespace {
+
+constexpr char kMonitoringScreenshotChannel[] =
+    "com.ezbizi.app/monitoring_screenshot";
+constexpr char kCaptureScreenshotMethod[] = "captureScreenshot";
+
+}  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -25,6 +35,28 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+
+  monitoring_screenshot_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(),
+          kMonitoringScreenshotChannel,
+          &flutter::StandardMethodCodec::GetInstance());
+  monitoring_screenshot_channel_->SetMethodCallHandler(
+      [](const flutter::MethodCall<flutter::EncodableValue>& call,
+         std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+             result) {
+        if (call.method_name() != kCaptureScreenshotMethod) {
+          result->NotImplemented();
+          return;
+        }
+        std::vector<uint8_t> jpeg_bytes = CapturePrimaryMonitorJpeg();
+        if (jpeg_bytes.empty()) {
+          result->Success();
+          return;
+        }
+        result->Success(flutter::EncodableValue(std::move(jpeg_bytes)));
+      });
+
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -40,6 +72,10 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  if (monitoring_screenshot_channel_) {
+    monitoring_screenshot_channel_ = nullptr;
+  }
+
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }

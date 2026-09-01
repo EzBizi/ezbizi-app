@@ -9,6 +9,7 @@ project(runner LANGUAGES CXX)
 add_executable(${BINARY_NAME} WIN32
   "flutter_window.cpp"
   "main.cpp"
+  "monitoring_screenshot.cpp"
   "utils.cpp"
   "win32_window.cpp"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
@@ -37,6 +38,12 @@ target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
 # Shell_NotifyIcon, for the notification-area icon the close-to-tray behaviour
 # depends on. See win32_window.cpp.
 target_link_libraries(${BINARY_NAME} PRIVATE "shell32.lib")
+# Screen capture (BitBlt/GetDIBits), JPEG encoding (WIC), and the COM APIs
+# WIC needs, for the primary-monitor screenshot channel. See
+# monitoring_screenshot.cpp.
+target_link_libraries(${BINARY_NAME} PRIVATE "gdi32.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "windowscodecs.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "ole32.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.
