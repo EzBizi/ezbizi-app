@@ -598,7 +598,7 @@ void main() {
   });
 
   /// The sixteen modules, in shell order.
-  List<Destination> _modules() => [
+  List<Destination> modules() => [
     for (final name in const [
       'Dashboard', 'Tasks', 'Human Resources', 'Customers',
       'Jobs', 'Scheduling', 'Inspection', 'Marketing',
@@ -608,7 +608,7 @@ void main() {
       Destination(name, Icons.circle_outlined, const SizedBox()),
   ];
 
-  Widget _sidebar({
+  Widget sidebar({
     required bool expanded,
     required ValueChanged<int> onSelected,
   }) => MaterialApp(
@@ -619,7 +619,7 @@ void main() {
           NavigationSidebar(
             expanded: expanded,
             width: 220,
-            destinations: _modules(),
+            destinations: modules(),
             pinned: [
               Destination('Settings', Icons.settings_outlined, const SizedBox()),
             ],
@@ -647,7 +647,7 @@ void main() {
     // open a plausible, wrong module, with no error anywhere. Nothing about the
     // screen would look broken; you would just keep ending up somewhere else.
     final opened = <int>[];
-    await tester.pumpWidget(_sidebar(expanded: true, onSelected: opened.add));
+    await tester.pumpWidget(sidebar(expanded: true, onSelected: opened.add));
 
     // "man" keeps three of sixteen: Human Resources (2), Web Management (8),
     // Fleet Management (10).
@@ -672,7 +672,7 @@ void main() {
 
   testWidgets('the collapsed rail has no search, and a filter that matches '
       'nothing explains itself', (tester) async {
-    await tester.pumpWidget(_sidebar(expanded: false, onSelected: (_) {}));
+    await tester.pumpWidget(sidebar(expanded: false, onSelected: (_) {}));
     expect(
       find.byType(TextField),
       findsNothing,
@@ -681,7 +681,7 @@ void main() {
           'control that only works by first undoing the state you chose.',
     );
 
-    await tester.pumpWidget(_sidebar(expanded: true, onSelected: (_) {}));
+    await tester.pumpWidget(sidebar(expanded: true, onSelected: (_) {}));
     await tester.enterText(find.byType(TextField), 'invoic');
     await tester.pumpAndSettle();
 

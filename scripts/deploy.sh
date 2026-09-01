@@ -16,20 +16,27 @@ set -euo pipefail
 
 REMOTE=app                       # ~/.ssh/config alias
 SHARED=/var/www/ezbizi/public-app
-# --skip-gates ships WITHOUT running either suite. Added 1 Sep on Jose's
-# explicit instruction ("no gate, i need it fast") — the gate is ~24 minutes and
-# is the whole cost of a deploy.
+# GATES ARE OFF BY DEFAULT. Pass --gates to run them.
 #
-# This is the one control that stops a red build reaching production, so it is a
-# flag and never a default: every caller has to type it, and the run says so
-# twice. Prefer it only when the cost of waiting is known to exceed the cost of
-# shipping untested code, which is a judgement for the person deploying and not
-# for this script.
-SKIP_GATES=0
+# Jose's decision, 1 Sep, made twice: first "no gate, i need it fast", then
+# "skip gates should be the default". The concern — that this is the one control
+# stopping a red build reaching production — was put to him and he confirmed. It
+# is his call and it is recorded here so nobody quietly reverts it.
+#
+# What decided it: the v0.0.0130 run spent 24 minutes passing 2693 backend tests
+# and then refused to deploy over two *info* lints in a test file
+# (no_leading_underscores_for_local_identifiers). `flutter analyze` exits
+# non-zero on info, so two variable names blocked nine commits of work. A gate
+# that stops a release for something that cannot break anything is one people
+# route around, and routing around it is worse than turning it off honestly.
+#
+# --skip-gates is still accepted so existing callers and scripts do not break.
+SKIP_GATES=1
 _args=()
 for _a in "$@"; do
   case "$_a" in
     --skip-gates) SKIP_GATES=1 ;;
+    --gates)      SKIP_GATES=0 ;;
     *) _args+=("$_a") ;;
   esac
 done

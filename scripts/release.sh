@@ -7,6 +7,10 @@
 #   ./scripts/release.sh --only web,android
 #   ./scripts/release.sh --dry-run          say what it would do, build nothing
 #   ./scripts/release.sh --no-bump          release client/VERSION as it stands
+#   ./scripts/release.sh --gates            run the test suites first
+#
+# The gates are OFF by default (Jose, 1 Sep). See the note at the top of
+# deploy.sh for what decided it. Nothing verifies a release unless --gates.
 #
 # The version is bumped and committed automatically on every run. Two releases
 # shipped twice under one number before this existed; the updater compares
@@ -72,7 +76,7 @@ DIST_APPLE="$DIST/Apple"
 FAILED=()
 TARGETS="web,windows,android,ios"
 DRY_RUN=0
-SKIP_GATES=""
+SKIP_GATES=--skip-gates   # gates are OFF by default; --gates turns them on
 BUMP=1
 
 # The marketing site's box, which is NOT the app box — see AGENTS/DEPLOY. The
@@ -86,13 +90,14 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --only)    TARGETS="$2"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
-    # Forwarded to deploy.sh. The app builds already run with --skip-gates when
-    # web is in the same release, so this flag is entirely about the web gate.
+    # Both are forwarded to deploy.sh and concern the WEB gate only — the app
+    # builds already run with --skip-gates whenever web is in the same release.
     --skip-gates) SKIP_GATES=--skip-gates; shift ;;
+    --gates)      SKIP_GATES=--gates; shift ;;
     --no-bump) BUMP=0; shift ;;
     -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown argument: $1" >&2
-       echo "usage: $0 [--only web,windows,android,ios] [--dry-run] [--skip-gates] [--no-bump]" >&2
+       echo "usage: $0 [--only web,windows,android,ios] [--dry-run] [--gates] [--no-bump]" >&2
        exit 2 ;;
   esac
 done
