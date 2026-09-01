@@ -729,6 +729,29 @@ class _CallTabState extends State<CallTab> {
                               ),
                               onPressed: () => setState(() => _chatWith = row),
                             ),
+
+                            // Calling a colleague belongs ON the colleague,
+                            // not on the dial pad.
+                            //
+                            // It used to be an "Internal" button beside Call,
+                            // disabled until a row had been selected — so the
+                            // control for reaching a PERSON sat next to a
+                            // keypad for reaching a NUMBER, and did nothing
+                            // until you had already picked the person
+                            // somewhere else. Two steps, and the first was
+                            // invisible: nothing on the pad said what
+                            // "Internal" would dial, or why it was grey.
+                            IconButton(
+                              tooltip: 'Call ${row.name}',
+                              visualDensity: VisualDensity.compact,
+                              icon: const Icon(Icons.phone_outlined, size: 18),
+                              onPressed: _onCall
+                                  ? null
+                                  : () {
+                                      setState(() => _teammateId = row.userId);
+                                      _placeCall(internal: true);
+                                    },
+                            ),
                           ],
                         ),
                       ),
@@ -881,12 +904,6 @@ class _CallTabState extends State<CallTab> {
                       : () => _placeCall(internal: false),
                   child: const Text('Call'),
                 ),
-              OutlinedButton(
-                onPressed: _teammateId == null
-                    ? null
-                    : () => _placeCall(internal: true),
-                child: const Text('Internal'),
-              ),
             ],
           ),
         ),

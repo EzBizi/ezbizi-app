@@ -11,6 +11,14 @@ class VersionHistory {
       version: '0.0.0128',
       date: '1 Sep 2026',
       items: [
+        'Phone: calling out works. Numbers typed the ordinary way - 305 724 '
+            '2199 - were losing their country code and being dialled as '
+            '+3057242199, which is not a phone number, so no outgoing call '
+            'has ever connected. The same applied to text messages.',
+        'Phone: the Call tab is now called Dial, and you ring a colleague from '
+            'their own row in the Team list rather than from an Internal '
+            'button on the keypad that did nothing until you had picked them '
+            'somewhere else.',
         'Phone: a call that fails now says why, on the Records list, instead '
             'of only saying it failed. Twilio always told us the reason and '
             'the app was discarding it, which is why outbound calling took '

@@ -19,8 +19,8 @@ void main() {
     await _pump(tester);
 
     expect(find.text('Coming soon'), findsNothing);
-    expect(_chips(tester), ['Call', 'Team', 'Records', 'Reports', 'Settings']);
-    expect(find.widgetWithText(ChoiceChip, 'Call'), findsOneWidget);
+    expect(_chips(tester), ['Dial', 'Team', 'Records', 'Reports', 'Settings']);
+    expect(find.widgetWithText(ChoiceChip, 'Dial'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'Records'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'Settings'), findsOneWidget);
 
@@ -35,7 +35,7 @@ void main() {
     expect(find.byType(ComingSoonScreen), findsNothing);
     expect(find.text('Coming soon'), findsNothing);
     expect(find.byType(PhoneScreen), findsOneWidget);
-    expect(_chips(tester), ['Call', 'Team', 'Records', 'Reports', 'Settings']);
+    expect(_chips(tester), ['Dial', 'Team', 'Records', 'Reports', 'Settings']);
   });
 
   testWidgets('Records is an empty list, not Coming soon', (tester) async {

@@ -35,7 +35,6 @@ void main() {
     expect(find.text('Calling as'), findsOneWidget);
     expect(find.textContaining('CT main'), findsWidgets);
     expect(find.text('Call'), findsOneWidget);
-    expect(find.text('Internal'), findsOneWidget);
     expect(find.text('Live transcript is off on this number.'), findsOneWidget);
     expect(find.text('Messages'), findsOneWidget);
 
@@ -199,7 +198,7 @@ void main() {
     );
   });
 
-  testWidgets('Internal connects to the teammate client identity', (
+  testWidgets('a colleague is called from their own row', (
     tester,
   ) async {
     final device = _FakeDevice();
@@ -207,8 +206,9 @@ void main() {
 
     await _pump(tester, device: device, size: const Size(900, 800));
 
-    await _tap(tester, find.text('Maya Chen'));
-    await _tap(tester, find.widgetWithText(OutlinedButton, 'Internal'));
+    // Calling a colleague is a control ON the colleague now, not a mode on
+    // the pad that did nothing until a row had already been selected.
+    await _tap(tester, find.byTooltip('Call Maya Chen'));
 
     expect(device.connectedTo, 'client:u2');
     expect(device.callerId, '+12035550142');
