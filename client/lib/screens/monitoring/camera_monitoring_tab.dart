@@ -559,7 +559,14 @@ class _DeepLinkCard extends StatelessWidget {
 Future<void> _openUrl(String url) async {
   final uri = Uri.tryParse(url);
   if (uri == null) return;
-  await launchUrl(uri, mode: LaunchMode.externalApplication);
+  try {
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  } catch (_) {
+    // No registered handler for the scheme (an rtsp:// deep-link with no
+    // player installed throws rather than returning false). The URL is
+    // copyable right beside this button, so a failed open is a no-op — never
+    // an uncaught async error surfaced to the user.
+  }
 }
 
 Future<void> _copyUrl(BuildContext context, String url) async {
