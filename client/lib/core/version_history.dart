@@ -8,6 +8,37 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0133',
+      date: '1 Sep 2026',
+      items: [
+        'Monitoring: a new module showing the machines your people work on '
+            'and whether they are healthy. Companies may use EzBizi to monitor '
+            'their team; this is covered in the terms of service.',
+        'Monitoring - PC Specs: the desktop app now reports each machine\'s '
+            'memory, free disk, operating system and Wi-Fi, so you can see the '
+            'hardware your team is on and not only that they are online. A '
+            'browser session still shows, marked as a browser session with no '
+            'specs to report.',
+        'Monitoring - PC Specs now leads with a person\'s active device, adds '
+            'a switcher when more than one is active, and folds older sessions '
+            'away behind a toggle. Before, somebody who had signed in from '
+            'several browsers filled the list with stale rows that all looked '
+            'the same.',
+        'Monitoring - a desktop machine is now recognised as the same device '
+            'each time the app starts, instead of registering as a brand-new '
+            'device on every launch.',
+        'Monitoring - Desktop Monitoring: with the right permission, a manager '
+            'can see periodic screenshots of a monitored Windows machine\'s '
+            'screen. Images are kept for 30 days and then deleted on their own. '
+            'Seeing them is a separate permission from seeing specs, so an '
+            'organisation can grant one without the other.',
+        'Monitoring - Camera Monitoring: connect an IP camera by its stream '
+            'address - HLS, MJPEG, snapshot or RTSP - and watch it inside '
+            'EzBizi. MJPEG and snapshot cameras play in the page; HLS and RTSP '
+            'open in your own video player for now.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0132',
       date: '1 Sep 2026',
       items: [
