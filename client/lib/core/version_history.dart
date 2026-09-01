@@ -8,6 +8,24 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0132',
+      date: '1 Sep 2026',
+      items: [
+        'The desktop app updates itself without showing you an installer. It '
+            'used to put a setup window on screen while replacing itself, '
+            'which read as installing software rather than the app restarting.',
+        'The desktop app comes back on its own after updating. It was closing '
+            'itself so its files could be replaced and then staying closed - '
+            'the step that reopens it was being skipped on exactly the silent '
+            'installs the updater uses. If an update ever fails you will still '
+            'be told; only the success case is quiet.',
+        'The desktop app checks for an update when it starts and installs it '
+            'there and then, instead of waiting a minute first. That wait is '
+            'still there for an update found while you are working, where '
+            'closing the app under you is not the same thing at all.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0130',
       date: '1 Sep 2026',
       items: [
