@@ -47,6 +47,7 @@ use App\Http\Controllers\Api\MetaCallbacksController;
 use App\Http\Controllers\Api\MicrosoftMailAuthController;
 use App\Http\Controllers\Api\Monitoring\DevicesController as MonitoringDevicesController;
 use App\Http\Controllers\Api\Monitoring\HeartbeatController as MonitoringHeartbeatController;
+use App\Http\Controllers\Api\Monitoring\ScreenshotsController as MonitoringScreenshotsController;
 use App\Http\Controllers\Api\NotificationsController;
 use App\Http\Controllers\Api\OrganizationCanvasController;
 use App\Http\Controllers\Api\OrganizationProfileController;
@@ -1680,6 +1681,11 @@ Route::prefix('v1')
     ->group(function () {
         Route::post('monitoring/heartbeat', [MonitoringHeartbeatController::class, 'store'])
             ->middleware('throttle:120,1');
+
+        // A device's own periodic screen capture — same idle-less reasoning
+        // as the heartbeat above (see ScreenshotsController's docblock).
+        Route::post('monitoring/screenshots', [MonitoringScreenshotsController::class, 'store'])
+            ->middleware('throttle:60,1');
     });
 
 /*
