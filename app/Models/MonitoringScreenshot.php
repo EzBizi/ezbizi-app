@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * One periodic screen capture: a JPEG on disk, indexed by this row.
@@ -128,5 +129,15 @@ class MonitoringScreenshot extends Model implements HoldsPersonalData
     public function personalDataFiles(): array
     {
         return [['disk' => 'local', 'path' => $this->path]];
+    }
+
+    /**
+     * The machine this capture came from — ScreenshotsController's read side
+     * (Task 4) reaches THROUGH this to the device's `user` for §3, the same
+     * shape DevicesController uses for `MonitoredDevice::user()`.
+     */
+    public function device(): BelongsTo
+    {
+        return $this->belongsTo(MonitoredDevice::class);
     }
 }

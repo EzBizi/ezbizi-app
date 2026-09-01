@@ -1386,6 +1386,15 @@ Route::prefix('v1')
         // the one case idle must NOT extend on.
         Route::get('monitoring/devices', [MonitoringDevicesController::class, 'index']);
 
+        // ── Monitoring: screenshots read side (2026-08-31-monitoring-screenshots, Task 4) ──
+        //
+        // Same idle reasoning as the devices roster just above: an admin
+        // reading captures IS navigation. The upload route
+        // (`POST monitoring/screenshots`) stays in the idle-less group with
+        // the heartbeat instead — see ScreenshotsController's docblock.
+        Route::get('monitoring/screenshots', [MonitoringScreenshotsController::class, 'index']);
+        Route::get('monitoring/screenshots/{id}', [MonitoringScreenshotsController::class, 'show']);
+
         // Changing it while signed in. Needs the current password: a session
         // proves somebody sat down at an unlocked laptop, not that they are the
         // account holder.
