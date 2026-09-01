@@ -1113,6 +1113,11 @@ Route::prefix('v1')
         Route::put('phone/presence', [PhonePresenceController::class, 'update']);
 
         // Records: calls on granted numbers. Playback streams Twilio media.
+        // Ring my own handset, then the customer. The only way to place a
+        // call from a platform with no Twilio Voice SDK, which is every one
+        // of them except a browser.
+        Route::post('phone/calls/bridge', [PhoneCallsController::class, 'bridge']);
+
         Route::get('phone/calls', [PhoneCallsController::class, 'index']);
         Route::get('phone/calls/{call}/recording', [PhoneCallsController::class, 'recording']);
 

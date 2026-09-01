@@ -332,7 +332,10 @@ void main() {
       await _pump(tester, device: device);
 
       expect(
-        find.textContaining('Calls are made in the browser'),
+        // It says which HALF works rather than that the app is unusable.
+        // Calls can be placed from here — Twilio rings this person's own
+        // phone — and only TAKING them in the app needs a browser.
+        find.textContaining('ring your own phone'),
         findsOneWidget,
       );
       expect(
@@ -435,6 +438,64 @@ void main() {
     await _tap(tester, find.widgetWithText(FilledButton, 'Call'));
 
     expect(device.connectedTo, isNull);
+  });
+
+  /// On a platform with no Voice SDK, Call still places a call.
+  ///
+  /// Not through the device — there is nothing to place it with — but by
+  /// asking the server to ring this person's own handset and bridge them. The
+  /// device must NOT be touched: calling `connect()` on the stub does nothing
+  /// and returns, which is silence dressed as success.
+  testWidgets('a build with no Voice SDK rings your own phone instead', (
+    tester,
+  ) async {
+    final device = _FakeDevice()
+      ..supported = false
+      ..registered = false;
+    addTearDown(device.dispose);
+
+    final seen = <http.Request>[];
+    await _pump(tester, device: device, size: const Size(900, 800), seen: seen);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Number'),
+      '305 724 2199',
+    );
+    await tester.pumpAndSettle();
+    await _tap(tester, find.widgetWithText(FilledButton, 'Call'));
+
+    expect(
+      device.connectedTo,
+      isNull,
+      reason: 'it tried to use a device that cannot place a call',
+    );
+
+    final bridge = seen.where((r) => r.url.path.endsWith('/phone/calls/bridge'));
+    expect(bridge, hasLength(1), reason: 'no bridged call was asked for');
+    expect(jsonDecode(bridge.first.body)['to'], '+13057242199');
+  });
+
+  /// And a browser build still uses the device, because it can.
+  testWidgets('a browser build still places the call itself', (tester) async {
+    final device = _FakeDevice();
+    addTearDown(device.dispose);
+
+    final seen = <http.Request>[];
+    await _pump(tester, device: device, size: const Size(900, 800), seen: seen);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Number'),
+      '305 724 2199',
+    );
+    await tester.pumpAndSettle();
+    await _tap(tester, find.widgetWithText(FilledButton, 'Call'));
+
+    expect(device.connectedTo, '+13057242199');
+    expect(
+      seen.where((r) => r.url.path.endsWith('/phone/calls/bridge')),
+      isEmpty,
+      reason: 'a browser that can place the call asked the server to instead',
+    );
   });
 }
 

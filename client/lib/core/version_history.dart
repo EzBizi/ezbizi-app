@@ -11,6 +11,11 @@ class VersionHistory {
       version: '0.0.0129',
       date: '1 Sep 2026',
       items: [
+        'Phone: you can call from the desktop app, Android and iOS now. Those '
+            'builds cannot carry the audio themselves - the part that does is '
+            'a browser component - so EzBizi rings your own phone and joins '
+            'you to the person you are calling. They still see the company '
+            'number, never your mobile. Add your number to your profile first.',
         'Automations: a rule can now send a text. Pick which of the company '
             'lines it goes out from, who it goes to, and what it says - and it '
             'works on any trigger, including ones with nothing to do with the '

@@ -281,6 +281,10 @@ class _CallTabState extends State<CallTab> {
   /// The Voice device never registered, so this desk cannot take a call.
   bool _deskDown = false;
 
+  /// A bridged call is being set up, and what came back from asking.
+  bool _bridging = false;
+  String? _bridgeNote;
+
   Future<void> _toggleDnd() async {
     final number = _selected;
     if (number == null) return;
@@ -301,11 +305,48 @@ class _CallTabState extends State<CallTab> {
     final to = internal ? _clientTo() : _peer;
     if (to == null || to.isEmpty) return;
 
+    // NO SOFTPHONE ON THIS PLATFORM, so the call is placed a different way.
+    //
+    // The Twilio Voice SDK is a browser script — there is none for Windows,
+    // macOS or Linux, and none inside this app on Android or iOS. Rather than
+    // tell four of the five platforms the phone is not for them, EzBizi asks
+    // Twilio to ring the person's own handset and bridge them to the customer.
+    // No SDK, no microphone, and the customer still sees the company line.
+    if (!_device.supported) {
+      await _bridgeCall(number, to);
+
+      return;
+    }
+
     await _device.connect(to: to, callerId: number.e164);
     setState(() => _onCall = true);
     await widget.api.put('/phone/presence', {
       'connection_id': number.connectionId,
       'state': 'on_call',
+    });
+  }
+
+  /// Ask Twilio to ring this person, then the customer.
+  ///
+  /// Deliberately does NOT set `_onCall`: the audio is on their handset, so
+  /// EzBizi has no call to hang up and a Hang up button here would be a
+  /// control that does nothing.
+  Future<void> _bridgeCall(_Number number, String to) async {
+    setState(() => _bridging = true);
+
+    final response = await widget.api.post('/phone/calls/bridge', {
+      'number_id': number.id,
+      'to': to,
+    });
+
+    if (!mounted) return;
+
+    setState(() {
+      _bridging = false;
+      _bridgeNote = response.ok
+          ? 'Your phone is ringing. Answer it and EzBizi will connect you to '
+                '$to.'
+          : response.reason;
     });
   }
 
@@ -532,16 +573,19 @@ class _CallTabState extends State<CallTab> {
                           'cannot take or make calls. Reload the page; if it '
                           'keeps happening the network is blocking the '
                           'connection.'
-                    // A PERMANENT FACT, NOT A FAULT.
+                    // A PERMANENT FACT, NOT A FAULT — and no longer a
+                    // refusal, which is why the wording changed again.
                     //
-                    // The Twilio Voice SDK is a browser script, so a desktop
-                    // build has no way to place a call at all. Saying "the
-                    // network is blocking the connection" and offering Retry
-                    // sends somebody to their firewall for something that can
-                    // never work, and they will go back tomorrow.
-                    : 'Calls are made in the browser. This app cannot place '
-                          'or take them — open EzBizi in a web browser to use '
-                          'the phone. Everything else here works normally.',
+                    // The Twilio Voice SDK is a browser script, so this build
+                    // cannot carry the audio itself. It CAN still place a
+                    // call: Twilio rings this person's own phone and bridges
+                    // them. So the honest sentence is about which half works,
+                    // not about the app being unusable — the earlier version
+                    // told four platforms the phone was not for them, which
+                    // stopped being true the moment bridging existed.
+                    : 'Calls ring your own phone from here — press Call and '
+                          'answer when it rings. Taking calls in the app '
+                          'needs a web browser.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onErrorContainer,
                 ),
@@ -939,14 +983,26 @@ class _CallTabState extends State<CallTab> {
                 FilledButton(onPressed: _hangUp, child: const Text('Hang up'))
               else
                 FilledButton(
-                  onPressed: _destination.text.trim().isEmpty
+                  onPressed: _destination.text.trim().isEmpty || _bridging
                       ? null
                       : () => _placeCall(internal: false),
-                  child: const Text('Call'),
+                  child: Text(_bridging ? 'Ringing you…' : 'Call'),
                 ),
             ],
           ),
         ),
+        // What the bridge did, said where the Call button is rather than in a
+        // banner: it is the answer to the thing just pressed.
+        if (_bridgeNote != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            child: Text(
+              _bridgeNote!,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+
         ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 140),
           child: Container(
