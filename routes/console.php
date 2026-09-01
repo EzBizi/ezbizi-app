@@ -84,6 +84,14 @@ Schedule::command('ezbizi:expire-task-import-sessions')->hourly()->withoutOverla
 // every request the way the heartbeat does.
 Schedule::command('ezbizi:dispatch-monitoring-device-offline')->everyFiveMinutes()->withoutOverlapping(10);
 
+// Screenshot retention (MonitoringScreenshot::RETENTION_DAYS). Its own
+// command rather than a `window()` policy read by ezbizi:expire-data above,
+// because that command deletes with a raw query that never fires the model
+// event a JPEG's removal depends on — see MonitoringScreenshot::retention()
+// and ScreenshotPruner. At 04:10: after ezbizi:expire-data (03:50) so the two
+// nightly jobs don't contend for the same monitoring tables' locks.
+Schedule::command('ezbizi:prune-screenshots')->dailyAt('04:10')->withoutOverlapping();
+
 // Backup health (§18 Phase 0 item 5). At 05:00, well after the 03:17 timer, so a
 // slow night is not reported as a missing one.
 //

@@ -8,8 +8,9 @@ use Illuminate\Support\Facades\Storage;
  * Where a device's periodic screen captures live on disk.
  *
  * Laravel's local disk, hardcoded, rather than through FileStore or a
- * caller-supplied disk: a screenshot is a short-lived JPEG the retention
- * sweep removes after a month, not a customer upload that may move to object
+ * caller-supplied disk: a screenshot is a short-lived JPEG that
+ * `ezbizi:prune-screenshots` removes after `MonitoringScreenshot::RETENTION_DAYS`
+ * (see ScreenshotPruner), not a customer upload that may move to object
  * storage behind FILESYSTEM_DISK, so there is nothing here for that
  * abstraction to buy. This class is nonetheless the one place the disk is
  * named — every call site asks it for a path rather than reaching for
@@ -26,6 +27,14 @@ class ScreenshotStore
      * `monitoring/screenshots/<org>/<device>/<captured_at>.jpg`. The
      * timestamp is sanitized for a filename — ISO 8601 is full of colons,
      * which are not valid in a Windows path.
+     *
+     * Not collision-proof: two captures from the same device inside the same
+     * second sanitize to the same filename and the second `put()` overwrites
+     * the first, silently. Nothing today calls this more than once a second
+     * per device — the capture cadence is a later task's decision — so this is
+     * noted rather than fixed; whichever task adds a real capture loop should
+     * either confirm the cadence never collides or widen the path (e.g. a
+     * counter or microseconds) before it can.
      */
     public function put(string $organizationId, string $deviceId, string $capturedAt, string $jpegBytes): string
     {
