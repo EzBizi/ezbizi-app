@@ -91,6 +91,34 @@ shifts.
 > rule needs a habit attached, not just a statement: when a marker could describe two
 > states, split it before anyone has to ask which one it means.
 
+**An approval is not a delivery, and design builds what design draws.** Jose,
+2026-09-01: *"if you are in charge of ui-ux, then you do it, you build everything
+that i ask you to, you don't delegate."* Handing an approved layout back to a
+module session is how approvals rot. An audit that day of all **28 galleries in
+`docs/previews/` against the shipped code** — the first one ever done — found
+three approved designs never built: the sidebar module search, the Your account
+rebuild, and the call desk proportions. Only **6 commits of 28 galleries** cite
+the design they implement, which is why nobody could see it: there was no way to
+check approved-against-shipped except reading every screen.
+
+**A release note is a claim about the CODE. Write it from the code.** The same
+audit found `0.0.0126` claiming *"the call desk now gives each column a fair
+share of the window"* when no commit had ever touched those widths. It was
+written from the approved design and shipped to production, so the app told
+people a change had landed while the screen did the old thing. False when
+written, so it was deleted rather than superseded — there is no history to keep
+when nothing happened. Fixed in `9f72bcf`.
+
+**Design notes written from a mockup are guesses about the code.** All three
+"carry into the build" notes on Your account were wrong, and reading the source
+caught every one. The date of birth was already a typed field whose calendar
+opens inline rather than as a dialog — better than the masked field specified.
+Gender as "chips only" would have deleted the ability to answer at all when the
+answer is not one of four. And "You can act on repeats itself" was wrong about
+the cause: two companies can each operate a Connecticut, so those are different
+places sharing a name, and deduping would have hidden real grants. Same failure
+as the Voicemail pane: classify by reading it, not by looking at the picture.
+
 **Two panels that summon different people must differ in tense as well as wording.**
 HR's certification panel is a *lookahead* with a `days` window defaulting to 60 —
 nobody is out of compliance yet. Training's counts passes that have **already lapsed** —
@@ -419,7 +447,7 @@ on main may have moved on.
 | ✅ | **Phone · Caller Identity & Trust** | **SHIPPED `cb27c68`.** Layout 1, built from the `d66bcef` pin. Merged with the existing Trust section as *Trust & caller identity*, absorbing Number quality, rail 14 → 13. This row read "being built, held by `ezbizi-0b`" for hours after it shipped, because the holder named in it stopped existing at a restart and a 🔨 cannot tell that from work in progress — the failure this table warns about, in the table. |
 | 🔨 | **Scheduling · Availability + Settings** | **Layout 7 approved, being built** (Overview + area rail — Jose's own combination of 1 and 2); Availability is **layout 4**. `docs/previews/scheduling-layouts.html` @ `560aed5`. Held by the Scheduling session. |
 | 📬 | **Fleet · vehicle Identity card** | **Layout 2 approved, handed to the deploy desk to route.** `docs/previews/fleet-identity-layouts.html` @ `560aed5`. The Fleet session that briefed it ended before it was drawn. **Not urgent** — nothing in Fleet is broken; the card works and the complaint was a long scroll at 375px. Fold it into the next Fleet work rather than staffing for it. |
-| ⏳ | **Your account · desktop + phone** | **Desktop layout 3** — `docs/previews/account-profile-layouts.html`; **phone layout 2** — `docs/previews/account-profile-phone-layouts.html` @ `b0fa539`. The two are **deliberately different designs**, not one narrowed: desktop answers *"show me everything about my account"* (form left, assigned facts in a always-visible right column); phone answers *"what do you want to change?"* (identity header, then rows that each open one screen and each show their current value). **Carry into the build:** the date of birth is a **masked field, never a picker** — a picker is a dialog, same rule as Hours; gender is the chips **only**, not chips plus a text box; and **"You can act on" must be DISTINCT** — it currently lists Connecticut four times and DMV twice, fourteen entries for ten places. No module owns `main.dart`, so design builds it. |
+| ✅ SHIPPED `2819822` | **Your account · desktop + phone** | **Desktop layout 3** — `docs/previews/account-profile-layouts.html`; **phone layout 2** — `docs/previews/account-profile-phone-layouts.html` @ `b0fa539`. The two are **deliberately different designs**, not one narrowed: desktop answers *"show me everything about my account"* (form left, assigned facts in a always-visible right column); phone answers *"what do you want to change?"* (identity header, then rows that each open one screen and each show their current value). **Carry into the build:** the date of birth is a **masked field, never a picker** — a picker is a dialog, same rule as Hours; gender is the chips **only**, not chips plus a text box; and **"You can act on" must be DISTINCT** — it currently lists Connecticut four times and DMV twice, fourteen entries for ten places. No module owns `main.dart`, so design builds it. |
 | 🔨 | **Phone · Call desk proportions** | **Layout 2 approved** — `docs/previews/phone-call-desk-proportions.html` @ `bb289f9`. **25 · 25 · 50** (Team / Dial / Customer) as `flex: 1 / 1 / 2`, **with floors** ~220 / ~260 / ~340. Today is `SizedBox(220) · Expanded · `SizedBox(280)` = 19/57/24, so the panes holding the most content are fixed at their smallest and the pad takes the remainder. The floors exist because **a keypad has a minimum and a roster does not** — bare 25% gives the pad 166px at a 950 window, above the stacking breakpoint. |
 | 🔨 | **App sidebar · scrolling** | **Layout 1 approved** — `docs/previews/app-sidebar-scroll-layouts.html` @ `bb289f9`. **Destinations scroll, the Settings/Development tail stays pinned.** `_rail()` returns a Flutter `NavigationRail`, which lays destinations in a Column and **cannot scroll**; inside an `Expanded` it overflows and draws over the tail. Height-triggered, threshold ~780px of sidebar — fine at 1080, broken at 800. Items underneath are **unreachable rather than hidden**. No module owns `main.dart`; design is building it. |
 | 🔨 | **Phone · Connection** | **Layout 1 approved** — `docs/previews/phone-connection-layouts.html` @ `fc5b838`. Draws the org→company inheritance as a tree. Replaces **six prose variants** of one rule, each correct, each different depending on where you stood. No footer (nothing to save); retry in the head (its error is a failed load). |
