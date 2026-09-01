@@ -41,7 +41,23 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-DIST="dist"
+# Artefacts go to the MAIN checkout, always — never to whatever directory this
+# script happens to be running in.
+#
+# Releases are run from a throwaway worktree (release.sh refuses a dirty tree
+# and the shared tree is almost never clean), so a relative "dist" put every
+# artefact inside that worktree. On 1 Sep v0.0.0128 built all three installers
+# into H:\Development\wt\release-df7cca0\dist while Jose was looking at
+# H:\Development\EzBizi\dist, which still held 0.0.0126. The build had worked;
+# the output was just somewhere nobody would think to look, and a worktree is
+# deleted eventually.
+#
+# --git-common-dir resolves to the main .git from inside a linked worktree, so
+# its parent is the main checkout no matter where this runs.
+DIST="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/Distribution"
+DIST_WINDOWS="$DIST/Windows"
+DIST_ANDROID="$DIST/Android"
+DIST_APPLE="$DIST/Apple"
 
 # Targets that failed. A failing target no longer aborts the release: it is
 # recorded, its own packaging steps are skipped, the remaining targets still
@@ -218,7 +234,7 @@ run() {
   "$@"
 }
 
-mkdir -p "$DIST"
+mkdir -p "$DIST_WINDOWS" "$DIST_ANDROID" "$DIST_APPLE"
 
 # ── 1. web ───────────────────────────────────────────────────────
 #
@@ -279,7 +295,7 @@ if wants windows; then
   run env MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' "$ISCC" \
     "/DAppVersion=${VERSION}" \
     "/DSourceDir=$(cygpath -w "$PWD/$WIN_BUILD")" \
-    "/DOutputDir=$(cygpath -w "$PWD/$DIST")" \
+    "/DOutputDir=$(cygpath -w "$DIST_WINDOWS")" \
     "/DAssetDir=$(cygpath -w "$PWD/assets/installer")" \
     "$(cygpath -w "$PWD/scripts/windows-installer.iss")"
 
@@ -298,7 +314,7 @@ if wants windows; then
   # The manifest is written AFTER both uploads. A manifest announcing a version
   # whose installer has not landed yet sends every client to a 404 for as long
   # as the upload takes, and they would all try at once.
-  WIN_EXE="$DIST/EzBizi-${VERSION}-windows-x64.exe"
+  WIN_EXE="$DIST_WINDOWS/EzBizi-${VERSION}-windows-x64.exe"
 
   if [ "$DRY_RUN" -eq 0 ] && [ ! -f "$WIN_EXE" ]; then
     echo "✗ Inno reported success but $WIN_EXE is not there." >&2
@@ -372,7 +388,7 @@ if wants android; then
       echo "✗ expected $AAB and it is not there." >&2
       exit 1
     fi
-    cp "$AAB" "$DIST/EzBizi-${VERSION}-${COMMIT}.aab"
+    cp "$AAB" "$DIST_ANDROID/EzBizi-${VERSION}-${COMMIT}.aab"
   fi
 else
   FAILED+=("android")
@@ -404,8 +420,8 @@ if wants ios; then
   # so a bare glob matches a months-old artefact and reports a build that
   # produced nothing as fine — the one failure this check exists to catch.
   # Windows and Android were already version-specific; this was not.
-  if [ "$DRY_RUN" -eq 0 ] && ! ls "$DIST"/EzBizi-"${VERSION}"-*.ipa >/dev/null 2>&1; then
-    echo "✗ build-app.sh finished but left no .ipa in ${DIST}/." >&2
+  if [ "$DRY_RUN" -eq 0 ] && ! ls "$DIST_APPLE"/EzBizi-"${VERSION}"-*.ipa >/dev/null 2>&1; then
+    echo "✗ build-app.sh finished but left no .ipa in ${DIST_APPLE}/." >&2
     exit 1
   fi
 else
@@ -435,7 +451,15 @@ fi
 
 echo "✓ release v${VERSION} · ${COMMIT}"
 wants web && echo "   web      https://app.ezbizi.com"
-if [ -d "$DIST" ] && [ -n "$(ls -A "$DIST" 2>/dev/null)" ]; then
+if [ -d "$DIST" ]; then
   echo "   artefacts in ${DIST}/:"
-  ls -1sh "$DIST" | sed 's/^/     /'
+  for d in "$DIST_WINDOWS" "$DIST_ANDROID" "$DIST_APPLE"; do
+    # This release's files only. Each folder keeps every past build, so listing
+    # the whole thing reports months-old artefacts as if they were today's —
+    # the same trap the .ipa check above already guards against.
+    found=$(ls -1sh "$d"/EzBizi-"${VERSION}"-* 2>/dev/null) || continue
+    [ -n "$found" ] || continue
+    echo "     $(basename "$d")/"
+    printf '%s\n' "$found" | sed 's/^/       /'
+  done
 fi

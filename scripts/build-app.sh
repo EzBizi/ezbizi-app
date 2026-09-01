@@ -40,7 +40,11 @@ cd "$(dirname "$0")/.."
 MAC_REMOTE=mac
 MAC_PROJECT='~/ezbizi-build'
 MAC_FLUTTER=/opt/homebrew/bin/flutter
-DIST=dist
+# The main checkout's Distribution/, never the current directory — see the long
+# note in release.sh. A build run from a release worktree used to leave its .ipa
+# inside that worktree, which is both invisible and eventually deleted.
+DIST="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/Distribution"
+DIST_APPLE="$DIST/Apple"
 
 API_BASE="https://app.ezbizi.com"
 APP_FACE="customer"
@@ -305,14 +309,14 @@ MAC_DEFINES="${MAC_DEFINES} --build-name=${VERSION} --build-number=${BUILD_NUMBE
       # Bring it home. An artefact that exists only on somebody else's Mac is one
       # power cut from not existing, and dist/ is where every other platform
       # leaves its release.
-      mkdir -p "$DIST"
+      mkdir -p "$DIST_APPLE"
       IPA_REMOTE=$(ssh "$MAC_REMOTE" "ls ${MAC_PROJECT}/build/ios/ipa/*.ipa 2>/dev/null | head -1")
       if [ -z "$IPA_REMOTE" ]; then
         echo "✗ flutter build ipa reported success but left no .ipa on the Mac" >&2
         exit 1
       fi
-      scp -q "${MAC_REMOTE}:${IPA_REMOTE}" "${DIST}/EzBizi-${VERSION}-${COMMIT}.ipa"
-      echo "  → ${DIST}/EzBizi-${VERSION}-${COMMIT}.ipa"
+      scp -q "${MAC_REMOTE}:${IPA_REMOTE}" "${DIST_APPLE}/EzBizi-${VERSION}-${COMMIT}.ipa"
+      echo "  → ${DIST_APPLE}/EzBizi-${VERSION}-${COMMIT}.ipa"
 
       # TestFlight, only when asked - but release.sh always asks.
       #
