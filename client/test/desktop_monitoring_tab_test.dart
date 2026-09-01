@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
@@ -78,6 +79,113 @@ void main() {
           'frame — its own, older age should now be what the hero shows.',
     );
   });
+
+  testWidgets(
+    'switching devices while the first one is still loading does not let '
+    'its late response overwrite the newer selection',
+    (tester) async {
+      // Two GETs in flight have no ordering guarantee — this is what proves
+      // the tab does not assume one. Device A's `/monitoring/screenshots`
+      // response is held open on a Completer; device B's is completed
+      // first; A's is resolved LAST, after B's data is already on screen.
+      // Without the generation guard in `_loadShots`, A's late answer would
+      // land last and silently replace B's shots/hero — one device's
+      // screenshots shown under the other device's name in the picker.
+      final pending = <String, Completer<http.Response>>{
+        'dev-a': Completer<http.Response>(),
+        'dev-b': Completer<http.Response>(),
+      };
+
+      final api = ApiClient(
+        client: MockClient((request) async {
+          final path = request.url.path;
+
+          if (path.endsWith('/me')) {
+            return _json({
+              'data': {
+                ..._me,
+                'permissions': ['monitoring.view', 'monitoring.screenshots.view'],
+              },
+            });
+          }
+
+          if (path.endsWith('/monitoring/devices')) {
+            return _json({'data': [_raceDeviceA, _raceDeviceB]});
+          }
+
+          if (path.endsWith('/monitoring/screenshots')) {
+            final deviceId = request.url.queryParameters['device_id'];
+            return pending[deviceId]!.future;
+          }
+
+          if (path.contains('/monitoring/screenshots/')) {
+            return http.Response.bytes(
+              _onePixelPng,
+              200,
+              headers: const {'content-type': 'image/jpeg'},
+            );
+          }
+
+          return _json({'message': 'Nothing stubbed for $path.'}, 500);
+        }),
+      );
+
+      final session = Session(api);
+      await tester.runAsync(() => session.adopt('tok'));
+      expect(session.signedIn, isTrue);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: EzBiziTheme.light(),
+          home: Scaffold(body: DesktopMonitoringTab(api: api, session: session)),
+        ),
+      );
+      // Drives initState's _loadDevices -> _loadShots('dev-a') up to its
+      // now-pending GET. Deliberately bounded `pump()` calls rather than
+      // `pumpAndSettle()`: the loading state renders an INDETERMINATE
+      // CircularProgressIndicator, whose animation never stops on its own
+      // while A's Completer is unresolved — `pumpAndSettle` would spin
+      // until it times out rather than recognising "nothing more to do".
+      await _advance(tester);
+
+      // Switch to device B before A has answered. Same reasoning: the
+      // dropdown's open/close transition is bounded, but B's own fetch then
+      // starts (and shows the same indeterminate spinner) while ITS
+      // Completer is unresolved, so this stays on bounded pumps too.
+      await tester.tap(find.widgetWithText(DropdownButtonFormField<String>, 'Device'));
+      await _advance(tester);
+      await tester.tap(find.text(_raceDeviceLabelB).last);
+      await _advance(tester);
+
+      // B answers first.
+      pending['dev-b']!.complete(_json({'data': _raceShotsB}));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('desktop-monitoring-thumb-shot-b1')),
+        findsOneWidget,
+        reason: "B's own capture should be showing once B's response lands.",
+      );
+
+      // A's late response finally arrives — it must be ignored.
+      pending['dev-a']!.complete(_json({'data': _raceShotsA}));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('desktop-monitoring-thumb-shot-b1')),
+        findsOneWidget,
+        reason: "A's late answer must not displace what B already applied.",
+      );
+      expect(
+        find.byKey(const ValueKey('desktop-monitoring-thumb-shot-a1')),
+        findsNothing,
+        reason: 'A stale response landing after a newer selection must be '
+            "dropped, not shown under B's name in the picker — that is "
+            'exactly the wrong-attribution the honesty rule exists to '
+            'prevent, triggered by a race instead of elapsed time.',
+      );
+    },
+  );
 
   // Non-vacuousness of the honesty label is proven across this PAIR of
   // tests, deliberately kept as two separate `testWidgets` blocks rather
@@ -273,6 +381,55 @@ const _staleShots = [
   },
 ];
 
+// Fixtures for the device-switch race test only — already-resolved
+// timestamps, since that test is about which device's data wins, not about
+// staleness.
+final _raceNow = DateTime.now().toUtc().toIso8601String();
+
+final _raceDeviceA = {
+  'id': 'dev-a',
+  'user': {'id': 'u-a', 'name': 'Alice Race'},
+  'device_key': 'key-a',
+  'label': 'Desk A',
+  'platform': 'windows',
+  'capabilities': ['activity', 'screenshot'],
+  'last_seen_at': _raceNow,
+};
+
+final _raceDeviceB = {
+  'id': 'dev-b',
+  'user': {'id': 'u-b', 'name': 'Bob Race'},
+  'device_key': 'key-b',
+  'label': 'Desk B',
+  'platform': 'windows',
+  'capabilities': ['activity', 'screenshot'],
+  'last_seen_at': _raceNow,
+};
+
+const _raceDeviceLabelB = 'Bob Race · Desk B';
+
+List<Map<String, dynamic>> get _raceShotsA => [
+  {
+    'id': 'shot-a1',
+    'device_id': 'dev-a',
+    'captured_at': _raceNow,
+    'bytes': 90000,
+    'width': 1920,
+    'height': 1080,
+  },
+];
+
+List<Map<String, dynamic>> get _raceShotsB => [
+  {
+    'id': 'shot-b1',
+    'device_id': 'dev-b',
+    'captured_at': _raceNow,
+    'bytes': 90000,
+    'width': 1920,
+    'height': 1080,
+  },
+];
+
 /// A genuine 1x1 PNG. `Image.memory` decodes bytes for real, so a handful of
 /// arbitrary numbers would fail to decode rather than exercise the hero and
 /// filmstrip rendering this suite is actually testing.
@@ -400,3 +557,15 @@ const _me = {
     },
   ],
 };
+
+/// Advance a bounded amount of real time without waiting for the tree to
+/// fully settle — `pumpAndSettle()` cannot be used anywhere an indeterminate
+/// `CircularProgressIndicator` is on screen (its animation never stops on
+/// its own, so `pumpAndSettle` spins until it times out rather than
+/// recognising "nothing more to do"). Used only by the device-switch race
+/// test, which deliberately leaves a fetch's response unresolved.
+Future<void> _advance(WidgetTester tester, [int steps = 10]) async {
+  for (var i = 0; i < steps; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+}

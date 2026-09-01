@@ -91,6 +91,23 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
   // a frame it already has.
   final Map<String, Uint8List> _bytes = {};
 
+  /// Bumped every time a shots fetch STARTS — a device switch, a refresh of
+  /// the same device, whatever. `_loadShots` captures the value at the top
+  /// and re-checks it after every `await`; a response that lands after a
+  /// newer fetch has already started is stale and applies nothing.
+  ///
+  /// ── The bug this guards against ────────────────────────────────
+  ///
+  /// Two GETs in flight have no ordering guarantee. Switch device A → B
+  /// quickly and A's response can resolve AFTER B's — without this guard,
+  /// A's `setState` would land last and overwrite `_shots`/`_heroId` with
+  /// A's frames while the picker still names B. That is exactly the
+  /// wrong-attribution the honesty rule exists to prevent (one device's
+  /// screenshots shown as another's), just triggered by switching instead
+  /// of elapsed time. See `desktop_monitoring_tab_test.dart`'s device-switch
+  /// race test — it fails without this counter and passes with it.
+  int _loadGeneration = 0;
+
   bool get _canView =>
       widget.session.me?.can('monitoring.screenshots.view') ?? false;
 
@@ -147,6 +164,11 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
   }
 
   Future<void> _loadShots(String deviceId) async {
+    // Captured before any `await` — nothing between here and the increment
+    // can race it, so every later check in this call is comparing against
+    // whichever fetch (this one, or a newer one) is actually current.
+    final generation = ++_loadGeneration;
+
     final device = _deviceById(deviceId);
 
     // A device that never declared the capability cannot have anything to
@@ -172,7 +194,10 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
       'limit': '${DesktopMonitoringTab.filmstripLimit}',
     });
 
-    if (!mounted) return;
+    // A newer fetch (another switch, or a refresh) started while this one
+    // was in flight — its answer, whenever it lands, is not allowed to
+    // touch state a newer selection already owns.
+    if (!mounted || generation != _loadGeneration) return;
 
     if (!response.ok) {
       setState(() {
@@ -190,16 +215,22 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
       _heroId = shots.isEmpty ? null : shots.first['id'] as String?;
     });
 
-    await _fetchBytes(shots);
+    await _fetchBytes(shots, generation);
   }
 
-  Future<void> _fetchBytes(List<Map<String, dynamic>> shots) async {
+  Future<void> _fetchBytes(List<Map<String, dynamic>> shots, int generation) async {
     for (final shot in shots) {
+      // Same guard, per frame — a stale fetch stops downloading the moment
+      // a newer one has taken over, rather than continuing to work (and
+      // occasionally `setState`) on behalf of a selection nobody sees any
+      // more.
+      if (!mounted || generation != _loadGeneration) return;
+
       final id = shot['id'] as String?;
       if (id == null || _bytes.containsKey(id)) continue;
 
       final bytes = await widget.api.getBytes('/monitoring/screenshots/$id');
-      if (!mounted || bytes == null) continue;
+      if (!mounted || generation != _loadGeneration || bytes == null) continue;
 
       setState(() => _bytes[id] = Uint8List.fromList(bytes));
     }
