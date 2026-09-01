@@ -247,6 +247,29 @@ many lines. The commit above would have read *16 files, 1190 deletions* to an
 author who meant to change a word count. One line of output, read once, catches
 every instance of this.
 
+**AND IT ARMS EVERYBODY ELSE'S EARLIER RESETS, WHICH IS THE HALF THAT GETS
+MISSED.** Reproduced in a scratch repo on 2026-09-01:
+
+    session A:  commits by pathspec, then `git reset -q HEAD -- p.txt`
+                -> shared index clean, 0 staged
+    session B:  commits p.txt via a PRIVATE index + update-ref
+                -> shared index now shows 1 staged file, reverting B's change
+
+A pathspec commit UPDATES the shared index for its paths, so a prior reset stays
+harmless. A private-index commit deliberately does not touch the shared index at
+all — so HEAD advances while A's reset blob sits there, and that blob is now a
+staged revert of B's work.
+
+**Neither session did anything wrong on its own.** A followed the rule; B used the
+safest commit method in this file. It takes both, which is why one session hunting
+a "phantom index saboteur" found only their own resets and concluded it was
+self-inflicted — it was not, and there was no saboteur either.
+
+So step 8 is load-bearing in both directions: it disarms the revert your own
+commit created, AND it clears the older resets your commit just turned into
+reverts. A private-index commit that skips it leaves a landmine armed by somebody
+who was being careful.
+
 **Step 8 is not tidying — it disarms a revert your own commit just created.**
 The private index leaves the SHARED `.git/index` untouched, which is the whole
 point of it. So that index still holds every one of your paths at its
