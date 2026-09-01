@@ -14,7 +14,9 @@ import 'package:http/testing.dart';
 /// accepted — by the real endpoint, so what is pinned here is the literal
 /// wire shape rather than an abstraction over it.
 void main() {
-  ({MonitoringHeartbeat heartbeat, List<Map<String, dynamic>> posted}) harness() {
+  ({MonitoringHeartbeat heartbeat, List<Map<String, dynamic>> posted}) harness({
+    SpecsRead? readSpecs,
+  }) {
     final posted = <Map<String, dynamic>>[];
 
     final api = ApiClient(
@@ -24,7 +26,10 @@ void main() {
       }),
     );
 
-    return (heartbeat: MonitoringHeartbeat(api), posted: posted);
+    return (
+      heartbeat: MonitoringHeartbeat(api, readSpecs: readSpecs),
+      posted: posted,
+    );
   }
 
   test(
@@ -119,4 +124,44 @@ void main() {
 
     it.heartbeat.dispose();
   });
+
+  test(
+    'a beat carries specs and the specs capability when the reader returns them',
+    () async {
+      final it = harness(
+        readSpecs: () async => {
+          'ram_gb': 16,
+          'os_version': 'Windows 11 26100',
+        },
+      );
+
+      await it.heartbeat.refreshSpecs(); // deterministic: force the read before beating
+      await it.heartbeat.enter('jobs'); // triggers a post
+      await pumpEventQueue(); // let the async post run
+
+      expect(it.posted.last['specs'], {
+        'ram_gb': 16,
+        'os_version': 'Windows 11 26100',
+      });
+      expect(it.posted.last['capabilities'], contains('specs'));
+
+      it.heartbeat.dispose();
+    },
+  );
+
+  test(
+    'a beat omits specs and stays activity-only when the reader returns null',
+    () async {
+      final it = harness(readSpecs: () async => null);
+
+      await it.heartbeat.refreshSpecs();
+      await it.heartbeat.enter('jobs');
+      await pumpEventQueue();
+
+      expect(it.posted.last.containsKey('specs'), isFalse);
+      expect(it.posted.last['capabilities'], ['activity']);
+
+      it.heartbeat.dispose();
+    },
+  );
 }

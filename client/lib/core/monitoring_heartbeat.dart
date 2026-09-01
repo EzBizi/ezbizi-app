@@ -3,8 +3,11 @@ import 'dart:math';
 
 import 'api_client.dart';
 import 'client_platform.dart';
+import 'specs_reader.dart';
 import 'token_store_io.dart' if (dart.library.js_interop) 'token_store_web.dart'
     as store;
+
+typedef SpecsRead = Future<Map<String, dynamic>?> Function();
 
 /// A device reporting its own presence — POST /monitoring/heartbeat, the
 /// endpoint HeartbeatController::store() validates (2026-08-28-monitoring-pc-
@@ -50,25 +53,44 @@ import 'token_store_io.dart' if (dart.library.js_interop) 'token_store_web.dart'
 /// synchronous and cheap, but re-reading it before every one of a dozen beats
 /// an hour buys nothing a single cached value does not already give.
 class MonitoringHeartbeat {
-  MonitoringHeartbeat(this._api, {Duration interval = const Duration(seconds: 60)})
-      : _interval = interval {
+  MonitoringHeartbeat(
+    this._api, {
+    Duration interval = const Duration(seconds: 60),
+    SpecsRead? readSpecs,
+  }) : _interval = interval,
+       _readSpecs = readSpecs ?? const SpecsReader().read {
     // Started immediately, not on the first [enter]. A person who opens the
     // app and never touches the nav (the default screen is exactly where they
     // wanted to be) must still show up as present — the keep-alive is not
     // conditional on ever having changed modules.
     _timer = Timer.periodic(_interval, (_) => unawaited(_post()));
+    unawaited(refreshSpecs()); // first read, non-blocking
+    _specsTimer = Timer.periodic(
+      const Duration(minutes: 15),
+      (_) => unawaited(refreshSpecs()),
+    );
   }
 
   final ApiClient _api;
   final Duration _interval;
+  final SpecsRead _readSpecs;
 
-  static const List<String> _capabilities = ['activity'];
   static const String _deviceKeyStorageKey = 'ezbizi.monitoring_device_key';
 
   Timer? _timer;
+  Timer? _specsTimer;
   String? _currentModule;
   final Stopwatch _dwell = Stopwatch();
   String? _deviceKey;
+  Map<String, dynamic>? _lastSpecs;
+
+  /// Read specs now and hold the result. Keeps the previous value on a null
+  /// read (a transient failure should not blank a device that was reporting
+  /// specs).
+  Future<void> refreshSpecs() async {
+    final specs = await _readSpecs();
+    if (specs != null) _lastSpecs = specs;
+  }
 
   /// Somebody switched to [moduleKey]. Closes the previous module's segment
   /// (if there was one) and posts a beat naming the new module as
@@ -101,12 +123,14 @@ class MonitoringHeartbeat {
   }
 
   Future<void> _post({Map<String, Object?>? segment}) async {
+    final specs = _lastSpecs;
     final body = <String, Object?>{
       'device_key': await _deviceKeyValue(),
       'platform': ClientPlatform.name,
-      'capabilities': _capabilities,
+      'capabilities': specs != null ? const ['activity', 'specs'] : const ['activity'],
       if (_currentModule != null) 'current_module': _currentModule,
       'segment': ?segment,
+      'specs': ?specs,
     };
 
     await _api.post('/monitoring/heartbeat', body);
@@ -138,6 +162,8 @@ class MonitoringHeartbeat {
   void dispose() {
     _timer?.cancel();
     _timer = null;
+    _specsTimer?.cancel();
+    _specsTimer = null;
   }
 }
 
