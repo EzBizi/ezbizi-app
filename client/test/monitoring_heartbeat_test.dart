@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/monitoring_heartbeat.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -26,6 +27,13 @@ void main() {
 
     return (heartbeat: MonitoringHeartbeat(api), posted: posted);
   }
+
+  // Reset after EVERY test, not just the one that sets it — a test that
+  // failed partway through the override would otherwise leak
+  // TargetPlatform.windows into every test that runs after it in this file.
+  tearDown(() {
+    debugDefaultTargetPlatformOverride = null;
+  });
 
   test(
     'leaving a module posts the module just left, not the one just entered',
@@ -115,8 +123,43 @@ void main() {
     final body = it.posted.single;
     expect(body['platform'], isA<String>());
     expect((body['platform'] as String).isNotEmpty, isTrue);
-    expect(body['capabilities'], ['activity']);
+    expect(body['capabilities'], ['activity'],
+        reason: 'On the platform `flutter test` reports by default '
+            '(TargetPlatform.android, forced by the test binding regardless '
+            "of the host OS), screenshotCaptureSupported is false and the "
+            "'screenshot' capability must be absent — see the paired test "
+            'below for the TRUE branch.');
 
     it.heartbeat.dispose();
   });
+
+  test(
+    "capabilities include 'screenshot' when this device can capture "
+    '(Windows + native channel)',
+    () async {
+      // ScreenshotService's own native-availability check
+      // (screenshot_capability.dart) reads defaultTargetPlatform, and the
+      // heartbeat's capability list is meant to agree with it exactly —
+      // this override is how a plain `test()` (no widget, no real Win32
+      // build) can actually put that check into its TRUE state rather than
+      // just asserting the FALSE state the suite runs under by default.
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+
+      final it = harness();
+      await it.heartbeat.enter('jobs');
+
+      final body = it.posted.single;
+      expect(
+        body['capabilities'],
+        ['activity', 'screenshot'],
+        reason: "A capture-capable device's beat must declare both "
+            "'activity' (every device) and 'screenshot' (this one can "
+            'capture) — an inverted condition on screenshotCaptureSupported '
+            "would either drop 'screenshot' here or add it to the FALSE-"
+            "branch test above; this pins both directions.",
+      );
+
+      it.heartbeat.dispose();
+    },
+  );
 }
