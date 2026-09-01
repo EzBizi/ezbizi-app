@@ -1,7 +1,7 @@
 import 'dart:math';
 
-import 'token_store_io.dart' if (dart.library.js_interop) 'token_store_web.dart'
-    as store;
+import 'device_key_store_io.dart'
+    if (dart.library.js_interop) 'device_key_store_web.dart' as store;
 
 /// The single per-install identifier every monitoring upload carries —
 /// [MonitoringHeartbeat] and [ScreenshotService] (2026-08-31-monitoring-
@@ -10,20 +10,23 @@ import 'token_store_io.dart' if (dart.library.js_interop) 'token_store_web.dart'
 ///
 /// ── Why a shared cache, not just a shared storage KEY ─────────────
 ///
-/// It would not have been enough for the two callers to merely agree on the
-/// same storage key string and each independently do "read storage, else
-/// generate + persist" — see token_store_io.dart: off the web this is STILL
-/// a no-op (`readItem` always returns null, `writeItem` writes nothing),
-/// because desktop persistence has not shipped yet. Two callers each doing
-/// their own read-else-generate against a store that never actually stores
-/// anything would each generate their OWN random uuid on every construction
-/// — which is exactly the platform (Windows) both of these run on. Caching
-/// the resolved value here, in this file's own top-level state, rather than
-/// in a field on each service, is what keeps a heartbeat and a screenshot
-/// upload from the same running process carrying two different device keys
-/// — and therefore resolving to two different `monitored_devices` rows, or
-/// the screenshot ingest 404ing outright (ScreenshotsController::store()
-/// requires the heartbeat's row to already exist under this exact key).
+/// Two things keep the key stable, at two different timescales:
+///
+/// 1. ACROSS restarts: `device_key_store_io.dart` (desktop) writes the key to a
+///    plain per-user config file, and `device_key_store_web.dart` writes it to
+///    localStorage — so a machine keeps the SAME key, and therefore the same
+///    `monitored_devices` row, launch after launch. (This store deliberately
+///    persists where token_store_io.dart does not: the device key is a
+///    non-secret install id, not a bearer token — see that file.)
+/// 2. WITHIN a process, before the first write has necessarily landed: the two
+///    callers must not each do their own "read store, else generate + persist"
+///    and, on a brand-new install where the store is still empty, each generate
+///    their OWN uuid. Caching the resolved value here — in this file's top-level
+///    state, not a field on each service — is what makes a heartbeat and a
+///    screenshot upload from the same running process carry ONE key, so they
+///    resolve to one row and the screenshot ingest does not 404
+///    (ScreenshotsController::store() requires the heartbeat's row to already
+///    exist under this exact key).
 class DeviceKey {
   DeviceKey._();
 
