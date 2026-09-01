@@ -91,7 +91,20 @@ COMMIT=$(git rev-parse --short HEAD)
 # review rejection weeks later. Neither store lets you quietly replace it.
 #
 # --allow-dirty still stamps the + so the artefact says so of itself.
-DIRTY=$(git status --porcelain --untracked-files=no)
+#
+# docs/ is excluded, and that is not a loosening — it closes a hole this guard
+# was opening. deploy.sh regenerates docs/EZBIZI-STATUS.md mid-release
+# (status-numbers.sh, deploy.sh:268) and does not commit it. So a full
+# release.sh run deployed web, dirtied its own tree doing so, and then this
+# guard refused windows, android AND ios — every time, from a tree that was
+# verifiably clean when the release started. That is what failed on 1 Sep
+# (v0.0.0128) and, with the same three targets, on the v0.0.0127 nightly.
+#
+# Nothing under docs/ can reach an .exe, an .aab or an .ipa, so excluding it
+# costs the reproducibility guarantee above nothing: the artefact is still
+# pinned to a commit that fully determines it. A change under client/, app/ or
+# any other shipping path still stops the build.
+DIRTY=$(git status --porcelain --untracked-files=no -- . ':(exclude)docs')
 
 if [ -n "$DIRTY" ]; then
   if [ "$ALLOW_DIRTY" -eq 1 ]; then
