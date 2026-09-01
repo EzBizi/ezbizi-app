@@ -119,6 +119,47 @@ the cause: two companies can each operate a Connecticut, so those are different
 places sharing a name, and deduping would have hidden real grants. Same failure
 as the Voicemail pane: classify by reading it, not by looking at the picture.
 
+**Every module page opens under its own name, and the shell draws it.** Approved
+2026-09-01 as `docs/previews/module-page-header-layouts.html` — desktop layout 1
+with mobile layout 5, and **the template every future module follows**. The
+header is `ModulePageHeader`, rendered once by `HomeShell._titled()` above
+whatever the module rail is showing. A new module therefore gets a title without
+doing anything, and cannot ship without one.
+
+- **The title is the SERVER's label**, handed down from the rail destination.
+  Never a literal in a screen: an organization may rename any module (§8), and a
+  hardcoded name goes stale while still looking like a perfectly good title.
+- **The subtitle is `UiStrings.maybe('module.<key>.subtitle')`** — `maybe`, not
+  `t`, because a server newer than the app sends keys this build has no string
+  for, and `module.forecasting.subtitle` printed under a title is worse than no
+  subtitle.
+- **A pane heading that repeats the tab is deleted, not kept.** That is what pays
+  for the header: it replaces a row rather than adding one. Four went — Tasks'
+  own name, Dashboard's own name, HR's "At a glance" under a lit *Dashboard*
+  chip, and Scheduling's "Availability" under a tab labelled *Availability*.
+- **Settings, Development and Your account get no header.** They are the other
+  branches of the shell's switch, they have no server label, and each already
+  says what it is.
+- **Enforced, not written down.** `module_navigation_test.dart` fails if a module
+  opens without a header or if the title stops being the server's word.
+
+**Why the sixteen screens could not each be trusted to do it:** they were, and
+fifteen of them did not. Exactly one printed the module's name — Tasks, with a
+`fontSize: 25` typed into the screen. Asking sixteen places to remember a header
+is how you get fifteen that forget.
+
+**A heading style that is not in `theme.dart` renders with no size and no
+weight.** `ThemeData` does **not** merge Material's typography in behind that
+map, which is the opposite of what everyone assumes: an unlisted slot arrives as
+a `TextStyle` carrying only a colour, so the call site draws at whatever the
+surrounding text happens to be. Three of the six slots this app uses were never
+filled in — 109 call sites, of which `titleSmall` alone was 93. Ninety-three
+places that meant "a small heading" were drawing body text. Now defined at
+28 / 20 / 18 / 16 / 14, and `theme_conventions_test.dart` fails on any slot the
+app asks for that carries no weight of its own. **That test is what found the
+third one; the audit behind the gallery had only looked for the two I had
+already noticed.**
+
 **Two panels that summon different people must differ in tense as well as wording.**
 HR's certification panel is a *lookahead* with a `days` window defaulting to 60 —
 nobody is out of compliance yet. Training's counts passes that have **already lapsed** —

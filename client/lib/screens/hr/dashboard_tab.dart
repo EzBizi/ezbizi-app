@@ -266,14 +266,12 @@ class _DashboardTabState extends State<DashboardTab> {
       child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
+          // "At a glance" was here, directly beneath a lit-up "Dashboard" tab
+          // chip — the same fact stated twice. The module's name is in the
+          // shell header above; the chip says which pane. Refresh stays.
           Row(
             children: [
-              Expanded(
-                child: Text(
-                  'At a glance',
-                  style: Theme.of(context).textTheme.headlineSmall,
-                ),
-              ),
+              const Spacer(),
               IconButton(
                 onPressed: _load,
                 icon: const Icon(Icons.refresh),

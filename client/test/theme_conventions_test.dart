@@ -74,6 +74,75 @@ void main() {
     }
   });
 
+  /// Every heading the app asks for is one somebody actually defined.
+  ///
+  /// `theme.dart` listed four text styles; the app asks for six. The three
+  /// missing ones did NOT fall back to Material — ThemeData does not merge its
+  /// typography in behind that map. They came through as a TextStyle carrying
+  /// a colour and nothing else, `fontSize: null, fontWeight: null`, so every
+  /// call site rendered at the ambient body size and weight. 109 of them, and
+  /// `titleSmall` was 93 on its own.
+  ///
+  /// The getter is never null, so absence cannot be read from it directly. The
+  /// WEIGHT is what gives it away: an unfilled slot has none, and every slot we
+  /// fill is 600 or heavier.
+  group('no heading is left unstyled', () {
+    test('every heading style the app uses carries a weight of its own', () {
+      final pattern = RegExp(r'textTheme\.([a-zA-Z]+)');
+      final asked = <String>{};
+      var scanned = 0;
+
+      for (final file in Directory('lib')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.dart'))) {
+        scanned++;
+        for (final match in pattern.allMatches(file.readAsStringSync())) {
+          asked.add(match.group(1)!);
+        }
+      }
+
+      final headings = asked
+          .where((n) =>
+              n.startsWith('display') ||
+              n.startsWith('headline') ||
+              n.startsWith('title'))
+          .toList()
+        ..sort();
+
+      // The floors, before the rule — the same reason the colour ratchet has
+      // them. A regex that matches nothing passes silently.
+      expect(scanned, greaterThan(100),
+          reason: 'Only $scanned .dart files scanned under lib/. The scan is '
+              'broken and this test says nothing until it is fixed.');
+      expect(headings, isNotEmpty,
+          reason: 'No heading styles found anywhere in lib/. That has never '
+              'been true; the pattern is broken.');
+
+      for (final theme in {
+        'light': EzBiziTheme.light(),
+        'dark': EzBiziTheme.dark(),
+      }.entries) {
+        for (final name in headings) {
+          final style = _slot(theme.value.textTheme, name);
+          if (style == null) continue;
+
+          expect(
+            style.fontWeight?.value ?? 400,
+            greaterThanOrEqualTo(600),
+            reason:
+                'textTheme.$name is used in lib/ but ${theme.key} resolves it '
+                'to weight ${style.fontWeight?.value ?? 'none'}. Nothing in '
+                'this app is lighter than 600, and a slot with NO weight is '
+                'one theme.dart never filled in — every call site is rendering '
+                'at whatever size the surrounding text happens to be. Define '
+                'it there, or stop asking for it.',
+          );
+        }
+      }
+    });
+  });
+
   group('colour literals stay in theme.dart', () {
     // A ratchet, not a clean-room assertion. There are already literals in the
     // tree and fixing all of them is its own piece of work — but the count must
@@ -237,3 +306,18 @@ void main() {
     });
   });
 }
+
+
+/// One Material text slot by name, or null when the name is not a slot.
+TextStyle? _slot(TextTheme t, String name) => switch (name) {
+  'displayLarge' => t.displayLarge,
+  'displayMedium' => t.displayMedium,
+  'displaySmall' => t.displaySmall,
+  'headlineLarge' => t.headlineLarge,
+  'headlineMedium' => t.headlineMedium,
+  'headlineSmall' => t.headlineSmall,
+  'titleLarge' => t.titleLarge,
+  'titleMedium' => t.titleMedium,
+  'titleSmall' => t.titleSmall,
+  _ => null,
+};

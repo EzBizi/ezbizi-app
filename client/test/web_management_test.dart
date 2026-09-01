@@ -228,6 +228,14 @@ void main() {
       permissions: ['web_management.view', 'web_management.edit'],
     );
 
+    // Scrolled to first. The module page header costs about 72px at the top of
+    // every module now, and this button sat close enough to the bottom edge at
+    // 1280x900 that it went under it -- at which point `tap` hit-tests empty
+    // space and does nothing, silently, and the failure looks like the confirm
+    // never rendering rather than like the button never being pressed.
+    await tester.ensureVisible(find.text('New key'));
+    await tester.pumpAndSettle();
+
     await tester.tap(find.text('New key'));
     await tester.pumpAndSettle();
 

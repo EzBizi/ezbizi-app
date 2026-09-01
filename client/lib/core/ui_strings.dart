@@ -22,6 +22,47 @@ class UiStrings {
     'shell.language': 'Language',
     'shell.find_module': 'Find a module',
     'shell.clear_filter': 'Clear',
+
+    // One line per module, under its name in the page header. The TITLE is
+    // the server's `label` and is never written here -- an organization may
+    // rename any module (§8) and a hardcoded name would go stale silently.
+    // The subtitle has no server field yet, so it lives here where
+    // /ui-strings can still override it.
+    'module.dashboard.subtitle':
+        'What each part of the business is doing right now.',
+    'module.tasks.subtitle': 'Plan, assign, and finish work in this view.',
+    'module.customers.subtitle':
+        'Everyone you work for, and the history behind each one.',
+    'module.jobs.subtitle':
+        'The work itself — booked, in progress, and finished.',
+    'module.scheduling.subtitle':
+        'What you are set up to take, and what is on the calendar.',
+    'module.inspection.subtitle':
+        'Build the forms your crews fill in, and read what they filed.',
+    'module.hr.subtitle':
+        'Everyone on the books, what they have signed, and who is on the clock.',
+    'module.marketing.subtitle': 'Reach people who are not customers yet.',
+    'module.web_management.subtitle':
+        'What your website says about you, held here and rendered there.',
+    'module.phone.subtitle': 'Calls, texts, and the lines they arrive on.',
+    'module.fleet_management.subtitle':
+        'Every vehicle, what it costs, and who is driving it.',
+    'module.inventory.subtitle':
+        'What you hold, where it is, and what it is worth.',
+    'module.services.subtitle':
+        'What you sell, and what each one is priced at.',
+    'module.monitoring.subtitle':
+        'The machines your people work on, and whether they are healthy.',
+    'module.business_profile.subtitle':
+        'How this business appears where customers look for it.',
+    'module.leads.subtitle':
+        'People who asked about you, before they become customers.',
+    'module.reviews.subtitle':
+        'What customers said in public, and what you said back.',
+    'module.automations.subtitle':
+        'Rules that do the routine work without being asked.',
+    'module.email.subtitle': 'Mail for this business, sent and received here.',
+    'module.training.subtitle': 'Guides and tests, and who has passed what.',
     'shell.modules_shown': '{n} of {total} modules',
     'shell.no_module': 'No module called “{q}”.',
     'shell.no_module_hint':
@@ -52,4 +93,13 @@ class UiStrings {
   }
 
   static String t(String key) => _strings[key] ?? _english[key] ?? key;
+
+  /// The string for [key], or null when nothing has one.
+  ///
+  /// [t] falls back to the key itself, which is right for a label that must
+  /// show something. A subtitle is optional, and printing
+  /// `module.forecasting.subtitle` under a page title is worse than printing
+  /// nothing at all -- most of all for a module this build has never heard of,
+  /// which is exactly what a server newer than the app will send.
+  static String? maybe(String key) => _strings[key] ?? _english[key];
 }

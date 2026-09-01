@@ -317,20 +317,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Dashboard',
-                  style: Theme.of(context).textTheme.headlineSmall,
-                ),
-              ),
-              IconButton(
-                onPressed: _load,
-                icon: const Icon(Icons.refresh),
-                tooltip: 'Refresh',
-              ),
-            ],
+          // The title moved to the shell header. Refresh stays, where it was.
+          Align(
+            alignment: Alignment.centerRight,
+            child: IconButton(
+              onPressed: _load,
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Refresh',
+            ),
           ),
           const SizedBox(height: 12),
           Wrap(

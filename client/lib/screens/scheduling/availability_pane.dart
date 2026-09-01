@@ -100,8 +100,9 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Availability', style: theme.textTheme.titleMedium),
-              const SizedBox(height: 2),
+              // The heading here read "Availability" — the tab's own label,
+              // word for word. The sentence under it is kept: it says what
+              // the pane MEANS, which the tab does not.
               Text(
                 'What this business is set up to take. Search a zip code or a '
                 'service area.',

@@ -56,6 +56,15 @@ class VersionHistory {
             'A list that reads Connecticut, Georgia, Connecticut looks like '
             'the same place twice; they are two different ones, and it is the '
             'answer to where you are allowed to work.',
+        'Every module now says its own name at the top of the page. Only one '
+            'of the sixteen did - the rest left you to work out where you were '
+            'from the sidebar, and on a phone the sidebar is behind a button, '
+            'so nothing on screen said it at all.',
+        'Headings across the app are one set of sizes now. Three of the six '
+            'heading styles had never been given a size or a weight, so a '
+            'hundred and nine places asking for a heading were quietly drawing '
+            'ordinary text. That is why titles looked unrelated from one '
+            'screen to the next.',
       ],
     ),
     VersionRelease(

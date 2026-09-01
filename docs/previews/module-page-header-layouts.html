@@ -151,21 +151,36 @@
       <span class="brk">And the reason the headings that DO exist look unrelated to each other:</span>
       <code>theme.dart</code> defines four text styles — <code>headlineMedium</code> 28/w800,
       <code>titleMedium</code> 16/w600, <code>bodyMedium</code> 14, <code>labelSmall</code> 11/w700.
-      <code>headlineSmall</code> and <code>titleLarge</code> <b>are not among them.</b> The 18 places
-      that ask for those two get Flutter's Material defaults instead — 24px and 22px, both at
-      <b>weight 400</b>, when nothing else in this app is lighter than 600. That is not a styling
-      preference that drifted. Those headings were never EzBizi's typography at all.
+      The app asks for <b>three more that are not among them</b>: <code>titleSmall</code>,
+      <code>headlineSmall</code> and <code>titleLarge</code>.
+      <span class="brk">And a missing slot does not fall back to Material.</span>
+      <code>ThemeData</code> does not merge Material's typography in behind that map. An unlisted
+      slot arrives as a <code>TextStyle</code> carrying a colour and <b>nothing else</b> —
+      <code>fontSize: null, fontWeight: null</code> — so every call site renders at whatever size
+      and weight the surrounding text happens to have. <b>109 call sites</b>, and
+      <code>titleSmall</code> is 93 of them on its own: ninety-three places that meant “a small
+      heading” have been drawing ordinary body text in slightly darker ink.
+      That is not a styling preference that drifted. Three of the six heading slots this app uses
+      were never filled in.
 
       <table class="m">
         <tr><th>What a screen asks for</th><th class="n">Uses</th><th>What it actually gets</th></tr>
-        <tr><td><code>headlineMedium</code></td><td class="n">5</td><td>28 / w800 — the theme's own</td></tr>
-        <tr><td><code>titleMedium</code></td><td class="n">138</td><td>16 / w600 — the theme's own</td></tr>
-        <tr><td><code>headlineSmall</code></td><td class="n">13</td><td class="bad">24 / w400 — Material's, not ours</td></tr>
-        <tr><td><code>titleLarge</code></td><td class="n">5</td><td class="bad">22 / w400 — Material's, not ours</td></tr>
+        <tr><td><code>headlineMedium</code></td><td class="n">7</td><td>28 / w800 — the theme's own</td></tr>
+        <tr><td><code>titleMedium</code></td><td class="n">137</td><td>16 / w600 — the theme's own</td></tr>
+        <tr><td><code>titleSmall</code></td><td class="n">93</td><td class="bad">no size, no weight — never defined</td></tr>
+        <tr><td><code>headlineSmall</code></td><td class="n">11</td><td class="bad">no size, no weight — never defined</td></tr>
+        <tr><td><code>titleLarge</code></td><td class="n">5</td><td class="bad">no size, no weight — never defined</td></tr>
         <tr><td>hard-coded <code>fontSize</code></td><td class="n">3</td><td class="bad">25, 23, 21 — typed by hand</td></tr>
       </table>
-      So a page title today is one of <b>five</b> different sizes at <b>three</b> different weights,
-      and on fifteen screens out of sixteen it is not there.
+      So a page title today is one of several sizes at several weights, and on fifteen screens out
+      of sixteen it is not there.
+      <span class="brk">Corrected after the build, 2026-09-01.</span>
+      This block first said the two undefined slots were getting “Material's defaults, 24px and 22px
+      at weight 400”, and listed only two of them. Both wrong: nothing falls back, and
+      <code>titleSmall</code> — the largest by far at 93 call sites — was missing from the count
+      because the grep behind the table only looked for the two slots I had already noticed. The
+      test now in <code>theme_conventions_test.dart</code> is what found the third, by checking
+      every slot the app asks for rather than the ones somebody remembered.
     </div>
 
     <div class="ask">

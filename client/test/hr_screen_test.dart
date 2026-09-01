@@ -54,7 +54,12 @@ void main() {
     // "the first tab in the owner's order that does something". That was Records
     // while Onboarding was a placeholder, then Onboarding while Dashboard was
     // one, and now Dashboard — which is where the rule pointed all along.
-    expect(find.text('At a glance'), findsOneWidget);
+    // Anchored on the range chips rather than on a heading. "At a glance" was
+    // the heading here and it is gone: it sat directly under a highlighted
+    // "Dashboard" chip, which is the same fact twice, and the module's name is
+    // in the shell header now. A test should not pin a heading whose whole
+    // purpose was being redundant.
+    expect(find.text('Quarter'), findsOneWidget);
 
     await _tap(tester, _tab('Onboarding'));
 

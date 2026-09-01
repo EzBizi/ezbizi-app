@@ -29,6 +29,7 @@ import 'screens/staff/staff_login_screen.dart';
 import 'screens/staff/staff_shell.dart';
 import 'screens/update_required_screen.dart';
 import 'widgets/build_stamp.dart';
+import 'widgets/module_page_header.dart';
 import 'widgets/notification_bell.dart';
 import 'widgets/scope_switcher.dart';
 import 'widgets/user_avatar.dart';
@@ -1160,7 +1161,7 @@ class _HomeShellState extends State<HomeShell> {
                               api: widget.api,
                               session: widget.session,
                             )
-                          : destinations[railIndex].screen,
+                          : _titled(destinations[railIndex]),
                     ),
                   ),
                 ],
@@ -1197,6 +1198,41 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   /// Every destination, grouped as the sidebar groups them.
+  /// A module, under its own name.
+  ///
+  /// Drawn HERE rather than by each screen, and that is the rule rather than a
+  /// convenience. Sixteen screens rendered the shared tab row and exactly one
+  /// of them printed the module's name; the other fifteen left the page unable
+  /// to say where you were. Asking sixteen screens to each remember a header is
+  /// how you get fifteen that forget — so the shell draws it, and a module
+  /// cannot be built without one.
+  ///
+  /// The title is the destination's label, which is the SERVER's word for the
+  /// module. Never a literal in a screen: an organization may rename any of
+  /// them (§8), and a hardcoded name would go stale while still looking like a
+  /// perfectly good title.
+  ///
+  /// The subtitle is optional and looked up by module key. `maybe` rather than
+  /// `t` because a module this build has never heard of — which is what a
+  /// server newer than the app sends — must render with no subtitle rather
+  /// than with the string `module.forecasting.subtitle` under its name.
+  ///
+  /// Only the module rail passes through here. Settings, Development and Your
+  /// account are the other branches of that switch: they are not modules, they
+  /// have no server label, and each already says what it is.
+  Widget _titled(Destination destination) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ModulePageHeader(
+          title: destination.label,
+          subtitle: UiStrings.maybe('module.${destination.id}.subtitle'),
+        ),
+        Expanded(child: destination.screen),
+      ],
+    );
+  }
+
   Widget _navigationDrawer(
     List<Destination> destinations,
     List<Destination> pinned,

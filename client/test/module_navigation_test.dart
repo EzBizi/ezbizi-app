@@ -9,6 +9,7 @@ import 'package:ezbizi_client/screens/dashboard_screen.dart';
 import 'package:ezbizi_client/screens/marketing_screen.dart';
 import 'package:ezbizi_client/screens/profile_screen.dart';
 import 'package:ezbizi_client/screens/settings_shell.dart';
+import 'package:ezbizi_client/widgets/module_page_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -91,6 +92,79 @@ void main() {
 
     expect(_inSidebar('Human Resources'), findsOneWidget);
     expect(_inSidebar('Hr'), findsNothing);
+  });
+
+  /// THE RULE, and the reason it is enforced here rather than written down.
+  ///
+  /// Sixteen screens rendered the shared tab row and exactly one of them
+  /// printed the module's name. Asking sixteen screens to each remember a
+  /// header is how you get fifteen that forget, so the shell draws it — and
+  /// this is the test that fails if a future change moves that job back into
+  /// the screens.
+  testWidgets('a module opens under its own name, drawn by the shell', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    await _pumpShell(tester, modules: [_module('hr', 'Human Resources')]);
+
+    expect(
+      find.descendant(
+        of: find.byType(ModulePageHeader),
+        matching: find.text('Human Resources'),
+      ),
+      findsOneWidget,
+      reason:
+          'The open module must say its own name at the top of the page. '
+          'Fifteen of sixteen screens did not, so nothing on the page said '
+          'where you were — and on a phone the sidebar is a Drawer, so '
+          'nothing on screen said it at all.',
+    );
+  });
+
+  /// The title is the server's word, never a literal in a screen.
+  ///
+  /// An organization may rename any module (§8). A name hardcoded in a screen
+  /// would go stale the moment they did — silently, because it would still
+  /// look like a perfectly good title.
+  testWidgets('the page title is the name the server chose, not the one this '
+      'build knows', (tester) async {
+    _wide(tester);
+
+    // Nothing in this build spells `hr` this way.
+    await _pumpShell(tester, modules: [_module('hr', 'Our People')]);
+
+    expect(
+      find.descendant(
+        of: find.byType(ModulePageHeader),
+        matching: find.text('Our People'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Human Resources'),
+      findsNothing,
+      reason:
+          'A hardcoded title would still be showing the name this build '
+          'happens to know, in both the rail and the header.',
+    );
+  });
+
+  /// Settings, Development and Your account are not modules.
+  ///
+  /// They have no server label, they are the other branches of the shell's
+  /// switch, and each already says what it is. A header here would be a second
+  /// title over the one they draw themselves.
+  testWidgets('the module header is not drawn over Your account', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    // Reaching no module at all lands on their own account.
+    await _pumpShell(tester, modules: const []);
+
+    expect(find.byType(ProfileScreen), findsOneWidget);
+    expect(find.byType(ModulePageHeader), findsNothing);
   });
 
   /// A module this build has no screen for is skipped rather than drawn.

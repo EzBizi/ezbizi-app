@@ -188,8 +188,43 @@ class EzBiziTheme {
           letterSpacing: -0.8,
           color: isDark ? Colors.white : _ink,
         ),
+        // The three that were MISSING, and what a missing one actually did.
+        //
+        // ThemeData does not merge Material's typography in behind this map.
+        // An unlisted slot comes through as a TextStyle carrying a colour and
+        // NOTHING ELSE -- `fontSize: null, fontWeight: null` -- so every call
+        // site asking for it rendered at the ambient body size and weight.
+        // 109 of them: `titleSmall` alone was asked for 93 times and had no
+        // size of its own, so ninety-three places that meant "a small heading"
+        // drew ordinary body text in a slightly darker ink.
+        //
+        // That is why the headings looked unrelated to each other. Not drift,
+        // and not a styling preference -- three of the six slots this app uses
+        // were never filled in.
+        //
+        // Sized to leave a real step on each rung: 28 page title, 20 section,
+        // 18 sub-section, 16 the next one down, 14 body. `titleSmall` keeps
+        // 14 deliberately -- it is used 93 times and changing its SIZE would
+        // move ninety-three layouts. Only the weight moves, which is the half
+        // that was making it indistinguishable from the body text beside it.
+        headlineSmall: TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.3,
+          color: isDark ? Colors.white : _ink,
+        ),
+        titleLarge: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+          color: isDark ? Colors.white : _ink,
+        ),
         titleMedium: TextStyle(
           fontSize: 16,
+          fontWeight: FontWeight.w600,
+          color: isDark ? Colors.white : _ink,
+        ),
+        titleSmall: TextStyle(
+          fontSize: 14,
           fontWeight: FontWeight.w600,
           color: isDark ? Colors.white : _ink,
         ),
