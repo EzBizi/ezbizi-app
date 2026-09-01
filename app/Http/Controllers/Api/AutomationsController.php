@@ -56,6 +56,11 @@ class AutomationsController extends Controller
         // first dot (voicemail.mark_dealt, missed.create_job).
         'voicemail.mark_dealt',
         'missed.create_job',
+
+        // Not subject-bound: it exists so a rule on something with no phone in
+        // it — an email arriving — can still send a text, so the line and the
+        // destination come from the rule rather than the record.
+        'sms.send',
         'task.create',
         'task.assign_owner',
         'task.set_status',
@@ -1130,6 +1135,16 @@ class AutomationsController extends Controller
             $type('notify', 'Send a notification'),
             $type('voicemail.mark_dealt', 'Mark a voicemail dealt with'),
             $type('missed.create_job', 'Create a job from a missed call'),
+
+            // The line, the destination and the words are all stated in the
+            // rule, because this action is deliberately not bound to the
+            // record the event was about — there is nothing to read them from
+            // when the trigger is an email arriving.
+            $type('sms.send', 'Send a message', true, [
+                $parameter('number_id', 'Send from', 'phone_number'),
+                $parameter('to', 'Send to', 'text'),
+                $parameter('body', 'Message', 'text'),
+            ]),
             $type('task.create', 'Create a task', true, [
                 $parameter('board_id', 'Board', 'uuid'),
                 $parameter('group_id', 'Group', 'uuid'),

@@ -1354,6 +1354,32 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'Opens a job in reach titled from the caller number so '
                             .'somebody can follow up. It does not place a call or send a text.',
                     ),
+
+                    /*
+                     * NOT subject-bound, and that is the point of it.
+                     *
+                     * Every other Phone action works on the record the event
+                     * was about — a call, a voicemail. This one is asked for
+                     * precisely so a rule on something that is NOT a phone
+                     * record can still send a text: an email arriving, a job
+                     * changing status. The subject is whatever set the rule
+                     * off and this action does not read it.
+                     *
+                     * So the line to send from and the number to send to are
+                     * both stated in the rule. There is nothing to infer them
+                     * from, and inferring is how you send a customer's text to
+                     * whoever happened to be in the payload.
+                     */
+                    new ActionDefinition(
+                        key: 'phone.sms.send',
+                        label: 'Send a message',
+                        description: 'Sends a text from one of the company phone lines to '
+                            .'a number you give. Works on any trigger, including ones that have '
+                            .'nothing to do with the phone. The line has to be approved for '
+                            .'messaging first, and the message is recorded under Records like '
+                            .'any other.',
+                        subjectBound: false,
+                    ),
                 ],
             ),
 

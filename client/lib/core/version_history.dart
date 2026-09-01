@@ -11,6 +11,10 @@ class VersionHistory {
       version: '0.0.0128',
       date: '1 Sep 2026',
       items: [
+        'Automations: a rule can now send a text. Pick which of the company '
+            'lines it goes out from, who it goes to, and what it says - and it '
+            'works on any trigger, including ones with nothing to do with the '
+            'phone, such as an email arriving.',
         'Phone: calling out works. Numbers typed the ordinary way - 305 724 '
             '2199 - were losing their country code and being dialled as '
             '+3057242199, which is not a phone number, so no outgoing call '

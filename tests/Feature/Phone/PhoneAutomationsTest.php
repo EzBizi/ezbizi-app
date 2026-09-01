@@ -21,6 +21,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 use Twilio\Security\RequestValidator;
+use App\Support\Phone\SmsCompliance;
 
 /**
  * Phone automation actions and phone.number.broken (Task 14).
@@ -135,40 +136,127 @@ class PhoneAutomationsTest extends TestCase
         });
     }
 
-    public function test_sending_sms_is_not_an_implemented_automation_action(): void
+    /**
+     * Sending a text IS an automation action now, and the engine performs it.
+     *
+     * This test previously asserted the opposite. That was correct while the
+     * engine could not run it — a declared action nothing executes is a menu
+     * entry that does nothing — and it is wrong now, so it is replaced rather
+     * than deleted: the catalogue has to agree with ActionRunner in BOTH
+     * directions, and the pairing is what this file exists to hold.
+     */
+    public function test_sending_a_text_is_offered_and_marked_implemented(): void
     {
         $t = $this->provisionTenant();
         $user = $this->userWithRole($t, 'Phone rules', [
             'automations.view', 'phone.view',
         ]);
 
-        $module = collect(
-            $this->signedInAs($user)
-                ->getJson('/api/v1/automations/catalogue')
-                ->assertOk()
-                ->json('data.modules')
-        )->firstWhere('key', 'phone');
+        $catalogue = $this->signedInAs($user)
+            ->getJson('/api/v1/automations/catalogue')
+            ->assertOk();
 
+        $module = collect($catalogue->json('data.modules'))->firstWhere('key', 'phone');
         $this->assertNotNull($module);
 
-        $keys = collect($module['declared_actions'])->pluck('key');
-        $this->assertNotContains('phone.sms.send', $keys);
-        $this->assertNotContains('phone.send_sms', $keys);
+        $action = collect($module['declared_actions'])->firstWhere('key', 'phone.sms.send');
+        $this->assertNotNull($action, 'Send a message is not offered on the Phone module');
+        $this->assertSame('Send a message', $action['label']);
 
-        foreach ($module['declared_actions'] as $action) {
-            $this->assertStringNotContainsString('send a text', strtolower($action['label']));
-            $this->assertStringNotContainsString('send sms', strtolower($action['label']));
-        }
+        // Declared AND runnable. The catalogue marks the gap between what a
+        // module offers and what the engine can do, and an action sitting in
+        // that gap is exactly what the old version of this test guarded.
+        $this->assertContains(
+            'sms.send',
+            collect($catalogue->json('data.action_types'))->pluck('key'),
+            'Send a message is offered but the engine cannot run it',
+        );
+    }
 
-        $types = collect(
-            $this->signedInAs($user)
-                ->getJson('/api/v1/automations/catalogue')
-                ->assertOk()
-                ->json('data.action_types')
-        )->pluck('key');
+    /**
+     * A line that has not been cleared for messaging refuses, and says so.
+     *
+     * Twilio would refuse it anyway — US A2P traffic needs an approved
+     * campaign — but it would refuse into the carrier, where nobody sees it.
+     * The run log is the only place a rule's failure is visible, so an
+     * unapproved line has to fail HERE with the reason.
+     */
+    public function test_a_line_not_cleared_for_messaging_refuses_with_the_reason(): void
+    {
+        $t = $this->provisionTenant();
 
-        $this->assertNotContains('sms.send', $types);
-        $this->assertNotContains('send_sms', $types);
+        $result = $this->inTenant($t['org'], function () use ($t) {
+            [, $number] = $this->openLine($t, e164: '+12035553100');
+            $number->forceFill(['sms_outbound_allowed' => false])->save();
+
+            $event = AutomationEvent::create([
+                'event_key' => 'email.received',
+                'subject_type' => null,
+                'subject_id' => null,
+                'payload' => [],
+                'occurred_at' => now(),
+                'available_at' => now(),
+            ]);
+
+            return app(ActionRunner::class)->run(
+                ['type' => 'sms.send', 'number_id' => $number->id,
+                    'to' => '+13057242199', 'body' => 'The van is here.'],
+                $event,
+                null,
+            );
+        });
+
+        $this->assertFalse($result['ok']);
+        $this->assertSame(SmsCompliance::REFUSAL, $result['detail']);
+
+        $this->inTenant($t['org'], fn () => $this->assertSame(
+            0,
+            PhoneMessage::query()->count(),
+            'a text was recorded for a line that cannot send one',
+        ));
+    }
+
+    /**
+     * The ordinary case: an approved line sends, and the text is recorded.
+     *
+     * The trigger here is deliberately NOT a phone event. That is the whole
+     * reason this action exists — a rule on an email arriving has no phone
+     * record to work from, so the line and the destination come from the rule
+     * and the subject is never read.
+     */
+    public function test_an_approved_line_sends_and_records_the_message(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$result, $sent] = $this->inTenant($t['org'], function () use ($t) {
+            [, $number] = $this->openLine($t, e164: '+12035553110');
+            $number->forceFill(['sms_outbound_allowed' => true])->save();
+
+            $event = AutomationEvent::create([
+                'event_key' => 'email.received',
+                'subject_type' => null,
+                'subject_id' => null,
+                'payload' => [],
+                'occurred_at' => now(),
+                'available_at' => now(),
+            ]);
+
+            $result = app(ActionRunner::class)->run(
+                ['type' => 'sms.send', 'number_id' => $number->id,
+                    'to' => '+13057242199', 'body' => 'A new email arrived.'],
+                $event,
+                null,
+            );
+
+            return [$result, PhoneMessage::query()->first()];
+        });
+
+        $this->assertTrue($result['ok'], $result['detail']);
+
+        $this->assertNotNull($sent, 'the text was sent but never recorded');
+        $this->assertSame('+12035553110', $sent->from_e164);
+        $this->assertSame('+13057242199', $sent->to_e164);
+        $this->assertSame('A new email arrived.', $sent->body);
     }
 
     public function test_phone_actions_are_marked_implemented_in_the_catalogue(): void

@@ -27,6 +27,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+use App\Models\PhoneMessage;
+use App\Support\Phone\SmsCompliance;
+use App\Support\Phone\TwilioGateway;
 
 /**
  * Performing one action from an automation (plan §5.5).
@@ -170,6 +173,8 @@ class ActionRunner
         private readonly TaskWriter $tasks,
         private readonly TaskUpdateWriter $updates,
         private readonly TimeClock $timeClock,
+        private readonly SmsCompliance $smsCompliance,
+        private readonly TwilioGateway $twilio,
     ) {}
 
     /**
@@ -211,6 +216,7 @@ class ActionRunner
             // phone.voicemail.mark_dealt arrives here as voicemail.mark_dealt.
             'voicemail.mark_dealt' => $this->markVoicemailDealt($event, $subject),
             'missed.create_job' => $this->createJobFromMissed($event, $subject),
+            'sms.send' => $this->sendSms($action, $event, $automation),
 
             'task.create' => $this->createTask($action, $event, $automation),
             'task.assign_owner' => $this->updateTask($action, $event, $subject, $automation, 'owner_user_id'),
@@ -401,6 +407,133 @@ class ActionRunner
                 ? "Clocked {$subject->name} in."
                 : "Clocked {$subject->name} out.",
         ];
+    }
+
+    /**
+     * Send a text from one of the company's lines.
+     *
+     * ── Why the line and the destination are both stated in the rule ──
+     *
+     * This is the one Phone action that is NOT about the record the event was
+     * about. It exists so a rule on something with no phone in it — an email
+     * arriving, a job changing status — can still send a text. There is
+     * therefore nothing to infer the numbers from, and inferring is how a
+     * customer's text ends up going to whoever happened to be in the payload.
+     *
+     * ── Three refusals, and each says which one it is ────────────────
+     *
+     * A rule that silently does nothing is worse than one that fails, because
+     * the run log is the only place anybody can see either. So a missing line,
+     * a line belonging to another company, and a line not cleared for
+     * messaging are three distinct answers rather than one shrug.
+     */
+    private function sendSms(array $action, AutomationEvent $event, ?Automation $automation): array
+    {
+        $type = 'sms.send';
+
+        $number = PhoneNumber::query()->find($action['number_id'] ?? null);
+        if ($number === null) {
+            return [
+                'type' => $type,
+                'ok' => false,
+                'detail' => 'No phone line was chosen to send from, so nothing was sent.',
+            ];
+        }
+
+        // A rule belonging to one company must not send from another's line.
+        // The rule's own scope is the boundary; without this, a company that
+        // can write rules can send as anybody in the organization.
+        if (! $this->numberIsInScope($number, $automation)) {
+            return [
+                'type' => $type,
+                'ok' => false,
+                'detail' => 'That phone line does not belong to the company this rule '
+                    .'belongs to, so nothing was sent.',
+            ];
+        }
+
+        $to = trim((string) ($action['to'] ?? ''));
+        $body = trim((string) ($action['body'] ?? ''));
+
+        if ($to === '' || $body === '') {
+            return [
+                'type' => $type,
+                'ok' => false,
+                'detail' => $to === ''
+                    ? 'No number to send to, so nothing was sent.'
+                    : 'The message was empty, so nothing was sent.',
+            ];
+        }
+
+        // The same gate the Messages screen uses, not a second copy of it. A
+        // line that is not cleared for messaging will be refused by the
+        // carrier anyway; refusing here says so in the run log instead.
+        if (! $this->smsCompliance->allowsOutbound($number)) {
+            return [
+                'type' => $type,
+                'ok' => false,
+                'detail' => SmsCompliance::REFUSAL,
+            ];
+        }
+
+        $connection = $number->connection;
+        if ($connection === null) {
+            return [
+                'type' => $type,
+                'ok' => false,
+                'detail' => 'That line has no phone account behind it, so nothing was sent.',
+            ];
+        }
+
+        try {
+            $sent = $this->twilio->sendMessage($connection, (string) $number->e164, $to, $body);
+        } catch (Throwable $e) {
+            // Twilio's own sentence, because a code we have never seen still
+            // explains itself and a rewrite of it does not.
+            return [
+                'type' => $type,
+                'ok' => false,
+                'detail' => $e->getMessage() !== ''
+                    ? 'Twilio refused it: '.$e->getMessage()
+                    : 'Twilio refused to send from this phone line.',
+            ];
+        }
+
+        $message = PhoneMessage::query()->create([
+            'connection_id' => $connection->id,
+            'number_id' => $number->id,
+            'twilio_sid' => $sent['sid'] ?? null,
+            'direction' => PhoneMessage::DIRECTION_OUTBOUND,
+            'from_e164' => (string) $number->e164,
+            'to_e164' => $to,
+            'body' => $body,
+        ]);
+
+        $this->audit->log(
+            action: 'phone.sms_sent_by_automation',
+            target: $message,
+            changes: ['after' => ['to' => $to, 'from' => (string) $number->e164]],
+            metadata: ['caused_by_event' => $event->getKey(), 'trigger' => $event->event_key],
+        );
+
+        return [
+            'type' => $type,
+            'ok' => true,
+            'detail' => 'Sent a message from '.$number->e164.' to '.$to.'.',
+        ];
+    }
+
+    /** Whether this line sits inside the company the rule belongs to. */
+    private function numberIsInScope(PhoneNumber $number, ?Automation $automation): bool
+    {
+        // An organization-wide rule reaches every line the organization holds;
+        // BelongsToTenant has already confined the query to one organization.
+        if ($automation === null || $automation->scope_type === null) {
+            return true;
+        }
+
+        return (string) $number->scope_type === (string) $automation->scope_type
+            && (string) $number->scope_id === (string) $automation->scope_id;
     }
 
     private function markVoicemailDealt(AutomationEvent $event, ?Model $subject): array
