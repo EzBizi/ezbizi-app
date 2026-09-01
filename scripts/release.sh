@@ -6,6 +6,11 @@
 #   ./scripts/release.sh --only windows     just that one
 #   ./scripts/release.sh --only web,android
 #   ./scripts/release.sh --dry-run          say what it would do, build nothing
+#   ./scripts/release.sh --no-bump          release client/VERSION as it stands
+#
+# The version is bumped and committed automatically on every run. Two releases
+# shipped twice under one number before this existed; the updater compares
+# versions, so the second was never offered.
 #
 #   ./scripts/release.sh --only ios        signed .ipa via the Mac relay,
 #                                          uploaded to TestFlight
@@ -68,6 +73,7 @@ FAILED=()
 TARGETS="web,windows,android,ios"
 DRY_RUN=0
 SKIP_GATES=""
+BUMP=1
 
 # The marketing site's box, which is NOT the app box — see AGENTS/DEPLOY. The
 # installer is served from www.ezbizi.com because that is where a person who
@@ -83,9 +89,10 @@ while [ $# -gt 0 ]; do
     # Forwarded to deploy.sh. The app builds already run with --skip-gates when
     # web is in the same release, so this flag is entirely about the web gate.
     --skip-gates) SKIP_GATES=--skip-gates; shift ;;
+    --no-bump) BUMP=0; shift ;;
     -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown argument: $1" >&2
-       echo "usage: $0 [--only web,windows,android,ios] [--dry-run] [--skip-gates]" >&2
+       echo "usage: $0 [--only web,windows,android,ios] [--dry-run] [--skip-gates] [--no-bump]" >&2
        exit 2 ;;
   esac
 done
@@ -98,6 +105,54 @@ for t in $(printf '%s' "$TARGETS" | tr ',' ' '); do
     *) echo "✗ unknown target '$t'. Pick from: web windows android ios" >&2; exit 2 ;;
   esac
 done
+
+# ── bump the version, so nobody has to decide it ─────────────────
+#
+# A1 Tools' build_release.ps1 bumps on every build and this did not, which is
+# why 0.0.0127 and 0.0.0128 each shipped twice under one number: the second
+# build was invisible to the in-app updater, because it compares versions and
+# saw no change. Deciding the number by hand is a step that gets skipped
+# exactly when a release is rushed.
+#
+# The bump is COMMITTED, not left on disk. deploy.sh ships `git archive main`,
+# so an uncommitted bump would put the new number in the installers and the old
+# tree on the server — two different programs wearing one version, which is the
+# thing the dirty-tree check below exists to prevent.
+if [ "$BUMP" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then
+  # A detached HEAD means a release worktree, where a commit is reachable from
+  # no branch: the bump would ship nowhere and vanish with the worktree.
+  if ! git symbolic-ref -q HEAD >/dev/null 2>&1; then
+    echo "✗ cannot bump from a detached worktree — the commit would belong to no branch." >&2
+    echo "  Run this from the main checkout, or pass --no-bump to release the" >&2
+    echo "  version already in client/VERSION." >&2
+    exit 1
+  fi
+
+  OLD=$(tr -d '[:space:]' < client/VERSION)
+  case "$OLD" in
+    *.*[0-9]) ;;
+    *) echo "✗ cannot parse client/VERSION ('$OLD') — expected trailing .N" >&2; exit 1 ;;
+  esac
+  _last=${OLD##*.}
+  # 10# forces base 10. Without it $((0129 + 1)) is an invalid octal literal and
+  # the release dies on the version number, which is a silly way to lose a deploy.
+  NEW="${OLD%.*}.$(printf "%0${#_last}d" "$((10#$_last + 1))")"
+
+  printf '%s\n' "$NEW" > client/VERSION
+  # --only commits this path and nothing else. Several sessions share this
+  # working tree and its git index; a bare `git commit` takes whatever they have
+  # staged, which on 1 Sep silently reverted another session's release notes.
+  git commit --only client/VERSION -q -m "v${NEW}" || {
+    echo "✗ could not commit the version bump" >&2; exit 1; }
+  echo "→ version ${OLD} → ${NEW}"
+
+  # A warning, not a stop. The note matters (version_history.dart is what the
+  # version stamp in the app opens), but a missing one is not a reason to refuse
+  # to ship a release somebody is waiting on.
+  grep -q "version: '${NEW}'" client/lib/core/version_history.dart 2>/dev/null || {
+    echo "   ⚠ no release note for ${NEW} in client/lib/core/version_history.dart."
+    echo "     The app will show this version with nothing under it."; }
+fi
 
 VERSION=$(tr -d '[:space:]' < client/VERSION)
 COMMIT=$(git rev-parse --short HEAD)

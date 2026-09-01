@@ -8,7 +8,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
-      version: '0.0.0129',
+      version: '0.0.0130',
       date: '1 Sep 2026',
       items: [
         'Phone: you can call from the desktop app, Android and iOS now. Those '
@@ -16,6 +16,31 @@ class VersionHistory {
             'a browser component - so EzBizi rings your own phone and joins '
             'you to the person you are calling. They still see the company '
             'number, never your mobile. Add your number to your profile first.',
+        'Every module now says its own name at the top of the page. Only one '
+            'of the sixteen did - the rest left you to work out where you were '
+            'from the sidebar, and on a phone the sidebar is behind a button, '
+            'so nothing on screen said it at all.',
+        'Headings across the app are one set of sizes now. Three of the six '
+            'heading styles had never been given a size or a weight, so a '
+            'hundred and nine places asking for a heading were quietly drawing '
+            'ordinary text. That is why titles looked unrelated from one '
+            'screen to the next.',
+        'Social: Facebook, Threads and Instagram can post. Until now a post '
+            'could be written and scheduled for those three and nothing left '
+            'EzBizi. Instagram needs the picture handed over in a separate '
+            'step, which is why it took longer than the other two.',
+        'Social: when connecting a Google account fails, the message says '
+            'which of four things went wrong rather than giving one wording '
+            'for all of them - the API not switched on, no quota granted '
+            'yet, a developer token not approved for live accounts, or '
+            'EzBizi asking for a version of the API Google has retired. The '
+            'last one is why Google Ads had been failing.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0129',
+      date: '1 Sep 2026',
+      items: [
         'Automations: a rule can now send a text. Pick which of the company '
             'lines it goes out from, who it goes to, and what it says - and it '
             'works on any trigger, including ones with nothing to do with the '
@@ -56,15 +81,6 @@ class VersionHistory {
             'A list that reads Connecticut, Georgia, Connecticut looks like '
             'the same place twice; they are two different ones, and it is the '
             'answer to where you are allowed to work.',
-        'Every module now says its own name at the top of the page. Only one '
-            'of the sixteen did - the rest left you to work out where you were '
-            'from the sidebar, and on a phone the sidebar is behind a button, '
-            'so nothing on screen said it at all.',
-        'Headings across the app are one set of sizes now. Three of the six '
-            'heading styles had never been given a size or a weight, so a '
-            'hundred and nine places asking for a heading were quietly drawing '
-            'ordinary text. That is why titles looked unrelated from one '
-            'screen to the next.',
       ],
     ),
     VersionRelease(
