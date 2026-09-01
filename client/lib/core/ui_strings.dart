@@ -20,6 +20,13 @@ class UiStrings {
     'shell.email': 'Email',
     'shell.password': 'Password',
     'shell.language': 'Language',
+    'shell.find_module': 'Find a module',
+    'shell.clear_filter': 'Clear',
+    'shell.modules_shown': '{n} of {total} modules',
+    'shell.no_module': 'No module called “{q}”.',
+    'shell.no_module_hint':
+        'The list is filtered, not empty — clear the box to see all '
+        '{total} again.',
     'time_clock.clock_in': 'Clock In',
     'time_clock.clock_out': 'Clock Out',
     'time_clock.tab': 'Clock in\u2013out',
