@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi — Module page header</title>
+<style>
+  :root {
+    --primary:#00708F; --cyan:#00AEEF;
+    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+    --ok:#0B8F5B; --err:#E07070; --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1320px; margin:0 auto; padding:16px 16px 64px; }
+
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:18px; margin:0 0 4px; }
+  header.picker p { margin:0 0 12px; color:var(--muted); max-width:88ch; }
+  .found, .locked, .ask { font-size:13px; border-radius:8px; padding:10px 12px;
+    margin-bottom:12px; max-width:96ch; }
+  .found { background:var(--err-c); } .locked { background:var(--info-c); } .ask { background:var(--warn-c); }
+  .found strong, .locked strong, .ask strong { display:block; margin-bottom:5px; }
+  .found strong { color:#A33; } .locked strong { color:var(--primary); } .ask strong { color:var(--warn); }
+  .found .brk, .locked .brk, .ask .brk { display:block; margin-top:8px; font-weight:700; }
+  .found b, .locked b, .ask b { font-weight:700; }
+  code { background:rgba(0,0,0,.06); padding:1px 5px; border-radius:4px; font-size:12px; }
+
+  table.m { border-collapse:collapse; font-size:12px; margin:9px 0 4px; width:100%; max-width:760px; }
+  table.m th, table.m td { border:1px solid rgba(0,0,0,.13); padding:5px 9px; text-align:left; }
+  table.m th { background:rgba(0,0,0,.05); }
+  table.m td.bad { background:var(--err-c); color:#A33; font-weight:700; }
+  table.m td.n { text-align:right; font-variant-numeric:tabular-nums; }
+
+  .nums { display:flex; flex-wrap:wrap; gap:8px; }
+  .nums button { min-width:44px; min-height:44px; border-radius:8px; padding:0 12px;
+    border:1px solid var(--line); background:var(--page); color:var(--ink); }
+  .nums button[aria-pressed="true"] { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .nums .sep { width:1px; background:var(--line); margin:2px 4px; }
+  .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:94ch; }
+  .caption strong { display:block; margin-bottom:4px; }
+
+  /* ---- app chrome ---- */
+  .shell { display:grid; grid-template-columns:212px 1fr; min-height:560px;
+    background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden;
+    margin-bottom:14px; }
+  .topbar { grid-column:1/-1; display:flex; align-items:center; gap:12px; padding:0 14px;
+    height:48px; border-bottom:1px solid var(--line); }
+  .wm { font-weight:800; letter-spacing:-.4px; }
+  .wm i { color:var(--cyan); font-style:normal; }
+  .orgpick { border:1px solid var(--line); border-radius:8px; padding:4px 10px; font-size:12px;
+    font-weight:600; }
+  .topbar .sp { flex:1; }
+  .av { width:26px; height:26px; border-radius:50%; background:linear-gradient(135deg,#c9a,#976); }
+  nav.side { background:var(--alt); border-right:1px solid var(--line); padding:10px 10px; }
+  nav.side .find { border:1px solid var(--line); border-radius:8px; background:#fff;
+    padding:7px 10px; font-size:12px; color:#9AA5AF; margin-bottom:10px; }
+  nav.side a { display:block; padding:7px 10px; border-radius:8px; color:var(--ink);
+    text-decoration:none; font-size:13px; }
+  nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  .page { display:flex; flex-direction:column; min-width:0; }
+
+  .tabs { display:flex; gap:8px; padding:10px 16px; flex-wrap:wrap; }
+  .tabs span { padding:6px 13px; border-radius:999px; border:1px solid var(--line);
+    background:var(--page); color:var(--muted); font-size:13px; white-space:nowrap; }
+  .tabs span.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+
+  /* the header variants */
+  .hdr { padding:18px 20px 0; }
+  .hdr h2 { margin:0; font-size:28px; font-weight:800; letter-spacing:-.8px; line-height:1.1; }
+  .hdr p  { margin:5px 0 0; color:var(--muted); font-size:14px; }
+  .hdr.row { display:flex; align-items:flex-start; gap:16px; }
+  .hdr.row .g { flex:1; min-width:0; }
+  .acts { display:flex; gap:8px; align-items:center; }
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:8px; padding:7px 13px; }
+  .btn.ghost { background:transparent; color:var(--primary); border:1px solid var(--line); }
+  .ico { width:34px; height:34px; border-radius:8px; border:1px solid var(--line);
+    background:var(--page); color:var(--muted); display:grid; place-items:center; }
+
+  .oneline { display:flex; align-items:center; gap:16px; padding:12px 20px 12px;
+    border-bottom:1px solid var(--line); }
+  .oneline h2 { margin:0; font-size:20px; font-weight:700; letter-spacing:-.4px; white-space:nowrap; }
+  .oneline .tabs { padding:0; flex:1; min-width:0; overflow:hidden; }
+
+  .suffix { color:var(--muted); font-weight:400; }
+
+  .body { padding:16px 20px 24px; flex:1; }
+  .filters { display:flex; gap:8px; margin-bottom:14px; }
+  .filters b { font-weight:500; font-size:13px; border:1px solid var(--line); border-radius:8px;
+    padding:6px 14px; }
+  .filters b.on { background:var(--info-c); border-color:transparent; color:var(--primary); font-weight:700; }
+  .panel { border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
+  .panel h3 { margin:0 0 4px; font-size:16px; font-weight:600; display:flex; gap:8px; align-items:center; }
+  .panel p { margin:0; color:var(--muted); font-size:13px; }
+  .strike { text-decoration:line-through; opacity:.42; }
+  .gone { display:inline-block; font-size:11px; font-weight:700; color:#A33;
+    background:var(--err-c); border-radius:5px; padding:1px 7px; margin-left:8px;
+    letter-spacing:.02em; vertical-align:middle; }
+  .keep { display:inline-block; font-size:11px; font-weight:700; color:var(--ok);
+    background:var(--ok-c); border-radius:5px; padding:1px 7px; margin-left:8px; vertical-align:middle; }
+
+  .cap { font-size:12px; color:var(--muted); padding:7px 12px; background:var(--alt);
+    border-bottom:1px solid var(--line); font-weight:600; }
+  .win { border:1px solid var(--line); border-radius:12px; overflow:hidden; margin-bottom:14px;
+    background:var(--page); }
+  .measure { font-size:12px; color:var(--muted); padding:8px 20px 16px; }
+  .measure b { color:var(--ink); }
+
+  /* ---- phone ---- */
+  .phones { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
+  .phone { width:375px; border:8px solid var(--ink); border-radius:26px; overflow:hidden;
+    background:#fff; height:600px; display:flex; flex-direction:column; }
+  .phone .bar { display:flex; align-items:center; gap:9px; padding:0 11px; height:46px;
+    border-bottom:1px solid var(--line); flex:none; }
+  .phone .bar .burger { font-size:17px; }
+  .phone .bar .sp { flex:1; }
+  .phone .mtitle { padding:14px 16px 0; }
+  .phone .mtitle h2 { margin:0; font-size:22px; font-weight:800; letter-spacing:-.5px; }
+  .phone .mtitle p { margin:4px 0 0; font-size:12px; color:var(--muted); }
+  .phone .tabs { padding:10px 16px; flex-wrap:nowrap; overflow-x:auto; }
+  .phone .body { padding:14px 16px; overflow:auto; }
+  .phone .shrunk { font-size:15px; font-weight:700; }
+  .phone .scrollnote { font-size:11px; color:var(--muted); padding:0 16px 8px; font-style:italic; }
+  .phone .fade { height:26px; background:linear-gradient(#fff,rgba(255,255,255,0)); }
+
+  .note { color:var(--muted); font-size:12.5px; margin:8px 0 0; max-width:94ch; }
+  .note b { color:var(--ink); }
+  .stack { display:flex; flex-direction:column; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>Module page header — one title, one size, one place</h1>
+    <p>Six numbered layouts: <b>1–3 desktop, 4–6 mobile</b>. The mobile ones are drawn for a phone
+      rather than being the desktop header narrowed, so picking a desktop number does not pick a
+      mobile one. Answer with one from each half.</p>
+
+    <div class="found">
+      <strong>What I measured in the code, not in the screenshots</strong>
+      Sixteen screens render the shared tab row (<code>TabBarLike</code>).
+      <span class="brk">Exactly one of the sixteen prints the module’s name: Tasks.</span>
+      It does it with a hard-coded <code>TextStyle(fontSize: 25, fontWeight: w700)</code> — a number
+      typed into <code>tasks_screen.dart:1505</code>, not a style from the theme. The other fifteen
+      print nothing, so the page never says which module you are in.
+
+      <span class="brk">And the reason the headings that DO exist look unrelated to each other:</span>
+      <code>theme.dart</code> defines four text styles — <code>headlineMedium</code> 28/w800,
+      <code>titleMedium</code> 16/w600, <code>bodyMedium</code> 14, <code>labelSmall</code> 11/w700.
+      <code>headlineSmall</code> and <code>titleLarge</code> <b>are not among them.</b> The 18 places
+      that ask for those two get Flutter's Material defaults instead — 24px and 22px, both at
+      <b>weight 400</b>, when nothing else in this app is lighter than 600. That is not a styling
+      preference that drifted. Those headings were never EzBizi's typography at all.
+
+      <table class="m">
+        <tr><th>What a screen asks for</th><th class="n">Uses</th><th>What it actually gets</th></tr>
+        <tr><td><code>headlineMedium</code></td><td class="n">5</td><td>28 / w800 — the theme's own</td></tr>
+        <tr><td><code>titleMedium</code></td><td class="n">138</td><td>16 / w600 — the theme's own</td></tr>
+        <tr><td><code>headlineSmall</code></td><td class="n">13</td><td class="bad">24 / w400 — Material's, not ours</td></tr>
+        <tr><td><code>titleLarge</code></td><td class="n">5</td><td class="bad">22 / w400 — Material's, not ours</td></tr>
+        <tr><td>hard-coded <code>fontSize</code></td><td class="n">3</td><td class="bad">25, 23, 21 — typed by hand</td></tr>
+      </table>
+      So a page title today is one of <b>five</b> different sizes at <b>three</b> different weights,
+      and on fifteen screens out of sixteen it is not there.
+    </div>
+
+    <div class="ask">
+      <strong>The decision each layout is really making: which name is the title?</strong>
+      Two names compete. The <b>module</b> — Human Resources — and the <b>pane</b> — “At a glance”.
+      Today Scheduling and HR print only the pane name, Tasks prints only the module name, and most
+      print neither.
+      <span class="brk">My reading, and every layout below is built on it: the module name is the title.</span>
+      The tab row is already telling you which pane you are in, and it is highlighted while it does
+      it. So a separate “At a glance” heading directly beneath a lit-up “Dashboard” chip is the same
+      fact twice.
+      <span class="brk">Which means the header is close to free.</span> It does not add a row — it replaces the pane
+      heading that is already there. That matters most on the phone, where the sidebar is a drawer
+      and <b>nothing on screen names the module at all</b> until you open it.
+    </div>
+
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+
+  <div id="stage"></div>
+</div>
+
+<script>
+const CAPTIONS = {
+  1: ["1 · Desktop — the module name above the tabs, and the pane heading goes (recommended)",
+      "The module name at the theme's own headlineMedium (28 / w800), one line of subtitle saying what the screen is for, actions on the right, then the tab row, then straight into the content. The pane's own heading is DELETED — “At a glance” under a lit “Dashboard” chip is the same fact written twice, and deleting it is what pays for the title. Net vertical cost against today: about 24px on a screen that currently has a pane heading, and it is the first time fifteen of the sixteen screens say where you are. Chosen because it is the only one of the three that stays readable when a module has many tabs — Phone has six and Settings has more — and because 28/w800 is a style the theme already defines, so this is one token used sixteen times rather than a sixth size."],
+  2: ["2 · Desktop — the name and the tabs share one row",
+      "Module name on the left at 20 / w700, the tab row filling the rest of the same line. The cheapest possible: about 48px for the whole header, less than the tab row costs on its own today. Weakness, and it is the reason it is not the recommendation: the tabs get whatever width is left after the longest module name, and “Fleet Management” plus Phone's six tabs do not fit at 1280 — the tabs start scrolling horizontally, which the queue already calls illegitimate for chrome. It also has nowhere to put the subtitle, so the one line explaining what Availability means has to move into the pane or be dropped."],
+  3: ["3 · Desktop — the module name with the current tab after it",
+      "One line reading “Human Resources · At a glance”, the module in ink and the pane in muted grey, tabs below. Keeps the pane name for the handful of tabs whose label does not explain itself, and it reads as a location rather than a heading. Weakness: it says the same word twice on purpose — the tab is already highlighted below it — so it is 20px of chrome spent restating what the chip has said. It also gets awkward the moment a pane has its own sub-state, because “Human Resources · Records · Maya Chen” is a breadcrumb, and this app has no breadcrumbs anywhere else."],
+  4: ["4 · Mobile — the module name in the top bar",
+      "The name replaces the wordmark in the app bar while a module is open. Costs zero additional height, which on a 375 phone is the strongest argument available. Weakness, and I think it is fatal: that bar is already carrying a burger, the wordmark, the organization switcher, Clock In, the notification bell and the avatar. “Fleet Management” needs about 150px it does not have, so it truncates to “Fleet Manage…” — and a title that truncates is worse than no title, because it looks like a bug rather than a name."],
+  5: ["5 · Mobile — a large title under the bar, no subtitle (recommended)",
+      "The module name on its own line at 22 / w800, then the tab row scrolling horizontally beneath it. The SUBTITLE IS DROPPED on the phone and that is deliberate: “Plan, assign, and finish work in this view” is a whole sentence, it costs about a fifth of what you can see at once, and it is read exactly once by each person ever. The title is read every time. Costs about 40px, and buys the only place on a phone that names the module — the sidebar is a drawer here, so until you open it nothing on screen says where you are. Chosen because it is the same shape as layout 1, so the two halves of this decision stay one design."],
+  6: ["6 · Mobile — a large title that shrinks into the bar as you scroll",
+      "Large at rest, collapsing into the app bar as the content scrolls up, the way iOS settings does. It genuinely is the best of both: the title is prominent when you arrive and free once you are reading. Weakness is cost, not behaviour — it needs a scroll controller wired into each screen's own scroll view, and there are sixteen of them, several of which already own their scrolling in ways that would fight it. Worth doing later as one change to a shared header widget; worth not doing as the thing that blocks fifteen screens from having a title at all."]
+};
+
+const NAV = ['Dashboard','Tasks','Human Resources','Customers','Jobs','Scheduling','Inspection',
+             'Marketing','Web Management','Phone','Fleet Management','Inventory','Services'];
+
+const side = () => `
+  <nav class="side">
+    <div class="find">&#9906; Find a module</div>
+    ${NAV.map(n => `<a class="${n==='Human Resources'?'on':''}">${n}</a>`).join('')}
+  </nav>`;
+
+const topbar = () => `
+  <div class="topbar">
+    <span>&#9776;</span>
+    <span class="wm"><i>Ez</i>Bizi</span>
+    <span class="orgpick">A-1 Chimney &#8645;</span>
+    <span class="sp"></span>
+    <span class="btn ghost" style="padding:5px 11px;font-size:12px">Clock In</span>
+    <span>&#128276;</span>
+    <span class="av"></span>
+  </div>`;
+
+const HRTABS = (cls) => `
+  <div class="tabs ${cls||''}">
+    <span class="on">Dashboard</span><span>Onboarding</span><span>Records</span>
+    <span>Invitations</span><span>Contracts</span><span>Clock in&ndash;out</span>
+  </div>`;
+
+const glanceBody = (killHeading) => `
+  <div class="body">
+    <div class="filters"><b>Week</b><b>Month</b><b class="on">&#10003; Quarter</b><b>Year</b></div>
+    <div class="panel">
+      <h3>&#128188; Human Resources</h3>
+      <p>Nobody on the books yet.</p>
+    </div>
+    ${killHeading ? `<p class="note" style="margin-top:14px">
+      <b>What was removed to pay for the title:</b> the pane's own
+      <span class="strike">At a glance</span><span class="gone">DELETED</span>
+      heading, which sat exactly here, directly under a highlighted “Dashboard” chip.
+      The filter row moves up into its place.</p>` : ''}
+  </div>`;
+
+const win = (cap, inner, measure) => `
+  <div class="win">
+    <div class="cap">${cap}</div>
+    ${inner}
+    ${measure ? `<div class="measure">${measure}</div>` : ''}
+  </div>`;
+
+const D1 = () => win('<b>Layout 1</b> &middot; title over the tabs, pane heading deleted',
+  `<div class="shell" style="border:0;border-radius:0;margin:0">
+     ${topbar()}
+     ${side()}
+     <div class="page">
+       <div class="hdr row">
+         <div class="g">
+           <h2>Human Resources</h2>
+           <p>Everyone on the books, what they have signed, and who is on the clock.</p>
+         </div>
+         <div class="acts"><span class="ico">&#8635;</span><button class="btn">Add someone</button></div>
+       </div>
+       ${HRTABS()}
+       ${glanceBody(true)}
+     </div>
+   </div>`,
+  'Header <b>28 / w800</b>, the theme\'s own <code>headlineMedium</code> &mdash; a token that already exists and is used five times. Costs about <b>72px</b>, gives back the <b>48px</b> pane heading it replaces. Net <b>+24px</b>, on fifteen screens that currently do not say where you are at all.');
+
+const D2 = () => win('<b>Layout 2</b> &middot; name and tabs on one row',
+  `<div class="shell" style="border:0;border-radius:0;margin:0">
+     ${topbar()}
+     ${side()}
+     <div class="page">
+       <div class="oneline">
+         <h2>Human Resources</h2>
+         ${HRTABS()}
+         <div class="acts"><span class="ico">&#8635;</span></div>
+       </div>
+       ${glanceBody(true)}
+     </div>
+   </div>
+   <div class="win" style="margin:0 20px 16px;border-color:#E4B4B4">
+     <div class="cap" style="background:var(--err-c);color:#A33">The same row, with Phone selected &mdash; where it breaks</div>
+     <div class="oneline" style="border-bottom:0">
+       <h2>Fleet Management</h2>
+       <div class="tabs" style="padding:0;flex-wrap:nowrap;overflow:hidden">
+         <span class="on">Vehicles</span><span>Maintenance</span><span>Fuel</span>
+         <span>Drivers</span><span>Inspections</span><span style="opacity:.35">Settin&hellip;</span>
+       </div>
+     </div>
+   </div>`,
+  'About <b>48px</b> for the entire header, which is less than the tab row costs today. But the tabs take whatever the longest module name leaves them, and the chrome starts scrolling sideways &mdash; which the design queue already rules out for chrome, as opposed to for wide data.');
+
+const D3 = () => win('<b>Layout 3</b> &middot; module name, then the pane after it',
+  `<div class="shell" style="border:0;border-radius:0;margin:0">
+     ${topbar()}
+     ${side()}
+     <div class="page">
+       <div class="hdr row">
+         <div class="g">
+           <h2>Human Resources <span class="suffix">&middot; At a glance</span></h2>
+         </div>
+         <div class="acts"><span class="ico">&#8635;</span><button class="btn">Add someone</button></div>
+       </div>
+       ${HRTABS()}
+       ${glanceBody(true)}
+     </div>
+   </div>`,
+  'Reads as a location rather than a heading, and keeps the pane name for the few tabs whose label does not explain itself. It also states, in ink, the thing the highlighted chip below is already stating &mdash; and there is nowhere for it to go once a pane has a sub-state of its own.');
+
+const P = (cap, inner) => `
+  <div class="stack">
+    <div class="cap" style="border:1px solid var(--line);border-bottom:0;border-radius:10px 10px 0 0;background:var(--alt)">${cap}</div>
+    <div class="phone" style="border-radius:0 0 26px 26px">${inner}</div>
+  </div>`;
+
+const mbar = (title) => `
+  <div class="bar">
+    <span class="burger">&#9776;</span>
+    ${title ? `<span class="shrunk">${title}</span>` : `<span class="wm"><i>Ez</i>Bizi</span>`}
+    <span class="sp"></span>
+    <span>&#128276;</span><span class="av"></span>
+  </div>`;
+
+const mtabs = `
+  <div class="tabs" style="padding:10px 16px;flex-wrap:nowrap;overflow-x:auto">
+    <span class="on">Dashboard</span><span>Onboarding</span><span>Records</span><span>Invitations</span>
+  </div>`;
+
+const mbody = `
+  <div class="body">
+    <div class="filters" style="gap:6px"><b style="padding:5px 10px">Week</b>
+      <b style="padding:5px 10px">Month</b><b class="on" style="padding:5px 10px">Quarter</b></div>
+    <div class="panel"><h3 style="font-size:15px">&#128188; Human Resources</h3>
+      <p>Nobody on the books yet.</p></div>
+  </div>`;
+
+const M4 = () => `
+  <div class="phones">
+    ${P('<b>Layout 4</b> &middot; the name in the top bar', `
+      ${mbar('Human Resou&hellip;')}
+      ${mtabs}
+      ${mbody}
+      <p class="note" style="padding:0 16px 12px;color:#A33">
+        Truncated at 375px, and that bar still has to hold Clock In. A title that
+        truncates looks like a bug rather than a name.</p>`)}
+  </div>
+  <p class="note" style="text-align:center;margin-top:12px">Zero additional height, and no room to be
+    in. The wordmark, the organization switcher, Clock In, the bell and the avatar are already there.</p>`;
+
+const M5 = () => `
+  <div class="phones">
+    ${P('<b>Layout 5</b> &middot; large title, no subtitle', `
+      ${mbar()}
+      <div class="mtitle"><h2>Human Resources</h2></div>
+      ${mtabs}
+      ${mbody}`)}
+    ${P('<b>The subtitle, and why it is not here</b>', `
+      ${mbar()}
+      <div class="mtitle"><h2>Tasks</h2>
+        <p class="strike">Plan, assign, and finish work in this view.<span class="gone">DROPPED</span></p></div>
+      <div class="tabs" style="padding:10px 16px"><span class="on">Boards</span><span>My Tasks</span></div>
+      <div class="body">
+        <p class="note" style="margin:0">One sentence, about a fifth of everything you can see at
+          once, read once ever by each person. <b>The title above it is read every time.</b> On a
+          desktop there is width for both; here there is not, and this is the half that goes.</p>
+      </div>`)}
+  </div>`;
+
+const M6 = () => `
+  <div class="phones">
+    ${P('<b>Layout 6</b> &middot; at rest, before scrolling', `
+      ${mbar()}
+      <div class="mtitle"><h2>Human Resources</h2></div>
+      ${mtabs}
+      ${mbody}`)}
+    ${P('<b>The same screen, scrolled</b>', `
+      ${mbar('Human Resources')}
+      ${mtabs}
+      <div class="fade"></div>
+      <div class="body" style="padding-top:0">
+        <div class="panel"><h3 style="font-size:15px">&#128188; Human Resources</h3>
+          <p>Nobody on the books yet.</p></div>
+        <p class="note" style="margin-top:14px">The title has moved into the bar, where it fits
+          because it is now the only thing in it. Prominent on arrival, free once you are reading.</p>
+      </div>`)}
+  </div>
+  <p class="note" style="text-align:center;margin-top:12px">The best behaviour of the three, and the
+    most code &mdash; a scroll controller per screen, across sixteen screens, several of which already
+    own their scrolling. Better as a later change to one shared widget than as the thing blocking
+    fifteen screens from having any title.</p>`;
+
+const LAYOUTS = { 1:D1, 2:D2, 3:D3, 4:M4, 5:M5, 6:M6 };
+const nums = document.getElementById('nums'),
+      stage = document.getElementById('stage'),
+      caption = document.getElementById('caption');
+
+Object.keys(LAYOUTS).forEach((k, i) => {
+  if (i === 3) { const s = document.createElement('div'); s.className = 'sep'; nums.appendChild(s); }
+  const b = document.createElement('button');
+  b.textContent = (i < 3 ? 'Desktop ' : 'Mobile ') + k;
+  b.dataset.k = k;
+  b.onclick = () => show(k);
+  nums.appendChild(b);
+});
+
+function show(k) {
+  [...nums.querySelectorAll('button')].forEach(b =>
+    b.setAttribute('aria-pressed', b.dataset.k === String(k)));
+  const e = CAPTIONS[k];
+  caption.innerHTML = '<strong>' + e[0] + '</strong>' + e[1];
+  stage.innerHTML = LAYOUTS[k]();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+show(1);
+</script>
+</body>
+</html>
