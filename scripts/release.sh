@@ -7,7 +7,8 @@
 #   ./scripts/release.sh --only web,android
 #   ./scripts/release.sh --dry-run          say what it would do, build nothing
 #
-#   ./scripts/release.sh --only ios        signed .ipa via the Mac relay
+#   ./scripts/release.sh --only ios        signed .ipa via the Mac relay,
+#                                          uploaded to TestFlight
 #
 # iOS IS a default target as of 28 Aug (Jose's ruling: every release builds all
 # four). It was excluded before because its signing identity lives on another
@@ -388,10 +389,16 @@ fi
 #
 # build-app.sh fetches the .ipa into dist/ itself, because only it knows where
 # the Mac left it. Nothing to copy here.
+#
+# --upload is passed on every release: an .ipa sitting in dist/ is a build
+# nobody can try, and being tryable is the whole reason TestFlight exists
+# (Jose's ruling, 1 Sep). Upload is not submission — the build goes to
+# internal testers, and nothing reaches App Store review without someone
+# attaching it there.
 if wants ios; then
   echo
   echo "→ ios — building signed archive on the Mac relay"
-  if run ./scripts/build-app.sh ios ${GATES}; then
+  if run ./scripts/build-app.sh ios ${GATES} --upload; then
 
   # EzBizi-${VERSION}-*.ipa, not EzBizi-*.ipa. dist/ keeps every past release,
   # so a bare glob matches a months-old artefact and reports a build that

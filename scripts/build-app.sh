@@ -301,12 +301,17 @@ MAC_DEFINES="${MAC_DEFINES} --build-name=${VERSION} --build-number=${BUILD_NUMBE
       scp -q "${MAC_REMOTE}:${IPA_REMOTE}" "${DIST}/EzBizi-${VERSION}-${COMMIT}.ipa"
       echo "  → ${DIST}/EzBizi-${VERSION}-${COMMIT}.ipa"
 
-      # TestFlight, only when asked.
+      # TestFlight, only when asked - but release.sh always asks.
       #
-      # Opt-in because a build that lands in TestFlight notifies testers and
-      # cannot be unsent - it should not happen because somebody rebuilt to
+      # Opt-in HERE because a build that lands in TestFlight notifies testers
+      # and cannot be unsent - it should not happen because somebody rebuilt to
       # check a compile error. The script on the Mac validates before it
       # uploads, so the cheap rejections are caught before ten minutes of wire.
+      #
+      # A release is not that case: every released iOS build goes to TestFlight
+      # (Jose's ruling, 1 Sep), so release.sh passes --upload unconditionally.
+      # This flag now separates a developer's scratch build from a release,
+      # not a released build from an uploaded one.
       if [ "$UPLOAD" -eq 1 ]; then
         echo "-> ios - validate and upload to TestFlight"
         ssh "$MAC_REMOTE" "~/ezbizi-signing/upload-testflight.sh ${IPA_REMOTE}"
