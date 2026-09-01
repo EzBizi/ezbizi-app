@@ -44,6 +44,20 @@ class DesktopUpdater extends ChangeNotifier {
   Timer? _countdown;
   bool _running = false;
 
+  /// True until the first sweep has decided what to do.
+  ///
+  /// An update found at startup installs immediately, with no countdown and
+  /// without asking — Jose's instruction, 1 Sep: "on Startup it should always
+  /// check for new updates and install them automatically."
+  ///
+  /// [signedIn] alone did not achieve that, and the reason is a race. The
+  /// first sweep is fired unawaited by [start] and has to cross the network,
+  /// while a restored session can flip [signedIn] to true in the meantime — so
+  /// the check that was meant to run "before anyone is signed in" routinely
+  /// came back after, and took the sixty-second countdown instead. Startup is
+  /// a property of when the sweep STARTED, not of what is true when it lands.
+  bool _firstSweep = true;
+
   /// The newest build, once a sweep has found one. Null means up to date, or
   /// not a platform that can install anything.
   AvailableUpdate? available;
@@ -99,6 +113,11 @@ class DesktopUpdater extends ChangeNotifier {
   }
 
   Future<void> _sweep({bool force = false}) async {
+    // Read before the await below, so a session restoring mid-check cannot
+    // turn a startup sweep into a mid-session one.
+    final atStartup = _firstSweep;
+    _firstSweep = false;
+
     if (busy) return;
     // A countdown already running is an update already found; looking again
     // would only restart the clock somebody is watching.
@@ -115,7 +134,11 @@ class DesktopUpdater extends ChangeNotifier {
     available = found;
     notifyListeners();
 
-    if (!signedIn) {
+    // At startup there is nothing to interrupt — no half-written form, no call
+    // in progress — so it installs rather than starting a clock. Later sweeps
+    // still give a signed-in person the grace period, because closing the app
+    // under someone mid-task is a different thing entirely.
+    if (atStartup || !signedIn) {
       await install();
       return;
     }
