@@ -414,6 +414,109 @@ final class TaskRecurrenceWorkerTest extends TestCase
             ->where('title', 'Relay retry me')->where('id', '!=', $task->id)->count());
     }
 
+    public function test_reopening_an_already_relayed_completion_and_completing_it_again_creates_no_second_instance(): void
+    {
+        // Whole-branch review finding 10. `recurrence` is never cleared off
+        // a generation that has already produced its successor, so
+        // completing generation 1 a SECOND time — on a later date — relays
+        // a marker whose next occurrence date has never been seen before.
+        // Occurrence uniqueness is keyed on (series root, occurrence date),
+        // so the dedup pre-check cannot recognise it; what refuses it is
+        // hasLiveInstance(), because generation 2 is still outstanding.
+        Carbon::setTestNow('2026-09-01 12:00:00');
+        $task = $this->createTask('Reopen me');
+        $this->declareRecurrence($task, 'after_completion', 1, 'day');
+        $completed = $this->statusOf(StatusCategory::Completed);
+        $notStarted = $this->statusOf(StatusCategory::NotStarted);
+
+        $this->patchJson("/api/v1/tasks/{$task->id}", [
+            'expected_version' => Task::findOrFail($task->id)->version, 'status_option_id' => $completed->id,
+        ])->assertOk();
+        $this->enterTenant();
+        $this->artisan('ezbizi:create-recurring-tasks')->assertSuccessful();
+
+        $this->enterTenant();
+        $generationTwo = Task::findOrFail(
+            TaskRecurrenceOccurrence::where('task_id', $task->id)->firstOrFail()->created_task_id
+        );
+        $this->assertSame('2026-09-02', $generationTwo->due_on?->format('Y-m-d'));
+
+        // Reopen generation 1 and complete it again two days later. The
+        // would-be occurrence date (2026-09-04) is genuinely new, which is
+        // exactly why occurrence uniqueness is not what closes this.
+        Carbon::setTestNow('2026-09-03 12:00:00');
+        $this->patchJson("/api/v1/tasks/{$task->id}", [
+            'expected_version' => Task::findOrFail($task->id)->version, 'status_option_id' => $notStarted->id,
+        ])->assertOk();
+        $this->enterTenant();
+        $this->patchJson("/api/v1/tasks/{$task->id}", [
+            'expected_version' => Task::findOrFail($task->id)->version, 'status_option_id' => $completed->id,
+        ])->assertOk();
+
+        // The second completion really did relay — the guard is in the
+        // worker, not in an absent marker.
+        $this->enterTenant();
+        $this->assertSame(2, AutomationEvent::where('event_key', 'task.recurrence_instance_due')
+            ->where('subject_id', $task->id)->count());
+
+        $this->artisan('ezbizi:create-recurring-tasks')->assertSuccessful();
+
+        $this->enterTenant();
+        $this->assertSame(1, TaskRecurrenceOccurrence::where('task_id', $task->id)->count());
+        $this->assertSame(0, TaskRecurrenceOccurrence::where('task_id', $task->id)
+            ->whereDate('occurrence_date', '2026-09-04')->count());
+        $this->assertSame(1, Task::where('board_id', $this->board->id)
+            ->where('title', 'Reopen me')->where('id', '!=', $task->id)->count());
+        $this->assertSame($generationTwo->id, Task::where('board_id', $this->board->id)
+            ->where('title', 'Reopen me')->where('id', '!=', $task->id)->value('id'));
+    }
+
+    public function test_a_series_whose_only_instance_was_archived_can_still_be_restarted_by_completing_an_earlier_generation(): void
+    {
+        // The guard is keyed on a LIVE instance, not on "a later generation
+        // exists at all". Archiving the instance is the one way a series
+        // can lose its outstanding work, and completing an earlier
+        // generation is its only revival path — a guard keyed on existence
+        // would kill the series permanently instead.
+        Carbon::setTestNow('2026-09-01 12:00:00');
+        $task = $this->createTask('Revive me');
+        $this->declareRecurrence($task, 'after_completion', 1, 'day');
+        $completed = $this->statusOf(StatusCategory::Completed);
+        $notStarted = $this->statusOf(StatusCategory::NotStarted);
+
+        $this->patchJson("/api/v1/tasks/{$task->id}", [
+            'expected_version' => Task::findOrFail($task->id)->version, 'status_option_id' => $completed->id,
+        ])->assertOk();
+        $this->enterTenant();
+        $this->artisan('ezbizi:create-recurring-tasks')->assertSuccessful();
+
+        $this->enterTenant();
+        $generationTwo = Task::findOrFail(
+            TaskRecurrenceOccurrence::where('task_id', $task->id)->firstOrFail()->created_task_id
+        );
+        $generationTwo->forceFill(['archived_at' => now()])->save();
+
+        Carbon::setTestNow('2026-09-03 12:00:00');
+        $this->patchJson("/api/v1/tasks/{$task->id}", [
+            'expected_version' => Task::findOrFail($task->id)->version, 'status_option_id' => $notStarted->id,
+        ])->assertOk();
+        $this->enterTenant();
+        $this->patchJson("/api/v1/tasks/{$task->id}", [
+            'expected_version' => Task::findOrFail($task->id)->version, 'status_option_id' => $completed->id,
+        ])->assertOk();
+        $this->enterTenant();
+        $this->artisan('ezbizi:create-recurring-tasks')->assertSuccessful();
+
+        $this->enterTenant();
+        $this->assertSame(2, TaskRecurrenceOccurrence::where('task_id', $task->id)->count());
+        $revived = Task::findOrFail(
+            TaskRecurrenceOccurrence::where('task_id', $task->id)
+                ->orderBy('occurrence_date', 'desc')->firstOrFail()->created_task_id
+        );
+        $this->assertSame('2026-09-04', $revived->due_on?->format('Y-m-d'));
+        $this->assertNull($revived->archived_at);
+    }
+
     // ── timezone ──────────────────────────────────────────────────
 
     public function test_day_boundary_resolves_in_the_boards_place_timezone_not_utc(): void

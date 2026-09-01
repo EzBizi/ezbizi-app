@@ -177,10 +177,18 @@ not already need for its own sake; a genuine database failure writing the marker
 propagates and fails the completion honestly, rather than being swallowed.
 `TaskRecurrenceOccurrence` is the idempotency row for both modes — written in the same transaction
 as whatever it records, a created task or a terminal marker with none — and it is what stops the
-SAME occurrence date from producing two tasks, not a guarantee that only one `after_completion`
-instance is EVER pending: reopening an already-relayed completion and completing it again on a
-different date is not something this table's uniqueness catches, because it produces a new,
-never-before-seen occurrence date. That gap is tracked as a known limitation, not fixed here.
+SAME occurrence date from producing two tasks. That is not the same guarantee as "only one
+`after_completion` instance is ever outstanding", and it never was: `recurrence` is never cleared
+off a generation that has already produced its successor, so reopening an already-relayed
+completion and completing it again on a different date relays a new, never-before-seen occurrence
+date that the uniqueness check cannot recognise as a duplicate. The relay guards that second
+invariant itself — `hasLiveInstance()` skips a completion whose series already has an instance
+outstanding — rather than leaning on the date index to imply it. The guard is keyed on a LIVE
+instance (open, not cancelled, not archived), not on "a later generation exists at all", so
+archiving a series' outstanding instance still leaves completing an earlier generation as a way to
+restart it; and it lives in the worker, not as a refusal on the reopen, because reopening a
+mistakenly-completed task is a legitimate correction and Ruling 28 keeps work out of the user's
+completion transaction.
 
 **Cross-board Timeline/Calendar/Workload are read-only summaries**, and they reuse My Tasks'
 access path verbatim rather than re-deriving one. Phase 1 already proved that path against a

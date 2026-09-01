@@ -40,15 +40,15 @@ use Illuminate\Support\Facades\DB;
  * of whether earlier ones were finished. It runs on the hourly schedule.
  *
  * `after_completion` is completion-driven: dated `every`/`unit` from the
- * completion that produced it. Nothing today enforces that only one
- * instance is ever pending at a time — reopening an already-relayed
+ * completion that produced it. At most one instance is outstanding at a
+ * time, and that is enforced by hasLiveInstance() in the relay rather
+ * than by TaskRecurrenceOccurrence's uniqueness — that index is keyed on
+ * (series root, occurrence date), so reopening an already-relayed
  * completion and completing it again on a different date produces a
- * second live instance, because TaskRecurrenceOccurrence's uniqueness is
- * keyed on (series root, occurrence date), not on "has this series
- * already produced its next instance" (whole-branch review finding 10;
- * tracked as a follow-up, not fixed here). TaskWriter does NOT call into
- * this class at completion time (fix round 1, task-6): it only emits
- * `RELAY_TRIGGER` to the outbox — a real row write (an INSERT into
+ * never-before-seen date the dedup cannot recognise (whole-branch review
+ * finding 10). TaskWriter does NOT call into this class at completion
+ * time (fix round 1, task-6): it only emits `RELAY_TRIGGER` to the
+ * outbox — a real row write (an INSERT into
  * automation_events, in the completion's own transaction — that IS the
  * point of an outbox), just no `lockForUpdate()` and no task creation. A
  * database-level failure writing that row still propagates and fails the
@@ -266,7 +266,7 @@ final class TaskRecurrenceWorker
                 // Copying FIELDS (title, owner, ...) still comes from $task
                 // itself, the most recently completed generation.
                 $seriesRootId = $this->seriesRootId($task->id);
-                if ($this->seriesEnded($seriesRootId)) {
+                if ($this->seriesEnded($seriesRootId) || $this->hasLiveInstance($seriesRootId)) {
                     return 0;
                 }
 
@@ -449,6 +449,48 @@ final class TaskRecurrenceWorker
     {
         return TaskRecurrenceOccurrence::query()
             ->where('task_id', $seriesRootId)->whereNull('created_task_id')->exists();
+    }
+
+    /**
+     * Does this `after_completion` series already have an instance
+     * outstanding — one an earlier relay created, still open and not
+     * archived? Closes whole-branch review finding 10.
+     *
+     * TaskRecurrenceOccurrence's uniqueness is keyed on (series root,
+     * occurrence date). That stops the same DATE producing two tasks, but
+     * not the same series holding two live instances: `recurrence` is
+     * never cleared off a generation that has already produced its
+     * successor, so REOPENING that generation and completing it again on a
+     * later date relays a new, never-before-seen occurrence date, which
+     * attemptOccurrence()'s pre-check cannot recognise as a duplicate.
+     * This guards the invariant that dedup was only ever approximating —
+     * an `after_completion` series has at most one instance outstanding —
+     * instead of guarding the date.
+     *
+     * Deliberately here rather than as a refusal on the reopen itself (the
+     * other candidate fix): reopening a mistakenly-completed task is a
+     * legitimate correction, and refusing it would leave the relay itself
+     * unguarded against every other route to completing one task twice.
+     * It also stays inside Ruling 28's boundary — nothing is added to the
+     * user's completion transaction, this is one EXISTS in the worker's.
+     *
+     * Keyed on LIVE, not on "a later generation exists at all", so a
+     * series whose next instance was archived or cancelled can still be
+     * restarted by completing an earlier generation — the only revival
+     * path it has — rather than dying permanently. The task that just
+     * completed is never one of these itself: relayPendingCompletions()
+     * only reaches here with `completed_at` set.
+     */
+    private function hasLiveInstance(string $seriesRootId): bool
+    {
+        return Task::query()->active()
+            ->whereNull('completed_at')
+            ->whereNull('cancelled_at')
+            ->whereIn('id', TaskRecurrenceOccurrence::query()
+                ->where('task_id', $seriesRootId)
+                ->whereNotNull('created_task_id')
+                ->select('created_task_id'))
+            ->exists();
     }
 
     private function buildInstance(Task $root, TaskRecurrence $recurrence, string $occurrenceDate): Task
