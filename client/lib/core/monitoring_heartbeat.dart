@@ -1,10 +1,9 @@
 import 'dart:async';
-import 'dart:math';
 
 import 'api_client.dart';
 import 'client_platform.dart';
-import 'token_store_io.dart' if (dart.library.js_interop) 'token_store_web.dart'
-    as store;
+import 'device_key.dart';
+import 'screenshot_capability.dart';
 
 /// A device reporting its own presence — POST /monitoring/heartbeat, the
 /// endpoint HeartbeatController::store() validates (2026-08-28-monitoring-pc-
@@ -42,13 +41,24 @@ import 'token_store_io.dart' if (dart.library.js_interop) 'token_store_web.dart'
 /// system clock adjustment (NTP sync, a manual change, a DST transition)
 /// producing a negative or wildly wrong dwell time mid-session.
 ///
-/// ── Why `device_key` is cached in memory rather than re-read per beat ─────
+/// ── Why `device_key` comes from [DeviceKey] rather than living here ───────
 ///
-/// It is read from local storage (or generated, on the very first run) once,
-/// the first time this instance ever needs it, and kept from then on. Storage
-/// on the web is sessionStorage/localStorage (see token_store_web.dart) —
-/// synchronous and cheap, but re-reading it before every one of a dozen beats
-/// an hour buys nothing a single cached value does not already give.
+/// [DeviceKey.value] reads it from local storage (or generates it, on the
+/// very first call anything in this process makes) and caches it — see that
+/// class for why the cache lives there, shared, rather than as a field on
+/// this class: [ScreenshotService] (2026-08-31-monitoring-screenshots, Task
+/// 6) posts to a DIFFERENT endpoint that must resolve to the exact same
+/// `monitored_devices` row this beat creates, which only holds if both read
+/// the identical cached value rather than each generating their own.
+///
+/// ── Why `'screenshot'` is declared conditionally ──────────────────
+///
+/// [screenshotCaptureSupported] is the same Windows-only, native-channel
+/// check [ScreenshotService] gates its own capture loop on (see that file).
+/// Declaring it here from anything else — a hardcoded platform list, a
+/// separate assumption about what this build can do — would let the two
+/// drift: a beat that claims `'screenshot'` while the service that would
+/// actually produce one never runs, or the reverse.
 class MonitoringHeartbeat {
   MonitoringHeartbeat(this._api, {Duration interval = const Duration(seconds: 60)})
       : _interval = interval {
@@ -62,13 +72,17 @@ class MonitoringHeartbeat {
   final ApiClient _api;
   final Duration _interval;
 
-  static const List<String> _capabilities = ['activity'];
-  static const String _deviceKeyStorageKey = 'ezbizi.monitoring_device_key';
+  /// `'activity'` always — every device that beats at all is reporting
+  /// activity. `'screenshot'` on top of that only when this build can
+  /// actually produce one; see the class doc comment above.
+  static List<String> get _capabilities => [
+        'activity',
+        if (screenshotCaptureSupported) 'screenshot',
+      ];
 
   Timer? _timer;
   String? _currentModule;
   final Stopwatch _dwell = Stopwatch();
-  String? _deviceKey;
 
   /// Somebody switched to [moduleKey]. Closes the previous module's segment
   /// (if there was one) and posts a beat naming the new module as
@@ -102,7 +116,7 @@ class MonitoringHeartbeat {
 
   Future<void> _post({Map<String, Object?>? segment}) async {
     final body = <String, Object?>{
-      'device_key': await _deviceKeyValue(),
+      'device_key': await DeviceKey.value(),
       'platform': ClientPlatform.name,
       'capabilities': _capabilities,
       if (_currentModule != null) 'current_module': _currentModule,
@@ -112,26 +126,6 @@ class MonitoringHeartbeat {
     await _api.post('/monitoring/heartbeat', body);
   }
 
-  /// Reads the persisted device key, or generates and persists one the first
-  /// time this device ever beats. `persist: true` — localStorage, not
-  /// sessionStorage — because a device key identifies the INSTALL, not the
-  /// browser tab: it has to be the same value the next time the browser opens,
-  /// not just the same value across a reload of this tab (see
-  /// token_store_web.dart for the two, and TokenStore for the tab-scoped
-  /// choice a signed-in session makes for the opposite reason).
-  Future<String> _deviceKeyValue() async {
-    final cached = _deviceKey;
-    if (cached != null) return cached;
-
-    final stored = store.readItem(_deviceKeyStorageKey);
-    final key = (stored == null || stored.isEmpty) ? _uuidV4() : stored;
-
-    _deviceKey = key;
-    store.writeItem(_deviceKeyStorageKey, key, persist: true);
-
-    return key;
-  }
-
   /// Stops the keep-alive timer. Call this when whatever owns this instance
   /// goes away — otherwise the timer keeps this object, and everything it
   /// closes over, alive and posting for the lifetime of the process.
@@ -139,22 +133,4 @@ class MonitoringHeartbeat {
     _timer?.cancel();
     _timer = null;
   }
-}
-
-/// A random (RFC 4122) v4 uuid. No `uuid` package for this: it is sixteen
-/// random bytes with two nibbles pinned to say "version 4, this variant" —
-/// small enough that a whole dependency for it would cost more than it saves.
-String _uuidV4() {
-  final random = Random.secure();
-  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
-
-  bytes[6] = (bytes[6] & 0x0F) | 0x40; // version 4
-  bytes[8] = (bytes[8] & 0x3F) | 0x80; // variant 10xx
-
-  String hex(int start, int end) => bytes
-      .sublist(start, end)
-      .map((b) => b.toRadixString(16).padLeft(2, '0'))
-      .join();
-
-  return '${hex(0, 4)}-${hex(4, 6)}-${hex(6, 8)}-${hex(8, 10)}-${hex(10, 16)}';
 }

@@ -1,0 +1,130 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/device_key.dart';
+import 'package:ezbizi_client/core/monitoring_heartbeat.dart';
+import 'package:ezbizi_client/core/screenshot_service.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+
+/// The client half of the upload ScreenshotsController::store() validates —
+/// see app/Http/Controllers/Api/Monitoring/ScreenshotsController.php. That
+/// endpoint 404s outright unless a `monitored_devices` row already exists
+/// for the SAME `device_key` a heartbeat posted (its class doc comment
+/// explains why it never creates one itself), so what this suite pins is not
+/// just "an upload fires" but that it fires with the identical key
+/// [MonitoringHeartbeat] uses — a mismatch here is invisible to the compiler
+/// and fatal against the real endpoint.
+void main() {
+  ({ApiClient api, List<http.Request> posted}) harness() {
+    final posted = <http.Request>[];
+
+    final api = ApiClient(
+      client: MockClient((request) async {
+        posted.add(request);
+        return http.Response('', 204);
+      }),
+    );
+
+    return (api: api, posted: posted);
+  }
+
+  /// Multipart bodies are binary (the file part is arbitrary bytes), so this
+  /// decodes byte-for-byte with latin1 rather than utf8 — utf8.decode throws
+  /// on a byte sequence that is not valid UTF-8, and the whole point is to
+  /// find ASCII substrings (field names, the device key) inside a body that
+  /// may contain non-UTF-8 bytes elsewhere.
+  String bodyText(http.Request request) => latin1.decode(request.bodyBytes);
+
+  test(
+    'a capture that returns bytes uploads to monitoring/screenshots carrying the device_key',
+    () async {
+      final it = harness();
+
+      final service = ScreenshotService(
+        it.api,
+        interval: const Duration(milliseconds: 20),
+        capture: () async => Uint8List.fromList([1, 2, 3, 4, 5]),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      service.dispose();
+
+      final uploads =
+          it.posted.where((r) => r.url.path.endsWith('/monitoring/screenshots')).toList();
+
+      expect(uploads, isNotEmpty,
+          reason: 'A capture that returned bytes must upload them.');
+
+      final body = bodyText(uploads.first);
+      expect(body, contains('name="image"'),
+          reason: 'The JPEG bytes must be sent under the `image` field the '
+              'server validates.');
+      expect(body, contains('name="device_key"'),
+          reason: 'The upload must carry a device_key field at all.');
+
+      final deviceKey = await DeviceKey.value();
+      expect(body, contains(deviceKey),
+          reason: 'The device_key value sent must be the shared one, not a '
+              'second independently generated key.');
+    },
+  );
+
+  test('a capture that returns null never uploads', () async {
+    final it = harness();
+
+    final service = ScreenshotService(
+      it.api,
+      interval: const Duration(milliseconds: 20),
+      capture: () async => null,
+    );
+
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    service.dispose();
+
+    expect(
+      it.posted.where((r) => r.url.path.endsWith('/monitoring/screenshots')),
+      isEmpty,
+      reason: 'No bytes means nothing to upload — a failed/unavailable '
+          'capture must not fire a request at all.',
+    );
+  });
+
+  test(
+    'the screenshot upload carries the exact device_key the heartbeat uses',
+    () async {
+      final it = harness();
+
+      final heartbeat = MonitoringHeartbeat(it.api);
+      await heartbeat.enter('jobs');
+
+      final beat = it.posted.singleWhere((r) => r.url.path.endsWith('/monitoring/heartbeat'));
+      final heartbeatDeviceKey =
+          (jsonDecode(beat.body) as Map<String, dynamic>)['device_key'] as String;
+      heartbeat.dispose();
+
+      final service = ScreenshotService(
+        it.api,
+        interval: const Duration(milliseconds: 20),
+        capture: () async => Uint8List.fromList([9, 8, 7]),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      service.dispose();
+
+      final upload =
+          it.posted.firstWhere((r) => r.url.path.endsWith('/monitoring/screenshots'));
+
+      expect(
+        bodyText(upload),
+        contains(heartbeatDeviceKey),
+        reason: 'A screenshot posted under a different device_key than the '
+            "heartbeat's resolves to a different (or nonexistent) "
+            'monitored_devices row on the server — see '
+            "ScreenshotsController::store()'s 404 when no row matches.",
+      );
+    },
+  );
+}
