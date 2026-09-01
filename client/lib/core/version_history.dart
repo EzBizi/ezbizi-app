@@ -8,6 +8,21 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0128',
+      date: '1 Sep 2026',
+      items: [
+        'Phone: calling a customer no longer drops you into your own '
+            'voicemail. The first call went through; a second one to the same '
+            'person was treated as a call arriving at your line rather than '
+            'leaving it, so it was answered by your greeting instead of rung '
+            'out to them.',
+        'Phone: a call placed from a number the company does not own now says '
+            'so, instead of connecting to silence. The call appeared to be in '
+            'progress with nobody on either end - the number it claimed to be '
+            'calling from was rejected, and nothing said that out loud.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0127',
       date: '31 Aug 2026',
       items: [
