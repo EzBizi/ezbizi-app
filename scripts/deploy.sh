@@ -16,7 +16,24 @@ set -euo pipefail
 
 REMOTE=app                       # ~/.ssh/config alias
 SHARED=/var/www/ezbizi/public-app
-CODE_ONLY=${1:-}
+# --skip-gates ships WITHOUT running either suite. Added 1 Sep on Jose's
+# explicit instruction ("no gate, i need it fast") — the gate is ~24 minutes and
+# is the whole cost of a deploy.
+#
+# This is the one control that stops a red build reaching production, so it is a
+# flag and never a default: every caller has to type it, and the run says so
+# twice. Prefer it only when the cost of waiting is known to exceed the cost of
+# shipping untested code, which is a judgement for the person deploying and not
+# for this script.
+SKIP_GATES=0
+_args=()
+for _a in "$@"; do
+  case "$_a" in
+    --skip-gates) SKIP_GATES=1 ;;
+    *) _args+=("$_a") ;;
+  esac
+done
+CODE_ONLY=${_args[0]:-}
 
 cd "$(dirname "$0")/.."
 
@@ -45,6 +62,11 @@ cd "$(dirname "$0")/.."
 # everyone being careful at exactly the moment they are busiest. Asking
 # people to be careful is not a control; pinning the SHA is.
 GATED_SHA=$(git rev-parse main)
+
+if [ "$SKIP_GATES" -eq 1 ]; then
+  echo "⚠ GATES SKIPPED (--skip-gates) — $GATED_SHA is being shipped untested."
+  BACKEND_TESTS=""
+else
 echo "→ testing the tree about to ship ($GATED_SHA)"
 # Captured, not just streamed. STATUS.md's test count was retyped by hand and was
 # wrong three times in one day; the number is right here, in the run that gates
@@ -119,6 +141,7 @@ BACKEND_OUT=$(git -c core.autocrlf=false archive "$GATED_SHA" | ssh "$REMOTE" "W
 ' 2>&1) || { echo "$BACKEND_OUT"; echo "✗ backend tests failed — nothing deployed"; exit 1; }
 echo "$BACKEND_OUT" | tail -3
 BACKEND_TESTS=$(echo "$BACKEND_OUT" | grep -oE '[0-9]+ passed' | tail -1 | grep -oE '[0-9]+')
+fi
 
 if [ "$CODE_ONLY" != "--code" ]; then
   # The client is checked and built in a WORKTREE AT THE PINNED SHA, never in
@@ -152,8 +175,14 @@ if [ "$CODE_ONLY" != "--code" ]; then
     echo "✗ could not check out $GATED_SHA to test — nothing deployed"; exit 1;
   }
 
-  echo "→ client analyze + tests (at $GATED_SHA, not your working tree)"
-  CLIENT_OUT=$( (cd "$WORKTREE/client" && flutter pub get && flutter analyze && flutter test) 2>&1 ) || {
+  # `pub get` runs either way — it is not a gate, the web build below needs it.
+  if [ "$SKIP_GATES" -eq 1 ]; then
+    echo "⚠ client analyze + tests SKIPPED (--skip-gates)"
+  else
+    echo "→ client analyze + tests (at $GATED_SHA, not your working tree)"
+  fi
+  CLIENT_OUT=$( (cd "$WORKTREE/client" && flutter pub get \
+    && { [ "$SKIP_GATES" -eq 1 ] || { flutter analyze && flutter test; }; }) 2>&1 ) || {
     echo "$CLIENT_OUT"; echo "✗ client checks failed — nothing deployed"; exit 1;
   }
 

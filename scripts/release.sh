@@ -67,6 +67,7 @@ DIST_APPLE="$DIST/Apple"
 FAILED=()
 TARGETS="web,windows,android,ios"
 DRY_RUN=0
+SKIP_GATES=""
 
 # The marketing site's box, which is NOT the app box — see AGENTS/DEPLOY. The
 # installer is served from www.ezbizi.com because that is where a person who
@@ -79,9 +80,12 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --only)    TARGETS="$2"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
+    # Forwarded to deploy.sh. The app builds already run with --skip-gates when
+    # web is in the same release, so this flag is entirely about the web gate.
+    --skip-gates) SKIP_GATES=--skip-gates; shift ;;
     -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown argument: $1" >&2
-       echo "usage: $0 [--only web,windows,android,ios] [--dry-run]" >&2
+       echo "usage: $0 [--only web,windows,android,ios] [--dry-run] [--skip-gates]" >&2
        exit 2 ;;
   esac
 done
@@ -246,7 +250,7 @@ GATES=--skip-gates
 if wants web; then
   echo
   echo "→ web — deploy.sh (tests, build, push, UI swap)"
-  run ./scripts/deploy.sh || FAILED+=("web")
+  run ./scripts/deploy.sh ${SKIP_GATES} || FAILED+=("web")
 else
   # Nothing has tested this commit in this run, so let build-app.sh do it.
   GATES=""

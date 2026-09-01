@@ -8,7 +8,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
-      version: '0.0.0128',
+      version: '0.0.0129',
       date: '1 Sep 2026',
       items: [
         'Automations: a rule can now send a text. Pick which of the company '
@@ -27,15 +27,6 @@ class VersionHistory {
             'of only saying it failed. Twilio always told us the reason and '
             'the app was discarding it, which is why outbound calling took '
             'four rounds to diagnose.',
-        'Phone: calling a customer no longer drops you into your own '
-            'voicemail. The first call went through; a second one to the same '
-            'person was treated as a call arriving at your line rather than '
-            'leaving it, so it was answered by your greeting instead of rung '
-            'out to them.',
-        'Phone: a call placed from a number the company does not own now says '
-            'so, instead of connecting to silence. The call appeared to be in '
-            'progress with nobody on either end - the number it claimed to be '
-            'calling from was rejected, and nothing said that out loud.',
         'Phone: the call desk gives each column a fair share of the window. '
             'The two panes holding the most - the team list and the customer '
             'thread - were fixed at their smallest, and every extra pixel went '
@@ -60,6 +51,21 @@ class VersionHistory {
             'A list that reads Connecticut, Georgia, Connecticut looks like '
             'the same place twice; they are two different ones, and it is the '
             'answer to where you are allowed to work.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0128',
+      date: '1 Sep 2026',
+      items: [
+        'Phone: calling a customer no longer drops you into your own '
+            'voicemail. The first call went through; a second one to the same '
+            'person was treated as a call arriving at your line rather than '
+            'leaving it, so it was answered by your greeting instead of rung '
+            'out to them.',
+        'Phone: a call placed from a number the company does not own now says '
+            'so, instead of connecting to silence. The call appeared to be in '
+            'progress with nobody on either end - the number it claimed to be '
+            'calling from was rejected, and nothing said that out loud.',
       ],
     ),
     VersionRelease(
