@@ -2373,7 +2373,7 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'monitoring',
                 label: 'Monitoring',
-                actions: ['view', 'specs.view'],
+                actions: ['view', 'specs.view', 'screenshots.view'],
                 triggers: [
                     new TriggerDefinition(
                         key: 'monitoring.new_device_seen',

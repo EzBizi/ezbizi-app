@@ -11,6 +11,7 @@ import 'core/files.dart';
 import 'core/module_screens.dart';
 import 'core/monitoring_heartbeat.dart';
 import 'core/permissions.dart';
+import 'core/screenshot_service.dart';
 import 'core/session.dart';
 import 'core/staff_session.dart';
 import 'core/theme.dart';
@@ -376,10 +377,19 @@ class _HomeShellState extends State<HomeShell> {
   /// exactly once, unconditionally, the moment the shell mounts.
   late final MonitoringHeartbeat _heartbeat;
 
+  /// This device's own periodic screen captures
+  /// (2026-08-31-monitoring-screenshots). Same lifecycle as [_heartbeat] and
+  /// for the same reason — see its doc comment above for why this has to be
+  /// an explicit `initState` assignment rather than a `late final` field
+  /// initializer: the identical lazy-init bug (never constructed, never
+  /// started) would otherwise apply here too.
+  late final ScreenshotService _screenshots;
+
   @override
   void initState() {
     super.initState();
     _heartbeat = MonitoringHeartbeat(widget.api);
+    _screenshots = ScreenshotService(widget.api);
     _apply(widget.address?.path);
     _stopListening = widget.address?.listen((path) {
       if (!mounted) return;
@@ -391,6 +401,7 @@ class _HomeShellState extends State<HomeShell> {
   void dispose() {
     _stopListening?.call();
     _heartbeat.dispose();
+    _screenshots.dispose();
     super.dispose();
   }
 

@@ -4,6 +4,7 @@
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
 #include <flutter/method_channel.h>
+#include <flutter/standard_method_codec.h>
 
 #include <memory>
 
@@ -35,6 +36,11 @@ class FlutterWindow : public Win32Window {
   // long as the handler should keep responding to readSpecs calls.
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       monitoring_specs_channel_;
+  // Serves com.ezbizi.app/monitoring_screenshot's captureScreenshot method.
+  // Stored as a member (rather than a local in OnCreate) so it outlives
+  // OnCreate and stays registered for the life of the window.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      monitoring_screenshot_channel_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_
