@@ -6,10 +6,40 @@
 <title>EzBizi &mdash; Suggestions, layout 2</title>
 <style>
   :root {
-    /* Read from client/lib/core/theme.dart, light mode. Not invented here. */
-    --cyan:#00AEEF; --primary:#00708F;
-    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
-    --ok:#0B8F5B; --err:#E07070; --warn:#B5730B; --deny:#A33;
+    /* PROVENANCE, because a mockup that says "the real palette" has to mean it.
+       Everything marked (theme) is measured from client/lib/core/theme.dart via
+       EzBiziTheme.light() -- not eyeballed, and nothing invented for this file.
+       What is NOT a theme token is listed at the bottom of this block, in full. */
+    --cyan:#00AEEF;     /* (theme) EzBiziTheme.accent -- brand fills carrying no text */
+    --primary:#00708F;  /* (theme) light colorScheme.primary (_cyanDeep), 5.7:1 on white */
+    --ink:#060808;      /* (theme) _ink */
+    --muted:#5B6672;    /* (theme) _muted */
+    --line:#E9EDF1;     /* (theme) EzBiziTheme.edge, light */
+    --alt:#F5F8FA;      /* (theme) _surfaceAlt */
+    --page:#fff;        /* (theme) light colorScheme.surface */
+    --ok:#0B8F5B;       /* (theme) EzBiziTheme.clockIn, light */
+    --err:#E07070;      /* (theme) EzBiziTheme.clockOut, light -- the punch-out coral.
+                           Used here only as a 4px edge and never as text: it is about
+                           3:1 on white and cannot carry a word. */
+    --deny:#BA1A1A;     /* (theme) light colorScheme.error. MEASURED, not guessed --
+                           EzBiziTheme.light().colorScheme.error prints #BA1A1A, and the
+                           same probe confirmed primary #00708F light / #00AEEF dark.
+                           6.5:1 on white and 5.7:1 on --err-c, so it is the one red here
+                           that may be text; it is also the token development_screen.dart
+                           already uses for the control-plane banner. */
+
+    /* NOT theme tokens, and this is the complete list of them.
+       The four container tints are the docs/previews house convention, carried from the
+       galleries already using them, standing in for Material's *Container roles, which a
+       flat mockup cannot compute. The app's real light errorContainer is #FFDAD6;
+       #FDECEC is the previews' lighter stand-in, kept so this gallery matches the twenty
+       beside it rather than being the one that looks different. --warn is convention too
+       -- theme.dart carries no amber -- and it is used only in this gallery's own header
+       blocks, never in the drawn app. Four greys are mockup furniture and never app
+       colour: #DDE3E8 the gallery page ground, #9AA5AF placeholder text inside a drawn
+       field, #C9D3DB the drawn keyboard slab and the dashed empty-state border, #3F4A55
+       the label printed on that keyboard. */
+    --warn:#B5730B;
     --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
   }
   * { box-sizing:border-box; }
@@ -21,9 +51,6 @@
   header.picker { background:var(--page); border:1px solid var(--line);
     border-radius:12px; padding:16px 20px; margin-bottom:16px; }
   header.picker h1 { font-size:20px; margin:0 0 4px; letter-spacing:-.3px; }
-  header.picker p { margin:0 0 12px; color:var(--muted); max-width:88ch; }
-  .opt { color:var(--ink) !important; font-size:15px; }
-  .opt b { color:var(--primary); }
   .chooser { display:flex; flex-wrap:wrap; gap:6px; align-items:center;
     padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--line);
     font-size:12px; color:var(--muted); }
@@ -34,16 +61,6 @@
   .chooser a.on { background:var(--primary); color:#fff; border-color:var(--primary); }
   .chooser .sep { width:18px; }
 
-  .locked, .ask, .found { font-size:13px; border-radius:8px; padding:10px 12px;
-    margin-bottom:12px; max-width:96ch; }
-  .locked { background:var(--info-c); } .ask { background:var(--warn-c); } .found { background:var(--err-c); }
-  .locked strong, .ask strong, .found strong { display:block; margin-bottom:4px; }
-  .locked strong { color:var(--primary); } .ask strong { color:var(--warn); } .found strong { color:var(--deny); }
-  .locked b, .ask b, .found b { display:block; margin-top:7px; }
-  .found ul { margin:6px 0 0; padding-left:20px; } .found li { margin:3px 0; }
-  .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:94ch; }
-  .caption strong { display:block; margin-bottom:4px; font-size:16px; }
-  .caption em { color:var(--deny); font-style:normal; font-weight:600; }
 
   .viewlab { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
     color:var(--muted); margin:26px 0 8px; }
@@ -165,103 +182,23 @@
       <a href="suggestions-queue-2.html">2</a>
       <a href="suggestions-queue-3.html">3</a>
     </nav>
-
-    <h1>Suggestions &mdash; layout 2 &middot; What happened to what you sent</h1>
-    <p class="opt"><b>Optimising for:</b> the return visit. The screen is a list of your
-      suggestions split by whether EzBizi has answered yet; writing a new one is one button among
-      them.</p>
-
-    <div class="locked">
-      <strong>Read from the built backend (f13dd81..f845c4e), not assumed</strong>
-      <code>GET /api/v1/suggestions</code> returns <code>{id, body, status, decision_note,
-      decided_at, created_at}</code>, <b>newest first by <code>created_at</code> and by nothing
-      else.</b> This layout's two groups &mdash; <em>Waiting on EzBizi</em> and <em>Answered</em>
-      &mdash; are the client's own arrangement over that one order, which is worth saying out
-      loud because it is the only thing here the server does not do for you.
-      <b>There is no reviewer name and no thread.</b> <code>decided_by</code> exists in the
-      table and is not in this payload, and there is exactly one note per suggestion. The answer
-      is EzBizi's, unsigned, and it cannot be replied to.
-      <b>2000 characters; an empty body is refused</b> with <em>"Write the suggestion first."</em>
-      <b>Nobody at your own organization can read these</b>, which is why the module writes no
-      audit row at all &mdash; an audit line naming the sender would publish the one thing this
-      table keeps private.
-    </div>
-
-    <div class="found">
-      <strong>The one rule that has to be visible rather than described</strong>
-      <b>Edit and Withdraw exist on a <code>new</code> one and on nothing else.</b> An author may
-      correct or take back a suggestion only while nobody has read it, and the server enforces it
-      on both endpoints. In this layout the pair lives in the <b>detail footer</b>, so the test is
-      easy to run by eye: select the New one and the footer has two buttons; select any other and
-      the same footer carries the server's sentence instead &mdash;
-      <ul>
-        <li><b>In review</b> &mdash; "Somebody at EzBizi is reading this one, so it is fixed while they do."</li>
-        <li><b>Approved / Denied</b> &mdash; "This one has been answered, so it stays as it was written."</li>
-      </ul>
-      <b>The grouping costs something here and it should be said.</b> Putting New and In review
-      together under <em>Waiting on EzBizi</em> is honest about the author's question &mdash;
-      neither has been answered &mdash; but it puts the editable one and the frozen one in the
-      same bucket. The rail row for a New one therefore carries its own line saying it can still
-      be changed, so the difference does not depend on selecting it.
-    </div>
-
-    <div class="ask">
-      <strong>Two answers, not one</strong>
-      <b>Pick a desktop number and a phone number, and they need not match.</b> There is no split
-      pane at 375px, so this layout's phone answer is the same idea in the native form: a
-      segmented Waiting / Answered filter over one list, each row opening a screen. That is a
-      real design rather than this one narrowed, and it can be chosen on its own.
-    </div>
-
-    <div class="caption">
-      <strong>2 &middot; What happened to what you sent</strong>
-      A 320px rail of your suggestions grouped by whether they have been answered, and a reading
-      pane beside it. The rail is 320 rather than the app's usual 200 because a suggestion has no
-      name &mdash; its own first line is the only thing that identifies it, and below about that
-      width every row starts "Could we..." and looks the same. <em>What it trades away:</em>
-      composing is demoted to a button, so the tab is worse at the thing it exists for and better
-      at the thing people will actually do more often. It is also the most machinery for the
-      common case of owning two suggestions, where a rail of two rows beside a mostly empty pane
-      looks like a screen waiting for content.
-    </div>
+    <h1>Suggestions &mdash; 2 &middot; What happened to what you sent</h1>
   </header>
 
   <h2 class="viewlab">Desktop &mdash; a denied one open, so the reviewer's words are in full</h2>
   <div id="denied"></div>
-  <p class="note"><b>The footer is the thing to look at.</b> Here it carries the server's own
-    sentence and no buttons. The answer is a block in the reading pane rather than a caption, at
-    full width and full size, because a decision note is somebody's considered reply and setting
-    it in 12px grey would say the opposite.</p>
 
   <h2 class="viewlab">Desktop &mdash; the New one open, which is the only one you can still change</h2>
   <div id="fresh"></div>
-  <p class="note"><b>Same footer, two buttons.</b> Edit turns the reading pane into the compose
-    box in place; Withdraw is a second press in the footer rather than a dialog &mdash; constraint
-    1, no modals, including confirm-before-destructive. Note the rail row also says
-    <em>"you can still change this"</em>, so the difference is visible without selecting
-    anything.</p>
 
   <h2 class="viewlab">Desktop &mdash; the one being read, which is frozen but not answered</h2>
   <div id="reviewing"></div>
-  <p class="note">The third state, and the one a layout is most likely to forget because it looks
-    like nothing has happened. <b>The footer carries the server's other sentence</b> &mdash;
-    somebody is reading it, so it is fixed while they do &mdash; and there is no answer block,
-    because there is no answer. The rail row for it sits under <em>Waiting on EzBizi</em> beside
-    the New one and carries no "you can still change this" line, which is the whole difference
-    between the two rows in that group.</p>
 
   <h2 class="viewlab">Desktop &mdash; the first visit</h2>
   <div id="empty"></div>
-  <p class="note">With nothing in the rail there is nothing to select, so the pane says what the
-    tab is for and opens the box. The rail keeps its Write button so the layout does not
-    rearrange itself the moment the first one lands.</p>
 
   <h2 class="viewlab">375px &mdash; designed for the phone, not narrowed</h2>
   <div class="stage" id="mobile"></div>
-  <p class="note"><b>A split pane does not exist at 375px, so the split becomes a filter.</b>
-    Waiting and Answered are the two questions somebody opens this on a phone to ask, and each
-    row opens one screen. The detail screen keeps the footer, which is where the presence and
-    absence of Edit and Withdraw stays visible on a phone.</p>
 </div>
 
 <script>

@@ -22,6 +22,22 @@ live in `docs/previews/`. Jose answers by number.
 
 ## Settled rules
 
+**A preview file is the SCREEN, not a document about the screen.** Jose, 2026-09-02:
+*"you did the screen previews wrong, I need to see the actual UI in the html."* The
+Suggestions galleries opened with about eighty lines of reasoning — a locked/found/ask
+stack and a caption arguing the trade-offs — with the drawn UI below all of it, so
+judging a layout meant reading an argument first. **It is the house style that was
+wrong, not one session's file:** every gallery in `docs/previews/` before this one is
+built that way, including the worked examples this doc points new sessions at. What the
+file carries is the numbered picker, one title line, and the drawn screens. Everything
+else moves into the report that goes to him alongside the files — it is good reasoning
+and it is not the artifact. CSS comments are exempt: they cost a reader nothing, and
+they are where a palette's provenance belongs.
+
+> The sharper version, because it generalises past previews: **the reasoning that
+> produced an artifact is not part of the artifact.** A drawing that has to be prefaced
+> is a drawing that has not been made yet.
+
 **Prominence is the module's, arrangement is design's.** Changing how loudly an
 existing component states a state — grey caption to red banner, adding a count,
 naming a state the screen left silent — stays with the module session and ships

@@ -6,10 +6,40 @@
 <title>EzBizi &mdash; Development &rsaquo; Suggestions, layout 2</title>
 <style>
   :root {
-    /* Read from client/lib/core/theme.dart, light mode. Not invented here. */
-    --cyan:#00AEEF; --primary:#00708F;
-    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
-    --ok:#0B8F5B; --err:#E07070; --warn:#B5730B; --deny:#A33;
+    /* PROVENANCE, because a mockup that says "the real palette" has to mean it.
+       Everything marked (theme) is measured from client/lib/core/theme.dart via
+       EzBiziTheme.light() -- not eyeballed, and nothing invented for this file.
+       What is NOT a theme token is listed at the bottom of this block, in full. */
+    --cyan:#00AEEF;     /* (theme) EzBiziTheme.accent -- brand fills carrying no text */
+    --primary:#00708F;  /* (theme) light colorScheme.primary (_cyanDeep), 5.7:1 on white */
+    --ink:#060808;      /* (theme) _ink */
+    --muted:#5B6672;    /* (theme) _muted */
+    --line:#E9EDF1;     /* (theme) EzBiziTheme.edge, light */
+    --alt:#F5F8FA;      /* (theme) _surfaceAlt */
+    --page:#fff;        /* (theme) light colorScheme.surface */
+    --ok:#0B8F5B;       /* (theme) EzBiziTheme.clockIn, light */
+    --err:#E07070;      /* (theme) EzBiziTheme.clockOut, light -- the punch-out coral.
+                           Used here only as a 4px edge and never as text: it is about
+                           3:1 on white and cannot carry a word. */
+    --deny:#BA1A1A;     /* (theme) light colorScheme.error. MEASURED, not guessed --
+                           EzBiziTheme.light().colorScheme.error prints #BA1A1A, and the
+                           same probe confirmed primary #00708F light / #00AEEF dark.
+                           6.5:1 on white and 5.7:1 on --err-c, so it is the one red here
+                           that may be text; it is also the token development_screen.dart
+                           already uses for the control-plane banner. */
+
+    /* NOT theme tokens, and this is the complete list of them.
+       The four container tints are the docs/previews house convention, carried from the
+       galleries already using them, standing in for Material's *Container roles, which a
+       flat mockup cannot compute. The app's real light errorContainer is #FFDAD6;
+       #FDECEC is the previews' lighter stand-in, kept so this gallery matches the twenty
+       beside it rather than being the one that looks different. --warn is convention too
+       -- theme.dart carries no amber -- and it is used only in this gallery's own header
+       blocks, never in the drawn app. Four greys are mockup furniture and never app
+       colour: #DDE3E8 the gallery page ground, #9AA5AF placeholder text inside a drawn
+       field, #C9D3DB the drawn keyboard slab and the dashed empty-state border, #3F4A55
+       the label printed on that keyboard. */
+    --warn:#B5730B;
     --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
   }
   * { box-sizing:border-box; }
@@ -21,9 +51,6 @@
   header.picker { background:var(--page); border:1px solid var(--line);
     border-radius:12px; padding:16px 20px; margin-bottom:16px; }
   header.picker h1 { font-size:20px; margin:0 0 4px; letter-spacing:-.3px; }
-  header.picker p { margin:0 0 12px; color:var(--muted); max-width:88ch; }
-  .opt { color:var(--ink) !important; font-size:15px; }
-  .opt b { color:var(--primary); }
   .chooser { display:flex; flex-wrap:wrap; gap:6px; align-items:center;
     padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--line);
     font-size:12px; color:var(--muted); }
@@ -34,17 +61,6 @@
   .chooser a.on { background:var(--primary); color:#fff; border-color:var(--primary); }
   .chooser .sep { width:18px; }
 
-  .locked, .ask, .found { font-size:13px; border-radius:8px; padding:10px 12px;
-    margin-bottom:12px; max-width:98ch; }
-  .locked { background:var(--info-c); } .ask { background:var(--warn-c); } .found { background:var(--err-c); }
-  .locked strong, .ask strong, .found strong { display:block; margin-bottom:4px; }
-  .locked strong { color:var(--primary); } .ask strong { color:var(--warn); } .found strong { color:var(--deny); }
-  .locked b, .ask b, .found b { display:block; margin-top:7px; }
-  .locked ul, .found ul { margin:6px 0 0; padding-left:20px; }
-  .locked li, .found li { margin:3px 0; }
-  .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:96ch; }
-  .caption strong { display:block; margin-bottom:4px; font-size:16px; }
-  .caption em { color:var(--deny); font-style:normal; font-weight:600; }
 
   .viewlab { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
     color:var(--muted); margin:26px 0 8px; }
@@ -65,7 +81,7 @@
   nav.side .staff { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
 
   .page { display:flex; flex-direction:column; min-width:0; min-height:0; }
-  .devbar { background:#FBECEC; color:#A33; font-size:12px; padding:8px 20px; flex:none; }
+  .devbar { background:var(--err-c); color:var(--deny); font-size:12px; padding:8px 20px; flex:none; }
   .tabs { display:flex; flex-wrap:wrap; gap:8px; padding:10px 16px;
     border-bottom:1px solid var(--line); flex:none; }
   .tabs span { padding:7px 13px; border-radius:999px; border:1px solid var(--line);
@@ -161,100 +177,20 @@
       <a class="on" href="suggestions-queue-2.html">2</a>
       <a href="suggestions-queue-3.html">3</a>
     </nav>
-
-    <h1>Development &rsaquo; Suggestions &mdash; layout 2 &middot; List beside the answer</h1>
-    <p class="opt"><b>Optimising for:</b> the quality of the reply. The queue is a rail, one
-      suggestion fills the pane, and the box you write the answer in is always on screen under
-      it.</p>
-
-    <div class="locked">
-      <strong>Read from the built backend (2f01245, f845c4e), not assumed</strong>
-      <code>GET /api/v1/staff/suggestions</code> returns <code>{id, organization,
-      organization_id, author, body, status, decision_note, decided_at, created_at}</code>.
-      <b>The order is the server's:</b> undecided, then being read, then decided &mdash; and
-      inside each band newest <code>created_at</code> first, so the decided band is ordered by
-      when a thing was <b>sent</b> rather than when it was answered.
-      <b>200 rows, no paging, no search parameter</b> (<code>limit(200)</code> and nothing else),
-      so any filtering is the client's over what already arrived, and no total may be promised.
-      <b><code>decide</code> takes reviewing, approved or denied &mdash; never <code>new</code></b>,
-      and a second decide on a decided one is accepted and replaces both the status and the note.
-      That is why the footer stays on a decided row rather than turning into a read-only card.
-      <b>Approving or denying notifies the author; marking in review does not.</b>
-      <b>The rail is 360px, and the number has a reason.</b> It carries three facts &mdash; which
-      customer, which person, and enough of the sentence to tell two rows from the same customer
-      apart. The author fallback <em>"Somebody who has since left"</em> is 27 characters on its
-      own, and organization names in this list are other people's business names rather than
-      anything we control.
-    </div>
-
-    <div class="found">
-      <strong>Three things about the decide control that came out of the code, not the drawing</strong>
-      <b>Denying with no note is refused, in the server's words:</b> <em>"Say why, in a sentence.
-      The person who sent it reads it."</em> A 422 on <code>note</code>, so it is reported at the
-      field and retried with the same button &mdash; a refused save, never a reload.
-      <b>Approving with no note is legal and should not be.</b> The notification's body is the
-      note, so an approval with an empty note sends a bell that says "Your suggestion was
-      approved" and nothing under it. The screen presses for a sentence even though the server
-      does not.
-      <b>Marking one "In review" must not offer the note field.</b> <code>decide</code> writes
-      any note it is given, and the author's payload carries <code>decision_note</code> whatever
-      the status &mdash; so a note typed beside "In review" turns up on the author's screen with
-      no notification and no explanation. "Mark in review" is therefore a bare button in all
-      three layouts.
-    </div>
-
-    <div class="ask">
-      <strong>One thing worth your ruling</strong>
-      <b>This is the seventh chip in the Development tab strip, and that strip scrolls
-      sideways.</b> <code>TabBarLike</code> is a horizontally scrolling row of chips, against the
-      house rule that chrome wraps rather than scrolls. It is a
-      <code>SingleChildScrollView(Axis.horizontal)</code>, so it scrolls <em>by construction</em>
-      rather than only when it happens to be too wide, and the six labels already there do not
-      come near fitting 375px. A seventh makes it worse rather than causing it. The fix is one line, but <code>TabBarLike</code> is
-      shared with Automations, so it changes two screens. It is drawn wrapped here. Say the word
-      and it goes in with the build.
-    </div>
-
-    <div class="caption">
-      <strong>2 &middot; List beside the answer</strong>
-      The app's own dominant idiom &mdash; a rail of rows and a pane that reads the selected one
-      &mdash; with the answer box living in the pane's footer rather than appearing when you ask
-      for it. The suggestion is on screen in full while you write the reply to it, which is the
-      whole argument for this one: these replies are read word for word by the person who sent
-      them, and the difference between a good denial and a bad one is whether the writer still
-      had the request in front of them. <em>What it trades away:</em> the rail shows about half
-      the rows layout 1 shows, so the shape of the whole queue &mdash; how many, from how many
-      customers &mdash; is never visible at once; and it is the slowest of the three when the
-      right answer to six of the nine is obvious from the first line.
-    </div>
+    <h1>Development &rsaquo; Suggestions &mdash; 2 &middot; List beside the answer</h1>
   </header>
 
   <h2 class="viewlab">Desktop &mdash; a new one selected, the answer box in the footer</h2>
   <div id="main"></div>
-  <p class="note">The rail carries the bands the server sorted into, the organization and the
-    author on every row. <b>Mark in review is a bare button beside the box</b> and says what it
-    does and does not do: it stops the author rewriting it, and tells them nothing.</p>
 
   <h2 class="viewlab">Desktop &mdash; Deny pressed with an empty note, and refused</h2>
   <div id="refused"></div>
-  <p class="note">The server's sentence at the field, the field outlined in the error colour, the
-    button unchanged. <b>Nothing here offers a reload</b> &mdash; a refused save is retried by
-    pressing the same button, and a retry that reloaded would recover the note by throwing it
-    away.</p>
 
   <h2 class="viewlab">Desktop &mdash; an answered one, and the reversal the API allows</h2>
   <div id="decided"></div>
-  <p class="note"><b>A decided row is not read-only.</b> <code>decide</code> accepts a second
-    decision and replaces the status and the note, so the footer stays, pre-filled with what was
-    said, and the buttons read as a change rather than a first answer. The existing answer is
-    also shown in the pane above, where the author sees it, so nobody rewrites a note without
-    seeing the one they are replacing.</p>
 
   <h2 class="viewlab">375px &mdash; designed for the phone, not narrowed</h2>
   <div class="stage" id="mobile"></div>
-  <p class="note"><b>There is no split at 375px, so the rail is the screen and the pane is a
-    push.</b> The answer screen keeps the suggestion above the box &mdash; the one thing this
-    layout exists to preserve &mdash; and the buttons dock above the keyboard.</p>
 </div>
 
 <script>
@@ -281,7 +217,11 @@ const ROWS = [
   { st:'approved', org:'Hearth & Home Services', who:'Somebody who has since left',
     sent:'4 August', ans:'8 August',
     body:"Let us print a route sheet for the day. Half our techs will not use a phone for the schedule and never will.",
-    note:"Approved. Jobs prints a day per tech with addresses, windows and access notes." }
+    note:"Approved. Jobs prints a day per tech with addresses, windows and access notes." },
+  { st:'approved', org:'Unknown', who:'Somebody who has since left',
+    sent:'22 July', ans:'24 July',
+    body:"Could the invoice list total the month at the bottom? We reconcile by hand every month and the number is sitting right there.",
+    note:"Approved -- the month total sits at the foot of the invoice list, and it follows whatever filter you have on rather than always totalling everything." }
 ];
 
 const LABEL = { new:'New', reviewing:'In review', approved:'Approved', denied:'Denied' };

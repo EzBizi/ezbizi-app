@@ -6,13 +6,40 @@
 <title>EzBizi &mdash; Suggestions, layout 1</title>
 <style>
   :root {
-    /* Read from client/lib/core/theme.dart, light mode. Not invented here. */
-    --cyan:#00AEEF;     /* EzBiziTheme.accent -- brand fills that carry no text */
-    --primary:#00708F;  /* light colorScheme.primary (_cyanDeep), 5.7:1 on white */
-    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
-    --ok:#0B8F5B;       /* EzBiziTheme.clockIn, light */
-    --err:#E07070;      /* EzBiziTheme.clockOut, light */
-    --warn:#B5730B; --deny:#A33;
+    /* PROVENANCE, because a mockup that says "the real palette" has to mean it.
+       Everything marked (theme) is measured from client/lib/core/theme.dart via
+       EzBiziTheme.light() -- not eyeballed, and nothing invented for this file.
+       What is NOT a theme token is listed at the bottom of this block, in full. */
+    --cyan:#00AEEF;     /* (theme) EzBiziTheme.accent -- brand fills carrying no text */
+    --primary:#00708F;  /* (theme) light colorScheme.primary (_cyanDeep), 5.7:1 on white */
+    --ink:#060808;      /* (theme) _ink */
+    --muted:#5B6672;    /* (theme) _muted */
+    --line:#E9EDF1;     /* (theme) EzBiziTheme.edge, light */
+    --alt:#F5F8FA;      /* (theme) _surfaceAlt */
+    --page:#fff;        /* (theme) light colorScheme.surface */
+    --ok:#0B8F5B;       /* (theme) EzBiziTheme.clockIn, light */
+    --err:#E07070;      /* (theme) EzBiziTheme.clockOut, light -- the punch-out coral.
+                           Used here only as a 4px edge and never as text: it is about
+                           3:1 on white and cannot carry a word. */
+    --deny:#BA1A1A;     /* (theme) light colorScheme.error. MEASURED, not guessed --
+                           EzBiziTheme.light().colorScheme.error prints #BA1A1A, and the
+                           same probe confirmed primary #00708F light / #00AEEF dark.
+                           6.5:1 on white and 5.7:1 on --err-c, so it is the one red here
+                           that may be text; it is also the token development_screen.dart
+                           already uses for the control-plane banner. */
+
+    /* NOT theme tokens, and this is the complete list of them.
+       The four container tints are the docs/previews house convention, carried from the
+       galleries already using them, standing in for Material's *Container roles, which a
+       flat mockup cannot compute. The app's real light errorContainer is #FFDAD6;
+       #FDECEC is the previews' lighter stand-in, kept so this gallery matches the twenty
+       beside it rather than being the one that looks different. --warn is convention too
+       -- theme.dart carries no amber -- and it is used only in this gallery's own header
+       blocks, never in the drawn app. Four greys are mockup furniture and never app
+       colour: #DDE3E8 the gallery page ground, #9AA5AF placeholder text inside a drawn
+       field, #C9D3DB the drawn keyboard slab and the dashed empty-state border, #3F4A55
+       the label printed on that keyboard. */
+    --warn:#B5730B;
     --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
   }
   * { box-sizing:border-box; }
@@ -24,9 +51,6 @@
   header.picker { background:var(--page); border:1px solid var(--line);
     border-radius:12px; padding:16px 20px; margin-bottom:16px; }
   header.picker h1 { font-size:20px; margin:0 0 4px; letter-spacing:-.3px; }
-  header.picker p { margin:0 0 12px; color:var(--muted); max-width:88ch; }
-  .opt { color:var(--ink) !important; font-size:15px; }
-  .opt b { color:var(--primary); }
   .chooser { display:flex; flex-wrap:wrap; gap:6px; align-items:center;
     padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--line);
     font-size:12px; color:var(--muted); }
@@ -37,17 +61,6 @@
   .chooser a.on { background:var(--primary); color:#fff; border-color:var(--primary); }
   .chooser .sep { width:18px; }
 
-  .locked, .ask, .found { font-size:13px; border-radius:8px; padding:10px 12px;
-    margin-bottom:12px; max-width:96ch; }
-  .locked { background:var(--info-c); } .ask { background:var(--warn-c); } .found { background:var(--err-c); }
-  .locked strong, .ask strong, .found strong { display:block; margin-bottom:4px; }
-  .locked strong { color:var(--primary); } .ask strong { color:var(--warn); } .found strong { color:var(--deny); }
-  .locked b, .ask b, .found b { display:block; margin-top:7px; }
-  .locked ul, .found ul { margin:6px 0 0; padding-left:20px; }
-  .locked li, .found li { margin:3px 0; }
-  .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:94ch; }
-  .caption strong { display:block; margin-bottom:4px; font-size:16px; }
-  .caption em { color:var(--deny); font-style:normal; font-weight:600; }
 
   .viewlab { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
     color:var(--muted); margin:26px 0 8px; }
@@ -154,99 +167,20 @@
       <a href="suggestions-queue-2.html">2</a>
       <a href="suggestions-queue-3.html">3</a>
     </nav>
-
-    <h1>Suggestions &mdash; layout 1 &middot; Compose first</h1>
-    <p class="opt"><b>Optimising for:</b> the act of sending one. The box is the screen, and
-      everything under it is the receipt.</p>
-
-    <div class="locked">
-      <strong>Read from the built backend (f13dd81..f845c4e), not assumed</strong>
-      <code>GET /api/v1/suggestions</code> returns <code>{id, body, status, decision_note,
-      decided_at, created_at}</code> and nothing else, <b>newest first by
-      <code>created_at</code> &mdash; never by status.</b> A decided one sits above one still in
-      review whenever it was sent later, which is exactly what the sample below shows. Any
-      grouping by state is the client doing it, not the endpoint.
-      <b>There is no reviewer name to draw.</b> <code>decided_by</code> is stored and is
-      <em>not</em> in the author's payload, so the answer is EzBizi's word rather than a named
-      person's. Drawing "Rob at EzBizi" would be drawing a field that never arrives.
-      <b>2000 characters, and an empty body is refused</b> with <em>"Write the suggestion
-      first."</em>
-      <b>Nobody at your own organization can read this</b> &mdash; not an administrator, not the
-      owner. <code>SuggestionsController</code> filters <code>user_id</code> on every path
-      <em>in addition to</em> the tenant scope, and the module deliberately writes no audit row,
-      because an audit line saying "Marisol sent a suggestion" would publish the existence,
-      timing and frequency of every private one to exactly the people it is kept from. That fact
-      belongs on the screen: a channel nobody believes is private is a channel nobody uses.
-    </div>
-
-    <div class="found">
-      <strong>The one rule that has to be visible rather than described</strong>
-      <b>Edit and Withdraw exist on a <code>new</code> one and on nothing else.</b> The server
-      refuses both the moment somebody starts reading &mdash; an author may correct or take back
-      a suggestion only while nobody has read it. So the three later states must not merely lack
-      the buttons; they have to <em>say</em> why the buttons are gone, or the screen looks broken
-      to somebody who used them yesterday. In all three layouts the footer row survives and the
-      buttons are replaced by the sentence:
-      <ul>
-        <li><b>In review</b> &mdash; "Somebody at EzBizi is reading this one, so it is fixed while they do."</li>
-        <li><b>Approved / Denied</b> &mdash; "This one has been answered, so it stays as it was written."</li>
-      </ul>
-      Both are the server's own words from <code>SuggestionsController::frozen()</code>, which
-      returns them as a 422 to anybody who reaches the endpoint another way.
-    </div>
-
-    <div class="ask">
-      <strong>Two answers, not one</strong>
-      <b>Pick a desktop number and a phone number, and they need not match.</b> Choosing desktop
-      1 does not choose phone 1: the 375px frames in each file are designed for the phone rather
-      than narrowed from the desktop, so "desktop 1, phone 3" is a legitimate answer and may be
-      the right one. Layout 3's phone has the strongest keyboard story; layout 1's desktop has
-      the strongest first-visit story.
-    </div>
-
-    <div class="caption">
-      <strong>1 &middot; Compose first</strong>
-      The box is at the top, always, at full width, with the counter and Send under it. Below it
-      one heading and a plain stack of what you have sent, newest first, each carrying its state
-      and &mdash; where there is one &mdash; the answer. It reads as a suggestion box, which is
-      what it is, and the first visit needs no explaining because the thing you came to do is the
-      first thing on the screen and is already open. <em>What it trades away:</em> once you have
-      twenty of them, the box you use twice a year owns the best space on the screen forever, and
-      there is no way to see only the ones still waiting &mdash; you scroll. It also pushes the
-      newest answer below the fold on a short window, and that answer is the one thing a
-      returning visitor came for.
-    </div>
+    <h1>Suggestions &mdash; 1 &middot; Compose first</h1>
   </header>
 
   <h2 class="viewlab">Desktop &mdash; your suggestions, all four states</h2>
   <div id="full"></div>
-  <p class="note"><b>Look at the footer row of each card.</b> Edit and Withdraw are on the New
-    one. On the other three the same row is still there and carries a sentence instead &mdash;
-    the absence is stated, not silent. <b>And look at the order:</b> New, Approved, In review,
-    Denied. That is <code>created_at</code> descending and nothing else, which is what the
-    endpoint returns.</p>
 
   <h2 class="viewlab">Desktop &mdash; the first visit, which is what most people will see</h2>
   <div id="empty"></div>
-  <p class="note">No list, so the heading and the explanation stand where the list would be and
-    the box is open under them. Send is outlined rather than filled while the box is empty
-    &mdash; not faded: <b>the label stays at full contrast</b>, because the rule against fading
-    an element that carries text applies hardest to the state that has something to say about
-    itself.</p>
 
   <h2 class="viewlab">Desktop &mdash; correcting one, in place</h2>
   <div id="editing"></div>
-  <p class="note">Edit turns the card's body into the same box, with the same counter and the
-    same limit, and a Cancel beside Save. <b>No dialog</b> &mdash; constraint 1, and there is
-    nothing a panel would do here that the row the text already occupies does not.</p>
 
   <h2 class="viewlab">375px &mdash; designed for the phone, not narrowed</h2>
   <div class="stage" id="mobile"></div>
-  <p class="note"><b>Composing is its own screen, and Send lives in the bar.</b> On a phone the
-    keyboard takes roughly half the screen, so a Send under a text box sits behind the keyboard
-    at the exact moment you are typing into it. The list screen therefore leads with one wide
-    button rather than an open box; the box is one tap away and, once open, has nothing else on
-    it.</p>
 </div>
 
 <script>

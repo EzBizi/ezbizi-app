@@ -6,10 +6,40 @@
 <title>EzBizi &mdash; Development &rsaquo; Suggestions, layout 1</title>
 <style>
   :root {
-    /* Read from client/lib/core/theme.dart, light mode. Not invented here. */
-    --cyan:#00AEEF; --primary:#00708F;
-    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
-    --ok:#0B8F5B; --err:#E07070; --warn:#B5730B; --deny:#A33;
+    /* PROVENANCE, because a mockup that says "the real palette" has to mean it.
+       Everything marked (theme) is measured from client/lib/core/theme.dart via
+       EzBiziTheme.light() -- not eyeballed, and nothing invented for this file.
+       What is NOT a theme token is listed at the bottom of this block, in full. */
+    --cyan:#00AEEF;     /* (theme) EzBiziTheme.accent -- brand fills carrying no text */
+    --primary:#00708F;  /* (theme) light colorScheme.primary (_cyanDeep), 5.7:1 on white */
+    --ink:#060808;      /* (theme) _ink */
+    --muted:#5B6672;    /* (theme) _muted */
+    --line:#E9EDF1;     /* (theme) EzBiziTheme.edge, light */
+    --alt:#F5F8FA;      /* (theme) _surfaceAlt */
+    --page:#fff;        /* (theme) light colorScheme.surface */
+    --ok:#0B8F5B;       /* (theme) EzBiziTheme.clockIn, light */
+    --err:#E07070;      /* (theme) EzBiziTheme.clockOut, light -- the punch-out coral.
+                           Used here only as a 4px edge and never as text: it is about
+                           3:1 on white and cannot carry a word. */
+    --deny:#BA1A1A;     /* (theme) light colorScheme.error. MEASURED, not guessed --
+                           EzBiziTheme.light().colorScheme.error prints #BA1A1A, and the
+                           same probe confirmed primary #00708F light / #00AEEF dark.
+                           6.5:1 on white and 5.7:1 on --err-c, so it is the one red here
+                           that may be text; it is also the token development_screen.dart
+                           already uses for the control-plane banner. */
+
+    /* NOT theme tokens, and this is the complete list of them.
+       The four container tints are the docs/previews house convention, carried from the
+       galleries already using them, standing in for Material's *Container roles, which a
+       flat mockup cannot compute. The app's real light errorContainer is #FFDAD6;
+       #FDECEC is the previews' lighter stand-in, kept so this gallery matches the twenty
+       beside it rather than being the one that looks different. --warn is convention too
+       -- theme.dart carries no amber -- and it is used only in this gallery's own header
+       blocks, never in the drawn app. Four greys are mockup furniture and never app
+       colour: #DDE3E8 the gallery page ground, #9AA5AF placeholder text inside a drawn
+       field, #C9D3DB the drawn keyboard slab and the dashed empty-state border, #3F4A55
+       the label printed on that keyboard. */
+    --warn:#B5730B;
     --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
   }
   * { box-sizing:border-box; }
@@ -21,9 +51,6 @@
   header.picker { background:var(--page); border:1px solid var(--line);
     border-radius:12px; padding:16px 20px; margin-bottom:16px; }
   header.picker h1 { font-size:20px; margin:0 0 4px; letter-spacing:-.3px; }
-  header.picker p { margin:0 0 12px; color:var(--muted); max-width:88ch; }
-  .opt { color:var(--ink) !important; font-size:15px; }
-  .opt b { color:var(--primary); }
   .chooser { display:flex; flex-wrap:wrap; gap:6px; align-items:center;
     padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--line);
     font-size:12px; color:var(--muted); }
@@ -34,17 +61,6 @@
   .chooser a.on { background:var(--primary); color:#fff; border-color:var(--primary); }
   .chooser .sep { width:18px; }
 
-  .locked, .ask, .found { font-size:13px; border-radius:8px; padding:10px 12px;
-    margin-bottom:12px; max-width:98ch; }
-  .locked { background:var(--info-c); } .ask { background:var(--warn-c); } .found { background:var(--err-c); }
-  .locked strong, .ask strong, .found strong { display:block; margin-bottom:4px; }
-  .locked strong { color:var(--primary); } .ask strong { color:var(--warn); } .found strong { color:var(--deny); }
-  .locked b, .ask b, .found b { display:block; margin-top:7px; }
-  .locked ul, .found ul { margin:6px 0 0; padding-left:20px; }
-  .locked li, .found li { margin:3px 0; }
-  .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:96ch; }
-  .caption strong { display:block; margin-bottom:4px; font-size:16px; }
-  .caption em { color:var(--deny); font-style:normal; font-weight:600; }
 
   .viewlab { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
     color:var(--muted); margin:26px 0 8px; }
@@ -65,7 +81,7 @@
   nav.side .staff { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
 
   .page { display:flex; flex-direction:column; min-width:0; }
-  .devbar { background:#FBECEC; color:#A33; font-size:12px; padding:8px 20px; }
+  .devbar { background:var(--err-c); color:var(--deny); font-size:12px; padding:8px 20px; }
   .tabs { display:flex; flex-wrap:wrap; gap:8px; padding:10px 16px;
     border-bottom:1px solid var(--line); }
   .tabs span { padding:7px 13px; border-radius:999px; border:1px solid var(--line);
@@ -167,105 +183,17 @@
       <a href="suggestions-queue-2.html">2</a>
       <a href="suggestions-queue-3.html">3</a>
     </nav>
-
-    <h1>Development &rsaquo; Suggestions &mdash; layout 1 &middot; A worklist you go down</h1>
-    <p class="opt"><b>Optimising for:</b> getting to the bottom of the queue. One table in the
-      server's order, one line of each suggestion, and the row opens where it sits to be
-      answered.</p>
-
-    <div class="locked">
-      <strong>Read from the built backend (2f01245, f845c4e), not assumed</strong>
-      <code>GET /api/v1/staff/suggestions</code> returns <code>{id, organization,
-      organization_id, author, body, status, decision_note, decided_at, created_at}</code>.
-      <b>The order is the server's and a design must not re-sort it:</b> undecided first, then
-      being read, then everything decided &mdash; and <em>inside</em> each band, newest
-      <code>created_at</code> first. So the decided band is ordered by when a thing was
-      <b>sent</b>, not when it was answered: today's answer does not come to the top of it.
-      <b>200 rows, no paging, no search parameter.</b> <code>limit(200)</code> with nothing after
-      it, so a design must not promise a total, a page 2, or a server-side filter. Filtering is
-      the client's, over what has already arrived.
-      <b><code>decide</code> takes reviewing, approved or denied.</b> Never <code>new</code>
-      &mdash; you cannot put one back and hand the author the right to rewrite text you have
-      read. A second decide on a decided one <em>is</em> accepted and replaces both the status and
-      the note, so <b>the control has to stay reachable on a decided row</b>.
-      <b>Approving or denying writes the author a notification. Marking it in review does
-      not</b>, deliberately &mdash; nothing has been decided yet.
-      <b>Two fallbacks that will appear in production:</b> the author reads
-      <em>"Somebody who has since left"</em> when the user row is gone, and the organization reads
-      <em>"Unknown"</em>. Both are long, and both are drawn below rather than assumed away.
-    </div>
-
-    <div class="found">
-      <strong>Three things about the decide control that came out of the code, not the drawing</strong>
-      <b>Denying with no note is refused, and the sentence is the server's:</b> <em>"Say why, in
-      a sentence. The person who sent it reads it."</em> It is a 422 on the <code>note</code>
-      field, so it is reported <b>at the field</b> and retried with the same button &mdash; a
-      refused save, never a reload.
-      <b>Approving with no note is legal, and it should not be.</b> The notification's body is
-      the note, so an approval with an empty note sends somebody a bell that says "Your
-      suggestion was approved" and nothing else. The server permits it; the screen should press
-      for a sentence anyway, which is why Approve here carries the same field and the same
-      prompt as Deny.
-      <b>Marking one "In review" must not offer the note field.</b> <code>decide</code> writes
-      whatever note it is given into <code>decision_note</code>, and the author's own payload
-      carries <code>decision_note</code> <em>whatever the status is</em> &mdash; so a note typed
-      beside "In review" appears on the author's screen with no notification and no explanation.
-      All three layouts therefore make "Mark in review" a bare button.
-    </div>
-
-    <div class="ask">
-      <strong>One thing worth your ruling, and it is not about this screen alone</strong>
-      <b>This is the seventh chip in the Development tab strip.</b>
-      <code>TabBarLike</code> puts its chips in a horizontally scrolling row, and the house rule
-      is that chrome wraps rather than scrolls &mdash; a tab strip has no natural width, so
-      making somebody drag it sideways is spending a gesture on a list of labels. It is a
-      <code>SingleChildScrollView(Axis.horizontal)</code>, so it scrolls <em>by
-      construction</em> rather than only when it happens to be too wide, and the six labels
-      already there do not come near fitting 375px. A seventh makes it worse rather than
-      causing it.
-      <b>The fix is one line and it is not this module's file</b> &mdash;
-      <code>TabBarLike</code> is shared with Automations, so changing it changes two screens.
-      Layout 1's drawing shows the strip <em>wrapped</em>, which is what it would look like
-      fixed. Say the word and it goes in with the build; otherwise the seventh chip lands in a
-      strip that scrolls.
-    </div>
-
-    <div class="caption">
-      <strong>1 &middot; A worklist you go down</strong>
-      One table, the server's three bands as headings, one line of each suggestion beside its
-      organization and author, and a row that opens in place to be read and answered. It is the
-      densest of the three &mdash; nine rows fit above the fold where the other two show one or
-      four &mdash; and it is the only one where the shape of the whole queue is a glance: how
-      many are waiting, how many customers they came from, whether one organization is sending
-      everything. <em>What it trades away:</em> a suggestion is free text and a table row is one
-      line of it, so triage happens on a truncated sentence and the useful half is often the
-      second one. Opening a row also pushes everything below it down the page, so working the
-      queue means the rows keep moving.
-    </div>
+    <h1>Development &rsaquo; Suggestions &mdash; 1 &middot; A worklist you go down</h1>
   </header>
 
   <h2 class="viewlab">Desktop &mdash; the queue, with one row open to be answered</h2>
   <div id="main"></div>
-  <p class="note"><b>The bands are the server's order made visible</b> &mdash; Waiting, Being
-    read, Answered &mdash; not a client-side sort. Every row carries the organization and the
-    author because this list spans every customer and "who is asking" changes what the answer
-    should be. <b>The decided rows keep a Change-the-answer button</b>, because
-    <code>decide</code> accepts a second decision and a reversal is a real event.</p>
 
   <h2 class="viewlab">Desktop &mdash; Deny pressed with an empty note, and refused</h2>
   <div id="refused"></div>
-  <p class="note">The server's own sentence, at the field it belongs to, with the field outlined
-    in the error colour and the button unchanged so the retry is the same press. <b>No reload
-    anywhere near it:</b> this is a refused save, and offering to retry it by reloading would
-    offer to recover the note by discarding it.</p>
 
   <h2 class="viewlab">375px &mdash; designed for the phone, not narrowed</h2>
   <div class="stage" id="mobile"></div>
-  <p class="note"><b>A nine-column table cannot narrow, so on the phone it stops being a table.</b>
-    Each row becomes a card carrying the three things triage needs &mdash; state, who, and the
-    first two lines &mdash; and answering is its own screen with the actions docked above the
-    keyboard, because a note is typed and Approve must not be behind the keyboard while you type
-    it.</p>
 </div>
 
 <script>
@@ -292,7 +220,11 @@ const ROWS = [
   { st:'approved', org:'Hearth & Home Services', who:'Somebody who has since left',
     sent:'4 August', ans:'8 August',
     body:"Let us print a route sheet for the day. Half our techs will not use a phone for the schedule and never will.",
-    note:"Approved. Jobs prints a day per tech with addresses, windows and access notes." }
+    note:"Approved. Jobs prints a day per tech with addresses, windows and access notes." },
+  { st:'approved', org:'Unknown', who:'Somebody who has since left',
+    sent:'22 July', ans:'24 July',
+    body:"Could the invoice list total the month at the bottom? We reconcile by hand every month and the number is sitting right there.",
+    note:"Approved -- the month total sits at the foot of the invoice list, and it follows whatever filter you have on rather than always totalling everything." }
 ];
 
 const LABEL = { new:'New', reviewing:'In review', approved:'Approved', denied:'Denied' };
@@ -321,7 +253,7 @@ const CHROME = (body) => `
     ${TABS}
     <div class="body">
       <div class="qhead"><h2>Suggestions</h2>
-        <p>Everything every customer has asked for. 9 of at most 200 loaded.</p></div>
+        <p>Everything every customer has asked for. 10 of at most 200 loaded.</p></div>
       ${body}
     </div></div></div>`;
 

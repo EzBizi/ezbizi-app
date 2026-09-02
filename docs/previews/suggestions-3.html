@@ -6,10 +6,40 @@
 <title>EzBizi &mdash; Suggestions, layout 3</title>
 <style>
   :root {
-    /* Read from client/lib/core/theme.dart, light mode. Not invented here. */
-    --cyan:#00AEEF; --primary:#00708F;
-    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
-    --ok:#0B8F5B; --err:#E07070; --warn:#B5730B; --deny:#A33;
+    /* PROVENANCE, because a mockup that says "the real palette" has to mean it.
+       Everything marked (theme) is measured from client/lib/core/theme.dart via
+       EzBiziTheme.light() -- not eyeballed, and nothing invented for this file.
+       What is NOT a theme token is listed at the bottom of this block, in full. */
+    --cyan:#00AEEF;     /* (theme) EzBiziTheme.accent -- brand fills carrying no text */
+    --primary:#00708F;  /* (theme) light colorScheme.primary (_cyanDeep), 5.7:1 on white */
+    --ink:#060808;      /* (theme) _ink */
+    --muted:#5B6672;    /* (theme) _muted */
+    --line:#E9EDF1;     /* (theme) EzBiziTheme.edge, light */
+    --alt:#F5F8FA;      /* (theme) _surfaceAlt */
+    --page:#fff;        /* (theme) light colorScheme.surface */
+    --ok:#0B8F5B;       /* (theme) EzBiziTheme.clockIn, light */
+    --err:#E07070;      /* (theme) EzBiziTheme.clockOut, light -- the punch-out coral.
+                           Used here only as a 4px edge and never as text: it is about
+                           3:1 on white and cannot carry a word. */
+    --deny:#BA1A1A;     /* (theme) light colorScheme.error. MEASURED, not guessed --
+                           EzBiziTheme.light().colorScheme.error prints #BA1A1A, and the
+                           same probe confirmed primary #00708F light / #00AEEF dark.
+                           6.5:1 on white and 5.7:1 on --err-c, so it is the one red here
+                           that may be text; it is also the token development_screen.dart
+                           already uses for the control-plane banner. */
+
+    /* NOT theme tokens, and this is the complete list of them.
+       The four container tints are the docs/previews house convention, carried from the
+       galleries already using them, standing in for Material's *Container roles, which a
+       flat mockup cannot compute. The app's real light errorContainer is #FFDAD6;
+       #FDECEC is the previews' lighter stand-in, kept so this gallery matches the twenty
+       beside it rather than being the one that looks different. --warn is convention too
+       -- theme.dart carries no amber -- and it is used only in this gallery's own header
+       blocks, never in the drawn app. Four greys are mockup furniture and never app
+       colour: #DDE3E8 the gallery page ground, #9AA5AF placeholder text inside a drawn
+       field, #C9D3DB the drawn keyboard slab and the dashed empty-state border, #3F4A55
+       the label printed on that keyboard. */
+    --warn:#B5730B;
     --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
   }
   * { box-sizing:border-box; }
@@ -21,9 +51,6 @@
   header.picker { background:var(--page); border:1px solid var(--line);
     border-radius:12px; padding:16px 20px; margin-bottom:16px; }
   header.picker h1 { font-size:20px; margin:0 0 4px; letter-spacing:-.3px; }
-  header.picker p { margin:0 0 12px; color:var(--muted); max-width:88ch; }
-  .opt { color:var(--ink) !important; font-size:15px; }
-  .opt b { color:var(--primary); }
   .chooser { display:flex; flex-wrap:wrap; gap:6px; align-items:center;
     padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--line);
     font-size:12px; color:var(--muted); }
@@ -34,16 +61,6 @@
   .chooser a.on { background:var(--primary); color:#fff; border-color:var(--primary); }
   .chooser .sep { width:18px; }
 
-  .locked, .ask, .found { font-size:13px; border-radius:8px; padding:10px 12px;
-    margin-bottom:12px; max-width:96ch; }
-  .locked { background:var(--info-c); } .ask { background:var(--warn-c); } .found { background:var(--err-c); }
-  .locked strong, .ask strong, .found strong { display:block; margin-bottom:4px; }
-  .locked strong { color:var(--primary); } .ask strong { color:var(--warn); } .found strong { color:var(--deny); }
-  .locked b, .ask b, .found b { display:block; margin-top:7px; }
-  .found ul { margin:6px 0 0; padding-left:20px; } .found li { margin:3px 0; }
-  .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:94ch; }
-  .caption strong { display:block; margin-bottom:4px; font-size:16px; }
-  .caption em { color:var(--deny); font-style:normal; font-weight:600; }
 
   .viewlab { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
     color:var(--muted); margin:26px 0 8px; }
@@ -160,94 +177,17 @@
       <a href="suggestions-queue-2.html">2</a>
       <a href="suggestions-queue-3.html">3</a>
     </nav>
-
-    <h1>Suggestions &mdash; layout 3 &middot; Your correspondence with EzBizi</h1>
-    <p class="opt"><b>Optimising for:</b> the answer reading as somebody's words. One stream in
-      time order, your suggestions on one side and EzBizi's replies under the one they answer,
-      with the box docked at the bottom.</p>
-
-    <div class="locked">
-      <strong>Read from the built backend (f13dd81..f845c4e), not assumed</strong>
-      <code>GET /api/v1/suggestions</code> returns <code>{id, body, status, decision_note,
-      decided_at, created_at}</code>, <b>newest first.</b> This layout draws them <em>oldest
-      first</em> and scrolls to the bottom, which is the one place a stream must invert the
-      endpoint &mdash; worth saying because it is a reverse, not a sort, and reversing a list you
-      later paginate is where this kind of screen goes wrong.
-      <b>The answer is unsigned.</b> <code>decided_by</code> is stored and is not in the author's
-      payload, so a reply bubble may say "EzBizi" and must not say a name. It also carries
-      <code>decided_at</code>, which is why the reply can be dated.
-      <b>2000 characters; an empty body is refused</b> with <em>"Write the suggestion first."</em>
-      <b>Nobody at your own organization can read these</b>, and the module writes no audit row
-      for exactly that reason.
-    </div>
-
-    <div class="found">
-      <strong>The honest problem with this idiom, stated rather than hidden</strong>
-      <b>It looks like you can reply, and you cannot.</b> There is one note per suggestion and no
-      endpoint that adds to it &mdash; the box at the bottom starts a <em>new</em> suggestion,
-      always. Three things in this drawing exist to keep that from misleading anybody: the box is
-      labelled <em>"Send EzBizi another suggestion"</em> rather than "Reply"; it sits under a rule
-      with its own label instead of tucking against the last reply; and the server's own sentence
-      &mdash; <em>"Send another if there is more to say"</em> &mdash; is printed under the reply
-      it belongs to.
-      <b>And the rule that must be visible rather than described:</b> Edit and Withdraw are under
-      the <code>new</code> one and under nothing else, because an author may correct or take back
-      a suggestion only while nobody has read it. In a stream that reads bottom-up this is
-      naturally right: the newest thing is at the bottom, next to the box, and it is usually the
-      only editable one anyway.
-      <ul>
-        <li><b>In review</b> &mdash; "Somebody at EzBizi is reading this one, so it is fixed while they do."</li>
-        <li><b>Approved / Denied</b> &mdash; "This one has been answered, so it stays as it was written."</li>
-      </ul>
-    </div>
-
-    <div class="ask">
-      <strong>Two answers, not one</strong>
-      <b>Pick a desktop number and a phone number, and they need not match.</b> This layout's
-      phone frame is the one worth a hard look even if the desktop goes elsewhere: a docked
-      composer above the keyboard is the one arrangement in this gallery where the keyboard is
-      solved by the idiom instead of worked around, because every messaging app on the phone
-      already does it and the muscle memory is free.
-    </div>
-
-    <div class="caption">
-      <strong>3 &middot; Your correspondence with EzBizi</strong>
-      Everything in one stream, oldest at the top, your suggestions offset one way and EzBizi's
-      answers offset the other, with the box docked at the bottom of the pane rather than floating
-      at the top of the page. It makes the decision note what it actually is &mdash; a person
-      writing back &mdash; which is the thing a denied suggestion lives or dies on, and it is the
-      only layout where sending another after a denial is a single motion. <em>What it trades
-      away:</em> it promises a conversation the backend does not have, so the wording has to work
-      hard against the shape; and it is the worst of the three at "what happened to the one about
-      the gate codes", because a stream has no index and nothing to filter. At forty suggestions
-      it is a long scroll with no way in.
-    </div>
+    <h1>Suggestions &mdash; 3 &middot; Your correspondence with EzBizi</h1>
   </header>
 
   <h2 class="viewlab">Desktop &mdash; the stream, all four states, scrolled to the bottom</h2>
   <div id="full"></div>
-  <p class="note"><b>Read it bottom to top and the presence/absence pair is the first thing you
-    meet.</b> Edit and Withdraw sit under the newest one, which is the New one. Above it the In
-    review one carries a line saying it is fixed while somebody reads it, and both answered ones
-    carry the sentence saying they stay as they were written. Nothing else offers a control.
-    <b>Note the text alignment:</b> the bubbles are offset by margin, never by
-    <code>text-align</code>. A 2000-character suggestion set ragged-left would be the most
-    unreadable text in the app.</p>
 
   <h2 class="viewlab">Desktop &mdash; the first visit</h2>
   <div id="empty"></div>
-  <p class="note">An empty stream is the one case this layout handles best: there is nothing to
-    scroll past, the explanation sits in the middle of the space, and the box is already at the
-    bottom where it will always be. Send is outlined rather than filled while there is nothing to
-    send &mdash; outlined, not faded.</p>
 
   <h2 class="viewlab">375px &mdash; designed for the phone, not narrowed</h2>
   <div class="stage" id="mobile"></div>
-  <p class="note"><b>This is the phone answer the other two do not have.</b> The composer docks
-    above the keyboard, so Send is reachable while you type, which is the phone-only problem a
-    single scrolling form always has to solve. The second frame shows it with the keyboard up:
-    the last exchange stays on screen, the composer sits on the keyboard, and nothing you typed is
-    behind anything.</p>
 </div>
 
 <script>
