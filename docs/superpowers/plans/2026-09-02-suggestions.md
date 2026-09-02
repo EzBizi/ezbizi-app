@@ -770,15 +770,35 @@ class StaffSuggestionsTest extends TestCase
         ])->assertOk()->json('token');
     }
 
+    /**
+     * Rows are built through the model inside inTenant(), NOT by signing in and
+     * posting.
+     *
+     * `signedInAs` calls Sanctum::actingAs, which resolves the guard for the
+     * rest of the test — a later `withToken` is then ignored, and the staff
+     * call authenticates as the tenant administrator and 403s. The failure
+     * reads as a broken `staff` middleware rather than as a test-harness
+     * problem. StaffPhoneRequestsTest::pendingRequest avoids it the same way.
+     *
+     * The reverse order is safe: `signedInAs` calls forgetGuards() first, so a
+     * tenant call AFTER a staff call works.
+     */
+    private function suggestionIn(array $t, string $body): Suggestion
+    {
+        return $this->inTenant($t['org'], fn () => Suggestion::create([
+            'user_id' => $t['admin']->id,
+            'body' => $body,
+            'status' => Suggestion::STATUS_NEW,
+        ]));
+    }
+
     public function test_the_queue_spans_organizations(): void
     {
         $alpha = $this->provisionTenant('Alpha');
         $beta = $this->provisionTenant('Beta', 'beta@example.test');
 
-        $this->signedInAs($alpha['admin'])
-            ->postJson('/api/v1/suggestions', ['body' => 'From Alpha.'])->assertCreated();
-        $this->signedInAs($beta['admin'])
-            ->postJson('/api/v1/suggestions', ['body' => 'From Beta.'])->assertCreated();
+        $this->suggestionIn($alpha, 'From Alpha.');
+        $this->suggestionIn($beta, 'From Beta.');
 
         $body = $this->withToken($this->staffToken())
             ->getJson('/api/v1/staff/suggestions')
@@ -796,8 +816,7 @@ class StaffSuggestionsTest extends TestCase
     {
         $t = $this->provisionTenant('Alpha');
 
-        $this->signedInAs($t['admin'])
-            ->postJson('/api/v1/suggestions', ['body' => 'Name me.'])->assertCreated();
+        $this->suggestionIn($t, 'Name me.');
 
         $this->withToken($this->staffToken())
             ->getJson('/api/v1/staff/suggestions')
@@ -929,16 +948,17 @@ git commit -m "Suggestions: the Development queue, across every tenant"
 Add to `tests/Feature/Api/StaffSuggestionsTest.php` (add `use App\Models\Notification;` to the imports):
 
 ```php
-    /** @return array{0: string, 1: array} */
+    /**
+     * Built through the model, not over HTTP — see suggestionIn's docblock for
+     * why signing in first would make every staff call in these tests 403.
+     *
+     * @return array{0: string, 1: array}
+     */
     private function oneSuggestion(): array
     {
         $t = $this->provisionTenant('Alpha');
 
-        $id = $this->signedInAs($t['admin'])
-            ->postJson('/api/v1/suggestions', ['body' => 'Decide about me.'])
-            ->json('data.id');
-
-        return [$id, $t];
+        return [$this->suggestionIn($t, 'Decide about me.')->id, $t];
     }
 
     public function test_approving_tells_the_author(): void
