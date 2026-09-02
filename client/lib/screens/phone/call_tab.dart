@@ -8,6 +8,7 @@ import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import 'voice_device.dart';
 import 'staff_thread.dart';
+import 'voice_view.dart';
 
 /// Call desk — layout 1: teammates, pad, person. Below 600px, one pane at a time.
 class CallTab extends StatefulWidget {
@@ -541,6 +542,13 @@ class _CallTabState extends State<CallTab> {
                     if (_incomingFrom != null) _banner(),
                     if (_deskDown) _deskDownBanner(),
                     Expanded(child: wide ? _wide() : _narrow()),
+
+                    // Zero-sized, and load-bearing. WebView2 delivers the
+                    // microphone prompt to this widget's own delegate, so
+                    // a device whose view never enters the tree registers
+                    // and then cannot hear anybody — a phone that looks
+                    // perfect and is deaf. Empty on every other platform.
+                    voiceDeviceView(_device.platformView),
                   ],
                 );
               },

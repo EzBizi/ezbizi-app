@@ -11,6 +11,11 @@ class VersionHistory {
       version: '0.0.0133',
       date: '1 Sep 2026',
       items: [
+        'Phone: you can take and make calls inside the app on Windows, '
+            'Android, iPhone and Mac, not only in a browser. On a phone an '
+            'incoming call rings like a phone call rather than a notification. '
+            'Incoming calls on phones need push credentials set up in Twilio '
+            'first; until then calls go out but do not come in.',
         'Monitoring: a computer running the desktop app now reports what it '
             'is - memory, free disk, Windows version, and which wifi network '
             'it is on with how strong the signal is. Until now Monitoring '

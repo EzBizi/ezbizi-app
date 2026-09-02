@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!--
+  THE PAGE THAT CARRIES THE PHONE ON WINDOWS.
+
+  The Twilio Voice SDK is a browser script and there is no Windows build of
+  it, so the desktop app hosts this page in WebView2 and talks to it over
+  postMessage. Nothing here is reachable by a user; it draws one line of text
+  so that a developer opening the DevTools has something to look at.
+
+  ── SOUNDS AND THE CSP, which is where a silent phone comes from ──
+
+  Carried over from A-1 Tools, where it was verified empirically in a real
+  browser rather than reasoned about:
+
+  The SDK loads a ringtone through EITHER `fetch()` + AudioContext
+  .decodeAudioData (the normal path) or a plain `new Audio(url)` (when
+  AudioContext sounds are off). Those are governed by DIFFERENT directives —
+  `connect-src` for the first, `media-src` for the second — so BOTH must
+  allow the origin or the phone registers, routes calls correctly, and rings
+  SILENTLY. That is the worst failure this page has: indistinguishable from
+  nobody calling.
+
+  'self' is therefore listed explicitly in connect-src as well as media-src.
+  Do not lean on the blanket `https:` — it only covers this because the
+  WebView2 virtual host happens to be https, and that coupling is exactly the
+  accident that produces a silent phone.
+
+  Neither directive allows sdk.twilio.com, the SDK's default sound origin.
+  That is deliberate: the sounds are vendored under ./sounds/ and wired up in
+  softphone_bridge.js, so answering a call never waits on a CDN.
+
+  `script-src 'self'` means NO inline script. Both scripts below are files.
+-->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; connect-src 'self' https: wss:; media-src 'self'; style-src 'unsafe-inline'">
+<title>EzBizi softphone</title>
+<script src="twilio-voice-sdk-2.18.3.min.js"></script>
+</head>
+<body style="margin:0;background:transparent;font-family:sans-serif;font-size:11px;color:#888">
+<div id="status">loading…</div>
+<script src="softphone_bridge.js"></script>
+</body>
+</html>

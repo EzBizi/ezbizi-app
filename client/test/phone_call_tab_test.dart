@@ -519,6 +519,10 @@ class _FakeDevice implements VoiceDevice {
   @override
   var supported = true;
 
+  /// Nothing to mount. Only the Windows WebView2 device returns one.
+  @override
+  Object? get platformView => null;
+
   @override
   Future<void> setup(String token) async {}
 
