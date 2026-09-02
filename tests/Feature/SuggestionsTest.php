@@ -99,4 +99,84 @@ class SuggestionsTest extends TestCase
             ->postJson('/api/v1/suggestions', ['body' => 'I hold nothing and may still speak.'])
             ->assertCreated();
     }
+
+    public function test_an_author_can_correct_one_nobody_has_read(): void
+    {
+        $t = $this->provisionTenant();
+
+        $id = $this->signedInAs($t['admin'])
+            ->postJson('/api/v1/suggestions', ['body' => 'Frist draft.'])
+            ->json('data.id');
+
+        $this->signedInAs($t['admin'])
+            ->patchJson("/api/v1/suggestions/{$id}", ['body' => 'First draft.'])
+            ->assertOk()
+            ->assertJsonPath('data.body', 'First draft.');
+    }
+
+    public function test_an_author_can_withdraw_one_nobody_has_read(): void
+    {
+        $t = $this->provisionTenant();
+
+        $id = $this->signedInAs($t['admin'])
+            ->postJson('/api/v1/suggestions', ['body' => 'Never mind.'])
+            ->json('data.id');
+
+        $this->signedInAs($t['admin'])
+            ->deleteJson("/api/v1/suggestions/{$id}")
+            ->assertNoContent();
+
+        $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/suggestions')
+            ->assertJsonCount(0, 'data');
+    }
+
+    /**
+     * The rule that matters: once somebody is reading it, the text is frozen.
+     *
+     * A suggestion rewritten under a reviewer produces a decision about words
+     * that no longer exist, and a delete after a denial erases the reason.
+     */
+    public function test_editing_stops_once_it_is_in_review(): void
+    {
+        $t = $this->provisionTenant();
+
+        $id = $this->signedInAs($t['admin'])
+            ->postJson('/api/v1/suggestions', ['body' => 'Under a reviewer.'])
+            ->json('data.id');
+
+        $this->inTenant($t['org'], function () use ($id) {
+            $row = Suggestion::query()->findOrFail($id);
+            $row->status = Suggestion::STATUS_REVIEWING;
+            $row->save();
+        });
+
+        $this->signedInAs($t['admin'])
+            ->patchJson("/api/v1/suggestions/{$id}", ['body' => 'Changed my mind.'])
+            ->assertStatus(422);
+
+        $this->signedInAs($t['admin'])
+            ->deleteJson("/api/v1/suggestions/{$id}")
+            ->assertStatus(422);
+    }
+
+    public function test_a_colleague_cannot_edit_or_delete_it(): void
+    {
+        $t = $this->provisionTenant();
+        $colleague = $this->userWithRole($t, 'Manager', []);
+
+        $id = $this->signedInAs($t['admin'])
+            ->postJson('/api/v1/suggestions', ['body' => 'Mine alone.'])
+            ->json('data.id');
+
+        $this->signedInAs($colleague)
+            ->patchJson("/api/v1/suggestions/{$id}", ['body' => 'Not yours.'])
+            ->assertNotFound();
+
+        $this->signedInAs($colleague)
+            ->deleteJson("/api/v1/suggestions/{$id}")
+            ->assertNotFound();
+
+        $this->assertDatabaseHas('suggestions', ['id' => $id, 'body' => 'Mine alone.']);
+    }
 }

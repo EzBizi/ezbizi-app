@@ -65,6 +65,91 @@ class SuggestionsController extends Controller
         return response()->json(['data' => $this->row($row)], 201);
     }
 
+    /** PATCH /api/v1/suggestions/{suggestion} */
+    public function update(Request $request, string $id): JsonResponse
+    {
+        $input = $request->validate([
+            'body' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $row = $this->mine($request, $id);
+
+        if ($row === null) {
+            return response()->json(['message' => 'That suggestion no longer exists.'], 404);
+        }
+
+        if ($row->status !== Suggestion::STATUS_NEW) {
+            return $this->frozen($row);
+        }
+
+        $body = trim($input['body']);
+
+        if ($body === '') {
+            return response()->json([
+                'message' => 'Write the suggestion first.',
+                'errors' => ['body' => ['Write the suggestion first.']],
+            ], 422);
+        }
+
+        $row->body = $body;
+        $row->save();
+
+        return response()->json(['data' => $this->row($row)]);
+    }
+
+    /** DELETE /api/v1/suggestions/{suggestion} */
+    public function destroy(Request $request, string $id): JsonResponse
+    {
+        $row = $this->mine($request, $id);
+
+        if ($row === null) {
+            return response()->json(['message' => 'That suggestion no longer exists.'], 404);
+        }
+
+        if ($row->status !== Suggestion::STATUS_NEW) {
+            return $this->frozen($row);
+        }
+
+        $row->delete();
+
+        return response()->json([], 204);
+    }
+
+    /**
+     * Yours, or nothing.
+     *
+     * 404 rather than 403 for a colleague's row, deliberately: 403 would confirm
+     * that a suggestion with that id exists, which is a fact this module keeps
+     * from them.
+     */
+    private function mine(Request $request, string $id): ?Suggestion
+    {
+        return Suggestion::query()
+            ->where('user_id', $request->user()->getKey())
+            ->find($id);
+    }
+
+    /**
+     * Why it can no longer be touched, in words that name the actual state.
+     *
+     * Two different sentences because they are two different situations to be
+     * in: one is "somebody is reading it right now", the other is "this has been
+     * answered and the answer is on screen above".
+     */
+    private function frozen(Suggestion $row): JsonResponse
+    {
+        $message = $row->status === Suggestion::STATUS_REVIEWING
+            ? 'Somebody at EzBizi is reading this one, so it is fixed while they do. '
+                .'Send another if there is more to say.'
+            : 'This one has been answered, so it stays as it was written. '
+                .'Send another if there is more to say.';
+
+        return response()->json([
+            'message' => $message,
+            'errors' => ['body' => [$message]],
+        ], 422);
+    }
+
     /** @return array<string, mixed> */
     private function row(Suggestion $row): array
     {

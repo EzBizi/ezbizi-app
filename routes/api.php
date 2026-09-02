@@ -485,6 +485,8 @@ Route::prefix('v1')
          */
         Route::get('suggestions', [SuggestionsController::class, 'index']);
         Route::post('suggestions', [SuggestionsController::class, 'store']);
+        Route::patch('suggestions/{suggestion}', [SuggestionsController::class, 'update']);
+        Route::delete('suggestions/{suggestion}', [SuggestionsController::class, 'destroy']);
 
         Route::middleware(EnsureTaskRouteAccess::class)->group(function () {
             Route::get('tasks/folders', [TaskFoldersController::class, 'index']);
