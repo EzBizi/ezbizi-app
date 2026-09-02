@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\MonitoredDevice;
 use App\Models\MonitoringScreenshot;
+use App\Support\Settings\SettingsResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -185,6 +186,60 @@ class RemoteControlTest extends TestCase
         $this->signedInAs($alpha['admin'])
             ->getJson('/api/v1/monitoring/input-pending?device_key=dk-never-beat')
             ->assertStatus(404);
+    }
+
+    // ── the opt-in "being controlled" indicator rides input-pending ──
+
+    public function test_input_pending_reports_indicator_false_by_default(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->beat($alpha['admin']);
+
+        // Default OFF: silent everywhere until an org turns it on.
+        $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/monitoring/input-pending?device_key=dk-1')
+            ->assertOk()
+            ->assertJson(['events' => [], 'indicator' => false]);
+    }
+
+    public function test_input_pending_reports_indicator_true_when_the_org_enables_it(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->beat($alpha['admin']);
+
+        $this->inTenant($alpha['org'], fn () => app(SettingsResolver::class)
+            ->set('monitoring.control_indicator', $alpha['org'], true));
+
+        $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/monitoring/input-pending?device_key=dk-1')
+            ->assertOk()
+            ->assertJson(['indicator' => true]);
+    }
+
+    /**
+     * Org-scoped: each device sees ITS OWN organization's answer. Org A on,
+     * org B off — B's agent must never be told to show a notice because A
+     * enabled one.
+     */
+    public function test_indicator_is_resolved_per_device_organization(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $beta = $this->provisionTenant('Beta');
+        $this->beat($alpha['admin']);
+        $this->beat($beta['admin']);
+
+        $this->inTenant($alpha['org'], fn () => app(SettingsResolver::class)
+            ->set('monitoring.control_indicator', $alpha['org'], true));
+
+        $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/monitoring/input-pending?device_key=dk-1')
+            ->assertOk()
+            ->assertJson(['indicator' => true]);
+
+        $this->signedInAs($beta['admin'])
+            ->getJson('/api/v1/monitoring/input-pending?device_key=dk-1')
+            ->assertOk()
+            ->assertJson(['indicator' => false]);
     }
 
     // ── gating: monitoring.control is separate from screenshots.view ──

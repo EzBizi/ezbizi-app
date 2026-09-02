@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Controller;
 use App\Models\MonitoredDevice;
 use App\Models\User;
 use App\Support\Access\ScopeReach;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
@@ -92,6 +93,7 @@ class RemoteControlController extends Controller
     public function __construct(
         private readonly TenantContext $tenant,
         private readonly ScopeReach $reach,
+        private readonly SettingsResolver $settings,
     ) {}
 
     /**
@@ -165,6 +167,23 @@ class RemoteControlController extends Controller
      * agent-facing endpoint in this module. The queue is cleared in the
      * same request that reads it: read-once delivery, so a retried or
      * duplicated poll can never re-apply an event.
+     *
+     * ── The `indicator` flag rides along ───────────────────────────
+     *
+     * `indicator` is the org's `monitoring.control_indicator` setting (default
+     * false), resolved for this device's own organization — the one the agent
+     * has already authenticated as, held in TenantContext. The agent shows its
+     * "being controlled" tray notice only while BOTH this and `control_wanted`
+     * are true, so a silent org (the default) never changes anything on the
+     * machine. Resolved at the ORGANIZATION scope because that is the only
+     * scope the setting is offered at.
+     *
+     * // ponytail: one small indexed SELECT on `settings` per poll. The
+     * // resolver caches per REQUEST, and each ~1s poll is a fresh request, so
+     * // there is no cross-poll cache to lean on — but this is the same single
+     * // lookup DeviceOfflineWorker does per sweep, and it only happens while a
+     * // control session is open. A per-org short-TTL cache would be the step
+     * // to take if that ever showed up in a profile, not before.
      */
     public function inputPending(Request $request): array
     {
@@ -185,6 +204,9 @@ class RemoteControlController extends Controller
         return [
             'events' => $events,
             'control_wanted' => Cache::has($this->controlWantedKey($device->id)),
+            'indicator' => (bool) $this->settings->get(
+                'monitoring.control_indicator', $this->tenant->get()
+            ),
         ];
     }
 

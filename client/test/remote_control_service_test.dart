@@ -17,12 +17,15 @@ void main() {
     ApiClient api,
     List<http.Request> polled,
     List<List<Map<String, Object?>>> injected,
+    List<bool> indicated,
   }) harness({
     required bool controlWanted,
     required List<Map<String, Object?>> events,
+    bool indicator = false,
   }) {
     final polled = <http.Request>[];
     final injected = <List<Map<String, Object?>>>[];
+    final indicated = <bool>[];
 
     final api = ApiClient(
       client: MockClient((request) async {
@@ -30,7 +33,11 @@ void main() {
 
         if (request.url.path.endsWith('/monitoring/input-pending')) {
           return http.Response(
-            jsonEncode({'events': events, 'control_wanted': controlWanted}),
+            jsonEncode({
+              'events': events,
+              'control_wanted': controlWanted,
+              'indicator': indicator,
+            }),
             200,
             headers: const {'content-type': 'application/json'},
           );
@@ -47,6 +54,9 @@ void main() {
       // exactly where RemoteControlService would otherwise call the native
       // `injectInput`.
       injected: injected,
+      // The fake indicator channel: records every setControlled(active) the
+      // service asks for, where it would otherwise call the native tray.
+      indicated: indicated,
     );
   }
 
@@ -55,6 +65,7 @@ void main() {
       ApiClient api,
       List<http.Request> polled,
       List<List<Map<String, Object?>>> injected,
+      List<bool> indicated,
     }) it,
   ) =>
       RemoteControlService(
@@ -62,6 +73,7 @@ void main() {
         fast: const Duration(milliseconds: 20),
         slow: const Duration(milliseconds: 20),
         inject: (events) async => it.injected.add(events),
+        indicate: (active) async => it.indicated.add(active),
       );
 
   test(
@@ -118,6 +130,63 @@ void main() {
         reason: 'An empty queue means there is nothing to apply — the input '
             'channel must not be called with an empty batch.',
       );
+    },
+  );
+
+  test(
+    'when the org enables the indicator AND control is wanted, the service '
+    'raises the notice once via setControlled(true)',
+    () async {
+      final it = harness(
+        controlWanted: true,
+        indicator: true,
+        events: const [],
+      );
+
+      final service = build(it);
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      service.dispose();
+
+      expect(it.indicated.contains(true), isTrue,
+          reason: 'control_wanted && indicator must raise the tray notice.');
+      // Raised on the transition only — several polls saw the same state, but
+      // the channel is called once for the rise (dispose then adds a false).
+      expect(it.indicated.where((a) => a).length, 1,
+          reason: 'The notice must be pushed once, not once per poll.');
+    },
+  );
+
+  test(
+    'with the indicator off, the notice is never raised even while control is '
+    'wanted',
+    () async {
+      // indicator defaults to false — the silent default. This is the path the
+      // constraints demand changes NOTHING on the machine.
+      final it = harness(controlWanted: true, indicator: false, events: const []);
+
+      final service = build(it);
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      service.dispose();
+
+      expect(it.indicated.contains(true), isFalse,
+          reason: 'A silent org (indicator false) must never raise the notice, '
+              'however long control is wanted.');
+    },
+  );
+
+  test(
+    'the indicator alone, with no control wanted, never raises the notice',
+    () async {
+      // Only BOTH — being driven AND opted in — shows it. Viewing stays silent.
+      final it = harness(controlWanted: false, indicator: true, events: const []);
+
+      final service = build(it);
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      service.dispose();
+
+      expect(it.indicated.contains(true), isFalse,
+          reason: 'indicator true but control_wanted false is watching, not '
+              'controlling — it must stay silent.');
     },
   );
 

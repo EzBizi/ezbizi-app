@@ -347,6 +347,36 @@ class SettingRegistry
             ),
 
             /*
+             * Whether a monitored machine shows a notice while somebody is
+             * REMOTELY CONTROLLING it — not while it is merely being watched.
+             *
+             * Off by default, and silent when off: with this false nothing
+             * changes on the machine at all, which is the product's T&C default
+             * (viewing is silent). An organization that wants transparency for
+             * its people turns it on, and then RemoteControlController rides the
+             * resolved value out on the agent's `input-pending` poll as
+             * `indicator`; the agent shows a tray notice only while it is BOTH
+             * wanted and actually being driven (control_wanted && indicator).
+             *
+             * ORGANIZATION-ONLY, and resolved at the org scope in
+             * RemoteControlController::inputPending. A franchise override would
+             * be resolved-away silently there — the exact "looks like it's
+             * working" bug SettingsResolver's docblock warns about — so the one
+             * scope that sets it is the one scope that reads it. In `operations`
+             * for the same reason `monitoring.offline_after_seconds` is: a group
+             * of one is a heading the grouping test gains nothing from.
+             */
+            new SettingDefinition(
+                key: 'monitoring.control_indicator',
+                label: 'Show a notice on a machine while it is being remotely controlled',
+                type: SettingDefinition::TYPE_BOOL, default: false,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'When on, a monitored Windows machine shows a system-tray notice while '
+                    .'someone is remotely controlling it. Watching a live view stays silent — '
+                    .'only taking control shows this. Off by default, and fully silent when off.',
+            ),
+
+            /*
              * Where the boxes sit on the Organization tab's structure canvas.
              *
              * ── Why it is a setting at all ───────────────────────

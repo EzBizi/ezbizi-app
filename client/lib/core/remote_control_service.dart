@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 
 import 'api_client.dart';
 import 'device_key.dart';
+import 'monitoring_indicator_channel.dart';
 import 'monitoring_input_channel.dart';
 import 'screenshot_capability.dart';
 
@@ -46,10 +47,12 @@ class RemoteControlService {
     Duration slow = const Duration(seconds: 1),
     int idleTicksBeforeSlow = 3,
     Future<void> Function(List<Map<String, Object?>> events)? inject,
+    Future<void> Function(bool active)? indicate,
   })  : _fast = fast,
         _slow = slow,
         _idleTicksBeforeSlow = idleTicksBeforeSlow,
-        _inject = inject ?? _defaultInject {
+        _inject = inject ?? _defaultInject,
+        _indicate = indicate ?? _defaultIndicate {
     if (inject == null && !screenshotCaptureSupported) return;
 
     _interval = slow;
@@ -62,8 +65,19 @@ class RemoteControlService {
   final int _idleTicksBeforeSlow;
   final Future<void> Function(List<Map<String, Object?>> events) _inject;
 
+  /// Raises or clears the native "being controlled" notice. Injected in tests;
+  /// [_defaultIndicate] otherwise reaches the real tray via [setControlled].
+  final Future<void> Function(bool active) _indicate;
+
   Timer? _timer;
   bool _disposed = false;
+
+  /// The last notice state actually pushed to native, so the channel is called
+  /// only on a TRANSITION (false→true, true→false) and not once per poll. The
+  /// org's opt-in `indicator` flag ANDed with `control_wanted` is the truth it
+  /// tracks: a machine shows the notice only while it is genuinely being driven
+  /// AND the organization asked for one.
+  bool _indicating = false;
 
   /// The cadence the NEXT tick is scheduled at — starts at [_slow], and each
   /// poll may move it (see [_tick]). One field, because the timer is one-shot
@@ -74,6 +88,9 @@ class RemoteControlService {
 
   static Future<void> _defaultInject(List<Map<String, Object?>> events) =>
       injectInput(events, caller: 'RemoteControlService');
+
+  static Future<void> _defaultIndicate(bool active) =>
+      setControlled(active, caller: 'RemoteControlService');
 
   void _scheduleNext() {
     if (_disposed) return;
@@ -101,6 +118,15 @@ class RemoteControlService {
         // batch of zero events should be handed to native code.
         if (events.isNotEmpty) await _inject(events);
 
+        // The opt-in notice: show it only while this machine is BOTH being
+        // driven and its org turned the indicator on. Pushed to native only on
+        // a change, so a silent org (indicator false, the default) never calls
+        // the channel at all, and an active session does not re-fire it every
+        // poll. A transient non-ok response leaves the state untouched above —
+        // a dropped poll must not flicker the notice off.
+        final indicator = response.body['indicator'] == true;
+        await _setIndicating(controlWanted && indicator);
+
         // Speed up while a manager is present OR events are actually flowing;
         // only sustained quiet (both false, several ticks running) earns the
         // fall back to the baseline cadence.
@@ -120,6 +146,14 @@ class RemoteControlService {
     }
   }
 
+  /// Push a new notice state to native, but only when it actually changed —
+  /// the transition guard that keeps [setControlled] off the per-poll path.
+  Future<void> _setIndicating(bool active) async {
+    if (active == _indicating) return;
+    _indicating = active;
+    await _indicate(active);
+  }
+
   /// The server sends a JSON array of event maps; the native channel wants a
   /// `List<Map<String, Object?>>`. Rebuilt rather than cast so a malformed
   /// entry is dropped instead of throwing the whole tick into the catch above.
@@ -136,5 +170,14 @@ class RemoteControlService {
     _disposed = true;
     _timer?.cancel();
     _timer = null;
+
+    // Best-effort clear so a notice never outlives the loop that raised it —
+    // if this instance goes away mid-control, the machine should not be left
+    // saying it is being controlled. Fire-and-forget: [setControlled] never
+    // throws, and dispose does not await.
+    if (_indicating) {
+      _indicating = false;
+      unawaited(_indicate(false));
+    }
   }
 }

@@ -47,6 +47,12 @@ class FlutterWindow : public Win32Window {
   // mouse/keyboard input.
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       monitoring_input_channel_;
+  // Serves com.ezbizi.app/monitoring_indicator's setControlled method, which
+  // raises/clears the "being controlled" tray notice on the base Win32Window.
+  // Registered inline (rather than in its own file) because its handler needs
+  // `this` to reach the tray; kept alive for the life of the window.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      monitoring_indicator_channel_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_
