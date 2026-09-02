@@ -32,6 +32,14 @@ class VersionHistory {
             'opens in your own player.',
         'Monitoring: devices not seen for 30 days are cleaned up on their own, '
             'so old browser sessions and retired machines stop piling up.',
+        'Automations: a rule with a condition on it now runs. Conditions were '
+            'looking for the value one level deeper than the trigger actually '
+            'sends it, so on twenty-three of the triggers no condition ever '
+            'matched - the rule simply never fired, and nothing said why.',
+        'Business profile, Leads and Reviews each say which Google account '
+            'they are connected to, and let you disconnect it. The tab showed '
+            'that something was connected without naming it, and offered no '
+            'way to undo it.',
       ],
     ),
     VersionRelease(
