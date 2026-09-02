@@ -8,6 +8,18 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0139',
+      date: '2 Sep 2026',
+      items: [
+        'Monitoring - Desktop Monitoring: a "Go live" button now shows a '
+            'machine\'s screen updating every second or two, live, instead of '
+            'only the latest five-minute screenshot. The live view is never '
+            'recorded - frames are shown and thrown away, not kept - and if the '
+            'machine stops sending, the view says it is waiting rather than '
+            'leaving a stale picture up as if it were current.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0138',
       date: '2 Sep 2026',
       items: [
