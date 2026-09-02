@@ -8,6 +8,20 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0133',
+      date: '1 Sep 2026',
+      items: [
+        'Monitoring: a computer running the desktop app now reports what it '
+            'is - memory, free disk, Windows version, and which wifi network '
+            'it is on with how strong the signal is. Until now Monitoring '
+            'could say a machine was active and nothing about it, so "it is '
+            'slow" had no numbers next to it.',
+        'That only happens on the desktop app, and only on Windows so far. '
+            'Anywhere else the machine keeps reporting that it is active, '
+            'exactly as before, and simply sends no specs.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0132',
       date: '1 Sep 2026',
       items: [
