@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -145,6 +146,13 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
   // actually matter here instead of a monotonic counter.
   bool _live = false;
   Uint8List? _liveBytes;
+
+  // The live frame's real aspect ratio (width/height), decoded from the first
+  // frame. The hero sizes itself to THIS, not a fixed 16:9, so a click maps
+  // onto the same spot on the remote screen no matter its shape — a 16:10
+  // laptop or a 4:3 monitor would otherwise land control input offset and
+  // leave the cropped strips unreachable. Null until the first frame decodes.
+  double? _liveAspect;
 
   // True until the first frame arrives, and again after two consecutive
   // misses — see `_fetchLiveFrame`. Read by `_LiveHero` to decide between
@@ -380,6 +388,7 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
     setState(() {
       _live = true;
       _liveBytes = null;
+      _liveAspect = null;
       _liveWaiting = true;
       _liveMisses = 0;
     });
@@ -411,6 +420,7 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
     setState(() {
       _live = false;
       _liveBytes = null;
+      _liveAspect = null;
       _liveWaiting = true;
       _liveMisses = 0;
     });
@@ -456,11 +466,26 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
       return;
     }
 
+    final frame = Uint8List.fromList(bytes);
     _liveMisses = 0;
     setState(() {
-      _liveBytes = Uint8List.fromList(bytes);
+      _liveBytes = frame;
       _liveWaiting = false;
     });
+
+    // Learn the remote screen's aspect ratio once, from the first frame, so the
+    // hero can match it (see `_liveAspect`). Decoding is off the paint path and
+    // one-shot; re-guard the device after the async decode so a late result for
+    // a device we've left is dropped.
+    if (_liveAspect == null) {
+      ui.decodeImageFromList(frame, (image) {
+        final aspect = image.height == 0 ? null : image.width / image.height;
+        image.dispose();
+        if (!mounted || aspect == null) return;
+        if (!_live || deviceId != _selectedDeviceId) return;
+        setState(() => _liveAspect = aspect);
+      });
+    }
   }
 
   // ── Remote Control (Part B) ────────────────────────────────────────────
@@ -851,6 +876,7 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
     final hero = _LiveHero(
       bytes: _liveBytes,
       waiting: _liveWaiting,
+      aspect: _liveAspect,
       controlling: _control,
       imageKey: _liveImageKey,
     );
@@ -1395,11 +1421,17 @@ class _LiveHero extends StatelessWidget {
   const _LiveHero({
     required this.bytes,
     required this.waiting,
+    this.aspect,
     this.controlling = false,
     this.imageKey,
   });
 
   final Uint8List? bytes;
+
+  /// The live frame's real width/height, once known — the hero matches it so
+  /// pointer coordinates map straight onto the remote screen. Null (→ 16:9)
+  /// until the first frame has been decoded.
+  final double? aspect;
 
   /// True before the first frame has ever arrived, and again after two
   /// consecutive misses fetching `live-frame` — see `_fetchLiveFrame`.
@@ -1430,7 +1462,7 @@ class _LiveHero extends StatelessWidget {
       children: [
         AspectRatio(
           key: imageKey,
-          aspectRatio: 16 / 9,
+          aspectRatio: aspect ?? 16 / 9,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: Stack(
@@ -1440,7 +1472,7 @@ class _LiveHero extends StatelessWidget {
                   decoration: BoxDecoration(color: scheme.surfaceContainerHighest),
                 ),
                 if (showFrame)
-                  Image.memory(bytes!, fit: BoxFit.cover, gaplessPlayback: true)
+                  Image.memory(bytes!, fit: BoxFit.contain, gaplessPlayback: true)
                 else
                   Center(
                     child: Text(
