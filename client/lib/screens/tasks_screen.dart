@@ -15,16 +15,21 @@ import 'tasks/name_entry_panel.dart';
 import 'tasks/task_api.dart';
 import 'tasks/task_board_administration.dart';
 import 'tasks/task_board_members.dart';
+import 'tasks/task_calendar_view.dart';
 import 'tasks/task_detail_panel.dart';
 import 'tasks/task_duplicate_flow.dart';
 import 'tasks/task_filters_panel.dart';
 import 'tasks/task_folder_administration.dart';
+import 'tasks/task_kanban_view.dart';
 import 'tasks/task_mobile_list.dart';
 import 'tasks/task_models.dart';
+import 'tasks/task_presentation_bar.dart';
 import 'tasks/task_quick_search.dart';
 import 'tasks/task_table.dart';
+import 'tasks/task_timeline_view.dart';
 import 'tasks/task_transfer_flow.dart';
 import 'tasks/task_views_bar.dart';
+import 'tasks/task_workload_view.dart';
 
 /// Dense Grid Tasks shell. Address IDs are held as opaque intents until their
 /// own authorized board/task reads complete.
@@ -66,6 +71,18 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   bool _creating = false;
   bool _showDirectory = false;
   bool _unavailable = false;
+  // House rule 4: the client shows the SERVER's refusal sentence, never its
+  // own. `_evict` is called from every kind of access loss (403, 404,
+  // revoked reach mid-poll, etc.) across every screen and flow that can
+  // discover a board is gone — including quick search, which used to
+  // throw its `result.message` away before calling this with `null`. As
+  // of this fix every call site forwards the server's own sentence; none
+  // currently passes `null` on purpose. The fallback below stays only
+  // because the type is `String?` and a future call site with genuinely
+  // nothing to quote (there is no such site today) should still render
+  // something instead of a blank screen — it is not, right now, load-
+  // bearing for any real refusal.
+  String? _unavailableMessage;
   bool _conflict = false;
   String? _announcement;
   List<TaskParticipant> _owners = const [];
@@ -86,6 +103,21 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   String? _activeViewId;
   int _activeViewVersion = 1;
   TaskViewConfiguration _configuration = TaskViewConfiguration.empty;
+  TaskKanbanField _kanbanField = TaskKanbanField.status;
+  DateTime _calendarMonth = DateTime.utc(
+    DateTime.now().year,
+    DateTime.now().month,
+  );
+  DateTime _timelineMonth = DateTime.utc(
+    DateTime.now().year,
+    DateTime.now().month,
+  );
+  DateTime _workloadMonth = DateTime.utc(
+    DateTime.now().year,
+    DateTime.now().month,
+  );
+  List<TaskWorkloadRow> _workloadRows = const [];
+  TaskOmitted _omitted = TaskOmitted.zero;
   String? _boardEtag;
   TaskMyTasksPage? _myTasks;
   final Map<int, TaskMyTasksPage> _myTaskPages = <int, TaskMyTasksPage>{};
@@ -93,6 +125,32 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   bool _myTasksLoading = false;
   bool _myTasksLoadingMore = false;
   bool _showMyTasks = false;
+  // Task 14: Calendar, Timeline and Workload opened ACROSS the current view
+  // rather than one board — reachable the way My Tasks itself is, so this
+  // rides inside `_showMyTasks` as a presentation switch rather than a
+  // fourth top-level nav destination. READ-ONLY throughout: every widget
+  // these feed is opened with `readOnly: true`, which removes every drag
+  // surface from the tree rather than merely disabling one (task-14 brief).
+  TaskPresentation _myTasksPresentation = TaskPresentation.table;
+  DateTime _myTasksCalendarMonth = DateTime.utc(
+    DateTime.now().year,
+    DateTime.now().month,
+  );
+  DateTime _myTasksTimelineMonth = DateTime.utc(
+    DateTime.now().year,
+    DateTime.now().month,
+  );
+  DateTime _myTasksWorkloadMonth = DateTime.utc(
+    DateTime.now().year,
+    DateTime.now().month,
+  );
+  List<TaskMyTask> _myTasksCalendarItems = const [];
+  List<TaskMyTask> _myTasksTimelineItems = const [];
+  List<TaskWorkloadRow> _myTasksWorkloadRows = const [];
+  TaskOmitted _myTasksPresentationOmitted = TaskOmitted.zero;
+  bool _myTasksPresentationLoading = false;
+  String? _myTasksPresentationError;
+  String? _myTasksPresentationEtag;
   bool _showFilters = false;
   bool _showViewEditor = false;
   NameEntryRequest? _nameRequest;
@@ -234,6 +292,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _error = null;
       _board = board;
       _rows = const [];
+      _workloadRows = const [];
       _detail = null;
       _selectedTaskId = null;
       _page = 1;
@@ -249,6 +308,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _total = 0;
       _statusSummaries = const [];
       _groupCounts = const [];
+      _omitted = TaskOmitted.zero;
       _privacyGeneration++;
       _viewDirty = false;
       _dirtyDraftIds.clear();
@@ -276,11 +336,13 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     setState(() {
       _loading = false;
       _rows = result.data.rows;
+      _workloadRows = result.data.workloadRows;
       _page = result.data.page;
       _lastPage = result.data.lastPage;
       _total = result.data.total;
       _statusSummaries = result.data.statusSummaries;
       _groupCounts = result.data.groupCounts;
+      _omitted = result.data.omitted;
       _activeViewId = result.data.viewId;
       _activeViewVersion = result.data.viewVersion;
       _configuration = result.data.configuration;
@@ -357,7 +419,52 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
 
   Future<void> _refreshVisible({bool conditional = false}) async {
     if (_showMyTasks) {
-      await _loadMyTasks(conditional: conditional);
+      switch (_myTasksPresentation) {
+        case TaskPresentation.table:
+          await _loadMyTasks(conditional: conditional);
+        case TaskPresentation.calendar:
+          await _loadMyTasksPresentation(
+            TaskPresentation.calendar,
+            TaskDateRangeWindow(
+              from: DateTime.utc(
+                _myTasksCalendarMonth.year,
+                _myTasksCalendarMonth.month,
+                1,
+              ),
+              to: DateTime.utc(
+                _myTasksCalendarMonth.year,
+                _myTasksCalendarMonth.month + 1,
+                0,
+              ),
+            ),
+            conditional: conditional,
+          );
+        case TaskPresentation.timeline:
+          await _loadMyTasksPresentation(
+            TaskPresentation.timeline,
+            TaskDateRangeWindow(
+              from: DateTime.utc(
+                _myTasksTimelineMonth.year,
+                _myTasksTimelineMonth.month,
+                1,
+              ),
+              to: DateTime.utc(
+                _myTasksTimelineMonth.year,
+                _myTasksTimelineMonth.month + 1,
+                0,
+              ),
+            ),
+            conditional: conditional,
+          );
+        case TaskPresentation.workload:
+          await _loadMyTasksPresentation(
+            TaskPresentation.workload,
+            _myTasksWorkloadWindowFor(_myTasksWorkloadMonth),
+            conditional: conditional,
+          );
+        case TaskPresentation.kanban:
+          break;
+      }
       return;
     }
     final board = _board;
@@ -431,11 +538,13 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     }
     setState(() {
       _rows = page.rows;
+      _workloadRows = page.workloadRows;
       _page = page.page;
       _lastPage = page.lastPage;
       _total = page.total;
       _statusSummaries = page.statusSummaries;
       _groupCounts = page.groupCounts;
+      _omitted = page.omitted;
       _boardEtag = page.etag;
       _activeViewVersion = page.viewVersion;
       if (!_viewDirty) _configuration = page.configuration;
@@ -521,8 +630,142 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _showDirectory = false;
       _myTaskPages.clear();
       _myTasks = null;
+      _myTasksPresentation = TaskPresentation.table;
+      _myTasksCalendarItems = const [];
+      _myTasksTimelineItems = const [];
+      _myTasksWorkloadRows = const [];
+      _myTasksPresentationOmitted = TaskOmitted.zero;
+      _myTasksPresentationError = null;
+      _myTasksPresentationEtag = null;
     });
     _loadMyTasks();
+  }
+
+  /// Switches My Tasks' active presentation — the same shape
+  /// `_changePresentation` already uses for a board, restricted to the
+  /// three that make sense across every board in view (task-14 brief):
+  /// Table stays owner-filtered (`myTasks()`, unchanged); Calendar,
+  /// Timeline and Workload each re-window and reload through
+  /// `TaskApi.myTasksPresentation`. Kanban is never reachable here — it is
+  /// absent from the bar's `availablePresentations` this screen passes.
+  void _changeMyTasksPresentation(TaskPresentation presentation) {
+    setState(() => _myTasksPresentation = presentation);
+    switch (presentation) {
+      case TaskPresentation.table:
+        if (_myTasks == null) _loadMyTasks();
+      case TaskPresentation.calendar:
+        _applyMyTasksCalendarWindow(_myTasksCalendarMonth);
+      case TaskPresentation.timeline:
+        _applyMyTasksTimelineWindow(_myTasksTimelineMonth);
+      case TaskPresentation.workload:
+        _applyMyTasksWorkloadWindow(_myTasksWorkloadMonth);
+      case TaskPresentation.kanban:
+        break;
+    }
+  }
+
+  void _applyMyTasksCalendarWindow(DateTime month) {
+    final start = DateTime.utc(month.year, month.month);
+    final from = DateTime.utc(start.year, start.month, 1);
+    final to = DateTime.utc(start.year, start.month + 1, 0);
+    setState(() => _myTasksCalendarMonth = start);
+    _loadMyTasksPresentation(
+      TaskPresentation.calendar,
+      TaskDateRangeWindow(from: from, to: to),
+    );
+  }
+
+  void _changeMyTasksCalendarMonth(DateTime month) =>
+      _applyMyTasksCalendarWindow(month);
+
+  void _applyMyTasksTimelineWindow(DateTime month) {
+    final start = DateTime.utc(month.year, month.month);
+    final from = DateTime.utc(start.year, start.month, 1);
+    final to = DateTime.utc(start.year, start.month + 1, 0);
+    setState(() => _myTasksTimelineMonth = start);
+    _loadMyTasksPresentation(
+      TaskPresentation.timeline,
+      TaskDateRangeWindow(from: from, to: to),
+    );
+  }
+
+  void _changeMyTasksTimelineMonth(DateTime month) =>
+      _applyMyTasksTimelineWindow(month);
+
+  TaskWorkloadWindow _myTasksWorkloadWindowFor(DateTime month) =>
+      TaskWorkloadWindow(
+        from: DateTime.utc(month.year, month.month, 1),
+        to: DateTime.utc(month.year, month.month + 1, 0),
+        unit: TaskWorkloadUnit.day,
+      );
+
+  void _applyMyTasksWorkloadWindow(DateTime month) {
+    final start = DateTime.utc(month.year, month.month);
+    setState(() => _myTasksWorkloadMonth = start);
+    _loadMyTasksPresentation(
+      TaskPresentation.workload,
+      _myTasksWorkloadWindowFor(start),
+    );
+  }
+
+  void _changeMyTasksWorkloadMonth(DateTime month) =>
+      _applyMyTasksWorkloadWindow(month);
+
+  Future<void> _loadMyTasksPresentation(
+    TaskPresentation presentation,
+    TaskWindow window, {
+    bool conditional = false,
+  }) async {
+    if (!conditional) {
+      setState(() {
+        _myTasksPresentationLoading = true;
+        _myTasksPresentationError = null;
+      });
+    }
+    final privacy = _privacyGeneration;
+    final result = await _tasks.myTasksPresentation(
+      presentation: presentation,
+      window: window,
+      etag: conditional ? _myTasksPresentationEtag : null,
+    );
+    if (!_isCurrentPrivacy(privacy) ||
+        !_showMyTasks ||
+        _myTasksPresentation != presentation) {
+      return;
+    }
+    if (result is TaskApiUnavailable<TaskCrossBoardPage>) {
+      _evict(result.message);
+      return;
+    }
+    if (result is TaskApiNotModified<TaskCrossBoardPage>) {
+      if (mounted) setState(() => _myTasksPresentationLoading = false);
+      return;
+    }
+    if (result is! TaskApiSuccess<TaskCrossBoardPage>) {
+      if (!conditional) {
+        setState(() {
+          _myTasksPresentationError = result.message;
+          _myTasksPresentationLoading = false;
+        });
+      }
+      return;
+    }
+    final page = result.data;
+    setState(() {
+      _myTasksCalendarItems = presentation == TaskPresentation.calendar
+          ? page.items
+          : _myTasksCalendarItems;
+      _myTasksTimelineItems = presentation == TaskPresentation.timeline
+          ? page.items
+          : _myTasksTimelineItems;
+      _myTasksWorkloadRows = presentation == TaskPresentation.workload
+          ? page.workloadRows
+          : _myTasksWorkloadRows;
+      _myTasksPresentationOmitted = page.omitted;
+      _myTasksPresentationEtag = page.etag;
+      _myTasksPresentationLoading = false;
+      _myTasksPresentationError = null;
+    });
   }
 
   Future<void> _openMyTask(TaskMyTask item) async {
@@ -1343,6 +1586,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _selectedTaskId = null;
       _error = null;
       _unavailable = true;
+      _unavailableMessage = message;
       _views = const [];
       _canCreatePersonalView = false;
       _canCreateSharedView = false;
@@ -1353,9 +1597,17 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
       _myTaskPages.clear();
       _myTasksError = null;
       _showMyTasks = false;
+      _myTasksPresentation = TaskPresentation.table;
+      _myTasksCalendarItems = const [];
+      _myTasksTimelineItems = const [];
+      _myTasksWorkloadRows = const [];
+      _myTasksPresentationOmitted = TaskOmitted.zero;
+      _myTasksPresentationError = null;
+      _myTasksPresentationEtag = null;
       _total = 0;
       _statusSummaries = const [];
       _groupCounts = const [];
+      _omitted = TaskOmitted.zero;
       _dirtyDraftIds.clear();
       _privacyGeneration++;
     });
@@ -1383,7 +1635,28 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
               error: _error,
               onRetry: _loadDirectory,
               child: _unavailable
-                  ? const Center(child: Text('This task board is unavailable.'))
+                  ? Align(
+                      alignment: Alignment.topLeft,
+                      // The refusal sentence is the entire payload of this
+                      // screen — it does not sit inside a Center the way a
+                      // short status message elsewhere might. Center both
+                      // starved it of the left/right margin every sibling
+                      // screen gives its content (directory_mobile ~16-20,
+                      // detail_mobile 20, board_mobile 16) AND stranded it
+                      // in the middle of the remaining height, leaving a
+                      // void between the chip row above and the sentence.
+                      // Top-left, padded like those siblings, puts it where
+                      // a user's eye actually lands: directly under the
+                      // chip row, flush with everything else on this
+                      // screen.
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
+                        child: Text(
+                          _unavailableMessage ??
+                              'This task board is unavailable.',
+                        ),
+                      ),
+                    )
                   : Column(
                       children: [
                         if (_conflict)
@@ -1425,44 +1698,575 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
           onCreate: _createView,
         )
       : _showMyTasks
-      ? MyTasksView(
-          page: _myTasks,
-          loading: _myTasksLoading,
-          error: _myTasksError,
-          onRetry: _loadMyTasks,
-          onOpen: _openMyTask,
-          onLoadMore: _loadMoreMyTasks,
-          loadingMore: _myTasksLoadingMore,
-        )
+      ? _myTasksContent()
       : _showDirectory || _board == null
       ? _directoryOnly()
-      : mobile
-      ? Column(
-          children: [
-            _boardControls(),
-            if (_showFilters)
-              SizedBox(
-                height: 330,
-                child: TaskFiltersPanel(
-                  board: _board!,
-                  configuration: _configuration,
-                  people: _people,
-                  onChanged: _changeConfiguration,
-                  onClose: () => setState(() => _showFilters = false),
-                ),
-              ),
-            Expanded(
-              child: TaskMobileList(
-                board: _board!,
-                rows: _rows,
-                onSelected: _selectTask,
-                onAddTask: _board!.can('create_task') ? _addTaskToGroup : null,
+      : _presentationBody(mobile, wide);
+
+  /// My Tasks (task-14 brief): Table stays the owner-filtered list it
+  /// always was; Calendar, Timeline and Workload open the SAME three
+  /// presentations a board offers, but across every board the current view
+  /// lets this viewer open — READ-ONLY throughout (`readOnly: true` on
+  /// every view below removes drag surfaces from the tree entirely, it does
+  /// not merely disable them).
+  static const _myTasksPresentations = {
+    TaskPresentation.table,
+    TaskPresentation.calendar,
+    TaskPresentation.timeline,
+    TaskPresentation.workload,
+  };
+
+  Widget _myTasksContent() => Column(
+    children: [
+      TaskPresentationBar(
+        presentation: _myTasksPresentation,
+        kanbanField: _kanbanField,
+        onPresentationChanged: _changeMyTasksPresentation,
+        onKanbanFieldChanged: (_) {},
+        availablePresentations: _myTasksPresentations,
+      ),
+      if (_myTasksPresentationError case final message?)
+        MaterialBanner(
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => setState(() => _myTasksPresentationError = null),
+              child: const Text('Dismiss'),
+            ),
+          ],
+        ),
+      Expanded(child: _myTasksBody()),
+    ],
+  );
+
+  /// Cross-board only (task-14 brief, fix round 1): a `task.id -> board
+  /// name` map so a Calendar/Timeline card can say which board it belongs
+  /// to — the same `TaskMyTask.boardName` Table's `MyTasksView` already
+  /// shows per row, surfaced here too rather than only there. A single
+  /// board's own Calendar/Timeline (`_calendarContent()`/`_timelineContent()`)
+  /// never builds this map, so its cards are unaffected.
+  Map<String, String> _boardNamesByTaskId(List<TaskMyTask> items) => {
+    for (final item in items) item.task.id: item.boardName,
+  };
+
+  Widget _myTasksBody() => switch (_myTasksPresentation) {
+    TaskPresentation.calendar => _myTasksPresentationLoading &&
+            _myTasksCalendarItems.isEmpty
+        ? const Center(child: CircularProgressIndicator())
+        : TaskCalendarView(
+            month: _myTasksCalendarMonth,
+            rows: _myTasksCalendarItems
+                .map((item) => item.task)
+                .toList(growable: false),
+            omitted: _myTasksPresentationOmitted,
+            onMonthChanged: _changeMyTasksCalendarMonth,
+            readOnly: true,
+            boardNamesByTaskId: _boardNamesByTaskId(_myTasksCalendarItems),
+          ),
+    TaskPresentation.timeline => _myTasksPresentationLoading &&
+            _myTasksTimelineItems.isEmpty
+        ? const Center(child: CircularProgressIndicator())
+        : TaskTimelineView(
+            month: _myTasksTimelineMonth,
+            rows: _myTasksTimelineItems
+                .map((item) => item.task)
+                .toList(growable: false),
+            omitted: _myTasksPresentationOmitted,
+            onMonthChanged: _changeMyTasksTimelineMonth,
+            readOnly: true,
+            boardNamesByTaskId: _boardNamesByTaskId(_myTasksTimelineItems),
+          ),
+    TaskPresentation.workload => TaskWorkloadView(
+        month: _myTasksWorkloadMonth,
+        window: _myTasksWorkloadWindowFor(_myTasksWorkloadMonth),
+        rows: _myTasksWorkloadRows,
+        onMonthChanged: _changeMyTasksWorkloadMonth,
+      ),
+    TaskPresentation.table || TaskPresentation.kanban => MyTasksView(
+        page: _myTasks,
+        loading: _myTasksLoading,
+        error: _myTasksError,
+        onRetry: _loadMyTasks,
+        onOpen: _openMyTask,
+        onLoadMore: _loadMoreMyTasks,
+        loadingMore: _myTasksLoadingMore,
+      ),
+  };
+
+  /// A generic switch on `TaskPresentation` (Ruling 1, progress.md) — not a
+  /// Kanban-specific branch off `_content`. Tasks 11-13 each added their own
+  /// case here for Calendar/Timeline/Workload rather than restructuring this
+  /// dispatcher; every enum value now has one. `TaskPresentation` itself has
+  /// no `unknown` case (see `_presentationFromWire`) — an unrecognised wire
+  /// value degrades to `table` before it ever reaches this switch, so this
+  /// one stays exhaustive rather than needing a defensive fallback arm.
+  /// Kanban/Calendar/Timeline need a task's detail panel reachable exactly
+  /// the same way Table's `_workspace()` already makes one reachable
+  /// (whole-branch review finding 2) — a side panel on a wide-enough
+  /// desktop pane, otherwise the SAME mobile full-screen route
+  /// `_selectTaskId` already pushes for every presentation regardless of
+  /// which one is active (see its own `MediaQuery.sizeOf(context).width <
+  /// 700` branch). On mobile that push is the whole story, so these three
+  /// content builders are used unwrapped there — wrapping them too would
+  /// leave a STALE in-place fullscreen panel behind after the pushed
+  /// route is popped (its own `onClose` only pops the route, it never
+  /// resets `_detailOpen`), exactly mirroring how `_mobileTableContent()`
+  /// also never wraps itself in anything detail-panel-related. Workload
+  /// rows are per-owner aggregates, not tasks, so it is deliberately left
+  /// alone here — there is nothing on it to open.
+  Widget _presentationBody(bool mobile, bool wide) =>
+      switch (_configuration.presentation) {
+        TaskPresentation.kanban =>
+          mobile ? _kanbanContent() : _withDetailPanel(_kanbanContent()),
+        TaskPresentation.calendar =>
+          mobile ? _calendarContent() : _withDetailPanel(_calendarContent()),
+        TaskPresentation.timeline =>
+          mobile ? _timelineContent() : _withDetailPanel(_timelineContent()),
+        TaskPresentation.workload => _workloadContent(),
+        TaskPresentation.table => mobile
+            ? _mobileTableContent()
+            : _workspace(wide),
+      };
+
+  /// Adds the same side-by-side (or narrow-pane fullscreen swap) detail
+  /// panel treatment `_workspace()` gives Table, to any other presentation
+  /// [content]. A standalone `LayoutBuilder`, not a refactor of
+  /// `_workspace()` itself: that method also has to reserve room for the
+  /// board directory and pass `TaskTable` an exact `paneWidth`, neither of
+  /// which any of these three presentations need, and folding this into
+  /// that one risks changing ITS width math (Task 15's own floor) for a
+  /// change this finding never asked for.
+  Widget _withDetailPanel(Widget content) => LayoutBuilder(
+    builder: (context, constraints) {
+      // Same 1100 threshold `_workspace()` uses, for the same reason: the
+      // detail panel's default 390px (+16px divider) needs to leave a
+      // content pane wide enough that `TaskPresentationBar`/
+      // `TaskViewsBar` don't wrap onto multiple lines.
+      final showDetail = _detailOpen && constraints.maxWidth >= 1100;
+      if (_detailOpen && !showDetail && _detail != null) {
+        return TaskDetailPanel(
+          task: _detail,
+          taskApi: _tasks,
+          onTaskChanged: _replaceDetail,
+          onOpenRecordRoute: _openRecordRoute,
+          onDraftChanged: _draftChanged,
+          privacyEpoch: _privacyGeneration,
+          onUnavailable: _evict,
+          fullScreen: true,
+          onClose: () => setState(() => _detailOpen = false),
+        );
+      }
+      return Row(
+        children: [
+          Expanded(child: content),
+          if (showDetail) ...[
+            TaskDetailDivider(
+              onResize: (delta) => setState(
+                () => _detailWidth = (_detailWidth + delta).clamp(300, 640),
               ),
             ),
-            _pagination(),
+            SizedBox(
+              width: _detailWidth,
+              child: TaskDetailPanel(
+                task: _detail,
+                taskApi: _tasks,
+                onTaskChanged: _replaceDetail,
+                onOpenRecordRoute: _openRecordRoute,
+                onDraftChanged: _draftChanged,
+                privacyEpoch: _privacyGeneration,
+                onUnavailable: _evict,
+                onClose: () => setState(() => _detailOpen = false),
+              ),
+            ),
           ],
-        )
-      : _workspace(wide);
+        ],
+      );
+    },
+  );
+
+  Widget _mobileTableContent() => _boardScaffold(
+    view: TaskMobileList(
+      board: _board!,
+      rows: _rows,
+      onSelected: _selectTask,
+      onAddTask: _board!.can('create_task') ? _addTaskToGroup : null,
+    ),
+    trailing: _pagination(),
+  );
+
+  Widget _kanbanContent() {
+    final board = _board!;
+    return _boardScaffold(
+      view: TaskKanbanView(
+        board: board,
+        field: _kanbanField,
+        buckets: TaskKanbanBuckets.forField(_kanbanField, board, _owners),
+        rows: _rows,
+        groupCounts: _groupCounts,
+        owners: _owners,
+        hiddenColumns: _configuration.hiddenColumns,
+        onMove: _kanbanMove,
+        onOpen: _selectTask,
+      ),
+    );
+  }
+
+  Widget _calendarContent() => _boardScaffold(
+    view: TaskCalendarView(
+      month: _calendarMonth,
+      rows: _rows,
+      omitted: _omitted,
+      onMove: _calendarMove,
+      onMonthChanged: _changeCalendarMonth,
+      onOpen: _selectTask,
+    ),
+  );
+
+  Widget _timelineContent() => _boardScaffold(
+    view: TaskTimelineView(
+      month: _timelineMonth,
+      rows: _rows,
+      omitted: _omitted,
+      onMove: _timelineMove,
+      onMonthChanged: _changeTimelineMonth,
+      onOpen: _selectTask,
+    ),
+  );
+
+  Widget _workloadContent() => _boardScaffold(
+    view: TaskWorkloadView(
+      month: _workloadMonth,
+      window: _workloadWindowFor(_workloadMonth),
+      rows: _workloadRows,
+      onMonthChanged: _changeWorkloadMonth,
+    ),
+  );
+
+  /// Reserved for a visible `trailing` (in practice, only `_pagination()`'s
+  /// "Page X of Y / Previous / Next" row) whenever [minViewHeight] is
+  /// real-floor-enforced below — see that doc for why. `_pagination()`'s
+  /// height never varies with content or width (a fixed row, never a
+  /// wrapping one), so a single conservative constant safely covers it
+  /// whether or not it is actually showing (`_lastPage <= 1` renders a
+  /// `SizedBox.shrink()` instead), rather than needing to be measured.
+  static const _paginationReserve = 56.0;
+
+  /// Every presentation's content area: the chrome (`_boardControls()`,
+  /// plus an optional filters panel), and the presentation's own [view].
+  ///
+  /// [minViewHeight], when given, is a REAL floor [view] cannot be pushed
+  /// under (whole-branch review finding 3 — an earlier version of this
+  /// method claimed exactly that but did not deliver it: `Expanded` gives
+  /// its child a TIGHT constraint, `minHeight == maxHeight == whatever
+  /// space is left`, and `BoxConstraints.enforce` can only ever CLAMP a
+  /// `ConstrainedBox`'s requested minimum DOWN into that already-decided
+  /// amount, never raise it — `(280).clamp(H, H) == H` for any `H`,
+  /// including one under 280. No amount of nesting `ConstrainedBox` around
+  /// [view] can fix that; the floor has to come from the OTHER side:
+  /// capping how much of the total available height the CHROME above is
+  /// allowed to consume, so whatever is "left" for [view] can never be
+  /// less than [minViewHeight] in the first place. The chrome is wrapped
+  /// in a `SingleChildScrollView` so, capped, it becomes scrollable rather
+  /// than clipped or (worse) still somehow stealing the table's floor —
+  /// turning the earlier regression this guards against (Task 15: three
+  /// wrapped chrome lines squeezed `TaskTable` to a 64px viewport that
+  /// silently dropped rows) into a visible, scrollable chrome instead,
+  /// exactly the trade Ruling 57 (progress.md) meant to accept but, before
+  /// this fix, did not actually get. In the ordinary case — chrome's
+  /// natural height comfortably under the budget — `SingleChildScrollView`
+  /// shrink-wraps to it exactly as a plain `Column` child already did, so
+  /// every existing desktop golden is unaffected pixel-for-pixel.
+  /// `_workspace()` is the one caller that passes it, because it is the
+  /// one place this was ever actually reported broken
+  /// (`board_desktop.png`/`conflict_desktop.png`, a wide window with a
+  /// narrow content pane).
+  ///
+  /// Kanban/Calendar/Timeline/Workload deliberately do NOT get a floor
+  /// here: measured, a floor on top of THIS chrome at a truly narrow 375px
+  /// screen — where three bars plus Kanban's extra "Group by" row can
+  /// legitimately need more height than a short phone viewport has at all
+  /// — would make the now-capped chrome scroll on every phone-sized
+  /// screen, not just a squeezed desktop pane. `Expanded` alone (their
+  /// current, unfloored behaviour) never errors that way; it just clamps
+  /// to 0, exactly the pre-existing behaviour every one of these four
+  /// views already had before this fix touched anything, and no report
+  /// exists of it dropping data the way `TaskTable` did. Widening this
+  /// floor to all five is a real, separate piece of work (each view's own
+  /// true minimum content size, and where the extra height should come
+  /// from on a short phone), not a same-pattern copy-paste — flagged
+  /// rather than guessed at here.
+  Widget _boardScaffold({
+    required Widget view,
+    Widget? trailing,
+    double? minViewHeight,
+    double? paneWidth,
+  }) {
+    final chrome = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _boardControls(paneWidth: paneWidth),
+        if (_showFilters)
+          SizedBox(
+            height: 330,
+            child: TaskFiltersPanel(
+              board: _board!,
+              configuration: _configuration,
+              people: _people,
+              onChanged: _changeConfiguration,
+              onClose: () => setState(() => _showFilters = false),
+            ),
+          ),
+      ],
+    );
+    if (minViewHeight == null) {
+      return Column(
+        children: [chrome, Expanded(child: view), ?trailing],
+      );
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final chromeBudget = constraints.maxHeight.isFinite
+            ? (constraints.maxHeight - minViewHeight - _paginationReserve)
+                  .clamp(0.0, double.infinity)
+            : double.infinity;
+        return Column(
+          children: [
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: chromeBudget),
+              child: SingleChildScrollView(child: chrome),
+            ),
+            // No ConstrainedBox(minHeight:) around [view] here — removed
+            // (coordinator follow-up B on the whole-branch review's own
+            // fix wave). This method's own doc above already explained
+            // why nesting one around a tight-fitted Expanded child cannot
+            // work; leaving a provably-inert widget in the tree anyway is
+            // the exact pattern that misled two prior reviews into
+            // believing the OLD version of this method enforced a floor
+            // it did not. The real floor is the chromeBudget cap above:
+            // by construction, whatever height reaches Expanded here can
+            // never be less than minViewHeight.
+            Expanded(child: view),
+            ?trailing,
+          ],
+        );
+      },
+    );
+  }
+
+  /// Switches the active view's presentation. Kanban additionally needs a
+  /// `window` (`bucket_field` + the current field's buckets) and a matching
+  /// `group_by`, so `meta.group_counts` — which Kanban headers read their
+  /// complete accessible total from — is computed for the same field the
+  /// columns bucket by, not the board's default grouping. Calendar needs a
+  /// `window` too (`{from, to}` bounding the visible month) but no
+  /// `group_by` — `TaskDateRangeWindow` (schema:2) is what carries it.
+  void _changePresentation(TaskPresentation presentation) {
+    if (presentation == TaskPresentation.kanban) {
+      _applyKanbanField(_kanbanField);
+      return;
+    }
+    if (presentation == TaskPresentation.calendar) {
+      _applyCalendarWindow(_calendarMonth);
+      return;
+    }
+    if (presentation == TaskPresentation.timeline) {
+      _applyTimelineWindow(_timelineMonth);
+      return;
+    }
+    if (presentation == TaskPresentation.workload) {
+      _applyWorkloadWindow(_workloadMonth);
+      return;
+    }
+    _changeConfiguration(
+      _configuration.copyWith(presentation: presentation, window: null),
+    );
+  }
+
+  /// Re-windows Calendar to [month] — called both when the tab is first
+  /// selected and whenever `TaskCalendarView` asks to page to another month.
+  /// The server bounds any calendar window at 400 days and refuses wider
+  /// (task-11 brief); a single month is always far under that, so there is
+  /// nothing to pre-validate here.
+  void _applyCalendarWindow(DateTime month) {
+    final start = DateTime.utc(month.year, month.month);
+    final from = DateTime.utc(start.year, start.month, 1);
+    final to = DateTime.utc(start.year, start.month + 1, 0);
+    setState(() => _calendarMonth = start);
+    _changeConfiguration(
+      _configuration.copyWith(
+        presentation: TaskPresentation.calendar,
+        window: TaskDateRangeWindow(from: from, to: to),
+      ),
+    );
+  }
+
+  void _changeCalendarMonth(DateTime month) => _applyCalendarWindow(month);
+
+  /// Re-windows Timeline to [month] — same shape as [_applyCalendarWindow],
+  /// sharing `TaskDateRangeWindow` (schema:2) with Calendar (task-12 brief).
+  void _applyTimelineWindow(DateTime month) {
+    final start = DateTime.utc(month.year, month.month);
+    final from = DateTime.utc(start.year, start.month, 1);
+    final to = DateTime.utc(start.year, start.month + 1, 0);
+    setState(() => _timelineMonth = start);
+    _changeConfiguration(
+      _configuration.copyWith(
+        presentation: TaskPresentation.timeline,
+        window: TaskDateRangeWindow(from: from, to: to),
+      ),
+    );
+  }
+
+  void _changeTimelineMonth(DateTime month) => _applyTimelineWindow(month);
+
+  /// Re-windows Workload to [month] — same month-bounded shape as
+  /// [_applyCalendarWindow] / [_applyTimelineWindow], but `unit: day` always
+  /// (task-13 brief scopes this view to a day axis; a week toggle is a
+  /// later, additive change to this one method, not a redesign).
+  void _applyWorkloadWindow(DateTime month) {
+    final start = DateTime.utc(month.year, month.month);
+    setState(() => _workloadMonth = start);
+    _changeConfiguration(
+      _configuration.copyWith(
+        presentation: TaskPresentation.workload,
+        window: _workloadWindowFor(start),
+      ),
+    );
+  }
+
+  TaskWorkloadWindow _workloadWindowFor(DateTime month) => TaskWorkloadWindow(
+    from: DateTime.utc(month.year, month.month, 1),
+    to: DateTime.utc(month.year, month.month + 1, 0),
+    unit: TaskWorkloadUnit.day,
+  );
+
+  void _changeWorkloadMonth(DateTime month) => _applyWorkloadWindow(month);
+
+  void _changeKanbanField(TaskKanbanField field) {
+    setState(() => _kanbanField = field);
+    _applyKanbanField(field);
+  }
+
+  void _applyKanbanField(TaskKanbanField field) {
+    final board = _board;
+    if (board == null) return;
+    final buckets = TaskKanbanBuckets.forField(field, board, _owners)
+        .map((bucket) => bucket.id)
+        .toList(growable: false);
+    _changeConfiguration(
+      _configuration.copyWith(
+        presentation: TaskPresentation.kanban,
+        window: TaskKanbanWindow(bucketField: field.wire, buckets: buckets),
+        groupBy: field.wire,
+      ),
+    );
+  }
+
+  /// Drags a Kanban card between columns. This performs THE WRITE THE FIELD
+  /// ALREADY HAS — the exact same `PATCH tasks/{id}` core-field write
+  /// `_saveCoreNow` issues for the table, with the same `expected_version`
+  /// carried on `task.version`. Phase 2 adds no new write path for Kanban;
+  /// a field with no write path (read-only or archived) is refused by that
+  /// same endpoint, and its message — never a second, invented copy of the
+  /// reason — is what this returns for `TaskKanbanView` to display.
+  Future<String?> _kanbanMove(
+    TaskRow task,
+    TaskKanbanField field,
+    String bucketId,
+  ) async {
+    if (_bulkLockedTaskIds.contains(task.id)) {
+      return 'Finish the bulk change before editing this task.';
+    }
+    final current = _rows.where((row) => row.id == task.id).firstOrNull ?? task;
+    final privacy = _privacyGeneration;
+    final result = await _tasks.updateTask(
+      current.id,
+      expectedTaskVersion: current.version,
+      changes: <String, Object?>{field.writeField: bucketId},
+    );
+    if (!_isCurrentPrivacy(privacy)) return null;
+    if (result is TaskApiSuccess<TaskRow>) {
+      _putRow(_mergeServerRow(current, result.data));
+      return null;
+    }
+    if (result is TaskApiUnavailable<TaskRow>) {
+      _evict(result.message);
+      return result.message;
+    }
+    if (result is TaskApiConflictResult<TaskRow>) setState(() => _conflict = true);
+    return result.message ?? 'The change could not be saved.';
+  }
+
+  /// Drags a Calendar card to another day. THE PHASE 1 DUE-DATE WRITE — the
+  /// same `PATCH tasks/{id}` core-field write `_saveCoreNow`/`_kanbanMove`
+  /// already issue, carrying `task.version` as `expected_version`. Phase 2
+  /// adds no new write path for Calendar; [day] is only ever the calendar
+  /// date the card was dropped on, formatted the same `YYYY-MM-DD` way
+  /// `_Date` in `task_table.dart` already writes `due_on` as.
+  Future<String?> _calendarMove(TaskRow task, DateTime day) async {
+    if (_bulkLockedTaskIds.contains(task.id)) {
+      return 'Finish the bulk change before editing this task.';
+    }
+    final current = _rows.where((row) => row.id == task.id).firstOrNull ?? task;
+    final privacy = _privacyGeneration;
+    final result = await _tasks.updateTask(
+      current.id,
+      expectedTaskVersion: current.version,
+      changes: <String, Object?>{'due_on': _wireDate(day)},
+    );
+    if (!_isCurrentPrivacy(privacy)) return null;
+    if (result is TaskApiSuccess<TaskRow>) {
+      _putRow(_mergeServerRow(current, result.data));
+      return null;
+    }
+    if (result is TaskApiUnavailable<TaskRow>) {
+      _evict(result.message);
+      return result.message;
+    }
+    if (result is TaskApiConflictResult<TaskRow>) setState(() => _conflict = true);
+    return result.message ?? 'The change could not be saved.';
+  }
+
+  /// Drags a Timeline bar/marker/edge. THE PHASE 1 CORE-FIELD WRITE — same
+  /// `PATCH tasks/{id}` core-field write `_saveCoreNow`/`_kanbanMove`/
+  /// `_calendarMove` already issue, carrying `task.version` as
+  /// `expected_version`. An edge drag sends only the one field being moved
+  /// (the other stays `null` — omitted from `changes` entirely, not sent as
+  /// unchanged); a whole-bar or marker drag sends both in the SAME PATCH
+  /// call — one command, one version, exactly as task-12's brief requires.
+  /// This never reorders or swaps what it is told to write: a `start_on`
+  /// that lands after `due_on` is refused by the server, and
+  /// `TaskTimelineView` shows that refusal sentence verbatim.
+  Future<String?> _timelineMove(
+    TaskRow task, {
+    DateTime? startOn,
+    DateTime? dueOn,
+  }) async {
+    if (_bulkLockedTaskIds.contains(task.id)) {
+      return 'Finish the bulk change before editing this task.';
+    }
+    final current = _rows.where((row) => row.id == task.id).firstOrNull ?? task;
+    final privacy = _privacyGeneration;
+    final result = await _tasks.updateTask(
+      current.id,
+      expectedTaskVersion: current.version,
+      changes: <String, Object?>{
+        if (startOn != null) 'start_on': _wireDate(startOn),
+        if (dueOn != null) 'due_on': _wireDate(dueOn),
+      },
+    );
+    if (!_isCurrentPrivacy(privacy)) return null;
+    if (result is TaskApiSuccess<TaskRow>) {
+      _putRow(_mergeServerRow(current, result.data));
+      return null;
+    }
+    if (result is TaskApiUnavailable<TaskRow>) {
+      _evict(result.message);
+      return result.message;
+    }
+    if (result is TaskApiConflictResult<TaskRow>) setState(() => _conflict = true);
+    return result.message ?? 'The change could not be saved.';
+  }
 
   Widget _pagination() => _lastPage <= 1
       ? const SizedBox.shrink()
@@ -1506,7 +2310,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
                   key: ValueKey('task-search-$_privacyGeneration'),
                   api: _tasks,
                   onOpen: _openSearchResult,
-                  onUnavailable: () => _evict(null),
+                  onUnavailable: _evict,
                 ),
               );
               final actions = Row(
@@ -1618,17 +2422,54 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
               : null,
         );
 
-  Widget _boardControls() {
+  /// The three chrome strips above every presentation — saved views, the
+  /// presentation switcher, and this totals/filters/actions row — wrap onto
+  /// more lines when THEIR OWN space is narrow, never merely because the
+  /// window is. `LayoutBuilder` measures the real pane once here and passes
+  /// it down as `width`, rather than each bar reading `MediaQuery` for
+  /// itself (see `TaskPresentationBar.width` for the full account of why
+  /// that changed and how the starvation risk it used to dodge is closed
+  /// instead — a `ConstrainedBox` floor around `TaskTable` in
+  /// `_workspace()`).
+  ///
+  /// This row specifically had NO narrow-width branch at all before Task
+  /// 15 — it always scrolled — which is what actually clipped in
+  /// `board_desktop.png`/`conflict_desktop.png` (1440px window, ~823px
+  /// pane: `MediaQuery` would have said "wide" here too, so even restoring
+  /// it to the other two bars' old pattern would not have fixed this one).
+  /// [paneWidth], when given, is what `TaskViewsBar`/`TaskPresentationBar`/
+  /// `_actionsRow` measure "narrow" against, instead of `MediaQuery` (Task
+  /// 15 — see `TaskPresentationBar.width` for the full account). `null`
+  /// (every caller except `_workspace()`) falls back to `MediaQuery`,
+  /// which is the CORRECT width for them: none of those callers sit beside
+  /// a sibling pane that can squeeze this column's real width below the
+  /// window's. Deliberately NOT this method's own `LayoutBuilder` — an
+  /// earlier version wrapped this whole method in one, and a widget-level
+  /// test relying on a fixed, short `pump()` count (not `pumpAndSettle()`)
+  /// to land inside a specific debounce/poll race window started failing:
+  /// one more `LayoutBuilder` in the tree is one more build pass some of
+  /// that fixed pump budget goes to, silently changing how much real
+  /// (virtual) time had actually elapsed by the same pump count. Reading
+  /// [paneWidth] from `_workspace()`'s OWN, pre-existing `LayoutBuilder`
+  /// instead avoids adding a build boundary at all.
+  Widget _boardControls({double? paneWidth}) {
     final statusNames = <String?, String>{
       for (final status in _board?.statuses ?? const <TaskStatusOption>[])
         status.id: status.name,
       null: 'No status',
     };
+    // This State's own `context`, not a new `Builder`/`LayoutBuilder` — see
+    // the doc comment above for why an extra build boundary here is not
+    // free. `_boardControls()` only ever runs synchronously inside this
+    // State's own `build()` call tree, so `context` is always valid here.
+    final width = paneWidth ?? MediaQuery.sizeOf(context).width;
     return Column(
+      key: const ValueKey('task-board-controls'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (_views.isNotEmpty)
           TaskViewsBar(
+            width: width,
             views: _views,
             activeViewId: _activeViewId,
             canCreatePersonal: _canCreatePersonalView,
@@ -1639,81 +2480,141 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
             onDuplicate: _duplicateView,
             onDelete: _deleteView,
           ),
-        Material(
-          color: Theme.of(context).colorScheme.surfaceContainerLowest,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              child: Row(
-                children: [
-                  Text('$_total ${_total == 1 ? 'task' : 'tasks'}'),
-                  for (final summary in _statusSummaries) ...[
-                    const SizedBox(width: 8),
-                    Chip(
-                      visualDensity: VisualDensity.compact,
-                      label: Text(
-                        '${statusNames[summary.statusOptionId] ?? 'Status'} ${summary.count}',
-                      ),
-                    ),
-                  ],
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    onPressed: () =>
-                        setState(() => _showFilters = !_showFilters),
-                    icon: const Icon(Icons.filter_list),
-                    label: const Text('Filters'),
-                  ),
-                  if (_board case final board?) ...[
-                    if (board.can('update') ||
-                        board.can('archive') ||
-                        board.can('restore') ||
-                        board.can('manage_structure') ||
-                        board.can('manage_members')) ...[
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: _openAdministration,
-                        icon: const Icon(Icons.settings_outlined),
-                        label: const Text('Admin'),
-                      ),
-                    ],
-                    if (board.can('duplicate')) ...[
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: _openDuplicate,
-                        icon: const Icon(Icons.copy_all_outlined),
-                        label: const Text('Duplicate'),
-                      ),
-                    ],
-                    if (_activeViewId != null &&
-                        (board.can('import') ||
-                            board.can('export') ||
-                            board.can('archive_manifest'))) ...[
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: _openTransfer,
-                        icon: const Icon(Icons.import_export),
-                        label: const Text('Transfer'),
-                      ),
-                    ],
-                  ],
-                  if (_viewDirty) ...[
-                    const SizedBox(width: 8),
-                    const Text('Unsaved view changes'),
-                  ],
-                ],
-              ),
-            ),
+        TaskPresentationBar(
+          width: width,
+          presentation: _configuration.presentation,
+          kanbanField: _kanbanField,
+          onPresentationChanged: _changePresentation,
+          onKanbanFieldChanged: _changeKanbanField,
+        ),
+        _actionsRow(width, statusNames),
+      ],
+    );
+  }
+
+  /// This row is chrome (a task count, status chips, and action buttons),
+  /// not data, so it always wraps rather than ever clipping behind an
+  /// un-affordanced horizontal scroll (Task 15) — unconditionally, no
+  /// narrow-width breakpoint to calibrate: `Wrap` already renders as one
+  /// line whenever its content fits the space it is actually given, at
+  /// ANY pane width, which is exactly what a breakpoint here was trying
+  /// (and, at the reported pane width of ~823px against a 700px
+  /// breakpoint tuned for `TaskPresentationBar`'s narrower five-tab
+  /// content, failing) to approximate.
+  ///
+  /// `board.can('update')`/`manage_structure`/`manage_members`/
+  /// `duplicate`/`import`/`export`/`archive_manifest` — the five secondary
+  /// actions those permissions unlock (Admin, Duplicate, Transfer) —
+  /// collapse into ONE overflow button rather than up to three separate
+  /// `OutlinedButton`s. Not primarily a space-saving trick: it turns out to
+  /// be one (removing up to three wide buttons is what keeps this row's
+  /// wrapped height from starving the view below it on a 375px phone with
+  /// every permission granted — the same board fixture these goldens
+  /// already use), but the actual reason is that these three are
+  /// board-administration actions a reader reaches for far less often than
+  /// Filters, which stays its own always-visible button.
+  /// Below this, the per-status chips are dropped from this row entirely —
+  /// each is a legitimate summary a reader can still get from the status
+  /// column or `TaskFiltersPanel`, and at a genuinely narrow width they
+  /// were the single biggest, most variable (0-N chips) contributor to how
+  /// many lines this row wraps onto — see `_actionsRow`.
+  static const _statusChipsBreakpoint = 700.0;
+
+  Widget _actionsRow(double width, Map<String?, String> statusNames) {
+    final board = _board!;
+    final secondaryActions = <PopupMenuEntry<VoidCallback>>[
+      if (board.can('update') ||
+          board.can('archive') ||
+          board.can('restore') ||
+          board.can('manage_structure') ||
+          board.can('manage_members'))
+        PopupMenuItem<VoidCallback>(
+          value: _openAdministration,
+          child: const ListTile(
+            leading: Icon(Icons.settings_outlined),
+            title: Text('Admin'),
           ),
         ),
-      ],
+      if (board.can('duplicate'))
+        PopupMenuItem<VoidCallback>(
+          value: _openDuplicate,
+          child: const ListTile(
+            leading: Icon(Icons.copy_all_outlined),
+            title: Text('Duplicate'),
+          ),
+        ),
+      if (_activeViewId != null &&
+          (board.can('import') ||
+              board.can('export') ||
+              board.can('archive_manifest')))
+        PopupMenuItem<VoidCallback>(
+          value: _openTransfer,
+          child: const ListTile(
+            leading: Icon(Icons.import_export),
+            title: Text('Transfer'),
+          ),
+        ),
+    ];
+    final items = <Widget>[
+      Text('$_total ${_total == 1 ? 'task' : 'tasks'}'),
+      if (width >= _statusChipsBreakpoint)
+        for (final summary in _statusSummaries)
+          Chip(
+            visualDensity: VisualDensity.compact,
+            label: Text(
+              '${statusNames[summary.statusOptionId] ?? 'Status'} ${summary.count}',
+            ),
+          ),
+      OutlinedButton.icon(
+        onPressed: () => setState(() => _showFilters = !_showFilters),
+        icon: const Icon(Icons.filter_list),
+        label: const Text('Filters'),
+      ),
+      if (secondaryActions.isNotEmpty)
+        PopupMenuButton<VoidCallback>(
+          key: const ValueKey('board-secondary-actions'),
+          tooltip: 'More board actions',
+          icon: const Icon(Icons.more_horiz),
+          itemBuilder: (_) => secondaryActions,
+          onSelected: (action) => action(),
+        ),
+      if (_viewDirty) const Text('Unsaved view changes'),
+    ];
+    return Material(
+      color: Theme.of(context).colorScheme.surfaceContainerLowest,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: items,
+        ),
+      ),
     );
   }
 
   Widget _workspace(bool wide) => LayoutBuilder(
     builder: (context, constraints) {
       final showDirectory = wide && constraints.maxWidth >= 1100;
-      final showDetail = _detailOpen && constraints.maxWidth >= 800;
+      // Task 15: was 800. Below ~1100, reserving the detail panel's default
+      // 390px (+16px divider) leaves a content pane under 700px — exactly
+      // the width `TaskPresentationBar`/`TaskViewsBar` treat as narrow and
+      // wrap onto multiple lines. Measured: at a 394px pane (an 800px
+      // window, `_detailOpen`'s true-by-default value reserving an empty
+      // detail panel for nothing selected), that wrapped chrome starved
+      // `TaskTable` enough to silently lose rows out of an EDITING draft —
+      // the exact regression this file's own `ConstrainedBox` floor exists
+      // to guard against, just not something a fixed-height floor alone
+      // can fix: nothing can promise a table a floor the SIBLING chrome
+      // above it has already spent. 1100 matches `showDirectory`'s own bar
+      // (a 3-pane-or-detail layout needs the same real room either way)
+      // and keeps a comfortable margin above 700 for the default 390px
+      // detail width; a detail panel manually resized toward its 640px
+      // maximum can still re-enter the same danger zone at the widths this
+      // guards — a real, narrower residual case, flagged rather than
+      // silently accepted (task-15 report).
+      final showDetail = _detailOpen && constraints.maxWidth >= 1100;
       if (_detailOpen && !showDetail && _detail != null) {
         return TaskDetailPanel(
           task: _detail,
@@ -1727,6 +2628,18 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
           onClose: () => setState(() => _detailOpen = false),
         );
       }
+      // The actual width the middle column — chrome and `TaskTable` alike —
+      // has to work with, once the board directory and detail panel (each
+      // real siblings in the `Row` below, not merely visual insets) take
+      // their share of `constraints.maxWidth`. Board_desktop.png/
+      // conflict_desktop.png (1440px window, ~823px pane once the
+      // default-open detail panel reserves ~406px) is exactly the gap
+      // between this number and `MediaQuery`'s own width — see
+      // `TaskPresentationBar.width` (Task 15).
+      final contentPaneWidth =
+          constraints.maxWidth -
+          (showDirectory ? 211 : 0) -
+          (showDetail ? _detailWidth + 16 : 0);
       return Row(
         children: [
           if (showDirectory) ...[
@@ -1756,53 +2669,39 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
             const VerticalDivider(width: 1),
           ],
           Expanded(
-            child: Column(
-              children: [
-                _boardControls(),
-                if (_showFilters)
-                  SizedBox(
-                    height: 330,
-                    child: TaskFiltersPanel(
-                      board: _board!,
-                      configuration: _configuration,
-                      people: _people,
-                      onChanged: _changeConfiguration,
-                      onClose: () => setState(() => _showFilters = false),
-                    ),
-                  ),
-                Expanded(
-                  child: TaskTable(
-                    board: _board!,
-                    rows: _rows,
-                    selectedTaskId: _selectedTaskId,
-                    onSelected: _selectTask,
-                    onTitleChanged: _rename,
-                    onCoreChanged: _saveCore,
-                    onCustomChanged: _saveCustom,
-                    onBulkChanged: _bulk,
-                    bulkBusy: _bulkBusy,
-                    interactionLocked: _bulkBusy,
-                    owners: _owners,
-                    people: _people,
-                    configuration: _configuration,
-                    groupCounts: _groupCounts,
-                    onDraftChanged: _draftChanged,
-                    onAddTask: _board!.can('create_task')
-                        ? _addTaskToGroup
-                        : null,
-                    onSelectionChanged: (count) => _announce(
-                      count == 0
-                          ? 'Selection cleared.'
-                          : '$count tasks selected.',
-                    ),
-                    onSelectionCleared: () => setState(() {
-                      _selectedTaskId = null;
-                      _detailOpen = false;
-                    }),
-                  ),
+            child: _boardScaffold(
+              view: TaskTable(
+                board: _board!,
+                rows: _rows,
+                selectedTaskId: _selectedTaskId,
+                onSelected: _selectTask,
+                onTitleChanged: _rename,
+                onCoreChanged: _saveCore,
+                onCustomChanged: _saveCustom,
+                onBulkChanged: _bulk,
+                bulkBusy: _bulkBusy,
+                interactionLocked: _bulkBusy,
+                owners: _owners,
+                people: _people,
+                configuration: _configuration,
+                groupCounts: _groupCounts,
+                onDraftChanged: _draftChanged,
+                onAddTask: _board!.can('create_task')
+                    ? _addTaskToGroup
+                    : null,
+                onSelectionChanged: (count) => _announce(
+                  count == 0
+                      ? 'Selection cleared.'
+                      : '$count tasks selected.',
                 ),
-                _pagination(),
-              ],
+                onSelectionCleared: () => setState(() {
+                  _selectedTaskId = null;
+                  _detailOpen = false;
+                }),
+              ),
+              trailing: _pagination(),
+              minViewHeight: 280,
+              paneWidth: contentPaneWidth,
             ),
           ),
           if (showDetail)
@@ -1873,6 +2772,15 @@ class _ResizeDetailIntent extends Intent {
 extension _TasksFirstOrNull<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
 }
+
+/// Same `YYYY-MM-DD` shape `_dateOnly` in `task_models.dart` writes and
+/// `_Date` in `task_table.dart` submits — kept local rather than exported
+/// since only this file's Calendar and Timeline drag writes need it
+/// client-side.
+String _wireDate(DateTime date) =>
+    '${date.year.toString().padLeft(4, '0')}-'
+    '${date.month.toString().padLeft(2, '0')}-'
+    '${date.day.toString().padLeft(2, '0')}';
 
 class _EmptyDirectory extends StatelessWidget {
   const _EmptyDirectory({this.onCreate, this.onRecover, this.onManageFolders});

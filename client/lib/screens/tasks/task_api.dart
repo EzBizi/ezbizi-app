@@ -747,10 +747,19 @@ final class TaskApi {
     });
   }
 
+  /// `presentation` and `window` are carried inside `configuration` on the
+  /// wire (Ruling 16 — the plan's `?presentation=&window=` query-string
+  /// shape does not exist; `GET .../rows` has one validated input surface).
+  /// These two named parameters are a convenience over that: when either is
+  /// given, they are merged onto `configuration` (or `TaskViewConfiguration
+  /// .empty` if none was passed) before it is encoded, so a caller does not
+  /// have to hand-build a whole configuration just to switch presentation.
   Future<TaskApiResult<TaskRowsPage>> boardRows(
     String boardId, {
     String? viewId,
     TaskViewConfiguration? configuration,
+    TaskPresentation? presentation,
+    TaskWindow? window,
     int page = 1,
     int perPage = 50,
     String? etag,
@@ -762,10 +771,16 @@ final class TaskApi {
         message: 'Load the board definition before loading its rows.',
       );
     }
+    final effectiveConfiguration = presentation == null && window == null
+        ? configuration
+        : (configuration ?? TaskViewConfiguration.empty).copyWith(
+            presentation: presentation,
+            window: window,
+          );
     final response = await _api
         .get('/tasks/boards/$boardId/rows', <String, String>{
           'view_id': ?viewId,
-          if (configuration case final configuration?)
+          if (effectiveConfiguration case final configuration?)
             'configuration': jsonEncode(configuration.toJson()),
           'page': '$page',
           'per_page': '$perPage',
@@ -920,6 +935,60 @@ final class TaskApi {
       }
       return value;
     });
+  }
+
+  /// `POST tasks/{task}/dependencies` (task-4 brief). `taskId` is the task
+  /// that is BLOCKED; `blockerTaskId` names its blocker. Display-only — no
+  /// concurrency version, because a dependency edge carries none.
+  Future<TaskApiResult<TaskDependency>> addDependency(
+    String taskId, {
+    required String blockerTaskId,
+  }) async {
+    final response = await _api.post('/tasks/$taskId/dependencies', {
+      'blocker_task_id': blockerTaskId,
+    });
+    return _decode(
+      response,
+      (data) => TaskDependency.fromJson(_map(data, 'data')),
+    );
+  }
+
+  /// `DELETE tasks/dependencies/{dependency}` (task-4 brief).
+  Future<TaskApiResult<bool>> removeDependency(String dependencyId) async {
+    final response = await _api.delete('/tasks/dependencies/$dependencyId');
+    return _decode(response, (data) {
+      final value = _map(data, 'data')['removed'];
+      if (value is! bool) {
+        throw const FormatException('data.removed must be a bool.');
+      }
+      return value;
+    });
+  }
+
+  /// Declares or clears a task's recurrence
+  /// (`TaskWriter::setRecurrence(User $actor, Task $task, ?array $raw, int
+  /// $version)`, task-5 brief) — a versioned write on the same
+  /// optimistic-concurrency path as `updateTask`, so `expected_version` is
+  /// the version this command sends.
+  ///
+  /// Targets `PUT tasks/{taskId}/recurrence` with body `{expected_version,
+  /// recurrence}`, returning the updated task as `data` — the same shape
+  /// the sibling single-purpose mutations `PUT tasks/{id}/collaborators`
+  /// and `PUT tasks/{id}/watch` use. `TaskRecurrenceController` (task-13
+  /// brief) wires this route and performs the board `ViewScope` decision
+  /// `TaskDependenciesController` does — `TaskWriter::setRecurrence` itself
+  /// only checks `tasks.edit` plus an organization read-only guard, so the
+  /// controller is where exact-view access is enforced.
+  Future<TaskApiResult<TaskRow>> setRecurrence(
+    String taskId, {
+    required int expectedTaskVersion,
+    required TaskRecurrence? recurrence,
+  }) async {
+    final response = await _api.put('/tasks/$taskId/recurrence', <String, Object?>{
+      'expected_version': expectedTaskVersion,
+      'recurrence': recurrence?.toJson(),
+    });
+    return _decode(response, (data) => TaskRow.fromJson(_map(data, 'data')));
   }
 
   Future<TaskApiResult<TaskRow>> updateTask(
@@ -1258,6 +1327,43 @@ final class TaskApi {
       response,
       (_) => TaskMyTasksPage.fromJson(
         Map<String, Object?>.from(response.body),
+        etag: response.headers['etag'],
+      ),
+    );
+  }
+
+  /// Task 14: Calendar, Timeline or Workload opened across the current view
+  /// rather than one board — the same `GET /tasks/my` endpoint `myTasks()`
+  /// uses, with `presentation`/`window` carried inside `configuration` on
+  /// the wire exactly the way `boardRows()`'s doc-comment above already
+  /// explains for a single board (Ruling 16). Table is not reachable through
+  /// this method — call `myTasks()` for that, unchanged.
+  Future<TaskApiResult<TaskCrossBoardPage>> myTasksPresentation({
+    required TaskPresentation presentation,
+    required TaskWindow window,
+    int page = 1,
+    int perPage = 50,
+    String? etag,
+  }) async {
+    final response = await _api.get('/tasks/my', <String, String>{
+      'configuration': jsonEncode(<String, Object?>{
+        'presentation': presentation.wire,
+        'window': window.toJson(),
+      }),
+      'page': '$page',
+      'per_page': '$perPage',
+    }, _etagHeader(etag));
+    if (response.statusCode == 304) {
+      return TaskApiNotModified<TaskCrossBoardPage>(
+        etag: response.headers['etag'] ?? etag,
+        correlationId: response.correlationId,
+      );
+    }
+    return _decode(
+      response,
+      (_) => TaskCrossBoardPage.fromJson(
+        Map<String, Object?>.from(response.body),
+        presentation: presentation,
         etag: response.headers['etag'],
       ),
     );

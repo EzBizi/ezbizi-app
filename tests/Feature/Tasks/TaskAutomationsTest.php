@@ -10,6 +10,7 @@ use App\Models\TaskGroup;
 use App\Models\TaskStatusOption;
 use App\Models\TaskUpdate;
 use App\Support\Automations\AutomationEngine;
+use App\Support\Modules\ModuleRegistry;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tasks\StatusCategory;
 use App\Support\Tenancy\TenantContext;
@@ -110,6 +111,159 @@ class TaskAutomationsTest extends TestCase
         $this->assertSame($source->id, $untouched->group_id);
         $this->assertSame(0, TaskUpdate::where('task_id', $untouched->id)->count());
         $this->assertSame($followUps, Task::where('title', 'Automatic follow-up')->count());
+    }
+
+    // ── the published contract (Task 8) ──────────────────────────
+    //
+    // Tasks 4 and 6 each registered their own Phase 2 trigger in
+    // ModuleServiceProvider as they went — emitting an unregistered trigger
+    // throws immediately, so deferring registration to this task was never
+    // possible. What was still open is whether the four keys below are the
+    // ones actually registered, whether they read on the Task subject, and
+    // whether nothing else about the module's published shape moved while
+    // they were added. These assertions are read from
+    // `app(ModuleRegistry::class)`, not retyped from memory of the plan.
+
+    public function test_phase_2_triggers_are_declared_israised_and_apply_to_the_task_subject(): void
+    {
+        $registry = app(ModuleRegistry::class);
+        $tasks = $registry->get('tasks');
+        $this->assertNotNull($tasks);
+
+        foreach ([
+            'task.dependency_added',
+            'task.dependency_removed',
+            'task.recurrence_completed',
+            'task.recurrence_instance_due',
+        ] as $key) {
+            $trigger = $tasks->trigger($key);
+            $this->assertNotNull($trigger, "Phase 2 trigger '{$key}' is not declared on the tasks module.");
+            $this->assertTrue($trigger->isRaised, "'{$key}' is declared but marked as never raised.");
+
+            // subjectOfTrigger is what the field picker actually calls — the
+            // same lookup the save-time check uses to decide whether a rule's
+            // update_field action may write to this record.
+            $this->assertSame(
+                'task',
+                $registry->subjectOfTrigger($key)?->key(),
+                "'{$key}' does not resolve to the Task subject.",
+            );
+        }
+    }
+
+    /**
+     * The full Phase 1 catalogue, spelled out rather than counted, so that a
+     * future task adding or renaming a trigger or action has to edit this
+     * assertion on purpose rather than drift past a count that still matches.
+     */
+    public function test_phase_1_triggers_and_actions_are_unchanged(): void
+    {
+        $tasks = app(ModuleRegistry::class)->get('tasks');
+        $this->assertNotNull($tasks);
+
+        $this->assertSame([
+            'task.created',
+            'task.owner_changed',
+            'task.status_changed',
+            'task.due_date_changed',
+            'task.completed',
+            'task.reopened',
+            'task.update_added',
+            'task.archived',
+            'task.overdue',
+            // Phase 2 additions, appended after the original nine.
+            'task.dependency_added',
+            'task.dependency_removed',
+            'task.recurrence_completed',
+            'task.recurrence_instance_due',
+        ], $tasks->triggerKeys());
+
+        $this->assertSame(
+            ['task.create', 'task.assign_owner', 'task.set_status', 'task.set_due_date', 'task.move_group', 'task.add_update'],
+            array_map(fn ($action) => $action->key, $tasks->automationActions),
+        );
+    }
+
+    /**
+     * Creating a recurring instance is what TaskDueWorker does, not something
+     * a rule invokes — so Phase 2 declares zero new actions. An assertion that
+     * only checked the six original keys were still PRESENT would pass with a
+     * seventh added; this also checks the count.
+     */
+    public function test_no_new_actions_were_added_by_phase_2(): void
+    {
+        $tasks = app(ModuleRegistry::class)->get('tasks');
+        $this->assertNotNull($tasks);
+
+        $this->assertCount(6, $tasks->automationActions);
+    }
+
+    /**
+     * Exactly the seven Phase 1 permissions — plan §14: Phase 2 adds no
+     * capability those do not already describe. A permission added by
+     * accident here is a data migration across every role in every
+     * organization later, so this checks the set is exact, not merely a
+     * superset of the seven.
+     */
+    public function test_permission_set_is_exactly_the_seven_phase_1_permissions(): void
+    {
+        $tasks = app(ModuleRegistry::class)->get('tasks');
+        $this->assertNotNull($tasks);
+
+        $this->assertSame(
+            ['view', 'create', 'edit', 'comment', 'delete', 'export', 'manage'],
+            $tasks->actions,
+        );
+        $this->assertSame(
+            ['tasks.view', 'tasks.create', 'tasks.edit', 'tasks.comment', 'tasks.delete', 'tasks.export', 'tasks.manage'],
+            $tasks->permissionKeys(),
+        );
+    }
+
+    /**
+     * The frozen v0.0.0112 client tolerates an unknown trigger key generically
+     * — `CatalogueTrigger.tryFrom` falls back to `label: json['label'] ?? key`
+     * (docs/ACTIVE-CONSTRAINTS.md §1) — but only because the catalogue still
+     * SERIALIZES the shape it expects: `key`, `label`, `description` per
+     * trigger. This hits the real `/api/v1/automations/catalogue` endpoint
+     * rather than the registry object directly, so a change to the
+     * controller's own mapping would fail this too, not just a change to the
+     * module declaration.
+     */
+    public function test_catalogue_endpoint_serializes_phase_2_triggers_in_the_shape_the_frozen_client_reads(): void
+    {
+        $tenant = $this->provisionTenant('Gamma');
+        app(TenantContext::class)->set($tenant['org']);
+        $this->artisan('ezbizi:sync-permissions')->assertSuccessful();
+        $this->actingAs($tenant['admin']->fresh());
+
+        $response = $this->getJson('/api/v1/automations/catalogue')->assertOk();
+        $tasksModule = collect($response->json('data.modules'))->firstWhere('key', 'tasks');
+        $this->assertNotNull($tasksModule);
+
+        foreach ($tasksModule['triggers'] as $trigger) {
+            $this->assertArrayHasKey('key', $trigger);
+            $this->assertArrayHasKey('label', $trigger);
+            $this->assertArrayHasKey('description', $trigger);
+        }
+
+        $triggerKeys = collect($tasksModule['triggers'])->pluck('key')->all();
+        foreach ([
+            'task.dependency_added',
+            'task.dependency_removed',
+            'task.recurrence_completed',
+            'task.recurrence_instance_due',
+        ] as $key) {
+            $this->assertContains($key, $triggerKeys);
+        }
+
+        // No new action keys reach the wire either — automation_builder.dart
+        // enumerates `knownTypes` by exact key rather than by prefix, so a new
+        // task.* action would not be inert the way a new trigger is.
+        $this->assertSame(
+            ['task.create', 'task.assign_owner', 'task.set_status', 'task.set_due_date', 'task.move_group', 'task.add_update'],
+            collect($tasksModule['declared_actions'])->pluck('key')->all(),
+        );
     }
 
     private function createTask(

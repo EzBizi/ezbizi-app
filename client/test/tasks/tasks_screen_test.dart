@@ -43,6 +43,151 @@ void main() {
     expect(find.byType(Dialog), findsNothing);
   });
 
+  testWidgets(
+    'the access-refusal sentence has non-zero horizontal padding',
+    (tester) async {
+      tester.view.physicalSize = const Size(375, 812);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final api = ApiClient(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/v1/tasks/boards') {
+            return _json(<String, Object?>{
+              'message': 'Tasks are not available for this view.',
+            }, 403);
+          }
+          return _json(<String, Object?>{'message': 'Unexpected request'}, 500);
+        }),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: EzBiziTheme.light(),
+          home: Scaffold(
+            body: TasksScreen(api: api, session: Session(api)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The server's own sentence — house rule 4 — not a client-written
+      // fallback (see the "server sentence vs. fallback" tests below).
+      final sentence = find.text('Tasks are not available for this view.');
+      expect(sentence, findsOneWidget);
+
+      final padding = tester.widget<Padding>(
+        find.ancestor(of: sentence, matching: find.byType(Padding)).first,
+      );
+      expect(padding.padding.horizontal, greaterThan(0));
+
+      // Not stranded below a void either — it renders directly under the
+      // title bar's chip row, the same top-aligned placement every sibling
+      // screen uses, rather than centered in the remaining height.
+      final sentenceTop = tester.getTopLeft(sentence).dy;
+      expect(sentenceTop, lessThan(300));
+    },
+  );
+
+  testWidgets(
+    'an eviction carrying a server message renders that message verbatim',
+    (tester) async {
+      final api = ApiClient(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/v1/tasks/boards') {
+            return _json(<String, Object?>{
+              'message': 'Your access to this board was removed.',
+            }, 403);
+          }
+          return _json(<String, Object?>{'message': 'Unexpected request'}, 500);
+        }),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: EzBiziTheme.light(),
+          home: Scaffold(
+            body: TasksScreen(api: api, session: Session(api)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Your access to this board was removed.'),
+        findsOneWidget,
+      );
+      expect(find.text('This task board is unavailable.'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'a board refusal surfaced through quick search shows the SERVER '
+    "sentence, not the client's",
+    (tester) async {
+      // Regression test for the version of this fix that shipped with
+      // `TaskQuickSearch.onUnavailable` typed as a bare `VoidCallback`: it
+      // discarded `result.message` and called `_evict(null)`, so a board
+      // refusal reached through search rendered the client's hardcoded
+      // fallback instead of `Refusal.php`'s sentence — house rule 4,
+      // violated one layer above `_evict` itself. `onUnavailable` is now
+      // `ValueChanged<String?>`, matching every other `onUnavailable` in
+      // `lib/screens/tasks/`, and forwards `result.message`.
+      final api = ApiClient(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/v1/tasks/boards') {
+            return _json(<String, Object?>{'data': <Object?>[], 'meta': _directoryMeta});
+          }
+          if (request.url.path == '/api/v1/tasks/folders') {
+            return _json(<String, Object?>{'data': <Object?>[]});
+          }
+          if (request.url.path == '/api/v1/tasks/search') {
+            return _json(<String, Object?>{
+              'message': 'Search is not available for this view.',
+            }, 403);
+          }
+          return _json(<String, Object?>{'message': 'Unexpected request'}, 500);
+        }),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: EzBiziTheme.light(),
+          home: Scaffold(
+            body: TasksScreen(api: api, session: Session(api)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.bySemanticsLabel('Search all tasks'),
+        'liner',
+      );
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Search is not available for this view.'),
+        findsOneWidget,
+      );
+      expect(find.text('This task board is unavailable.'), findsNothing);
+    },
+  );
+
+  // No test exercises the client's hardcoded fallback string as reached
+  // through a real refusal. Every `_evict`/`onUnavailable` call site in
+  // `lib/screens/tasks/` — traced exhaustively, all ~34 of them — forwards
+  // `result.message` from `TaskApiUnavailable`, which is built in
+  // `TaskApi._decode` from `ApiResponse.message`. That getter is
+  // `body['message'] as String? ?? 'Something went wrong (HTTP
+  // $statusCode).'` — it cannot itself return `null`, so nothing built on
+  // top of it can either. Constructing a mock response with no `message`
+  // field does not produce the client's fallback string; it produces
+  // that generic HTTP-reason string instead, which is a different (real,
+  // but unrelated) fallback one layer further down. A test asserting the
+  // client sentence appears for "no server message" would therefore be
+  // exercising a code path that cannot occur today, which is the same
+  // failure mode being fixed here: a passing test that certifies
+  // something the code doesn't actually do.
+
   testWidgets('detail separator is keyboard operable', (tester) async {
     var delta = 0.0;
     await tester.pumpWidget(

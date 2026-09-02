@@ -16,7 +16,7 @@ class TaskQuickSearch extends StatefulWidget {
 
   final TaskApi api;
   final ValueChanged<TaskQuickSearchResult> onOpen;
-  final VoidCallback? onUnavailable;
+  final ValueChanged<String?>? onUnavailable;
   final Duration debounce;
 
   @override
@@ -63,7 +63,7 @@ class _TaskQuickSearchState extends State<TaskQuickSearch> {
     final result = await widget.api.quickSearch(query);
     if (!mounted || token != _requestToken) return;
     if (result is TaskApiUnavailable<List<TaskQuickSearchResult>>) {
-      widget.onUnavailable?.call();
+      widget.onUnavailable?.call(result.message);
       return;
     }
     setState(() {

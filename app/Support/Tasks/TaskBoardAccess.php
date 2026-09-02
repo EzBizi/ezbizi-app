@@ -16,6 +16,41 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * Board-level access decisions for Tasks (spec §4, §9).
+ *
+ * ── `viewDecision()` denies two different ways, and it matters which ──
+ *
+ * `viewDecision()` refuses a board through either of two paths, and they are
+ * not interchangeable — mixing them up is what cost three sessions real time
+ * verifying this method today, each stopping at the first deny path it found
+ * and reporting a different, contradictory answer.
+ *
+ *   - 403, from `baseDecision()`'s own `Response::deny()` /
+ *     `Refusal::permission()` branches: the Tasks module is unavailable for
+ *     the organization, or the actor lacks `tasks.view`. Both answer
+ *     IDENTICALLY for every board id, including one that does not exist, so
+ *     this path discloses nothing about any particular board.
+ *
+ *   - 404, from `Response::denyAsNotFound()`, raised from FOUR call sites:
+ *     `baseDecision()`'s cross-organization check, and `viewDecision()`'s own
+ *     archived-board check, out-of-scope check (`TaskPlace::coveredBy`), and
+ *     `privateMembershipDecision()`'s non-member check. THIS is the
+ *     disclosing path, and all four must stay indistinguishable — in BOTH
+ *     status code and response body — from a board id that never existed.
+ *     Telling one of these apart from "not found" would tell an actor
+ *     whether a specific id is a real board in someone else's organization,
+ *     out of their scope, or on someone's private membership list.
+ *
+ * The trap: `baseDecision()` is not "the 403 branch". Its FIRST check
+ * (cross-organization) returns a 404, not a 403 — so it is wrong to assume
+ * everything inside `baseDecision()` maps to 403, and equally wrong to assume
+ * every `denyAsNotFound()` call lives in `viewDecision()` itself. Read the
+ * actual branch taken, not the method name it lives in.
+ *
+ * `manageDecision()`, `boardActions()`, and `manageArchivedDecision()` all
+ * route through the same `baseDecision()` and inherit this split unchanged.
+ */
 final class TaskBoardAccess
 {
     public function __construct(

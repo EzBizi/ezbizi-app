@@ -8,6 +8,37 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0140',
+      date: '2 Sep 2026',
+      items: [
+        'Tasks: a board can now be read four new ways as well as the table. '
+            'Kanban puts cards in columns you can drag between. Calendar '
+            'shows the month by due date. Timeline draws each task as a bar '
+            'from its start to its due date. Workload shows how many tasks '
+            'each person is holding, day by day or week by week.',
+        'Workload counts tasks, not hours. EzBizi does not know how long '
+            'anyone works, so it does not pretend to - there is no capacity '
+            'line and nothing turns red.',
+        'A task can be marked as blocked by another task on the same board. '
+            'The Timeline draws the line between them. It is a note about '
+            'order, not a rule: nothing stops you finishing work early.',
+        'A task can repeat, either a set time after you finish it - right '
+            'for servicing something - or on a fixed schedule whether or '
+            'not the last one was done, which is right for a filing '
+            'deadline.',
+        'Timeline, Calendar and Workload can also be opened across every '
+            'board you can see rather than one at a time. Those are for '
+            'reading; open the board itself to change anything.',
+        'A task can no longer be saved with a start date after its own due '
+            'date. It used to save quietly and read as wrong everywhere it '
+            'appeared.',
+        'Training: a test is marked, and says why. A learner sees a '
+            'score, which answers were wrong, and how many attempts are '
+            'left; a test whose guide has not been finished says that '
+            'rather than refusing without a reason.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0139',
       date: '2 Sep 2026',
       items: [

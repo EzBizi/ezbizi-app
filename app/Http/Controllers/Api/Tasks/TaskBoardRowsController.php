@@ -8,7 +8,10 @@ use App\Models\User;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tasks\TaskBoardAccess;
 use App\Support\Tasks\TaskListQuery;
+use App\Support\Tasks\TaskPresentation;
 use App\Support\Tasks\TaskViewCodec;
+use App\Support\Tasks\TaskWindow;
+use App\Support\Tasks\TaskWorkloadQuery;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -18,6 +21,7 @@ final class TaskBoardRowsController extends TaskApiController
         private readonly TaskBoardAccess $access,
         private readonly TaskViewCodec $codec,
         private readonly TaskListQuery $rows,
+        private readonly TaskWorkloadQuery $workload,
     ) {}
 
     public function index(Request $request, TaskBoard $board): Response
@@ -50,6 +54,12 @@ final class TaskBoardRowsController extends TaskApiController
             (int) ($input['page'] ?? 1),
             (int) ($input['per_page'] ?? 50),
         );
+        if (TaskPresentation::from($configuration['presentation']) === TaskPresentation::Workload) {
+            $window = TaskWindow::parse(TaskPresentation::Workload, $result['window']);
+            $workload = $this->workload->rows($request->user(), $scope, $board, $window);
+            $result['data'] = $workload['data'];
+            $result['omitted']['unowned'] = $workload['omitted']['unowned'];
+        }
         $etag = hash('sha256', json_encode([
             $result['fingerprint'], $view->id, (int) $view->version, $configuration,
             $result['page'], $result['per_page'],

@@ -60,6 +60,16 @@ final class TaskWriter
             $collaborators = $this->collaborators($lockedBoard, $attributes['collaborator_user_ids'] ?? []);
             $description = $this->richText->normalize($attributes['description'] ?? null);
             $dueOn = $attributes['due_on'] ?? null;
+            $startOn = $attributes['start_on'] ?? null;
+            // Same rule as applyUpdate()'s merged-state check (design spec
+            // §8; task-12 brief, fix round 2), reusing Refusal::startAfterDue()
+            // rather than a second sentence. Simpler here than on update:
+            // there is no existing row to merge against, so this only ever
+            // fires when BOTH dates are present in this one request and
+            // inverted. Either date absent (including both) is always fine.
+            if ($startOn !== null && $dueOn !== null && $startOn > $dueOn) {
+                throw ValidationException::withMessages(['start_on' => (string) Refusal::startAfterDue()->message()]);
+            }
 
             $task = new Task;
             $task->forceFill([
@@ -109,6 +119,9 @@ final class TaskWriter
             );
             $this->notify($task, $audit, $actor, $owner === null ? [] : [$owner->id => 'task.assigned']);
             $this->notifyCollaborators($task, $audit, $actor, $collaborators->modelKeys());
+            if (in_array('task.completed', $eventKeys, true)) {
+                $this->recordRecurrenceOnCompletion($task);
+            }
 
             return $task->fresh($this->relations());
         });
@@ -209,6 +222,82 @@ final class TaskWriter
         });
     }
 
+    /**
+     * Declare (or clear) a task's recurrence (Tasks Phase 2 design, task-5
+     * brief). Same optimistic-concurrency and audit path as every other
+     * task write — `version` is checked against a row-locked task and a
+     * stale caller gets a TaskConflict, exactly like update().
+     *
+     * This is a declaration only: it never schedules an occurrence, never
+     * dispatches an automation event, and never touches `due_on`. Task 6
+     * builds the worker that reads `recurrence` and acts on it.
+     */
+    public function setRecurrence(User $actor, Task $task, ?array $raw, int $version): Task
+    {
+        return DB::transaction(function () use ($actor, $task, $raw, $version): Task {
+            $board = TaskBoard::query()->lockForUpdate()->findOrFail($task->board_id);
+            if (! $actor->hasPermission('tasks.edit')) {
+                Refusal::permission('change this task')->authorize();
+            }
+            if ($actor->organization?->isReadOnly()) {
+                throw ValidationException::withMessages(['organization' => 'This organization is read-only because its subscription has ended.']);
+            }
+
+            $locked = Task::query()->where('board_id', $board->id)->lockForUpdate()->findOrFail($task->id);
+            abort_if($locked->archived_at !== null, 404);
+            $this->assertVersion($locked, $version, ['recurrence']);
+
+            // Fix round 2 (task-6): a subtask cannot declare recurrence, in
+            // either mode — buildInstance() has no defensible shape for a
+            // recurring checklist item (it copies `group`, which only a
+            // top-level task has), and both modes reach the same
+            // tasks_group_xor_parent_check violation by the same path.
+            // Clearing an existing declaration is still allowed regardless
+            // — a refusal never blocks the safer, de-escalating action.
+            if ($raw !== null && $locked->parent_task_id !== null) {
+                Refusal::recurrenceOnSubtask()->authorize();
+            }
+
+            $recurrence = TaskRecurrenceCodec::parse($raw);
+            if ($recurrence !== null) {
+                // `declared_on` is never taken from the client (parse()
+                // only validates its shape for reads out of storage). A
+                // recurrence that is merely being edited keeps its
+                // original declaration date; only a fresh declaration (the
+                // task previously had none) gets stamped with today —
+                // finding 1 of the Tasks Phase 2 whole-branch review.
+                $previous = TaskRecurrenceCodec::parse($locked->recurrence);
+                $recurrence = new TaskRecurrence(
+                    $recurrence->mode,
+                    $recurrence->every,
+                    $recurrence->unit,
+                    $recurrence->until,
+                    $recurrence->count,
+                    $previous?->declaredOn ?? now()->toDateString(),
+                );
+            }
+            $before = $this->auditFields($locked);
+            $locked->forceFill([
+                'recurrence' => $recurrence === null ? null : TaskRecurrenceCodec::encode($recurrence),
+                'version' => (int) $locked->version + 1,
+                'detail_version' => (int) $locked->detail_version + 1,
+                'updated_by' => $actor->id,
+            ])->save();
+
+            $this->recordMutation(
+                $locked,
+                $actor,
+                'task.recurrence_declared',
+                $before,
+                $this->auditFields($locked),
+                [],
+                changedFields: ['recurrence'],
+            );
+
+            return $locked->fresh($this->relations());
+        });
+    }
+
     /** @param list<array{id:string,expected_version:int}> $targets */
     public function bulk(
         User $actor,
@@ -228,22 +317,49 @@ final class TaskWriter
                 throw ValidationException::withMessages(['tasks' => 'One or more selected tasks are unavailable.']);
             }
 
+            // A flat LIST of {task_id, field, message} entries — not an
+            // array keyed by task id — deliberately (whole-branch review
+            // finding 6, fix round 2). `ValidationException::withMessages()`
+            // routes everything through a `MessageBag`, and a `MessageBag`
+            // only ever normalizes each TOP-LEVEL field into a plain list of
+            // messages: an array keyed by task id here would look right in
+            // PHP but silently loses every one of those keys the moment it
+            // is thrown — `ValidationException::errors()` re-indexes it to
+            // `[0 => [...], 1 => [...]]`, which is what "which task"
+            // actually meant to survive to the wire and did not. Verified
+            // directly against `ValidationException::withMessages()`
+            // (not assumed): a `task_id` field carried INSIDE each list
+            // entry survives that flattening; a `task_id` used as the
+            // entry's own array key does not.
             $errors = [];
             foreach ($tasks as $locked) {
                 $target = $byId[$locked->id];
                 if ((int) $locked->version !== (int) $target['expected_version']) {
-                    $errors[$locked->id] = ['version' => 'This task changed after it was selected.'];
+                    $errors[] = ['task_id' => $locked->id, 'field' => 'version', 'message' => 'This task changed after it was selected.'];
                 }
                 if (! array_key_exists('archived', $changes) && $locked->archived_at !== null) {
-                    $errors[$locked->id] = ['task' => 'This task is unavailable.'];
+                    $errors[] = ['task_id' => $locked->id, 'field' => 'task', 'message' => 'This task is unavailable.'];
                 }
                 if (array_key_exists('archived', $changes)
                     && ((bool) $changes['archived']) === ($locked->archived_at !== null)) {
-                    $errors[$locked->id] = ['archived' => 'This task is already in the requested archive state.'];
+                    $errors[] = ['task_id' => $locked->id, 'field' => 'archived', 'message' => 'This task is already in the requested archive state.'];
                 }
             }
             if ($errors !== []) {
-                throw ValidationException::withMessages(['tasks' => $errors]);
+                throw ValidationException::withMessages([
+                    // 'tasks' is a plain-string sentence FIRST — read by
+                    // `ApiResponse.reason` (client/lib/core/api_client.dart),
+                    // which is shared by every module and picks the first
+                    // `errors` value; that logic is not the place to teach
+                    // it a new shape, so this stays exactly the shape it
+                    // already knows how to announce as a sentence, not a
+                    // serialized map (whole-branch review, coordinator
+                    // follow-up A). Structured per-task attribution stays
+                    // available under `task_errors` for a future client
+                    // that wants to point at the specific task.
+                    'tasks' => [$errors[0]['message']],
+                    'task_errors' => $errors,
+                ]);
             }
 
             $causationId = (string) Str::uuid7();
@@ -270,8 +386,32 @@ final class TaskWriter
                         $causationId,
                     );
                 } else {
-                    $this->applyUpdate($actor, $lockedBoard, $locked, $changes, $causationId);
+                    try {
+                        $this->applyUpdate($actor, $lockedBoard, $locked, $changes, $causationId);
+                    } catch (ValidationException $e) {
+                        // The per-task error protocol this method already
+                        // established above for version/archive-state
+                        // conflicts (whole-branch review finding 6) — a
+                        // refusal from applyUpdate() (the start/due date
+                        // guard is the reported case; legacy inverted
+                        // pairs are known to exist) must name the ONE
+                        // offending task rather than surfacing as a bare,
+                        // task-less field error. Safe to just collect and
+                        // keep going: every check inside applyUpdate() that
+                        // can throw runs before its own $task->save() call,
+                        // so nothing has been written for this task yet.
+                        foreach ($e->errors() as $field => $messages) {
+                            $errors[] = ['task_id' => $locked->id, 'field' => $field, 'message' => $messages[0]];
+                        }
+                    }
                 }
+            }
+            if ($errors !== []) {
+                // Same shape and same reason as the pre-check throw above.
+                throw ValidationException::withMessages([
+                    'tasks' => [$errors[0]['message']],
+                    'task_errors' => $errors,
+                ]);
             }
 
             $fresh = Task::query()->whereIn('id', $selectedIds)->with($this->relations())->get()->keyBy('id');
@@ -446,6 +586,19 @@ final class TaskWriter
                 $eventKeys[] = 'task.due_date_changed';
             }
         }
+        // Checked against the MERGED state — $task->start_on/due_on above,
+        // not the request in isolation — because a PATCH may carry only one
+        // of the two fields (design spec §8; task-12 brief, fix round 1): a
+        // lone incoming `start_on` has to be compared against whatever
+        // `due_on` already sits on the row, and the writer is the only place
+        // that has both. Clearing either date (setting it null) can never
+        // trip this — there is nothing to compare it against.
+        if ((array_key_exists('start_on', $attributes) || array_key_exists('due_on', $attributes))
+            && $task->start_on !== null && $task->due_on !== null
+            && $task->start_on->gt($task->due_on)) {
+            $dateField = array_key_exists('start_on', $attributes) ? 'start_on' : 'due_on';
+            throw ValidationException::withMessages([$dateField => (string) Refusal::startAfterDue()->message()]);
+        }
         if (array_key_exists('group_id', $attributes)) {
             if ($task->parent_task_id !== null) {
                 throw ValidationException::withMessages(['group_id' => 'A subtask inherits its parent group.']);
@@ -502,8 +655,68 @@ final class TaskWriter
         if ($collaborators !== null) {
             $this->notifyCollaborators($task, $audit, $actor, array_values(array_diff($collaborators->modelKeys(), $collaboratorsBefore)));
         }
+        if (in_array('task.completed', $eventKeys, true)) {
+            $this->recordRecurrenceOnCompletion($task);
+        }
 
         return $task->fresh($this->relations());
+    }
+
+    /**
+     * Completing a recurring (`after_completion`) task relays its next
+     * occurrence to the outbox (task-6 brief, fix round 1).
+     *
+     * Deliberately NOT a call into TaskRecurrenceWorker: that class's
+     * instance-creation path takes `lockForUpdate()->max('position')`, and
+     * an InnoDB deadlock there aborts this whole transaction, not a
+     * savepoint — a `catch` around the call would still fire, but the
+     * completion's own COMMIT that follows would then land on a
+     * transaction the server already discarded, silently losing the
+     * completion itself while the API reports success. This method does
+     * nothing but parse the already-validated `recurrence` JSON (pure, no
+     * query, no lock) and emit one outbox row via EventEmitter — exactly
+     * the same durability guarantee (same transaction, same table) every
+     * other write in this class already relies on, and cheap enough that
+     * it cannot be the thing that deadlocks.
+     *
+     * `TaskRecurrenceWorker::relayPendingCompletions()` is the hourly
+     * consumer of that row; it does the lock-heavy work in its own
+     * transaction, never the user's.
+     *
+     * Only `ValidationException` from `TaskRecurrenceCodec::parse()` is
+     * caught and swallowed (whole-branch review finding 9 — Ruling 28
+     * removed the lock but this bare `catch (\Throwable)` kept the same
+     * hazard class open one write further down): a malformed `recurrence`
+     * column is bad DATA, not a broken transaction, and re-reading a value
+     * this class itself always writes through the same codec should never
+     * happen in practice — safe to skip relaying rather than fail a
+     * completion over. `$this->events->emit()`'s own INSERT is a real
+     * database write in the SAME transaction as the completion; a failure
+     * there — a deadlock, a lost connection — is exactly Ruling 28's
+     * hazard: the outer COMMIT would land on a transaction the server
+     * already discarded, silently losing the completion itself while the
+     * API reports success. That must propagate, not be swallowed.
+     */
+    private function recordRecurrenceOnCompletion(Task $task): void
+    {
+        if ($task->recurrence === null) {
+            return;
+        }
+        try {
+            $recurrence = TaskRecurrenceCodec::parse($task->recurrence);
+        } catch (ValidationException $e) {
+            report($e);
+
+            return;
+        }
+        if ($recurrence === null || $recurrence->mode !== 'after_completion') {
+            return;
+        }
+        $this->events->emit(TaskRecurrenceWorker::RELAY_TRIGGER, $task, [
+            'organization_id' => $task->organization_id,
+            'board_id' => $task->board_id,
+            'task_id' => $task->id,
+        ]);
     }
 
     private function lockBoardFor(User $actor, TaskBoard $board, ViewScope $scope, string $permission, string $act): TaskBoard
@@ -530,7 +743,7 @@ final class TaskWriter
             return;
         }
 
-        $fields = array_values(array_intersect($fields, [...self::CORE_FIELDS, 'group_id', 'archived_at']));
+        $fields = array_values(array_intersect($fields, [...self::CORE_FIELDS, 'group_id', 'archived_at', 'recurrence']));
         $current = ['id' => $task->id, 'version' => (int) $task->version];
         foreach ($fields as $field) {
             $current[$field] = match ($field) {
@@ -703,6 +916,7 @@ final class TaskWriter
                 'task.restored' => 'Task restored',
                 'task.moved' => 'Task moved to another group',
                 'task.reordered' => 'Task reordered',
+                'task.recurrence_declared' => 'Task recurrence updated',
                 default => 'Task changed',
             },
             'data' => [
@@ -808,6 +1022,7 @@ final class TaskWriter
             'start_on' => $task->start_on?->format('Y-m-d'),
             'due_on' => $task->due_on?->format('Y-m-d'),
             'due_revision' => (int) $task->due_revision,
+            'recurrence' => $task->recurrence,
             'completed_at' => $task->completed_at?->toIso8601String(),
             'completed_by' => $task->completed_by,
             'cancelled_at' => $task->cancelled_at?->toIso8601String(),

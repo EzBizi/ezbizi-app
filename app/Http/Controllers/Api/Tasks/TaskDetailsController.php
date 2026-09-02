@@ -39,6 +39,14 @@ final class TaskDetailsController extends TaskApiController
         ])->findOrFail($taskId);
         $data = $this->presentTask($task);
         $data['custom_values'] = (object) $this->customValues($task);
+        // `presentTask()` (TaskApiController) never carries `recurrence` —
+        // every OTHER caller of it is a list/board row where a per-owner
+        // recurrence badge has never been asked for (spec §11 scopes it to
+        // detail only). `TaskRecurrenceCodec::encode()` already produced
+        // this shape when it was declared; the cast on `Task::recurrence`
+        // hands it back as the same array, key-for-key, so this is a
+        // straight passthrough rather than a second encoding.
+        $data['recurrence'] = $task->recurrence;
         $canComment = $request->user()->can('comment', $task);
         $data['updates'] = $task->updates->map(fn ($update) => [
             'id' => $update->id,

@@ -55,6 +55,191 @@ void main() {
     );
   });
 
+  // Task 15: the four Phase 2 presentation widgets — Kanban, Calendar,
+  // Timeline, Workload — had never had a golden before this. Produced
+  // exactly the same way as every board golden above: `_pumpTasks` with
+  // `openBoard: true`, then this file's own presentation-tab tap.
+  testWidgets('kanban board desktop', (tester) async {
+    await _pumpTasks(
+      tester,
+      size: _desktop,
+      openBoard: true,
+      openPresentation: 'kanban',
+    );
+
+    await expectLater(
+      find.byKey(_goldenRoot),
+      matchesGoldenFile('../goldens/tasks/kanban_desktop.png'),
+    );
+  });
+
+  testWidgets('kanban board mobile', (tester) async {
+    await _pumpTasks(
+      tester,
+      size: _mobile,
+      openBoard: true,
+      openPresentation: 'kanban',
+    );
+
+    await expectLater(
+      find.byKey(_goldenRoot),
+      matchesGoldenFile('../goldens/tasks/kanban_mobile.png'),
+    );
+  });
+
+  testWidgets('calendar board desktop', (tester) async {
+    await _pumpTasks(
+      tester,
+      size: _desktop,
+      openBoard: true,
+      openPresentation: 'calendar',
+    );
+    await _navigateToFixedMonth(tester);
+
+    await expectLater(
+      find.byKey(_goldenRoot),
+      matchesGoldenFile('../goldens/tasks/calendar_desktop.png'),
+    );
+  });
+
+  testWidgets('calendar board mobile', (tester) async {
+    await _pumpTasks(
+      tester,
+      size: _mobile,
+      openBoard: true,
+      openPresentation: 'calendar',
+    );
+    await _navigateToFixedMonth(tester);
+
+    await expectLater(
+      find.byKey(_goldenRoot),
+      matchesGoldenFile('../goldens/tasks/calendar_mobile.png'),
+    );
+  });
+
+  testWidgets('timeline board desktop', (tester) async {
+    await _pumpTasks(
+      tester,
+      size: _desktop,
+      openBoard: true,
+      openPresentation: 'timeline',
+    );
+    await _navigateToFixedMonth(tester);
+
+    await expectLater(
+      find.byKey(_goldenRoot),
+      matchesGoldenFile('../goldens/tasks/timeline_desktop.png'),
+    );
+  });
+
+  testWidgets('timeline board mobile', (tester) async {
+    await _pumpTasks(
+      tester,
+      size: _mobile,
+      openBoard: true,
+      openPresentation: 'timeline',
+    );
+    await _navigateToFixedMonth(tester);
+
+    await expectLater(
+      find.byKey(_goldenRoot),
+      matchesGoldenFile('../goldens/tasks/timeline_mobile.png'),
+    );
+  });
+
+  testWidgets('workload board desktop', (tester) async {
+    await _pumpTasks(
+      tester,
+      size: _desktop,
+      openBoard: true,
+      openPresentation: 'workload',
+    );
+    await _navigateToFixedMonth(tester);
+
+    await expectLater(
+      find.byKey(_goldenRoot),
+      matchesGoldenFile('../goldens/tasks/workload_desktop.png'),
+    );
+  });
+
+  testWidgets('workload board mobile', (tester) async {
+    await _pumpTasks(
+      tester,
+      size: _mobile,
+      openBoard: true,
+      openPresentation: 'workload',
+    );
+    await _navigateToFixedMonth(tester);
+
+    await expectLater(
+      find.byKey(_goldenRoot),
+      matchesGoldenFile('../goldens/tasks/workload_mobile.png'),
+    );
+  });
+
+  // Whole-branch review finding 2: before this fix, Kanban, Calendar and
+  // Timeline had no way to open a task's detail panel at all — the four
+  // new content builders never built the `Row` containing
+  // `TaskDetailPanel`, and none of the three view widgets took an
+  // open/select callback. 'Avery Thompson' (a record link, from
+  // `_detailTask`) only ever renders once the FULL task detail has loaded
+  // — never on a card/bar itself — so its appearance is proof the panel
+  // opened with the right task, not just that something rendered.
+  testWidgets('activating a task on Kanban opens the detail panel', (
+    tester,
+  ) async {
+    await _pumpTasks(
+      tester,
+      size: _desktop,
+      openBoard: true,
+      openPresentation: 'kanban',
+    );
+    expect(find.text('Avery Thompson'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('kanban-card-open-task-1')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Avery Thompson'), findsOneWidget);
+  });
+
+  testWidgets('activating a task on Calendar opens the detail panel', (
+    tester,
+  ) async {
+    await _pumpTasks(
+      tester,
+      size: _desktop,
+      openBoard: true,
+      openPresentation: 'calendar',
+    );
+    await _navigateToFixedMonth(tester);
+    expect(find.text('Avery Thompson'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('calendar-card-open-task-1')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Avery Thompson'), findsOneWidget);
+  });
+
+  testWidgets('activating a task on Timeline opens the detail panel', (
+    tester,
+  ) async {
+    await _pumpTasks(
+      tester,
+      size: _desktop,
+      openBoard: true,
+      openPresentation: 'timeline',
+    );
+    await _navigateToFixedMonth(tester);
+    expect(find.text('Avery Thompson'), findsNothing);
+
+    // task-1 carries both start_on and due_on, so it draws as a bar, not a
+    // marker.
+    await tester.tap(find.byKey(const ValueKey('timeline-bar-open-task-1')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Avery Thompson'), findsOneWidget);
+  });
+
   testWidgets('task detail desktop', (tester) async {
     await _pumpTasks(tester, size: _desktop, openBoard: true, openDetail: true);
 
@@ -138,6 +323,7 @@ Future<void> _pumpTasks(
   bool openDetail = false,
   bool openAdmin = false,
   bool conflictOnRename = false,
+  String? openPresentation,
 }) async {
   tester.view
     ..physicalSize = size
@@ -187,6 +373,48 @@ Future<void> _pumpTasks(
             ],
           });
         case '/api/v1/tasks/boards/board-1/rows':
+          // Presentation-aware, matching Ruling 2 / FACTS
+          // (`TaskRowsPage.fromJson`): Workload's `data` is per-owner unit
+          // rows, not task rows, and the client decides which shape to
+          // parse from `meta.configuration.presentation` alone — so a
+          // static Table-shaped fixture (the only one this mock returned
+          // before Task 15) silently exercised no Kanban/Calendar/Timeline/
+          // Workload widget code at all, however many goldens named them.
+          final requested = _requestedPresentation(request.url);
+          if (requested == 'workload') {
+            return _json(<String, Object?>{
+              'data': _workloadRows,
+              'meta': <String, Object?>{
+                'total': 0,
+                'page': 1,
+                'per_page': 50,
+                'last_page': 1,
+                // Required by `TaskRowsPage.fromJson` regardless of
+                // presentation — Workload has nothing meaningful to put in
+                // either (no groups, no per-status counts), so both stay
+                // empty rather than omitted, matching a real backend
+                // response's shape (task-15 review: a missing key here
+                // throws during parsing and surfaces as a generic error
+                // banner, not a rendered empty state — an easy thing to get
+                // wrong when the OTHER four presentations tolerate it).
+                'group_counts': <Object?>[],
+                'status_summaries': <Object?>[],
+                'view_id': 'view-main',
+                'view_version': 3,
+                'configuration': _configurationFor('workload'),
+                'omitted': <String, Object?>{
+                  'undated': 0,
+                  'outside_window': 0,
+                  'unowned': 1,
+                },
+                'window': <String, Object?>{
+                  'from': '2026-08-01',
+                  'to': '2026-08-31',
+                  'unit': 'day',
+                },
+              },
+            });
+          }
           return _json(<String, Object?>{
             'data': _tasks,
             'meta': <String, Object?>{
@@ -222,7 +450,27 @@ Future<void> _pumpTasks(
               ],
               'view_id': 'view-main',
               'view_version': 3,
-              'configuration': _configuration,
+              'configuration': _configurationFor(requested),
+              'omitted': <String, Object?>{
+                'undated': 0,
+                'outside_window': 0,
+                'unowned': 0,
+              },
+              'window': requested == 'kanban'
+                  ? <String, Object?>{
+                      'bucket_field': 'status',
+                      'buckets': <Object?>[
+                        'status-ready',
+                        'status-working',
+                        'status-done',
+                      ],
+                    }
+                  : requested == 'calendar' || requested == 'timeline'
+                  ? <String, Object?>{
+                      'from': '2026-08-01',
+                      'to': '2026-08-31',
+                    }
+                  : null,
             },
           });
         case '/api/v1/tasks/boards/board-1/preference':
@@ -300,13 +548,97 @@ Future<void> _pumpTasks(
     await tester.pumpAndSettle();
   }
   if (openAdmin) {
-    final admin = find.widgetWithText(OutlinedButton, 'Admin');
-    await tester.ensureVisible(admin);
+    // Task 15: Admin moved from its own OutlinedButton into the board's
+    // secondary-actions overflow menu (`_actionsRow`), alongside Duplicate
+    // and Transfer — opening it now takes two taps instead of one.
+    final overflow = find.byKey(const ValueKey('board-secondary-actions'));
+    await tester.ensureVisible(overflow);
     await tester.pump();
-    await tester.tap(admin);
+    await tester.tap(overflow);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ListTile, 'Admin').last);
+    await tester.pumpAndSettle();
+  }
+  if (openPresentation != null) {
+    await tester.tap(find.byKey(ValueKey('presentation-tab-$openPresentation')));
+    await tester.pump();
+    // `_changeConfiguration` debounces its refetch by 300ms
+    // (`TasksScreen._queryDebounce`) — clear that window explicitly before
+    // settling, the same way this file would for any other debounced input.
+    await tester.pump(const Duration(milliseconds: 350));
     await tester.pumpAndSettle();
   }
 }
+
+/// The `presentation` the client actually asked for, read the same way the
+/// server would — out of `configuration`'s query parameter — rather than
+/// assumed. `null`/unparsable falls back to `'table'`, the same default the
+/// client's own `TaskViewConfiguration` uses for a schema-1 payload.
+String _requestedPresentation(Uri url) {
+  final raw = url.queryParameters['configuration'];
+  if (raw == null) return 'table';
+  final decoded = jsonDecode(raw);
+  if (decoded is Map && decoded['presentation'] is String) {
+    return decoded['presentation'] as String;
+  }
+  return 'table';
+}
+
+Map<String, Object?> _configurationFor(String presentation) =>
+    presentation == 'table'
+    ? _configuration
+    : <String, Object?>{..._configuration, 'schema': 2, 'presentation': presentation};
+
+/// Calendar/Timeline/Workload default to the REAL current month
+/// (`DateTime.now()` inside `TasksScreen` — there is no clock-injection seam
+/// there, and adding one is well outside a golden-coverage fix). Left
+/// alone, these goldens' month header text — and whether this file's fixed-
+/// date fixture tasks land inside the displayed month at all — would drift
+/// a little more every month the suite runs, the same reproducibility risk
+/// `Carbon::setTestNow` exists to close on the PHP side. This taps each
+/// view's own previous/next-month control back to the SAME fixed month
+/// every run — August 2026, matching every `due_on`/`start_on` this file
+/// already fixtures — computed from whatever `DateTime.now()` the test
+/// actually sees, so the golden stays exactly as reproducible as the other
+/// eleven regardless of when the suite runs.
+Future<void> _navigateToFixedMonth(WidgetTester tester) async {
+  final now = DateTime.now();
+  final delta = (2026 * 12 + 8) - (now.year * 12 + now.month);
+  if (delta == 0) return;
+  final tooltip = delta > 0 ? 'Next month' : 'Previous month';
+  for (var i = 0; i < delta.abs(); i++) {
+    await tester.tap(find.byTooltip(tooltip));
+    await tester.pump();
+  }
+  await tester.pumpAndSettle();
+}
+
+final List<Object?> _workloadRows = <Object?>[
+  <String, Object?>{
+    'owner_id': 'user-maya',
+    'owner_name': 'Maya Ortiz',
+    'units': <Object?>[
+      <String, Object?>{'date': '2026-08-24', 'count': 2},
+      <String, Object?>{'date': '2026-08-25', 'count': 1},
+      <String, Object?>{'date': '2026-08-30', 'count': 1},
+    ],
+  },
+  <String, Object?>{
+    'owner_id': 'user-luis',
+    'owner_name': 'Luis Bell',
+    'units': <Object?>[
+      <String, Object?>{'date': '2026-08-23', 'count': 1},
+      <String, Object?>{'date': '2026-08-26', 'count': 1},
+    ],
+  },
+  <String, Object?>{
+    'owner_id': null,
+    'owner_name': null,
+    'units': <Object?>[
+      <String, Object?>{'date': '2026-08-28', 'count': 1},
+    ],
+  },
+];
 
 Future<void> _pumpDirectoryState(
   WidgetTester tester, {

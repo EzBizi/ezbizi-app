@@ -339,6 +339,139 @@ void main() {
       expect(result.value?.recordLinks.single.route, isNull);
     },
   );
+
+  test(
+    'sends presentation and window inside configuration, never as query params',
+    () async {
+      http.Request? rowsRequest;
+      final api = TaskApi(
+        ApiClient(
+          client: MockClient((request) async {
+            if (request.url.path.endsWith('/board-1')) {
+              return _json(200, <String, Object?>{'data': _minimalBoard()});
+            }
+            rowsRequest = request;
+            return _json(200, <String, Object?>{
+              'data': <Object?>[],
+              'meta': <String, Object?>{
+                'total': 0,
+                'page': 1,
+                'per_page': 50,
+                'last_page': 1,
+                'group_counts': <Object?>[],
+                'status_summaries': <Object?>[],
+                'view_id': 'view-1',
+                'view_version': 1,
+                'configuration': _emptyConfiguration(),
+              },
+            });
+          }),
+        ),
+      );
+      await api.board('board-1');
+
+      await api.boardRows(
+        'board-1',
+        presentation: TaskPresentation.kanban,
+        window: const TaskKanbanWindow(
+          bucketField: 'status',
+          buckets: <String>['status-1'],
+        ),
+      );
+
+      expect(rowsRequest, isNotNull);
+      expect(rowsRequest!.url.queryParameters.containsKey('presentation'), isFalse);
+      expect(rowsRequest!.url.queryParameters.containsKey('window'), isFalse);
+      final sentConfiguration = jsonDecode(
+        rowsRequest!.url.queryParameters['configuration']!,
+      );
+      expect(sentConfiguration['presentation'], 'kanban');
+      expect(sentConfiguration['window'], <String, Object?>{
+        'bucket_field': 'status',
+        'buckets': <Object?>['status-1'],
+      });
+    },
+  );
+
+  test('adds and removes a dependency through the real dependency routes', () async {
+    final requests = <http.Request>[];
+    final api = TaskApi(
+      ApiClient(
+        client: MockClient((request) async {
+          requests.add(request);
+          if (request.method == 'POST') {
+            return _json(201, <String, Object?>{
+              'data': <String, Object?>{
+                'id': 'dependency-1',
+                'board_id': 'board-1',
+                'blocker_task_id': 'task-0',
+                'blocked_task_id': 'task-1',
+              },
+            });
+          }
+          return _json(200, <String, Object?>{
+            'data': <String, Object?>{'removed': true},
+          });
+        }),
+      ),
+    );
+
+    final added = await api.addDependency('task-1', blockerTaskId: 'task-0');
+    final removed = await api.removeDependency('dependency-1');
+
+    expect(requests[0].method, 'POST');
+    expect(requests[0].url.path, '/api/v1/tasks/task-1/dependencies');
+    expect(jsonDecode(requests[0].body), <String, Object?>{
+      'blocker_task_id': 'task-0',
+    });
+    expect(added.value?.blockerTaskId, 'task-0');
+    expect(added.value?.blockedTaskId, 'task-1');
+
+    expect(requests[1].method, 'DELETE');
+    expect(requests[1].url.path, '/api/v1/tasks/dependencies/dependency-1');
+    expect(removed.value, isTrue);
+  });
+
+  test('setRecurrence sends the expected_version the server expects', () async {
+    final requests = <http.Request>[];
+    final api = TaskApi(
+      ApiClient(
+        client: MockClient((request) async {
+          requests.add(request);
+          return _json(200, <String, Object?>{'data': _minimalTask()});
+        }),
+      ),
+    );
+
+    await api.setRecurrence(
+      'task-1',
+      expectedTaskVersion: 7,
+      recurrence: const TaskRecurrence(
+        mode: TaskRecurrenceMode.onSchedule,
+        every: 1,
+        unit: TaskRecurrenceUnit.month,
+        until: null,
+        count: null,
+      ),
+    );
+    await api.setRecurrence('task-1', expectedTaskVersion: 8, recurrence: null);
+
+    expect(requests[0].method, 'PUT');
+    expect(jsonDecode(requests[0].body), <String, Object?>{
+      'expected_version': 7,
+      'recurrence': <String, Object?>{
+        'mode': 'on_schedule',
+        'every': 1,
+        'unit': 'month',
+        'until': null,
+        'count': null,
+      },
+    });
+    expect(jsonDecode(requests[1].body), <String, Object?>{
+      'expected_version': 8,
+      'recurrence': null,
+    });
+  });
 }
 
 http.Response _json(

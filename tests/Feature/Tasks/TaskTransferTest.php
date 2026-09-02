@@ -95,6 +95,59 @@ class TaskTransferTest extends TestCase
             ->assertUnprocessable();
     }
 
+    /**
+     * Whole-branch review finding 6: `start_on`/`due_on` used to be
+     * validated independently during preview, so a 400-row import with one
+     * inverted pair previewed clean and only failed at COMMIT, inside
+     * `TaskWriter::create()`, with an error shaped for a single-task PATCH
+     * (no row number) rather than this import surface's own reconciliation
+     * list. Checked here during PREVIEW instead, reported with its row
+     * number like every other row error, so `counts.ready` already
+     * excludes it and commit is refused before ever reaching TaskWriter.
+     */
+    public function test_a_preview_with_an_inverted_start_and_due_date_pair_is_flagged_by_row_number(): void
+    {
+        $status = $this->board->statusOptions()->active()->where('category', StatusCategory::NotStarted)->firstOrFail();
+        $group = $this->board->groups()->active()->firstOrFail();
+        $csv = "Task,Status,Group,Start Date,Due Date\n"
+            ."Fine row,To do,To do,2026-09-01,2026-09-05\n"
+            ."Inverted row,To do,To do,2026-09-10,2026-09-03\n";
+        $mapping = [
+            'title' => 'Task', 'status' => 'Status', 'group' => 'Group',
+            'start_on' => 'Start Date', 'due_on' => 'Due Date',
+            'decisions' => [
+                'statuses' => ['To do' => $status->id],
+                'groups' => ['To do' => $group->id],
+            ],
+        ];
+
+        $preview = $this->post('/api/v1/tasks/boards/'.$this->board->id.'/imports/preview', [
+            'active_view_id' => $this->viewId,
+            'mapping' => json_encode($mapping, JSON_THROW_ON_ERROR),
+            'file' => UploadedFile::fake()->createWithContent('dates.csv', $csv),
+        ])->assertOk();
+
+        // Row 2 is the header; "Fine row" is row 2, "Inverted row" is row 3.
+        $this->assertSame(1, $preview->json('data.counts.ready'));
+        $this->assertSame(1, $preview->json('data.counts.errors'));
+        $entry = collect($preview->json('data.reconciliation'))
+            ->firstWhere(fn (array $row) => $row['code'] === 'start_after_due');
+        $this->assertNotNull($entry, 'The inverted pair must be reported.');
+        $this->assertSame(3, $entry['row']);
+        $this->assertSame('start_on', $entry['field']);
+        $this->assertStringContainsString('start date cannot be after the due date', $entry['message']);
+        $token = $preview->json('data.session_token');
+
+        // Commit is refused entirely — the error is a preview-time row
+        // flag, not something that lets 'Fine row' through while silently
+        // dropping the other.
+        $this->postJson('/api/v1/tasks/boards/'.$this->board->id.'/imports/commit', [
+            'session_token' => $token, 'active_view_id' => $this->viewId,
+        ])->assertUnprocessable();
+        $this->enterTenant();
+        $this->assertSame(0, Task::where('board_id', $this->board->id)->count());
+    }
+
     public function test_csv_export_is_private_formula_safe_and_json_is_an_archive_manifest(): void
     {
         $status = $this->board->statusOptions()->active()->where('category', StatusCategory::NotStarted)->firstOrFail();
