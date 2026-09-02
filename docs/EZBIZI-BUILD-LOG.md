@@ -552,3 +552,36 @@ already works. Decision recorded, not left to be silently revisited. The App Sto
 sat frozen against live production has since lifted.
 
 Client `v0.0.0123`.
+
+---
+
+## 2026-09-02 — Suggestions
+
+Any signed-in user can send EzBizi a written suggestion, correct or withdraw it while it is
+still unread (`new`), and see from a tab pinned for everybody whether it was approved, denied,
+or is still in review. EzBizi staff work every tenant's suggestions from one cross-organization
+queue on a new sub-tab inside Development; deciding one — approve or deny, with a note the
+author reads verbatim on denial — writes straight to the author's bell, composed by hand rather
+than through `NotificationDispatcher`, because a platform-scope staff request has no tenant for
+that dispatcher to resolve. Six numbered mockups and two Flutter screens ship with it. This is
+branch `session/suggestions`, commits `f13dd81..b54b667` — not merged to `main`, not deployed.
+
+**Suggestions is deliberately absent from `ModuleRegistry`, and that absence is the mechanism.**
+Every surface able to take a module away is keyed off a registry entry: the roles editor
+composes its checkboxes from `PermissionCatalogue`, `ModuleAvailability` refuses a flag for a
+key it cannot find, and the client rail draws from `me.modules`. A module with no entry has
+nothing for any of those to point at. A well-meaning later commit that "tidies up" by
+registering it — even one that never ships a `PlatformModuleFlag` — would still hand every
+organization the ability to switch it off for every role but their own, and nothing would fail
+to warn: no test goes red, no error is thrown, a checkbox simply appears where none should
+exist. Do not register this module.
+
+It also writes no business audit row, a second deliberate absence rather than the silence
+`docs/EZBIZI-TODO.md` records against Fleet, Inventory, Phone, Web Management and Services. An
+audit entry reading "Marisol created a suggestion" would publish the existence, timing and
+frequency of every private suggestion to exactly the people it is kept from — a colleague
+inside the same tenant, including one holding every permission the organization can grant,
+which is why every query here filters `user_id` explicitly on top of the usual tenant scope.
+The content would stay hidden and the channel would still be dead.
+
+No client version bump — the deploy desk owns that.
