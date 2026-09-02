@@ -8,6 +8,21 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0138',
+      date: '2 Sep 2026',
+      items: [
+        'Monitoring now shows one entry per person, led by the machine running '
+            'the desktop app, instead of a separate row for every browser tab '
+            'someone had ever signed in from. Old browser sessions are folded '
+            'away and named plainly ("Browser", "Desktop app") rather than '
+            'reading "web web" / "windows windows".',
+        'Monitoring - Desktop Monitoring: choose whose screen to view from a '
+            'searchable list of people down the side, not a long drop-down, and '
+            'only machines actually running the desktop app appear there - a '
+            'browser cannot be screen-viewed, so it no longer clutters the list.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0137',
       date: '2 Sep 2026',
       items: [
