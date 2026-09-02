@@ -8,6 +8,7 @@ import 'core/contracts.dart';
 import 'core/deployment.dart';
 import 'core/desktop_updater.dart';
 import 'core/files.dart';
+import 'core/live_view_service.dart';
 import 'core/module_screens.dart';
 import 'core/monitoring_heartbeat.dart';
 import 'core/permissions.dart';
@@ -398,11 +399,19 @@ class _HomeShellState extends State<HomeShell> {
   /// started) would otherwise apply here too.
   late final ScreenshotService _screenshots;
 
+  /// The agent half of Live View (2026-09-02-monitoring-live-view, Part A) —
+  /// polls whether a manager is currently watching this device and, only
+  /// then, captures and uploads. Same lifecycle as [_heartbeat] and
+  /// [_screenshots] and for the same reason: see [_heartbeat]'s doc comment
+  /// above for why this has to be an explicit `initState` assignment.
+  late final LiveViewService _liveView;
+
   @override
   void initState() {
     super.initState();
     _heartbeat = MonitoringHeartbeat(widget.api);
     _screenshots = ScreenshotService(widget.api);
+    _liveView = LiveViewService(widget.api);
     _apply(widget.address?.path);
     _stopListening = widget.address?.listen((path) {
       if (!mounted) return;
@@ -415,6 +424,7 @@ class _HomeShellState extends State<HomeShell> {
     _stopListening?.call();
     _heartbeat.dispose();
     _screenshots.dispose();
+    _liveView.dispose();
     super.dispose();
   }
 

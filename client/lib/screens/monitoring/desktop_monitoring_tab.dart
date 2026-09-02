@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -128,6 +129,39 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
   /// race test — it fails without this counter and passes with it.
   int _loadGeneration = 0;
 
+  // ── Live View (2026-09-02-monitoring-live-view, Part B) ────────────────
+  //
+  // Whether the hero is currently showing the live feed for
+  // `_selectedDeviceId` rather than the newest 30-day screenshot. `_live`
+  // and the timers below are the whole state — there is no generation
+  // counter here the way `_loadShots` has one, because every callback below
+  // closes over the SAME device id it started with and re-checks
+  // `_live && deviceId == _selectedDeviceId` after every await. A late
+  // answer for a device this tab has since left (switched away from, or
+  // stopped watching) fails that check and paints nothing — the identical
+  // guarantee `_loadShots`'s generation counter gives the 30-day path, just
+  // expressed against the two facts (still live, still this device) that
+  // actually matter here instead of a monotonic counter.
+  bool _live = false;
+  Uint8List? _liveBytes;
+
+  // True until the first frame arrives, and again after two consecutive
+  // misses — see `_fetchLiveFrame`. Read by `_LiveHero` to decide between
+  // showing `_liveBytes` and the "Waiting for the live feed…" state.
+  bool _liveWaiting = true;
+  int _liveMisses = 0;
+
+  Timer? _watchTimer;
+  Timer? _frameTimer;
+
+  static const Duration _watchInterval = Duration(seconds: 8);
+  static const Duration _frameInterval = Duration(milliseconds: 1500);
+
+  // A single miss is tolerated (one slow request is not "the feed stopped")
+  // — only back-to-back misses clear the hero to the waiting state, per the
+  // "never keep showing the last frame as if current" rule.
+  static const int _maxConsecutiveLiveMisses = 2;
+
   bool get _canView =>
       widget.session.me?.can('monitoring.screenshots.view') ?? false;
 
@@ -135,6 +169,13 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
   void initState() {
     super.initState();
     if (_canView) _loadDevices();
+  }
+
+  @override
+  void dispose() {
+    _watchTimer?.cancel();
+    _frameTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadDevices() async {
@@ -177,6 +218,13 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
 
   void _selectDevice(String id) {
     if (id == _selectedDeviceId) return;
+
+    // Stops both live timers before the id even changes — "switching device
+    // ... STOPS both timers immediately" — so nothing already in flight for
+    // the OLD device can be mistaken for the new one even before the
+    // `deviceId == _selectedDeviceId` guard in each callback gets a chance
+    // to run.
+    _stopLive();
 
     setState(() {
       _selectedDeviceId = id;
@@ -274,6 +322,95 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
 
   Map<String, dynamic>? _deviceById(String? id) =>
       _devices.where((d) => d['id'] == id).firstOrNull;
+
+  void _toggleLive(String deviceId) {
+    if (_live) {
+      _stopLive();
+    } else {
+      _startLive(deviceId);
+    }
+  }
+
+  void _startLive(String deviceId) {
+    setState(() {
+      _live = true;
+      _liveBytes = null;
+      _liveWaiting = true;
+      _liveMisses = 0;
+    });
+
+    // Fire immediately rather than waiting a full interval for the first
+    // tick — a manager who just tapped "Go live" should not stare at
+    // "Waiting for the live feed…" for up to 8s/1.5s longer than necessary.
+    unawaited(_postWatch(deviceId));
+    unawaited(_fetchLiveFrame(deviceId));
+
+    _watchTimer = Timer.periodic(_watchInterval, (_) => unawaited(_postWatch(deviceId)));
+    _frameTimer = Timer.periodic(_frameInterval, (_) => unawaited(_fetchLiveFrame(deviceId)));
+  }
+
+  void _stopLive() {
+    _watchTimer?.cancel();
+    _watchTimer = null;
+    _frameTimer?.cancel();
+    _frameTimer = null;
+
+    if (!_live) return;
+
+    setState(() {
+      _live = false;
+      _liveBytes = null;
+      _liveWaiting = true;
+      _liveMisses = 0;
+    });
+  }
+
+  /// Keeps the server's "somebody is watching this device" interest fresh —
+  /// POST /monitoring/devices/{id}/watch, 15s TTL server-side, re-posted well
+  /// inside that window every [_watchInterval]. No `setState`: a missed post
+  /// here surfaces on its own through `_fetchLiveFrame`'s own miss counter
+  /// once the agent stops seeing `wanted: true`, so there is nothing this
+  /// needs to paint by itself.
+  Future<void> _postWatch(String deviceId) async {
+    if (!_live || deviceId != _selectedDeviceId) return;
+    await widget.api.post('/monitoring/devices/$deviceId/watch', const {});
+  }
+
+  /// GET /monitoring/devices/{id}/live-frame — bytes when the agent's last
+  /// upload is still fresh, otherwise a 404 that [ApiClient.getBytes] turns
+  /// into `null`. A single `null` is tolerated (one slow tick is not "the
+  /// feed stopped"); only [_maxConsecutiveLiveMisses] in a row clears the
+  /// hero to the waiting state — see the honesty rule this whole tab already
+  /// keeps for the 30-day path: never show a frame as though it were current
+  /// once it plainly isn't.
+  Future<void> _fetchLiveFrame(String deviceId) async {
+    if (!_live || deviceId != _selectedDeviceId) return;
+
+    final bytes = await widget.api.getBytes('/monitoring/devices/$deviceId/live-frame');
+
+    // Re-checked after the await: `_live` may have gone false, or the
+    // selection may have moved to a different device, while this request was
+    // in flight. Either way this frame belongs to a view nobody is looking
+    // at any more and must paint nothing.
+    if (!mounted || !_live || deviceId != _selectedDeviceId) return;
+
+    if (bytes == null) {
+      _liveMisses++;
+      if (_liveMisses >= _maxConsecutiveLiveMisses) {
+        setState(() {
+          _liveWaiting = true;
+          _liveBytes = null;
+        });
+      }
+      return;
+    }
+
+    _liveMisses = 0;
+    setState(() {
+      _liveBytes = Uint8List.fromList(bytes);
+      _liveWaiting = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -381,6 +518,14 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
               onSelect: _selectDevice,
             ),
           ),
+        if (canCapture)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _LiveToggle(
+              live: _live,
+              onToggle: () => _toggleLive(device['id'] as String),
+            ),
+          ),
         if (canCapture && newestAt != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 14),
@@ -388,6 +533,8 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
           ),
         if (!canCapture)
           _NoteCard(DesktopMonitoringTab.noAgentNote)
+        else if (_live)
+          _LiveHero(bytes: _liveBytes, waiting: _liveWaiting)
         else if (_loadingShots)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 24),
@@ -771,6 +918,29 @@ class _FreshnessLine extends StatelessWidget {
   }
 }
 
+/// "Go live" / "Stop" — shown above the hero for any capture-capable
+/// selected device (2026-09-02-monitoring-live-view, Part B). A plain button,
+/// never a modal, matching every other control in this tab.
+class _LiveToggle extends StatelessWidget {
+  const _LiveToggle({required this.live, required this.onToggle});
+
+  final bool live;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: OutlinedButton.icon(
+        key: const Key('desktop-monitoring-live-toggle'),
+        onPressed: onToggle,
+        icon: Icon(live ? Icons.stop_circle_outlined : Icons.sensors),
+        label: Text(live ? 'Stop' : 'Go live'),
+      ),
+    );
+  }
+}
+
 /// The latest (or tapped) capture, large — never a modal, just the top of
 /// this scrolling tab.
 class _Hero extends StatelessWidget {
@@ -858,8 +1028,78 @@ class _Hero extends StatelessWidget {
   }
 }
 
+/// The hero, while a live view is open — replaces [_Hero] entirely, per the
+/// class doc comment on [DesktopMonitoringTab]'s honesty rule extended to
+/// live frames: this must never keep showing an old frame as though it were
+/// current. Shares the same [Key] as [_Hero] — the two are mutually
+/// exclusive in `_buildCapturePane`, so "the hero" is one concept whichever
+/// of the two is actually on screen.
+class _LiveHero extends StatelessWidget {
+  const _LiveHero({required this.bytes, required this.waiting});
+
+  final Uint8List? bytes;
+
+  /// True before the first frame has ever arrived, and again after two
+  /// consecutive misses fetching `live-frame` — see `_fetchLiveFrame`.
+  final bool waiting;
+
+  static const String waitingText = 'Waiting for the live feed…';
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    final showFrame = !waiting && bytes != null;
+
+    return Column(
+      key: const Key('desktop-monitoring-hero'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AspectRatio(
+          aspectRatio: 16 / 9,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                DecoratedBox(
+                  decoration: BoxDecoration(color: scheme.surfaceContainerHighest),
+                ),
+                if (showFrame)
+                  Image.memory(bytes!, fit: BoxFit.cover, gaplessPlayback: true)
+                else
+                  Center(
+                    child: Text(
+                      waitingText,
+                      style: theme.textTheme.bodyMedium
+                          ?.copyWith(color: scheme.onSurfaceVariant),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                if (showFrame)
+                  Positioned(
+                    left: 8,
+                    bottom: 8,
+                    child: _Badge(
+                      key: const Key('desktop-monitoring-live-badge'),
+                      text: 'LIVE',
+                      background: scheme.error,
+                      foreground: scheme.onError,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _Badge extends StatelessWidget {
   const _Badge({
+    super.key,
     required this.text,
     required this.background,
     required this.foreground,

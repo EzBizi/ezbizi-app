@@ -464,6 +464,198 @@ void main() {
     expect(find.byKey(const Key('desktop-monitoring-filmstrip')), findsOneWidget);
     expect(find.byKey(const Key('desktop-monitoring-picker')), findsOneWidget);
   });
+
+  // ── Live View (2026-09-02-monitoring-live-view, Part B) ────────────────
+  //
+  // These reuse the race-test device fixtures (`_raceDeviceA`/`_raceDeviceB`,
+  // already-resolved timestamps, no `__NOW__`-style template to stamp) rather
+  // than `_capableDevice`, since these tests build their own MockClient and
+  // never go through `_pumpTab`'s stamping step.
+
+  testWidgets(
+    'toggling "Go live" starts polling live-frame and displays the returned '
+    'bytes, with a LIVE badge, replacing the static hero and filmstrip',
+    (tester) async {
+      final harness = _liveHarness(
+        devices: [_raceDeviceA],
+        shotsFor: (_) => _raceShotsA,
+        liveFrame: (_) => _onePixelPng,
+      );
+
+      await _pumpLiveTab(tester, harness.api);
+
+      expect(find.text('Go live'), findsOneWidget);
+      expect(find.byKey(const Key('desktop-monitoring-filmstrip')), findsOneWidget,
+          reason: 'Before going live, the static 30-day view is shown as usual.');
+
+      await tester.tap(find.byKey(const Key('desktop-monitoring-live-toggle')));
+      await _liveTick(tester);
+      await _liveTick(tester);
+
+      expect(find.text('Stop'), findsOneWidget);
+      expect(harness.watchCalls, contains('dev-a'),
+          reason: 'Going live must re-assert interest via POST .../watch.');
+      expect(harness.frameCalls, contains('dev-a'),
+          reason: 'Going live must fetch a frame immediately, not wait a '
+              'full interval for the first one.');
+
+      expect(find.byKey(const Key('desktop-monitoring-hero')), findsOneWidget);
+      expect(find.byKey(const Key('desktop-monitoring-live-badge')), findsOneWidget,
+          reason: 'A frame has arrived, so the LIVE badge must be showing.');
+      expect(find.text('Waiting for the live feed…'), findsNothing);
+      expect(find.byKey(const Key('desktop-monitoring-filmstrip')), findsNothing,
+          reason: 'The live hero replaces the static hero and filmstrip.');
+    },
+  );
+
+  testWidgets(
+    'repeated misses from live-frame clear a previously shown frame to the '
+    'waiting state, never leaving a stale frame displayed as though it were '
+    'current',
+    (tester) async {
+      // A mutable flag the harness's `liveFrame` closure reads on every
+      // call — flipped mid-test to simulate the agent going quiet, while
+      // driving the exact same widget tree and ApiClient throughout.
+      List<int>? frameBytes = _onePixelPng;
+
+      final harness = _liveHarness(
+        devices: [_raceDeviceA],
+        shotsFor: (_) => _raceShotsA,
+        liveFrame: (_) => frameBytes,
+      );
+
+      await _pumpLiveTab(tester, harness.api);
+
+      await tester.tap(find.byKey(const Key('desktop-monitoring-live-toggle')));
+      await _liveTick(tester);
+      await _liveTick(tester);
+
+      expect(find.byKey(const Key('desktop-monitoring-live-badge')), findsOneWidget,
+          reason: 'A frame must be showing before the agent stops sending, '
+              'or the next assertion (that it gets CLEARED) proves nothing.');
+
+      // The agent stops sending — every live-frame request now 404s, which
+      // ApiClient.getBytes turns into null.
+      frameBytes = null;
+
+      // A single miss is tolerated — one periodic tick (1.5s) must not clear
+      // an already-shown frame by itself.
+      await tester.pump(const Duration(milliseconds: 1500));
+      await tester.pump();
+      await tester.pump();
+
+      // Two consecutive misses must clear it.
+      await tester.pump(const Duration(milliseconds: 1500));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Waiting for the live feed…'), findsOneWidget,
+          reason: 'After repeated misses the hero must say the feed is '
+              'waiting, never keep showing the old frame as if it were '
+              'still current.');
+      expect(find.byKey(const Key('desktop-monitoring-live-badge')), findsNothing,
+          reason: 'No LIVE badge once the feed is no longer arriving.');
+    },
+  );
+
+  testWidgets('turning "Go live" off stops both timers immediately', (tester) async {
+    final harness = _liveHarness(
+      devices: [_raceDeviceA],
+      shotsFor: (_) => _raceShotsA,
+      liveFrame: (_) => _onePixelPng,
+    );
+
+    await _pumpLiveTab(tester, harness.api);
+
+    await tester.tap(find.byKey(const Key('desktop-monitoring-live-toggle')));
+    await _liveTick(tester);
+    await _liveTick(tester);
+
+    expect(find.text('Stop'), findsOneWidget);
+    final framesBeforeStop = harness.frameCalls.length;
+    final watchesBeforeStop = harness.watchCalls.length;
+    expect(framesBeforeStop, greaterThan(0));
+    expect(watchesBeforeStop, greaterThan(0));
+
+    await tester.tap(find.byKey(const Key('desktop-monitoring-live-toggle')));
+    await _liveTick(tester);
+
+    expect(find.text('Go live'), findsOneWidget);
+    expect(find.byKey(const Key('desktop-monitoring-filmstrip')), findsOneWidget,
+        reason: 'Turning live off falls back to the static hero + filmstrip.');
+
+    // Advance well past both the watch (8s) and frame (1.5s) intervals — if
+    // either timer were still running, more requests would land here.
+    await tester.pump(const Duration(seconds: 10));
+    await tester.pump();
+    await tester.pump();
+
+    expect(harness.frameCalls.length, framesBeforeStop,
+        reason: 'Stopping live must cancel the frame-polling timer '
+            'immediately, not merely stop rendering its results.');
+    expect(harness.watchCalls.length, watchesBeforeStop,
+        reason: 'Stopping live must cancel the watch-refresh timer '
+            'immediately.');
+  });
+
+  testWidgets(
+    'switching device while live cancels the old device\'s live polling — '
+    'no cross-device frame painted',
+    (tester) async {
+      final harness = _liveHarness(
+        devices: [_raceDeviceA, _raceDeviceB],
+        shotsFor: (id) => id == 'dev-b' ? _raceShotsB : _raceShotsA,
+        liveFrame: (_) => _onePixelPng,
+      );
+
+      await _pumpLiveTab(tester, harness.api);
+
+      // Alice (dev-a) is the default selection.
+      await tester.tap(find.byKey(const Key('desktop-monitoring-live-toggle')));
+      await _liveTick(tester);
+      await _liveTick(tester);
+
+      expect(find.text('Stop'), findsOneWidget);
+      expect(harness.frameCalls, contains('dev-a'));
+
+      // Switch to Bob (dev-b) via the person picker — a direct tap, never a
+      // dropdown, same as the existing device-switch race test above.
+      await tester.tap(find.text('Bob Race'));
+      await _liveTick(tester);
+      await _liveTick(tester);
+
+      // The switch must cancel live outright rather than silently carrying
+      // it over onto the new device — DesktopMonitoringTab._selectDevice
+      // calls _stopLive() before anything else.
+      expect(find.text('Go live'), findsOneWidget,
+          reason: 'Switching device stops live rather than leaving it on '
+              'for whichever device is now selected.');
+      expect(find.byKey(const Key('desktop-monitoring-live-badge')), findsNothing);
+
+      final devAFramesAtSwitch = harness.frameCalls.where((id) => id == 'dev-a').length;
+
+      // Advance well past both live intervals — if dev-a's timers were only
+      // guarded rather than actually cancelled, more dev-a requests would
+      // land here.
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        harness.frameCalls.where((id) => id == 'dev-a').length,
+        devAFramesAtSwitch,
+        reason: "The old device's live polling must be CANCELLED by the "
+            'switch — no further dev-a requests after leaving it.',
+      );
+      expect(
+        harness.frameCalls.where((id) => id == 'dev-b').length,
+        0,
+        reason: 'Switching device does not auto-start live on the new '
+            "device either — this proves dev-a's frames never get painted "
+            "under dev-b's name, not that dev-b starts live on its own.",
+      );
+    },
+  );
 }
 
 const _capableDevice = {
@@ -720,4 +912,103 @@ Future<void> _advance(WidgetTester tester, [int steps = 10]) async {
   for (var i = 0; i < steps; i++) {
     await tester.pump(const Duration(milliseconds: 50));
   }
+}
+
+/// A harness for the Live View tests — builds its own `ApiClient` (never
+/// through `_pumpTab`, whose devices/shots fixtures rely on `__NOW__`-style
+/// template stamping the live-view fixtures below don't need) and records
+/// which device id every `.../watch` and `.../live-frame` request named, so
+/// a test can assert not just THAT a request landed but for WHICH device.
+///
+/// [liveFrame] answers every `GET .../devices/{id}/live-frame` — return
+/// bytes for a "frame arrived" tick, or `null` for a 404 ("no fresh frame"),
+/// which is exactly what `ApiClient.getBytes` turns a non-200 into.
+({ApiClient api, List<String> watchCalls, List<String> frameCalls}) _liveHarness({
+  required List<Map<String, dynamic>> devices,
+  required List<Map<String, dynamic>> Function(String deviceId) shotsFor,
+  required List<int>? Function(String deviceId) liveFrame,
+}) {
+  final watchCalls = <String>[];
+  final frameCalls = <String>[];
+
+  final api = ApiClient(
+    client: MockClient((request) async {
+      final path = request.url.path;
+      final segments = request.url.pathSegments;
+
+      if (path.endsWith('/me')) {
+        return _json({
+          'data': {
+            ..._me,
+            'permissions': ['monitoring.view', 'monitoring.screenshots.view'],
+          },
+        });
+      }
+
+      if (path.endsWith('/monitoring/devices')) {
+        return _json({'data': devices});
+      }
+
+      if (path.endsWith('/monitoring/screenshots')) {
+        final deviceId = request.url.queryParameters['device_id'] ?? '';
+        return _json({'data': shotsFor(deviceId)});
+      }
+
+      if (path.contains('/monitoring/screenshots/')) {
+        return http.Response.bytes(
+          _onePixelPng,
+          200,
+          headers: const {'content-type': 'image/jpeg'},
+        );
+      }
+
+      if (path.contains('/monitoring/devices/') && path.endsWith('/watch')) {
+        final id = segments[segments.length - 2];
+        watchCalls.add(id);
+        return http.Response('', 204);
+      }
+
+      if (path.contains('/monitoring/devices/') && path.endsWith('/live-frame')) {
+        final id = segments[segments.length - 2];
+        frameCalls.add(id);
+        final bytes = liveFrame(id);
+        return bytes == null
+            ? http.Response('', 404)
+            : http.Response.bytes(bytes, 200, headers: const {'content-type': 'image/jpeg'});
+      }
+
+      return _json({'message': 'Nothing stubbed for $path.'}, 500);
+    }),
+  );
+
+  return (api: api, watchCalls: watchCalls, frameCalls: frameCalls);
+}
+
+Future<void> _pumpLiveTab(WidgetTester tester, ApiClient api) async {
+  tester.view.physicalSize = const Size(1280, 900);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+
+  final session = Session(api);
+  await tester.runAsync(() => session.adopt('tok'));
+  expect(session.signedIn, isTrue);
+
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: Scaffold(body: DesktopMonitoringTab(api: api, session: session)),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+/// Advances the fake clock by [by] and flushes the microtask queue an extra
+/// couple of times so an in-flight `await` chain (mock HTTP response ->
+/// `ApiClient` decoding -> `setState`) has settled before the next
+/// assertion — same reasoning as [_advance], just a shorter, named step for
+/// the live-view timers' own intervals.
+Future<void> _liveTick(WidgetTester tester, [Duration by = const Duration(milliseconds: 50)]) async {
+  await tester.pump(by);
+  await tester.pump();
+  await tester.pump();
 }
