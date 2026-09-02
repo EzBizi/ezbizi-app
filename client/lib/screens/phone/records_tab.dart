@@ -14,11 +14,23 @@ class RecordsTab extends StatefulWidget {
     required this.api,
     required this.session,
     this.player,
+    this.initialFilter = RecordsFilter.calls,
+    this.showFilters = true,
   });
 
   final ApiClient api;
   final Session session;
   final RecordingPlayer? player;
+
+  /// Which view this opens on.
+  final RecordsFilter initialFilter;
+
+  /// Whether the Calls / Voicemail / SMS chips are shown.
+  ///
+  /// False where the SUB-TAB is already the filter: leaving the chips there
+  /// would let somebody switch to Calls inside a tab labelled Messages, which
+  /// is two controls for one fact and a heading that then lies.
+  final bool showFilters;
 
   static const double splitAbove = 600;
 
@@ -26,7 +38,12 @@ class RecordsTab extends StatefulWidget {
   State<RecordsTab> createState() => _RecordsTabState();
 }
 
-enum _Filter { calls, voicemail, sms }
+/// Which of the three things Records holds is on screen.
+///
+/// Public because the Phone tab's Messages and Voicemail sub-tabs ARE these
+/// views — the same widget with the filter fixed, rather than two more screens
+/// reading the same rows a second way and drifting from this one.
+enum RecordsFilter { calls, voicemail, sms }
 
 class _RecordsTabState extends State<RecordsTab> {
   bool _loading = true;
@@ -35,7 +52,7 @@ class _RecordsTabState extends State<RecordsTab> {
   List<_Message> _messages = const [];
   Map<String, String> _labels = const {};
 
-  _Filter _filter = _Filter.calls;
+  late RecordsFilter _filter = widget.initialFilter;
   _Call? _openCall;
   _Message? _openMessage;
   String? _playError;
@@ -63,11 +80,17 @@ class _RecordsTabState extends State<RecordsTab> {
 
   List<Object> get _rows {
     switch (_filter) {
-      case _Filter.calls:
-        return [for (final call in _calls) if (!call.voicemail) call];
-      case _Filter.voicemail:
-        return [for (final call in _calls) if (call.voicemail) call];
-      case _Filter.sms:
+      case RecordsFilter.calls:
+        return [
+          for (final call in _calls)
+            if (!call.voicemail) call,
+        ];
+      case RecordsFilter.voicemail:
+        return [
+          for (final call in _calls)
+            if (call.voicemail) call,
+        ];
+      case RecordsFilter.sms:
         return _messages;
     }
   }
@@ -107,7 +130,8 @@ class _RecordsTabState extends State<RecordsTab> {
       for (final row in (numbersRes.data as List? ?? const [])) {
         if (row is Map<String, dynamic>) {
           final id = row['id'] as String? ?? '';
-          labels[id] = (row['label'] as String?) ?? (row['e164'] as String? ?? '');
+          labels[id] =
+              (row['label'] as String?) ?? (row['e164'] as String? ?? '');
         }
       }
     }
@@ -156,7 +180,7 @@ class _RecordsTabState extends State<RecordsTab> {
     });
   }
 
-  void _setFilter(_Filter filter) {
+  void _setFilter(RecordsFilter filter) {
     _player.stop();
     setState(() {
       _filter = filter;
@@ -264,30 +288,33 @@ class _RecordsTabState extends State<RecordsTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              ChoiceChip(
-                label: const Text('Calls'),
-                selected: _filter == _Filter.calls,
-                onSelected: (_) => _setFilter(_Filter.calls),
-              ),
-              ChoiceChip(
-                label: const Text('Voicemail'),
-                selected: _filter == _Filter.voicemail,
-                onSelected: (_) => _setFilter(_Filter.voicemail),
-              ),
-              ChoiceChip(
-                label: const Text('SMS'),
-                selected: _filter == _Filter.sms,
-                onSelected: (_) => _setFilter(_Filter.sms),
-              ),
-            ],
+        // The whole row goes, not each chip: a sub-tab that IS the filter must
+        // not also offer a way to switch away from itself.
+        if (widget.showFilters)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ChoiceChip(
+                  label: const Text('Calls'),
+                  selected: _filter == RecordsFilter.calls,
+                  onSelected: (_) => _setFilter(RecordsFilter.calls),
+                ),
+                ChoiceChip(
+                  label: const Text('Voicemail'),
+                  selected: _filter == RecordsFilter.voicemail,
+                  onSelected: (_) => _setFilter(RecordsFilter.voicemail),
+                ),
+                ChoiceChip(
+                  label: const Text('SMS'),
+                  selected: _filter == RecordsFilter.sms,
+                  onSelected: (_) => _setFilter(RecordsFilter.sms),
+                ),
+              ],
+            ),
           ),
-        ),
         Expanded(
           child: rows.isEmpty
               ? Center(
@@ -298,10 +325,8 @@ class _RecordsTabState extends State<RecordsTab> {
                 )
               : ListView.separated(
                   itemCount: rows.length,
-                  separatorBuilder: (_, _) => Divider(
-                    height: 1,
-                    color: EzBiziTheme.edge(context),
-                  ),
+                  separatorBuilder: (_, _) =>
+                      Divider(height: 1, color: EzBiziTheme.edge(context)),
                   itemBuilder: (context, i) {
                     final row = rows[i];
                     if (row is _Call) return _callRow(row);
@@ -387,8 +412,9 @@ class _RecordsTabState extends State<RecordsTab> {
         'busy' => 'The number was busy.',
         'no-answer' => 'No answer.',
         'canceled' || 'cancelled' => 'Cancelled before it connected.',
-        'failed' => 'The call could not be connected. Twilio refused it — the '
-            'usual cause is a caller ID this phone account does not own.',
+        'failed' =>
+          'The call could not be connected. Twilio refused it — the '
+              'usual cause is a caller ID this phone account does not own.',
         final other => 'Did not connect ($other).',
       };
     }
@@ -411,14 +437,9 @@ class _RecordsTabState extends State<RecordsTab> {
       decoration: BoxDecoration(
         color: colour?.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: colour ?? theme.colorScheme.outlineVariant,
-        ),
+        border: Border.all(color: colour ?? theme.colorScheme.outlineVariant),
       ),
-      child: Text(
-        call.tag!,
-        style: theme.textTheme.labelSmall,
-      ),
+      child: Text(call.tag!, style: theme.textTheme.labelSmall),
     );
   }
 
@@ -510,16 +531,12 @@ class _RecordsTabState extends State<RecordsTab> {
     final theme = Theme.of(context);
     final formats = widget.session.me!.display;
     final line = _labels[call.numberId] ?? '';
-    final canPlay =
-        call.recordingSid != null && call.recordingSid!.isNotEmpty;
+    final canPlay = call.recordingSid != null && call.recordingSid!.isNotEmpty;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       children: [
-        Text(
-          _callTitle(call),
-          style: theme.textTheme.titleMedium,
-        ),
+        Text(_callTitle(call), style: theme.textTheme.titleMedium),
         const SizedBox(height: 4),
         Text(
           [
@@ -577,7 +594,9 @@ class _RecordsTabState extends State<RecordsTab> {
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       children: [
         Text(
-          message.outbound ? 'Sent to ${message.toE164}' : 'From ${message.fromE164}',
+          message.outbound
+              ? 'Sent to ${message.toE164}'
+              : 'From ${message.fromE164}',
           style: theme.textTheme.titleMedium,
         ),
         const SizedBox(height: 4),

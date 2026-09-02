@@ -11,6 +11,15 @@ class VersionHistory {
       version: '0.0.0138',
       date: '2 Sep 2026',
       items: [
+        'Phone is now called Communication, and its first tab is Phone, '
+            'holding Dial, Messages and Voicemail. Nothing moved out of reach '
+            '- Messages and Voicemail are the Records views you already had, '
+            'now reachable in one tap.',
+        'Communication: you can choose which of the company lines you are '
+            'calling from, on the Dial screen. It used to be fixed to whichever '
+            'line was assigned to you, so covering a second business meant '
+            'ringing customers back as the wrong company. Your own line is '
+            'marked so switching away is deliberate.',
         'On iPhone and iPad, taking a call in the app now asks for the '
             'microphone the first time, and says what it is for. Apple requires '
             'an app to explain itself before it may listen, and EzBizi did not '

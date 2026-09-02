@@ -924,12 +924,50 @@ class _CallTabState extends State<CallTab> {
                     ),
                   ),
                   const SizedBox(width: 8),
+                  // CHOSEN, not merely reported.
+                  //
+                  // This was a label, so whichever line the pad had landed on
+                  // was the only one you could call from — the number assigned
+                  // to you on Team, or the first on the account. A dispatcher
+                  // covering two businesses could see which line they were
+                  // about to appear as and could not change it, which meant
+                  // ringing a customer back as the wrong company.
+                  //
+                  // One line stays text: a picker offering a single choice is
+                  // a control that cannot do anything.
                   Expanded(
-                    child: Text(
-                      number == null ? '' : '${number.label} · ${number.e164}',
-                      style: theme.textTheme.bodyMedium,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    child: _numbers.length < 2
+                        ? Text(
+                            number == null
+                                ? ''
+                                : '${number.label} · ${number.e164}',
+                            style: theme.textTheme.bodyMedium,
+                            overflow: TextOverflow.ellipsis,
+                          )
+                        : DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: number?.id,
+                              isExpanded: true,
+                              isDense: true,
+                              onChanged: _onCall
+                                  ? null
+                                  : (id) => setState(() => _numberId = id),
+                              items: [
+                                for (final line in _numbers)
+                                  DropdownMenuItem(
+                                    value: line.id,
+                                    child: Text(
+                                      // Says which one is yours, so switching
+                                      // away is a thing you notice doing.
+                                      line.assignedToMe
+                                          ? '${line.label} · ${line.e164} — yours'
+                                          : '${line.label} · ${line.e164}',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
                   ),
                   if (showPerson)
                     IconButton(

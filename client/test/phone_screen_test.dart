@@ -6,6 +6,8 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/screens/phone_screen.dart';
 import 'package:ezbizi_client/widgets/coming_soon.dart';
+import 'package:ezbizi_client/widgets/tab_bar_like.dart';
+import 'package:ezbizi_client/screens/phone/records_tab.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -13,14 +15,14 @@ import 'package:http/testing.dart';
 
 /// Phone — Call, Records and Settings, not a coming-soon tab.
 void main() {
-  testWidgets('a granted Phone tab is Call Records Reports Settings, not Coming soon', (
+  testWidgets('a granted Communication tab is Phone Team Records Reports Settings, not Coming soon', (
     tester,
   ) async {
     await _pump(tester);
 
     expect(find.text('Coming soon'), findsNothing);
-    expect(_chips(tester), ['Dial', 'Team', 'Records', 'Reports', 'Settings']);
-    expect(find.widgetWithText(ChoiceChip, 'Dial'), findsOneWidget);
+    expect(_chips(tester), ['Phone', 'Team', 'Records', 'Reports', 'Settings']);
+    expect(find.widgetWithText(ChoiceChip, 'Phone'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'Records'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'Settings'), findsOneWidget);
 
@@ -35,7 +37,7 @@ void main() {
     expect(find.byType(ComingSoonScreen), findsNothing);
     expect(find.text('Coming soon'), findsNothing);
     expect(find.byType(PhoneScreen), findsOneWidget);
-    expect(_chips(tester), ['Dial', 'Team', 'Records', 'Reports', 'Settings']);
+    expect(_chips(tester), ['Phone', 'Team', 'Records', 'Reports', 'Settings']);
   });
 
   testWidgets('Records is an empty list, not Coming soon', (tester) async {
@@ -1704,11 +1706,108 @@ void main() {
       );
     });
   });
+
+  /// Phone holds three things, and the sub-tab IS the filter.
+  ///
+  /// Messages and Voicemail are the Records views with their filter fixed,
+  /// rather than two more screens reading the same rows a second way. So the
+  /// filter chips must NOT appear inside them: a tab labelled Messages that
+  /// also offers a Calls chip is two controls for one fact, and a heading that
+  /// stops being true the moment somebody presses the chip.
+  testWidgets('Phone holds Dial, Messages and Voicemail', (tester) async {
+    // The Records view needs a connected line before it draws anything at
+    // all — without one it shows an empty state with no chips, and "no SMS
+    // chip" would be true for the wrong reason. Found by sabotage: the first
+    // version of this test passed with the filters deliberately left on.
+    await _pump(
+      tester,
+      approvedCompanyIds: const ['co-1'],
+      connections: const [
+        {
+          'id': 'cx-1',
+          'scope_type': 'company',
+          'scope_id': 'co-1',
+          'scope_name': 'A-1 Chimney',
+          'kind': 'subaccount',
+          'status': 'connected',
+        },
+      ],
+      numbers: const [
+        {
+          'id': 'n-1',
+          'connection_id': 'cx-1',
+          'e164': '+12035550142',
+          'label': 'CT main',
+        },
+      ],
+
+      // With no rows Records draws "there are no calls or messages yet" and
+      // never reaches its filter row — so the assertion below would have been
+      // true of an empty screen. Found by sabotage: leaving the filters on
+      // deliberately did not fail the first two versions of this test.
+      calls: const [
+        {
+          'id': 'c-1',
+          'number_id': 'n-1',
+          'direction': 'inbound',
+          'from_e164': '+13055550100',
+          'to_e164': '+12035550142',
+          'voicemail': false,
+          'created_at': '2026-09-02T10:00:00+00:00',
+        },
+      ],
+      messages: const [
+        {
+          'id': 'm-1',
+          'number_id': 'n-1',
+          'direction': 'inbound',
+          'from_e164': '+13055550100',
+          'to_e164': '+12035550142',
+          'body': 'On my way',
+          'created_at': '2026-09-02T10:01:00+00:00',
+        },
+      ],
+    );
+
+    await _tap(tester, _tab('Phone'));
+
+    for (final section in ['Dial', 'Messages', 'Voicemail']) {
+      expect(
+        find.widgetWithText(ChoiceChip, section),
+        findsOneWidget,
+        reason: '$section is not offered under Phone',
+      );
+    }
+
+    await _tap(tester, find.widgetWithText(ChoiceChip, 'Messages'));
+    await tester.pumpAndSettle();
+
+    // The view really is rendered — otherwise the assertion below is true of
+    // an empty screen rather than of a filtered one.
+    expect(find.byType(RecordsTab), findsOneWidget);
+
+
+    expect(
+      find.widgetWithText(ChoiceChip, 'SMS'),
+      findsNothing,
+      reason: 'the Messages tab also offered the filter it already is',
+    );
+  });
 }
 Finder _tab(String label) => find.widgetWithText(ChoiceChip, label);
 
+/// The TOP-LEVEL tabs only.
+///
+/// Scoped to the tab bar because Phone now draws its own Dial / Messages /
+/// Voicemail chips inside itself — an unscoped search collects both levels and
+/// this list silently grew to eight.
 List<String> _chips(WidgetTester tester) => tester
-    .widgetList<ChoiceChip>(find.byType(ChoiceChip))
+    .widgetList<ChoiceChip>(
+      find.descendant(
+        of: find.byType(TabBarLike),
+        matching: find.byType(ChoiceChip),
+      ),
+    )
     .map((chip) => (chip.label as Text).data!)
     .toList();
 
@@ -1782,6 +1881,8 @@ Future<void> _pump(
   void Function(Map<String, dynamic> body)? onNumberPatch,
   void Function()? onDelete,
   List<String>? requestLog,
+  List<Map<String, Object?>> calls = const [],
+  List<Map<String, Object?>> messages = const [],
   List<Map<String, Object?>> extensions = const [],
   String? extensionRefusal,
   void Function(Map<String, dynamic> body)? onExtension,
@@ -1819,6 +1920,8 @@ Future<void> _pump(
         onNumberPatch: onNumberPatch,
         onDelete: onDelete,
         requestLog: requestLog,
+        calls: calls,
+        messages: messages,
         extensions: extensions,
         extensionRefusal: extensionRefusal,
         onExtension: onExtension,
@@ -1914,6 +2017,8 @@ MockClientHandler _handler({
   void Function(Map<String, dynamic> body)? onNumberPatch,
   void Function()? onDelete,
   List<String>? requestLog,
+  List<Map<String, Object?>> calls = const [],
+  List<Map<String, Object?>> messages = const [],
   List<Map<String, Object?>> extensions = const [],
   String? extensionRefusal,
   void Function(Map<String, dynamic> body)? onExtension,
@@ -2051,11 +2156,11 @@ MockClientHandler _handler({
     }
 
     if (path.endsWith('/phone/calls') && request.method == 'GET') {
-      return _json({'data': <Map<String, Object?>>[]});
+      return _json({'data': calls});
     }
 
     if (path.endsWith('/phone/messages') && request.method == 'GET') {
-      return _json({'data': <Map<String, Object?>>[]});
+      return _json({'data': messages});
     }
 
     if (path.endsWith('/phone/presence')) {

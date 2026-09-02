@@ -1281,7 +1281,13 @@ class ModuleServiceProvider extends ServiceProvider
              */
             new ModuleDefinition(
                 key: 'phone',
-                label: 'Phone',
+
+                // The KEY stays 'phone'. It is what every permission
+                // (phone.view, phone.edit), every route and every automation
+                // trigger is named after, and renaming it would revoke access
+                // for everybody holding those permissions while looking like a
+                // relabel.
+                label: 'Communication',
                 auditExemptBecause: 'NOT AUDITED. A create, edit or delete here leaves no '
                     .'audit_events row, so there is no record of who changed what or when. '
                     .'This states a defect, not a decision, and it is not permission to stay '
