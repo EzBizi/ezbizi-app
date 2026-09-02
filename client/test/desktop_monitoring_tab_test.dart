@@ -84,6 +84,10 @@ void main() {
     'switching devices while the first one is still loading does not let '
     'its late response overwrite the newer selection',
     (tester) async {
+      tester.view.physicalSize = const Size(1280, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
       // Two GETs in flight have no ordering guarantee — this is what proves
       // the tab does not assume one. Device A's `/monitoring/screenshots`
       // response is held open on a Completer; device B's is completed
@@ -148,13 +152,12 @@ void main() {
       // until it times out rather than recognising "nothing more to do".
       await _advance(tester);
 
-      // Switch to device B before A has answered. Same reasoning: the
-      // dropdown's open/close transition is bounded, but B's own fetch then
-      // starts (and shows the same indeterminate spinner) while ITS
-      // Completer is unresolved, so this stays on bounded pumps too.
-      await tester.tap(find.widgetWithText(DropdownButtonFormField<String>, 'Device'));
-      await _advance(tester);
-      await tester.tap(find.text(_raceDeviceLabelB).last);
+      // Switch to device B (person Bob Race) before A has answered — a
+      // direct tap on the person's row in the picker, never a dropdown.
+      // Same reasoning as above: B's own fetch starts (and shows the same
+      // indeterminate spinner) while ITS Completer is unresolved, so this
+      // stays on bounded pumps too.
+      await tester.tap(find.text('Bob Race'));
       await _advance(tester);
 
       // B answers first.
@@ -183,6 +186,81 @@ void main() {
             "dropped, not shown under B's name in the picker — that is "
             'exactly the wrong-attribution the honesty rule exists to '
             'prevent, triggered by a race instead of elapsed time.',
+      );
+    },
+  );
+
+  testWidgets(
+    "selecting a different person loads that person's own captures",
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final api = ApiClient(
+        client: MockClient((request) async {
+          final path = request.url.path;
+
+          if (path.endsWith('/me')) {
+            return _json({
+              'data': {
+                ..._me,
+                'permissions': ['monitoring.view', 'monitoring.screenshots.view'],
+              },
+            });
+          }
+
+          if (path.endsWith('/monitoring/devices')) {
+            return _json({'data': [_raceDeviceA, _raceDeviceB]});
+          }
+
+          if (path.endsWith('/monitoring/screenshots')) {
+            final deviceId = request.url.queryParameters['device_id'];
+            final shots = deviceId == 'dev-b' ? _raceShotsB : _raceShotsA;
+            return _json({'data': shots});
+          }
+
+          if (path.contains('/monitoring/screenshots/')) {
+            return http.Response.bytes(
+              _onePixelPng,
+              200,
+              headers: const {'content-type': 'image/jpeg'},
+            );
+          }
+
+          return _json({'message': 'Nothing stubbed for $path.'}, 500);
+        }),
+      );
+
+      final session = Session(api);
+      await tester.runAsync(() => session.adopt('tok'));
+      expect(session.signedIn, isTrue);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: EzBiziTheme.light(),
+          home: Scaffold(body: DesktopMonitoringTab(api: api, session: session)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('desktop-monitoring-thumb-shot-a1')),
+        findsOneWidget,
+        reason: 'Alice is the default selection (her device arrived first).',
+      );
+
+      await tester.tap(find.text('Bob Race'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('desktop-monitoring-thumb-shot-b1')),
+        findsOneWidget,
+        reason: "Selecting Bob should load Bob's own captures.",
+      );
+      expect(
+        find.byKey(const ValueKey('desktop-monitoring-thumb-shot-a1')),
+        findsNothing,
       );
     },
   );
@@ -272,15 +350,91 @@ void main() {
   );
 
   testWidgets(
-    'a device with no screenshot capability shows the no-captures empty '
-    'state, never a blank or a stale image',
+    'when nobody has a capture-capable device, the tab shows the honest '
+    'empty state instead of picking a browser session',
     (tester) async {
       await _pumpTab(tester, devices: [_webDevice], shots: const []);
 
       expect(tester.takeException(), isNull);
-      expect(find.text(DesktopMonitoringTab.noAgentNote), findsOneWidget);
+      expect(find.text(DesktopMonitoringTab.noDevicesNote), findsOneWidget);
       expect(find.byKey(const Key('desktop-monitoring-hero')), findsNothing);
       expect(find.byKey(const Key('desktop-monitoring-filmstrip')), findsNothing);
+      expect(find.byKey(const Key('desktop-monitoring-picker')), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'a browser-only device (no screenshot capability) never appears in the '
+    'picker, even mixed in with a real capture device',
+    (tester) async {
+      await _pumpTab(
+        tester,
+        devices: [_capableDevice, _webDevice],
+        shots: _freshShots,
+      );
+
+      expect(find.text('Marco Reyes'), findsOneWidget);
+      expect(
+        find.text('Priya Nair'),
+        findsNothing,
+        reason: "Priya's only device is a browser session — it cannot be "
+            'screen-captured and must not appear in this picker at all.',
+      );
+    },
+  );
+
+  testWidgets(
+    'two people each with a capture device show two entries in the picker',
+    (tester) async {
+      final second = {
+        ..._capableDevice,
+        'id': 'dev-2',
+        'user': {'id': 'u-2', 'name': 'Priya Nair'},
+        'label': 'Priya PC',
+      };
+
+      await _pumpTab(
+        tester,
+        devices: [_capableDevice, second],
+        shots: _freshShots,
+      );
+
+      expect(find.text('Marco Reyes'), findsOneWidget);
+      expect(find.text('Priya Nair'), findsOneWidget);
+    },
+  );
+
+  testWidgets('the search box filters the person list by name', (tester) async {
+    final second = {
+      ..._capableDevice,
+      'id': 'dev-2',
+      'user': {'id': 'u-2', 'name': 'Priya Nair'},
+      'label': 'Priya PC',
+    };
+
+    await _pumpTab(
+      tester,
+      devices: [_capableDevice, second],
+      shots: _freshShots,
+    );
+
+    expect(find.text('Marco Reyes'), findsOneWidget);
+    expect(find.text('Priya Nair'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'Priya');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Priya Nair'), findsOneWidget);
+    expect(find.text('Marco Reyes'), findsNothing);
+  });
+
+  testWidgets(
+    'no DropdownButton or any modal picker appears anywhere in this tab',
+    (tester) async {
+      await _pumpTab(tester, devices: [_capableDevice], shots: _freshShots);
+
+      expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+      expect(find.byType(DropdownButton<String>), findsNothing);
     },
   );
 
@@ -405,8 +559,6 @@ final _raceDeviceB = {
   'capabilities': ['activity', 'screenshot'],
   'last_seen_at': _raceNow,
 };
-
-const _raceDeviceLabelB = 'Bob Race · Desk B';
 
 List<Map<String, dynamic>> get _raceShotsA => [
   {

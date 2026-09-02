@@ -4,12 +4,25 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
+import 'device_display.dart';
 
 /// Desktop Monitoring — one employee's periodic screen captures, in the
 /// "hero + filmstrip" layout Jose picked (docs/previews/
-/// monitoring-screenshots-layouts.html, "Layout 2").
+/// monitoring-screenshots-layouts.html, "Layout 2"), reached by picking a
+/// PERSON from an on-screen list — never a dropdown or a dialog.
+///
+/// ── Person-first, not device-first ────────────────────────────────
+///
+/// A browser session can never be screen-captured, so it has no business in
+/// this tab's picker at all — `_loadDevices` filters the server's device
+/// list down to capture-capable devices before anything else touches it.
+/// What is left is grouped by person: each person shows once, defaulting to
+/// their own most-recently-seen capture device. A person with more than one
+/// such device gets a small inline chooser to switch between them — still no
+/// modal, just a row of chips under their name.
 ///
 /// ── The rule this tab exists to keep honest ────────────────────────
 ///
@@ -23,7 +36,9 @@ import '../../widgets/error_note.dart';
 ///   * A device that never declared the `screenshot` capability (web,
 ///     mobile, or a Windows agent that hasn't started capturing) →
 ///     [noAgentNote]. It CANNOT be screen-captured, which is a different
-///     fact from "hasn't captured recently".
+///     fact from "hasn't captured recently". In the normal flow such a
+///     device can never be selected at all (see above) — this branch stays
+///     as defence in depth, not the everyday path.
 ///   * A capable device with zero rows yet → [noCapturesYetNote].
 ///   * A capable device whose newest capture is older than twice the
 ///     capture interval, OR whose heartbeat has gone quiet — "capture
@@ -59,6 +74,10 @@ class DesktopMonitoringTab extends StatefulWidget {
   /// `_seenAgo` is not shared: independent knobs that happen to agree today).
   static const Duration onlineWithin = Duration(minutes: 5);
 
+  /// Above this width the people list is a left rail beside the capture;
+  /// at or below it, a horizontal chip row sits above the capture instead.
+  static const double wideAbove = 600;
+
   static const String noPermissionNote =
       'Your role does not include monitoring.screenshots.view, so desktop '
       'screenshots are not shown here.';
@@ -69,7 +88,8 @@ class DesktopMonitoringTab extends StatefulWidget {
   static const String noCapturesYetNote =
       'This device can capture screenshots, but none have landed yet.';
 
-  static const String noDevicesNote = 'No devices have reported in yet.';
+  static const String noDevicesNote =
+      'No devices are running the desktop agent yet.';
 
   @override
   State<DesktopMonitoringTab> createState() => _DesktopMonitoringTabState();
@@ -135,14 +155,19 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
       return;
     }
 
-    final devices = (response.data as List<dynamic>).cast<Map<String, dynamic>>();
+    final all = (response.data as List<dynamic>).cast<Map<String, dynamic>>();
+    // A browser session can never be screen-captured, so it has no business
+    // in this tab's picker at all — filtered here, at the source, rather
+    // than left in the list for the selection logic to work around.
+    final devices = all.where(_declaresScreenshot).toList();
     final keepSelection = devices.any((d) => d['id'] == _selectedDeviceId);
 
     setState(() {
       _loadingDevices = false;
       _devices = devices;
       if (!keepSelection) {
-        _selectedDeviceId = devices.isEmpty ? null : devices.first['id'] as String?;
+        final fallback = _mostRecentCaptureDevice(devices);
+        _selectedDeviceId = fallback == null ? null : fallback['id'] as String?;
       }
     });
 
@@ -163,6 +188,15 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
     _loadShots(id);
   }
 
+  /// Selecting a person selects THEIR default capture device — the one they
+  /// were most recently seen on. Goes through [_selectDevice] so the race
+  /// guard and the existing fetch path are exactly the same one a direct
+  /// device pick uses.
+  void _selectPerson(_Person person) {
+    final target = _mostRecentCaptureDevice(person.devices);
+    if (target != null) _selectDevice(target['id'] as String);
+  }
+
   Future<void> _loadShots(String deviceId) async {
     // Captured before any `await` — nothing between here and the increment
     // can race it, so every later check in this call is comparing against
@@ -173,7 +207,9 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
 
     // A device that never declared the capability cannot have anything to
     // fetch — asking the server is a round trip to learn a fact this tab
-    // already has from the device row itself.
+    // already has from the device row itself. In the normal flow every
+    // device here already passed that filter in `_loadDevices`; this stays
+    // as the same defence-in-depth check regardless.
     if (device == null || !_declaresScreenshot(device)) {
       setState(() {
         _loadingShots = false;
@@ -258,7 +294,61 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
       return _NoteCard(DesktopMonitoringTab.noDevicesNote);
     }
 
-    final device = _deviceById(_selectedDeviceId) ?? _devices.first;
+    final people = _groupByPerson(_devices);
+    final device = _deviceById(_selectedDeviceId) ?? _mostRecentCaptureDevice(_devices)!;
+    final selectedPersonId = (device['user'] as Map<String, dynamic>?)?['id'] as String?;
+    final selectedPerson = _personById(people, selectedPersonId);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth > DesktopMonitoringTab.wideAbove;
+        final capturePane = _buildCapturePane(device, selectedPerson);
+
+        if (wide) {
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 240,
+                  child: _PeopleRail(
+                    key: const Key('desktop-monitoring-picker'),
+                    people: people,
+                    selectedPersonId: selectedPersonId,
+                    isOnline: _isOnline,
+                    onSelect: _selectPerson,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(child: SingleChildScrollView(child: capturePane)),
+              ],
+            ),
+          );
+        }
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _PeopleChipRow(
+                key: const Key('desktop-monitoring-picker'),
+                people: people,
+                selectedPersonId: selectedPersonId,
+                isOnline: _isOnline,
+                onSelect: _selectPerson,
+              ),
+              const SizedBox(height: 12),
+              capturePane,
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildCapturePane(Map<String, dynamic> device, _Person? person) {
     final canCapture = _declaresScreenshot(device);
     final online = _isOnline(device);
 
@@ -277,57 +367,52 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
         ? null
         : (_shots.where((s) => s['id'] == _heroId).firstOrNull ?? _shots.firstOrNull);
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Wrap(
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 16,
-            runSpacing: 8,
-            children: [
-              SizedBox(
-                width: 280,
-                child: _DevicePicker(
-                  devices: _devices,
-                  selectedId: device['id'] as String?,
-                  onChanged: _selectDevice,
-                ),
-              ),
-              if (canCapture && newestAt != null)
-                _FreshnessLine(stopped: stopped, ago: _relativeAge(newestAt)),
-            ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // More than one recent capture device for the selected person — an
+        // inline chooser, not a second modal, right under their selection.
+        if (person != null && person.devices.length > 1)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _DeviceChooser(
+              devices: person.devices,
+              selectedId: device['id'] as String?,
+              onSelect: _selectDevice,
+            ),
           ),
-          const SizedBox(height: 14),
-          if (!canCapture)
-            _NoteCard(DesktopMonitoringTab.noAgentNote)
-          else if (_loadingShots)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (_shotsError != null)
-            ErrorNote(_shotsError!)
-          else if (_shots.isEmpty || hero == null)
-            _NoteCard(DesktopMonitoringTab.noCapturesYetNote)
-          else ...[
-            _Hero(
-              shot: hero,
-              bytes: _bytes[hero['id']],
-              stopped: stopped,
-              stoppedAgo: newestAt == null ? '' : _relativeAge(newestAt),
-            ),
-            const SizedBox(height: 12),
-            _Filmstrip(
-              shots: _shots,
-              heroId: _heroId,
-              bytes: _bytes,
-              onSelect: (id) => setState(() => _heroId = id),
-            ),
-          ],
+        if (canCapture && newestAt != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: _FreshnessLine(stopped: stopped, ago: _relativeAge(newestAt)),
+          ),
+        if (!canCapture)
+          _NoteCard(DesktopMonitoringTab.noAgentNote)
+        else if (_loadingShots)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (_shotsError != null)
+          ErrorNote(_shotsError!)
+        else if (_shots.isEmpty || hero == null)
+          _NoteCard(DesktopMonitoringTab.noCapturesYetNote)
+        else ...[
+          _Hero(
+            shot: hero,
+            bytes: _bytes[hero['id']],
+            stopped: stopped,
+            stoppedAgo: newestAt == null ? '' : _relativeAge(newestAt),
+          ),
+          const SizedBox(height: 12),
+          _Filmstrip(
+            shots: _shots,
+            heroId: _heroId,
+            bytes: _bytes,
+            onSelect: (id) => setState(() => _heroId = id),
+          ),
         ],
-      ),
+      ],
     );
   }
 }
@@ -375,11 +460,64 @@ String _clockTime(DateTime at) {
   return '$hour12:$minute $meridiem';
 }
 
-String _deviceLabel(Map<String, dynamic> device) {
-  final user = device['user'] as Map<String, dynamic>? ?? const {};
-  final name = user['name'] as String? ?? 'Unknown';
-  final label = device['label'] as String? ?? device['platform'] as String? ?? 'Device';
-  return '$name · $label';
+/// One person and the capture-capable devices they are signed in from, in
+/// the order the server returned them (most recently seen first — see
+/// DevicesController::index).
+class _Person {
+  _Person(this.id, this.name);
+
+  final String id;
+  final String name;
+  final List<Map<String, dynamic>> devices = [];
+}
+
+List<_Person> _groupByPerson(List<Map<String, dynamic>> devices) {
+  final byId = <String, _Person>{};
+  final order = <String>[];
+
+  for (final device in devices) {
+    final user = device['user'] as Map<String, dynamic>? ?? const {};
+    final id = user['id'] as String? ?? 'unknown';
+    final name = user['name'] as String? ?? 'Unknown';
+
+    final person = byId.putIfAbsent(id, () {
+      order.add(id);
+      return _Person(id, name);
+    });
+    person.devices.add(device);
+  }
+
+  return [for (final id in order) byId[id]!];
+}
+
+_Person? _personById(List<_Person> people, String? id) {
+  if (id == null) return null;
+  for (final person in people) {
+    if (person.id == id) return person;
+  }
+  return null;
+}
+
+/// The device to default to for a person or for the whole list — max by
+/// `last_seen_at`. A missing or unparseable stamp sorts as the oldest
+/// possible.
+Map<String, dynamic>? _mostRecentCaptureDevice(List<Map<String, dynamic>> devices) {
+  if (devices.isEmpty) return null;
+
+  var best = devices.first;
+  var bestSeen = DateTime.tryParse(best['last_seen_at'] as String? ?? '') ??
+      DateTime.fromMillisecondsSinceEpoch(0);
+
+  for (final device in devices.skip(1)) {
+    final seen = DateTime.tryParse(device['last_seen_at'] as String? ?? '') ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+    if (seen.isAfter(bestSeen)) {
+      best = device;
+      bestSeen = seen;
+    }
+  }
+
+  return best;
 }
 
 class _NoteCard extends StatelessWidget {
@@ -398,36 +536,216 @@ class _NoteCard extends StatelessWidget {
   }
 }
 
-/// Which device's captures to view — always visible, even with one device,
-/// so the control never appears or disappears as the roster changes.
-class _DevicePicker extends StatelessWidget {
-  const _DevicePicker({
+/// The wide layout's people picker: a search field above a scrollable list —
+/// always on screen, never a dropdown or a dialog. Owns its own search text
+/// (rather than lifting it to the tab's state) so switching the selected
+/// device — a rebuild from above — never clears what somebody typed.
+class _PeopleRail extends StatefulWidget {
+  const _PeopleRail({
+    super.key,
+    required this.people,
+    required this.selectedPersonId,
+    required this.isOnline,
+    required this.onSelect,
+  });
+
+  final List<_Person> people;
+  final String? selectedPersonId;
+  final bool Function(Map<String, dynamic>) isOnline;
+  final ValueChanged<_Person> onSelect;
+
+  @override
+  State<_PeopleRail> createState() => _PeopleRailState();
+}
+
+class _PeopleRailState extends State<_PeopleRail> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final query = _query.trim().toLowerCase();
+    final filtered = query.isEmpty
+        ? widget.people
+        : widget.people.where((p) => p.name.toLowerCase().contains(query)).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          decoration: const InputDecoration(
+            hintText: 'Search people',
+            prefixIcon: Icon(Icons.search),
+          ),
+          onChanged: (value) => setState(() => _query = value),
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: filtered.isEmpty
+              ? Center(
+                  child: Text('No matches.', style: theme.textTheme.bodyMedium),
+                )
+              : ListView(
+                  children: [
+                    for (final person in filtered)
+                      _PersonListTile(
+                        person: person,
+                        device: _mostRecentCaptureDevice(person.devices)!,
+                        selected: person.id == widget.selectedPersonId,
+                        isOnline: widget.isOnline,
+                        onTap: () => widget.onSelect(person),
+                      ),
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PersonListTile extends StatelessWidget {
+  const _PersonListTile({
+    required this.person,
+    required this.device,
+    required this.selected,
+    required this.isOnline,
+    required this.onTap,
+  });
+
+  final _Person person;
+  final Map<String, dynamic> device;
+  final bool selected;
+  final bool Function(Map<String, dynamic>) isOnline;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? scheme.primaryContainer : null,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    person.name,
+                    style: theme.textTheme.titleSmall,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    friendlyDeviceName(device),
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: scheme.onSurfaceVariant),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            _StatusDot(online: isOnline(device)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The narrow layout's people picker — a horizontal, scrollable chip row
+/// above the capture, never a dropdown or a menu. Scrolls sideways rather
+/// than wrapping, same reasoning as [_Filmstrip]: frames (here, names) stay a
+/// legible size at 375px instead of shrinking to fit.
+class _PeopleChipRow extends StatelessWidget {
+  const _PeopleChipRow({
+    super.key,
+    required this.people,
+    required this.selectedPersonId,
+    required this.isOnline,
+    required this.onSelect,
+  });
+
+  final List<_Person> people;
+  final String? selectedPersonId;
+  final bool Function(Map<String, dynamic>) isOnline;
+  final ValueChanged<_Person> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: people.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final person = people[i];
+          return ChoiceChip(
+            label: Text(person.name),
+            selected: person.id == selectedPersonId,
+            onSelected: (_) => onSelect(person),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// A person with more than one recent capture device — pick among them right
+/// here, inline, as chips. Never a modal.
+class _DeviceChooser extends StatelessWidget {
+  const _DeviceChooser({
     required this.devices,
     required this.selectedId,
-    required this.onChanged,
+    required this.onSelect,
   });
 
   final List<Map<String, dynamic>> devices;
   final String? selectedId;
-  final ValueChanged<String> onChanged;
+  final ValueChanged<String> onSelect;
 
   @override
   Widget build(BuildContext context) {
-    return DropdownButtonFormField<String>(
-      key: const Key('desktop-monitoring-picker'),
-      initialValue: selectedId,
-      isExpanded: true,
-      decoration: const InputDecoration(labelText: 'Device'),
-      items: [
-        for (final d in devices)
-          DropdownMenuItem(
-            value: d['id'] as String,
-            child: Text(_deviceLabel(d), overflow: TextOverflow.ellipsis),
+    return Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      children: [
+        for (final device in devices)
+          ChoiceChip(
+            label: Text(friendlyDeviceName(device)),
+            selected: device['id'] == selectedId,
+            onSelected: (_) => onSelect(device['id'] as String),
           ),
       ],
-      onChanged: (value) {
-        if (value != null) onChanged(value);
-      },
+    );
+  }
+}
+
+class _StatusDot extends StatelessWidget {
+  const _StatusDot({required this.online});
+
+  final bool online;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 9,
+      height: 9,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: online
+            ? EzBiziTheme.clockIn(context)
+            : Theme.of(context).colorScheme.outlineVariant,
+      ),
     );
   }
 }

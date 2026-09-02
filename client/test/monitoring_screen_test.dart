@@ -304,6 +304,140 @@ void main() {
     expect(moduleScreens['monitoring'], isNotNull);
   });
 
+  group('friendlyDeviceName rule', () {
+    testWidgets(
+      'a device with a null label on the web platform renders "Browser", '
+      'never "web web"',
+      (tester) async {
+        final noLabel = Map<String, dynamic>.from(_webDevice)
+          ..['id'] = 'dev-web-nolabel'
+          ..['label'] = null;
+
+        await _pumpScreen(tester, devices: [noLabel]);
+
+        final row = find.byKey(const ValueKey('monitoring-device-dev-web-nolabel'));
+        expect(row, findsOneWidget);
+
+        expect(
+          find.descendant(of: row, matching: find.text('Browser')),
+          findsOneWidget,
+          reason: 'A web device with no real label should read "Browser", '
+              'not the raw platform string.',
+        );
+        expect(
+          find.descendant(of: row, matching: find.text('web')),
+          findsNothing,
+          reason: 'The old fallback (label ?? platform) rendered the bare '
+              'platform string as the name — that bug is exactly what '
+              '"Browser" replaces.',
+        );
+      },
+    );
+  });
+
+  group('switcher defaults to the desktop agent', () {
+    testWidgets(
+      'an agent device is selected by default in the switcher, even when a '
+      'browser session for the same person arrives first from the server',
+      (tester) async {
+        final browserFirst = {
+          ..._webDevice,
+          'id': 'dev-web-active',
+          'user': {'id': 'u-marco', 'name': 'Marco Reyes'},
+        };
+        final agentSecond = {..._agentDevice, 'id': 'dev-agent-active'};
+
+        await _pumpScreen(tester, devices: [browserFirst, agentSecond]);
+
+        expect(
+          find.byKey(const ValueKey('monitoring-device-dev-agent-active')),
+          findsOneWidget,
+          reason: 'The agent device should be the default selection in the '
+              'switcher, not whichever session happened to arrive first '
+              'from the server.',
+        );
+        expect(
+          find.byKey(const ValueKey('monitoring-device-dev-web-active')),
+          findsNothing,
+        );
+      },
+    );
+  });
+
+  group('the glance "Desktop app" panel', () {
+    testWidgets(
+      'collapses to one line per person and drops an agent last seen more '
+      'than 24h ago',
+      (tester) async {
+        final recentAgent = {
+          ..._agentDevice,
+          'id': 'dev-agent-recent',
+          'last_seen_at': DateTime.now()
+              .toUtc()
+              .subtract(const Duration(hours: 1))
+              .toIso8601String(),
+        };
+        final olderAgentSamePerson = {
+          ..._agentDevice,
+          'id': 'dev-agent-second',
+          'label': 'Second desktop',
+          'last_seen_at': DateTime.now()
+              .toUtc()
+              .subtract(const Duration(hours: 5))
+              .toIso8601String(),
+        };
+        final staleAgentOtherPerson = {
+          ..._agentDevice,
+          'id': 'dev-agent-stale',
+          'user': {'id': 'u-dana', 'name': 'Dana Cole'},
+          'last_seen_at': DateTime.now()
+              .toUtc()
+              .subtract(const Duration(hours: 30))
+              .toIso8601String(),
+        };
+
+        await _pumpScreen(
+          tester,
+          devices: [recentAgent, olderAgentSamePerson, staleAgentOtherPerson],
+        );
+
+        expect(find.text('Devices with agent'), findsNothing);
+        expect(find.text('Desktop app'), findsOneWidget);
+
+        final panel = find.ancestor(
+          of: find.text('Desktop app'),
+          matching: find.byType(Card),
+        );
+        expect(panel, findsOneWidget);
+
+        expect(
+          find.descendant(of: panel, matching: find.textContaining('Marco Reyes')),
+          findsOneWidget,
+          reason: 'Marco has two agent devices seen within the last 24h; '
+              'the panel should collapse them into a single line, not one '
+              'row per device.',
+        );
+        expect(
+          find.descendant(of: panel, matching: find.textContaining('Shop desktop')),
+          findsOneWidget,
+          reason: 'Marco\'s line should name his most-recently-seen agent.',
+        );
+        expect(
+          find.descendant(of: panel, matching: find.textContaining('Second desktop')),
+          findsNothing,
+          reason: 'The older of Marco\'s two agents should not get its own '
+              'line.',
+        );
+        expect(
+          find.descendant(of: panel, matching: find.textContaining('Dana Cole')),
+          findsNothing,
+          reason: "Dana's only agent device was last seen 30 hours ago and "
+              'should have dropped out of this panel entirely.',
+        );
+      },
+    );
+  });
+
   group('active/stale device grouping', () {
     // Owner's own words: 6 devices listed as equals — one web, three
     // windows, two ios browser sessions, most of them stale — "it should
