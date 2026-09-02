@@ -8,6 +8,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0136',
+      date: '2 Sep 2026',
+      items: [
+        'Adding a photo or a file works in the desktop app. The button was '
+            'there and pressing it did nothing at all - there was no file '
+            'dialog outside a browser, so nothing opened and nothing said so.',
+        'Email: signing in to a mail account from the desktop app opens your '
+            'own browser to do it, rather than having nowhere to go.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0135',
       date: '2 Sep 2026',
       items: [

@@ -61,6 +61,14 @@ dependencies:
   webview_windows: ^0.4.0
   flutter_secure_storage: ^11.0.0
 
+  # Native file dialogs. The web build uses the browser's own <input type=file>
+  # (see files_web.dart) and needs nothing; every other target had no dialog at
+  # all, so files_io.dart stubbed all of them to null and "Add photo" silently
+  # did nothing on Windows. Flutter ships no file dialog, so this is a package
+  # or three FFI bindings — file_selector is flutter/packages' own, federated
+  # across windows/macos/linux/android/ios, and needs no runtime permission.
+  file_selector: ^1.0.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

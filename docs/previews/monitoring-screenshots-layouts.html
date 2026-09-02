@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi — Desktop Monitoring · screenshots layouts</title>
+<style>
+  :root{ --cyan:#00AEEF; --cyan-deep:#00708F; --ink:#060808; --muted:#5B6672;
+    --line:#E9EDF1; --alt:#F5F8FA; --page:#fff; --green:#0B8F5B; --amber:#B5730B; --coral:#E07070; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;background:#DDE3E8;color:var(--ink);font:14px/1.45 Inter,system-ui,"Segoe UI",sans-serif;}
+  .wrap{max-width:1180px;margin:0 auto;padding:16px 16px 64px;}
+  h1{font-size:19px;margin:0 0 4px;letter-spacing:-.4px;}
+  .lead{color:var(--muted);margin:0 0 6px;}
+  .note{color:var(--muted);font-size:13px;margin:0 0 22px;max-width:76ch;} .note b{color:var(--ink);}
+  .frame{background:var(--page);border:1px solid #cfd6dd;border-radius:12px;overflow:hidden;margin:0 0 30px;box-shadow:0 1px 3px rgba(6,8,8,.06);}
+  .tag{display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--line);background:var(--alt);}
+  .tag .n{width:26px;height:26px;border-radius:8px;background:var(--cyan);color:#fff;display:grid;place-items:center;font-weight:800;font-size:14px;flex:none;}
+  .tag h2{font-size:14px;margin:0;} .tag p{margin:0;color:var(--muted);font-size:13px;}
+  .app{display:grid;grid-template-columns:210px 1fr;min-height:600px;}
+  .rail{background:var(--alt);border-right:1px solid var(--line);padding:12px 0;}
+  .mark{padding:6px 16px 14px;font-weight:800;font-size:19px;letter-spacing:-.5px;} .mark .ez{color:var(--cyan);} .mark .bz{color:var(--ink);}
+  .rail a{display:flex;align-items:center;gap:9px;padding:8px 16px;color:var(--muted);font-size:13px;text-decoration:none;}
+  .rail a .i{width:16px;text-align:center;opacity:.8;}
+  .rail a.on{color:var(--ink);font-weight:600;background:rgba(0,174,239,.10);box-shadow:inset 3px 0 0 var(--cyan);}
+  .rail .grp{padding:14px 16px 6px;font-size:10px;letter-spacing:1.3px;font-weight:700;color:#93a0ad;text-transform:uppercase;}
+  .main{display:flex;flex-direction:column;min-width:0;}
+  .top{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line);}
+  .top h3{font-size:17px;margin:0;letter-spacing:-.3px;} .top .sp{flex:1;}
+  .clock{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 13px;border-radius:18px;background:var(--green);color:#fff;font-weight:600;font-size:13px;}
+  .who{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-size:13px;}
+  .who .av{width:28px;height:28px;border-radius:50%;background:var(--cyan-deep);color:#fff;display:grid;place-items:center;font-weight:700;font-size:12px;}
+  .subtabs{display:flex;gap:4px;padding:10px 18px 0;border-bottom:1px solid var(--line);overflow-x:auto;}
+  .subtabs button{border:0;background:none;padding:9px 12px 12px;color:var(--muted);font-weight:600;font-size:13.5px;border-bottom:2px solid transparent;white-space:nowrap;}
+  .subtabs button.on{color:var(--ink);border-bottom-color:var(--cyan);}
+  .body{padding:16px 18px;}
+  /* device picker */
+  .picker{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
+  .dsel{height:38px;min-width:220px;border:1px solid var(--line);border-radius:10px;background:var(--page);padding:0 12px;display:flex;align-items:center;gap:9px;}
+  .dsel .av{width:24px;height:24px;border-radius:50%;background:var(--cyan-deep);color:#fff;display:grid;place-items:center;font-weight:700;font-size:11px;}
+  .dsel .cx{margin-left:auto;color:var(--muted);}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none;}
+  .dot.online{background:var(--green);} .dot.idle{background:var(--amber);} .dot.off{background:#c4ccd4;}
+  .fresh{font-size:12.5px;color:var(--muted);} .fresh b{color:var(--ink);}
+  .fresh.stale{color:var(--amber);} .fresh.stale b{color:var(--amber);}
+  .rangechip{height:30px;padding:0 12px;border-radius:15px;border:1px solid var(--line);background:var(--page);color:var(--muted);font-size:12.5px;display:inline-flex;align-items:center;}
+  .rangechip.on{background:var(--cyan);color:#fff;border-color:var(--cyan);}
+  /* a fake screenshot tile */
+  .shot{background:#20262c;border-radius:8px;overflow:hidden;position:relative;aspect-ratio:16/10;border:1px solid var(--line);}
+  .shot::before{content:"";position:absolute;inset:8px;border-radius:4px;background:
+     linear-gradient(180deg,#2c343c 0 14%,#20262c 14% 100%),
+     repeating-linear-gradient(180deg,#2a3138 0 8%,transparent 8% 20%);opacity:.9;}
+  .shot .ts{position:absolute;left:6px;bottom:6px;background:rgba(6,8,8,.72);color:#e7edf2;font-size:11px;padding:2px 7px;border-radius:6px;z-index:2;}
+  .shot.big{aspect-ratio:16/9;}
+  .shot.stale::after{content:"stale";position:absolute;right:6px;top:6px;background:var(--amber);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:6px;z-index:2;}
+  .caption2{color:var(--muted);font-size:12px;margin-top:5px;}
+  /* honesty banners */
+  .honest{display:flex;gap:8px;align-items:flex-start;margin-top:14px;padding:10px 12px;background:var(--alt);border:1px solid var(--line);border-radius:10px;color:var(--muted);font-size:12.5px;} .honest b{color:var(--ink);}
+  .offline-state{display:grid;place-items:center;min-height:280px;color:var(--muted);text-align:center;gap:6px;border:1px dashed var(--line);border-radius:12px;background:var(--alt);}
+  .offline-state .big{font-weight:700;color:var(--ink);}
+
+  /* ---- Layout 1: grid + side panel ---- */
+  .g-cols{display:grid;grid-template-columns:1fr 300px;gap:16px;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;}
+  .side{border:1px solid var(--line);border-radius:12px;padding:12px;}
+  .side h4{font-size:11px;letter-spacing:1.1px;text-transform:uppercase;color:var(--muted);margin:0 0 10px;}
+  .side .kv{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12.5px;} .side .kv .k{color:var(--muted);} .side .kv .v{text-align:right;}
+
+  /* ---- Layout 2: hero + filmstrip ---- */
+  .hero{margin-bottom:12px;}
+  .strip{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;}
+  .strip .shot{flex:0 0 140px;aspect-ratio:16/10;}
+  .strip .shot.sel{outline:2px solid var(--cyan);outline-offset:1px;}
+
+  /* ---- Layout 3: day timeline ---- */
+  .tl{border:1px solid var(--line);border-radius:12px;padding:14px;}
+  .tl-axis{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;margin-bottom:8px;}
+  .tl-track{position:relative;height:60px;background:var(--alt);border-radius:8px;border:1px solid var(--line);}
+  .tl-track .mk{position:absolute;top:6px;width:6px;height:48px;border-radius:3px;background:var(--cyan);}
+  .tl-track .gap{position:absolute;top:0;height:60px;background:repeating-linear-gradient(45deg,#eef2f5 0 6px,transparent 6px 12px);}
+  .tl-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:14px;}
+
+  @media(max-width:760px){
+    .app{grid-template-columns:1fr;}
+    .rail{display:flex;gap:2px;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line);padding:8px;}
+    .rail .mark,.rail .grp{display:none;} .rail a{white-space:nowrap;padding:8px 12px;border-radius:8px;} .rail a.on{box-shadow:none;}
+    .g-cols{grid-template-columns:1fr;} .grid,.tl-row{grid-template-columns:repeat(auto-fill,minmax(46vw,1fr));}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Desktop Monitoring — screenshots viewer, three layouts</h1>
+  <p class="lead">One employee's periodic screen captures, in the Monitoring tab. Answer by number.</p>
+  <p class="note">Real palette from <b>theme.dart</b>. The rule the whole viewer turns on (same honesty as the reachability column):
+    <b>a stale frame is never shown as if it were current</b> — every capture carries its own time, the header says how long ago the last one was, and a device that isn't capturing (offline, no agent, web-only) says so instead of showing an old picture. Grey tiles are placeholder captures. No modal — enlarging opens a side panel. Resize narrow for 375px.</p>
+
+  <!-- ============ LAYOUT 1: GRID + SIDE PANEL ============ -->
+  <div class="frame">
+    <div class="tag"><div class="n">1</div><div><h2>Grid — newest first, click to enlarge in a side panel</h2>
+      <p>Scan a lot of captures fast. Densest overview; a selected one enlarges on the right (no modal).</p></div></div>
+    <div class="app">
+      <nav class="rail"><div class="mark"><span class="ez">Ez</span><span class="bz">bizi</span></div>
+        <a href="#"><span class="i">▤</span>Dashboard</a><a href="#"><span class="i">▦</span>Jobs</a><a href="#"><span class="i">☎</span>Phone</a>
+        <div class="grp">Oversight</div><a href="#" class="on"><span class="i">◉</span>Monitoring</a></nav>
+      <div class="main">
+        <div class="top"><h3>Monitoring</h3><div class="sp"></div><span class="clock">● On the clock</span><span class="who"><span class="av">JD</span>J. Demasi · A‑1 Chimney</span></div>
+        <div class="subtabs"><button>PC Specs</button><button>Camera Monitoring</button><button class="on">Desktop Monitoring</button></div>
+        <div class="body">
+          <div class="picker">
+            <div class="dsel"><span class="av">MR</span><span class="dot online"></span> Marco Reyes · Shop desktop <span class="cx">▾</span></div>
+            <span class="fresh"><b>last capture 2m ago</b> · every 5 min</span>
+            <div class="sp" style="flex:1"></div>
+            <span class="rangechip on">Today</span><span class="rangechip">7 days</span>
+          </div>
+          <div class="g-cols">
+            <div class="grid">
+              <div><div class="shot"><span class="ts">4:58 PM</span></div></div>
+              <div><div class="shot"><span class="ts">4:53 PM</span></div></div>
+              <div><div class="shot"><span class="ts">4:48 PM</span></div></div>
+              <div><div class="shot"><span class="ts">4:43 PM</span></div></div>
+              <div><div class="shot"><span class="ts">4:38 PM</span></div></div>
+              <div><div class="shot"><span class="ts">4:33 PM</span></div></div>
+              <div><div class="shot"><span class="ts">4:28 PM</span></div></div>
+              <div><div class="shot"><span class="ts">4:23 PM</span></div></div>
+            </div>
+            <div class="side"><h4>4:58 PM capture</h4>
+              <div class="shot big"><span class="ts">4:58 PM</span></div>
+              <div class="kv" style="margin-top:10px;">
+                <span class="k">Taken</span><span class="v">2m ago</span>
+                <span class="k">Size</span><span class="v">98 KB</span>
+                <span class="k">Resolution</span><span class="v">1920×1080</span>
+                <span class="k">Device</span><span class="v">Shop desktop</span></div>
+            </div>
+          </div>
+          <div class="honest">🛈 <span>The header <b>"last capture 2m ago"</b> is the honesty guarantee — if it read 40m, you'd know the stream is stale before trusting any tile. Captures are primary‑monitor only, kept 30 days.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ LAYOUT 2: HERO + FILMSTRIP ============ -->
+  <div class="frame">
+    <div class="tag"><div class="n">2</div><div><h2>Hero + filmstrip — one big frame, step back through the day</h2>
+      <p>Feels like watching. The latest capture dominates; a filmstrip below steps to earlier ones.</p></div></div>
+    <div class="app">
+      <nav class="rail"><div class="mark"><span class="ez">Ez</span><span class="bz">bizi</span></div>
+        <a href="#"><span class="i">▤</span>Dashboard</a><a href="#"><span class="i">▦</span>Jobs</a><a href="#"><span class="i">☎</span>Phone</a>
+        <div class="grp">Oversight</div><a href="#" class="on"><span class="i">◉</span>Monitoring</a></nav>
+      <div class="main">
+        <div class="top"><h3>Monitoring</h3><div class="sp"></div><span class="clock">● On the clock</span><span class="who"><span class="av">JD</span>J. Demasi · A‑1 Chimney</span></div>
+        <div class="subtabs"><button>PC Specs</button><button>Camera Monitoring</button><button class="on">Desktop Monitoring</button></div>
+        <div class="body">
+          <div class="picker">
+            <div class="dsel"><span class="av">TL</span><span class="dot online"></span> Tanya Lowe · Front desk <span class="cx">▾</span></div>
+            <span class="fresh"><b>last capture 1m ago</b> · every 5 min</span>
+          </div>
+          <div class="hero"><div class="shot big" style="max-height:360px;"><span class="ts">4:59 PM · 1m ago</span></div>
+            <div class="caption2">Front desk · 1920×1080 · 104 KB · in <b>Phone</b> at capture</div></div>
+          <div class="strip">
+            <div class="shot sel"><span class="ts">4:59</span></div><div class="shot"><span class="ts">4:54</span></div>
+            <div class="shot"><span class="ts">4:49</span></div><div class="shot"><span class="ts">4:44</span></div>
+            <div class="shot"><span class="ts">4:39</span></div><div class="shot"><span class="ts">4:34</span></div>
+            <div class="shot"><span class="ts">4:29</span></div><div class="shot"><span class="ts">4:24</span></div>
+            <div class="shot"><span class="ts">4:19</span></div>
+          </div>
+          <div class="honest">🛈 <span>The hero always shows the <b>newest</b> frame with its age on it. If capture stopped, the hero shows the last frame greyed with "capture stopped 34m ago" — never a stale frame passed off as live.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ LAYOUT 3: DAY TIMELINE ============ -->
+  <div class="frame">
+    <div class="tag"><div class="n">3</div><div><h2>Day timeline — the rhythm of the day, gaps and all</h2>
+      <p>Captures placed on a time axis; gaps (lunch, away, machine asleep) are visible as breaks. Best for "what happened when".</p></div></div>
+    <div class="app">
+      <nav class="rail"><div class="mark"><span class="ez">Ez</span><span class="bz">bizi</span></div>
+        <a href="#"><span class="i">▤</span>Dashboard</a><a href="#"><span class="i">▦</span>Jobs</a><a href="#"><span class="i">☎</span>Phone</a>
+        <div class="grp">Oversight</div><a href="#" class="on"><span class="i">◉</span>Monitoring</a></nav>
+      <div class="main">
+        <div class="top"><h3>Monitoring</h3><div class="sp"></div><span class="clock">● On the clock</span><span class="who"><span class="av">JD</span>J. Demasi · A‑1 Chimney</span></div>
+        <div class="subtabs"><button>PC Specs</button><button>Camera Monitoring</button><button class="on">Desktop Monitoring</button></div>
+        <div class="body">
+          <div class="picker">
+            <div class="dsel"><span class="av">DE</span><span class="dot off"></span> Dwayne Ellis · MacBook Air <span class="cx">▾</span></div>
+            <span class="fresh stale"><b>last capture 41m ago</b> · offline since 4:20 PM</span>
+          </div>
+          <div class="tl">
+            <div class="tl-axis"><span>8 AM</span><span>10</span><span>12 PM</span><span>2</span><span>4</span><span>now</span></div>
+            <div class="tl-track">
+              <div class="mk" style="left:6%"></div><div class="mk" style="left:14%"></div><div class="mk" style="left:22%"></div>
+              <div class="gap" style="left:30%;width:16%"></div><span style="position:absolute;left:31%;top:22px;font-size:10px;color:var(--amber)">lunch · no captures</span>
+              <div class="mk" style="left:48%"></div><div class="mk" style="left:56%"></div><div class="mk" style="left:64%"></div><div class="mk" style="left:72%"></div>
+              <div class="gap" style="left:80%;width:20%"></div><span style="position:absolute;left:82%;top:22px;font-size:10px;color:var(--muted)">offline</span>
+            </div>
+            <div class="tl-row">
+              <div><div class="shot stale"><span class="ts">4:19 PM</span></div><div class="caption2">last before offline</div></div>
+              <div><div class="shot"><span class="ts">4:14 PM</span></div></div>
+              <div><div class="shot"><span class="ts">4:09 PM</span></div></div>
+              <div><div class="shot"><span class="ts">4:04 PM</span></div></div>
+            </div>
+          </div>
+          <div class="honest">🛈 <span>Gaps are <b>drawn, not hidden</b> — a break in the day is real information (machine asleep, employee away). The header flags <b>offline 41m</b>, so nobody reads the 4:19 frame as "now".</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="note" style="margin-top:6px;">All three are the <b>Desktop Monitoring</b> sub‑tab viewing one employee's captures. A device with <b>no agent</b> (web/mobile) or no <code>screenshots.view</code> grant shows a plain "no captures — this device can't be screen‑captured" state instead of any of these. Pick a number, or mix (e.g. "1's grid with 3's gap‑aware timeline on top").</p>
+</div>
+</body>
+</html>

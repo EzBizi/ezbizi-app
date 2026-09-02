@@ -18,7 +18,7 @@ rather than for trying harder.
 | Stack | Laravel 13 · PHP 8.4 · MySQL 8 · Flutter web client |
 <!-- numbers:start -->
 | Tests | Not measured by this deploy — it ran without gates. Run `scripts/release.sh --gates` for a current count. |
-| Client version | `v0.0.0134` — shown bottom-left in the app and on sign-in, so a stale cache is visible rather than guessed at. |
+| Client version | `v0.0.0135` — shown bottom-left in the app and on sign-in, so a stale cache is visible rather than guessed at. |
 | Production data | **2 organization(s) · 7 companies · 18 franchises · 13 users · 14 customers · 25 jobs.** Counted 2026-09-02 against the live database by `scripts/status-numbers.sh`, not typed. |
 | Permissions in production | **99 rows.** `ezbizi:sync-permissions` runs on every deploy, between the migration and the caches. |
 <!-- numbers:end -->
