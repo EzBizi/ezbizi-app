@@ -330,6 +330,107 @@ void main() {
       findsOneWidget,
     );
   });
+
+  // The routing decision itself, tested where a widget pump cannot reach it.
+  //
+  // Under `flutter test`, kIsWeb is a compile-time false, so no pump can ever
+  // send an `hls` tile down its web-only inline path — the tile always renders
+  // the deep-link card here (which is exactly what the "an mjpeg/snapshot
+  // tile..." widget test above still asserts). cameraBodyKind is the same
+  // decision the tile makes, extracted so it CAN be fed `isWeb: true`. These
+  // assert the selection, not playback — which is all a VM test can honestly
+  // check.
+  group('cameraBodyKind routes each protocol by platform capability', () {
+    test('hls on web with a player routes to the inline video host', () {
+      expect(
+        cameraBodyKind(
+          enabled: true,
+          protocol: 'hls',
+          isWeb: true,
+          hlsInlineSupported: true,
+        ),
+        CameraBodyKind.inlineHls,
+        reason: 'On web with hls.js or native HLS, an HLS camera must play '
+            'inline — not fall back to the copy-URL deep-link card.',
+      );
+    });
+
+    test('rtsp on web still routes to the deep-link card', () {
+      expect(
+        cameraBodyKind(
+          enabled: true,
+          protocol: 'rtsp',
+          isWeb: true,
+          hlsInlineSupported: true,
+        ),
+        CameraBodyKind.deepLink,
+        reason: 'No browser can play RTSP; it stays a deep link even on web, '
+            'even with a player available.',
+      );
+    });
+
+    test('hls off-web (desktop) routes to the deep-link card', () {
+      expect(
+        cameraBodyKind(
+          enabled: true,
+          protocol: 'hls',
+          isWeb: false,
+          hlsInlineSupported: true,
+        ),
+        CameraBodyKind.deepLink,
+        reason: 'There is no DOM <video> off-web; HLS stays a deep link there.',
+      );
+    });
+
+    test('hls on web without a player routes to the deep-link card', () {
+      expect(
+        cameraBodyKind(
+          enabled: true,
+          protocol: 'hls',
+          isWeb: true,
+          hlsInlineSupported: false,
+        ),
+        CameraBodyKind.deepLink,
+        reason: 'A browser with neither hls.js nor native HLS cannot play the '
+            'stream, so it must show the deep-link card, not an empty <video>.',
+      );
+    });
+
+    test('a disabled hls camera is disabled, never inline or deep-link', () {
+      expect(
+        cameraBodyKind(
+          enabled: false,
+          protocol: 'hls',
+          isWeb: true,
+          hlsInlineSupported: true,
+        ),
+        CameraBodyKind.disabled,
+        reason: 'Disabled wins over every protocol path — a disabled camera is '
+            'never shown as though it were live.',
+      );
+    });
+
+    test('mjpeg/snapshot always route to the inline image host', () {
+      expect(
+        cameraBodyKind(
+          enabled: true,
+          protocol: 'mjpeg',
+          isWeb: true,
+          hlsInlineSupported: false,
+        ),
+        CameraBodyKind.inlineImage,
+      );
+      expect(
+        cameraBodyKind(
+          enabled: true,
+          protocol: 'snapshot',
+          isWeb: false,
+          hlsInlineSupported: false,
+        ),
+        CameraBodyKind.inlineImage,
+      );
+    });
+  });
 }
 
 const _mjpegCamera = {

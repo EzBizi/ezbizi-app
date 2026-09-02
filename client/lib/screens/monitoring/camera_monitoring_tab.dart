@@ -25,13 +25,16 @@ import 'camera_view.dart';
 ///   * A camera with `enabled: false` never renders as though it were being
 ///     watched — no inline frame, no deep-link controls, just a plainly
 ///     labelled disabled tile. See [_DisabledBody].
-///   * `hls`/`rtsp` cameras never claim to be playing. There is no bundled
-///     player yet (see the ponytail note on [_DeepLinkCard]), so those tiles
-///     are a copyable URL and nothing more.
+///   * `hls` cameras play inline in a real `<video>` — but ONLY on web and
+///     ONLY where the vendored hls.js or native HLS can carry it. Off-web, or
+///     in a browser that can do neither, an `hls` tile falls back to the same
+///     copyable-URL card, which never claims to be playing.
+///   * `rtsp` cameras are a copyable URL and nothing more, on every platform:
+///     no browser can play RTSP, so there is nothing honest to show inline.
 ///   * `mjpeg`/`snapshot` cameras get a real inline `<img>` — but ONLY on
 ///     web, where a DOM element can exist at all. Everywhere else (desktop,
-///     mobile) they get the same kind of URL card `hls`/`rtsp` get, worded
-///     for what IS true on that platform: open it in a browser to see it.
+///     mobile) they get the same kind of URL card the deep-link tiles get,
+///     worded for what IS true on that platform: open it in a browser to see it.
 class CameraMonitoringTab extends StatefulWidget {
   const CameraMonitoringTab({super.key, required this.api, required this.session});
 
@@ -296,8 +299,51 @@ String _protocolLabel(String protocol) => switch (protocol) {
   _ => protocol.toUpperCase(),
 };
 
-bool _isInlineProtocol(String protocol) =>
-    protocol == 'mjpeg' || protocol == 'snapshot';
+/// What a tile shows in its live-view slot. Kept as a value the tile switches
+/// on, rather than an `if`-ladder inside `build`, for one reason: [kIsWeb] is a
+/// compile-time `false` under `flutter test`, so the branch that only fires on
+/// web can never be exercised through a widget pump. As a pure function of its
+/// inputs it can be — the tab feeds it `kIsWeb`, a test feeds it `true`.
+enum CameraBodyKind {
+  /// Disabled camera — the [_DisabledBody] placeholder, whatever its protocol.
+  disabled,
+
+  /// `mjpeg`/`snapshot` on web — the inline `<img>` ([_InlineViewCard]); off-web
+  /// this same kind renders that card's "open in a browser" fallback.
+  inlineImage,
+
+  /// `hls` on web with a player available — the inline `<video>`
+  /// ([_InlineHlsCard]).
+  inlineHls,
+
+  /// Everything with no honest inline story here: `rtsp` always, `hls` off-web
+  /// or with no player, anything unknown — the copy-URL [_DeepLinkCard].
+  deepLink,
+}
+
+/// The single place that decides a tile's live-view slot. See
+/// [CameraBodyKind]'s note for why this is a function and not inline `if`s.
+///
+/// `hls` is the only protocol whose answer depends on the platform: it plays
+/// inline only on web AND only where hls.js or native HLS can carry it
+/// ([cameraHlsInlineSupported]). `rtsp` has no browser story at all and stays a
+/// deep link everywhere; `mjpeg`/`snapshot` are always the image host (which
+/// itself shows the open-in-browser card off-web).
+CameraBodyKind cameraBodyKind({
+  required bool enabled,
+  required String protocol,
+  required bool isWeb,
+  required bool hlsInlineSupported,
+}) {
+  if (!enabled) return CameraBodyKind.disabled;
+  if (protocol == 'mjpeg' || protocol == 'snapshot') {
+    return CameraBodyKind.inlineImage;
+  }
+  if (protocol == 'hls' && isWeb && hlsInlineSupported) {
+    return CameraBodyKind.inlineHls;
+  }
+  return CameraBodyKind.deepLink;
+}
 
 class _CameraTile extends StatelessWidget {
   const _CameraTile({
@@ -319,18 +365,31 @@ class _CameraTile extends StatelessWidget {
     final url = camera['url'] as String? ?? '';
     final enabled = camera['enabled'] as bool? ?? true;
 
-    Widget body;
-    if (!enabled) {
-      body = const _DisabledBody();
-    } else if (_isInlineProtocol(protocol)) {
-      body = _InlineViewCard(key: ValueKey('camera-inline-$id'), url: url);
-    } else {
-      body = _DeepLinkCard(
+    final kind = cameraBodyKind(
+      enabled: enabled,
+      protocol: protocol,
+      isWeb: kIsWeb,
+      // Called off-web too, where it is the stub's `false` — no js_interop, no
+      // cost. The `isWeb` above still gates it inside cameraBodyKind.
+      hlsInlineSupported: cameraHlsInlineSupported(),
+    );
+
+    final body = switch (kind) {
+      CameraBodyKind.disabled => const _DisabledBody(),
+      CameraBodyKind.inlineImage => _InlineViewCard(
+        key: ValueKey('camera-inline-$id'),
+        url: url,
+      ),
+      CameraBodyKind.inlineHls => _InlineHlsCard(
+        key: ValueKey('camera-hls-$id'),
+        url: url,
+      ),
+      CameraBodyKind.deepLink => _DeepLinkCard(
         key: ValueKey('camera-deeplink-$id'),
         protocol: protocol,
         url: url,
-      );
-    }
+      ),
+    };
 
     final tile = Card(
       key: ValueKey('camera-tile-$id'),
@@ -477,17 +536,38 @@ class _InlineViewCard extends StatelessWidget {
   }
 }
 
-/// The `hls`/`rtsp` card — a copyable link and nothing else, because there is
-/// nothing else true to show yet.
+/// The inline HLS live-view host — a real `<video>` playing the stream in the
+/// tile, via [CameraHlsView] (hls.js on most browsers, native HLS on Safari).
 ///
-/// ponytail: inline HLS playback is a fast-follow, not scope here. When it
-/// lands: vendor a small player script the way `web/vendor/twilio-voice-*.min.js`
-/// is already vendored (drop `web/vendor/hls*.min.js`, add its `<script>` tag
-/// to `web/index.html`), then swap this card's body for an `HtmlElementView`
-/// wrapping a `<video>` element and `new Hls()` — the same web/stub split
-/// `CameraImageView` already uses, just with a video element instead of an
-/// image one. `rtsp` still has no browser story even then; it stays a deep
-/// link.
+/// Only ever built on web and only when [cameraHlsInlineSupported] is true (the
+/// tab's [cameraBodyKind] gate), so there is no off-web branch here the way
+/// [_InlineViewCard] carries one: an `hls` tile with no inline story never
+/// reaches this widget, it routes to [_DeepLinkCard] instead.
+class _InlineHlsCard extends StatelessWidget {
+  const _InlineHlsCard({super.key, required this.url});
+
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: CameraHlsView(url: url),
+    );
+  }
+}
+
+/// The deep-link card — a copyable link and nothing else, because there is
+/// nothing else true to show for this tile.
+///
+/// Reaches: `rtsp` always (no browser can play it), and `hls` wherever inline
+/// playback is not available — off-web (desktop/mobile), or a web browser with
+/// neither hls.js nor native HLS.
+///
+/// ponytail: inline HLS now ships (see [_InlineHlsCard] / camera_view_web.dart,
+/// backed by the vendored `web/vendor/hls-*.min.js`), so `hls` on a capable
+/// browser no longer lands here. `rtsp` still has no browser story and stays a
+/// deep link; there is nothing to fast-follow for it.
 class _DeepLinkCard extends StatelessWidget {
   const _DeepLinkCard({super.key, required this.protocol, required this.url});
 
