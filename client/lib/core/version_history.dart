@@ -8,6 +8,19 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0140',
+      date: '2 Sep 2026',
+      items: [
+        'Monitoring - Desktop Monitoring: you can now take control of a '
+            'monitored machine. With the new control permission - separate from '
+            'simply viewing - your mouse and typing drive the remote screen '
+            'while you watch it live, for helping someone at their desk. Like '
+            'the rest of monitoring it is silent and covered by the terms of '
+            'service. Full keyboard shortcuts (Ctrl and Alt combinations) come '
+            'in a later update.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0139',
       date: '2 Sep 2026',
       items: [
