@@ -106,12 +106,7 @@ class ConditionEvaluator
 
         $payload = $event->payload ?? [];
         $before  = $payload['before'][$field] ?? null;
-        // Prefer the event's own after-value: the subject may have been changed
-        // again between the event being written and this running, and the rule
-        // was written about what happened, not about what is true now.
-        $after   = array_key_exists($field, $payload['after'] ?? [])
-            ? $payload['after'][$field]
-            : $subject?->getAttribute($field);
+        $after   = $this->valueOf($field, $payload, $subject);
 
         $matched = match ($op) {
             'eq'           => $this->loose($after) === $this->loose($expected),
@@ -149,6 +144,56 @@ class ConditionEvaluator
             'actual'  => $after,
             'matched' => $matched,
         ];
+    }
+
+    /**
+     * Where a condition's field is read from, in order.
+     *
+     * ── Why the middle arm exists ────────────────────────────────
+     *
+     * It used to be two arms: `payload['after']`, else the subject model. That
+     * silently broke every trigger whose payload is FLAT — keys at the top
+     * level rather than nested under `after`. `before`/`after` is the shape of
+     * an UPDATE, and a great many events are not updates: an email arriving, a
+     * call ending, an SMS, a punch, an inspection being submitted. Those emit
+     * what happened, because there is no previous version of anything for a
+     * `before` to describe.
+     *
+     * For all of them the field fell through to the subject model — which is
+     * the Mailbox, or the PhoneNumber, or the User — and asked it for `subject`
+     * or `from_address` or `duration`, which it has never heard of. Every such
+     * condition evaluated to null, so the rule could not match, and the run log
+     * said "the value at the time was nothing" once per attempt, forever. The
+     * rule looked correct, the trace looked like bad data, and nothing was red:
+     * 23 triggers across 8 modules were affected, found from a customer's
+     * `email.received` rule that had skipped every run since it was written.
+     *
+     * Fixing it here rather than in the 27 call sites is deliberate. The
+     * alternative was asking eight modules to re-nest payloads under `after`
+     * to satisfy a convention no test enforces and nothing announces — and a
+     * ninth module written next month would get it wrong again. The evaluator
+     * is the one place that has to understand both shapes.
+     *
+     * `array_key_exists` throughout, not `??`: a payload that explicitly
+     * carries null means null, and must not fall through to the model and read
+     * a stale value that the event did not describe.
+     */
+    private function valueOf(string $field, array $payload, ?Model $subject): mixed
+    {
+        // Prefer the event's own after-value: the subject may have been changed
+        // again between the event being written and this running, and the rule
+        // was written about what happened, not about what is true now.
+        if (array_key_exists($field, $payload['after'] ?? [])) {
+            return $payload['after'][$field];
+        }
+
+        // A flat payload — what a non-update event carries. Same argument as
+        // above for preferring it to the model.
+        if (array_key_exists($field, $payload)) {
+            return $payload[$field];
+        }
+
+        return $subject?->getAttribute($field);
     }
 
     /**
