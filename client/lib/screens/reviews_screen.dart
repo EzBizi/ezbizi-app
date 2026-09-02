@@ -4,6 +4,7 @@ import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
+import '../widgets/connected_account.dart';
 
 /// Reviews — what the public said, and the answer.
 ///
@@ -174,6 +175,10 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
 
   bool get _connected => _connections.any((c) => c['status'] == 'connected');
 
+  /// The connected profile itself, so the tab can name it and remove it.
+  Map<String, dynamic>? get _profile =>
+      _connections.isEmpty ? null : _connections.first;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -223,6 +228,12 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             ],
           ),
         ),
+        if (_profile != null)
+          ConnectedAccount(
+            api: widget.api,
+            connection: _profile!,
+            onDisconnected: _load,
+          ),
         if (_notice != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),

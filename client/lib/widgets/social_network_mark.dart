@@ -22,6 +22,17 @@ class SocialNetworkMark extends StatelessWidget {
     'youtube': 'assets/social/youtube.svg',
     'x': 'assets/social/x.svg',
     'bluesky': 'assets/social/bluesky.svg',
+
+    // Both Google connections wear the Google G rather than a product mark.
+    //
+    // They are different products with different logos, and the row's own label
+    // already says which — "Google Ads", "Google Business Profile" — so the G
+    // identifies the account's origin, which is the question somebody scanning
+    // this list is actually asking. Before this they fell through to the grey
+    // square below, which reads as a network nobody has drawn yet rather than
+    // as Google.
+    'google_ads': 'assets/social/google.svg',
+    'google_business_profile': 'assets/social/google.svg',
   };
 
   @override

@@ -4,6 +4,7 @@ import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
+import '../widgets/connected_account.dart';
 
 /// Leads — enquiries from connected advertising (EZ Leads).
 ///
@@ -154,6 +155,15 @@ class _LeadsScreenState extends State<LeadsScreen> {
   bool get _anyGoogleAds =>
       _connections.any((c) => c['provider'] == 'google_ads');
 
+  /// The connected account itself, so the tab can name it and remove it.
+  Map<String, dynamic>? get _googleAds {
+    for (final c in _connections) {
+      if (c['provider'] == 'google_ads') return c;
+    }
+
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -216,6 +226,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
             ],
           ),
         ),
+        if (_googleAds != null)
+          ConnectedAccount(
+            api: widget.api,
+            connection: _googleAds!,
+            onDisconnected: _load,
+          ),
         if (_notice != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),

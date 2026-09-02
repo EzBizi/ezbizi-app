@@ -333,6 +333,10 @@ class ReviewsController extends Controller
             ->where('provider', SocialProvider::GoogleBusinessProfile->value)
             ->get()
             ->map(fn (SocialConnection $c) => [
+                // The id is what lets the tab that owns this connection
+                // remove it. Without it the only disconnect was in
+                // Marketing, a module these providers are kept out of.
+                'id'           => $c->getKey(),
                 'provider'     => $c->provider,
                 'display_name' => $c->display_name,
                 'status'       => $c->status,
