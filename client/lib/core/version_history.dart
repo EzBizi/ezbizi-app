@@ -8,6 +8,20 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0136',
+      date: '2 Sep 2026',
+      items: [
+        'Scheduling: you can add a service area. Settings listed your areas '
+            'and gave you no way to make one, so a business that had never '
+            'added any saw two empty boxes and nothing to click - and since '
+            'the hours grid and the zip codes both live inside an area, none '
+            'of it could be reached at all.',
+        'Scheduling: a service area takes its zip codes, and can be renamed '
+            'or deleted. A zip already covered by another area is refused and '
+            'says which area has it.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0135',
       date: '2 Sep 2026',
       items: [
