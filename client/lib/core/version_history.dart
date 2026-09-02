@@ -8,6 +8,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0138',
+      date: '2 Sep 2026',
+      items: [
+        'On iPhone and iPad, taking a call in the app now asks for the '
+            'microphone the first time, and says what it is for. Apple requires '
+            'an app to explain itself before it may listen, and EzBizi did not '
+            'carry that sentence - so the App Store refused the build outright, '
+            'before anybody could install it.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0137',
       date: '2 Sep 2026',
       items: [
