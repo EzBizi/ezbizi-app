@@ -8,6 +8,34 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0135',
+      date: '2 Sep 2026',
+      items: [
+        'The desktop app keeps you signed in. Ticking "keep me signed in" had '
+            'never done anything outside a browser - the desktop app held your '
+            'session in memory only, so closing it, or updating it, signed you '
+            'out. The session is now kept in the Windows credential store, '
+            'encrypted to your Windows account, and only when you tick the '
+            'box. Leave it unticked and it still ends when you close the app.',
+        'Android now needs Android 8.0 or newer. Taking calls on the phone '
+            'uses Twilio, which does not support anything older, so this is '
+            'the floor for having calling at all rather than a preference.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0134',
+      date: '2 Sep 2026',
+      items: [
+        'Phone: calls work in the app on every platform that can carry audio, '
+            'not only in a browser tab.',
+        'Tasks: a task with no custom fields now saves. It was sending an '
+            'empty list where the server expects a set of named values, which '
+            'failed on exactly the tasks that had nothing extra filled in.',
+        'The tab you are on no longer covers its own icon. It looked like the '
+            'hover had stuck and not cleared.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0133',
       date: '1 Sep 2026',
       items: [

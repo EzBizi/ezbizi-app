@@ -59,6 +59,7 @@ dependencies:
   #   linux            nothing exists; calls ring the person's own handset
   twilio_voice: ^0.5.0
   webview_windows: ^0.4.0
+  flutter_secure_storage: ^11.0.0
 
 dev_dependencies:
   flutter_test:
