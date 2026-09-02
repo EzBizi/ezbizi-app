@@ -20,9 +20,10 @@ use Illuminate\Validation\ValidationException;
  * Phone lines nested under Phone on the roles editor, and the list filter for
  * the Call desk / Settings numbers screen.
  *
- * Same composition as InboxAccess: a platform permission (the tab) and tenant
- * rows (which numbers this role may use). A grant behind a closed tab opens
- * nothing. Administrator holds every number without a grants row.
+ * The tab is the whole gate. `phone.view` plus §4 reach decides which of the
+ * organisation's lines a person sees; there is no per-number grant any more
+ * (2 Sep — see [isGranted]), so a role with Communication gets its company's
+ * numbers without anybody ticking them on one at a time.
  */
 final class PhoneNumberAccess
 {
@@ -60,21 +61,24 @@ final class PhoneNumberAccess
         return $modules;
     }
 
-    /** @return string[] */
+    /**
+     * Every line in the organisation, for every role.
+     *
+     * Since 2 Sep a role is not granted lines one at a time — see [isGranted].
+     * This method feeds the roles screen, so returning the old grant rows here
+     * would draw a picker that no longer decides anything: tick a number,
+     * change nothing. It answers what is actually true instead.
+     *
+     * Organisation-wide, not company-wide, because a Role belongs to an
+     * organisation and has no company of its own. The narrowing to the
+     * company and franchise a PERSON is assigned to happens in [mayView],
+     * per user, where the assignment actually lives.
+     *
+     * @return string[]
+     */
     public function heldBy(Role $role): array
     {
-        $existing = array_keys($this->directory->keyedByIdFor($role->organization_id));
-
-        if ($role->isAdministrator()) {
-            return $existing;
-        }
-
-        $granted = PhoneNumberGrant::query()
-            ->where('role_id', $role->getKey())
-            ->pluck('number_id')
-            ->all();
-
-        return array_values(array_intersect($existing, $granted));
+        return array_keys($this->directory->keyedByIdFor($role->organization_id));
     }
 
     /**
@@ -88,24 +92,14 @@ final class PhoneNumberAccess
             return [];
         }
 
-        $held = [];
+        // Every role holds every line in the organisation — grants are no
+        // longer per number. See [heldBy] and [isGranted].
         $existing = array_keys($this->directory->keyedByIdFor(reset($roles)->organization_id));
+        sort($existing);
 
+        $held = [];
         foreach ($roles as $role) {
-            $held[$role->getKey()] = [];
-        }
-
-        foreach (PhoneNumberGrant::query()->whereIn('role_id', array_keys($held))->get() as $grant) {
-            if (in_array($grant->number_id, $existing, true)) {
-                $held[$grant->role_id][] = $grant->number_id;
-            }
-        }
-
-        foreach ($roles as $role) {
-            if ($role->isAdministrator()) {
-                $held[$role->getKey()] = $existing;
-            }
-            sort($held[$role->getKey()]);
+            $held[$role->getKey()] = $existing;
         }
 
         return $held;
@@ -216,20 +210,33 @@ final class PhoneNumberAccess
         return $this->isGranted($user, $number);
     }
 
+    /**
+     * Whether the role may use this line at all.
+     *
+     * ── Grants are no longer per number ──────────────────────────────
+     *
+     * This used to require a `phone_number_grants` row for (number, role), so
+     * every line had to be ticked on for every role that should use it. Jose
+     * ruled that out on 2 Sep: a role with access to Communication gets the
+     * company's lines, full stop. A tenant heading for a hundred numbers
+     * cannot be asked to tick a hundred boxes per role, and the failure is
+     * silent when they miss one — the person sees an empty Dial screen and no
+     * reason for it, which is exactly how a Dispatcher created ten minutes
+     * before his grant landed appeared to have no phone system at all.
+     *
+     * This does NOT widen who sees what beyond their company. [mayView] has
+     * already required `phone.view`, [inView] (the number's scope is one this
+     * user can see) and [reaches] (§4 reach) before asking this — so the
+     * bound is the company and franchise they are assigned to, which is the
+     * bound Jose described. Only the per-number tick is gone.
+     *
+     * The table and its rows are left alone deliberately. Nothing reads them
+     * for access now, so dropping them is a separate, reversible cleanup
+     * rather than a migration bundled into a permissions fix.
+     */
     public function isGranted(User $user, PhoneNumber $number): bool
     {
-        if ($user->isAdministrator()) {
-            return true;
-        }
-
-        if ($user->role_id === null) {
-            return false;
-        }
-
-        return PhoneNumberGrant::query()
-            ->where('number_id', $number->getKey())
-            ->where('role_id', $user->role_id)
-            ->exists();
+        return true;
     }
 
     /**

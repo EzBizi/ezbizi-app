@@ -18,7 +18,7 @@ void main() {
 
     expect(find.byType(ComingSoonScreen), findsNothing);
     expect(find.text('Coming soon'), findsNothing);
-    expect(find.text('Connect Twilio in Settings'), findsOneWidget);
+    expect(find.text('No phone lines yet. Add one in Settings.'), findsOneWidget);
   });
 
   testWidgets('three columns at 900: teammates, pad, person', (tester) async {
@@ -496,6 +496,48 @@ void main() {
       isEmpty,
       reason: 'a browser that can place the call asked the server to instead',
     );
+  });
+
+  /// The line you are assigned to is the one you start on.
+  ///
+  /// The assigned line is deliberately SECOND here. The test above has it
+  /// first, so it passed either way — and the bug was exactly that: the desk
+  /// defaulted to `numbers.first` the moment the list loaded, which quietly
+  /// defeated the "yours first" fallback further down the same file. On the
+  /// real account "General Use" sorted first, so every call went out under the
+  /// company's shared number unless somebody noticed the picker and changed it.
+  testWidgets('the line you are assigned to is selected to begin with', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    addTearDown(device.dispose);
+
+    await _pump(
+      tester,
+      device: device,
+      size: const Size(900, 800),
+      numbers: const [
+        {
+          'id': 'n-1',
+          'connection_id': 'cx-1',
+          'e164': '+12394560829',
+          'label': 'General Use',
+          'assigned_to_me': false,
+        },
+        {
+          'id': 'n-2',
+          'connection_id': 'cx-1',
+          'e164': '+12397470324',
+          'label': 'Mine',
+          'assigned_to_me': true,
+        },
+      ],
+    );
+
+    final picker = tester.widget<DropdownButton<String>>(
+      find.byType(DropdownButton<String>),
+    );
+    expect(picker.value, 'n-2');
   });
 
   /// A dispatcher can choose which line they call from.

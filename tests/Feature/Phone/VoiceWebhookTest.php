@@ -774,7 +774,7 @@ class VoiceWebhookTest extends TestCase
         $this->assertSame('ringing', $call->status);
     }
 
-    public function test_calls_list_is_limited_to_granted_numbers(): void
+    public function test_calls_list_covers_every_line_in_reach(): void
     {
         $t = $this->provisionTenant();
         $viewer = $this->userWithRole($t, 'Desk records', ['phone.view']);
@@ -835,11 +835,15 @@ class VoiceWebhookTest extends TestCase
             ->assertOk()
             ->json('data');
 
-        $this->assertCount(1, $rows);
-        $this->assertSame($visible->id, $rows[0]['id']);
-        $this->assertSame('+15550006666', $rows[0]['from_e164']);
-        $this->assertSame('+12035551901', $rows[0]['to_e164']);
-        $this->assertNotContains($hidden->id, array_column($rows, 'id'));
+        // Both calls. The second sat on a line this role had no grant for,
+        // which is no longer a reason to hide anything — both lines are in
+        // this company and this person stands over it.
+        $this->assertCount(2, $rows);
+        $this->assertEqualsCanonicalizing(
+            [$visible->id, $hidden->id],
+            array_column($rows, 'id'),
+        );
+        $this->assertContains($hidden->id, array_column($rows, 'id'));
         $this->assertArrayHasKey('customer_id', $rows[0]);
         $this->assertArrayHasKey('voicemail', $rows[0]);
         $this->assertArrayNotHasKey('credentials', $rows[0]);

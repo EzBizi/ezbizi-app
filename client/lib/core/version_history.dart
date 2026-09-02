@@ -8,6 +8,31 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0141',
+      date: '2 Sep 2026',
+      items: [
+        'Communication: a role that can open Communication now gets the '
+            'company\'s phone lines. Each line used to be switched on for each '
+            'role one at a time, so a new dispatcher saw an empty Dial screen '
+            'and no reason for it - and a business with a hundred numbers '
+            'would have had to tick a hundred boxes per role. Who can see '
+            'which lines is still bounded by the company and branch a person '
+            'is assigned to.',
+        'Communication: an empty Dial screen says which of the two things is '
+            'wrong. It used to say "Connect Twilio in Settings" whether the '
+            'company had no phone system or you simply had no line - telling '
+            'people to fix something they could not reach and that was not '
+            'broken.',
+        'Communication: you start on your own line. The Calling as picker '
+            'opened on whichever line happened to be first, so calls went out '
+            'under a shared number unless you noticed and changed it.',
+        'The desktop app no longer says the phone desk is disconnected when '
+            'it is not. It checked whether the desk had come up before the '
+            'desk had finished answering, so the warning appeared on almost '
+            'every launch and stayed until the page was reloaded.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0140',
       date: '2 Sep 2026',
       items: [

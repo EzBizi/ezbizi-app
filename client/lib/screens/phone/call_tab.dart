@@ -194,7 +194,18 @@ class _CallTabState extends State<CallTab> {
     setState(() {
       _loading = false;
       _numbers = numbers;
-      _numberId ??= numbers.isEmpty ? null : numbers.first.id;
+      // Your own line first, then the account's first.
+      //
+      // This used to be `numbers.first.id` outright, which quietly defeated
+      // the identical preference in [_selected]: that getter falls back to
+      // the assigned line only when nothing is chosen, and this line always
+      // chose something the moment the list loaded. So the dropdown opened on
+      // whichever number happened to sort first — "General Use" — while the
+      // person's own line sat below it marked "yours", and every call went
+      // out under the wrong one unless they noticed and switched.
+      _numberId ??= (numbers.where((n) => n.assignedToMe).firstOrNull
+              ?? numbers.firstOrNull)
+          ?.id;
     });
 
     if (numbers.isEmpty) return;
@@ -523,11 +534,24 @@ class _CallTabState extends State<CallTab> {
       error: _error,
       onRetry: _load,
       child: _numbers.isEmpty
+          // An empty list has two different causes and used to give one
+          // answer. `/phone/numbers` returns the lines GRANTED to your role,
+          // so somebody with no grant saw "Connect Twilio in Settings" — which
+          // told them the company had no phone system when it had seven lines,
+          // and sent them to a tab they cannot open. Reported 2 Sep by a
+          // Dispatcher created ten minutes before his role was granted a line.
+          //
+          // Whoever can fix it is told what to fix; whoever cannot is told
+          // what to ask for.
           ? Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  'Connect Twilio in Settings',
+                  (widget.session.me?.can('phone.edit') ?? false)
+                      ? 'No phone lines yet. Add one in Settings.'
+                      : 'No line has been given to your role yet. An '
+                            'administrator can grant one in Communication '
+                            'settings.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.titleMedium,
                 ),

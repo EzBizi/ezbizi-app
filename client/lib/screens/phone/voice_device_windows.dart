@@ -42,6 +42,18 @@ class WindowsVoiceDevice implements VoiceDevice {
 
   final _ready = Completer<void>();
 
+  /// Completed when the hosted page reports back whether it registered.
+  ///
+  /// Separate from [_ready], which only says the PAGE loaded. Registration is
+  /// a round trip after that — the token is posted in, the Twilio SDK opens a
+  /// signalling socket, and the page posts 'ready' back. Without waiting for
+  /// it, [setup] returned while `registered` was still false and the Dial tab,
+  /// which checks it the moment setup returns, drew "This desk is not
+  /// connected to the phone network" on every launch. The desk then came up a
+  /// second later with nobody re-reading the flag, so the banner stayed until
+  /// the page was reloaded — which is why it looked like a network fault.
+  Completer<void>? _settled;
+
   @override
   void Function(VoiceIncoming incoming)? onIncoming;
 
@@ -91,7 +103,18 @@ class WindowsVoiceDevice implements VoiceDevice {
         onTimeout: () {},
       );
 
+      _settled = Completer<void>();
       _post({'type': 'setup', 'token': token});
+
+      // Same 10 seconds the web device allows its own register() call, and for
+      // the same reason: a signalling socket that never connects leaves a
+      // promise that never settles, so the wait has to end itself. Timing out
+      // here lands on `registered == false`, which is the honest answer and
+      // the one the banner already knows how to say.
+      await _settled!.future.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {},
+      );
     } catch (_) {
       // A WebView2 runtime that is missing or refused to start. The desk has
       // a state for a phone that cannot take a call, and this is it.
@@ -112,6 +135,7 @@ class WindowsVoiceDevice implements VoiceDevice {
         if (!_ready.isCompleted) _ready.complete();
       case 'ready':
         _registered = message['registered'] == true;
+        if (_settled?.isCompleted == false) _settled!.complete();
       case 'incoming':
         onIncoming?.call(
           VoiceIncoming(from: (message['from'] ?? '').toString()),

@@ -55,24 +55,46 @@ class PhoneGrantTest extends TestCase
         );
     }
 
-    public function test_granting_the_tab_grants_no_number(): void
+    /**
+     * The tab IS the grant, as of 2 Sep.
+     *
+     * This asserted the opposite until then — granting Communication granted
+     * no line, and each one had to be ticked on afterwards. Jose ruled that
+     * out: a tenant with a hundred numbers cannot tick a hundred boxes per
+     * role, and forgetting one shows an empty Dial screen with no reason on
+     * it. The test is inverted rather than deleted so the change is visible
+     * to whoever reads this file next.
+     */
+    public function test_granting_the_tab_grants_every_number(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $this->number($alpha, '+12035551011', 'Main');
+        $main = $this->number($alpha, '+12035551011', 'Main');
 
         $role = $this->signedInAs($alpha['admin'])->postJson('/api/v1/roles', [
             'name' => 'Desk',
             'permissions' => ['phone.view', 'phone.edit'],
         ])->assertCreated()->json('data');
 
-        $this->assertSame([], $role['phone_numbers']);
+        $this->assertSame([$main->id], $role['phone_numbers']);
     }
 
-    public function test_a_number_is_granted_and_revoked_on_role_save(): void
+    /**
+     * Sending a subset, or none at all, does not narrow what the role holds.
+     *
+     * The roles screen still draws a number picker. It no longer decides
+     * anything, and this pins that: a role saved with one line still reports
+     * both, and saving with none does not take them away. Better to have the
+     * inertness asserted than to leave somebody wondering why their tick did
+     * nothing.
+     */
+    public function test_a_role_holds_every_line_whatever_the_picker_sent(): void
     {
         $alpha = $this->provisionTenant('Alpha');
         $main = $this->number($alpha, '+12035551021', 'Main');
-        $this->number($alpha, '+12035551022', 'Spare');
+        $spare = $this->number($alpha, '+12035551022', 'Spare');
+
+        $both = [$main->id, $spare->id];
+        sort($both);
 
         $role = $this->signedInAs($alpha['admin'])->postJson('/api/v1/roles', [
             'name' => 'Desk',
@@ -80,14 +102,12 @@ class PhoneGrantTest extends TestCase
             'phone_numbers' => [$main->id],
         ])->assertCreated()->json('data');
 
-        $this->assertSame([$main->id], $role['phone_numbers']);
+        $this->assertSame($both, $role['phone_numbers']);
 
         $this->signedInAs($alpha['admin'])->patchJson("/api/v1/roles/{$role['id']}", [
             'permissions' => ['phone.view'],
             'phone_numbers' => [],
-        ])->assertOk()->assertJsonPath('data.phone_numbers', []);
-
-        $this->inTenant($alpha['org'], fn () => $this->assertSame(0, PhoneNumberGrant::count()));
+        ])->assertOk()->assertJsonPath('data.phone_numbers', $both);
     }
 
     public function test_a_number_on_a_role_without_the_tab_is_refused(): void
@@ -131,7 +151,9 @@ class PhoneGrantTest extends TestCase
         $desk = collect($listed)->firstWhere('name', 'Desk');
         $administrator = collect($listed)->firstWhere('is_administrator', true);
 
-        $this->assertSame([$main->id], $desk['phone_numbers']);
+        // Desk and Administrator hold the same set now: every line in the
+        // organisation. Administrator used to be the only role that did.
+        $this->assertEqualsCanonicalizing([$main->id, $spare->id], $desk['phone_numbers']);
         $this->assertEqualsCanonicalizing([$main->id, $spare->id], $administrator['phone_numbers']);
     }
 

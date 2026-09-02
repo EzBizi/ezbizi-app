@@ -26,7 +26,7 @@ void main() {
     expect(find.widgetWithText(ChoiceChip, 'Records'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'Settings'), findsOneWidget);
 
-    expect(find.text('Connect Twilio in Settings'), findsOneWidget);
+    expect(find.text('No phone lines yet. Add one in Settings.'), findsOneWidget);
   });
 
   testWidgets('a granted Phone sidebar tab opens the real screen', (

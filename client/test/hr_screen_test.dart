@@ -201,7 +201,7 @@ void main() {
 
     // The load-bearing sentence.
     expect(
-      find.textContaining('cannot send mail yet'),
+      find.textContaining('nothing has reached them'),
       findsOneWidget,
       reason:
           'Without this somebody invites a person and waits for an acceptance '
@@ -297,7 +297,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.textContaining('previous link has stopped working'), findsOneWidget);
-    expect(find.textContaining('cannot send mail yet'), findsOneWidget);
+    expect(find.textContaining('nothing has reached them'), findsOneWidget);
   });
 
   testWidgets('revoking asks first, and a refusal is not a silent success', (
@@ -908,6 +908,10 @@ const _created = {
   'status': 'sent',
   'expires_at': '2026-08-18T09:00:00+00:00',
   'accept_url': 'https://app.ezbizi.com/invite?token=raw-token-1',
+  // The server answers whether it actually sent the mail. Without this the
+  // panel falls to its `null` branch — a server too old to say — and the
+  // tests below were asserting a sentence no branch produces any more.
+  'emailed': false,
 };
 
 /// A resend answers the same shape with a NEW token; the old one is dead.
@@ -917,6 +921,7 @@ const _resent = {
   'status': 'sent',
   'expires_at': '2026-08-25T09:00:00+00:00',
   'accept_url': 'https://app.ezbizi.com/invite?token=raw-token-2',
+  'emailed': false,
 };
 
 const _people = [
