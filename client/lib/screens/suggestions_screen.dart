@@ -366,12 +366,16 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
                     FilledButton(
                       onPressed: (!sending && hasText) ? onSend : null,
                       child: sending
-                          ? const SizedBox(
+                          ? SizedBox(
                               width: 16,
                               height: 16,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                color: Colors.white,
+                                // FilledButton's own foreground, not a fixed
+                                // white: on dark it is ink-on-cyan, and a
+                                // hardcoded white spinner would be nearly
+                                // invisible against that fill.
+                                color: theme.colorScheme.onPrimary,
                               ),
                             )
                           : Text(sendLabel),
@@ -537,9 +541,13 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
     final stripe = approved
         ? EzBiziTheme.clockIn(context)
         : EzBiziTheme.clockOut(context);
+    // `onErrorContainer`, not `error`: the background below is the full,
+    // opaque container role (not an alpha-blended tint), and that is the
+    // foreground Material pairs with it — see TaskKanbanView's error banner
+    // for the same pairing on the same role.
     final headingColor = approved
         ? EzBiziTheme.clockIn(context)
-        : theme.colorScheme.error;
+        : theme.colorScheme.onErrorContainer;
     final background = approved
         ? EzBiziTheme.clockIn(context).withValues(alpha: 0.12)
         : theme.colorScheme.errorContainer;
@@ -594,7 +602,12 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
         EzBiziTheme.clockIn(context).withValues(alpha: 0.12),
         false,
       ),
-      'denied' => ('Denied', scheme.error, scheme.errorContainer, false),
+      'denied' => (
+        'Denied',
+        scheme.onErrorContainer,
+        scheme.errorContainer,
+        false,
+      ),
       _ => ('New', scheme.onSurface, scheme.surface, true),
     };
 
