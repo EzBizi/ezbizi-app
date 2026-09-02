@@ -53,6 +53,28 @@ titles are stable but not unique across transports; and "who is this" is
 answerable only by asking, or by a session id. **Sign messages with a session id
 when it matters, and use one transport per correspondent per conversation.**
 
+**BUT A SESSION ID IS NOT A ROLE ADDRESS, AND THREE SESSIONS HAVE NOW LOST TIME
+TO THAT.** It is durable in exactly one sense — it can never be reassigned, so a
+message sent to one either reaches that session or reaches nobody, and it can
+never reach the wrong session the way a recycled name can. That is a real
+guarantee and it is the reason to prefer it.
+
+What it does NOT survive is the session ending. On 2026-08-31 the deploy desk
+gave out its session id as "the only handle of mine that does not rotate", it
+was passed on in good faith as the way to reach *deploys*, and within the hour it
+resolved to nothing — because the session behind it had ended. The handle was
+still correct; the role behind it was gone.
+
+So the honest sentence is **"this is how you reach that SESSION while it lives"**,
+never "this is the deploy desk". There is no role address on this machine. When
+the session behind a role dies, the role has no address at all, and the only
+things that still work are the durable artefacts: what is on `main`, what is in
+this file, and what is written in a doc somebody will read.
+
+That is also why a handoff should name a FILE rather than a correspondent. A
+session id tells you who to ask until they exit; a path in this file tells you
+who owns something after they do.
+
 **SESSION NAMES ARE RECYCLED, NOT JUST RETIRED — and that is why this file
 records SHAs.**
 

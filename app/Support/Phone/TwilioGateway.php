@@ -170,6 +170,34 @@ interface TwilioGateway
     /**
      * @return array{sid: string, status: string}
      */
+    /**
+     * Ring somebody's own phone and, when they pick up, connect them onward.
+     *
+     * ── Why this exists at all ──────────────────────────────────────
+     *
+     * There is no Twilio Voice SDK for Windows, macOS or Linux — the softphone
+     * is a browser script — so the desktop app can never place a call itself.
+     * Rather than tell three platforms they cannot use the phone, this uses the
+     * REST API, which every platform can reach: Twilio calls the person's own
+     * handset, they answer, and Twilio then dials the customer and bridges the
+     * two. No SDK, no microphone permission, no WebRTC.
+     *
+     * The TwiML is passed INLINE rather than hosted, so this needs no webhook
+     * of its own. Twilio caps that at 4,000 characters, which a Dial is nowhere
+     * near.
+     *
+     * @param  string  $from  A number this account holds. Twilio refuses any
+     *                        other, and the refusal is a failed call rather
+     *                        than an error anybody sees.
+     * @return array{sid: string, status: string}
+     */
+    public function createCall(
+        PhoneConnection $connection,
+        string $from,
+        string $to,
+        string $twiml,
+    ): array;
+
     public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body): array;
 
     /**

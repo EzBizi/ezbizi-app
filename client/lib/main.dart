@@ -29,6 +29,7 @@ import 'screens/staff/staff_login_screen.dart';
 import 'screens/staff/staff_shell.dart';
 import 'screens/update_required_screen.dart';
 import 'widgets/build_stamp.dart';
+import 'widgets/module_page_header.dart';
 import 'widgets/notification_bell.dart';
 import 'widgets/scope_switcher.dart';
 import 'widgets/user_avatar.dart';
@@ -1160,7 +1161,7 @@ class _HomeShellState extends State<HomeShell> {
                               api: widget.api,
                               session: widget.session,
                             )
-                          : destinations[railIndex].screen,
+                          : _titled(destinations[railIndex]),
                     ),
                   ),
                 ],
@@ -1197,6 +1198,41 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   /// Every destination, grouped as the sidebar groups them.
+  /// A module, under its own name.
+  ///
+  /// Drawn HERE rather than by each screen, and that is the rule rather than a
+  /// convenience. Sixteen screens rendered the shared tab row and exactly one
+  /// of them printed the module's name; the other fifteen left the page unable
+  /// to say where you were. Asking sixteen screens to each remember a header is
+  /// how you get fifteen that forget — so the shell draws it, and a module
+  /// cannot be built without one.
+  ///
+  /// The title is the destination's label, which is the SERVER's word for the
+  /// module. Never a literal in a screen: an organization may rename any of
+  /// them (§8), and a hardcoded name would go stale while still looking like a
+  /// perfectly good title.
+  ///
+  /// The subtitle is optional and looked up by module key. `maybe` rather than
+  /// `t` because a module this build has never heard of — which is what a
+  /// server newer than the app sends — must render with no subtitle rather
+  /// than with the string `module.forecasting.subtitle` under its name.
+  ///
+  /// Only the module rail passes through here. Settings, Development and Your
+  /// account are the other branches of that switch: they are not modules, they
+  /// have no server label, and each already says what it is.
+  Widget _titled(Destination destination) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ModulePageHeader(
+          title: destination.label,
+          subtitle: UiStrings.maybe('module.${destination.id}.subtitle'),
+        ),
+        Expanded(child: destination.screen),
+      ],
+    );
+  }
+
   Widget _navigationDrawer(
     List<Destination> destinations,
     List<Destination> pinned,
@@ -1513,6 +1549,54 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
   /// The width during a drag, before it is committed. Null when not dragging.
   double? _dragWidth;
 
+  final TextEditingController _search = TextEditingController();
+
+  /// What is typed in the module filter. Empty means no filter at all.
+  ///
+  /// Ignored while collapsed rather than cleared. At 80px the field is not on
+  /// screen, and a list filtered by something you cannot see is a list that has
+  /// silently lost modules. Re-expanding brings back the text and the filter it
+  /// explains, together.
+  String _query = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  /// What the sidebar says when the filter matched nothing.
+  ///
+  /// Scrollable because these two paragraphs are taller than the space left on
+  /// the short window this whole feature is for.
+  Widget _noMatch(BuildContext context, String query) {
+    final theme = Theme.of(context);
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            UiStrings.t('shell.no_module').replaceFirst('{q}', query),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            UiStrings.t('shell.no_module_hint').replaceFirst(
+              '{total}',
+              '${widget.destinations.length}',
+            ),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -1520,6 +1604,33 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
     final width = widget.expanded
         ? (_dragWidth ?? widget.width)
         : NavigationSidebar.collapsedWidth;
+
+    final query = widget.expanded ? _query.trim().toLowerCase() : '';
+    final filtering = query.isNotEmpty;
+
+    // Filtering a rail means filtering its INDICES too, and this list is the
+    // whole reason the feature is safe.
+    //
+    // NavigationRail addresses destinations by position: it hands back the
+    // index of the row that was tapped, and it asserts that the selected index
+    // is inside the list it was given. Pass a shortened list without this map
+    // and every row below the first removed one opens a different module --
+    // quietly, with no error, because index 2 is still a perfectly valid index.
+    // `shown` holds the ORIGINAL index of each visible row, so the rail's
+    // positions can be translated back on the way in and on the way out.
+    final shown = <int>[
+      for (var i = 0; i < widget.destinations.length; i++)
+        if (!filtering ||
+            widget.destinations[i].label.toLowerCase().contains(query))
+          i,
+    ];
+
+    // Null when the selected module is filtered out. Not zero -- zero would
+    // paint the highlight on whatever happens to be first.
+    final selectedAt = widget.selectedIndex == null
+        ? -1
+        : shown.indexOf(widget.selectedIndex!);
+    final railSelected = selectedAt < 0 ? null : selectedAt;
 
     final sidebar = SizedBox(
       // Explicit, not intrinsic. A Row gives its non-flex children
@@ -1552,6 +1663,69 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
         // out of its source.
         child: Column(
           children: [
+            // The filter, and only while there are labels to filter.
+            //
+            // Collapsed there is no search at all, not even an icon. The
+            // collapsed rail is for somebody who already knows where things are
+            // and wants their screen back; search is for FINDING, which implies
+            // wanting labels. An icon at 80px would be a control that only
+            // makes sense by first undoing the state you deliberately chose.
+            if (widget.expanded)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                child: TextField(
+                  controller: _search,
+                  onChanged: (value) => setState(() => _query = value),
+                  textInputAction: TextInputAction.search,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: UiStrings.t('shell.find_module'),
+                    prefixIcon: const Icon(Icons.search, size: 18),
+                    prefixIconConstraints: const BoxConstraints(
+                      minWidth: 34,
+                      minHeight: 34,
+                    ),
+                    suffixIcon: filtering
+                        ? IconButton(
+                            icon: const Icon(Icons.close, size: 16),
+                            visualDensity: VisualDensity.compact,
+                            tooltip: UiStrings.t('shell.clear_filter'),
+                            onPressed: () => setState(() {
+                              _search.clear();
+                              _query = '';
+                            }),
+                          )
+                        : null,
+                    suffixIconConstraints: const BoxConstraints(
+                      minWidth: 34,
+                      minHeight: 34,
+                    ),
+                  ),
+                ),
+              ),
+
+            // How many of how many.
+            //
+            // With a filter on, "three modules match" and "three modules exist"
+            // look exactly alike, and one of them means the app has lost
+            // thirteen tabs. The total is what tells them apart.
+            if (filtering && shown.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Text(
+                  UiStrings.t('shell.modules_shown')
+                      .replaceFirst('{n}', '${shown.length}')
+                      .replaceFirst(
+                        '{total}',
+                        '${widget.destinations.length}',
+                      ),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+
             // The destinations scroll; the group below does NOT.
             //
             // A NavigationRail lays its destinations out in a Column and has no
@@ -1573,25 +1747,35 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
             // list, so it is the last thing that should require scrolling to
             // reach.
             Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) => SingleChildScrollView(
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minHeight: constraints.maxHeight,
-                    ),
-                    child: IntrinsicHeight(
-                      child: _rail(
-                        context,
-                        expanded: widget.expanded,
-                        width: width,
-                        destinations: widget.destinations,
-                        selectedIndex: widget.selectedIndex,
-                        onSelected: widget.onSelected,
+              // Nothing matched is the state that matters more than the happy
+              // path: a sidebar with no modules in it and no explanation is
+              // indistinguishable from a broken one. So it names what was
+              // typed, says the list is filtered rather than empty, and points
+              // at the way back.
+              child: filtering && shown.isEmpty
+                  ? _noMatch(context, _query.trim())
+                  : LayoutBuilder(
+                      builder: (context, constraints) => SingleChildScrollView(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minHeight: constraints.maxHeight,
+                          ),
+                          child: IntrinsicHeight(
+                            child: _rail(
+                              context,
+                              expanded: widget.expanded,
+                              width: width,
+                              destinations: [
+                                for (final i in shown) widget.destinations[i],
+                              ],
+                              selectedIndex: railSelected,
+                              onSelected: (i) => widget.onSelected(shown[i]),
+                              query: query,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              ),
             ),
 
             // The rule that says the group below is a different kind of thing:
@@ -1731,6 +1915,9 @@ Widget _rail(
   required int? selectedIndex,
   required ValueChanged<int> onSelected,
   Widget? leading,
+
+  /// Lowercased, and empty when nothing is being filtered.
+  String query = '',
 }) {
   return NavigationRail(
     backgroundColor: Colors.transparent,
@@ -1750,10 +1937,36 @@ Widget _rail(
         .map(
           (d) => NavigationRailDestination(
             icon: Icon(d.icon),
-            label: Text(d.label),
+            label: _railLabel(context, d.label, query),
           ),
         )
         .toList(),
+  );
+}
+
+/// A destination's label, with the matched run marked while a filter is on.
+///
+/// Which letters matched is the whole answer to "why is Fleet Management in a
+/// list I filtered by 'man'". Without it a short query looks like the filter is
+/// returning nonsense, and the rows it kept look arbitrary.
+Widget _railLabel(BuildContext context, String label, String query) {
+  if (query.isEmpty) return Text(label);
+  final at = label.toLowerCase().indexOf(query);
+  if (at < 0) return Text(label);
+  return Text.rich(
+    TextSpan(
+      children: [
+        TextSpan(text: label.substring(0, at)),
+        TextSpan(
+          text: label.substring(at, at + query.length),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.primary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        TextSpan(text: label.substring(at + query.length)),
+      ],
+    ),
   );
 }
 

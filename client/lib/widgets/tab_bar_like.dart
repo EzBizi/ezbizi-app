@@ -36,6 +36,25 @@ class TabBarLike extends StatelessWidget {
                 avatar: Icon(labels[i].$2, size: 16),
                 label: Text(labels[i].$1),
                 selected: i == selected,
+                // No checkmark, because it is not drawn BESIDE the icon — it
+                // is drawn ON it.
+                //
+                // A Material chip that has both an avatar and a checkmark
+                // paints the tick over the avatar, and darkens the avatar
+                // first so the tick can be read against it — Flutter's own
+                // `_kSelectScrimColor`, a 37% black filled through
+                // `avatarBorder`, which is a circle. So the selected tab's own
+                // icon disappeared under a grey disc, and because it follows
+                // the SELECTION rather than
+                // the pointer it appeared on a tab nobody was hovering — which
+                // is exactly how it was reported: "regardless if I'm hovering
+                // over that tab or any tab".
+                //
+                // Nothing is lost by removing it. A selected chip already
+                // carries a filled background, and the icon is the thing that
+                // tells the tabs apart — covering it to say "this one" is
+                // spending the identifier to state what the fill has said.
+                showCheckmark: false,
                 onSelected: (_) => onSelected(i),
               ),
             ),

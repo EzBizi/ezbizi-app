@@ -174,11 +174,11 @@ final class BusinessProfileOAuth implements SocialOAuth
                 ->timeout(self::TIMEOUT)
                 ->get(self::ACCOUNTS_ENDPOINT, ['pageSize' => 20]);
         } catch (ConnectionException) {
-            throw SocialOAuthRefused::unidentified('Google Business Profile');
+            throw GoogleApiRefusal::unreachable('Google Business Profile');
         }
 
         if ($response->failed()) {
-            throw SocialOAuthRefused::unidentified('Google Business Profile');
+            throw GoogleApiRefusal::from('Google Business Profile', $response);
         }
 
         $accounts = [];
@@ -196,7 +196,12 @@ final class BusinessProfileOAuth implements SocialOAuth
         }
 
         if ($accounts === []) {
-            throw SocialOAuthRefused::unidentified('Google Business Profile');
+            throw SocialOAuthRefused::unidentified(
+                'Google Business Profile',
+                'The Google account you signed in with manages no Business Profile that EzBizi can '
+                .'reach, so there was nothing to connect. Sign in with the account that manages the '
+                .'listing, or have it given access to that listing first.',
+            );
         }
 
         return $accounts;

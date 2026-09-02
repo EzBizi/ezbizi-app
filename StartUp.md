@@ -247,6 +247,29 @@ many lines. The commit above would have read *16 files, 1190 deletions* to an
 author who meant to change a word count. One line of output, read once, catches
 every instance of this.
 
+**AND IT ARMS EVERYBODY ELSE'S EARLIER RESETS, WHICH IS THE HALF THAT GETS
+MISSED.** Reproduced in a scratch repo on 2026-09-01:
+
+    session A:  commits by pathspec, then `git reset -q HEAD -- p.txt`
+                -> shared index clean, 0 staged
+    session B:  commits p.txt via a PRIVATE index + update-ref
+                -> shared index now shows 1 staged file, reverting B's change
+
+A pathspec commit UPDATES the shared index for its paths, so a prior reset stays
+harmless. A private-index commit deliberately does not touch the shared index at
+all — so HEAD advances while A's reset blob sits there, and that blob is now a
+staged revert of B's work.
+
+**Neither session did anything wrong on its own.** A followed the rule; B used the
+safest commit method in this file. It takes both, which is why one session hunting
+a "phantom index saboteur" found only their own resets and concluded it was
+self-inflicted — it was not, and there was no saboteur either.
+
+So step 8 is load-bearing in both directions: it disarms the revert your own
+commit created, AND it clears the older resets your commit just turned into
+reverts. A private-index commit that skips it leaves a landmine armed by somebody
+who was being careful.
+
 **Step 8 is not tidying — it disarms a revert your own commit just created.**
 The private index leaves the SHARED `.git/index` untouched, which is the whole
 point of it. So that index still holds every one of your paths at its
@@ -1076,6 +1099,34 @@ how somebody talks themselves out of a correct diagnosis. Read it with
 ---
 
 ## 9 · Deploying
+
+### A stale OPEN item costs as much as a stale claim, and reads as diligence
+
+A resolved problem still written down as open sends the next person hunting
+something that is already fixed. It looks like conscientious tracking right up
+until somebody spends an evening on it.
+
+Two on one night, both mine, both from carrying forward a true-when-written note:
+
+- **"The Windows installer is many versions behind."** True at `0.0.0103` against
+  `0.0.0116`. Closed four times that day. One `curl` of `windows.json` answered it.
+- **"No compiler has seen the iOS AppDelegate changes."** I reasoned *there is no
+  Mac on this box, therefore nothing has compiled them* — a true premise, and the
+  Mac relay is exactly why the conclusion does not follow. `ls dist/` showed a
+  24 MB `.ipa` built four hours earlier from a commit containing them.
+
+I put both in front of other sessions, and one went to Apple as a live risk that
+had already been retired.
+
+**So: re-check an open item before you carry it forward, and cite the check.** An
+item that says *"still behind as of 22:14, manifest reads 0.0.0125"* is
+actionable. One that says *"still behind"* is a claim about an unspecified past.
+
+The related failure, from the same session: a verification **shaped like** a
+confirmation that measured something else entirely — comparing two commits' blobs
+to each other to prove something about the INDEX, which it never inspected. It
+returned a difference, the difference looked like the answer, and it settled a
+question it had not asked.
 
 ### A comment claiming a guarantee the code does not provide
 

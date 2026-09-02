@@ -36,7 +36,6 @@ class _IdentityCardState extends State<IdentityCard> {
   final _gender = TextEditingController();
   final _dob = TextEditingController();
 
-  String _email = '';
   bool _hasAvatar = false;
   Uint8List? _avatarPreview;
 
@@ -86,7 +85,6 @@ class _IdentityCardState extends State<IdentityCard> {
       _phone.text = b['phone'] as String? ?? '';
       _address.text = b['address'] as String? ?? '';
       _gender.text = b['gender'] as String? ?? '';
-      _email = b['email'] as String? ?? '';
       _hasAvatar = b['has_avatar'] == true;
       _dob.text = b['date_of_birth'] as String? ?? '';
     });
@@ -310,24 +308,10 @@ class _IdentityCardState extends State<IdentityCard> {
               },
             ),
 
-            const SizedBox(height: 16),
-            _readOnly(
-              context,
-              'Email',
-              _email,
-              'Your sign-in address and where a password reset goes. Changing '
-                  'it needs a confirmation email, which is not wired up yet.',
-            ),
-            if (me.roleName != null)
-              _readOnly(context, 'Role', me.roleName!, null),
-            _readOnly(context, 'Organization', me.organization.name, null),
-            if (me.franchises.isNotEmpty)
-              _readOnly(
-                context,
-                'You can act on',
-                me.franchises.map((f) => f.name).join(', '),
-                'Permissions decide WHAT you may do; this decides WHERE.',
-              ),
+            // Email, role, organization and the places this person can act on
+            // used to sit here, immediately above Save -- which said Save
+            // applied to them. It never did. They are AccountFactsCard now,
+            // which has no footer at all.
 
             if (_error != null) ...[
               const SizedBox(height: 12),
@@ -407,10 +391,17 @@ class _IdentityCardState extends State<IdentityCard> {
         Wrap(
           spacing: 6,
           children: [
+            // Selected-looking when it matches, because otherwise a filled
+            // box reading "Male" above four identical chips looks like two
+            // controls for one value. It is one: the chips write the field.
+            // They stay chips rather than becoming a closed list -- a closed
+            // list makes somebody pick the nearest wrong answer about
+            // themselves, and anything not offered is still typed.
             for (final g in _genders)
-              ActionChip(
+              ChoiceChip(
                 label: Text(g, style: const TextStyle(fontSize: 11)),
-                onPressed: () => setState(() => _gender.text = g),
+                selected: _gender.text.trim().toLowerCase() == g.toLowerCase(),
+                onSelected: (_) => setState(() => _gender.text = g),
               ),
           ],
         ),
@@ -429,37 +420,4 @@ class _IdentityCardState extends State<IdentityCard> {
     );
   }
 
-  Widget _readOnly(
-    BuildContext context,
-    String label,
-    String value,
-    String? note,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: 130,
-                child: Text(
-                  label,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-              Expanded(child: Text(value)),
-            ],
-          ),
-          if (note != null)
-            Padding(
-              padding: const EdgeInsets.only(left: 130, top: 2),
-              child: Text(note, style: Theme.of(context).textTheme.bodySmall),
-            ),
-        ],
-      ),
-    );
-  }
 }

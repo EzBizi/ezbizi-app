@@ -793,6 +793,53 @@ void main() {
     );
     expect(find.textContaining('a user'), findsWidgets);
   });
+
+  /// A declared action the builder cannot render is a dead menu entry.
+  ///
+  /// "Send a message" is the first Phone action that is NOT about the record
+  /// the event was about, so it is the first with parameters of its own — and
+  /// the parameter form was gated to task actions. Choosing it would have
+  /// drawn nothing, saved with no line and no destination, and failed on every
+  /// run with the rule looking perfectly configured.
+  ///
+  /// The line is a PICKER, not a text field. Its value is an id, and a text
+  /// field there asks somebody to type a uuid, which is a way of asking them
+  /// to fail.
+  testWidgets('Send a message offers the company lines rather than a blank box', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+    await _pump(
+      tester,
+      _handler(catalogue: _catalogueWithSms(), onCreate: (body) => sent = body),
+    );
+
+    await _tap(tester, find.text('Build'));
+    await _type(tester, 'Name', 'Text me when mail lands');
+    await _tap(tester, find.text('Email'));
+    await _tap(tester, find.text('An email arrived'));
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, _inStep(find.text('Phone')));
+    await _tap(tester, _inStep(find.text('Send a message')));
+
+    // The line is chosen from what the company holds.
+    await _tap(tester, find.byType(DropdownButtonFormField<String>).last);
+    await tester.pumpAndSettle();
+    await _tap(tester, find.text('Marketing · +12394560829').last);
+
+    await _type(tester, 'Send to', '+13057242199');
+    await _type(tester, 'Message', 'An email just arrived.');
+    await _tap(tester, find.text('Create automation'));
+
+    expect(sent?['actions'], [
+      {
+        'type': 'sms.send',
+        'number_id': 'num-1',
+        'to': '+13057242199',
+        'body': 'An email just arrived.',
+      },
+    ]);
+  });
 }
 
 // ── driving the screen ─────────────────────────────────────────────
@@ -949,6 +996,77 @@ Map<String, Object?> _leadsModule(String? parent) => {
   'declared_actions': [],
 };
 
+/// A catalogue carrying the Phone module's "Send a message", which is the
+/// first action with parameters that is NOT bound to the record the event was
+/// about — the trigger here is an email arriving.
+Map<String, Object?> _catalogueWithSms() => {
+  ..._catalogue,
+  'modules': [
+    ...(_catalogue['modules'] as List),
+    {
+      'key': 'email',
+      'label': 'Email',
+      'parent': null,
+      'subject': null,
+      'triggers': [
+        {
+          'key': 'email.received',
+          'label': 'An email arrived',
+          'description': 'A new message reached one of the shared inboxes.',
+        },
+      ],
+      'declared_actions': [],
+    },
+    {
+      'key': 'phone',
+      'label': 'Phone',
+      'parent': null,
+      'subject': null,
+      'triggers': [],
+      'declared_actions': [
+        {
+          'key': 'phone.sms.send',
+          'label': 'Send a message',
+          'description': 'Sends a text from one of the company phone lines.',
+          'type': 'sms.send',
+          'implemented': true,
+        },
+      ],
+    },
+  ],
+  'action_types': [
+    ...(_catalogue['action_types'] as List),
+    {
+      'key': 'sms.send',
+      'label': 'Send a message',
+      'module_only': true,
+      'parameters': [
+        {
+          'key': 'number_id',
+          'label': 'Send from',
+          'kind': 'phone_number',
+          'required': true,
+          'nullable': false,
+        },
+        {
+          'key': 'to',
+          'label': 'Send to',
+          'kind': 'text',
+          'required': true,
+          'nullable': false,
+        },
+        {
+          'key': 'body',
+          'label': 'Message',
+          'kind': 'text',
+          'required': true,
+          'nullable': false,
+        },
+      ],
+    },
+  ],
+};
+
 Map<String, Object?> _catalogueWithTasks() => {
   ..._catalogue,
   'modules': [
@@ -1079,6 +1197,18 @@ MockClientHandler _handler({
       }
 
       return _json({'data': _list});
+    }
+
+    if (path.endsWith('/phone/numbers') && request.method == 'GET') {
+      return _json({
+        'data': [
+          {
+            'id': 'num-1',
+            'e164': '+12394560829',
+            'label': 'Marketing',
+          },
+        ],
+      });
     }
 
     return _json({'message': 'Unexpected ${request.method} $path'}, 500);

@@ -16,7 +16,31 @@ set -euo pipefail
 
 REMOTE=app                       # ~/.ssh/config alias
 SHARED=/var/www/ezbizi/public-app
-CODE_ONLY=${1:-}
+# GATES ARE OFF BY DEFAULT. Pass --gates to run them.
+#
+# Jose's decision, 1 Sep, made twice: first "no gate, i need it fast", then
+# "skip gates should be the default". The concern — that this is the one control
+# stopping a red build reaching production — was put to him and he confirmed. It
+# is his call and it is recorded here so nobody quietly reverts it.
+#
+# What decided it: the v0.0.0130 run spent 24 minutes passing 2693 backend tests
+# and then refused to deploy over two *info* lints in a test file
+# (no_leading_underscores_for_local_identifiers). `flutter analyze` exits
+# non-zero on info, so two variable names blocked nine commits of work. A gate
+# that stops a release for something that cannot break anything is one people
+# route around, and routing around it is worse than turning it off honestly.
+#
+# --skip-gates is still accepted so existing callers and scripts do not break.
+SKIP_GATES=1
+_args=()
+for _a in "$@"; do
+  case "$_a" in
+    --skip-gates) SKIP_GATES=1 ;;
+    --gates)      SKIP_GATES=0 ;;
+    *) _args+=("$_a") ;;
+  esac
+done
+CODE_ONLY=${_args[0]:-}
 
 cd "$(dirname "$0")/.."
 
@@ -45,6 +69,11 @@ cd "$(dirname "$0")/.."
 # everyone being careful at exactly the moment they are busiest. Asking
 # people to be careful is not a control; pinning the SHA is.
 GATED_SHA=$(git rev-parse main)
+
+if [ "$SKIP_GATES" -eq 1 ]; then
+  echo "⚠ GATES SKIPPED (--skip-gates) — $GATED_SHA is being shipped untested."
+  BACKEND_TESTS=""
+else
 echo "→ testing the tree about to ship ($GATED_SHA)"
 # Captured, not just streamed. STATUS.md's test count was retyped by hand and was
 # wrong three times in one day; the number is right here, in the run that gates
@@ -119,6 +148,7 @@ BACKEND_OUT=$(git -c core.autocrlf=false archive "$GATED_SHA" | ssh "$REMOTE" "W
 ' 2>&1) || { echo "$BACKEND_OUT"; echo "✗ backend tests failed — nothing deployed"; exit 1; }
 echo "$BACKEND_OUT" | tail -3
 BACKEND_TESTS=$(echo "$BACKEND_OUT" | grep -oE '[0-9]+ passed' | tail -1 | grep -oE '[0-9]+')
+fi
 
 if [ "$CODE_ONLY" != "--code" ]; then
   # The client is checked and built in a WORKTREE AT THE PINNED SHA, never in
@@ -152,8 +182,14 @@ if [ "$CODE_ONLY" != "--code" ]; then
     echo "✗ could not check out $GATED_SHA to test — nothing deployed"; exit 1;
   }
 
-  echo "→ client analyze + tests (at $GATED_SHA, not your working tree)"
-  CLIENT_OUT=$( (cd "$WORKTREE/client" && flutter pub get && flutter analyze && flutter test) 2>&1 ) || {
+  # `pub get` runs either way — it is not a gate, the web build below needs it.
+  if [ "$SKIP_GATES" -eq 1 ]; then
+    echo "⚠ client analyze + tests SKIPPED (--skip-gates)"
+  else
+    echo "→ client analyze + tests (at $GATED_SHA, not your working tree)"
+  fi
+  CLIENT_OUT=$( (cd "$WORKTREE/client" && flutter pub get \
+    && { [ "$SKIP_GATES" -eq 1 ] || { flutter analyze && flutter test; }; }) 2>&1 ) || {
     echo "$CLIENT_OUT"; echo "✗ client checks failed — nothing deployed"; exit 1;
   }
 
@@ -168,7 +204,14 @@ if [ "$CODE_ONLY" != "--code" ]; then
   # and the guard keeps its meaning for the case it was written for.
   git -C "$WORKTREE" checkout -- . 2>/dev/null || true
   echo "$CLIENT_OUT" | tail -2
-  CLIENT_TESTS=$(echo "$CLIENT_OUT" | grep -oE '\+[0-9]+' | tail -1 | tr -d '+')
+  # `|| true` because this file runs under `set -euo pipefail`, and with
+  # --skip-gates there is no "+1188" in the output to find. grep exits 1,
+  # pipefail promotes it to the pipeline's status, and set -e then kills the
+  # deploy — silently, between the pub get and the web build, with no error
+  # printed. That is exactly how the first v0.0.0129 run failed: web never
+  # shipped, and the only visible symptom was output stopping mid-file.
+  # An absent test count is expected here, not an error.
+  CLIENT_TESTS=$(echo "$CLIENT_OUT" | grep -oE '\+[0-9]+' | tail -1 | tr -d '+') || true
 
   echo "→ building web"
   # Same-origin by default, so the built app talks to whatever host serves it

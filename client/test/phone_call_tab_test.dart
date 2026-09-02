@@ -35,7 +35,6 @@ void main() {
     expect(find.text('Calling as'), findsOneWidget);
     expect(find.textContaining('CT main'), findsWidgets);
     expect(find.text('Call'), findsOneWidget);
-    expect(find.text('Internal'), findsOneWidget);
     expect(find.text('Live transcript is off on this number.'), findsOneWidget);
     expect(find.text('Messages'), findsOneWidget);
 
@@ -47,6 +46,43 @@ void main() {
     expect((team.top - pad.top).abs(), lessThan(8));
 
     expect(find.byTooltip('Back to the team'), findsNothing);
+  });
+
+  testWidgets('the desk is 25 / 25 / 50, not 19 / 57 / 24', (tester) async {
+    // It was SizedBox(220) - Expanded - SizedBox(280): the two panes holding
+    // the most content pinned at their smallest, and every extra pixel handed
+    // to the dial pad. The pad is capped at 184px of buttons, so the middle
+    // column was more than half the window around a keypad while the roster
+    // and the customer thread were squeezed either side.
+    await _pump(tester, size: const Size(1600, 900));
+
+    final team = tester.getRect(find.byKey(const Key('phone-call-teammates')));
+    final pad = tester.getRect(find.byKey(const Key('phone-call-pad')));
+    final person = tester.getRect(find.byKey(const Key('phone-call-person')));
+
+    // 1598 after the two dividers.
+    expect((team.width - 399.5).abs(), lessThan(1.5));
+    expect((pad.width - 399.5).abs(), lessThan(1.5));
+    expect((person.width - 799.0).abs(), lessThan(1.5));
+  });
+
+  testWidgets('the pad stops shrinking before the other two do', (
+    tester,
+  ) async {
+    // Below about 1050 of desk width the ratio alone would give the pad 224px,
+    // and a keypad at 224px stops being tappable. A roster or a message thread
+    // just gets narrower and stays usable, so the pad is the only one of the
+    // three with a hard floor.
+    await _pump(tester, size: const Size(900, 800));
+
+    final pad = tester.getRect(find.byKey(const Key('phone-call-pad')));
+    expect(
+      pad.width,
+      greaterThanOrEqualTo(280),
+      reason:
+          'A bare 25% of 898 is 224px. The floor is what keeps the keypad '
+          'usable at the widths where the ratio does not fit.',
+    );
   });
 
   testWidgets('at 375 one pane at a time, with Back', (tester) async {
@@ -199,7 +235,7 @@ void main() {
     );
   });
 
-  testWidgets('Internal connects to the teammate client identity', (
+  testWidgets('a colleague is called from their own row', (
     tester,
   ) async {
     final device = _FakeDevice();
@@ -207,8 +243,9 @@ void main() {
 
     await _pump(tester, device: device, size: const Size(900, 800));
 
-    await _tap(tester, find.text('Maya Chen'));
-    await _tap(tester, find.widgetWithText(OutlinedButton, 'Internal'));
+    // Calling a colleague is a control ON the colleague now, not a mode on
+    // the pad that did nothing until a row had already been selected.
+    await _tap(tester, find.byTooltip('Call Maya Chen'));
 
     expect(device.connectedTo, 'client:u2');
     expect(device.callerId, '+12035550142');
@@ -295,7 +332,10 @@ void main() {
       await _pump(tester, device: device);
 
       expect(
-        find.textContaining('Calls are made in the browser'),
+        // It says which HALF works rather than that the app is unusable.
+        // Calls can be placed from here — Twilio rings this person's own
+        // phone — and only TAKING them in the app needs a browser.
+        find.textContaining('ring your own phone'),
         findsOneWidget,
       );
       expect(
@@ -325,6 +365,138 @@ void main() {
     expect(find.textContaining('the network is blocking'), findsOneWidget);
     expect(find.text('Try again'), findsOneWidget);
   });
+
+  /// The bug that made outbound calling fail for weeks.
+  ///
+  /// "305 724 2199" is how a phone number is written here. Stripping the
+  /// spaces and putting a `+` in front turns it into `+3057242199`, which is
+  /// not that number — the country code is missing, and +305 is not a country.
+  /// Every outbound call went to it. Nothing rejected it, because it is
+  /// well-formed enough to pass a length check, so it was dialled and the
+  /// carrier could not route it.
+  ///
+  /// Three real defects were found and fixed on the way to this one and none
+  /// of them was the reason. This is the assertion that would have said so on
+  /// day one.
+  testWidgets('a number typed the ordinary way keeps its country code', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    addTearDown(device.dispose);
+
+    await _pump(tester, device: device, size: const Size(900, 800));
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Number'),
+      '305 724 2199',
+    );
+    await tester.pumpAndSettle();
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Call'));
+
+    expect(
+      device.connectedTo,
+      '+13057242199',
+      reason: 'the country code was dropped, so the call went nowhere',
+    );
+  });
+
+  /// A number already in E.164 says which country itself, so it is passed
+  /// through rather than second-guessed.
+  testWidgets('an international number is not given a country code', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    addTearDown(device.dispose);
+
+    await _pump(tester, device: device, size: const Size(900, 800));
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Number'),
+      '+44 20 7946 0000',
+    );
+    await tester.pumpAndSettle();
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Call'));
+
+    expect(device.connectedTo, '+442079460000');
+  });
+
+  /// Too short to complete, so it is refused rather than guessed at —
+  /// guessing a country code is precisely what produced +3057242199.
+  testWidgets('a number too short to complete is not dialled at all', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    addTearDown(device.dispose);
+
+    await _pump(tester, device: device, size: const Size(900, 800));
+
+    await tester.enterText(find.widgetWithText(TextField, 'Number'), '724 2199');
+    await tester.pumpAndSettle();
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Call'));
+
+    expect(device.connectedTo, isNull);
+  });
+
+  /// On a platform with no Voice SDK, Call still places a call.
+  ///
+  /// Not through the device — there is nothing to place it with — but by
+  /// asking the server to ring this person's own handset and bridge them. The
+  /// device must NOT be touched: calling `connect()` on the stub does nothing
+  /// and returns, which is silence dressed as success.
+  testWidgets('a build with no Voice SDK rings your own phone instead', (
+    tester,
+  ) async {
+    final device = _FakeDevice()
+      ..supported = false
+      ..registered = false;
+    addTearDown(device.dispose);
+
+    final seen = <http.Request>[];
+    await _pump(tester, device: device, size: const Size(900, 800), seen: seen);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Number'),
+      '305 724 2199',
+    );
+    await tester.pumpAndSettle();
+    await _tap(tester, find.widgetWithText(FilledButton, 'Call'));
+
+    expect(
+      device.connectedTo,
+      isNull,
+      reason: 'it tried to use a device that cannot place a call',
+    );
+
+    final bridge = seen.where((r) => r.url.path.endsWith('/phone/calls/bridge'));
+    expect(bridge, hasLength(1), reason: 'no bridged call was asked for');
+    expect(jsonDecode(bridge.first.body)['to'], '+13057242199');
+  });
+
+  /// And a browser build still uses the device, because it can.
+  testWidgets('a browser build still places the call itself', (tester) async {
+    final device = _FakeDevice();
+    addTearDown(device.dispose);
+
+    final seen = <http.Request>[];
+    await _pump(tester, device: device, size: const Size(900, 800), seen: seen);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Number'),
+      '305 724 2199',
+    );
+    await tester.pumpAndSettle();
+    await _tap(tester, find.widgetWithText(FilledButton, 'Call'));
+
+    expect(device.connectedTo, '+13057242199');
+    expect(
+      seen.where((r) => r.url.path.endsWith('/phone/calls/bridge')),
+      isEmpty,
+      reason: 'a browser that can place the call asked the server to instead',
+    );
+  });
 }
 
 class _FakeDevice implements VoiceDevice {
@@ -346,6 +518,10 @@ class _FakeDevice implements VoiceDevice {
   /// build did not manage to this time.
   @override
   var supported = true;
+
+  /// Nothing to mount. Only the Windows WebView2 device returns one.
+  @override
+  Object? get platformView => null;
 
   @override
   Future<void> setup(String token) async {}

@@ -38,7 +38,7 @@ final class TaskDetailsController extends TaskApiController
             'subtasks' => fn ($query) => $query->active()->orderBy('position'),
         ])->findOrFail($taskId);
         $data = $this->presentTask($task);
-        $data['custom_values'] = $this->customValues($task);
+        $data['custom_values'] = (object) $this->customValues($task);
         $canComment = $request->user()->can('comment', $task);
         $data['updates'] = $task->updates->map(fn ($update) => [
             'id' => $update->id,

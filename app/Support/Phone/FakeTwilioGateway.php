@@ -379,6 +379,27 @@ final class FakeTwilioGateway implements TwilioGateway
         return 'fake-access-token.'.$identity.'.'.$connection->id;
     }
 
+    /** When set, createCall throws this message. */
+    public ?string $failCreateCallWith = null;
+
+    public function createCall(
+        PhoneConnection $connection,
+        string $from,
+        string $to,
+        string $twiml,
+    ): array {
+        $this->record(__FUNCTION__, [$connection->id, $from, $to, $twiml]);
+
+        if ($this->failCreateCallWith !== null) {
+            throw new RuntimeException($this->failCreateCallWith);
+        }
+
+        return [
+            'sid' => 'CA'.bin2hex(random_bytes(16)),
+            'status' => 'queued',
+        ];
+    }
+
     public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body): array
     {
         $this->record(__FUNCTION__, [$connection->id, $from, $to, $body]);

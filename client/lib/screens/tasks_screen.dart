@@ -1497,17 +1497,9 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
           padding: const EdgeInsets.fromLTRB(20, 14, 16, 8),
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final heading = const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Tasks',
-                    style: TextStyle(fontSize: 25, fontWeight: FontWeight.w700),
-                  ),
-                  SizedBox(height: 3),
-                  Text('Plan, assign, and finish work in this view.'),
-                ],
-              );
+              // The heading that used to be here was this app's only module
+              // title, and it was a fontSize typed into a screen. The shell
+              // draws it now, from the server's label, above this row.
               final search = SizedBox(
                 width: constraints.maxWidth < 700 ? constraints.maxWidth : 320,
                 child: TaskQuickSearch(
@@ -1550,7 +1542,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
                   children: [
                     Row(
                       children: [
-                        Expanded(child: heading),
+                        const Spacer(),
                         actions,
                       ],
                     ),
@@ -1561,7 +1553,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
               }
               return Row(
                 children: [
-                  Expanded(child: heading),
+                  const Spacer(),
                   search,
                   const SizedBox(width: 8),
                   actions,

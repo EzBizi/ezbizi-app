@@ -43,6 +43,23 @@ dependencies:
   video_player: ^2.11.1
   flutter_local_notifications: ^22.3.0
 
+  # ── Taking calls inside the app, which needs a different engine per platform
+  #
+  # There is no single Twilio Voice SDK that covers everything EzBizi ships on.
+  # The JS SDK is a browser script; the Android and iOS SDKs are native; there
+  # is none at all for Windows or Linux. So:
+  #
+  #   web              the JS SDK, already wired by hand in voice_device_web
+  #   android/ios      twilio_voice, wrapping the native SDKs (CallKit and
+  #                    ConnectionService, so an incoming call rings the phone
+  #                    the way a phone call should)
+  #   macos            twilio_voice too, which runs the web SDK there
+  #   windows          the JS SDK hosted in WebView2 — the only way in, and a
+  #                    port of the one A-1 Tools already runs
+  #   linux            nothing exists; calls ring the person's own handset
+  twilio_voice: ^0.5.0
+  webview_windows: ^0.4.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -72,6 +89,24 @@ flutter:
 
   assets:
     - assets/social/
+
+    # The Twilio Voice JS SDK and the page that hosts it, for Windows. Vendored
+    # rather than fetched: WebView2 serves this folder from a virtual host so
+    # the page is a secure context, which getUserMedia requires, and a CDN
+    # fetch would put a network dependency in the path of answering a call.
+    - assets/softphone/
+
+    # Listed SEPARATELY because Flutter's asset globbing does NOT recurse:
+    # `assets/softphone/` ships the four files directly inside it and none of
+    # the sounds. Verified by building Windows and looking in the bundle, where
+    # the folder came out empty.
+    #
+    # That omission is invisible in every other way. The phone registers,
+    # routes calls correctly, and rings SILENTLY, because the CSP on the host
+    # page refuses the Twilio CDN the SDK would otherwise fall back to — which
+    # is the right posture and is also what makes a missing local file fatal
+    # rather than merely slow.
+    - assets/softphone/sounds/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

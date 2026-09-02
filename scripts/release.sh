@@ -6,8 +6,18 @@
 #   ./scripts/release.sh --only windows     just that one
 #   ./scripts/release.sh --only web,android
 #   ./scripts/release.sh --dry-run          say what it would do, build nothing
+#   ./scripts/release.sh --no-bump          release client/VERSION as it stands
+#   ./scripts/release.sh --gates            run the test suites first
 #
-#   ./scripts/release.sh --only ios        signed .ipa via the Mac relay
+# The gates are OFF by default (Jose, 1 Sep). See the note at the top of
+# deploy.sh for what decided it. Nothing verifies a release unless --gates.
+#
+# The version is bumped and committed automatically on every run. Two releases
+# shipped twice under one number before this existed; the updater compares
+# versions, so the second was never offered.
+#
+#   ./scripts/release.sh --only ios        signed .ipa via the Mac relay,
+#                                          uploaded to TestFlight
 #
 # iOS IS a default target as of 28 Aug (Jose's ruling: every release builds all
 # four). It was excluded before because its signing identity lives on another
@@ -40,7 +50,23 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-DIST="dist"
+# Artefacts go to the MAIN checkout, always — never to whatever directory this
+# script happens to be running in.
+#
+# Releases are run from a throwaway worktree (release.sh refuses a dirty tree
+# and the shared tree is almost never clean), so a relative "dist" put every
+# artefact inside that worktree. On 1 Sep v0.0.0128 built all three installers
+# into H:\Development\wt\release-df7cca0\dist while Jose was looking at
+# H:\Development\EzBizi\dist, which still held 0.0.0126. The build had worked;
+# the output was just somewhere nobody would think to look, and a worktree is
+# deleted eventually.
+#
+# --git-common-dir resolves to the main .git from inside a linked worktree, so
+# its parent is the main checkout no matter where this runs.
+DIST="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/Distribution"
+DIST_WINDOWS="$DIST/Windows"
+DIST_ANDROID="$DIST/Android"
+DIST_APPLE="$DIST/Apple"
 
 # Targets that failed. A failing target no longer aborts the release: it is
 # recorded, its own packaging steps are skipped, the remaining targets still
@@ -50,6 +76,8 @@ DIST="dist"
 FAILED=()
 TARGETS="web,windows,android,ios"
 DRY_RUN=0
+SKIP_GATES=--skip-gates   # gates are OFF by default; --gates turns them on
+BUMP=1
 
 # The marketing site's box, which is NOT the app box — see AGENTS/DEPLOY. The
 # installer is served from www.ezbizi.com because that is where a person who
@@ -62,9 +90,14 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --only)    TARGETS="$2"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
+    # Both are forwarded to deploy.sh and concern the WEB gate only — the app
+    # builds already run with --skip-gates whenever web is in the same release.
+    --skip-gates) SKIP_GATES=--skip-gates; shift ;;
+    --gates)      SKIP_GATES=--gates; shift ;;
+    --no-bump) BUMP=0; shift ;;
     -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown argument: $1" >&2
-       echo "usage: $0 [--only web,windows,android,ios] [--dry-run]" >&2
+       echo "usage: $0 [--only web,windows,android,ios] [--dry-run] [--gates] [--no-bump]" >&2
        exit 2 ;;
   esac
 done
@@ -77,6 +110,54 @@ for t in $(printf '%s' "$TARGETS" | tr ',' ' '); do
     *) echo "✗ unknown target '$t'. Pick from: web windows android ios" >&2; exit 2 ;;
   esac
 done
+
+# ── bump the version, so nobody has to decide it ─────────────────
+#
+# A1 Tools' build_release.ps1 bumps on every build and this did not, which is
+# why 0.0.0127 and 0.0.0128 each shipped twice under one number: the second
+# build was invisible to the in-app updater, because it compares versions and
+# saw no change. Deciding the number by hand is a step that gets skipped
+# exactly when a release is rushed.
+#
+# The bump is COMMITTED, not left on disk. deploy.sh ships `git archive main`,
+# so an uncommitted bump would put the new number in the installers and the old
+# tree on the server — two different programs wearing one version, which is the
+# thing the dirty-tree check below exists to prevent.
+if [ "$BUMP" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then
+  # A detached HEAD means a release worktree, where a commit is reachable from
+  # no branch: the bump would ship nowhere and vanish with the worktree.
+  if ! git symbolic-ref -q HEAD >/dev/null 2>&1; then
+    echo "✗ cannot bump from a detached worktree — the commit would belong to no branch." >&2
+    echo "  Run this from the main checkout, or pass --no-bump to release the" >&2
+    echo "  version already in client/VERSION." >&2
+    exit 1
+  fi
+
+  OLD=$(tr -d '[:space:]' < client/VERSION)
+  case "$OLD" in
+    *.*[0-9]) ;;
+    *) echo "✗ cannot parse client/VERSION ('$OLD') — expected trailing .N" >&2; exit 1 ;;
+  esac
+  _last=${OLD##*.}
+  # 10# forces base 10. Without it $((0129 + 1)) is an invalid octal literal and
+  # the release dies on the version number, which is a silly way to lose a deploy.
+  NEW="${OLD%.*}.$(printf "%0${#_last}d" "$((10#$_last + 1))")"
+
+  printf '%s\n' "$NEW" > client/VERSION
+  # --only commits this path and nothing else. Several sessions share this
+  # working tree and its git index; a bare `git commit` takes whatever they have
+  # staged, which on 1 Sep silently reverted another session's release notes.
+  git commit --only client/VERSION -q -m "v${NEW}" || {
+    echo "✗ could not commit the version bump" >&2; exit 1; }
+  echo "→ version ${OLD} → ${NEW}"
+
+  # A warning, not a stop. The note matters (version_history.dart is what the
+  # version stamp in the app opens), but a missing one is not a reason to refuse
+  # to ship a release somebody is waiting on.
+  grep -q "version: '${NEW}'" client/lib/core/version_history.dart 2>/dev/null || {
+    echo "   ⚠ no release note for ${NEW} in client/lib/core/version_history.dart."
+    echo "     The app will show this version with nothing under it."; }
+fi
 
 VERSION=$(tr -d '[:space:]' < client/VERSION)
 COMMIT=$(git rev-parse --short HEAD)
@@ -217,7 +298,7 @@ run() {
   "$@"
 }
 
-mkdir -p "$DIST"
+mkdir -p "$DIST_WINDOWS" "$DIST_ANDROID" "$DIST_APPLE"
 
 # ── 1. web ───────────────────────────────────────────────────────
 #
@@ -229,7 +310,7 @@ GATES=--skip-gates
 if wants web; then
   echo
   echo "→ web — deploy.sh (tests, build, push, UI swap)"
-  run ./scripts/deploy.sh || FAILED+=("web")
+  run ./scripts/deploy.sh ${SKIP_GATES} || FAILED+=("web")
 else
   # Nothing has tested this commit in this run, so let build-app.sh do it.
   GATES=""
@@ -278,7 +359,7 @@ if wants windows; then
   run env MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' "$ISCC" \
     "/DAppVersion=${VERSION}" \
     "/DSourceDir=$(cygpath -w "$PWD/$WIN_BUILD")" \
-    "/DOutputDir=$(cygpath -w "$PWD/$DIST")" \
+    "/DOutputDir=$(cygpath -w "$DIST_WINDOWS")" \
     "/DAssetDir=$(cygpath -w "$PWD/assets/installer")" \
     "$(cygpath -w "$PWD/scripts/windows-installer.iss")"
 
@@ -297,7 +378,7 @@ if wants windows; then
   # The manifest is written AFTER both uploads. A manifest announcing a version
   # whose installer has not landed yet sends every client to a 404 for as long
   # as the upload takes, and they would all try at once.
-  WIN_EXE="$DIST/EzBizi-${VERSION}-windows-x64.exe"
+  WIN_EXE="$DIST_WINDOWS/EzBizi-${VERSION}-windows-x64.exe"
 
   if [ "$DRY_RUN" -eq 0 ] && [ ! -f "$WIN_EXE" ]; then
     echo "✗ Inno reported success but $WIN_EXE is not there." >&2
@@ -371,7 +452,7 @@ if wants android; then
       echo "✗ expected $AAB and it is not there." >&2
       exit 1
     fi
-    cp "$AAB" "$DIST/EzBizi-${VERSION}-${COMMIT}.aab"
+    cp "$AAB" "$DIST_ANDROID/EzBizi-${VERSION}-${COMMIT}.aab"
   fi
 else
   FAILED+=("android")
@@ -388,17 +469,23 @@ fi
 #
 # build-app.sh fetches the .ipa into dist/ itself, because only it knows where
 # the Mac left it. Nothing to copy here.
+#
+# --upload is passed on every release: an .ipa sitting in dist/ is a build
+# nobody can try, and being tryable is the whole reason TestFlight exists
+# (Jose's ruling, 1 Sep). Upload is not submission — the build goes to
+# internal testers, and nothing reaches App Store review without someone
+# attaching it there.
 if wants ios; then
   echo
   echo "→ ios — building signed archive on the Mac relay"
-  if run ./scripts/build-app.sh ios ${GATES}; then
+  if run ./scripts/build-app.sh ios ${GATES} --upload; then
 
   # EzBizi-${VERSION}-*.ipa, not EzBizi-*.ipa. dist/ keeps every past release,
   # so a bare glob matches a months-old artefact and reports a build that
   # produced nothing as fine — the one failure this check exists to catch.
   # Windows and Android were already version-specific; this was not.
-  if [ "$DRY_RUN" -eq 0 ] && ! ls "$DIST"/EzBizi-"${VERSION}"-*.ipa >/dev/null 2>&1; then
-    echo "✗ build-app.sh finished but left no .ipa in ${DIST}/." >&2
+  if [ "$DRY_RUN" -eq 0 ] && ! ls "$DIST_APPLE"/EzBizi-"${VERSION}"-*.ipa >/dev/null 2>&1; then
+    echo "✗ build-app.sh finished but left no .ipa in ${DIST_APPLE}/." >&2
     exit 1
   fi
 else
@@ -428,7 +515,15 @@ fi
 
 echo "✓ release v${VERSION} · ${COMMIT}"
 wants web && echo "   web      https://app.ezbizi.com"
-if [ -d "$DIST" ] && [ -n "$(ls -A "$DIST" 2>/dev/null)" ]; then
+if [ -d "$DIST" ]; then
   echo "   artefacts in ${DIST}/:"
-  ls -1sh "$DIST" | sed 's/^/     /'
+  for d in "$DIST_WINDOWS" "$DIST_ANDROID" "$DIST_APPLE"; do
+    # This release's files only. Each folder keeps every past build, so listing
+    # the whole thing reports months-old artefacts as if they were today's —
+    # the same trap the .ipa check above already guards against.
+    found=$(ls -1sh "$d"/EzBizi-"${VERSION}"-* 2>/dev/null) || continue
+    [ -n "$found" ] || continue
+    echo "     $(basename "$d")/"
+    printf '%s\n' "$found" | sed 's/^/       /'
+  done
 fi

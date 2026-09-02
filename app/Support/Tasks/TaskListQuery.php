@@ -307,7 +307,7 @@ final class TaskListQuery
             'status_option_id' => $task->status_option_id, 'priority_option_id' => $task->priority_option_id,
             'start_on' => $task->start_on?->format('Y-m-d'), 'due_on' => $task->due_on?->format('Y-m-d'),
             'position' => (int) $task->position, 'version' => (int) $task->version,
-            'detail_version' => (int) $task->detail_version, 'custom_values' => $custom,
+            'detail_version' => (int) $task->detail_version, 'custom_values' => (object) $custom,
             'group_by_value' => $this->groupValue($task, $groupBy, $custom),
             'subtasks' => $task->subtasks
                 ->map(fn (Task $subtask) => $this->present($subtask, $groupBy, $presentation))->values()->all(),

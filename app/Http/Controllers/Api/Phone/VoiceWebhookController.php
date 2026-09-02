@@ -101,6 +101,23 @@ class VoiceWebhookController extends Controller
             : $this->renderer->afterDial($number, $context + ['dial_status' => (string) $dialStatus]);
 
         $call = $this->findCall($request);
+
+        // WHAT THE DIAL ACTUALLY DID, kept on the call.
+        //
+        // `DialCallStatus` was read to choose a branch and then dropped, so a
+        // call that failed and a call nobody picked up left identical rows —
+        // both "failed", neither saying which. On an outbound leg that is the
+        // difference between "they were out" and "this could never have
+        // worked", and it is the whole question when somebody reports that
+        // calling out does not work.
+        if ($call !== null && $dialStatus !== null && $dialStatus !== 'completed'
+            && $call->error_code === null) {
+            $call->forceFill([
+                'error_code' => 'dial:'.$dialStatus,
+                'error_message' => $call->error_message,
+            ])->save();
+        }
+
         if ($call !== null && $this->unanswered($dialStatus)
             && ($this->isVoicemailDocument($xml) || $this->isClosedDocument($xml))) {
             DB::transaction(function () use ($call, $xml) {
@@ -218,7 +235,7 @@ class VoiceWebhookController extends Controller
             // reads its prompt, accepts a digit, and then does exactly what it
             // would have done for every other digit — which is not a menu.
             'digits' => (string) $request->input('Digits', ''),
-            'dial_action' => $this->voiceAction($connection, $batch + 1),
+            'dial_action' => $this->voiceAction($connection, $batch + 1, $outbound),
             'recording_status_callback' => $this->webhookUrl($connection, 'recording'),
             'transcription_status_callback' => $this->webhookUrl($connection, 'transcription'),
         ];
@@ -241,10 +258,26 @@ class VoiceWebhookController extends Controller
             // identity — not a number the account owns, so the carrier
             // rejects it and the call simply fails. That is a call that never
             // connects and never says why.
+            // THE CALLER ID MUST BE A NUMBER THIS ACCOUNT OWNS.
+            //
+            // Twilio rejects a `callerId` the account does not own or has not
+            // verified, and the rejection is not a validation error we ever
+            // see: the <Dial> simply fails the moment it starts. Passing the
+            // client's value through unchecked is how an outbound call came
+            // to end instantly with no explanation.
+            //
+            // Checked here rather than trusted, for the same reason the
+            // browser's claim about anything else is checked — the pad's
+            // selection can be stale, and a line can move between accounts.
             $callerId = $this->callerId($request);
+            if ($callerId !== '' && ! $this->ownsNumber($connection, $callerId)) {
+                $callerId = '';
+            }
+
             if ($callerId === '') {
                 $callerId = $this->assignedCallerId($request, $connection);
             }
+
             if ($callerId !== '') {
                 $context['caller_id'] = $callerId;
             }
@@ -263,14 +296,42 @@ class VoiceWebhookController extends Controller
                 ->first();
         }
 
-        return PhoneNumber::query()
+        $line = PhoneNumber::query()
             ->where('connection_id', $connection->id)
             ->where('e164', $e164)
             ->first();
+
+        // AN OUTBOUND CALL STILL NEEDS A VOICE even when we cannot identify
+        // the line it claims to come from.
+        //
+        // Returning null here produced a bare `<Response/>` — no audio at all.
+        // Somebody pressed Call, the phone went silent, and nothing anywhere
+        // said why. The line on an outbound leg is only context (language,
+        // whether to announce recording); failing to match one is a reason to
+        // explain the problem, not a reason to lose the ability to speak.
+        if ($line === null && $outbound) {
+            return PhoneNumber::query()
+                ->where('connection_id', $connection->id)
+                ->orderBy('e164')
+                ->first();
+        }
+
+        return $line;
     }
 
     private function isOutbound(Request $request): bool
     {
+        // OUR OWN URL SAYS SO, and that is the most reliable signal there is.
+        //
+        // Twilio does not resend custom parameters to a `<Dial>` action URL,
+        // so `EzBiziDirection` is absent on every request after the first.
+        // The action URL is one WE generated during the outbound leg, so the
+        // direction travels with it and does not depend on anything Twilio
+        // chooses to echo back.
+        if ($request->query('direction') === 'outbound') {
+            return true;
+        }
+
         // The client says so, and that is authoritative.
         //
         // Everything below is inference about how Twilio describes a call, and
@@ -327,6 +388,15 @@ class VoiceWebhookController extends Controller
                 && ClientIdentity::of($row->user) === $identity);
 
         return (string) ($extension?->number?->e164 ?? '');
+    }
+
+    /** Whether this connection actually holds the number, in E.164. */
+    private function ownsNumber(PhoneConnection $connection, string $e164): bool
+    {
+        return PhoneNumber::query()
+            ->where('connection_id', $connection->id)
+            ->where('e164', $e164)
+            ->exists();
     }
 
     private function callerId(Request $request): string
@@ -401,9 +471,24 @@ class VoiceWebhookController extends Controller
         return str_contains($xml, 'This line is closed.');
     }
 
-    private function voiceAction(PhoneConnection $connection, int $batch): string
-    {
-        return $this->webhookUrl($connection, 'voice').'?batch='.$batch;
+    /**
+     * The URL Twilio requests when a `<Dial>` ends.
+     *
+     * The direction is carried IN THE URL because we are the ones who mint it,
+     * and nothing else on that request can be relied on to say so. Twilio does
+     * not resend custom parameters to an action URL — only its own — so the
+     * `EzBiziDirection` the client sent on the first request is simply not
+     * there on the second, and the call would be judged by inference again.
+     * That is how an outbound call came to be answered by its own voicemail.
+     */
+    private function voiceAction(
+        PhoneConnection $connection,
+        int $batch,
+        bool $outbound = false,
+    ): string {
+        $url = $this->webhookUrl($connection, 'voice').'?batch='.$batch;
+
+        return $outbound ? $url.'&direction=outbound' : $url;
     }
 
     private function webhookUrl(PhoneConnection $connection, string $kind): string

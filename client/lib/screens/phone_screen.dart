@@ -36,7 +36,7 @@ class _PhoneScreenState extends State<PhoneScreen> {
 
   late final List<(String, IconData, Widget Function())> _tabs = [
     (
-      'Call',
+      'Dial',
       Icons.phone_outlined,
       () => CallTab(api: widget.api, session: widget.session),
     ),

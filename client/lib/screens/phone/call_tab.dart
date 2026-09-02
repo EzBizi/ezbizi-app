@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -6,6 +8,7 @@ import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import 'voice_device.dart';
 import 'staff_thread.dart';
+import 'voice_view.dart';
 
 /// Call desk — layout 1: teammates, pad, person. Below 600px, one pane at a time.
 class CallTab extends StatefulWidget {
@@ -111,15 +114,51 @@ class _CallTabState extends State<CallTab> {
     return _numbers.isEmpty ? null : _numbers.first;
   }
 
+  /// The number to dial, in E.164, or null when the typed text is not one.
+  ///
+  /// ── The bug this existed as for weeks ────────────────────────────
+  ///
+  /// This used to strip the non-digits and put a `+` in front. So "305 724
+  /// 2199" — how anybody in the United States writes a phone number — became
+  /// `+3057242199`, which is not that number. It is missing the country code,
+  /// and +305 is not a country. Every outbound call went to it.
+  ///
+  /// Nothing rejected it. It is well-formed enough to pass a length check, so
+  /// the client sent it, the server dialled it, and the carrier could not
+  /// route it — and the failure surfaced as the line's own voicemail, then as
+  /// silence, then as "that call could not be connected". Three separate
+  /// defects were found and fixed on the way to this one, each of them real,
+  /// none of them the reason.
+  ///
+  /// ── Why a ten-digit number gets +1 and a nine-digit one gets refused ──
+  ///
+  /// Ten digits is the North American Numbering Plan and is unambiguous.
+  /// Anything shorter is not a number we can complete, and guessing a country
+  /// code is exactly what produced +3057242199. A refusal is recoverable; a
+  /// plausible wrong number is what cost the week.
   String? get _peer {
     final text = _destination.text.trim();
     if (text.isEmpty) return null;
+
+    // Already E.164: the person said which country, so it is not ours to
+    // second-guess.
     if (text.startsWith('+')) {
       final digits = text.substring(1).replaceAll(RegExp(r'\D'), '');
-      return digits.length >= 7 ? '+$digits' : null;
+
+      return digits.length >= 8 ? '+$digits' : null;
     }
+
     final digits = text.replaceAll(RegExp(r'\D'), '');
-    return digits.length >= 8 ? '+$digits' : null;
+
+    // 1-305-724-2199, written out with its country code but no plus.
+    if (digits.length == 11 && digits.startsWith('1')) return '+$digits';
+
+    // 305 724 2199 — the ordinary way it is written here.
+    if (digits.length == 10) return '+1$digits';
+
+    // Anything else, including a bare 11+ digits that is not NANP, needs the
+    // country said out loud. Refusing is the whole point of this function.
+    return null;
   }
 
   bool get _canSend {
@@ -243,6 +282,10 @@ class _CallTabState extends State<CallTab> {
   /// The Voice device never registered, so this desk cannot take a call.
   bool _deskDown = false;
 
+  /// A bridged call is being set up, and what came back from asking.
+  bool _bridging = false;
+  String? _bridgeNote;
+
   Future<void> _toggleDnd() async {
     final number = _selected;
     if (number == null) return;
@@ -263,11 +306,48 @@ class _CallTabState extends State<CallTab> {
     final to = internal ? _clientTo() : _peer;
     if (to == null || to.isEmpty) return;
 
+    // NO SOFTPHONE ON THIS PLATFORM, so the call is placed a different way.
+    //
+    // The Twilio Voice SDK is a browser script — there is none for Windows,
+    // macOS or Linux, and none inside this app on Android or iOS. Rather than
+    // tell four of the five platforms the phone is not for them, EzBizi asks
+    // Twilio to ring the person's own handset and bridge them to the customer.
+    // No SDK, no microphone, and the customer still sees the company line.
+    if (!_device.supported) {
+      await _bridgeCall(number, to);
+
+      return;
+    }
+
     await _device.connect(to: to, callerId: number.e164);
     setState(() => _onCall = true);
     await widget.api.put('/phone/presence', {
       'connection_id': number.connectionId,
       'state': 'on_call',
+    });
+  }
+
+  /// Ask Twilio to ring this person, then the customer.
+  ///
+  /// Deliberately does NOT set `_onCall`: the audio is on their handset, so
+  /// EzBizi has no call to hang up and a Hang up button here would be a
+  /// control that does nothing.
+  Future<void> _bridgeCall(_Number number, String to) async {
+    setState(() => _bridging = true);
+
+    final response = await widget.api.post('/phone/calls/bridge', {
+      'number_id': number.id,
+      'to': to,
+    });
+
+    if (!mounted) return;
+
+    setState(() {
+      _bridging = false;
+      _bridgeNote = response.ok
+          ? 'Your phone is ringing. Answer it and EzBizi will connect you to '
+                '$to.'
+          : response.reason;
     });
   }
 
@@ -462,6 +542,13 @@ class _CallTabState extends State<CallTab> {
                     if (_incomingFrom != null) _banner(),
                     if (_deskDown) _deskDownBanner(),
                     Expanded(child: wide ? _wide() : _narrow()),
+
+                    // Zero-sized, and load-bearing. WebView2 delivers the
+                    // microphone prompt to this widget's own delegate, so
+                    // a device whose view never enters the tree registers
+                    // and then cannot hear anybody — a phone that looks
+                    // perfect and is deaf. Empty on every other platform.
+                    voiceDeviceView(_device.platformView),
                   ],
                 );
               },
@@ -494,16 +581,19 @@ class _CallTabState extends State<CallTab> {
                           'cannot take or make calls. Reload the page; if it '
                           'keeps happening the network is blocking the '
                           'connection.'
-                    // A PERMANENT FACT, NOT A FAULT.
+                    // A PERMANENT FACT, NOT A FAULT — and no longer a
+                    // refusal, which is why the wording changed again.
                     //
-                    // The Twilio Voice SDK is a browser script, so a desktop
-                    // build has no way to place a call at all. Saying "the
-                    // network is blocking the connection" and offering Retry
-                    // sends somebody to their firewall for something that can
-                    // never work, and they will go back tomorrow.
-                    : 'Calls are made in the browser. This app cannot place '
-                          'or take them — open EzBizi in a web browser to use '
-                          'the phone. Everything else here works normally.',
+                    // The Twilio Voice SDK is a browser script, so this build
+                    // cannot carry the audio itself. It CAN still place a
+                    // call: Twilio rings this person's own phone and bridges
+                    // them. So the honest sentence is about which half works,
+                    // not about the app being unusable — the earlier version
+                    // told four platforms the phone was not for them, which
+                    // stopped being true the moment bridging existed.
+                    : 'Calls ring your own phone from here — press Call and '
+                          'answer when it rings. Taking calls in the app '
+                          'needs a web browser.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onErrorContainer,
                 ),
@@ -543,39 +633,77 @@ class _CallTabState extends State<CallTab> {
     );
   }
 
+  /// The three columns, at 25 · 25 · 50 with a floor under each.
+  ///
+  /// It was `SizedBox(220)` · `Expanded` · `SizedBox(280)`: the two panes
+  /// holding the most content were pinned at their smallest useful size and
+  /// every extra pixel went to the dial pad. On a 1440 screen that is about
+  /// 19 · 57 · 24, and the pad is capped at 184px of buttons besides — so the
+  /// middle column was 57% of the window around a keypad, with the roster and
+  /// the customer thread squeezed either side of it.
+  ///
+  /// The floors matter below about 1050 of desk width. Above that they never
+  /// bind and this is exactly the ratio. Below it the PAD stops shrinking
+  /// first, because it is the only one of the three with a hard minimum: a
+  /// roster or a message thread just gets narrower and stays usable, and a
+  /// keypad stops being tappable.
   Widget _wide() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(
-          key: const Key('phone-call-teammates'),
-          width: 220,
-          child: _teammatesPane(),
-        ),
-        VerticalDivider(
-          width: 1,
-          thickness: 1,
-          color: EzBiziTheme.edge(context),
-        ),
-        Expanded(
-          child: KeyedSubtree(
-            key: const Key('phone-call-pad'),
-            child: _padPane(showBack: false, showPerson: false),
-          ),
-        ),
-        VerticalDivider(
-          width: 1,
-          thickness: 1,
-          color: EzBiziTheme.edge(context),
-        ),
-        SizedBox(
-          key: const Key('phone-call-person'),
-          width: 280,
-          child: _personPane(showBack: false),
-        ),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // The two dividers are a real pixel each and come off the top, or the
+        // three panes add up to more than the row can give and it overflows.
+        final available = constraints.maxWidth - 2;
+
+        final pad = math.max(_padFloor, available * 0.25);
+        final rest = available - pad;
+
+        // Never more than half of what is left, so that between the stacking
+        // breakpoint at 600 and the width where the floors fit, the roster
+        // cannot starve the customer pane instead of sharing with it.
+        final team = math.min(math.max(_teamFloor, rest / 3), rest * 0.5);
+        final person = rest - team;
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              key: const Key('phone-call-teammates'),
+              width: team,
+              child: _teammatesPane(),
+            ),
+            VerticalDivider(
+              width: 1,
+              thickness: 1,
+              color: EzBiziTheme.edge(context),
+            ),
+            SizedBox(
+              key: const Key('phone-call-pad'),
+              width: pad,
+              child: _padPane(showBack: false, showPerson: false),
+            ),
+            VerticalDivider(
+              width: 1,
+              thickness: 1,
+              color: EzBiziTheme.edge(context),
+            ),
+            SizedBox(
+              key: const Key('phone-call-person'),
+              width: person,
+              child: _personPane(showBack: false),
+            ),
+          ],
+        );
+      },
     );
   }
+
+  /// Below these the panes stop giving width back.
+  ///
+  /// The customer pane has no constant of its own: it takes what is left, and
+  /// at the width where the other two are both exactly on their floors it
+  /// lands on 360, which is the third number the approved layout named.
+  static const double _teamFloor = 240;
+  static const double _padFloor = 280;
 
   Widget _narrow() {
     return switch (_pane) {
@@ -692,6 +820,29 @@ class _CallTabState extends State<CallTab> {
                                 size: 18,
                               ),
                               onPressed: () => setState(() => _chatWith = row),
+                            ),
+
+                            // Calling a colleague belongs ON the colleague,
+                            // not on the dial pad.
+                            //
+                            // It used to be an "Internal" button beside Call,
+                            // disabled until a row had been selected — so the
+                            // control for reaching a PERSON sat next to a
+                            // keypad for reaching a NUMBER, and did nothing
+                            // until you had already picked the person
+                            // somewhere else. Two steps, and the first was
+                            // invisible: nothing on the pad said what
+                            // "Internal" would dial, or why it was grey.
+                            IconButton(
+                              tooltip: 'Call ${row.name}',
+                              visualDensity: VisualDensity.compact,
+                              icon: const Icon(Icons.phone_outlined, size: 18),
+                              onPressed: _onCall
+                                  ? null
+                                  : () {
+                                      setState(() => _teammateId = row.userId);
+                                      _placeCall(internal: true);
+                                    },
                             ),
                           ],
                         ),
@@ -840,20 +991,26 @@ class _CallTabState extends State<CallTab> {
                 FilledButton(onPressed: _hangUp, child: const Text('Hang up'))
               else
                 FilledButton(
-                  onPressed: _destination.text.trim().isEmpty
+                  onPressed: _destination.text.trim().isEmpty || _bridging
                       ? null
                       : () => _placeCall(internal: false),
-                  child: const Text('Call'),
+                  child: Text(_bridging ? 'Ringing you…' : 'Call'),
                 ),
-              OutlinedButton(
-                onPressed: _teammateId == null
-                    ? null
-                    : () => _placeCall(internal: true),
-                child: const Text('Internal'),
-              ),
             ],
           ),
         ),
+        // What the bridge did, said where the Call button is rather than in a
+        // banner: it is the answer to the thing just pressed.
+        if (_bridgeNote != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            child: Text(
+              _bridgeNote!,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+
         ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 140),
           child: Container(

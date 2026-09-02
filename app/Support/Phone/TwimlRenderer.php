@@ -92,18 +92,39 @@ final class TwimlRenderer
             //
             // Nobody rings out in order to leave themselves a message. If the
             // destination did not arrive, that is a fault and it says so.
-            if (is_string($context['dial_to'] ?? null) && $context['dial_to'] !== '') {
-                $this->dialParty($response, $number, $context);
+            if (! is_string($context['dial_to'] ?? null) || $context['dial_to'] === '') {
+                $response->say(
+                    'This call could not be placed, because the number to dial '
+                    .'did not reach the phone system. Nothing has been charged.',
+                    ['language' => $language],
+                );
+                $response->hangup();
 
                 return (string) $response;
             }
 
-            $response->say(
-                'This call could not be placed, because the number to dial did '
-                .'not reach the phone system. Nothing has been charged.',
-                ['language' => $language],
-            );
-            $response->hangup();
+            // NO USABLE CALLER ID MEANS THE DIAL WOULD FAIL, so say that
+            // rather than make the attempt.
+            //
+            // Twilio requires the callerId on an outbound <Dial> to be a
+            // number the account owns or has verified, and refuses the moment
+            // the dial starts otherwise. That refusal reaches the caller as a
+            // call that connects to nothing and explains nothing. Declining
+            // here costs the same and can say why.
+            if (! is_string($context['caller_id'] ?? null) || $context['caller_id'] === '') {
+                $response->say(
+                    'This call cannot be placed, because the line it would go '
+                    .'out from is not one this phone account holds. Choose a '
+                    .'line on the Call screen, or set the number you call out '
+                    .'from on the Team screen.',
+                    ['language' => $language],
+                );
+                $response->hangup();
+
+                return (string) $response;
+            }
+
+            $this->dialParty($response, $number, $context);
 
             return (string) $response;
         }
@@ -118,6 +139,28 @@ final class TwimlRenderer
      *
      * @param  array<string, mixed>  $context
      */
+    /**
+     * What happens after a `<Dial>` ends without connecting.
+     *
+     * ── The outbound branch, and why its absence was the whole bug ───
+     *
+     * This used to call `ringOrVoicemail()` unconditionally. On an INBOUND
+     * call that is right: the group did not pick up, so take a message.
+     *
+     * On an OUTBOUND call it is the defect somebody reported twice. You press
+     * Call, hear "This call may be recorded" — which is correct, it is the
+     * outbound TwiML — the dial then fails or is not answered, Twilio requests
+     * the `action` URL, and this played the caller THEIR OWN LINE'S VOICEMAIL.
+     * So ringing a customer ended with "please leave a message after the tone"
+     * in your own voice.
+     *
+     * The first request was never the problem and a fix there could not help,
+     * which is why the symptom survived one.
+     *
+     * The status is named rather than generalised to "the call failed",
+     * because busy, no answer and rejected are three different things to do
+     * next and the caller already knows which one they heard.
+     */
     public function afterDial(PhoneNumber $number, array $context = []): string
     {
         $response = new VoiceResponse;
@@ -126,9 +169,31 @@ final class TwimlRenderer
             return (string) $response;
         }
 
+        if ((bool) ($context['outbound'] ?? false)) {
+            $response->say(
+                self::outboundEnding($status),
+                ['language' => $this->language($number)],
+            );
+            $response->hangup();
+
+            return (string) $response;
+        }
+
         $this->ringOrVoicemail($response, $number, $context);
 
         return (string) $response;
+    }
+
+    /** What to tell somebody whose own outgoing call did not connect. */
+    private static function outboundEnding(string $status): string
+    {
+        return match ($status) {
+            'busy' => 'That number is busy. Nothing has been recorded.',
+            'no-answer' => 'There was no answer. Nothing has been recorded.',
+            'canceled' => 'The call was cancelled.',
+            default => 'That call could not be connected. Check the number, and '
+                .'that the line you are calling from is set up to make calls.',
+        };
     }
 
     /**

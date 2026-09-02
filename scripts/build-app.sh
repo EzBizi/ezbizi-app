@@ -40,7 +40,11 @@ cd "$(dirname "$0")/.."
 MAC_REMOTE=mac
 MAC_PROJECT='~/ezbizi-build'
 MAC_FLUTTER=/opt/homebrew/bin/flutter
-DIST=dist
+# The main checkout's Distribution/, never the current directory — see the long
+# note in release.sh. A build run from a release worktree used to leave its .ipa
+# inside that worktree, which is both invisible and eventually deleted.
+DIST="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/Distribution"
+DIST_APPLE="$DIST/Apple"
 
 API_BASE="https://app.ezbizi.com"
 APP_FACE="customer"
@@ -91,7 +95,20 @@ COMMIT=$(git rev-parse --short HEAD)
 # review rejection weeks later. Neither store lets you quietly replace it.
 #
 # --allow-dirty still stamps the + so the artefact says so of itself.
-DIRTY=$(git status --porcelain --untracked-files=no)
+#
+# docs/ is excluded, and that is not a loosening — it closes a hole this guard
+# was opening. deploy.sh regenerates docs/EZBIZI-STATUS.md mid-release
+# (status-numbers.sh, deploy.sh:268) and does not commit it. So a full
+# release.sh run deployed web, dirtied its own tree doing so, and then this
+# guard refused windows, android AND ios — every time, from a tree that was
+# verifiably clean when the release started. That is what failed on 1 Sep
+# (v0.0.0128) and, with the same three targets, on the v0.0.0127 nightly.
+#
+# Nothing under docs/ can reach an .exe, an .aab or an .ipa, so excluding it
+# costs the reproducibility guarantee above nothing: the artefact is still
+# pinned to a commit that fully determines it. A change under client/, app/ or
+# any other shipping path still stops the build.
+DIRTY=$(git status --porcelain --untracked-files=no -- . ':(exclude)docs')
 
 if [ -n "$DIRTY" ]; then
   if [ "$ALLOW_DIRTY" -eq 1 ]; then
@@ -292,21 +309,26 @@ MAC_DEFINES="${MAC_DEFINES} --build-name=${VERSION} --build-number=${BUILD_NUMBE
       # Bring it home. An artefact that exists only on somebody else's Mac is one
       # power cut from not existing, and dist/ is where every other platform
       # leaves its release.
-      mkdir -p "$DIST"
+      mkdir -p "$DIST_APPLE"
       IPA_REMOTE=$(ssh "$MAC_REMOTE" "ls ${MAC_PROJECT}/build/ios/ipa/*.ipa 2>/dev/null | head -1")
       if [ -z "$IPA_REMOTE" ]; then
         echo "✗ flutter build ipa reported success but left no .ipa on the Mac" >&2
         exit 1
       fi
-      scp -q "${MAC_REMOTE}:${IPA_REMOTE}" "${DIST}/EzBizi-${VERSION}-${COMMIT}.ipa"
-      echo "  → ${DIST}/EzBizi-${VERSION}-${COMMIT}.ipa"
+      scp -q "${MAC_REMOTE}:${IPA_REMOTE}" "${DIST_APPLE}/EzBizi-${VERSION}-${COMMIT}.ipa"
+      echo "  → ${DIST_APPLE}/EzBizi-${VERSION}-${COMMIT}.ipa"
 
-      # TestFlight, only when asked.
+      # TestFlight, only when asked - but release.sh always asks.
       #
-      # Opt-in because a build that lands in TestFlight notifies testers and
-      # cannot be unsent - it should not happen because somebody rebuilt to
+      # Opt-in HERE because a build that lands in TestFlight notifies testers
+      # and cannot be unsent - it should not happen because somebody rebuilt to
       # check a compile error. The script on the Mac validates before it
       # uploads, so the cheap rejections are caught before ten minutes of wire.
+      #
+      # A release is not that case: every released iOS build goes to TestFlight
+      # (Jose's ruling, 1 Sep), so release.sh passes --upload unconditionally.
+      # This flag now separates a developer's scratch build from a release,
+      # not a released build from an uploaded one.
       if [ "$UPLOAD" -eq 1 ]; then
         echo "-> ios - validate and upload to TestFlight"
         ssh "$MAC_REMOTE" "~/ezbizi-signing/upload-testflight.sh ${IPA_REMOTE}"

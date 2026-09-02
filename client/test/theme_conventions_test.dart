@@ -74,6 +74,143 @@ void main() {
     }
   });
 
+  /// Every heading the app asks for is one somebody actually defined.
+  ///
+  /// `theme.dart` listed four text styles; the app asks for six. The three
+  /// missing ones did NOT fall back to Material — ThemeData does not merge its
+  /// typography in behind that map. They came through as a TextStyle carrying
+  /// a colour and nothing else, `fontSize: null, fontWeight: null`, so every
+  /// call site rendered at the ambient body size and weight. 109 of them, and
+  /// `titleSmall` was 93 on its own.
+  ///
+  /// The getter is never null, so absence cannot be read from it directly. The
+  /// WEIGHT is what gives it away: an unfilled slot has none, and every slot we
+  /// fill is 600 or heavier.
+  /// A selectable chip with an icon must not also draw a checkmark.
+  ///
+  /// Material does not put the tick BESIDE the avatar. It paints it ON the
+  /// avatar, and darkens the avatar first so the tick can be read against it —
+  /// `_kSelectScrimColor = Color(0x60191919)`, filled through `avatarBorder`,
+  /// which is a circle. So the selected chip's own icon disappears under a grey
+  /// disc.
+  ///
+  /// Reported from the module tab rows, and the way it was reported is the
+  /// clue: the disc appeared "regardless if I'm hovering over that tab or any
+  /// tab". It follows the SELECTION, not the pointer — it reads as a stuck
+  /// hover state and is not one.
+  ///
+  /// Enumerated rather than listed, because the two known cases are the two
+  /// somebody happened to find. This is the same reason `titleSmall` was missed
+  /// by a hand-written audit on the same day.
+  group('a chip does not cover its own icon', () {
+    test('every selectable chip with an avatar sets showCheckmark', () {
+      var scanned = 0;
+      var withAvatar = 0;
+      final offenders = <String>[];
+
+      for (final file in Directory('lib')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.dart'))) {
+        scanned++;
+        final source = file.readAsStringSync();
+
+        for (final kind in const ['ChoiceChip(', 'FilterChip(']) {
+          var at = source.indexOf(kind);
+          while (at >= 0) {
+            final args = _argsOf(source, at + kind.length - 1);
+            if (args != null && args.contains('avatar:')) {
+              withAvatar++;
+              if (!args.contains('showCheckmark:')) {
+                final line = '\n'.allMatches(source.substring(0, at)).length + 1;
+                offenders.add('${file.path.replaceAll(r'\', '/')}:$line');
+              }
+            }
+            at = source.indexOf(kind, at + 1);
+          }
+        }
+      }
+
+      // Floors first. A paren matcher that returns null for everything finds no
+      // offenders and passes forever.
+      expect(scanned, greaterThan(100),
+          reason: 'Only $scanned .dart files scanned under lib/.');
+      expect(withAvatar, greaterThan(0),
+          reason: 'No selectable chip with an avatar was found anywhere. That '
+              'has never been true; the scan is broken and this test is '
+              'reporting nothing rather than reporting clean.');
+
+      expect(
+        offenders,
+        isEmpty,
+        reason:
+            'These draw a checkmark on top of their own icon:\n  '
+            '${offenders.join('\n  ')}\n'
+            'Material darkens the avatar with a 0x60191919 disc to make the '
+            'tick readable, so the icon that identifies the option vanishes at '
+            'the moment it is chosen. Pass showCheckmark: false — the filled '
+            'background already says which one is selected.',
+      );
+    });
+  });
+
+  group('no heading is left unstyled', () {
+    test('every heading style the app uses carries a weight of its own', () {
+      final pattern = RegExp(r'textTheme\.([a-zA-Z]+)');
+      final asked = <String>{};
+      var scanned = 0;
+
+      for (final file in Directory('lib')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.dart'))) {
+        scanned++;
+        for (final match in pattern.allMatches(file.readAsStringSync())) {
+          asked.add(match.group(1)!);
+        }
+      }
+
+      final headings = asked
+          .where((n) =>
+              n.startsWith('display') ||
+              n.startsWith('headline') ||
+              n.startsWith('title'))
+          .toList()
+        ..sort();
+
+      // The floors, before the rule — the same reason the colour ratchet has
+      // them. A regex that matches nothing passes silently.
+      expect(scanned, greaterThan(100),
+          reason: 'Only $scanned .dart files scanned under lib/. The scan is '
+              'broken and this test says nothing until it is fixed.');
+      expect(headings, isNotEmpty,
+          reason: 'No heading styles found anywhere in lib/. That has never '
+              'been true; the pattern is broken.');
+
+      for (final theme in {
+        'light': EzBiziTheme.light(),
+        'dark': EzBiziTheme.dark(),
+      }.entries) {
+        for (final name in headings) {
+          final style = _slot(theme.value.textTheme, name);
+          if (style == null) continue;
+
+          expect(
+            style.fontWeight?.value ?? 400,
+            greaterThanOrEqualTo(600),
+            reason:
+                'textTheme.$name is used in lib/ but ${theme.key} resolves it '
+                'to weight ${style.fontWeight?.value ?? 'none'}. Nothing in '
+                'this app is lighter than 600, and a slot with NO weight is '
+                'one theme.dart never filled in — every call site is rendering '
+                'at whatever size the surrounding text happens to be. Define '
+                'it there, or stop asking for it.',
+          );
+        }
+      }
+    });
+  });
+
   group('colour literals stay in theme.dart', () {
     // A ratchet, not a clean-room assertion. There are already literals in the
     // tree and fixing all of them is its own piece of work — but the count must
@@ -236,4 +373,35 @@ void main() {
       );
     });
   });
+}
+
+
+/// One Material text slot by name, or null when the name is not a slot.
+TextStyle? _slot(TextTheme t, String name) => switch (name) {
+  'displayLarge' => t.displayLarge,
+  'displayMedium' => t.displayMedium,
+  'displaySmall' => t.displaySmall,
+  'headlineLarge' => t.headlineLarge,
+  'headlineMedium' => t.headlineMedium,
+  'headlineSmall' => t.headlineSmall,
+  'titleLarge' => t.titleLarge,
+  'titleMedium' => t.titleMedium,
+  'titleSmall' => t.titleSmall,
+  _ => null,
+};
+
+
+/// The argument text of a call whose opening paren is at [open], or null when
+/// the parens do not balance inside this file.
+String? _argsOf(String source, int open) {
+  var depth = 0;
+  for (var i = open; i < source.length; i++) {
+    final ch = source[i];
+    if (ch == '(') depth++;
+    if (ch == ')') {
+      depth--;
+      if (depth == 0) return source.substring(open + 1, i);
+    }
+  }
+  return null;
 }

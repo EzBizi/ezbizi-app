@@ -11,6 +11,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Symfony\Component\HttpFoundation\Response as Status;
+use App\Models\PhoneNumber;
+use Twilio\TwiML\VoiceResponse;
 
 /**
  * Call records for granted numbers (spec §11). Playback streams Twilio media
@@ -22,6 +24,135 @@ class CallsController extends Controller
         private readonly PhoneNumberAccess $access,
         private readonly TwilioGateway $twilio,
     ) {}
+
+    /**
+     * POST /api/v1/phone/calls/bridge — ring my own phone, then the customer.
+     *
+     * ── Why this exists ─────────────────────────────────────────────
+     *
+     * There is no Twilio Voice SDK for Windows, macOS, Linux, Android or iOS
+     * inside this app — the softphone is a browser script — so on every
+     * platform except the web the Dial pad could not place a call at all, and
+     * said so. That is four of five platforms told the phone system is not for
+     * them.
+     *
+     * This needs no SDK. Twilio rings the handset the person already has,
+     * they answer, and Twilio dials the customer and bridges the two. It is an
+     * HTTP request, so it works identically on desktop, Android, iOS and the
+     * web — including in a browser whose microphone was refused.
+     *
+     * ── What the customer sees ──────────────────────────────────────
+     *
+     * The company line, not the employee's mobile. That is the whole point of
+     * the callerId on the inner Dial: without it the employee's personal
+     * number is what gets published to every customer they ring, and it cannot
+     * be taken back afterwards.
+     *
+     * ── Why the recording notice is on the INNER dial ───────────────
+     *
+     * The employee answers first, so anything said before the Dial reaches
+     * only them. The customer is the dialled party, and a consent announcement
+     * the customer never hears is not consent. It rides the Number's own url
+     * as a whisper, which is the mechanism Twilio provides for exactly this.
+     */
+    public function bridge(Request $request): JsonResponse
+    {
+        $input = $request->validate([
+            'number_id' => ['required', 'uuid'],
+            'to' => ['required', 'string', 'max:32'],
+        ]);
+
+        $number = PhoneNumber::query()->findOrFail($input['number_id']);
+        $user = $request->user();
+
+        if (! $this->access->mayView($user, $number)) {
+            abort(Status::HTTP_FORBIDDEN);
+        }
+
+        // The person's own handset. Without it there is nothing to ring, and
+        // guessing — the company line, a colleague's — would either loop the
+        // call back into EzBizi or ring somebody else's phone.
+        $mine = trim((string) $user->phone);
+        if ($mine === '') {
+            return response()->json([
+                'message' => 'Add your own phone number to your profile first. '
+                    .'This connects a call by ringing you, then the number you '
+                    .'are calling.',
+            ], Status::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $connection = $number->connection;
+        if ($connection === null) {
+            return response()->json([
+                'message' => 'That line has no phone account behind it.',
+            ], Status::HTTP_NOT_FOUND);
+        }
+
+        $to = (string) $input['to'];
+
+        // SHAPE only, and it is worth being clear what that does not cover.
+        //
+        // `+3057242199` — the number every outbound call went to for weeks —
+        // passes this, because it IS structurally valid E.164. What was wrong
+        // with it is that +305 is not a country, and seeing that needs a table
+        // of real country codes rather than a pattern. The country code is
+        // fixed where it is knowable: the dial pad, which knows ten digits
+        // typed there means North America.
+        //
+        // This is the backstop for what is not a phone number at all.
+        if (! preg_match('/^\+[1-9]\d{7,14}$/', $to)) {
+            return response()->json([
+                'message' => 'That does not look like a phone number. Include '
+                    .'the country code, or type the ten digits and EzBizi will '
+                    .'add it.',
+            ], Status::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        try {
+            $call = $this->twilio->createCall(
+                $connection,
+                (string) $number->e164,
+                $mine,
+                $this->bridgeTwiml($number, $to),
+            );
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => $e->getMessage() !== ''
+                    ? 'Twilio refused the call: '.$e->getMessage()
+                    : 'Twilio refused the call.',
+            ], Status::HTTP_BAD_GATEWAY);
+        }
+
+        return response()->json(['data' => [
+            'sid' => $call['sid'],
+            'ringing' => $mine,
+            'calling' => $to,
+            'from' => (string) $number->e164,
+        ]], Status::HTTP_CREATED);
+    }
+
+    /** What the employee's phone runs once they answer. */
+    private function bridgeTwiml(PhoneNumber $number, string $to): string
+    {
+        $response = new VoiceResponse;
+
+        // Said to the EMPLOYEE, so they know which call this is before it
+        // connects — their phone rang from a company number with no context.
+        $response->say(
+            'Connecting you.',
+            ['language' => 'en-US'],
+        );
+
+        $dial = $response->dial(null, [
+            'callerId' => (string) $number->e164,
+            'answerOnBridge' => true,
+            'timeout' => 30,
+        ]);
+
+        $dial->number($to);
+
+        return (string) $response;
+    }
 
     /** GET /api/v1/phone/calls */
     public function index(Request $request): JsonResponse
@@ -135,6 +266,13 @@ class CallsController extends Controller
             'from_e164' => $call->from_e164,
             'to_e164' => $call->to_e164,
             'status' => $call->status,
+
+            // Why it failed, where Twilio said. A row that says "failed" and
+            // nothing else is what turned four separate outbound defects into
+            // four rounds of guessing.
+            'error_code' => $call->error_code,
+            'error_message' => $call->error_message,
+
             'duration_seconds' => $call->duration_seconds,
             'voicemail' => (bool) $call->voicemail,
             'recording_sid' => $call->recording_sid,

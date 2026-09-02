@@ -354,6 +354,15 @@ class _RecordsTabState extends State<RecordsTab> {
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
+
+                // A failure says why, here, rather than in Twilio's console.
+                if (_failure(call) != null)
+                  Text(
+                    _failure(call)!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
               ],
             ),
           ),
@@ -365,6 +374,32 @@ class _RecordsTabState extends State<RecordsTab> {
   /// The tag, tinted. An untinted tag still reads — colour is what makes a
   /// list scannable, not what makes it legible, so the name is never carried
   /// by the colour alone.
+  /// The failure in a sentence, or null when the call was fine.
+  ///
+  /// Twilio's own message is preferred over anything composed here: a code we
+  /// have never seen still explains itself, which a lookup table cannot do.
+  String? _failure(_Call call) {
+    final code = call.errorCode;
+    if (code == null || code.isEmpty) return null;
+
+    if (code.startsWith('dial:')) {
+      return switch (code.substring(5)) {
+        'busy' => 'The number was busy.',
+        'no-answer' => 'No answer.',
+        'canceled' || 'cancelled' => 'Cancelled before it connected.',
+        'failed' => 'The call could not be connected. Twilio refused it — the '
+            'usual cause is a caller ID this phone account does not own.',
+        final other => 'Did not connect ($other).',
+      };
+    }
+
+    final message = call.errorMessage;
+
+    return message == null || message.isEmpty
+        ? 'Twilio error $code.'
+        : 'Twilio error $code: $message';
+  }
+
   Widget _tagChip(_Call call, ThemeData theme) {
     final hex = call.tagColor?.replaceFirst('#', '');
     final value = hex == null ? null : int.tryParse(hex, radix: 16);
@@ -594,6 +629,8 @@ class _Call {
     required this.recordingSid,
     required this.transcript,
     required this.createdAt,
+    this.errorCode,
+    this.errorMessage,
     this.tag,
     this.tagColor,
   });
@@ -608,6 +645,12 @@ class _Call {
   final String? recordingSid;
   final String? transcript;
   final String createdAt;
+
+  /// Why this call failed, as Twilio said it — not as we guessed. A row that
+  /// said only "failed" is what turned four separate outbound defects into
+  /// four rounds of guessing at the cause.
+  final String? errorCode;
+  final String? errorMessage;
 
   /// What the call was about, and the colour picked for it. Shown here rather
   /// than only counted in Reports: a call list you can read at a glance is the
@@ -628,6 +671,8 @@ class _Call {
     createdAt: json['created_at'] as String? ?? '',
     tag: json['tag'] as String?,
     tagColor: json['tag_color'] as String?,
+    errorCode: json['error_code'] as String?,
+    errorMessage: json['error_message'] as String?,
   );
 }
 

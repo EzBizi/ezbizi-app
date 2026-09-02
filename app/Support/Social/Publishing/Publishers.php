@@ -29,6 +29,17 @@ final class Publishers
     public static function for(?SocialProvider $provider, ?bool $toDrafts = null): ?SocialPublisher
     {
         return match ($provider) {
+            SocialProvider::FacebookPage => new FacebookPublisher,
+            SocialProvider::Threads      => new ThreadsPublisher,
+
+            // Instagram was absent until 2026-09-01, because its Content
+            // Publishing API has no binary upload at all — every path needs a
+            // PUBLIC image_url or video_url that Instagram fetches from, and
+            // serving a tenant's media unauthenticated was a decision nobody
+            // had made. It has now been made: see MediaHandoff, which is the
+            // narrowest shape of that yes and the place the reasoning lives.
+            SocialProvider::InstagramProfessional => new InstagramPublisher,
+
             SocialProvider::Pinterest => new PinterestPublisher,
             SocialProvider::TikTok    => new TikTokPublisher(
                 toDrafts: $toDrafts ?? ! self::tiktokIsAudited(),

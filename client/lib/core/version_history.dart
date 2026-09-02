@@ -8,6 +8,139 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0133',
+      date: '1 Sep 2026',
+      items: [
+        'Phone: you can take and make calls inside the app on Windows, '
+            'Android, iPhone and Mac, not only in a browser. On a phone an '
+            'incoming call rings like a phone call rather than a notification. '
+            'Incoming calls on phones need push credentials set up in Twilio '
+            'first; until then calls go out but do not come in.',
+        'Monitoring: a computer running the desktop app now reports what it '
+            'is - memory, free disk, Windows version, and which wifi network '
+            'it is on with how strong the signal is. Until now Monitoring '
+            'could say a machine was active and nothing about it, so "it is '
+            'slow" had no numbers next to it.',
+        'That only happens on the desktop app, and only on Windows so far. '
+            'Anywhere else the machine keeps reporting that it is active, '
+            'exactly as before, and simply sends no specs.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0132',
+      date: '1 Sep 2026',
+      items: [
+        'The desktop app updates itself without showing you an installer. It '
+            'used to put a setup window on screen while replacing itself, '
+            'which read as installing software rather than the app restarting.',
+        'The desktop app comes back on its own after updating. It was closing '
+            'itself so its files could be replaced and then staying closed - '
+            'the step that reopens it was being skipped on exactly the silent '
+            'installs the updater uses. If an update ever fails you will still '
+            'be told; only the success case is quiet.',
+        'The desktop app checks for an update when it starts and installs it '
+            'there and then, instead of waiting a minute first. That wait is '
+            'still there for an update found while you are working, where '
+            'closing the app under you is not the same thing at all.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0130',
+      date: '1 Sep 2026',
+      items: [
+        'Phone: you can call from the desktop app, Android and iOS now. Those '
+            'builds cannot carry the audio themselves - the part that does is '
+            'a browser component - so EzBizi rings your own phone and joins '
+            'you to the person you are calling. They still see the company '
+            'number, never your mobile. Add your number to your profile first.',
+        'Every module now says its own name at the top of the page. Only one '
+            'of the sixteen did - the rest left you to work out where you were '
+            'from the sidebar, and on a phone the sidebar is behind a button, '
+            'so nothing on screen said it at all.',
+        'Headings across the app are one set of sizes now. Three of the six '
+            'heading styles had never been given a size or a weight, so a '
+            'hundred and nine places asking for a heading were quietly drawing '
+            'ordinary text. That is why titles looked unrelated from one '
+            'screen to the next.',
+        'The tab you are on no longer covers its own icon with a grey '
+            'circle. The circle followed the selected tab rather than the '
+            'mouse, so it looked like a hover effect stuck on the wrong tab. '
+            'It was the tick that gets drawn on top of the icon, which the '
+            'coloured background had already made unnecessary.',
+        'Social: Facebook, Threads and Instagram can post. Until now a post '
+            'could be written and scheduled for those three and nothing left '
+            'EzBizi. Instagram needs the picture handed over in a separate '
+            'step, which is why it took longer than the other two.',
+        'Social: when connecting a Google account fails, the message says '
+            'which of four things went wrong rather than giving one wording '
+            'for all of them - the API not switched on, no quota granted '
+            'yet, a developer token not approved for live accounts, or '
+            'EzBizi asking for a version of the API Google has retired. The '
+            'last one is why Google Ads had been failing.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0129',
+      date: '1 Sep 2026',
+      items: [
+        'Automations: a rule can now send a text. Pick which of the company '
+            'lines it goes out from, who it goes to, and what it says - and it '
+            'works on any trigger, including ones with nothing to do with the '
+            'phone, such as an email arriving.',
+        'Phone: calling out works. Numbers typed the ordinary way - 305 724 '
+            '2199 - were losing their country code and being dialled as '
+            '+3057242199, which is not a phone number, so no outgoing call '
+            'has ever connected. The same applied to text messages.',
+        'Phone: the Call tab is now called Dial, and you ring a colleague from '
+            'their own row in the Team list rather than from an Internal '
+            'button on the keypad that did nothing until you had picked them '
+            'somewhere else.',
+        'Phone: a call that fails now says why, on the Records list, instead '
+            'of only saying it failed. Twilio always told us the reason and '
+            'the app was discarding it, which is why outbound calling took '
+            'four rounds to diagnose.',
+        'Phone: the call desk gives each column a fair share of the window. '
+            'The two panes holding the most - the team list and the customer '
+            'thread - were fixed at their smallest, and every extra pixel went '
+            'to the dial pad, which is a fixed size anyway. On a wide screen '
+            'the middle column was more than half the window around a keypad. '
+            'A note in 0.0.0126 said this had been done; it had not been, and '
+            'this is it.',
+        'The sidebar has a box to find a module by name. Sixteen of them, and '
+            'the way to reach one was to read all sixteen - on a short screen, '
+            'after scrolling. The letters that matched are marked, so it is '
+            'clear why a module is still in the list. Collapsed there is no '
+            'box: at that width there are no names to search.',
+        'Your account is laid out again. The things an administrator assigns '
+            'you - your email, your role, and the places you can act on - sat '
+            'inside the form directly above its Save button, which suggested '
+            'Save applied to them. It never did. They are beside the form now, '
+            'or their own row on a phone.',
+        'Your account on a phone is a list of rows rather than one long form, '
+            'and each row shows what it currently says - so checking your own '
+            'number no longer means opening anything.',
+        'Two places with the same name now say which company each belongs to. '
+            'A list that reads Connecticut, Georgia, Connecticut looks like '
+            'the same place twice; they are two different ones, and it is the '
+            'answer to where you are allowed to work.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0128',
+      date: '1 Sep 2026',
+      items: [
+        'Phone: calling a customer no longer drops you into your own '
+            'voicemail. The first call went through; a second one to the same '
+            'person was treated as a call arriving at your line rather than '
+            'leaving it, so it was answered by your greeting instead of rung '
+            'out to them.',
+        'Phone: a call placed from a number the company does not own now says '
+            'so, instead of connecting to silence. The call appeared to be in '
+            'progress with nobody on either end - the number it claimed to be '
+            'calling from was rejected, and nothing said that out loud.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0127',
       date: '31 Aug 2026',
       items: [
@@ -35,9 +168,6 @@ class VersionHistory {
             'assigned to them, so every outbound call went out under the same '
             'line - four people ringing four customers all showed one number, '
             'and every callback landed on whoever picked up.',
-        'Phone: the call desk now gives each column a fair share of the window '
-            'rather than fixing the two busiest at their smallest useful size '
-            'and giving every extra pixel to the dial pad.',
         'The sidebar scrolls. On a shorter screen the module list used to run '
             'off the bottom and draw over Settings and Development, and the '
             'modules underneath could not be reached at all - there was '

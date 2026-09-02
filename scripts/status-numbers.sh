@@ -73,7 +73,16 @@ else
   PERM_ROW="| Permissions in production | **Unknown** — see above. |"
 fi
 
-TESTS_ROW="| Tests | ${BACKEND_TESTS:-?} backend · ${CLIENT_TESTS:-?} client. Both gated on deploy: nothing ships if either is red. |"
+# Not "gated on deploy" any more. Gates became opt-in (`--gates`) on 1 Sep, and
+# this line is REGENERATED on every deploy — so left alone it would have gone on
+# asserting a guarantee the pipeline had stopped making, in the file people read
+# to find out what is true. A number from a run that skipped the suites also has
+# to say so, or it reads as a result rather than a memory of one.
+if [ -n "${BACKEND_TESTS:-}${CLIENT_TESTS:-}" ]; then
+  TESTS_ROW="| Tests | ${BACKEND_TESTS:-?} backend · ${CLIENT_TESTS:-?} client, from the last deploy that ran them. Gates are opt-in: \`release.sh --gates\`. |"
+else
+  TESTS_ROW="| Tests | Not measured by this deploy — it ran without gates. Run \`scripts/release.sh --gates\` for a current count. |"
+fi
 VERSION_ROW="| Client version | \`v${VERSION}\` — shown bottom-left in the app and on sign-in, so a stale cache is visible rather than guessed at. |"
 
 python3 - "$STATUS" "$TESTS_ROW" "$VERSION_ROW" "$DATA_ROW" "$PERM_ROW" "$(date +%F)" <<'PY'

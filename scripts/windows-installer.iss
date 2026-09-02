@@ -64,11 +64,16 @@ UninstallDisplayName=EzBizi
 ;
 ; force, not yes. With `yes` Inno shows a "the following applications are using
 ; files that need to be updated" page and waits for a click — which nobody sees
-; during a /SILENT update, so the update appears to do nothing. `force` closes
-; the app itself, and RestartApplications starts it again at the end, so it
-; reads as the app restarting rather than as an install.
+; during a /VERYSILENT update, so the update appears to do nothing. `force`
+; closes the app itself so its files can be replaced.
 CloseApplications=force
-RestartApplications=yes
+
+; no, deliberately. This asks the Windows Restart Manager to relaunch what it
+; shut down, and it did not — an update on 1 Sep closed the app and left it
+; closed. Rather than debug RM, the [Run] entry below starts the app, which is
+; explicit and testable. Two mechanisms racing would risk two copies running;
+; one that provably works beats one that sometimes does.
+RestartApplications=no
 
 ; Only one installer at a time. Two copies racing to replace the same files is
 ; how a half-written install happens, and the updater can fire while somebody is
@@ -136,4 +141,12 @@ Name: "{autodesktop}\EzBizi"; Filename: "{app}\ezbizi.exe"; Tasks: desktopicon
 Name: "{userstartup}\EzBizi"; Filename: "{app}\ezbizi.exe"; Tasks: startupicon
 
 [Run]
-Filename: "{app}\ezbizi.exe"; Description: "Start EzBizi"; Flags: nowait postinstall skipifsilent
+; NO skipifsilent. That flag is why an in-app update installed and never came
+; back: every update runs this installer silently, and skipifsilent skips this
+; line in exactly that case, so the app closed itself to be replaced and then
+; nothing started it. Reported 1 Sep after updating 0.0.0129 -> 0.0.0131.
+;
+; postinstall keeps the "Start EzBizi" tickbox for someone running the
+; installer by hand; without skipifsilent it also runs on a silent install,
+; which is the only way the app comes back on its own.
+Filename: "{app}\ezbizi.exe"; Description: "Start EzBizi"; Flags: nowait postinstall

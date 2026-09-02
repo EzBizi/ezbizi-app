@@ -153,7 +153,15 @@ class _ActionRow {
   /// is forty lines down behind a docblock neither scrolled to. One of them
   /// then told the other to hold a finished, correct commit.
   Map<String, dynamic> toJson(CatalogueActionType? definition) {
-    if (type?.startsWith('task.') == true && definition != null) {
+    // Any action that DECLARES parameters is built from them, rather than
+    // any action whose key happens to start with "task.".
+    //
+    // The prefix was accurate while Tasks was the only module with
+    // configurable actions, and it silently stopped being a description of
+    // anything the moment Phone added one: "Send a message" was selectable,
+    // drew no fields, and fell to the throw below — a StateError on a rule
+    // somebody had just built.
+    if (definition != null && definition.parameters.isNotEmpty) {
       final payload = <String, dynamic>{'type': type};
       for (final field in definition.parameters) {
         final value = parameter(field.key).text.trim();
@@ -264,12 +272,40 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   bool get _isEdit => widget.editing != null;
   String? get _id => widget.editing?['id'] as String?;
 
+  /// The phone lines this company holds, for the "Send from" picker.
+  ///
+  /// Fetched rather than declared in the catalogue because it is tenant data,
+  /// not a description of what the module can do — the catalogue says a
+  /// parameter is a phone line, and which lines exist is a different question
+  /// with a different answer per company.
+  List<(String, String)> _lines = const [];
+
+  Future<void> _loadPhoneLines() async {
+    final response = await widget.api.get('/phone/numbers');
+    if (!mounted || !response.ok) return;
+
+    setState(() {
+      _lines = [
+        for (final row in (response.data as List? ?? const []))
+          if (row is Map<String, dynamic>)
+            (
+              (row['id'] ?? '').toString(),
+              [
+                (row['label'] ?? '').toString(),
+                (row['e164'] ?? '').toString(),
+              ].where((part) => part.isNotEmpty).join(' · '),
+            ),
+      ];
+    });
+  }
+
   @override
   void initState() {
     super.initState();
 
     _name.addListener(_changed);
     _description.addListener(_changed);
+    _loadPhoneLines();
 
     final editing = widget.editing;
 
@@ -867,10 +903,8 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           'The webhook step needs an address to call.',
         'notify' when action.message.text.trim().isEmpty =>
           'The notification step needs a message.',
-        String type when type.startsWith('task.') => _missingTaskParameter(
-          action,
-          type,
-        ),
+        String type when type.startsWith('task.') || type == 'sms.send' =>
+          _missingParameter(action, type),
         _ => null,
       };
 
@@ -1486,10 +1520,8 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       'voicemail.mark_dealt' || 'missed.create_job' => _note(
         'Uses the call that triggered the rule. Nothing else to fill in.',
       ),
-      String type when type.startsWith('task.') => _taskActionForm(
-        row,
-        widget.catalogue.actionType(type),
-      ),
+      String type when type.startsWith('task.') || type == 'sms.send' =>
+        _parameterForm(row, widget.catalogue.actionType(type)),
       _ => TextField(
         controller: row.message,
         enabled: !_busy,
@@ -1502,10 +1534,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     };
   }
 
-  String? _missingTaskParameter(_ActionRow row, String type) {
+  String? _missingParameter(_ActionRow row, String type) {
     final definition = widget.catalogue.actionType(type);
     if (definition == null) {
-      return 'This task action needs a newer version of the app.';
+      return 'This step needs a newer version of the app.';
     }
 
     for (final field in definition.parameters) {
@@ -1518,32 +1550,64 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     return null;
   }
 
-  Widget _taskActionForm(_ActionRow row, CatalogueActionType? definition) {
+  Widget _parameterForm(_ActionRow row, CatalogueActionType? definition) {
     if (definition == null) {
-      return _note('This task action needs a newer version of the app.');
+      return _note('This step needs a newer version of the app.');
     }
 
     return Column(
       children: [
         for (var i = 0; i < definition.parameters.length; i++) ...[
-          TextField(
-            controller: row.parameter(definition.parameters[i].key),
-            enabled: !_busy,
-            keyboardType: definition.parameters[i].kind == 'date'
-                ? TextInputType.datetime
-                : TextInputType.text,
-            maxLines: definition.parameters[i].kind == 'rich_text' ? 3 : 1,
-            decoration: InputDecoration(
-              labelText: definition.parameters[i].label,
-              isDense: true,
-              hintText: definition.parameters[i].kind == 'date'
-                  ? 'YYYY-MM-DD'
-                  : null,
-              helperText: definition.parameters[i].nullable
-                  ? 'Leave blank to clear it.'
-                  : null,
+          if (definition.parameters[i].kind == 'phone_number')
+            // A line is picked from the ones this company holds. The value
+            // stored is an id, and asking somebody to type one is asking them
+            // to fail — which is what a plain text field here would do.
+            DropdownButtonFormField<String>(
+              initialValue:
+                  row.parameter(definition.parameters[i].key).text.isEmpty
+                  ? null
+                  : row.parameter(definition.parameters[i].key).text,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: definition.parameters[i].label,
+                isDense: true,
+                helperText: _lines.isEmpty
+                    ? 'No phone lines on this company yet.'
+                    : 'Only lines approved for messaging can send.',
+              ),
+              items: [
+                for (final line in _lines)
+                  DropdownMenuItem(
+                    value: line.$1,
+                    child: Text(line.$2, overflow: TextOverflow.ellipsis),
+                  ),
+              ],
+              onChanged: _busy
+                  ? null
+                  : (id) => setState(
+                      () => row.parameter(definition.parameters[i].key).text =
+                          id ?? '',
+                    ),
+            )
+          else
+            TextField(
+              controller: row.parameter(definition.parameters[i].key),
+              enabled: !_busy,
+              keyboardType: definition.parameters[i].kind == 'date'
+                  ? TextInputType.datetime
+                  : TextInputType.text,
+              maxLines: definition.parameters[i].kind == 'rich_text' ? 3 : 1,
+              decoration: InputDecoration(
+                labelText: definition.parameters[i].label,
+                isDense: true,
+                hintText: definition.parameters[i].kind == 'date'
+                    ? 'YYYY-MM-DD'
+                    : null,
+                helperText: definition.parameters[i].nullable
+                    ? 'Leave blank to clear it.'
+                    : null,
+              ),
             ),
-          ),
           if (i < definition.parameters.length - 1) const SizedBox(height: 10),
         ],
       ],

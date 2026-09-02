@@ -101,6 +101,23 @@ combination rather than named modules — reports exist (`inspection_reports`,
 is false, but neither is backed by a row count; they rest on the deploy session's
 judgement. Pull them the same way if that changes.
 
+## Store listings — check the store, not a session
+
+**Android is live on Google Play** (`com.ezbizi.app`), linked from `/download/`
+since 2026-09-01. **iOS is not published.** Neither fact should ever be taken from
+a message; both are one command, and they are the cheapest way to notice that a
+listing went live and the page did not:
+
+```
+curl -sI "https://play.google.com/store/apps/details?id=com.ezbizi.app"   # 200 = live
+curl -s  "https://itunes.apple.com/lookup?bundleId=com.ezbizi.app"        # resultCount
+```
+
+The iOS card claims only what is checkable — built and signed, not on the store —
+because its actual review status has been contested between two repo files since
+August. **It owes the public a link the moment that lookup returns a result**, and
+nothing else about it should change before then.
+
 ## `/download/windows.json` tracks PRODUCTION, not `client/VERSION`
 
 The daily task file says to check the manifest against `client/VERSION`. **That

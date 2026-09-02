@@ -597,6 +597,106 @@ void main() {
     );
   });
 
+  /// The sixteen modules, in shell order.
+  List<Destination> modules() => [
+    for (final name in const [
+      'Dashboard', 'Tasks', 'Human Resources', 'Customers',
+      'Jobs', 'Scheduling', 'Inspection', 'Marketing',
+      'Web Management', 'Phone', 'Fleet Management', 'Inventory',
+      'Services', 'Email', 'Automations', 'Monitoring',
+    ])
+      Destination(name, Icons.circle_outlined, const SizedBox()),
+  ];
+
+  Widget sidebar({
+    required bool expanded,
+    required ValueChanged<int> onSelected,
+  }) => MaterialApp(
+    theme: EzBiziTheme.light(),
+    home: Scaffold(
+      body: Row(
+        children: [
+          NavigationSidebar(
+            expanded: expanded,
+            width: 220,
+            destinations: modules(),
+            pinned: [
+              Destination('Settings', Icons.settings_outlined, const SizedBox()),
+            ],
+            staffOnly: const [],
+            selectedIndex: 0,
+            pinnedIndex: null,
+            staffIndex: null,
+            onSelected: onSelected,
+            onPinnedSelected: (_) {},
+            onStaffSelected: (_) {},
+          ),
+          const Expanded(child: SizedBox()),
+        ],
+      ),
+    ),
+  );
+
+  testWidgets('a filtered row opens the module it names, not the one at its '
+      'position', (tester) async {
+    // THE defect this feature can have, and it is silent.
+    //
+    // NavigationRail addresses destinations by POSITION. Hand it a filtered
+    // list and it reports the index within that list -- so the third visible
+    // row reports 2, which in the full list is Human Resources. Every row would
+    // open a plausible, wrong module, with no error anywhere. Nothing about the
+    // screen would look broken; you would just keep ending up somewhere else.
+    final opened = <int>[];
+    await tester.pumpWidget(sidebar(expanded: true, onSelected: opened.add));
+
+    // "man" keeps three of sixteen: Human Resources (2), Web Management (8),
+    // Fleet Management (10).
+    await tester.enterText(find.byType(TextField), 'man');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Scheduling'), findsNothing, reason: 'the filter is on');
+    expect(find.text('3 of 16 modules'), findsOneWidget);
+
+    await tester.tap(find.text('Fleet Management'));
+    await tester.pumpAndSettle();
+
+    expect(
+      opened,
+      [10],
+      reason:
+          'Fleet Management is destination 10. Reporting 2 means the rail was '
+          'handed a filtered list without mapping its indices back, and every '
+          'row below the first removed one opens the wrong module.',
+    );
+  });
+
+  testWidgets('the collapsed rail has no search, and a filter that matches '
+      'nothing explains itself', (tester) async {
+    await tester.pumpWidget(sidebar(expanded: false, onSelected: (_) {}));
+    expect(
+      find.byType(TextField),
+      findsNothing,
+      reason:
+          'At 80px there are no labels to search. An icon here would be a '
+          'control that only works by first undoing the state you chose.',
+    );
+
+    await tester.pumpWidget(sidebar(expanded: true, onSelected: (_) {}));
+    await tester.enterText(find.byType(TextField), 'invoic');
+    await tester.pumpAndSettle();
+
+    // An empty sidebar with no explanation is indistinguishable from a broken
+    // one, so it has to name what was typed and offer the way back.
+    expect(find.textContaining('invoic'), findsWidgets);
+    expect(find.textContaining('filtered, not empty'), findsOneWidget);
+    expect(
+      find.text('Settings'),
+      findsOneWidget,
+      reason: 'the tail never filters -- it is where you go when the list did '
+          'not have what you wanted',
+    );
+  });
+
   testWidgets('the sidebar rule is actually drawn, not zero-width', (
     tester,
   ) async {
