@@ -101,6 +101,7 @@ use App\Http\Controllers\Api\StaffAuthController;
 use App\Http\Controllers\Api\StaffClientVersionsController;
 use App\Http\Controllers\Api\StaffController;
 use App\Http\Controllers\Api\StaffPhoneRequestsController;
+use App\Http\Controllers\Api\StaffSuggestionsController;
 use App\Http\Controllers\Api\SuggestionsController;
 use App\Http\Controllers\Api\Tasks\MyTasksController;
 use App\Http\Controllers\Api\Tasks\TaskBoardMembersController;
@@ -1876,6 +1877,10 @@ Route::prefix('v1/staff')
         // control plane, behind the `staff` middleware, not `tenant`.
         Route::get('phone-requests', [StaffPhoneRequestsController::class, 'index']);
         Route::post('phone-requests/{request}/decide', [StaffPhoneRequestsController::class, 'decide']);
+
+        // The suggestion queue. Reads across every tenant on purpose — control
+        // plane, behind the `staff` middleware, not `tenant`.
+        Route::get('suggestions', [StaffSuggestionsController::class, 'index']);
 
         Route::get('client-versions', [StaffClientVersionsController::class, 'index']);
         Route::put('client-versions/{platform}', [StaffClientVersionsController::class, 'update']);
