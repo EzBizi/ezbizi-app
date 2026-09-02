@@ -10,6 +10,7 @@ import 'staff/impersonations_screen.dart';
 import 'staff/modules_screen.dart';
 import 'staff/organizations_screen.dart';
 import 'staff/staff_accounts_screen.dart';
+import 'staff/suggestions_queue_screen.dart';
 
 /// The Development section, inside the customer app (plan §4.2, revised).
 ///
@@ -189,6 +190,13 @@ class _DevelopmentScreenState extends State<DevelopmentScreen> {
         ImpersonationsScreen(staff: _staff),
       ),
       ('Health', Icons.favorite_outline, HealthScreen(staff: _staff)),
+      (
+        'Suggestions',
+        Icons.lightbulb_outline,
+        SuggestionsQueueScreen(staff: _staff),
+      ),
+      // Conditional and last on purpose: a fixed tab added after this one
+      // would change position depending on who is looking.
       if (me.isLead)
         ('Staff', Icons.badge_outlined, StaffAccountsScreen(staff: _staff)),
     ];
