@@ -464,13 +464,21 @@ three minutes on a busy afternoon, and a design approved *as drawn* is a claim a
 specific drawing. `git show <sha>:docs/previews/<file>` is what was approved; the file
 on main may have moved on.
 
-> **🔨 being built · ⏳ approved, an owner holds it · 📬 approved, routed to a desk, no owner yet · ⚠️ unowned and unrouted · ✅ never used here.** An approved
+> **🔨 being built · ⏳ approved, an owner holds it · 📬 approved, routed to a desk, no owner yet · ⚠️ unowned and unrouted · 📐 drawn and numbered, waiting on an answer · ✅ never used here.** An approved
 > design with nobody building it *looks* like progress on a queue and is not — it is
 > a drawing. The deploy desk's line, and it applies to this file before it applies to
 > anyone else's: a ticked row that means "waiting for a session that does not exist"
 > is the same failure this doc warns about twice elsewhere — **the marker stays
 > plausible and the meaning moves.** A row leaves this table when it ships, not when
 > it is approved.
+>
+> **📐 was added for Suggestions and is the state this table had no word for:
+> drawn, numbered, in front of Jose, and nothing chosen.** It is not ⚠️ — nothing is
+> unowned; and it is not 📬 — there is nothing to route, because there is nothing to
+> build yet. It is the one shape this file says *does* belong on the owner's desk:
+> genuinely blocked on a decision rather than merely lacking a body. A 📐 row becomes
+> 🔨 the moment a number comes back, and **no number is recorded in it before then** —
+> writing a provisional one is the marker-means-two-things failure again.
 >
 > **And an unowned design is ROUTED, not escalated.** A finished drawing with no
 > module session goes to the deploy desk, which outlives individual sessions. It does
@@ -495,6 +503,8 @@ on main may have moved on.
 | 🔨 | **Phone · Hours** | **Layout 3 approved** — `docs/previews/phone-hours-layouts.html` @ `f545c31`. Today’s shape kept: opening a set **replaces the pane**, with Back. **Deliberate, not an oversight** — Numbers is a split and Hours is not, because seven rows of masked time fields want full width. *Say so in the code*, or somebody will later “fix” Hours to match Numbers. Holidays get their own bordered block above the week; a day with no times is an absent row, never empty fields. **No time picker** (`8910b88`). |
 | 🔨 | **Phone · Ring groups** | **Layout 1 approved** (split pane). `docs/previews/phone-ring-groups-layouts.html` @ `f545c31`. **The point is not the split:** reachability is a COLUMN of the member list, drawn from `DialPlan::batches()` — a group of four can ring nobody and look fine today. Tally is timestamped ("as of a few seconds ago"), never implied live. Keep the 60-second timeout explanation inline. Expect latent overflow in the narrowed detail column — pre-existing, not caused. |
 | ✅ | **Phone · Settings rail** | **SHIPPED `0d8e52c`.** Layout 1 (grouped rail) — `docs/previews/phone-settings-rail-layouts.html` @ `6389714`. Queued behind Trust with the Phone session. |
+| 📐 | **Suggestions · the author's tab** | **Drawn, numbered, nothing chosen.** `docs/previews/suggestions-1.html`, `-2.html`, `-3.html` — 1 compose-first, 2 what-happened-to-what-you-sent, 3 correspondence. A new destination pinned beside Settings, for every user in every organization. **Each file carries a desktop answer and a 375px answer, and they are numbered independently** — "desktop 1, phone 3" is a legitimate reply. Backend is built and tested (`f13dd81..f845c4e`); nothing is being built against these until a number comes back. |
+| 📐 | **Suggestions · the Development queue** | **Drawn, numbered, nothing chosen.** `docs/previews/suggestions-queue-1.html`, `-2.html`, `-3.html` — 1 worklist table, 2 list-beside-the-answer, 3 everything-in-full. A seventh tab inside Development, reading across every tenant. Same independent desktop/phone numbering. |
 | 4 | **Web Management · per-page value overrides** | Briefed. `license` ruled **conditional**. Not started. |
 
 **Phone, shipped 2026-08-31 and not re-listed above:** Voicemail on the shared pane skeleton (`3223015`), Numbers split pane (`b25c3db`), staff messaging (`ed3b35f`), extensions (`8b82ed2`), and the rail-is-a-switch guard (`753556b`). Still approved and NOT built: **Connection**, **Hours**, **Ring groups** — the three 🔨 rows above, held by the Phone session (`ezbizi-0b` → this one).
@@ -655,6 +665,47 @@ claimed the setup-blocks-above-when-unconnected rule needs to know when setup is
 finished and cannot. That was wrong — it keys off `connected_at != null`, whether a
 plugin has ever read the site, which the module answers exactly. The tier decision
 rests on the opposite-facts argument alone, which is sufficient on its own.*
+
+### Suggestions · two screens out for decision
+
+Six numbered files, two independent answers. **No number is chosen and none is recorded
+here.** Everything below was read out of `f13dd81..f845c4e` rather than inferred from the
+drawings, and it holds whichever number comes back.
+
+- **The author's list is ordered by `created_at` and by nothing else.** A decided
+  suggestion sits above one still in review whenever it was sent later. Any grouping by
+  state is the client's own arrangement, and layout 2 is the only one that does it.
+- **`decided_by` is stored and is not in the author's payload.** So the answer is
+  EzBizi's word, unsigned. A layout that draws a reviewer's name draws a field that never
+  arrives.
+- **Edit and Withdraw exist on a `new` one and on nothing else**, and the three later
+  states must *say* why rather than silently drop the buttons — the server's own two
+  sentences from `SuggestionsController::frozen()` do that job in all three layouts.
+- **Marking one "In review" must not offer the note field.** `decide` writes any note it
+  is given into `decision_note`, and the author's payload carries `decision_note`
+  *whatever the status is* — so a note typed beside "In review" turns up on the author's
+  screen with no notification and no explanation. All three queue layouts make it a bare
+  button. **This is the `usable` shape again**: one column answering a second question.
+- **Approving with no note is legal and should not be.** The notification's body *is* the
+  note, so an empty one sends a bell reading "Your suggestion was approved" with nothing
+  under it. The server permits it; the screen presses for a sentence anyway.
+- **Denying with no note is refused** — *"Say why, in a sentence. The person who sent it
+  reads it."* A 422 on `note`, so it is reported at the field and retried with the same
+  button. A refused **save**, never a reload.
+- **The queue is `limit(200)` with no paging and no search parameter.** No total may be
+  promised and no page 2 drawn; filtering is the client's, over what already arrived.
+- **A decided one can be decided again** — a reversal replaces both status and note — so
+  the decide control has to stay reachable on a decided row rather than becoming a receipt.
+
+> **One thing for Jose that is not about these screens alone.** This is the **seventh chip**
+> in the Development tab strip, and `TabBarLike` puts its chips in a horizontally scrolling
+> row — against the settled rule that chrome *wraps* rather than scrolls. It is a
+> `SingleChildScrollView(Axis.horizontal)`, so it scrolls *by construction* rather than
+> only when it happens to be too wide, and the six labels already there do not come near
+> fitting 375px. A seventh **makes it worse rather than causing it**; it is
+> pre-existing, the same shape as the `isExpanded` overflow. The fix is one line, but
+> `TabBarLike` is shared with Automations, so it changes two screens. All three queue
+> drawings show the strip wrapped, which is what fixed looks like.
 
 ---
 

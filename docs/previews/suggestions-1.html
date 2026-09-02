@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi &mdash; Suggestions, layout 1</title>
+<style>
+  :root {
+    /* Read from client/lib/core/theme.dart, light mode. Not invented here. */
+    --cyan:#00AEEF;     /* EzBiziTheme.accent -- brand fills that carry no text */
+    --primary:#00708F;  /* light colorScheme.primary (_cyanDeep), 5.7:1 on white */
+    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+    --ok:#0B8F5B;       /* EzBiziTheme.clockIn, light */
+    --err:#E07070;      /* EzBiziTheme.clockOut, light */
+    --warn:#B5730B; --deny:#A33;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 Inter, system-ui, "Segoe UI", sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1200px; margin:0 auto; padding:16px 16px 48px; }
+
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:20px; margin:0 0 4px; letter-spacing:-.3px; }
+  header.picker p { margin:0 0 12px; color:var(--muted); max-width:88ch; }
+  .opt { color:var(--ink) !important; font-size:15px; }
+  .opt b { color:var(--primary); }
+  .chooser { display:flex; flex-wrap:wrap; gap:6px; align-items:center;
+    padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--line);
+    font-size:12px; color:var(--muted); }
+  .chooser .cg { font-weight:700; text-transform:uppercase; letter-spacing:1.2px;
+    font-size:11px; margin-right:2px; }
+  .chooser a { min-width:30px; text-align:center; padding:4px 9px; border-radius:7px;
+    border:1px solid var(--line); color:var(--primary); text-decoration:none; font-weight:600; }
+  .chooser a.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .chooser .sep { width:18px; }
+
+  .locked, .ask, .found { font-size:13px; border-radius:8px; padding:10px 12px;
+    margin-bottom:12px; max-width:96ch; }
+  .locked { background:var(--info-c); } .ask { background:var(--warn-c); } .found { background:var(--err-c); }
+  .locked strong, .ask strong, .found strong { display:block; margin-bottom:4px; }
+  .locked strong { color:var(--primary); } .ask strong { color:var(--warn); } .found strong { color:var(--deny); }
+  .locked b, .ask b, .found b { display:block; margin-top:7px; }
+  .locked ul, .found ul { margin:6px 0 0; padding-left:20px; }
+  .locked li, .found li { margin:3px 0; }
+  .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:94ch; }
+  .caption strong { display:block; margin-bottom:4px; font-size:16px; }
+  .caption em { color:var(--deny); font-style:normal; font-weight:600; }
+
+  .viewlab { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--muted); margin:26px 0 8px; }
+  .note { color:var(--muted); font-size:12px; margin:10px 0 0; max-width:96ch; }
+  .note b { color:var(--ink); }
+
+  /* ---- the app's own chrome ---- */
+  .shell { display:grid; grid-template-columns:220px 1fr; min-height:620px;
+    background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px;
+    display:flex; flex-direction:column; }
+  nav.side .brand { font-weight:800; letter-spacing:-1px; font-size:20px;
+    margin-bottom:16px; padding:0 8px; color:var(--ink); }
+  nav.side .brand i { color:var(--cyan); font-style:normal; }
+  nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+    text-decoration:none; margin-bottom:2px; font-size:14px; }
+  nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  nav.side .tail { margin-top:auto; padding-top:10px; border-top:1px solid var(--line); }
+  nav.side .staff { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
+
+  .page { display:flex; flex-direction:column; min-width:0; }
+  .paneHead { padding:18px 24px 14px; border-bottom:1px solid var(--line); }
+  .paneHead h2 { font-size:20px; margin:0 0 3px; letter-spacing:-.3px; font-weight:700; }
+  .paneHead p { margin:0; color:var(--muted); font-size:14px; max-width:74ch; }
+  .paneBody { padding:20px 24px 28px; overflow:auto; flex:1; background:var(--page); }
+  .col { max-width:760px; }
+
+  /* ---- compose ---- */
+  .compose { border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .compose .ta { padding:14px 16px; min-height:112px; color:#9AA5AF; font-size:15px;
+    line-height:1.55; }
+  .compose .ta.filled { color:var(--ink); }
+  .compose .cbar { display:flex; align-items:center; gap:10px; padding:10px 14px;
+    background:var(--alt); border-top:1px solid var(--line); }
+  .compose .count { color:var(--muted); font-size:12px; margin-right:auto; }
+  .compose .count b { color:var(--ink); font-weight:600; }
+  .compose.focus { border-color:var(--primary); box-shadow:0 0 0 1px var(--primary); }
+
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:9px;
+    padding:9px 16px; min-height:40px; font-weight:600; }
+  .btn.ghost { background:transparent; color:var(--primary); border:1px solid var(--line); }
+  .btn.sm { min-height:34px; padding:5px 12px; font-size:13px; }
+  .btn.off { background:var(--page); color:var(--muted); border:1px solid var(--line); }
+  .btn.danger { color:var(--deny); }
+
+  /* ---- one suggestion ---- */
+  .sechead { font-size:16px; font-weight:600; margin:26px 0 10px; }
+  .card { border:1px solid var(--line); border-radius:12px; margin-bottom:12px; overflow:hidden; }
+  .ch { display:flex; align-items:center; gap:10px; padding:11px 16px; background:var(--alt);
+    border-bottom:1px solid var(--line); }
+  .ch .when { color:var(--muted); font-size:12px; margin-left:auto; }
+  .cbody { padding:14px 16px; font-size:14px; line-height:1.55; }
+  .cf { display:flex; align-items:center; gap:8px; padding:10px 16px;
+    border-top:1px solid var(--line); }
+  .cf .why { color:var(--muted); font-size:12px; margin-right:auto; max-width:60ch; }
+  .cf.plain { background:var(--alt); }
+
+  .pill { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    padding:3px 9px; border-radius:999px; background:var(--alt); border:1px solid var(--line);
+    color:var(--muted); white-space:nowrap; }
+  .pill.s-new { background:var(--page); border-color:var(--muted); color:var(--ink); }
+  .pill.s-rev { background:var(--info-c); border-color:transparent; color:var(--primary); }
+  .pill.s-app { background:var(--ok-c); border-color:transparent; color:var(--ok); }
+  .pill.s-den { background:var(--err-c); border-color:transparent; color:var(--deny); }
+
+  .reply { border-top:1px solid var(--line); padding:14px 16px 14px 18px; }
+  .reply.app { background:var(--ok-c); box-shadow:inset 4px 0 0 var(--ok); }
+  .reply.den { background:var(--err-c); box-shadow:inset 4px 0 0 var(--err); }
+  .reply .rh { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    margin-bottom:6px; }
+  .reply.app .rh { color:var(--ok); } .reply.den .rh { color:var(--deny); }
+  .reply p { margin:0; font-size:14px; line-height:1.55; }
+
+  .empty { border:1px dashed #C9D3DB; border-radius:12px; padding:26px 24px;
+    text-align:center; margin-bottom:18px; background:var(--alt); }
+  .empty h3 { font-size:18px; margin:0 0 8px; font-weight:700; }
+  .empty p { color:var(--muted); margin:0 auto; max-width:62ch; font-size:14px; }
+
+  /* ---- 375 ---- */
+  .stage { display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; }
+  .phone { width:375px; border:8px solid var(--ink); border-radius:30px; overflow:hidden;
+    background:var(--page); height:700px; display:flex; flex-direction:column; }
+  .phlab { font-size:11px; color:var(--muted); text-align:center; margin-top:7px; width:375px; }
+  .bar { padding:12px 14px; border-bottom:1px solid var(--line); display:flex;
+    align-items:center; gap:9px; font-weight:700; font-size:16px; flex:none; }
+  .bar .back { color:var(--primary); font-weight:500; font-size:14px; }
+  .bar .act { margin-left:auto; color:var(--primary); font-weight:600; font-size:14px; }
+  .scroll { overflow:auto; flex:1; }
+  .kb { flex:none; height:200px; background:#C9D3DB; border-top:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; color:#3F4A55; font-size:12px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <nav class="chooser">
+      <span class="cg">Your suggestions</span>
+      <a class="on" href="suggestions-1.html">1</a>
+      <a href="suggestions-2.html">2</a>
+      <a href="suggestions-3.html">3</a>
+      <span class="sep"></span>
+      <span class="cg">Development queue</span>
+      <a href="suggestions-queue-1.html">1</a>
+      <a href="suggestions-queue-2.html">2</a>
+      <a href="suggestions-queue-3.html">3</a>
+    </nav>
+
+    <h1>Suggestions &mdash; layout 1 &middot; Compose first</h1>
+    <p class="opt"><b>Optimising for:</b> the act of sending one. The box is the screen, and
+      everything under it is the receipt.</p>
+
+    <div class="locked">
+      <strong>Read from the built backend (f13dd81..f845c4e), not assumed</strong>
+      <code>GET /api/v1/suggestions</code> returns <code>{id, body, status, decision_note,
+      decided_at, created_at}</code> and nothing else, <b>newest first by
+      <code>created_at</code> &mdash; never by status.</b> A decided one sits above one still in
+      review whenever it was sent later, which is exactly what the sample below shows. Any
+      grouping by state is the client doing it, not the endpoint.
+      <b>There is no reviewer name to draw.</b> <code>decided_by</code> is stored and is
+      <em>not</em> in the author's payload, so the answer is EzBizi's word rather than a named
+      person's. Drawing "Rob at EzBizi" would be drawing a field that never arrives.
+      <b>2000 characters, and an empty body is refused</b> with <em>"Write the suggestion
+      first."</em>
+      <b>Nobody at your own organization can read this</b> &mdash; not an administrator, not the
+      owner. <code>SuggestionsController</code> filters <code>user_id</code> on every path
+      <em>in addition to</em> the tenant scope, and the module deliberately writes no audit row,
+      because an audit line saying "Marisol sent a suggestion" would publish the existence,
+      timing and frequency of every private one to exactly the people it is kept from. That fact
+      belongs on the screen: a channel nobody believes is private is a channel nobody uses.
+    </div>
+
+    <div class="found">
+      <strong>The one rule that has to be visible rather than described</strong>
+      <b>Edit and Withdraw exist on a <code>new</code> one and on nothing else.</b> The server
+      refuses both the moment somebody starts reading &mdash; an author may correct or take back
+      a suggestion only while nobody has read it. So the three later states must not merely lack
+      the buttons; they have to <em>say</em> why the buttons are gone, or the screen looks broken
+      to somebody who used them yesterday. In all three layouts the footer row survives and the
+      buttons are replaced by the sentence:
+      <ul>
+        <li><b>In review</b> &mdash; "Somebody at EzBizi is reading this one, so it is fixed while they do."</li>
+        <li><b>Approved / Denied</b> &mdash; "This one has been answered, so it stays as it was written."</li>
+      </ul>
+      Both are the server's own words from <code>SuggestionsController::frozen()</code>, which
+      returns them as a 422 to anybody who reaches the endpoint another way.
+    </div>
+
+    <div class="ask">
+      <strong>Two answers, not one</strong>
+      <b>Pick a desktop number and a phone number, and they need not match.</b> Choosing desktop
+      1 does not choose phone 1: the 375px frames in each file are designed for the phone rather
+      than narrowed from the desktop, so "desktop 1, phone 3" is a legitimate answer and may be
+      the right one. Layout 3's phone has the strongest keyboard story; layout 1's desktop has
+      the strongest first-visit story.
+    </div>
+
+    <div class="caption">
+      <strong>1 &middot; Compose first</strong>
+      The box is at the top, always, at full width, with the counter and Send under it. Below it
+      one heading and a plain stack of what you have sent, newest first, each carrying its state
+      and &mdash; where there is one &mdash; the answer. It reads as a suggestion box, which is
+      what it is, and the first visit needs no explaining because the thing you came to do is the
+      first thing on the screen and is already open. <em>What it trades away:</em> once you have
+      twenty of them, the box you use twice a year owns the best space on the screen forever, and
+      there is no way to see only the ones still waiting &mdash; you scroll. It also pushes the
+      newest answer below the fold on a short window, and that answer is the one thing a
+      returning visitor came for.
+    </div>
+  </header>
+
+  <h2 class="viewlab">Desktop &mdash; your suggestions, all four states</h2>
+  <div id="full"></div>
+  <p class="note"><b>Look at the footer row of each card.</b> Edit and Withdraw are on the New
+    one. On the other three the same row is still there and carries a sentence instead &mdash;
+    the absence is stated, not silent. <b>And look at the order:</b> New, Approved, In review,
+    Denied. That is <code>created_at</code> descending and nothing else, which is what the
+    endpoint returns.</p>
+
+  <h2 class="viewlab">Desktop &mdash; the first visit, which is what most people will see</h2>
+  <div id="empty"></div>
+  <p class="note">No list, so the heading and the explanation stand where the list would be and
+    the box is open under them. Send is outlined rather than filled while the box is empty
+    &mdash; not faded: <b>the label stays at full contrast</b>, because the rule against fading
+    an element that carries text applies hardest to the state that has something to say about
+    itself.</p>
+
+  <h2 class="viewlab">Desktop &mdash; correcting one, in place</h2>
+  <div id="editing"></div>
+  <p class="note">Edit turns the card's body into the same box, with the same counter and the
+    same limit, and a Cancel beside Save. <b>No dialog</b> &mdash; constraint 1, and there is
+    nothing a panel would do here that the row the text already occupies does not.</p>
+
+  <h2 class="viewlab">375px &mdash; designed for the phone, not narrowed</h2>
+  <div class="stage" id="mobile"></div>
+  <p class="note"><b>Composing is its own screen, and Send lives in the bar.</b> On a phone the
+    keyboard takes roughly half the screen, so a Send under a text box sits behind the keyboard
+    at the exact moment you are typing into it. The list screen therefore leads with one wide
+    button rather than an open box; the box is one tap away and, once open, has nothing else on
+    it.</p>
+</div>
+
+<script>
+const MINE = [
+  { st:'new', sent:'Sent today, 9:12am',
+    body:"Techs get the address on the job card but not the gate code or the dog, so half of them ring the office from the driveway. The access notes are already on the customer -- could they ride along on the job card the way the phone number does?" },
+  { st:'approved', sent:'Sent 28 August', ans:'1 September',
+    body:"Let a tech mark a van out of service from their phone. Right now they ring the office, the office means to write it down, and dispatch finds out by sending somebody to a van that is up on a lift.",
+    note:"Agreed, and it is going into Fleet next. A tech with fleet access will be able to put a vehicle out of service from the phone, with a reason, and dispatch will see it on the board before they assign anything to it. Thank you for the example -- the lift is the part that made the case." },
+  { st:'reviewing', sent:'Sent 26 August',
+    body:"When the same customer rings twice in a day we get two entries in the call list and no way to tell it is one job. Could repeat calls from a number group together for the day?" },
+  { st:'denied', sent:'Sent 12 August', ans:'19 August',
+    body:"Could the job list refresh itself every thirty seconds so I am not pressing reload all morning?",
+    note:"Not this one, and the reason is the moving list rather than the idea. A list that reloads under you moves the row you were about to click, and dispatch is the one screen in this app where that costs a real appointment. What we would rather build is a quiet line at the top saying three jobs have changed, which you press when you are ready. That is on the list; this exact request is not." }
+];
+
+const LABEL = { new:'New', reviewing:'In review', approved:'Approved', denied:'Denied' };
+const CLS   = { new:'s-new', reviewing:'s-rev', approved:'s-app', denied:'s-den' };
+const FROZEN = {
+  reviewing:'Somebody at EzBizi is reading this one, so it is fixed while they do.',
+  approved:'This one has been answered, so it stays as it was written.',
+  denied:'This one has been answered, so it stays as it was written.'
+};
+
+const card = (s) => `
+  <article class="card">
+    <div class="ch"><span class="pill ${CLS[s.st]}">${LABEL[s.st]}</span>
+      <span class="when">${s.sent}</span></div>
+    <div class="cbody">${s.body}</div>
+    ${s.note ? `<div class="reply ${s.st === 'approved' ? 'app' : 'den'}">
+        <div class="rh">EzBizi answered &middot; ${s.ans}</div><p>${s.note}</p></div>` : ''}
+    ${s.st === 'new'
+      ? `<div class="cf"><span class="why">Nobody has read it yet, so you can still change it or
+           take it back.</span>
+           <button class="btn ghost sm" type="button">Edit</button>
+           <button class="btn ghost sm danger" type="button">Withdraw</button></div>`
+      : `<div class="cf plain"><span class="why">${FROZEN[s.st]} Send another if there is more to
+           say.</span></div>`}
+  </article>`;
+
+const compose = (o) => `
+  <div class="compose${o.focus ? ' focus' : ''}">
+    <div class="ta${o.text ? ' filled' : ''}">${o.text ||
+      'What should EzBizi do differently?'}</div>
+    <div class="cbar">
+      <span class="count"><b>${o.text ? '247' : '0'}</b> / 2000</span>
+      ${o.cancel ? '<button class="btn ghost sm" type="button">Cancel</button>' : ''}
+      <button class="btn${o.text ? '' : ' off'}" type="button">${o.send || 'Send it'}</button>
+    </div>
+  </div>`;
+
+const SIDE = `
+  <nav class="side">
+    <div class="brand"><i>Ez</i>Bizi</div>
+    <a>Dashboard</a><a>Customers</a><a>Jobs</a><a>Scheduling</a><a>Phone</a><a>Fleet</a>
+    <a>Human Resources</a>
+    <div class="tail"><a class="on">Suggestions</a><a>Settings</a></div>
+    <div class="staff"><a>Development</a></div>
+  </nav>`;
+
+const shell = (body) => `<div class="shell">${SIDE}<div class="page">${body}</div></div>`;
+
+const HEAD = `
+  <div class="paneHead">
+    <h2>Suggestions</h2>
+    <p>Tell EzBizi what the software should do differently. Only you and EzBizi staff can read
+      what you write here &mdash; nobody at your own organization can, not even an
+      administrator.</p>
+  </div>`;
+
+document.getElementById('full').innerHTML = shell(HEAD + `
+  <div class="paneBody"><div class="col">
+    ${compose({})}
+    <h3 class="sechead">What you have sent</h3>
+    ${MINE.map(card).join('')}
+  </div></div>`);
+
+document.getElementById('empty').innerHTML = shell(HEAD + `
+  <div class="paneBody"><div class="col">
+    <div class="empty">
+      <h3>Nothing sent yet</h3>
+      <p>Anything you would change &mdash; a step that takes too many clicks, a number that is
+        never right, something this app should do and does not. It goes to the people who build
+        EzBizi, and they answer.</p>
+    </div>
+    ${compose({ focus:true })}
+    <p class="note" style="margin-top:12px">Up to 2000 characters. You can correct it or take it
+      back until somebody reads it.</p>
+  </div></div>`);
+
+document.getElementById('editing').innerHTML = shell(HEAD + `
+  <div class="paneBody"><div class="col">
+    ${compose({})}
+    <h3 class="sechead">What you have sent</h3>
+    <article class="card">
+      <div class="ch"><span class="pill s-new">New</span>
+        <span class="when">Sent today, 9:12am</span></div>
+      <div style="padding:12px 14px">
+        ${compose({ text: MINE[0].body, focus:true, cancel:true, send:'Save' })}
+      </div>
+    </article>
+    ${MINE.slice(1).map(card).join('')}
+  </div></div>`);
+
+const phone = (label, inner) =>
+  `<div><div class="phone">${inner}</div><div class="phlab">${label}</div></div>`;
+
+const prow = (s) => `
+  <div style="padding:13px 16px;border-bottom:1px solid var(--line)">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+      <span class="pill ${CLS[s.st]}">${LABEL[s.st]}</span>
+      <span style="margin-left:auto;color:var(--muted);font-size:12px">${
+        s.sent.replace('Sent ','')}</span>
+    </div>
+    <div style="font-size:14px;line-height:1.5">${
+      s.body.length > 118 ? s.body.slice(0,118) + '&hellip;' : s.body}</div>
+    ${s.note ? `<div style="margin-top:8px;font-size:13px;font-weight:600;color:${
+      s.st === 'approved' ? 'var(--ok)' : 'var(--deny)'
+      }">EzBizi answered &middot; read it &rsaquo;</div>` : ''}
+    ${s.st === 'new' ? `<div style="margin-top:9px;display:flex;gap:8px">
+      <button class="btn ghost sm" type="button">Edit</button>
+      <button class="btn ghost sm danger" type="button">Withdraw</button></div>` : ''}
+  </div>`;
+
+document.getElementById('mobile').innerHTML =
+  phone('The tab &mdash; one wide action, then the list', `
+    <div class="bar">Suggestions</div>
+    <div class="scroll">
+      <div style="padding:14px 16px;border-bottom:1px solid var(--line)">
+        <button class="btn" style="width:100%" type="button">Write a suggestion</button>
+        <p class="note" style="margin-top:9px">Only you and EzBizi staff can read these.</p>
+      </div>
+      ${MINE.map(prow).join('')}
+    </div>`) +
+  phone('Composing &mdash; one job, Send in the bar', `
+    <div class="bar"><span class="back">&lsaquo; Suggestions</span> New
+      <span class="act">Send</span></div>
+    <div class="scroll">
+      <div style="padding:16px;font-size:15px;line-height:1.55">Techs get the address on the job
+        card but not the gate code or the dog, so half of them ring the office from the
+        driveway.</div>
+    </div>
+    <div style="padding:8px 16px;border-top:1px solid var(--line);color:var(--muted);
+      font-size:12px"><b style="color:var(--ink)">142</b> / 2000</div>
+    <div class="kb">the keyboard &mdash; and Send is not under it</div>`) +
+  phone('One you have sent &mdash; the answer in full', `
+    <div class="bar"><span class="back">&lsaquo; Suggestions</span> Denied</div>
+    <div class="scroll">
+      <div style="padding:14px 16px;border-bottom:1px solid var(--line)">
+        <span class="pill s-den">Denied</span>
+        <div style="margin-top:10px;font-size:15px;line-height:1.55">${MINE[3].body}</div>
+        <div style="margin-top:8px;color:var(--muted);font-size:12px">Sent 12 August</div>
+      </div>
+      <div class="reply den" style="box-shadow:none;border-top:0">
+        <div class="rh">EzBizi answered &middot; 19 August</div><p>${MINE[3].note}</p></div>
+      <div style="padding:14px 16px;color:var(--muted);font-size:13px">
+        This one has been answered, so it stays as it was written. Send another if there is more
+        to say.</div>
+    </div>`);
+</script>
+</body>
+</html>

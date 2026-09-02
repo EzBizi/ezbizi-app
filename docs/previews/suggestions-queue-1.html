@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi &mdash; Development &rsaquo; Suggestions, layout 1</title>
+<style>
+  :root {
+    /* Read from client/lib/core/theme.dart, light mode. Not invented here. */
+    --cyan:#00AEEF; --primary:#00708F;
+    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+    --ok:#0B8F5B; --err:#E07070; --warn:#B5730B; --deny:#A33;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 Inter, system-ui, "Segoe UI", sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1280px; margin:0 auto; padding:16px 16px 48px; }
+
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:20px; margin:0 0 4px; letter-spacing:-.3px; }
+  header.picker p { margin:0 0 12px; color:var(--muted); max-width:88ch; }
+  .opt { color:var(--ink) !important; font-size:15px; }
+  .opt b { color:var(--primary); }
+  .chooser { display:flex; flex-wrap:wrap; gap:6px; align-items:center;
+    padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--line);
+    font-size:12px; color:var(--muted); }
+  .chooser .cg { font-weight:700; text-transform:uppercase; letter-spacing:1.2px;
+    font-size:11px; margin-right:2px; }
+  .chooser a { min-width:30px; text-align:center; padding:4px 9px; border-radius:7px;
+    border:1px solid var(--line); color:var(--primary); text-decoration:none; font-weight:600; }
+  .chooser a.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .chooser .sep { width:18px; }
+
+  .locked, .ask, .found { font-size:13px; border-radius:8px; padding:10px 12px;
+    margin-bottom:12px; max-width:98ch; }
+  .locked { background:var(--info-c); } .ask { background:var(--warn-c); } .found { background:var(--err-c); }
+  .locked strong, .ask strong, .found strong { display:block; margin-bottom:4px; }
+  .locked strong { color:var(--primary); } .ask strong { color:var(--warn); } .found strong { color:var(--deny); }
+  .locked b, .ask b, .found b { display:block; margin-top:7px; }
+  .locked ul, .found ul { margin:6px 0 0; padding-left:20px; }
+  .locked li, .found li { margin:3px 0; }
+  .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:96ch; }
+  .caption strong { display:block; margin-bottom:4px; font-size:16px; }
+  .caption em { color:var(--deny); font-style:normal; font-weight:600; }
+
+  .viewlab { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--muted); margin:26px 0 8px; }
+  .note { color:var(--muted); font-size:12px; margin:10px 0 0; max-width:98ch; }
+  .note b { color:var(--ink); }
+
+  .shell { display:grid; grid-template-columns:220px 1fr;
+    background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px;
+    display:flex; flex-direction:column; }
+  nav.side .brand { font-weight:800; letter-spacing:-1px; font-size:20px;
+    margin-bottom:16px; padding:0 8px; }
+  nav.side .brand i { color:var(--cyan); font-style:normal; }
+  nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+    text-decoration:none; margin-bottom:2px; font-size:14px; }
+  nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  nav.side .tail { margin-top:auto; padding-top:10px; border-top:1px solid var(--line); }
+  nav.side .staff { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
+
+  .page { display:flex; flex-direction:column; min-width:0; }
+  .devbar { background:#FBECEC; color:#A33; font-size:12px; padding:8px 20px; }
+  .tabs { display:flex; flex-wrap:wrap; gap:8px; padding:10px 16px;
+    border-bottom:1px solid var(--line); }
+  .tabs span { padding:7px 13px; border-radius:999px; border:1px solid var(--line);
+    background:var(--page); color:var(--muted); font-size:13px; }
+  .tabs span.on { background:var(--primary); color:#fff; border-color:var(--primary);
+    font-weight:600; }
+  .body { padding:16px 20px 24px; }
+
+  .qhead { display:flex; align-items:baseline; gap:10px; margin-bottom:12px; }
+  .qhead h2 { font-size:18px; margin:0; font-weight:700; }
+  .qhead p { margin:0; color:var(--muted); font-size:13px; }
+
+  .band { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--muted); margin:20px 0 7px; display:flex; align-items:center; gap:8px; }
+  .band:first-of-type { margin-top:0; }
+  .band .ct { background:var(--alt); border:1px solid var(--line); border-radius:999px;
+    padding:1px 8px; letter-spacing:0; }
+
+  table.q { width:100%; border-collapse:collapse; border:1px solid var(--line);
+    border-radius:10px; overflow:hidden; }
+  table.q th { background:var(--alt); color:var(--muted); font-size:11px; font-weight:700;
+    letter-spacing:1.2px; text-transform:uppercase; text-align:left; padding:9px 12px;
+    border-bottom:1px solid var(--line); }
+  table.q td { padding:11px 12px; border-bottom:1px solid var(--line); vertical-align:top;
+    font-size:13px; }
+  table.q tr:last-child td { border-bottom:0; }
+  .who b { display:block; font-size:14px; font-weight:600; }
+  .who span { color:var(--muted); font-size:12px; }
+  .txt { line-height:1.5; }
+  .when { color:var(--muted); font-size:12px; white-space:nowrap; }
+  .rowact { text-align:right; white-space:nowrap; }
+  tr.open td { background:var(--info-c); }
+  tr.open td.exp { background:var(--page); }
+
+  .exp { padding:0 !important; }
+  .expin { border-top:1px solid var(--line); padding:16px 18px 18px;
+    box-shadow:inset 3px 0 0 var(--primary); }
+  .full { font-size:15px; line-height:1.6; max-width:82ch; margin-bottom:16px; }
+  .decide { border:1px solid var(--line); border-radius:10px; overflow:hidden; max-width:82ch; }
+  .decide .dh { background:var(--alt); border-bottom:1px solid var(--line); padding:9px 13px;
+    font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--muted); }
+  .decide .din { padding:13px; }
+  .decide label { display:block; font-size:14px; font-weight:600; margin-bottom:5px; }
+  .decide .hint { color:var(--muted); font-size:12px; margin:0 0 8px; }
+  .ta { border:1px solid var(--line); border-radius:9px; padding:11px 13px; min-height:78px;
+    color:#9AA5AF; font-size:14px; line-height:1.55; background:var(--page); }
+  .ta.filled { color:var(--ink); }
+  .ta.bad { border-color:var(--err); box-shadow:0 0 0 1px var(--err); }
+  .errline { color:var(--deny); font-size:13px; font-weight:600; margin-top:7px; }
+  .cnt { color:var(--muted); font-size:12px; margin-top:6px; }
+  .acts { display:flex; align-items:center; gap:8px; margin-top:13px; flex-wrap:wrap; }
+  .acts .sp { margin-left:auto; }
+
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:9px;
+    padding:9px 16px; min-height:40px; font-weight:600; }
+  .btn.ghost { background:var(--page); color:var(--primary); border:1px solid var(--line); }
+  .btn.sm { min-height:34px; padding:5px 12px; font-size:13px; }
+  .btn.ok { background:var(--ok); }
+  .btn.no { background:var(--page); color:var(--deny); border:1px solid var(--deny); }
+  .btn.plain { background:var(--page); color:var(--ink); border:1px solid var(--line); }
+
+  .pill { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    padding:3px 9px; border-radius:999px; background:var(--alt); border:1px solid var(--line);
+    color:var(--muted); white-space:nowrap; }
+  .pill.s-new { background:var(--page); border-color:var(--muted); color:var(--ink); }
+  .pill.s-rev { background:var(--info-c); border-color:transparent; color:var(--primary); }
+  .pill.s-app { background:var(--ok-c); border-color:transparent; color:var(--ok); }
+  .pill.s-den { background:var(--err-c); border-color:transparent; color:var(--deny); }
+  .ansline { margin-top:7px; font-size:12px; color:var(--muted); max-width:80ch; }
+  .ansline b { color:var(--ink); }
+
+  .stage { display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; }
+  .phone { width:375px; border:8px solid var(--ink); border-radius:30px; overflow:hidden;
+    background:var(--page); height:720px; display:flex; flex-direction:column; }
+  .phlab { font-size:11px; color:var(--muted); text-align:center; margin-top:7px; width:375px; }
+  .bar { padding:12px 14px; border-bottom:1px solid var(--line); display:flex;
+    align-items:center; gap:9px; font-weight:700; font-size:16px; flex:none; }
+  .bar .back { color:var(--primary); font-weight:500; font-size:14px; }
+  .scroll { overflow:auto; flex:1; min-height:0; }
+  .kb { flex:none; height:190px; background:#C9D3DB; border-top:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; color:#3F4A55; font-size:12px; }
+  .pfoot { flex:none; border-top:1px solid var(--line); background:var(--alt); padding:10px 12px;
+    display:flex; gap:8px; }
+  .wrapdemo span { display:inline-block; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <nav class="chooser">
+      <span class="cg">Your suggestions</span>
+      <a href="suggestions-1.html">1</a>
+      <a href="suggestions-2.html">2</a>
+      <a href="suggestions-3.html">3</a>
+      <span class="sep"></span>
+      <span class="cg">Development queue</span>
+      <a class="on" href="suggestions-queue-1.html">1</a>
+      <a href="suggestions-queue-2.html">2</a>
+      <a href="suggestions-queue-3.html">3</a>
+    </nav>
+
+    <h1>Development &rsaquo; Suggestions &mdash; layout 1 &middot; A worklist you go down</h1>
+    <p class="opt"><b>Optimising for:</b> getting to the bottom of the queue. One table in the
+      server's order, one line of each suggestion, and the row opens where it sits to be
+      answered.</p>
+
+    <div class="locked">
+      <strong>Read from the built backend (2f01245, f845c4e), not assumed</strong>
+      <code>GET /api/v1/staff/suggestions</code> returns <code>{id, organization,
+      organization_id, author, body, status, decision_note, decided_at, created_at}</code>.
+      <b>The order is the server's and a design must not re-sort it:</b> undecided first, then
+      being read, then everything decided &mdash; and <em>inside</em> each band, newest
+      <code>created_at</code> first. So the decided band is ordered by when a thing was
+      <b>sent</b>, not when it was answered: today's answer does not come to the top of it.
+      <b>200 rows, no paging, no search parameter.</b> <code>limit(200)</code> with nothing after
+      it, so a design must not promise a total, a page 2, or a server-side filter. Filtering is
+      the client's, over what has already arrived.
+      <b><code>decide</code> takes reviewing, approved or denied.</b> Never <code>new</code>
+      &mdash; you cannot put one back and hand the author the right to rewrite text you have
+      read. A second decide on a decided one <em>is</em> accepted and replaces both the status and
+      the note, so <b>the control has to stay reachable on a decided row</b>.
+      <b>Approving or denying writes the author a notification. Marking it in review does
+      not</b>, deliberately &mdash; nothing has been decided yet.
+      <b>Two fallbacks that will appear in production:</b> the author reads
+      <em>"Somebody who has since left"</em> when the user row is gone, and the organization reads
+      <em>"Unknown"</em>. Both are long, and both are drawn below rather than assumed away.
+    </div>
+
+    <div class="found">
+      <strong>Three things about the decide control that came out of the code, not the drawing</strong>
+      <b>Denying with no note is refused, and the sentence is the server's:</b> <em>"Say why, in
+      a sentence. The person who sent it reads it."</em> It is a 422 on the <code>note</code>
+      field, so it is reported <b>at the field</b> and retried with the same button &mdash; a
+      refused save, never a reload.
+      <b>Approving with no note is legal, and it should not be.</b> The notification's body is
+      the note, so an approval with an empty note sends somebody a bell that says "Your
+      suggestion was approved" and nothing else. The server permits it; the screen should press
+      for a sentence anyway, which is why Approve here carries the same field and the same
+      prompt as Deny.
+      <b>Marking one "In review" must not offer the note field.</b> <code>decide</code> writes
+      whatever note it is given into <code>decision_note</code>, and the author's own payload
+      carries <code>decision_note</code> <em>whatever the status is</em> &mdash; so a note typed
+      beside "In review" appears on the author's screen with no notification and no explanation.
+      All three layouts therefore make "Mark in review" a bare button.
+    </div>
+
+    <div class="ask">
+      <strong>One thing worth your ruling, and it is not about this screen alone</strong>
+      <b>This is the seventh chip in the Development tab strip.</b>
+      <code>TabBarLike</code> puts its chips in a horizontally scrolling row, and the house rule
+      is that chrome wraps rather than scrolls &mdash; a tab strip has no natural width, so
+      making somebody drag it sideways is spending a gesture on a list of labels. It is a
+      <code>SingleChildScrollView(Axis.horizontal)</code>, so it scrolls <em>by
+      construction</em> rather than only when it happens to be too wide, and the six labels
+      already there do not come near fitting 375px. A seventh makes it worse rather than
+      causing it.
+      <b>The fix is one line and it is not this module's file</b> &mdash;
+      <code>TabBarLike</code> is shared with Automations, so changing it changes two screens.
+      Layout 1's drawing shows the strip <em>wrapped</em>, which is what it would look like
+      fixed. Say the word and it goes in with the build; otherwise the seventh chip lands in a
+      strip that scrolls.
+    </div>
+
+    <div class="caption">
+      <strong>1 &middot; A worklist you go down</strong>
+      One table, the server's three bands as headings, one line of each suggestion beside its
+      organization and author, and a row that opens in place to be read and answered. It is the
+      densest of the three &mdash; nine rows fit above the fold where the other two show one or
+      four &mdash; and it is the only one where the shape of the whole queue is a glance: how
+      many are waiting, how many customers they came from, whether one organization is sending
+      everything. <em>What it trades away:</em> a suggestion is free text and a table row is one
+      line of it, so triage happens on a truncated sentence and the useful half is often the
+      second one. Opening a row also pushes everything below it down the page, so working the
+      queue means the rows keep moving.
+    </div>
+  </header>
+
+  <h2 class="viewlab">Desktop &mdash; the queue, with one row open to be answered</h2>
+  <div id="main"></div>
+  <p class="note"><b>The bands are the server's order made visible</b> &mdash; Waiting, Being
+    read, Answered &mdash; not a client-side sort. Every row carries the organization and the
+    author because this list spans every customer and "who is asking" changes what the answer
+    should be. <b>The decided rows keep a Change-the-answer button</b>, because
+    <code>decide</code> accepts a second decision and a reversal is a real event.</p>
+
+  <h2 class="viewlab">Desktop &mdash; Deny pressed with an empty note, and refused</h2>
+  <div id="refused"></div>
+  <p class="note">The server's own sentence, at the field it belongs to, with the field outlined
+    in the error colour and the button unchanged so the retry is the same press. <b>No reload
+    anywhere near it:</b> this is a refused save, and offering to retry it by reloading would
+    offer to recover the note by discarding it.</p>
+
+  <h2 class="viewlab">375px &mdash; designed for the phone, not narrowed</h2>
+  <div class="stage" id="mobile"></div>
+  <p class="note"><b>A nine-column table cannot narrow, so on the phone it stops being a table.</b>
+    Each row becomes a card carrying the three things triage needs &mdash; state, who, and the
+    first two lines &mdash; and answering is its own screen with the actions docked above the
+    keyboard, because a note is typed and Approve must not be behind the keyboard while you type
+    it.</p>
+</div>
+
+<script>
+const ROWS = [
+  { st:'new', org:'A-1 Chimney', who:'Marisol Ortega', sent:'Today, 9:12am',
+    body:"Techs get the address on the job card but not the gate code or the dog, so half of them ring the office from the driveway. The access notes are already on the customer -- could they ride along on the job card the way the phone number does?" },
+  { st:'new', org:'Bluepoint HVAC', who:'Ray Nakashima', sent:'Today, 7:40am',
+    body:"Our techs cover two counties and the day sorts by appointment time, so a van crosses the river twice before lunch. Could a day be ordered by drive time and still keep the windows we promised?" },
+  { st:'new', org:'Kearny Fireplace & Stove', who:'Karen Boyle', sent:'Yesterday, 4:55pm',
+    body:"The estimate PDF says Quote across the top and customers keep ringing to ask whether it is a bill. Could that word be ours to set?" },
+  { st:'reviewing', org:'A-1 Chimney', who:'Marisol Ortega', sent:'26 August',
+    body:"When the same customer rings twice in a day we get two entries in the call list and no way to tell it is one job. Could repeat calls from a number group together for the day?" },
+  { st:'reviewing', org:'Hearth & Home Services', who:'Priya Raghunathan', sent:'24 August',
+    body:"Inspection photos upload one at a time and the tech sits in the driveway waiting for a bar of signal. Could they queue and send themselves when there is service?" },
+  { st:'approved', org:'A-1 Chimney', who:'Marisol Ortega', sent:'28 August', ans:'1 September',
+    body:"Let a tech mark a van out of service from their phone. Right now they ring the office, the office means to write it down, and dispatch finds out by sending somebody to a van that is up on a lift.",
+    note:"Agreed, and it is going into Fleet next. A tech with fleet access will be able to put a vehicle out of service from the phone, with a reason, and dispatch will see it on the board before they assign anything to it." },
+  { st:'approved', org:'A-1 Chimney', who:'Tommy Delgado', sent:'20 August', ans:'22 August',
+    body:"Put the date of the last inspection on the customer card. We ask on the phone and then go and look it up anyway.",
+    note:"Done -- it lands with the next client build. The card shows the last completed inspection and its date, and the date links to the report." },
+  { st:'denied', org:'Summit Air Mechanical', who:'Angela Ruiz', sent:'12 August', ans:'19 August',
+    body:"Could we text every customer on a route at 7am with the tech's photo and an arrival window?",
+    note:"Not in that shape, and it is the 7am blast rather than the idea. Sending a whole route at once means one wrong route texts fifty people and there is no way to pull it back. We would rather build it as a message the tech sends when they leave the stop before yours -- same photo, same window, one customer at a time. Say if that would work and it goes on the list." },
+  { st:'approved', org:'Hearth & Home Services', who:'Somebody who has since left',
+    sent:'4 August', ans:'8 August',
+    body:"Let us print a route sheet for the day. Half our techs will not use a phone for the schedule and never will.",
+    note:"Approved. Jobs prints a day per tech with addresses, windows and access notes." }
+];
+
+const LABEL = { new:'New', reviewing:'In review', approved:'Approved', denied:'Denied' };
+const CLS   = { new:'s-new', reviewing:'s-rev', approved:'s-app', denied:'s-den' };
+const trim = (t, n) => t.length > n ? t.slice(0, n) + '&hellip;' : t;
+
+const SIDE = `
+  <nav class="side">
+    <div class="brand"><i>Ez</i>Bizi</div>
+    <a>Dashboard</a><a>Customers</a><a>Jobs</a><a>Scheduling</a><a>Phone</a><a>Fleet</a>
+    <a>Human Resources</a>
+    <div class="tail"><a>Suggestions</a><a>Settings</a></div>
+    <div class="staff"><a class="on">Development</a></div>
+  </nav>`;
+
+const TABS = `
+  <div class="tabs"><span>Organizations</span><span>Modules</span><span>Client versions</span>
+    <span>Client access</span><span>Health</span><span>Staff</span>
+    <span class="on">Suggestions</span></div>`;
+
+const CHROME = (body) => `
+  <div class="shell">${SIDE}<div class="page">
+    <div class="devbar">Platform control plane &mdash; every organization, not just this one.
+      Your ordinary activity here is not written to the business audit trail; sign-ins, staff
+      changes and client access always are.</div>
+    ${TABS}
+    <div class="body">
+      <div class="qhead"><h2>Suggestions</h2>
+        <p>Everything every customer has asked for. 9 of at most 200 loaded.</p></div>
+      ${body}
+    </div></div></div>`;
+
+const decideBox = (o) => `
+  <div class="decide">
+    <div class="dh">Answer ${o.who}</div>
+    <div class="din">
+      <label>Say why, in a sentence</label>
+      <p class="hint">${o.who} reads this word for word, and approving or denying sends it to
+        them. Nobody else at ${o.org} can see any of this.</p>
+      <div class="ta${o.noteText ? ' filled' : ''}${o.bad ? ' bad' : ''}">${o.noteText ||
+        'What you decided, and why.'}</div>
+      ${o.bad ? '<div class="errline">Say why, in a sentence. The person who sent it reads it.</div>' : ''}
+      <div class="cnt"><b style="color:var(--ink)">${o.noteText ? '214' : '0'}</b> / 2000</div>
+      <div class="acts">
+        <button class="btn ok" type="button">Approve</button>
+        <button class="btn no" type="button">Deny</button>
+        <span class="sp"></span>
+        ${o.st === 'new'
+          ? '<button class="btn plain" type="button">Mark in review</button>' : ''}
+      </div>
+      ${o.st === 'new' ? `<p class="hint" style="margin:10px 0 0">Marking it in review tells
+        ${o.who} nothing &mdash; it only stops them rewriting it while you read.</p>` : ''}
+    </div>
+  </div>`;
+
+const row = (r, i, open, bad) => {
+  const head = `
+    <tr class="${open ? 'open' : ''}">
+      <td style="width:104px"><span class="pill ${CLS[r.st]}">${LABEL[r.st]}</span></td>
+      <td class="who" style="width:230px"><b>${r.org}</b><span>${r.who}</span></td>
+      <td class="txt">${open ? '' : trim(r.body, 132)}
+        ${r.note && !open ? `<div class="ansline"><b>Answered ${r.ans}:</b>
+          ${trim(r.note, 96)}</div>` : ''}</td>
+      <td class="when" style="width:104px">${r.sent}</td>
+      <td class="rowact" style="width:150px">${open
+        ? '<button class="btn ghost sm" type="button">Close</button>'
+        : r.note
+          ? '<button class="btn ghost sm" type="button">Change the answer</button>'
+          : '<button class="btn sm" type="button">Read and answer</button>'}</td>
+    </tr>`;
+  if (!open) return head;
+  return head + `
+    <tr class="open"><td class="exp" colspan="5"><div class="expin">
+      <div class="full">${r.body}</div>
+      ${decideBox({ who:r.who.split(' ')[0], org:r.org, st:r.st,
+        noteText: bad ? '' : '', bad })}
+    </div></td></tr>`;
+};
+
+const band = (title, list, sel, bad) => `
+  <div class="band">${title}<span class="ct">${list.length}</span></div>
+  <table class="q">
+    <tr><th style="width:104px">State</th><th style="width:230px">Who asked</th>
+      <th>What they asked for</th><th style="width:104px">Sent</th><th></th></tr>
+    ${list.map((r, i) => row(r, i, sel === r, bad)).join('')}
+  </table>`;
+
+const NEW = ROWS.filter(r => r.st === 'new');
+const REV = ROWS.filter(r => r.st === 'reviewing');
+const DEC = ROWS.filter(r => r.st === 'approved' || r.st === 'denied');
+
+const table = (sel, bad) =>
+  band('Waiting &mdash; nobody has read these', NEW, sel, bad) +
+  band('Being read', REV, sel, bad) +
+  band('Answered', DEC, sel, bad);
+
+document.getElementById('main').innerHTML = CHROME(table(NEW[0], false));
+document.getElementById('refused').innerHTML = CHROME(table(NEW[1], true));
+
+const phone = (label, inner) =>
+  `<div><div class="phone">${inner}</div><div class="phlab">${label}</div></div>`;
+
+const pcard = (r) => `
+  <div style="padding:13px 16px;border-bottom:1px solid var(--line)">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+      <span class="pill ${CLS[r.st]}">${LABEL[r.st]}</span>
+      <span style="margin-left:auto;color:var(--muted);font-size:12px">${r.sent}</span></div>
+    <div style="font-size:14px;font-weight:600">${r.org}</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${r.who}</div>
+    <div style="font-size:14px;line-height:1.5">${trim(r.body, 104)}</div>
+  </div>`;
+
+document.getElementById('mobile').innerHTML =
+  phone('The queue &mdash; cards, in the server bands', `
+    <div class="bar"><span class="back">&lsaquo; Development</span> Suggestions</div>
+    <div class="scroll">
+      <div class="band" style="padding:12px 16px 4px;margin:0">Waiting<span class="ct">3</span></div>
+      ${NEW.map(pcard).join('')}
+      <div class="band" style="padding:12px 16px 4px;margin:0">Being read<span class="ct">2</span></div>
+      ${REV.map(pcard).join('')}
+      <div class="band" style="padding:12px 16px 4px;margin:0">Answered<span class="ct">4</span></div>
+      ${DEC.slice(0,2).map(pcard).join('')}
+    </div>`) +
+  phone('Answering one &mdash; actions above the keyboard', `
+    <div class="bar"><span class="back">&lsaquo; Queue</span> Answer</div>
+    <div class="scroll">
+      <div style="padding:14px 16px;border-bottom:1px solid var(--line)">
+        <span class="pill s-new">New</span>
+        <div style="margin-top:9px;font-size:14px;font-weight:600">Bluepoint HVAC</div>
+        <div style="font-size:12px;color:var(--muted)">Ray Nakashima &middot; today, 7:40am</div>
+        <div style="margin-top:9px;font-size:15px;line-height:1.55">${ROWS[1].body}</div>
+      </div>
+      <div style="padding:14px 16px">
+        <label style="display:block;font-size:14px;font-weight:600;margin-bottom:5px">Say why,
+          in a sentence</label>
+        <div class="ta filled">Yes -- drive order is coming, but it has to keep the promised
+          windows, so it will</div>
+      </div>
+    </div>
+    <div class="pfoot">
+      <button class="btn ok" style="flex:1" type="button">Approve</button>
+      <button class="btn no" style="flex:1" type="button">Deny</button></div>
+    <div class="kb">the keyboard &mdash; Approve and Deny sit above it</div>`);
+</script>
+</body>
+</html>
