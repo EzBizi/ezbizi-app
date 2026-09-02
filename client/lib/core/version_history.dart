@@ -57,6 +57,11 @@ class VersionHistory {
             'hundred and nine places asking for a heading were quietly drawing '
             'ordinary text. That is why titles looked unrelated from one '
             'screen to the next.',
+        'The tab you are on no longer covers its own icon with a grey '
+            'circle. The circle followed the selected tab rather than the '
+            'mouse, so it looked like a hover effect stuck on the wrong tab. '
+            'It was the tick that gets drawn on top of the icon, which the '
+            'coloured background had already made unnecessary.',
         'Social: Facebook, Threads and Instagram can post. Until now a post '
             'could be written and scheduled for those three and nothing left '
             'EzBizi. Instagram needs the picture handed over in a separate '
