@@ -28,13 +28,26 @@ import 'screens/tasks_screen.dart';
 import 'screens/staff/staff_login_screen.dart';
 import 'screens/staff/staff_shell.dart';
 import 'screens/update_required_screen.dart';
+import 'core/token_store.dart';
 import 'widgets/build_stamp.dart';
 import 'widgets/module_page_header.dart';
 import 'widgets/notification_bell.dart';
 import 'widgets/scope_switcher.dart';
 import 'widgets/user_avatar.dart';
 
-void main() => runApp(const EzBiziApp());
+Future<void> main() async {
+  // Bindings first: TokenStore.init reaches a platform channel (the keychain),
+  // and a channel used before this call throws.
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Awaited, deliberately, and it is the only thing between launch and the
+  // first frame. Session.restore reads TokenStore synchronously; if that read
+  // happens before the keychain has been loaded it sees nothing and signs the
+  // person out. That is the whole "an update logged me out" bug.
+  await TokenStore.init();
+
+  runApp(const EzBiziApp());
+}
 
 class EzBiziApp extends StatefulWidget {
   const EzBiziApp({super.key});

@@ -6,6 +6,11 @@ import 'package:web/web.dart' as web;
 /// complaint — but dies with the tab, so a shared or public machine does not
 /// keep somebody signed in after the browser closes, and nothing leaks between
 /// tabs.
+/// Nothing to load: browser storage answers synchronously, so the cache the
+/// desktop store needs has no counterpart here. Present only so `main` can
+/// await one call on every platform.
+Future<void> init() async {}
+
 String? readItem(String key) {
   try {
     // sessionStorage first, then localStorage. The two hold the same key and

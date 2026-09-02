@@ -59,7 +59,21 @@ android {
         // a rename means a new listing and no install base. It must also match
         // the package name on the Play Console exactly.
         applicationId = "com.ezbizi.app"
-        minSdk = flutter.minSdkVersion
+
+        // 26 (Android 8.0), not flutter.minSdkVersion, which is 24.
+        //
+        // twilio_voice requires 26, and the manifest merger refuses outright:
+        // "minSdkVersion 24 cannot be smaller than version 26 declared in
+        // library [:twilio_voice]". That failed the v0.0.0134 Android build
+        // the first time calling shipped on mobile.
+        //
+        // The merger offers tools:overrideLibrary as an escape and it is the
+        // wrong one — it forces the build through and warns of runtime
+        // failures, which here means the app installs on Android 7 and dies
+        // the moment somebody takes a call. Raising the floor drops Android 7
+        // and below; that is the honest cost of shipping calling at all, and
+        // it is visible here rather than discovered on a customer's phone.
+        minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = ezbiziVersionCode ?: flutter.versionCode
         versionName = ezbiziVersion ?: flutter.versionName
