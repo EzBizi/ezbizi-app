@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\Notification;
 use App\Models\PlatformStaff;
 use App\Models\Suggestion;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -113,5 +114,148 @@ class StaffSuggestionsTest extends TestCase
         $this->signedInAs($t['admin'])
             ->getJson('/api/v1/staff/suggestions')
             ->assertForbidden();
+    }
+
+    /**
+     * Built through the model, not over HTTP — see suggestionIn's docblock for
+     * why signing in first would make every staff call in these tests 403.
+     *
+     * @return array{0: string, 1: array}
+     */
+    private function oneSuggestion(): array
+    {
+        $t = $this->provisionTenant('Alpha');
+
+        return [$this->suggestionIn($t, 'Decide about me.')->id, $t];
+    }
+
+    public function test_approving_tells_the_author(): void
+    {
+        [$id, $t] = $this->oneSuggestion();
+
+        $this->withToken($this->staffToken())
+            ->postJson("/api/v1/staff/suggestions/{$id}/decide", [
+                'status' => Suggestion::STATUS_APPROVED,
+                'note' => 'Going in the next release.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.status', Suggestion::STATUS_APPROVED);
+
+        $notification = Notification::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $t['admin']->id)
+            ->get();
+
+        $this->assertCount(1, $notification);
+        $this->assertSame($t['org']->id, $notification->first()->organization_id);
+        $this->assertSame(Suggestion::class, $notification->first()->subject_type);
+        $this->assertSame($id, $notification->first()->subject_id);
+    }
+
+    /**
+     * A refusal without a reason is the dead end §6 forbids, and the author
+     * reads this sentence word for word.
+     */
+    public function test_denying_without_a_note_is_refused(): void
+    {
+        [$id] = $this->oneSuggestion();
+
+        $this->withToken($this->staffToken())
+            ->postJson("/api/v1/staff/suggestions/{$id}/decide", [
+                'status' => Suggestion::STATUS_DENIED,
+                'note' => '',
+            ])
+            ->assertStatus(422);
+
+        $this->assertDatabaseHas('suggestions', [
+            'id' => $id, 'status' => Suggestion::STATUS_NEW,
+        ]);
+    }
+
+    public function test_approving_without_a_note_is_allowed(): void
+    {
+        [$id] = $this->oneSuggestion();
+
+        $this->withToken($this->staffToken())
+            ->postJson("/api/v1/staff/suggestions/{$id}/decide", [
+                'status' => Suggestion::STATUS_APPROVED,
+                'note' => null,
+            ])
+            ->assertOk();
+    }
+
+    /**
+     * Starting to read is not news, and the bell is the wrong place to learn it.
+     */
+    public function test_moving_it_into_review_tells_nobody(): void
+    {
+        [$id, $t] = $this->oneSuggestion();
+
+        $this->withToken($this->staffToken())
+            ->postJson("/api/v1/staff/suggestions/{$id}/decide", [
+                'status' => Suggestion::STATUS_REVIEWING,
+                'note' => null,
+            ])
+            ->assertOk();
+
+        $this->assertSame(0, Notification::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $t['admin']->id)
+            ->count());
+    }
+
+    /**
+     * Restoring `new` would hand the author back the right to rewrite text a
+     * reviewer has already read.
+     */
+    public function test_it_cannot_be_put_back_to_new(): void
+    {
+        [$id] = $this->oneSuggestion();
+
+        $this->withToken($this->staffToken())
+            ->postJson("/api/v1/staff/suggestions/{$id}/decide", [
+                'status' => Suggestion::STATUS_NEW,
+                'note' => 'Never mind.',
+            ])
+            ->assertStatus(422);
+    }
+
+    public function test_a_reversal_replaces_the_answer_and_tells_them_again(): void
+    {
+        [$id, $t] = $this->oneSuggestion();
+        $token = $this->staffToken();
+
+        $this->withToken($token)->postJson("/api/v1/staff/suggestions/{$id}/decide", [
+            'status' => Suggestion::STATUS_DENIED,
+            'note' => 'Not this quarter.',
+        ])->assertOk();
+
+        $this->withToken($token)->postJson("/api/v1/staff/suggestions/{$id}/decide", [
+            'status' => Suggestion::STATUS_APPROVED,
+            'note' => 'Changed our minds.',
+        ])->assertOk()->assertJsonPath('data.decision_note', 'Changed our minds.');
+
+        $this->assertSame(2, Notification::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $t['admin']->id)
+            ->count());
+    }
+
+    /** The author reads the note; a colleague still reads nothing. */
+    public function test_the_author_sees_the_decision_and_the_note(): void
+    {
+        [$id, $t] = $this->oneSuggestion();
+
+        $this->withToken($this->staffToken())
+            ->postJson("/api/v1/staff/suggestions/{$id}/decide", [
+                'status' => Suggestion::STATUS_DENIED,
+                'note' => 'The board already does this — see the filter menu.',
+            ])->assertOk();
+
+        $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/suggestions')
+            ->assertOk()
+            ->assertJsonPath('data.0.status', Suggestion::STATUS_DENIED)
+            ->assertJsonPath('data.0.decision_note', 'The board already does this — see the filter menu.');
     }
 }

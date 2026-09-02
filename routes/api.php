@@ -1881,6 +1881,7 @@ Route::prefix('v1/staff')
         // The suggestion queue. Reads across every tenant on purpose — control
         // plane, behind the `staff` middleware, not `tenant`.
         Route::get('suggestions', [StaffSuggestionsController::class, 'index']);
+        Route::post('suggestions/{suggestion}/decide', [StaffSuggestionsController::class, 'decide']);
 
         Route::get('client-versions', [StaffClientVersionsController::class, 'index']);
         Route::put('client-versions/{platform}', [StaffClientVersionsController::class, 'update']);
