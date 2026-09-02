@@ -48,6 +48,8 @@ use App\Http\Controllers\Api\MicrosoftMailAuthController;
 use App\Http\Controllers\Api\Monitoring\CamerasController as MonitoringCamerasController;
 use App\Http\Controllers\Api\Monitoring\DevicesController as MonitoringDevicesController;
 use App\Http\Controllers\Api\Monitoring\HeartbeatController as MonitoringHeartbeatController;
+use App\Http\Controllers\Api\Monitoring\LiveViewController as MonitoringLiveViewController;
+use App\Http\Controllers\Api\Monitoring\RemoteControlController as MonitoringRemoteControlController;
 use App\Http\Controllers\Api\Monitoring\ScreenshotsController as MonitoringScreenshotsController;
 use App\Http\Controllers\Api\NotificationsController;
 use App\Http\Controllers\Api\OrganizationCanvasController;
@@ -1416,6 +1418,27 @@ Route::prefix('v1')
         Route::get('monitoring/screenshots', [MonitoringScreenshotsController::class, 'index']);
         Route::get('monitoring/screenshots/{id}', [MonitoringScreenshotsController::class, 'show']);
 
+        // ── Monitoring: Live View, the viewer's half (2026-09-02-monitoring-live-view) ──
+        //
+        // Same idle reasoning again: a manager opening a live view, and the
+        // re-POSTs that keep it open while they watch, ARE navigation. The
+        // agent's half — `live-wanted` and `live-frame` — is a background
+        // loop with no screen behind it, so it stays in the idle-less group
+        // below with the heartbeat instead. See LiveViewController's docblock.
+        Route::post('monitoring/devices/{id}/watch', [MonitoringLiveViewController::class, 'watch']);
+        Route::get('monitoring/devices/{id}/live-frame', [MonitoringLiveViewController::class, 'liveFrameShow']);
+
+        // ── Monitoring: Remote Control, the viewer's half (2026-09-02-monitoring-remote-control) ──
+        //
+        // Same idle reasoning as `watch` just above: a manager opening a
+        // control session, and the input they send while driving it, ARE
+        // navigation. The agent's poll — `input-pending` — is a background
+        // loop with no screen behind it, so it stays in the idle-less group
+        // below with the heartbeat instead. See RemoteControlController's
+        // docblock.
+        Route::post('monitoring/devices/{id}/control', [MonitoringRemoteControlController::class, 'control']);
+        Route::post('monitoring/devices/{id}/input', [MonitoringRemoteControlController::class, 'input']);
+
         // ── Monitoring: cameras (2026-09-01-monitoring-cameras, generic-protocol v1) ──
         //
         // A normal admin action (register/edit/remove a camera config), not a
@@ -1726,6 +1749,26 @@ Route::prefix('v1')
         // as the heartbeat above (see ScreenshotsController's docblock).
         Route::post('monitoring/screenshots', [MonitoringScreenshotsController::class, 'store'])
             ->middleware('throttle:60,1');
+
+        // Live View's agent half — "is anyone watching me" and "here is my
+        // latest frame", polled/sent every ~1-2s for as long as the agent
+        // runs. Same idle-less reasoning as the heartbeat and the screenshot
+        // upload just above: a background loop must never be what keeps a
+        // walked-away session's idle window open. See LiveViewController's
+        // docblock. Throttled generously above the ~1-2s send rate the
+        // controller already assumes, the same margin ScreenshotsController
+        // and HeartbeatController leave themselves.
+        Route::get('monitoring/live-wanted', [MonitoringLiveViewController::class, 'liveWanted'])
+            ->middleware('throttle:120,1');
+        Route::post('monitoring/live-frame', [MonitoringLiveViewController::class, 'liveFrame'])
+            ->middleware('throttle:120,1');
+
+        // Remote Control's agent half — "what should I apply, and is
+        // anyone still driving me" — same idle-less and throttle reasoning
+        // as `live-wanted` just above. See RemoteControlController's
+        // docblock.
+        Route::get('monitoring/input-pending', [MonitoringRemoteControlController::class, 'inputPending'])
+            ->middleware('throttle:120,1');
     });
 
 /*

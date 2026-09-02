@@ -2,10 +2,10 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
-import 'package:flutter/services.dart' show MethodChannel;
 
 import 'api_client.dart';
 import 'device_key.dart';
+import 'monitoring_capture_channel.dart';
 import 'screenshot_capability.dart';
 
 /// A device's own periodic screen captures — POST /monitoring/screenshots,
@@ -50,7 +50,7 @@ class ScreenshotService {
     Duration interval = const Duration(minutes: 5),
     Future<Uint8List?> Function()? capture,
   })  : _interval = interval,
-        _capture = capture ?? _captureNative {
+        _capture = capture ?? _defaultCapture {
     // Windows-guarded, but only for the DEFAULT (native-channel) capture
     // path: off Windows (including web) there is no channel to invoke at
     // all — windows/runner is the only platform runner that registers
@@ -66,25 +66,18 @@ class ScreenshotService {
     _timer = Timer.periodic(_interval, (_) => unawaited(_captureAndUpload()));
   }
 
-  static const MethodChannel _channel =
-      MethodChannel('com.ezbizi.app/monitoring_screenshot');
-
   final ApiClient _api;
   final Duration _interval;
   final Future<Uint8List?> Function() _capture;
 
   Timer? _timer;
 
-  static Future<Uint8List?> _captureNative() async {
-    try {
-      return await _channel.invokeMethod<Uint8List>('captureScreenshot');
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('ScreenshotService: native capture failed: $e');
-      }
-      return null;
-    }
-  }
+  // The shared channel in monitoring_capture_channel.dart — see this class's
+  // doc comment above ("Where the bytes come from") for why this and
+  // [LiveViewService] call the same function rather than each invoking their
+  // own MethodChannel.
+  static Future<Uint8List?> _defaultCapture() =>
+      captureMonitoringScreen(caller: 'ScreenshotService');
 
   Future<void> _captureAndUpload() async {
     try {

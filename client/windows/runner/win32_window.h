@@ -72,6 +72,21 @@ class Win32Window {
   // when it is shutting down or an installer has asked us to close.
   void RequestQuit();
 
+  /*
+   * Raise or clear the "your screen is being controlled" notice on the ONE
+   * tray icon this window already owns — the monitoring agent calls it via the
+   * com.ezbizi.app/monitoring_indicator channel while a manager is remotely
+   * controlling this machine.
+   *
+   * active=true swaps the tray tooltip to the controlled message and, on the
+   * transition into controlled, shows a balloon saying the same; active=false
+   * restores the normal "EzBizi" tooltip and shows nothing. It reuses the
+   * existing NOTIFYICONDATA (NIM_MODIFY) rather than adding a second icon, and
+   * is a safe no-op when no icon is present — a headless/service run that never
+   * added one — so it can never crash there.
+   */
+  void SetControlledNotice(bool active);
+
   // Return a RECT representing the bounds of the current client area.
   RECT GetClientArea();
 
@@ -126,6 +141,11 @@ class Win32Window {
 
   // Whether the notification-area icon is currently registered.
   bool tray_added_ = false;
+
+  // Whether the "being controlled" notice is currently up. Guards the balloon
+  // so it fires once on the transition into controlled, not on every poll that
+  // re-asserts the same state.
+  bool controlled_notice_shown_ = false;
 
   // window handle for top level window.
   HWND window_handle_ = nullptr;

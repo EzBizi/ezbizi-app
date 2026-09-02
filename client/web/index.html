@@ -49,6 +49,23 @@
   -->
   <script src="vendor/twilio-voice-2.15.0.min.js"></script>
   <!--
+    hls.js, served by us rather than from a CDN — same reasoning as the Twilio
+    file above, and the same reasoning the softphone learned the hard way: a
+    runtime CDN <script> is a network dependency and an at-request-time set of
+    bytes we did not review. Camera Monitoring's inline HLS playback binds to
+    the `Hls` global this file defines (client/lib/screens/monitoring/
+    camera_view_web.dart); when the file is absent or the browser has no native
+    HLS, that tile falls back to the copy-URL deep-link card instead.
+
+    Source: https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.6.14/hls.min.js
+    (UMD build; sets globalThis.Hls). The trailing `//# sourceMappingURL=` line
+    was stripped — we do not vendor the .map, and leaving it only 404s in
+    devtools. Upgrading is the same deliberate act as Twilio's: fetch the new
+    dist, strip that line, replace this file, bump the name so a stale cache
+    cannot serve the old one, and re-check it still exports the `Hls` global.
+  -->
+  <script src="vendor/hls-1.6.14.min.js"></script>
+  <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader
     or to give the user feedback during the initialization process.

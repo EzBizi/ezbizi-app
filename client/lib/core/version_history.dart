@@ -8,6 +8,33 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0139',
+      date: '2 Sep 2026',
+      items: [
+        'Monitoring now shows one entry per person, led by the machine running '
+            'the desktop app, and names devices plainly ("Browser", "Desktop '
+            'app") instead of "web web" / "windows windows". You pick whose '
+            'screen to view from a searchable list of people, not a drop-down, '
+            'and only machines running the desktop app appear there.',
+        'Monitoring - Desktop Monitoring: a "Go live" button shows a machine\'s '
+            'screen updating every second or two, live, instead of only the '
+            'latest five-minute screenshot. The live view is never recorded, '
+            'and if the machine stops sending it says so rather than leaving a '
+            'stale picture up.',
+        'Monitoring - Desktop Monitoring: you can take control of a monitored '
+            'machine - your mouse and keyboard, including Ctrl and Alt '
+            'shortcuts, drive the remote screen while you watch it live. It '
+            'needs a separate control permission (viewing does not grant it). '
+            'An organisation can turn on a notice that shows on a machine while '
+            'it is being controlled; it is off, and silent, by default.',
+        'Monitoring - Camera Monitoring: HLS cameras now play inside the page '
+            'on the web, not only as an open-in-your-player link. RTSP still '
+            'opens in your own player.',
+        'Monitoring: devices not seen for 30 days are cleaned up on their own, '
+            'so old browser sessions and retired machines stop piling up.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0138',
       date: '2 Sep 2026',
       items: [

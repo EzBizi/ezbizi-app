@@ -386,6 +386,45 @@ void Win32Window::RequestQuit() {
   }
 }
 
+void Win32Window::SetControlledNotice(bool active) {
+  // Reuse the ONE icon the close-to-tray behaviour already owns — never a
+  // second one. There is nothing to modify when no icon is present (a
+  // headless/service run never added one, and Explorer may not have created
+  // the notification area yet): guard and no-op so this can never crash there.
+  if (!tray_added_ || !window_handle_) {
+    controlled_notice_shown_ = active;
+    return;
+  }
+
+  NOTIFYICONDATA data = {};
+  data.cbSize = sizeof(data);
+  data.hWnd = window_handle_;
+  data.uID = kTrayIconId;
+
+  if (active) {
+    data.uFlags = NIF_TIP;
+    wcscpy_s(data.szTip, L"Your screen is being controlled by your company");
+
+    // Balloon only on the way IN — a repeated setControlled(true) from a poll
+    // that still sees the same state must not pop a fresh balloon each time.
+    if (!controlled_notice_shown_) {
+      data.uFlags |= NIF_INFO;
+      data.dwInfoFlags = NIIF_INFO;
+      wcscpy_s(data.szInfoTitle, L"EzBizi");
+      wcscpy_s(data.szInfo, L"Your screen is being controlled by your company.");
+    }
+
+    controlled_notice_shown_ = true;
+  } else {
+    // Back to the ordinary tooltip; no balloon on the way out.
+    data.uFlags = NIF_TIP;
+    wcscpy_s(data.szTip, L"EzBizi");
+    controlled_notice_shown_ = false;
+  }
+
+  Shell_NotifyIcon(NIM_MODIFY, &data);
+}
+
 void Win32Window::ShowTrayMenu() {
   HMENU menu = CreatePopupMenu();
 

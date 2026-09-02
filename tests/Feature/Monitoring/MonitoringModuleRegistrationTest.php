@@ -29,6 +29,15 @@ class MonitoringModuleRegistrationTest extends TestCase
         $this->assertContains('cameras.manage', $module->actions);
     }
 
+    public function test_monitoring_declares_control_as_a_separate_grant_from_screenshots_view(): void
+    {
+        $module = app(ModuleRegistry::class)->get('monitoring');
+
+        $this->assertNotNull($module);
+        $this->assertContains('control', $module->actions);
+        $this->assertContains('screenshots.view', $module->actions);
+    }
+
     public function test_monitoring_declares_its_two_triggers(): void
     {
         $module = app(ModuleRegistry::class)->get('monitoring');
@@ -52,5 +61,12 @@ class MonitoringModuleRegistrationTest extends TestCase
 
         $this->assertContains('monitoring.cameras.view', $keys);
         $this->assertContains('monitoring.cameras.manage', $keys);
+    }
+
+    public function test_permission_catalogue_knows_monitoring_control(): void
+    {
+        $keys = app(PermissionCatalogue::class)->keys();
+
+        $this->assertContains('monitoring.control', $keys);
     }
 }

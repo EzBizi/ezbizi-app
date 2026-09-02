@@ -2385,7 +2385,12 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'monitoring',
                 label: 'Monitoring',
-                actions: ['view', 'specs.view', 'screenshots.view', 'cameras.view', 'cameras.manage'],
+                // `control` is deliberately separate from `screenshots.view`:
+                // driving another machine's mouse and keyboard is a bigger
+                // authority than watching its screen, and an organization
+                // must be able to grant one without the other — see
+                // RemoteControlController's docblock (2026-09-02-monitoring-remote-control).
+                actions: ['view', 'specs.view', 'screenshots.view', 'cameras.view', 'cameras.manage', 'control'],
                 triggers: [
                     new TriggerDefinition(
                         key: 'monitoring.new_device_seen',

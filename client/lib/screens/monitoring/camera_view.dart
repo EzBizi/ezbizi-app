@@ -24,3 +24,23 @@ class CameraImageView extends StatelessWidget {
   @override
   Widget build(BuildContext context) => impl.buildCameraImage(url);
 }
+
+/// A camera's live HLS stream, inline — a DOM `<video>` fed by the vendored
+/// hls.js, or by the browser's own HLS on Safari. Same web/stub split as
+/// [CameraImageView], just a `<video>` element instead of an `<img>`. The
+/// caller only builds this once [cameraHlsInlineSupported] is true and only on
+/// web (`kIsWeb`); off-web the stub half makes it a no-op.
+class CameraHlsView extends StatelessWidget {
+  const CameraHlsView({super.key, required this.url});
+
+  final String url;
+
+  @override
+  Widget build(BuildContext context) => impl.buildCameraHls(url);
+}
+
+/// Whether an HLS stream can play inline in this browser — hls.js loaded and
+/// runnable here, or native HLS (Safari/iOS). Always false off-web, where the
+/// stub half answers. The tab uses this to decide between the inline
+/// [CameraHlsView] and the copy-URL deep-link card.
+bool cameraHlsInlineSupported() => impl.hlsInlineSupported();
