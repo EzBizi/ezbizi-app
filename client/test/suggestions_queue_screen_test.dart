@@ -24,9 +24,26 @@ void main() {
   ) async {
     await _pump(tester, _handler([_row(id: 'a')]));
 
-    expect(find.text('A-1 Chimney'), findsOneWidget);
-    expect(find.text('Jose'), findsOneWidget);
-    expect(find.text('Let the board remember its filter.'), findsOneWidget);
+    // Scoped to the rail rather than a bare `find.text`: the queue now opens
+    // with the first suggestion preselected (see the next assertion), so
+    // with only one row on screen its organization, author and body also
+    // appear in the detail pane. An unscoped `findsOneWidget` would pass
+    // even if the rail stopped rendering the row at all; scoped to the rail
+    // it still fails the moment that row disappears from the list.
+    expect(_inRail('A-1 Chimney'), findsOneWidget);
+    expect(_inRail('Jose'), findsOneWidget);
+    expect(_inRail('Let the board remember its filter.'), findsOneWidget);
+
+    // The preselection itself: the pane shows the first suggestion's body
+    // without anybody having clicked it, which is the entire point of the
+    // arrangement layout 2 was chosen for.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('suggestion-detail')),
+        matching: find.text('Let the board remember its filter.'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('status is shown in words, grouped by band', (tester) async {
@@ -57,15 +74,18 @@ void main() {
       ]),
     );
 
+    // Scoped to the rail: the first row ('a', status new) is preselected,
+    // so its pill also renders in the detail header — an unscoped
+    // `find.text('New')` would see two and fail for the wrong reason.
     // The raw key is never shown — each band and each row reads in words.
-    expect(find.text('Waiting'), findsOneWidget);
-    expect(find.text('Being read'), findsOneWidget);
-    expect(find.text('Answered'), findsOneWidget);
+    expect(_inRail('Waiting'), findsOneWidget);
+    expect(_inRail('Being read'), findsOneWidget);
+    expect(_inRail('Answered'), findsOneWidget);
 
-    expect(find.text('New'), findsOneWidget);
-    expect(find.text('In review'), findsOneWidget);
-    expect(find.text('Approved'), findsOneWidget);
-    expect(find.text('Denied'), findsOneWidget);
+    expect(_inRail('New'), findsOneWidget);
+    expect(_inRail('In review'), findsOneWidget);
+    expect(_inRail('Approved'), findsOneWidget);
+    expect(_inRail('Denied'), findsOneWidget);
   });
 
   testWidgets(
@@ -74,7 +94,7 @@ void main() {
     (tester) async {
       await _pump(tester, _handler([_row(id: 'a')]));
 
-      await tester.tap(find.text('A-1 Chimney'));
+      await tester.tap(_inRail('A-1 Chimney'));
       await tester.pumpAndSettle();
 
       expect(find.text('Mark in review'), findsOneWidget);
@@ -122,7 +142,7 @@ void main() {
       _handler([_row(id: 'a')], onDecide: (_, body) => sent = body),
     );
 
-    await tester.tap(find.text('A-1 Chimney'));
+    await tester.tap(_inRail('A-1 Chimney'));
     await tester.pumpAndSettle();
 
     await tester.enterText(
@@ -148,7 +168,7 @@ void main() {
       _handler([_row(id: 'a')], onDecide: (_, body) => sent = body),
     );
 
-    await tester.tap(find.text('A-1 Chimney'));
+    await tester.tap(_inRail('A-1 Chimney'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.widgetWithText(FilledButton, 'Approve'));
@@ -168,7 +188,7 @@ void main() {
         _handler([_row(id: 'a')], onDecide: (_, body) => sent = body),
       );
 
-      await tester.tap(find.text('A-1 Chimney'));
+      await tester.tap(_inRail('A-1 Chimney'));
       await tester.pumpAndSettle();
 
       // A reviewer starts typing a note, then changes their mind and only
@@ -195,7 +215,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.text('A-1 Chimney'));
+    await tester.tap(_inRail('A-1 Chimney'));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), 'x');
@@ -225,7 +245,7 @@ void main() {
         ]),
       );
 
-      await tester.tap(find.text('A-1 Chimney'));
+      await tester.tap(_inRail('A-1 Chimney'));
       await tester.pumpAndSettle();
 
       expect(find.text('Change the answer'), findsOneWidget);
@@ -263,6 +283,14 @@ const _me = {
   'may_enter_without_approval': true,
   'recovery_code_count': 8,
 };
+
+/// Scopes a text lookup to the rail — see the class comment on why an
+/// unscoped `find.text` is the wrong tool once the first suggestion opens on
+/// its own.
+Finder _inRail(String text) => find.descendant(
+  of: find.byKey(const Key('suggestions-rail')),
+  matching: find.text(text),
+);
 
 Map<String, dynamic> _row({
   required String id,

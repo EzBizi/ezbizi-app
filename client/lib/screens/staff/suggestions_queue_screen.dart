@@ -110,6 +110,14 @@ class _SuggestionsQueueScreenState extends State<SuggestionsQueueScreen> {
       final selected = _rowById(_selectedId);
       if (selected != null) {
         _fillNote(selected);
+      } else if (_rows.isNotEmpty) {
+        // Nothing selected yet, or the previous selection is gone. Default to
+        // the first row rather than opening on an empty pane — layout 2's own
+        // stills always show a suggestion open, and the whole point of that
+        // arrangement is that the suggestion stays on screen while the note
+        // is written, not that somebody has to click before it does.
+        _selectedId = _rows.first['id'] as String?;
+        _fillNote(_rows.first);
       } else {
         _selectedId = null;
       }
@@ -263,6 +271,7 @@ class _SuggestionsQueueScreenState extends State<SuggestionsQueueScreen> {
         .toList();
 
     return ListView(
+      key: const Key('suggestions-rail'),
       children: [
         _band(context, 'Waiting', newRows.length),
         for (final row in newRows) _railRow(context, row),
@@ -389,6 +398,7 @@ class _SuggestionsQueueScreenState extends State<SuggestionsQueueScreen> {
     );
 
     return Column(
+      key: const Key('suggestion-detail'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
