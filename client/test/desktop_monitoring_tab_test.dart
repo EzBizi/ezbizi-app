@@ -6,6 +6,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/monitoring/desktop_monitoring_tab.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -865,6 +866,165 @@ void main() {
           reason: 'No input batch may be posted across a device switch.');
     },
   );
+
+  // ── Modifier / hotkey chords (Ctrl+C, Ctrl+Shift+Esc, …) ────────────────
+  //
+  // Driven by invoking the control surface's `onKeyEvent` handler directly
+  // with constructed KeyDown/KeyUp events (the task's allowed path) — that
+  // handler closes over the device id and ignores its FocusNode argument, so
+  // this exercises `_onKey`'s routing deterministically without depending on
+  // the platform's focus/HardwareKeyboard state.
+
+  testWidgets(
+    'Ctrl+C drives a modifier chord as key VK events — VK_CONTROL down, C '
+    'down, C up, VK_CONTROL up — and posts NO text event for the C',
+    (tester) async {
+      final harness = _liveHarness(
+        devices: [_raceDeviceA],
+        shotsFor: (_) => _raceShotsA,
+        liveFrame: (_) => _onePixelPng,
+        grantControl: true,
+      );
+
+      await _pumpLiveTab(tester, harness.api);
+
+      await tester.tap(find.byKey(const Key('desktop-monitoring-control-toggle')));
+      await _liveTick(tester);
+      await _liveTick(tester);
+
+      final node = FocusNode();
+      addTearDown(node.dispose);
+
+      // Ctrl down, C down, C up, Ctrl up — the natural order for the chord.
+      _sendKey(tester, node,
+          _keyDown(PhysicalKeyboardKey.controlLeft, LogicalKeyboardKey.controlLeft));
+      _sendKey(tester, node,
+          _keyDown(PhysicalKeyboardKey.keyC, LogicalKeyboardKey.keyC, character: 'c'));
+      _sendKey(tester, node, _keyUp(PhysicalKeyboardKey.keyC, LogicalKeyboardKey.keyC));
+      _sendKey(tester, node,
+          _keyUp(PhysicalKeyboardKey.controlLeft, LogicalKeyboardKey.controlLeft));
+      await _flushControlInput(tester);
+
+      final events = harness.inputBatches
+          .expand((b) => b)
+          .cast<Map<String, dynamic>>()
+          .toList();
+
+      expect(
+        events.where((e) => e['type'] == 'text'),
+        isEmpty,
+        reason: 'Ctrl+C is a chord, not the letter "c" typed — no text event '
+            'may leak for the C.',
+      );
+
+      final signature = [
+        for (final e in events.where((e) => e['type'] == 'key'))
+          '${e['code']}:${e['down']}',
+      ];
+      // VK_CONTROL = 0x11 = 17, VK_C = 0x43 = 67.
+      expect(
+        signature,
+        containsAllInOrder(<String>['17:true', '67:true', '67:false', '17:false']),
+        reason: 'The chord must hold VK_CONTROL down, press and release C, then '
+            'release VK_CONTROL — the exact bracketing SendInput replays.',
+      );
+    },
+  );
+
+  testWidgets(
+    'a plain letter with no modifier held still emits one text event and no '
+    'stray VK key event',
+    (tester) async {
+      final harness = _liveHarness(
+        devices: [_raceDeviceA],
+        shotsFor: (_) => _raceShotsA,
+        liveFrame: (_) => _onePixelPng,
+        grantControl: true,
+      );
+
+      await _pumpLiveTab(tester, harness.api);
+
+      await tester.tap(find.byKey(const Key('desktop-monitoring-control-toggle')));
+      await _liveTick(tester);
+      await _liveTick(tester);
+
+      final node = FocusNode();
+      addTearDown(node.dispose);
+
+      _sendKey(tester, node,
+          _keyDown(PhysicalKeyboardKey.keyA, LogicalKeyboardKey.keyA, character: 'a'));
+      _sendKey(tester, node, _keyUp(PhysicalKeyboardKey.keyA, LogicalKeyboardKey.keyA));
+      await _flushControlInput(tester);
+
+      final events = harness.inputBatches
+          .expand((b) => b)
+          .cast<Map<String, dynamic>>()
+          .toList();
+
+      final texts = events.where((e) => e['type'] == 'text').toList();
+      expect(texts, hasLength(1),
+          reason: 'One printable character with no modifier is one text event.');
+      expect(texts.single['text'], 'a');
+      expect(
+        events.where((e) => e['type'] == 'key'),
+        isEmpty,
+        reason: "Today's plain-typing path must be untouched — a bare letter "
+            'emits text only, never a VK key event.',
+      );
+    },
+  );
+
+  testWidgets(
+    'Ctrl+Shift+Escape emits VK_CONTROL, VK_SHIFT and Escape all as key '
+    'events, with no text',
+    (tester) async {
+      final harness = _liveHarness(
+        devices: [_raceDeviceA],
+        shotsFor: (_) => _raceShotsA,
+        liveFrame: (_) => _onePixelPng,
+        grantControl: true,
+      );
+
+      await _pumpLiveTab(tester, harness.api);
+
+      await tester.tap(find.byKey(const Key('desktop-monitoring-control-toggle')));
+      await _liveTick(tester);
+      await _liveTick(tester);
+
+      final node = FocusNode();
+      addTearDown(node.dispose);
+
+      _sendKey(tester, node,
+          _keyDown(PhysicalKeyboardKey.controlLeft, LogicalKeyboardKey.controlLeft));
+      _sendKey(tester, node,
+          _keyDown(PhysicalKeyboardKey.shiftLeft, LogicalKeyboardKey.shiftLeft));
+      _sendKey(tester, node,
+          _keyDown(PhysicalKeyboardKey.escape, LogicalKeyboardKey.escape));
+      await _flushControlInput(tester);
+
+      final events = harness.inputBatches
+          .expand((b) => b)
+          .cast<Map<String, dynamic>>()
+          .toList();
+
+      expect(events.where((e) => e['type'] == 'text'), isEmpty,
+          reason: 'A three-key chord types nothing.');
+
+      final downCodes = <Object?>[
+        for (final e in events
+            .where((e) => e['type'] == 'key' && e['down'] == true))
+          e['code'],
+      ];
+      // VK_CONTROL = 0x11, VK_SHIFT = 0x10, VK_ESCAPE = 0x1B.
+      expect(
+        downCodes,
+        containsAll(<int>[0x11, 0x10, 0x1B]),
+        reason: 'Shift is emitted too here — a command modifier (Ctrl) is held '
+            'when Shift is pressed, so it rides the chord as VK_SHIFT rather '
+            'than being swallowed as it would be on its own.',
+      );
+    },
+  );
 }
 
 const _capableDevice = {
@@ -1252,6 +1412,45 @@ Future<void> _pumpLiveTab(WidgetTester tester, ApiClient api) async {
 /// the live-view timers' own intervals.
 Future<void> _liveTick(WidgetTester tester, [Duration by = const Duration(milliseconds: 50)]) async {
   await tester.pump(by);
+  await tester.pump();
+  await tester.pump();
+}
+
+/// Dispatches a raw [KeyEvent] straight into the control surface's `Focus`
+/// handler. That handler closes over the device id and ignores its FocusNode
+/// argument, so a shared throwaway [node] is all it needs — this drives
+/// `_onKey`'s routing deterministically, without relying on the platform's
+/// focus or HardwareKeyboard state to deliver the event.
+KeyEventResult _sendKey(WidgetTester tester, FocusNode node, KeyEvent event) {
+  final focus = tester.widget<Focus>(
+      find.byKey(const Key('desktop-monitoring-control-surface')));
+  return focus.onKeyEvent!(node, event);
+}
+
+KeyDownEvent _keyDown(
+  PhysicalKeyboardKey physical,
+  LogicalKeyboardKey logical, {
+  String? character,
+}) =>
+    KeyDownEvent(
+      physicalKey: physical,
+      logicalKey: logical,
+      character: character,
+      timeStamp: Duration.zero,
+    );
+
+KeyUpEvent _keyUp(PhysicalKeyboardKey physical, LogicalKeyboardKey logical) =>
+    KeyUpEvent(
+      physicalKey: physical,
+      logicalKey: logical,
+      timeStamp: Duration.zero,
+    );
+
+/// Advance past the ~60ms input flush debounce and drain a couple of microtask
+/// rounds so the batched POST reaches the harness before the assertions read
+/// `inputBatches`.
+Future<void> _flushControlInput(WidgetTester tester) async {
+  await tester.pump(const Duration(milliseconds: 60));
   await tester.pump();
   await tester.pump();
 }

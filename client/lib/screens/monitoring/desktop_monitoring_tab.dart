@@ -195,6 +195,16 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
   // none), which cannot tell us what was let go.
   String _activeButton = 'left';
 
+  // The command modifiers — Ctrl/Alt/Meta(Win) — currently held down, by their
+  // Windows VK (VK_CONTROL/VK_MENU/VK_LWIN). This set being non-empty is what
+  // puts `_onKey` into command-chord mode, where every key (the letter and
+  // Shift included) goes to the remote as a `key` VK event and nothing as
+  // `text`, so Ctrl+C drives a real chord instead of typing "c". Shift is
+  // deliberately not tracked here: it never defines a chord, it only rides one
+  // (see `_onKey`). Cleared on `_stopControl` so a stuck-held modifier can
+  // never bleed into the next control session.
+  final Set<int> _heldCommandMods = {};
+
   // Measures the rendered live-image box for coordinate mapping. A GlobalKey +
   // RenderBox rather than a LayoutBuilder because the capture pane sits in a
   // vertically-unbounded SingleChildScrollView, so a LayoutBuilder's max height
@@ -520,6 +530,7 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
     _flushTimer = null;
     _pendingInput.clear();
     _activeButton = 'left';
+    _heldCommandMods.clear();
 
     if (!_control) return;
     setState(() => _control = false);
@@ -600,9 +611,10 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
     return 'left';
   }
 
-  /// A subset of keys, mapped to Windows virtual-key codes. Modifiers and
-  /// hotkeys (Ctrl/Alt combos) are deliberately out of v1 scope — see
-  /// `_onKey`'s ponytail note.
+  /// The navigation/editing special keys, mapped to Windows virtual-key codes.
+  /// These fire as `key` VK events whether or not a modifier is held; the
+  /// letter/digit/space/function-key VKs that a command chord additionally
+  /// needs live in [_chordVirtualKeyFor], which layers on top of this map.
   static int? _virtualKeyFor(LogicalKeyboardKey key) {
     if (key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.numpadEnter) {
@@ -623,28 +635,121 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
     return null;
   }
 
+  /// Ctrl/Alt/Meta/Shift (either side) → their Windows modifier VK, else null.
+  /// VK_CONTROL=0x11, VK_MENU(Alt)=0x12, VK_LWIN=0x5B, VK_SHIFT=0x10.
+  static int? _modifierVkFor(LogicalKeyboardKey key) {
+    if (key == LogicalKeyboardKey.control ||
+        key == LogicalKeyboardKey.controlLeft ||
+        key == LogicalKeyboardKey.controlRight) {
+      return 0x11;
+    }
+    if (key == LogicalKeyboardKey.alt ||
+        key == LogicalKeyboardKey.altLeft ||
+        key == LogicalKeyboardKey.altRight) {
+      return 0x12;
+    }
+    if (key == LogicalKeyboardKey.meta ||
+        key == LogicalKeyboardKey.metaLeft ||
+        key == LogicalKeyboardKey.metaRight) {
+      return 0x5B;
+    }
+    if (_isShiftKey(key)) return 0x10;
+    return null;
+  }
+
+  static bool _isShiftKey(LogicalKeyboardKey key) =>
+      key == LogicalKeyboardKey.shift ||
+      key == LogicalKeyboardKey.shiftLeft ||
+      key == LogicalKeyboardKey.shiftRight;
+
+  /// The VK a command chord resolves a non-modifier key to: the special-key
+  /// map ([_virtualKeyFor]), plus letters A–Z, digits 0–9, space, and F1–F12.
+  /// Null when there is no known VK, so `_onKey` drops the key rather than
+  /// typing a stray character in the middle of a chord.
+  static int? _chordVirtualKeyFor(LogicalKeyboardKey key) {
+    final special = _virtualKeyFor(key);
+    if (special != null) return special;
+
+    final id = key.keyId;
+    // A logical key for a printable ASCII character carries that character's
+    // code point as its id. Letters a–z (0x61–0x7A) map to VK_A–VK_Z, which is
+    // the uppercase code point (0x41–0x5A). Digits 0–9 and space already ARE
+    // their VK (VK_0–VK_9 = 0x30–0x39, VK_SPACE = 0x20). Punctuation ids fall
+    // outside these ranges and drop through to null on purpose (see below).
+    if (id >= 0x61 && id <= 0x7A) return id - 0x20;
+    if (id >= 0x30 && id <= 0x39) return id;
+    if (id == 0x20) return 0x20;
+
+    // Function keys live in the logical-key plane, not the ASCII range above,
+    // and F1–F12 are contiguous there — so F1..F12 → VK_F1(0x70)..VK_F12(0x7B)
+    // is one offset. (LogicalKeyboardKey overrides `==`, so it can't key a
+    // const map; the id arithmetic here is the same shape as the letters and
+    // digits just above.)
+    const f1 = 0x00100000801; // LogicalKeyboardKey.f1.keyId
+    const f12 = 0x0010000080c; // LogicalKeyboardKey.f12.keyId
+    if (id >= f1 && id <= f12) return 0x70 + (id - f1);
+
+    // ponytail: punctuation-with-modifier (Ctrl+`/`, Ctrl+`-`, Ctrl+`=`, …) is
+    // the known gap — those logical keys carry layout-dependent OEM VKs. Add
+    // the specific ones here if a user asks for them.
+    return null;
+  }
+
   KeyEventResult _onKey(String deviceId, KeyEvent event) {
     if (!_control || deviceId != _selectedDeviceId) {
       return KeyEventResult.ignored;
     }
 
-    // Special keys → VK down/up events. A repeat counts as a press held.
-    final vk = _virtualKeyFor(event.logicalKey);
-    if (vk != null) {
-      if (event is KeyUpEvent) {
-        _queueInput(deviceId, {'type': 'key', 'code': vk, 'down': false});
+    final key = event.logicalKey;
+    // A KeyRepeatEvent is an auto-repeat of a held key — a `down` for both the
+    // chord and the special-key paths (never an "up"), which is how the native
+    // side's SendInput wants a held key expressed.
+    final down = event is! KeyUpEvent;
+
+    // 1. A modifier key itself. Ctrl/Alt/Meta always go through as their VK and
+    // maintain the held-set that defines command-chord mode. Shift only goes
+    // through WHILE a command modifier is already held: outside a chord the
+    // capital arrives via `.character` as text, and bracketing it in a bare
+    // Shift VK would double-type it (so a plain Shift+a still yields one "A").
+    final modVk = _modifierVkFor(key);
+    if (modVk != null) {
+      if (_isShiftKey(key)) {
+        if (_heldCommandMods.isNotEmpty) {
+          _queueInput(deviceId, {'type': 'key', 'code': modVk, 'down': down});
+        }
+        return KeyEventResult.handled;
+      }
+      if (down) {
+        _heldCommandMods.add(modVk);
       } else {
-        _queueInput(deviceId, {'type': 'key', 'code': vk, 'down': true});
+        _heldCommandMods.remove(modVk);
+      }
+      _queueInput(deviceId, {'type': 'key', 'code': modVk, 'down': down});
+      return KeyEventResult.handled;
+    }
+
+    // 2. Command-chord mode — a non-modifier key while any of Ctrl/Alt/Meta is
+    // held. Resolve to a VK and emit a `key` event; NEVER a `text` event (the
+    // chord is the whole point). A key with no known VK is dropped, not typed
+    // as a stray character mid-combo.
+    if (_heldCommandMods.isNotEmpty) {
+      final vk = _chordVirtualKeyFor(key);
+      if (vk != null) {
+        _queueInput(deviceId, {'type': 'key', 'code': vk, 'down': down});
       }
       return KeyEventResult.handled;
     }
 
-    // ponytail: v1 covers plain typing and the common navigation/editing keys.
-    // Full modifier and hotkey support — Ctrl+C, Alt+Tab, chorded shortcuts —
-    // is a v2: it needs the agent to hold modifier state across events, not
-    // just replay a character, so it is a native-side change too, not a knob
-    // here. Printable characters go through as a `text` event.
-    if (event is KeyDownEvent || event is KeyRepeatEvent) {
+    // 3. No command modifier held — today's behavior, unchanged. The special
+    // navigation/editing keys go as their VK down/up; a printable character
+    // types as `text`.
+    final vk = _virtualKeyFor(key);
+    if (vk != null) {
+      _queueInput(deviceId, {'type': 'key', 'code': vk, 'down': down});
+      return KeyEventResult.handled;
+    }
+
+    if (down) {
       final character = event.character;
       if (character != null && character.isNotEmpty && _isPrintable(character)) {
         _queueInput(deviceId, {'type': 'text', 'text': character});
