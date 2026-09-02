@@ -30,6 +30,7 @@ import 'screens/settings_shell.dart';
 import 'screens/tasks_screen.dart';
 import 'screens/staff/staff_login_screen.dart';
 import 'screens/staff/staff_shell.dart';
+import 'screens/suggestions_screen.dart';
 import 'screens/update_required_screen.dart';
 import 'core/token_store.dart';
 import 'widgets/build_stamp.dart';
@@ -460,6 +461,12 @@ class _HomeShellState extends State<HomeShell> {
       return;
     }
 
+    if (id == 'suggestions') {
+      _rail = _Rail.pinned;
+      _selected = id;
+      return;
+    }
+
     if (id == 'development') {
       _rail = _Rail.staff;
       _selected = id;
@@ -707,6 +714,18 @@ class _HomeShellState extends State<HomeShell> {
         Icons.settings_outlined,
         SettingsShell(api: widget.api, session: widget.session),
         id: 'settings',
+      ),
+      // Suggestions is pinned rather than a rail destination because it is not
+      // in `me.modules` and never varies. The business rail is assembled per
+      // person and can change length while somebody is looking at it; this
+      // cannot. It is deliberately not gated on anything — there is no module
+      // key, no permission and no availability flag behind it, which is what
+      // makes it unremovable. See App\Models\Suggestion.
+      Destination(
+        'Suggestions',
+        Icons.lightbulb_outline,
+        SuggestionsScreen(api: widget.api),
+        id: 'suggestions',
       ),
     ];
 
