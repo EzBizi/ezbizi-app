@@ -173,6 +173,60 @@ void main() {
     // on its own does not say close what when a panel sits over a page.
     expect(find.byTooltip('Close Add customer'), findsOneWidget);
   });
+
+  /// A phone's status bar is not empty space the panel may draw under.
+  ///
+  /// `showGeneralDialog` covers the whole screen, notch and home indicator
+  /// included, and nothing in the panel inset for them. On a desktop there is
+  /// no status bar so it never showed; on an iPhone the header drew UNDER the
+  /// clock, which put the close button somewhere that cannot be tapped. The
+  /// panel has no other way out on a phone — Escape needs a keyboard and the
+  /// scrim is off the side — so the app had to be force-quit.
+  testWidgets('the close button clears the status bar on a notched phone', (
+    tester,
+  ) async {
+    // An iPhone with a notch: 47 logical pixels of status bar, 34 of home
+    // indicator.
+    await _pump(
+      tester,
+      const SidePanel(title: "What's been built", child: Text('body')),
+      viewPadding: const EdgeInsets.only(top: 47, bottom: 34),
+    );
+
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    final close = find.byTooltip("Close What's been built");
+    expect(close, findsOneWidget);
+
+    expect(
+      tester.getRect(close).top,
+      greaterThanOrEqualTo(47),
+      reason:
+          'The close button is under the status bar, where the clock and the '
+          'battery are. It cannot be tapped, and it is the only way out of a '
+          'panel on a phone.',
+    );
+
+    // The surface itself must still reach the top edge. Insetting the Material
+    // rather than its contents would leave a floating rounded card with a gap
+    // above it — the modal look this panel exists not to be.
+    expect(
+      tester
+          .getRect(
+            find
+                .descendant(
+                  of: find.byType(SidePanel),
+                  matching: find.byType(Material),
+                )
+                .first,
+          )
+          .top,
+      0,
+      reason: 'The panel surface should still bleed to the screen edge; only '
+          'what you touch moves down.',
+    );
+  });
 }
 
 // ── driving it ─────────────────────────────────────────────────────
@@ -181,9 +235,16 @@ Future<void> _pump(
   WidgetTester tester,
   Widget panel, {
   FocusNode? openerFocus,
+  EdgeInsets viewPadding = EdgeInsets.zero,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(padding: viewPadding, viewPadding: viewPadding),
+        child: child!,
+      ),
       home: Scaffold(
         body: Builder(
           builder: (context) => Center(

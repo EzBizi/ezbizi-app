@@ -4,6 +4,7 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
+import '../../widgets/tag.dart';
 import 'vehicle_card.dart';
 
 /// Identity is typed; the display name is a preview, not an input (spec §5).
@@ -44,6 +45,7 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
   final _tollDeviceNumber = TextEditingController();
   final _tollPlan = TextEditingController();
   final _tollFlatRate = TextEditingController();
+  final _odometerReadOn = TextEditingController();
   final _notes = TextEditingController();
   final _counterparty = TextEditingController();
   final _startedOn = TextEditingController();
@@ -56,6 +58,17 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
   String? _kind;
   bool _busy = false;
   String? _error;
+
+  /// Sent only when somebody actually changes it. The stamp arrives as an
+  /// instant and this field is a day, so echoing it back untouched would
+  /// silently move every reading to midnight.
+  String _odometerReadOnLoaded = '';
+
+  /// Tolls opens itself when it has something to show and starts folded when
+  /// it does not. Keyed by vehicle so a rebuild cannot shut a fold the reader
+  /// opened — the fold is theirs once they touch it (design §2, layout 2).
+  bool _tollsOpen = false;
+  String? _foldedFor;
 
   Me get _me => widget.session.me!;
   bool get _canEdit => _me.can('fleet_management.edit');
@@ -106,6 +119,7 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
       _tollDeviceNumber,
       _tollPlan,
       _tollFlatRate,
+      _odometerReadOn,
       _notes,
       _counterparty,
       _startedOn,
@@ -140,6 +154,16 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
         ? ((row['toll_flat_rate_cents'] as int) / 100).toStringAsFixed(2)
         : '';
     _notes.text = row['notes'] as String? ?? '';
+    _odometerReadOn.text = fleetDay(row['odometer_updated_at'] as String?);
+    _odometerReadOnLoaded = _odometerReadOn.text;
+
+    final id = row['id'] as String?;
+    if (_foldedFor != id) {
+      _foldedFor = id;
+      _tollsOpen = _tollDeviceNumber.text.isNotEmpty ||
+          _tollPlan.text.isNotEmpty ||
+          _tollFlatRate.text.isNotEmpty;
+    }
     _bodyType = row['body_type'] as String? ?? 'van';
     _fuelType = row['fuel_type'] as String? ?? 'gas';
     _status = row['status'] as String? ?? 'active';
@@ -220,6 +244,10 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
       'toll_plan': _tollPlan.text.trim().isEmpty ? null : _tollPlan.text.trim(),
       if (_financials)
         'toll_flat_rate_cents': fleetParseCents(_tollFlatRate.text),
+      if (_odometerReadOn.text.trim() != _odometerReadOnLoaded)
+        'odometer_updated_at': _odometerReadOn.text.trim().isEmpty
+            ? null
+            : _odometerReadOn.text.trim(),
       'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
       'status': _status,
       if (_showCompanyField) 'company_id': _companyId,
@@ -281,6 +309,68 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
   @override
   Widget build(BuildContext context) {
     final enabled = _canEdit && !_busy;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _identity(context, enabled),
+        const SizedBox(height: 16),
+        _plates(context, enabled),
+        const SizedBox(height: 16),
+        _odometerAndService(enabled),
+        const SizedBox(height: 16),
+        _tolls(context, enabled),
+        const SizedBox(height: 16),
+        _notesGroup(enabled),
+        if (_error != null) ...[
+          const SizedBox(height: 14),
+          ErrorNote(_error!),
+        ],
+        if (_canEdit || _me.can('fleet_management.delete')) ...[
+          const SizedBox(height: 16),
+          _actions(enabled),
+        ],
+      ],
+    );
+  }
+
+  /// "3 of 9 filled" — what the group holds, read before its fields.
+  ///
+  /// Counted rather than hidden: six of these fields are empty on every one of
+  /// A-1's vehicles, and an editable field that hides when empty can never be
+  /// filled in. The count is the honest version of the same information.
+  static Tag _filled(List<String> values) {
+    final filled = values.where((v) => v.trim().isNotEmpty).length;
+
+    return Tag('$filled of ${values.length} filled');
+  }
+
+  Widget _menu(
+    String label,
+    String? value,
+    List<DropdownMenuItem<String>> items,
+    void Function(String?)? onChanged, {
+    Key? fieldKey,
+    String? helper,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: DropdownButtonFormField<String>(
+        key: fieldKey,
+        initialValue: value,
+        isExpanded: true,
+        decoration: InputDecoration(
+          labelText: label,
+          helperText: helper,
+          helperMaxLines: 3,
+        ),
+        items: items,
+        onChanged: onChanged,
+      ),
+    );
+  }
+
+  Widget _identity(BuildContext context, bool enabled) {
     final preview = fleetPreviewName(
       year: _year.text,
       make: _make.text,
@@ -291,6 +381,12 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
 
     return FleetSectionCard(
       title: 'Identity',
+      tags: [
+        _filled([
+          _year.text, _make.text, _model.text, _trim.text, _colour.text,
+          _vin.text, _bodyType, _fuelType, _status,
+        ]),
+      ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -298,116 +394,62 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
             'Will be listed as $preview',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
-          fleetField(_year, 'Year', enabled: enabled, keyboard: TextInputType.number),
-          fleetField(_make, 'Make', enabled: enabled),
-          fleetField(_model, 'Model', enabled: enabled),
-          fleetField(_trim, 'Trim', enabled: enabled),
-          fleetField(_plate, 'Plate', enabled: enabled),
-          fleetField(_plateState, 'Plate state', enabled: enabled),
-          fleetField(_vin, 'VIN', enabled: enabled),
-          fleetField(_colour, 'Colour', enabled: enabled),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            key: ValueKey('body-$_bodyType'),
-            initialValue: _bodyType,
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Body type'),
-            items: [
-              for (final t in fleetBodyTypes)
-                DropdownMenuItem(value: t.$1, child: Text(t.$2)),
-            ],
-            onChanged: enabled
-                ? (v) => setState(() => _bodyType = v ?? _bodyType)
-                : null,
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            key: ValueKey('fuel-$_fuelType'),
-            initialValue: _fuelType,
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Fuel type'),
-            items: [
-              for (final t in fleetFuelTypes)
-                DropdownMenuItem(value: t.$1, child: Text(t.$2)),
-            ],
-            onChanged: enabled
-                ? (v) => setState(() => _fuelType = v ?? _fuelType)
-                : null,
-          ),
-          fleetField(
-            _odometer,
-            'Odometer (miles)',
-            enabled: enabled,
-            keyboard: TextInputType.number,
-          ),
-          fleetCalendarDay(
-            _nextServiceOn,
-            'Next service on',
-            formats: _me.display,
-            enabled: enabled,
-          ),
-          fleetField(
-            _nextServiceMiles,
-            'Next service miles',
-            enabled: enabled,
-            keyboard: TextInputType.number,
-          ),
-          fleetCalendarDay(
-            _registrationExpiresOn,
-            'Registration expires on',
-            formats: _me.display,
-            enabled: enabled,
-          ),
-          fleetCalendarDay(
-            _inspectionExpiresOn,
-            'Inspection expires on',
-            formats: _me.display,
-            enabled: enabled,
-          ),
-          fleetField(_tollDeviceNumber, 'Toll device number', enabled: enabled),
-          fleetField(_tollPlan, 'Toll plan', enabled: enabled),
-          if (_financials)
+          fleetFieldRow([
             fleetField(
-              _tollFlatRate,
-              'Toll flat rate',
+              _year,
+              'Year',
               enabled: enabled,
               keyboard: TextInputType.number,
             ),
-          fleetField(
-            _notes,
-            'Notes',
-            enabled: enabled,
-            minLines: 2,
-            maxLines: 4,
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            key: ValueKey('status-$_status'),
-            initialValue: _status,
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Status'),
-            items: [
-              for (final t in fleetStatuses)
-                DropdownMenuItem(value: t.$1, child: Text(t.$2)),
-            ],
-            onChanged: enabled
-                ? (v) => setState(() => _status = v ?? _status)
-                : null,
-          ),
-          if (_showCompanyField) ...[
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              key: ValueKey('company-$_companyId'),
-              initialValue: _companyId ?? fleetOrgValue,
-              isExpanded: true,
-              decoration: InputDecoration(
-                labelText: 'Company',
-                helperText: _companyId == null && _atOrganization
-                    ? '$fleetGeneralLabel — the whole group can see it.'
-                    : null,
-                helperMaxLines: 3,
-              ),
-              items: [
+            fleetField(_make, 'Make', enabled: enabled),
+            fleetField(_model, 'Model', enabled: enabled),
+          ]),
+          fleetFieldRow([
+            fleetField(_trim, 'Trim', enabled: enabled),
+            fleetField(_colour, 'Colour', enabled: enabled),
+            _menu(
+              'Status',
+              _status,
+              [
+                for (final t in fleetStatuses)
+                  DropdownMenuItem(value: t.$1, child: Text(t.$2)),
+              ],
+              enabled ? (v) => setState(() => _status = v ?? _status) : null,
+              fieldKey: ValueKey('status-$_status'),
+            ),
+          ]),
+          fleetFieldRow([
+            fleetField(_vin, 'VIN', enabled: enabled),
+            _menu(
+              'Body type',
+              _bodyType,
+              [
+                for (final t in fleetBodyTypes)
+                  DropdownMenuItem(value: t.$1, child: Text(t.$2)),
+              ],
+              enabled
+                  ? (v) => setState(() => _bodyType = v ?? _bodyType)
+                  : null,
+              fieldKey: ValueKey('body-$_bodyType'),
+            ),
+            _menu(
+              'Fuel type',
+              _fuelType,
+              [
+                for (final t in fleetFuelTypes)
+                  DropdownMenuItem(value: t.$1, child: Text(t.$2)),
+              ],
+              enabled
+                  ? (v) => setState(() => _fuelType = v ?? _fuelType)
+                  : null,
+              fieldKey: ValueKey('fuel-$_fuelType'),
+            ),
+          ]),
+          if (_showCompanyField)
+            _menu(
+              'Company',
+              _companyId ?? fleetOrgValue,
+              [
                 if (_atOrganization)
                   DropdownMenuItem(
                     value: fleetOrgValue,
@@ -416,24 +458,22 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
                 for (final c in _me.companiesInView)
                   DropdownMenuItem(value: c.id, child: Text(c.name)),
               ],
-              onChanged: enabled
+              enabled
                   ? (v) => setState(() {
                       _companyId = v == fleetOrgValue ? null : v;
                       _franchiseId = null;
                     })
                   : null,
+              fieldKey: ValueKey('company-$_companyId'),
+              helper: _companyId == null && _atOrganization
+                  ? '$fleetGeneralLabel — the whole group can see it.'
+                  : null,
             ),
-          ],
-          if (_showFranchiseField) ...[
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              key: ValueKey('place-$_companyId-$_franchiseId'),
-              initialValue: _franchiseId ?? fleetGeneralValue,
-              isExpanded: true,
-              decoration: InputDecoration(
-                labelText: _me.organization.franchiseLabel,
-              ),
-              items: [
+          if (_showFranchiseField)
+            _menu(
+              _me.organization.franchiseLabel,
+              _franchiseId ?? fleetGeneralValue,
+              [
                 const DropdownMenuItem(
                   value: fleetGeneralValue,
                   child: Text(fleetGeneralLabel),
@@ -441,14 +481,15 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
                 for (final f in _places)
                   DropdownMenuItem(value: f.id, child: Text(f.name)),
               ],
-              onChanged: enabled
+              enabled
                   ? (v) => setState(
-                      () => _franchiseId =
-                          v == fleetGeneralValue ? null : v,
+                      () => _franchiseId = v == fleetGeneralValue ? null : v,
                     )
                   : null,
+              fieldKey: ValueKey('place-$_companyId-$_franchiseId'),
             ),
-          ],
+          // Buying it back is a consequence of changing Status, so it stays
+          // beside Status rather than becoming a sixth group nobody sees.
           if (_ended) ...[
             const SizedBox(height: 16),
             Text(
@@ -488,38 +529,228 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
               enabled: enabled,
             ),
           ],
-          if (_error != null) ...[
-            const SizedBox(height: 14),
-            ErrorNote(_error!),
-          ],
-          if (_canEdit || _me.can('fleet_management.delete')) ...[
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.end,
-              children: [
-                Refused(
-                  reason: _deleteRefusal,
-                  child: OutlinedButton(
-                    onPressed: (_deleteRefusal == null && !_busy)
-                        ? _delete
-                        : null,
-                    child: const Text('Delete'),
-                  ),
+        ],
+      ),
+    );
+  }
+
+  Widget _plates(BuildContext context, bool enabled) {
+    final hasState = _plateState.text.trim().isNotEmpty;
+    final hasNumber = _plate.text.trim().isNotEmpty;
+
+    return FleetSectionCard(
+      title: 'Plates & registration',
+      tags: [
+        if (hasState && !hasNumber)
+          const Tag('Plate number missing', warn: true)
+        else
+          _filled([
+            _plate.text, _registrationExpiresOn.text,
+            _inspectionExpiresOn.text,
+          ]),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          fleetFieldRow([
+            _plateControl(context, enabled),
+            fleetCalendarDay(
+              _registrationExpiresOn,
+              'Registration expires on',
+              formats: _me.display,
+              enabled: enabled,
+            ),
+          ]),
+          fleetCalendarDay(
+            _inspectionExpiresOn,
+            'Inspection expires on',
+            formats: _me.display,
+            enabled: enabled,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// State and number as one control.
+  ///
+  /// Twenty-four of A-1's vehicles carry a state and nine carry a number, so
+  /// drawing them as two fields renders "CT" beside an empty box fifteen times
+  /// — a filled field next to an empty one, when it is one incomplete fact.
+  Widget _plateControl(BuildContext context, bool enabled) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 92,
+                child: TextField(
+                  controller: _plateState,
+                  enabled: enabled,
+                  textCapitalization: TextCapitalization.characters,
+                  onChanged: (_) => setState(() {}),
+                  decoration: const InputDecoration(labelText: 'State'),
                 ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _plate,
+                  enabled: enabled,
+                  textCapitalization: TextCapitalization.characters,
+                  onChanged: (_) => setState(() {}),
+                  decoration: const InputDecoration(labelText: 'Plate number'),
+                ),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 12),
+            child: Text(
+              'State and number are one plate.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _odometerAndService(bool enabled) {
+    return FleetSectionCard(
+      title: 'Odometer & service',
+      tags: [
+        _filled([
+          _odometer.text, _odometerReadOn.text, _nextServiceOn.text,
+          _nextServiceMiles.text,
+        ]),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          fleetFieldRow([
+            fleetField(
+              _odometer,
+              'Odometer (miles)',
+              enabled: enabled,
+              keyboard: TextInputType.number,
+            ),
+            fleetCalendarDay(
+              _odometerReadOn,
+              'Odometer read on',
+              formats: _me.display,
+              enabled: enabled,
+            ),
+          ]),
+          fleetFieldRow([
+            fleetCalendarDay(
+              _nextServiceOn,
+              'Next service on',
+              formats: _me.display,
+              enabled: enabled,
+            ),
+            fleetField(
+              _nextServiceMiles,
+              'Next service at (miles)',
+              enabled: enabled,
+              keyboard: TextInputType.number,
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _tolls(BuildContext context, bool enabled) {
+    final values = [_tollDeviceNumber.text, _tollPlan.text, _tollFlatRate.text];
+    final empty = values.every((v) => v.trim().isEmpty);
+
+    return FleetSectionCard(
+      title: 'Tolls',
+      tags: [
+        if (empty) const Tag('Nothing recorded') else _filled(values),
+        if (!_financials) const Tag('Flat rate needs Financials'),
+      ],
+      child: _tollsOpen
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                fleetFieldRow([
+                  fleetField(
+                    _tollDeviceNumber,
+                    'Toll device number',
+                    enabled: enabled,
+                  ),
+                  fleetField(_tollPlan, 'Toll plan', enabled: enabled),
+                ]),
+                // Money: the server strips the amount without financials, so
+                // for those roles this is a disabled control that says why,
+                // never an empty box that looks like a missing value.
                 Refused(
-                  reason: _editRefusal,
-                  child: FilledButton(
-                    onPressed: enabled ? _save : null,
-                    child: const Text('Save'),
+                  reason: _me.refusal(
+                    'fleet_management.financials',
+                    'see amounts on the fleet',
+                  ),
+                  child: fleetField(
+                    _tollFlatRate,
+                    'Toll flat rate',
+                    enabled: enabled && _financials,
+                    keyboard: TextInputType.number,
                   ),
                 ),
               ],
+            )
+          : Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => setState(() => _tollsOpen = true),
+                icon: const Icon(Icons.chevron_right),
+                label: const Text('Open to fill these in'),
+              ),
             ),
-          ],
-        ],
+    );
+  }
+
+  Widget _notesGroup(bool enabled) {
+    return FleetSectionCard(
+      title: 'Notes',
+      // The card is already called Notes; repeating it inside the box says
+      // nothing twice. The label names what the note is about instead.
+      child: fleetField(
+        _notes,
+        'Notes about this vehicle',
+        enabled: enabled,
+        minLines: 2,
+        maxLines: 4,
       ),
+    );
+  }
+
+  Widget _actions(bool enabled) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      alignment: WrapAlignment.end,
+      children: [
+        Refused(
+          reason: _deleteRefusal,
+          child: OutlinedButton(
+            onPressed: (_deleteRefusal == null && !_busy) ? _delete : null,
+            child: const Text('Delete'),
+          ),
+        ),
+        Refused(
+          reason: _editRefusal,
+          child: FilledButton(
+            onPressed: enabled ? _save : null,
+            child: const Text('Save'),
+          ),
+        ),
+      ],
     );
   }
 }

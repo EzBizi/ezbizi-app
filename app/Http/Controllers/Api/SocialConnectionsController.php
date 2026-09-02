@@ -7,6 +7,7 @@ use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Social\Publishing\Publishers;
 use App\Support\Social\SocialConnectionAccess;
+use App\Support\Social\SocialProvider;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response as Status;
@@ -79,17 +80,37 @@ class SocialConnectionsController extends Controller
     {
         $user = $request->user();
 
-        abort_unless(
-            $user->hasPermission('marketing.edit'),
-            Status::HTTP_FORBIDDEN,
-            Refusal::permission('disconnect a social account')->message(),
-        );
-
         $row = SocialConnection::query()->find($connection);
 
         abort_if(
             $row === null || ! $this->access->inView($user, $row),
             Status::HTTP_NOT_FOUND,
+        );
+
+        /*
+         * The row is found FIRST because the permission depends on which
+         * provider it is, and this used to be one blanket `marketing.edit` for
+         * everything the controller can delete.
+         *
+         * That was half a fix left behind. connectPermission() moved the two
+         * Google providers to the modules that actually read them — Google Ads
+         * to Leads, Business Profile to Reviews — but disconnecting stayed with
+         * Marketing, so the desk that could connect an account could not remove
+         * it, and a desk with no access to Leads at all could. Jose connected
+         * the wrong Google Ads account and had to go to a module he was not
+         * working in to undo it.
+         *
+         * Asking the provider keeps the two ends symmetrical by construction:
+         * a provider added later is gated the same way at both, and the nine
+         * publishing networks are untouched because theirs already answers
+         * `marketing.edit`.
+         */
+        $provider = SocialProvider::tryFrom($row->provider);
+
+        abort_unless(
+            $user->hasPermission($provider?->connectPermission() ?? 'marketing.edit'),
+            Status::HTTP_FORBIDDEN,
+            Refusal::permission('disconnect a social account')->message(),
         );
 
         $this->audit->log('social.disconnected', $row, [

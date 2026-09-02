@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\SocialConnection;
 use App\Support\Social\SocialOAuthDrivers;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -104,6 +105,73 @@ class GoogleConnectPermissionTest extends TestCase
      * routes/api.php. A provider added to the enum and forgotten there loads,
      * reports READY, resolves its config — and 404s on every request.
      */
+    /**
+     * Disconnecting answers to the same module as connecting.
+     *
+     * This was the other half of the defect in this file's opening note, and it
+     * outlived the fix. `connectPermission()` moved the two Google providers to
+     * the modules that read them, but `SocialConnectionsController::destroy`
+     * kept one blanket `marketing.edit` for every provider it can delete. So a
+     * Leads manager could connect a Google Ads account and then not remove it,
+     * while somebody with no access to Leads at all could.
+     *
+     * Jose hit exactly this: connected the wrong account by mistake and had to
+     * go to Marketing to undo it, because the tab that owns the connection
+     * cannot.
+     */
+    public function test_the_module_that_can_connect_an_account_can_also_disconnect_it(): void
+    {
+        $t    = $this->provisionTenant('A1-Group');
+        $lead = $this->userWithRole($t, 'Lead desk', ['leads.view', 'leads.edit']);
+
+        $row = $this->inTenant($t['org'], fn () => SocialConnection::create([
+            'organization_id' => $t['org']->id,
+            'scope_type'      => SocialConnection::SCOPE_ORGANIZATION,
+            'scope_id'        => $t['org']->id,
+            'provider'        => SocialProvider::GoogleAds->value,
+            'remote_id'       => '7061094046',
+            'display_name'    => '706-109-4046',
+        ]));
+
+        $this->signedInAs($lead)
+            ->deleteJson('/api/v1/social/connections/'.$row->getKey())
+            ->assertOk();
+
+        $this->assertNull(
+            $this->inTenant($t['org'], fn () => SocialConnection::find($row->getKey())),
+            'The grant must actually be gone. The compliance page tells Google '
+            .'a customer may disconnect at any time and the grant is deleted.',
+        );
+    }
+
+    public function test_a_reviews_manager_disconnects_the_business_profile_and_not_a_social_page(): void
+    {
+        $t      = $this->provisionTenant('A1-Group');
+        $review = $this->userWithRole($t, 'Reviews desk', ['reviews.view', 'reviews.edit']);
+
+        $make = fn (SocialProvider $p) => $this->inTenant($t['org'], fn () => SocialConnection::create([
+            'organization_id' => $t['org']->id,
+            'scope_type'      => SocialConnection::SCOPE_ORGANIZATION,
+            'scope_id'        => $t['org']->id,
+            'provider'        => $p->value,
+            'remote_id'       => 'r-'.$p->value,
+            'display_name'    => $p->value,
+        ]));
+
+        $profile = $make(SocialProvider::GoogleBusinessProfile);
+        $page    = $make(SocialProvider::Pinterest);
+
+        $this->signedInAs($review)
+            ->deleteJson('/api/v1/social/connections/'.$profile->getKey())
+            ->assertOk();
+
+        // The same permission must NOT reach a publishing account. Widening the
+        // gate per provider is only safe if it stays per provider.
+        $this->signedInAs($review)
+            ->deleteJson('/api/v1/social/connections/'.$page->getKey())
+            ->assertForbidden();
+    }
+
     public function test_every_oauth_provider_has_a_reachable_route(): void
     {
         $pattern = SocialProvider::oauthRoutePattern();

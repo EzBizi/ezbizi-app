@@ -28,6 +28,21 @@ class VersionHistory {
             'address - HLS, MJPEG, snapshot or RTSP - and watch it inside '
             'EzBizi. MJPEG and snapshot cameras play in the page; HLS and RTSP '
             'open in your own video player for now.',
+        'Scheduling: you can add a service area. Settings listed your areas '
+            'and gave you no way to make one, so a business that had never '
+            'added any saw two empty boxes and nothing to click - and since '
+            'the hours grid and the zip codes both live inside an area, none '
+            'of it could be reached at all.',
+        'Scheduling: a service area takes its zip codes, and can be renamed '
+            'or deleted. A zip already covered by another area is refused and '
+            'says which area has it.',
+        'On a phone, a panel no longer opens underneath the clock and the '
+            'battery. Anything that slides in from the right - the version '
+            'list, a customer, a task - was drawing from the very top of the '
+            'screen, which put its close button under the status bar where it '
+            'cannot be tapped. There is no other way out of a panel on a '
+            'phone, so the app had to be force-quit to escape one. All '
+            'thirty-four of them are fixed together.',
       ],
     ),
     VersionRelease(
@@ -65,8 +80,6 @@ class VersionHistory {
         'Tasks: a task with no custom fields now saves. It was sending an '
             'empty list where the server expects a set of named values, which '
             'failed on exactly the tasks that had nothing extra filled in.',
-        'The tab you are on no longer covers its own icon. It looked like the '
-            'hover had stuck and not cleared.',
       ],
     ),
     VersionRelease(
@@ -104,6 +117,15 @@ class VersionHistory {
             'there and then, instead of waiting a minute first. That wait is '
             'still there for an update found while you are working, where '
             'closing the app under you is not the same thing at all.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0131',
+      date: '1 Sep 2026',
+      items: [
+        'This is the release that actually delivered everything listed under '
+            '0.0.0130. That version reached the web and then failed before any '
+            'app was published, so no desktop or phone ever ran it.',
       ],
     ),
     VersionRelease(

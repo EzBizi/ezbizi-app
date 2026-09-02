@@ -134,13 +134,42 @@ Tuesday mornings in Dallas" is a real question with no other screen to ask it on
 and a franchise that has just configured thirty areas needs to see the result
 somewhere other than the form it typed into.
 
-Whoever builds Scheduled Jobs owns two decisions this document does not make:
+Two decisions this document once left open are now **ruled by Jose, 31 Aug**.
+They are recorded here rather than built, because neither can be built before
+there is a booking to apply them to.
 
-1. **How a job acquires its service area** — resolved from the customer's zip at
-   booking time, or chosen by hand, or both.
-2. **Whether capacity is enforced or advisory** — does booking into a full slot
-   get refused, or warned about and allowed? Dispatch shops differ, and the
-   answer changes whether this is a constraint or a display.
+**1 · A job acquires its service area BOTH ways.** Resolved from the customer's
+zip at booking time, and choosable by hand. The zip lookup is the default and
+already exists — `service_area_zips` is unique on (franchise_id, zip), so it
+returns one area or none. The hand-chosen path is what covers the cases the zip
+cannot: a customer whose billing address is not the job address, a job outside
+any covered zip that the business wants to take anyway, and a zip that has not
+been added to an area yet.
+
+That means the resolved area must be a **suggestion the booker can override**,
+not a value written silently. A job whose area was chosen by hand and one whose
+area happened to match its zip are not distinguishable afterwards unless the
+booking records which — worth deciding when Scheduled Jobs is built, and NOT
+decided here.
+
+**2 · Enforced or advisory is a per-company SETTING**, in this module's Settings
+tab. Refuse the booking, or warn and allow. Jose ruled that dispatch shops
+differ and the company chooses rather than the platform.
+
+**The setting is deliberately not built yet, and building it early would be the
+same mistake this spec already corrected once.** A toggle labelled "Refuse
+bookings past capacity" that sits in Settings while nothing books anything is a
+control that claims an effect it does not have — the same shape as a cell
+labelled "remaining" that reads full for ever, which §7 above exists to reject.
+It ships in the commit that makes it true, alongside the booking path it governs.
+
+When it is built, two things follow from the ruling rather than needing a second
+decision. It is a COMPANY setting, so it belongs with the organization's other
+settings and not on a service area — an org that refuses overbooking refuses it
+everywhere, or the guarantee means nothing. And "warn" has to warn somebody
+specific at a specific moment: the booker, at the point of booking, naming the
+slot and how far past capacity it goes. A warning nobody reads is the advisory
+setting behaving as the enforced one, silently.
 
 `FranchiseWallTime` on `scheduled_for` is worth keeping: slots are wall-clock by
 nature ("the 7am slot" is 7am locally, whatever the offset that week), and the
