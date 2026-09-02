@@ -9,6 +9,7 @@ use App\Models\AutomationVersion;
 use App\Models\Task;
 use App\Models\TaskBoard;
 use App\Models\User;
+use App\Support\Access\Refusal;
 use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\ActionRunner;
@@ -46,6 +47,15 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class AutomationsController extends Controller
 {
+    /**
+     * How many recent events `triggerFields` reads to learn a trigger's shape.
+     *
+     * Enough that a payload key added recently shows up, small enough that the
+     * picker is one indexed read. Not a page size — nothing is returned per
+     * event, only the union of their keys.
+     */
+    private const FIELD_SAMPLE = 200;
+
     /** What ActionRunner can actually perform. The validator agrees with this. */
     private const IMPLEMENTED_ACTIONS = [
         'update_field',
@@ -285,6 +295,109 @@ class AutomationsController extends Controller
      * this, but it cannot change it"); a missing key is indistinguishable from
      * an older server, and the client would have to guess which.
      */
+    /**
+     * GET /automations/trigger-fields?trigger=email.received
+     *
+     * The fields a condition can actually read on this trigger, so the builder
+     * can offer them instead of asking somebody to guess.
+     *
+     * ── Why these are OBSERVED rather than declared ──────────────
+     *
+     * The obvious design was a field list on TriggerDefinition beside the label
+     * and description. It was rejected for two reasons and the second is the
+     * one that decided it.
+     *
+     * There are 107 triggers across 21 modules, and their blocks in
+     * ModuleServiceProvider belong to those modules — so a declared list means
+     * editing twenty other sessions' code in the one file this repo already
+     * treats as its sharpest edge.
+     *
+     * And a declaration can LIE. The payload keys are written at the emit call
+     * site, not at the declaration, so the two drift the moment somebody adds a
+     * key and does not come back here — which is precisely the failure this
+     * endpoint exists to stop, rebuilt one level up and harder to notice.
+     * Reading the events themselves cannot drift: it IS what arrived.
+     *
+     * The keys are gathered the same way ConditionEvaluator::valueOf resolves
+     * them — `after` first, then the top level — so the picker offers exactly
+     * what a condition can read, and cannot offer something that would evaluate
+     * to null.
+     *
+     * ── What it deliberately does not return ─────────────────────
+     *
+     * KEYS ONLY, NO VALUES. A sample would be far more helpful — knowing that
+     * `from_address` looks like `notify@ringcentral.com` is most of the battle
+     * — and it is exactly what must not be returned. Payload values are the
+     * subject line a customer wrote and the number they called from. Reach here
+     * is `automations.view` plus the module's tab, which is not the same as
+     * permission to read one branch's mail, and sampling values would hand
+     * whoever opens the builder a window into every inbox in the organization.
+     * Keys are structural; values are the data.
+     *
+     * A trigger that has never fired here returns nothing, and says so rather
+     * than pretending the trigger carries no fields.
+     */
+    public function triggerFields(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', Automation::class);
+
+        $key = trim((string) $request->query('trigger', ''));
+
+        if ($this->registry->findTrigger($key) === null) {
+            throw ValidationException::withMessages([
+                'trigger' => "No module raises '{$key}', so nothing can be built on it.",
+            ]);
+        }
+
+        // The same gate the catalogue applies: may this person open the tab the
+        // event comes from. Without it, asking about a trigger by name would
+        // report which fields Human Resources events carry to somebody with no
+        // HR permission.
+        $moduleKey = $this->registry->moduleKeyOfTrigger($key);
+
+        abort_unless(
+            in_array($moduleKey, $this->modulesInReach($request), true),
+            403,
+            Refusal::permission('see what this event carries')->message(),
+        );
+
+        $events = AutomationEvent::query()
+            ->where('event_key', $key)
+            ->latest('occurred_at')
+            ->limit(self::FIELD_SAMPLE)
+            ->pluck('payload');
+
+        $fields = [];
+
+        foreach ($events as $payload) {
+            $payload = is_array($payload) ? $payload : [];
+
+            foreach (array_keys($payload['after'] ?? []) as $field) {
+                $fields[$field] = true;
+            }
+
+            foreach (array_keys($payload) as $field) {
+                // `before` and `after` are the envelope, not fields. A condition
+                // on either name would read an array and compare as JSON.
+                if ($field !== 'before' && $field !== 'after') {
+                    $fields[$field] = true;
+                }
+            }
+        }
+
+        $fields = array_keys($fields);
+        sort($fields);
+
+        return response()->json(['data' => [
+            'trigger' => $key,
+            'fields' => $fields,
+            // So the builder can tell "this trigger carries nothing" apart from
+            // "this trigger has not happened here yet", which are different
+            // things to say to somebody stuck.
+            'sampled' => $events->count(),
+        ]]);
+    }
+
     private function subjectPayload(ModuleDefinition $module): ?array
     {
         if ($module->subject === null) {

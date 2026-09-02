@@ -299,6 +299,53 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     });
   }
 
+  /// The field names a condition on [_trigger] can actually read.
+  ///
+  /// Fetched, not declared, and for the same reason as [_lines]: this is what
+  /// events of this kind have actually carried in THIS organization, which the
+  /// catalogue cannot know. The server reads them the way the evaluator
+  /// resolves them, so anything offered here is something a condition can read.
+  ///
+  /// Empty means one of two things and [_fieldsSampled] tells them apart: the
+  /// trigger has never fired here, or it is still loading. Neither is "this
+  /// event has no fields", and the form must not say so.
+  List<String> _triggerFields = const [];
+  int? _fieldsSampled;
+
+  Future<void> _loadTriggerFields() async {
+    final key = _trigger;
+
+    if (key == null) {
+      setState(() {
+        _triggerFields = const [];
+        _fieldsSampled = null;
+      });
+
+      return;
+    }
+
+    final response = await widget.api.get(
+      '/automations/trigger-fields?trigger=${Uri.encodeQueryComponent(key)}',
+    );
+
+    // A trigger whose tab this person cannot open answers 403, and a rule they
+    // are editing may well be on one. Leaving the last trigger's fields on
+    // screen would offer fields that belong to a different event, so they go.
+    if (!mounted || _trigger != key) return;
+
+    setState(() {
+      _triggerFields = response.ok
+          ? [
+              for (final field in (response.data?['fields'] as List? ?? const []))
+                field.toString(),
+            ]
+          : const [];
+      _fieldsSampled = response.ok
+          ? (response.data?['sampled'] as num?)?.toInt() ?? 0
+          : null;
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -315,6 +362,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       _trigger = editing['trigger_key'] as String?;
       _adoptActions(editing['actions']);
       _adoptConditions(editing['conditions']);
+      _loadTriggerFields();
     }
   }
 
@@ -764,7 +812,14 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     setState(() {
       _trigger = key;
       _triggerNotice = _dropWhatNoLongerApplies(previous);
+      // Cleared before the fetch, not after: the previous trigger's fields are
+      // wrong the instant the trigger changes, and offering them for the moment
+      // the request is in flight is offering fields that cannot be read.
+      _triggerFields = const [];
+      _fieldsSampled = null;
     });
+
+    _loadTriggerFields();
   }
 
   /// Clear the steps the new subject makes impossible, and say which.
@@ -1232,24 +1287,89 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     );
   }
 
+  /// Choosing a field, rather than guessing one.
+  ///
+  /// ── What this replaced, and what it cost ─────────────────────
+  ///
+  /// A free `TextField` with the hint "status". The vocabulary is fixed and the
+  /// form published none of it, so a customer building "tell me about missed
+  /// calls" wrote `from` and `Status` for an email whose payload carries
+  /// `from_address` and `subject`. Both clauses read null, the rule skipped
+  /// every run for a fortnight, and the trace said "the value at the time was
+  /// nothing" each time — which reads as missing data, not as a wrong name. No
+  /// error, nothing red; the rule simply never fired.
+  ///
+  /// A typo cannot be typed into a list. Search comes free with DropdownMenu
+  /// and matters at the wide end: a Task event carries a couple of dozen
+  /// fields, and scrolling a menu to find `due_on` is the same problem in a
+  /// shorter costume.
+  ///
+  /// ── Why it still accepts free text ───────────────────────────
+  ///
+  /// The list is what recent events CARRIED, so a real field that has not
+  /// appeared lately is absent. Refusing anything off-list would make a
+  /// correct rule unsaveable because the office was quiet, so typing still
+  /// works and an off-list value is kept and marked rather than dropped —
+  /// the same idiom the settings selectors use for a stored value that is no
+  /// longer offered.
+  Widget _fieldChooser(BuildContext context, _ConditionRow row) {
+    final typed = row.field.text.trim();
+    final known = _triggerFields.contains(typed);
+
+    // Nothing to offer yet. Say WHICH kind of nothing: a trigger that has not
+    // fired here cannot be answered by waiting, and telling somebody to wait
+    // for a list that will never arrive is worse than the text box was.
+    if (_triggerFields.isEmpty) {
+      return TextField(
+        controller: row.field,
+        enabled: !_busy,
+        decoration: InputDecoration(
+          labelText: 'Field',
+          isDense: true,
+          hintText: 'status',
+          helperMaxLines: 3,
+          helperText: _trigger == null
+              ? 'Choose what this reacts to first, and the fields it carries '
+                    'will be offered here.'
+              : _fieldsSampled == 0
+              ? 'This has not happened here yet, so there is nothing to list. '
+                    'Type the field name if you know it.'
+              : null,
+        ),
+      );
+    }
+
+    return DropdownMenu<String>(
+      controller: row.field,
+      enabled: !_busy,
+      enableFilter: true,
+      requestFocusOnTap: true,
+      expandedInsets: EdgeInsets.zero,
+      label: const Text('Field'),
+      helperText: known || typed.isEmpty ? null : 'Not seen on this event lately',
+      inputDecorationTheme: const InputDecorationTheme(isDense: true),
+      dropdownMenuEntries: [
+        // The stored value first when it is not one of the offered ones, so
+        // opening an existing rule shows what it actually says instead of an
+        // empty box that looks like the rule lost its field.
+        if (typed.isNotEmpty && !known)
+          DropdownMenuEntry(value: typed, label: '$typed — not seen lately'),
+        for (final field in _triggerFields)
+          DropdownMenuEntry(value: field, label: field),
+      ],
+      onSelected: (picked) {
+        if (picked != null) _changed();
+      },
+    );
+  }
+
   Widget _conditionRow(BuildContext context, _ConditionRow row) {
     final arity = arityOf(row.op);
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          flex: 3,
-          child: TextField(
-            controller: row.field,
-            enabled: !_busy,
-            decoration: const InputDecoration(
-              labelText: 'Field',
-              isDense: true,
-              hintText: 'status',
-            ),
-          ),
-        ),
+        Expanded(flex: 3, child: _fieldChooser(context, row)),
         const SizedBox(width: 8),
         Expanded(
           flex: 3,

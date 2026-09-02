@@ -586,6 +586,74 @@ void main() {
     expect(_saveButton(tester).onPressed, isNull);
   });
 
+  testWidgets('the field box offers what the event carries, and keeps what it '
+      'does not', (tester) async {
+    // The customer's rule: an email whose payload carries `from_address` and
+    // `subject`, and a condition somebody wrote as `Status` before there was a
+    // list to read.
+    await _pump(
+      tester,
+      _handler(triggerFields: const ['from_address', 'received_at', 'subject']),
+    );
+    await _tap(tester, find.text('Build'));
+    // The fields belong to the EVENT, so there is nothing to offer until one is
+    // chosen — which is also why the box explains itself rather than sitting
+    // empty before that.
+    await _tap(tester, find.text('Created'));
+    await _tap(tester, find.text('Add a condition'));
+
+    // A chooser, not a text box. The free box is what let `Status` be typed at
+    // all, and the rule then skipped every run saying only "the value at the
+    // time was nothing".
+    expect(find.byType(DropdownMenu<String>), findsOneWidget);
+
+    await _tap(tester, find.widgetWithText(DropdownMenu<String>, 'Field'));
+
+    for (final field in ['from_address', 'received_at', 'subject']) {
+      expect(find.text(field), findsWidgets, reason: '$field should be offered');
+    }
+
+    await _tap(tester, find.text('subject').last);
+
+    expect(
+      tester
+          .widget<DropdownMenu<String>>(find.byType(DropdownMenu<String>))
+          .controller
+          ?.text,
+      'subject',
+    );
+  });
+
+  testWidgets('a field the list does not offer is kept, not dropped', (
+    tester,
+  ) async {
+    // The list is what recent events CARRIED, so a real field can be missing
+    // because the office was quiet. Silently emptying the box would turn a
+    // correct rule into one with no field the next time somebody saved it.
+    await _pump(tester, _handler(triggerFields: const ['subject']));
+    await _tap(tester, find.text('Build'));
+    await _tap(tester, find.text('Created'));
+    await _tap(tester, find.text('Add a condition'));
+
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(DropdownMenu<String>),
+        matching: find.byType(TextField),
+      ),
+      'from_address',
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<DropdownMenu<String>>(find.byType(DropdownMenu<String>))
+          .controller
+          ?.text,
+      'from_address',
+    );
+    expect(find.text('Not seen on this event lately'), findsOneWidget);
+  });
+
   testWidgets('deleting a condition takes its text with it', (tester) async {
     await _pump(tester, _handler());
     await _tap(tester, find.text('Build'));
@@ -1141,6 +1209,9 @@ MockClientHandler _handler({
   void Function(String path)? onActivate,
   Map<String, dynamic> detail = _detail,
   Object catalogue = _catalogue,
+  // Null leaves the endpoint unanswered, which is what every test written
+  // before the field picker expects: the form falls back to a text box.
+  List<String>? triggerFields,
   int deleteStatus = 200,
   // What the signed-in role holds. The screen consults this now, so a test that
   // does not say produces an administrator — which is what every one of these
@@ -1163,6 +1234,18 @@ MockClientHandler _handler({
 
     if (path.endsWith('/automations/catalogue')) {
       return _json({'data': catalogue});
+    }
+
+    if (path.endsWith('/automations/trigger-fields')) {
+      if (triggerFields == null) return _json({'message': 'no'}, 404);
+
+      return _json({
+        'data': {
+          'trigger': request.url.queryParameters['trigger'],
+          'fields': triggerFields,
+          'sampled': triggerFields.isEmpty ? 0 : 1,
+        },
+      });
     }
 
     if (path.endsWith('/runs')) return _json({'data': _runs});

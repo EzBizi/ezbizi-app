@@ -1405,6 +1405,9 @@ Route::prefix('v1')
         // The catalogue route sits BEFORE the resource, or /automations/catalogue
         // binds as an automation id and 404s.
         Route::get('automations/catalogue', [AutomationsController::class, 'catalogue']);
+        // Before the resource for the same reason catalogue is — `trigger-fields`
+        // would otherwise bind as an automation id and 404.
+        Route::get('automations/trigger-fields', [AutomationsController::class, 'triggerFields']);
         Route::get('automations/{automation}/runs', [AutomationsController::class, 'runs']);
         Route::post('automations/{automation}/test', [AutomationsController::class, 'test']);
         Route::post('automations/{automation}/activate/{version}', [AutomationsController::class, 'activateVersion']);
