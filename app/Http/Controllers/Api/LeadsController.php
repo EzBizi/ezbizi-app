@@ -7,6 +7,7 @@ use App\Models\SocialConnection;
 use App\Services\Leads\LocalServicesLeads;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -29,6 +30,7 @@ class LeadsController extends Controller
 {
     public function __construct(
         private readonly LocalServicesLeads $localServices,
+        private readonly SocialConnectionAccess $access,
         private readonly AuditLogger $audit,
         private readonly TenantContext $tenant,
         private readonly EventEmitter $events,
@@ -151,10 +153,23 @@ class LeadsController extends Controller
     {
         $this->authorize('viewAny', Lead::class);
 
+        $user = $request->user();
+
         $connections = SocialConnection::query()
             ->where('provider', SocialProvider::GoogleAds->value)
             ->where('status', SocialConnection::STATUS_CONNECTED)
-            ->get();
+            ->get()
+            /*
+             * The view, not just the organization.
+             *
+             * The tenant scope narrows this to the organization and nothing
+             * narrowed it to the company being looked at, so every company in an
+             * organization saw - and fetched through - every other company's
+             * connected Google account. Marketing's catalogue has always filtered
+             * this way; these three tabs never did.
+             */
+            ->filter(fn (SocialConnection $c) => $this->access->inView($user, $c))
+            ->values();
 
         if ($connections->isEmpty()) {
             return response()->json([
@@ -203,12 +218,24 @@ class LeadsController extends Controller
      */
     private function connectionState(): array
     {
+        $user = request()->user();
+
         return SocialConnection::query()
             ->whereIn('provider', array_map(
                 fn (SocialProvider $p) => $p->value,
                 SocialProvider::dataSources(),
             ))
             ->get()
+            /*
+             * The view, not just the organization.
+             *
+             * The tenant scope narrows this to the organization and nothing
+             * narrowed it to the company being looked at, so every company in an
+             * organization saw - and fetched through - every other company's
+             * connected Google account. Marketing's catalogue has always filtered
+             * this way; these three tabs never did.
+             */
+            ->filter(fn (SocialConnection $c) => $user !== null && $this->access->inView($user, $c))
             ->map(fn (SocialConnection $c) => [
                 // The id is what lets the tab that owns this connection
                 // remove it. Without it the only disconnect was in
