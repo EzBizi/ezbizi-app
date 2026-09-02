@@ -724,7 +724,7 @@ class _HomeShellState extends State<HomeShell> {
       Destination(
         'Suggestions',
         Icons.lightbulb_outline,
-        SuggestionsScreen(api: widget.api),
+        SuggestionsScreen(api: widget.api, formats: me.display),
         id: 'suggestions',
       ),
     ];

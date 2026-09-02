@@ -28,9 +28,19 @@ import '../widgets/error_note.dart';
 /// "What you have sent" receipt below it, newest first exactly as the server
 /// sends it (`Suggestion::query()->latest('created_at')`, never resorted here).
 class SuggestionsScreen extends StatefulWidget {
-  const SuggestionsScreen({super.key, required this.api});
+  const SuggestionsScreen({super.key, required this.api, required this.formats});
 
   final ApiClient api;
+
+  /// The organization's own date and clock, from `/me`'s `display` block.
+  ///
+  /// Taken as a parameter rather than reached for, the same way `OnboardingForm`
+  /// takes it one destination above this one in `main.dart`. This screen is a
+  /// tenant screen and the times on it are the tenant's — [DisplayFormats.fallback]
+  /// here was the exact bug `formatStamp`'s docblock says the required parameter
+  /// exists to prevent: it compiles, it looks right to whoever wrote it, and it
+  /// ignores the setting an owner changed.
+  final DisplayFormats formats;
 
   @override
   State<SuggestionsScreen> createState() => _SuggestionsScreenState();
@@ -399,12 +409,12 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
     final createdAt = formatStamp(
       row['created_at'],
       'an unrecorded time',
-      formats: DisplayFormats.fallback,
+      formats: widget.formats,
     );
     final decidedAt = formatStamp(
       row['decided_at'],
       'an unrecorded time',
-      formats: DisplayFormats.fallback,
+      formats: widget.formats,
     );
     final editingThis = _editingId == id;
     final busy = _withdrawingId != null;
