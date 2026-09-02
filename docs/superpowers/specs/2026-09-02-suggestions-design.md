@@ -94,7 +94,7 @@ added tables silently never run.
 | `body` | text |
 | `status` | string(20), default `new` |
 | `decision_note` | text, nullable — what staff wrote back |
-| `decided_by` | string, nullable — the staff name, as `PlatformMinimumClientVersion.changed_by` records it |
+| `decided_by` | uuid, nullable — the staff account that answered, as `PhoneServiceRequest.decided_by` records it |
 | `decided_at` | timestamp, nullable |
 | timestamps | |
 
