@@ -1,0 +1,677 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../core/api_client.dart';
+import '../../core/session.dart';
+import '../../widgets/async_body.dart';
+import '../../widgets/side_panel.dart';
+import '../../widgets/tag.dart';
+import 'camera_view.dart';
+
+/// Camera Monitoring — the tile grid of connected cameras (spec §"Sub-project
+/// 3"), the last of the three Monitoring sub-tabs to get a real screen.
+///
+/// ── The rule this tab exists to keep honest ────────────────────────
+///
+/// Same guarantee every other Monitoring tab carries: nothing here may be
+/// shown as though it were more live than it really is.
+///
+///   * No `monitoring.cameras.view` → [noPermissionNote], no fetch at all —
+///     same reasoning as [DesktopMonitoringTab]'s own gate: the server would
+///     403 every read anyway, so asking first only to show the same sentence
+///     a beat later teaches nobody anything.
+///   * A camera with `enabled: false` never renders as though it were being
+///     watched — no inline frame, no deep-link controls, just a plainly
+///     labelled disabled tile. See [_DisabledBody].
+///   * `hls`/`rtsp` cameras never claim to be playing. There is no bundled
+///     player yet (see the ponytail note on [_DeepLinkCard]), so those tiles
+///     are a copyable URL and nothing more.
+///   * `mjpeg`/`snapshot` cameras get a real inline `<img>` — but ONLY on
+///     web, where a DOM element can exist at all. Everywhere else (desktop,
+///     mobile) they get the same kind of URL card `hls`/`rtsp` get, worded
+///     for what IS true on that platform: open it in a browser to see it.
+class CameraMonitoringTab extends StatefulWidget {
+  const CameraMonitoringTab({super.key, required this.api, required this.session});
+
+  final ApiClient api;
+  final Session session;
+
+  static const String noPermissionNote =
+      'Your role does not include monitoring.cameras.view, so cameras are '
+      'not shown here.';
+
+  static const String noCamerasNote = 'No cameras connected yet.';
+
+  static const String noCamerasManageHint =
+      'Use "Add camera" above to connect one.';
+
+  /// The four protocols the backend accepts, in the order the "Add camera"
+  /// form offers them.
+  static const List<String> protocols = ['mjpeg', 'snapshot', 'hls', 'rtsp'];
+
+  @override
+  State<CameraMonitoringTab> createState() => _CameraMonitoringTabState();
+}
+
+class _CameraMonitoringTabState extends State<CameraMonitoringTab> {
+  bool _loading = true;
+  String? _error;
+  List<Map<String, dynamic>> _cameras = [];
+
+  bool get _canView =>
+      widget.session.me?.can('monitoring.cameras.view') ?? false;
+
+  bool get _canManage =>
+      widget.session.me?.can('monitoring.cameras.manage') ?? false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_canView) _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = _cameras.isEmpty;
+      _error = null;
+    });
+
+    final response = await widget.api.get('/monitoring/cameras');
+
+    if (!mounted) return;
+
+    setState(() {
+      _loading = false;
+
+      if (!response.ok) {
+        _error = response.message;
+        return;
+      }
+
+      _cameras = (response.data as List<dynamic>).cast<Map<String, dynamic>>();
+    });
+  }
+
+  Future<void> _addCamera() async {
+    final result = await showSidePanel<Map<String, dynamic>>(
+      context,
+      builder: (context) => const _AddCameraPanel(),
+    );
+
+    if (result == null || !mounted) return;
+
+    final response = await widget.api.post('/monitoring/cameras', result);
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      _snack(response.message, isError: true);
+      return;
+    }
+
+    await _load();
+  }
+
+  Future<void> _deleteCamera(String id, String label) async {
+    final confirmed = await showSidePanel<bool>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Delete $label?',
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+        child: const Text(
+          'This removes the camera from EzBizi. It does not change anything '
+          'on the camera or the device serving it.',
+        ),
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final response = await widget.api.delete('/monitoring/cameras/$id');
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      _snack(response.message, isError: true);
+      return;
+    }
+
+    await _load();
+  }
+
+  void _snack(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Theme.of(context).colorScheme.error : null,
+        behavior: SnackBarBehavior.floating,
+        width: 420,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_canView) {
+      return _NoteCard(CameraMonitoringTab.noPermissionNote);
+    }
+
+    return AsyncBody(
+      loading: _loading,
+      error: _error,
+      onRetry: _load,
+      child: _content(context),
+    );
+  }
+
+  Widget _content(BuildContext context) {
+    if (_cameras.isEmpty) {
+      return _EmptyState(canManage: _canManage, onAdd: _addCamera);
+    }
+
+    return SingleChildScrollView(
+      key: const Key('camera-monitoring-grid'),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_canManage) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                key: const Key('camera-monitoring-add-button'),
+                onPressed: _addCamera,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Add camera'),
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            // 360 + the 12px spacing below never fits two columns inside the
+            // 343px a 375px-wide screen leaves after this column's own 16px
+            // padding on each side (R7) — one column there, more as the
+            // screen widens, with no breakpoint math to keep in sync by hand.
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 360,
+              mainAxisExtent: 360,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+            ),
+            itemCount: _cameras.length,
+            itemBuilder: (context, i) {
+              final camera = _cameras[i];
+              return _CameraTile(
+                camera: camera,
+                canManage: _canManage,
+                onDelete: () => _deleteCamera(
+                  camera['id'] as String,
+                  camera['label'] as String? ?? 'this camera',
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({required this.canManage, required this.onAdd});
+
+  final bool canManage;
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                CameraMonitoringTab.noCamerasNote,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              if (canManage) ...[
+                const SizedBox(height: 6),
+                Text(
+                  CameraMonitoringTab.noCamerasManageHint,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 14),
+                OutlinedButton.icon(
+                  key: const Key('camera-monitoring-add-button'),
+                  onPressed: onAdd,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add camera'),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NoteCard extends StatelessWidget {
+  const _NoteCard(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(text, style: Theme.of(context).textTheme.bodyMedium),
+      ),
+    );
+  }
+}
+
+String _protocolLabel(String protocol) => switch (protocol) {
+  'mjpeg' => 'MJPEG',
+  'snapshot' => 'Snapshot',
+  'hls' => 'HLS',
+  'rtsp' => 'RTSP',
+  _ => protocol.toUpperCase(),
+};
+
+bool _isInlineProtocol(String protocol) =>
+    protocol == 'mjpeg' || protocol == 'snapshot';
+
+class _CameraTile extends StatelessWidget {
+  const _CameraTile({
+    required this.camera,
+    required this.canManage,
+    required this.onDelete,
+  });
+
+  final Map<String, dynamic> camera;
+  final bool canManage;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final id = camera['id'] as String;
+    final label = camera['label'] as String? ?? 'Camera';
+    final protocol = camera['protocol'] as String? ?? '';
+    final url = camera['url'] as String? ?? '';
+    final enabled = camera['enabled'] as bool? ?? true;
+
+    Widget body;
+    if (!enabled) {
+      body = const _DisabledBody();
+    } else if (_isInlineProtocol(protocol)) {
+      body = _InlineViewCard(key: ValueKey('camera-inline-$id'), url: url);
+    } else {
+      body = _DeepLinkCard(
+        key: ValueKey('camera-deeplink-$id'),
+        protocol: protocol,
+        url: url,
+      );
+    }
+
+    final tile = Card(
+      key: ValueKey('camera-tile-$id'),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    label,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall,
+                  ),
+                ),
+                Tag(_protocolLabel(protocol)),
+                if (!enabled) const Tag('Disabled', warn: true),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Expanded(child: body),
+            if (canManage) ...[
+              const SizedBox(height: 4),
+              Align(
+                alignment: Alignment.centerRight,
+                child: IconButton(
+                  key: ValueKey('camera-tile-delete-$id'),
+                  onPressed: onDelete,
+                  icon: const Icon(Icons.delete_outline, size: 20),
+                  tooltip: 'Delete $label',
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+
+    // Greyed, per the same honesty rule DesktopMonitoringTab's stopped hero
+    // uses — a disabled camera reads as not-live at a glance, before anybody
+    // has to read the tag to know it.
+    return enabled ? tile : Opacity(opacity: 0.6, child: tile);
+  }
+}
+
+/// What a disabled camera's tile shows instead of any live view, whatever
+/// its protocol — never a frame or a deep link passed off as something being
+/// watched.
+class _DisabledBody extends StatelessWidget {
+  const _DisabledBody();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.videocam_off_outlined, color: scheme.onSurfaceVariant),
+            const SizedBox(height: 6),
+            Text(
+              'Disabled — no view shown.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The live-view host for `mjpeg`/`snapshot` — a real inline `<img>` on web
+/// ([CameraImageView]), and an honest "go look at it yourself" card
+/// everywhere else, since nothing outside a browser can host that `<img>` at
+/// all. `kIsWeb` (not a conditional import here) is what decides between the
+/// two: it is a plain runtime check, cheap enough to make per-tile, and
+/// [CameraImageView] already keeps `dart:ui_web`/`package:web` out of every
+/// build that is not web regardless of which branch runs.
+class _InlineViewCard extends StatelessWidget {
+  const _InlineViewCard({super.key, required this.url});
+
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    if (kIsWeb) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: CameraImageView(url: url),
+      );
+    }
+
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.videocam_outlined, size: 20, color: scheme.onSurfaceVariant),
+            const SizedBox(height: 6),
+            // Capped rather than left to wrap freely: this sits inside a
+            // fixed-height grid cell (R7 — 375px is the narrowest column),
+            // and an uncapped line count is exactly what overflowed the
+            // tile the first time this was measured.
+            Text(
+              'Live view opens in a browser.',
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 6),
+            SelectableText(
+              url,
+              maxLines: 1,
+              style: theme.textTheme.labelSmall,
+            ),
+            const SizedBox(height: 6),
+            OutlinedButton.icon(
+              onPressed: () => _openUrl(url),
+              icon: const Icon(Icons.open_in_browser, size: 16),
+              label: const Text('Open in browser'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The `hls`/`rtsp` card — a copyable link and nothing else, because there is
+/// nothing else true to show yet.
+///
+/// ponytail: inline HLS playback is a fast-follow, not scope here. When it
+/// lands: vendor a small player script the way `web/vendor/twilio-voice-*.min.js`
+/// is already vendored (drop `web/vendor/hls*.min.js`, add its `<script>` tag
+/// to `web/index.html`), then swap this card's body for an `HtmlElementView`
+/// wrapping a `<video>` element and `new Hls()` — the same web/stub split
+/// `CameraImageView` already uses, just with a video element instead of an
+/// image one. `rtsp` still has no browser story even then; it stays a deep
+/// link.
+class _DeepLinkCard extends StatelessWidget {
+  const _DeepLinkCard({super.key, required this.protocol, required this.url});
+
+  final String protocol;
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              '${_protocolLabel(protocol)} stream',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleSmall,
+            ),
+            const SizedBox(height: 4),
+            // Capped for the same reason the inline card's note is capped —
+            // see that comment.
+            Text(
+              'Copy the link into a compatible player.',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 6),
+            SelectableText(
+              url,
+              maxLines: 1,
+              style: theme.textTheme.labelSmall,
+            ),
+            const SizedBox(height: 6),
+            // A vertical stack rather than a `Wrap`: two buttons side by
+            // side either fit or wrap to a second row depending on the
+            // tile's width, which is exactly the kind of width-dependent
+            // height this fixed-height grid cell cannot absorb. Stacked,
+            // the height is the same at every width this tile ever renders
+            // at.
+            OutlinedButton.icon(
+              onPressed: () => _copyUrl(context, url),
+              icon: const Icon(Icons.copy_outlined, size: 16),
+              label: const Text('Copy URL'),
+            ),
+            const SizedBox(height: 6),
+            OutlinedButton.icon(
+              onPressed: () => _openUrl(url),
+              icon: const Icon(Icons.open_in_new, size: 16),
+              label: const Text('Open in player'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> _openUrl(String url) async {
+  final uri = Uri.tryParse(url);
+  if (uri == null) return;
+  try {
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  } catch (_) {
+    // No registered handler for the scheme (an rtsp:// deep-link with no
+    // player installed throws rather than returning false). The URL is
+    // copyable right beside this button, so a failed open is a no-op — never
+    // an uncaught async error surfaced to the user.
+  }
+}
+
+Future<void> _copyUrl(BuildContext context, String url) async {
+  await Clipboard.setData(ClipboardData(text: url));
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(const SnackBar(content: Text('Camera URL copied')));
+}
+
+/// The "Add camera" form — label, protocol, URL. Pops the collected fields
+/// back to [CameraMonitoringTab], which does the actual `POST` itself; same
+/// division as automations_screen.dart's delete confirmation, where the
+/// panel only decides WHAT to do and the caller does it once the panel is
+/// already gone.
+class _AddCameraPanel extends StatefulWidget {
+  const _AddCameraPanel();
+
+  @override
+  State<_AddCameraPanel> createState() => _AddCameraPanelState();
+}
+
+class _AddCameraPanelState extends State<_AddCameraPanel> {
+  final _labelController = TextEditingController();
+  final _urlController = TextEditingController();
+  String _protocol = CameraMonitoringTab.protocols.first;
+  bool _enabled = true;
+
+  @override
+  void dispose() {
+    _labelController.dispose();
+    _urlController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final label = _labelController.text.trim();
+    final url = _urlController.text.trim();
+    if (label.isEmpty || url.isEmpty) return;
+
+    Navigator.of(context).pop({
+      'label': label,
+      'protocol': _protocol,
+      'url': url,
+      'enabled': _enabled,
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SidePanel(
+      title: 'Add camera',
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('camera-add-submit-button'),
+          onPressed: _submit,
+          child: const Text('Add camera'),
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            key: const Key('camera-add-label-field'),
+            controller: _labelController,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Label'),
+          ),
+          const SizedBox(height: 14),
+          DropdownButtonFormField<String>(
+            key: const Key('camera-add-protocol-field'),
+            initialValue: _protocol,
+            decoration: const InputDecoration(labelText: 'Protocol'),
+            items: [
+              for (final protocol in CameraMonitoringTab.protocols)
+                DropdownMenuItem(
+                  value: protocol,
+                  child: Text(_protocolLabel(protocol)),
+                ),
+            ],
+            onChanged: (value) {
+              if (value != null) setState(() => _protocol = value);
+            },
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            key: const Key('camera-add-url-field'),
+            controller: _urlController,
+            decoration: const InputDecoration(labelText: 'URL'),
+            keyboardType: TextInputType.url,
+          ),
+          const SizedBox(height: 4),
+          SwitchListTile(
+            key: const Key('camera-add-enabled-field'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Enabled'),
+            value: _enabled,
+            onChanged: (value) => setState(() => _enabled = value),
+          ),
+        ],
+      ),
+    );
+  }
+}

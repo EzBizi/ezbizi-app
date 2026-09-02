@@ -2369,11 +2369,17 @@ class ModuleServiceProvider extends ServiceProvider
              * `device_offline` flipped the same way once DeviceOfflineWorker
              * started calling EventEmitter::emit('monitoring.device_offline',
              * ...) from its scheduled sweep (task 6).
+             *
+             * `cameras.view` / `cameras.manage` (2026-09-01-monitoring-cameras,
+             * generic-protocol v1) added the same add-only way `screenshots.view`
+             * was: a camera is CRUD (unlike a device, which is only ever
+             * reported), so it gets its own write grant rather than reusing
+             * `view` — see MonitoringCameraPolicy.
              */
             new ModuleDefinition(
                 key: 'monitoring',
                 label: 'Monitoring',
-                actions: ['view', 'specs.view'],
+                actions: ['view', 'specs.view', 'screenshots.view', 'cameras.view', 'cameras.manage'],
                 triggers: [
                     new TriggerDefinition(
                         key: 'monitoring.new_device_seen',

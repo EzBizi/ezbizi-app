@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/module_screens.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/screens/monitoring/camera_monitoring_tab.dart';
 import 'package:ezbizi_client/screens/monitoring/monitoring_screen.dart';
 import 'package:ezbizi_client/screens/monitoring/pc_specs_tab.dart';
 import 'package:flutter/material.dart';
@@ -220,7 +221,9 @@ void main() {
   );
 
   testWidgets(
-    'the sub-tab strip shows PC Specs active and the other two as soon',
+    'the sub-tab strip shows PC Specs active, and Camera Monitoring plus '
+    'Desktop Monitoring locked as soon — neither grant is in the default '
+    'fixture',
     (tester) async {
       await _pumpScreen(tester, devices: [_agentDevice, _webDevice]);
 
@@ -228,6 +231,45 @@ void main() {
       expect(find.text('Camera Monitoring'), findsOneWidget);
       expect(find.text('Desktop Monitoring'), findsOneWidget);
       expect(find.text('Soon'), findsNWidgets(2));
+    },
+  );
+
+  testWidgets(
+    'with monitoring.cameras.view granted, the Camera Monitoring sub-tab is '
+    'selectable and no longer locked behind "Soon"',
+    (tester) async {
+      await _pumpScreen(
+        tester,
+        devices: [_agentDevice, _webDevice],
+        permissions: [
+          'monitoring.view',
+          'monitoring.specs.view',
+          'monitoring.cameras.view',
+        ],
+      );
+
+      expect(find.text('Camera Monitoring'), findsOneWidget);
+      // Only Desktop Monitoring remains locked — its own grant is still
+      // absent from this fixture.
+      expect(find.text('Soon'), findsOneWidget);
+
+      await tester.tap(find.text('Camera Monitoring'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(CameraMonitoringTab.noPermissionNote),
+        findsNothing,
+        reason: 'A viewer holding monitoring.cameras.view switched to the '
+            'tab and should see the real tab, not the locked/no-permission '
+            'note the chip used to fall back to for everyone.',
+      );
+      expect(
+        find.text(CameraMonitoringTab.noCamerasNote),
+        findsOneWidget,
+        reason: 'Non-vacuous check that the real CameraMonitoringTab '
+            'actually mounted and fetched — this is its own empty-state '
+            'sentence, not just the absence of the no-permission one.',
+      );
     },
   );
 
@@ -260,6 +302,152 @@ void main() {
 
   test('monitoring is registered in module_screens.dart', () {
     expect(moduleScreens['monitoring'], isNotNull);
+  });
+
+  group('active/stale device grouping', () {
+    // Owner's own words: 6 devices listed as equals — one web, three
+    // windows, two ios browser sessions, most of them stale — "it should
+    // only show the active one, or if there are multiple active ones add
+    // icons that switch between them". These cases cover the three shapes
+    // that report produced: exactly one active device, more than one active
+    // device, and nobody active at all.
+
+    testWidgets(
+      'one active device shows, stale devices stay hidden until the toggle '
+      'is tapped, and the subtitle reflects the split',
+      (tester) async {
+        final staleDevice = {
+          ..._agentDevice,
+          'id': 'dev-agent-old',
+          'label': 'Old laptop',
+          'last_seen_at': DateTime.now()
+              .toUtc()
+              .subtract(const Duration(minutes: 30))
+              .toIso8601String(),
+        };
+
+        await _pumpScreen(tester, devices: [_agentDevice, staleDevice]);
+
+        // The active device renders immediately.
+        expect(
+          find.byKey(const ValueKey('monitoring-device-dev-agent')),
+          findsOneWidget,
+        );
+
+        // The stale one does not — it is folded behind the toggle, never
+        // shown as an equal row on first render.
+        expect(
+          find.byKey(const ValueKey('monitoring-device-dev-agent-old')),
+          findsNothing,
+          reason:
+              'A stale session rendered as an equal row instead of staying '
+              'collapsed behind the toggle.',
+        );
+
+        expect(find.text('1 active · 1 earlier'), findsOneWidget);
+
+        final toggle = find.text('Show 1 earlier session');
+        expect(toggle, findsOneWidget);
+
+        await tester.tap(toggle);
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const ValueKey('monitoring-device-dev-agent-old')),
+          findsOneWidget,
+          reason: 'Tapping the toggle should reveal the stale device row.',
+        );
+      },
+    );
+
+    testWidgets(
+      'more than one active device shows a chip switcher; selecting a chip '
+      'swaps which device row is shown',
+      (tester) async {
+        // Both share _agentDevice's sentinel last_seen_at, which _pumpScreen
+        // rewrites to "now" — so both land in the active group at once,
+        // exactly the ">1 active" shape the switcher exists for.
+        final secondActive = {
+          ..._agentDevice,
+          'id': 'dev-agent-phone',
+          'label': 'iPhone Safari',
+          'platform': 'ios',
+          'capabilities': ['activity'],
+        };
+
+        await _pumpScreen(tester, devices: [_agentDevice, secondActive]);
+
+        // Only the first (selected-by-default) device row shows at once —
+        // never both active rows stacked together.
+        expect(
+          find.byKey(const ValueKey('monitoring-device-dev-agent')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('monitoring-device-dev-agent-phone')),
+          findsNothing,
+        );
+
+        final secondChip = find.text('IOS iPhone Safari');
+        expect(secondChip, findsOneWidget);
+
+        await tester.tap(secondChip);
+        await tester.pumpAndSettle();
+
+        // Selecting the other chip swaps which row is shown — never both at
+        // once.
+        expect(
+          find.byKey(const ValueKey('monitoring-device-dev-agent-phone')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('monitoring-device-dev-agent')),
+          findsNothing,
+          reason:
+              'Selecting a different chip should swap the shown device row, '
+              'not add to it.',
+        );
+      },
+    );
+
+    testWidgets(
+      'a fully-offline person shows their most-recently-seen device, never '
+      'an empty tile',
+      (tester) async {
+        final recent = {
+          ..._agentDevice,
+          'id': 'dev-recent',
+          'last_seen_at': DateTime.now()
+              .toUtc()
+              .subtract(const Duration(minutes: 10))
+              .toIso8601String(),
+        };
+        final older = {
+          ..._agentDevice,
+          'id': 'dev-older',
+          'label': 'Old laptop',
+          'last_seen_at': DateTime.now()
+              .toUtc()
+              .subtract(const Duration(hours: 4))
+              .toIso8601String(),
+        };
+
+        await _pumpScreen(tester, devices: [recent, older]);
+
+        expect(
+          find.byKey(const ValueKey('monitoring-device-dev-recent')),
+          findsOneWidget,
+          reason:
+              'Nobody active should still show the most-recently-seen '
+              'device, not an empty tile.',
+        );
+        expect(
+          find.byKey(const ValueKey('monitoring-device-dev-older')),
+          findsNothing,
+        );
+        expect(find.text('offline · 1 earlier'), findsOneWidget);
+      },
+    );
   });
 }
 
@@ -303,6 +491,7 @@ Future<void> _pumpScreen(
   Size size = const Size(1280, 900),
   http.Response? Function(http.Request request)? onRequest,
   List<Map<String, Object?>>? meModules,
+  List<String>? permissions,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -317,7 +506,11 @@ Future<void> _pumpScreen(
         device,
   ];
 
-  final me = meModules == null ? _me : {..._me, 'modules': meModules};
+  final me = {
+    ..._me,
+    'modules': ?meModules,
+    'permissions': ?permissions,
+  };
 
   final api = ApiClient(
     client: MockClient((request) async {
@@ -332,6 +525,12 @@ Future<void> _pumpScreen(
 
       if (path.endsWith('/monitoring/devices')) {
         return _json({'data': live});
+      }
+
+      // Only ever reached by the Camera Monitoring grant test below — no
+      // other test here switches to that sub-tab.
+      if (path.endsWith('/monitoring/cameras')) {
+        return _json({'data': <Map<String, dynamic>>[]});
       }
 
       return _json({'message': 'Nothing stubbed for $path.'}, 500);

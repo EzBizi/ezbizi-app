@@ -289,10 +289,30 @@ class _PersonTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final anyOnline = person.devices.any(isOnline);
+    final active = person.devices.where(isOnline).toList();
+    final anyOnline = active.isNotEmpty;
     final current = person.devices.isEmpty
         ? null
         : person.devices.first['current_module'] as String?;
+
+    // What actually gets a row: every active device, or — when nobody is
+    // online — the single most-recently-seen one, so the tile is never
+    // empty just because everyone signed out. Every device NOT shown here
+    // folds into the stale group below, collapsed behind a toggle rather
+    // than listed as an equal to the device someone is actually on right
+    // now — that equal-weight listing is the clutter this rewrite exists
+    // to remove (owner: "it should only show the active one").
+    final shown = active.isNotEmpty
+        ? active
+        : [_mostRecentlySeen(person.devices)];
+    final shownIds = shown.map((d) => d['id']).toSet();
+    final stale = [
+      for (final device in person.devices)
+        if (!shownIds.contains(device['id'])) device,
+    ];
+    final earlierSuffix = stale.isEmpty
+        ? ''
+        : ' · ${stale.length} earlier';
 
     return ExpansionTile(
       // Expanded on first render: the roster's own screen test asserts on a
@@ -328,21 +348,123 @@ class _PersonTile extends StatelessWidget {
         ],
       ),
       subtitle: Text(
-        person.devices.length == 1
-            ? '1 device'
-            : '${person.devices.length} devices',
+        anyOnline ? '${shown.length} active$earlierSuffix' : 'offline$earlierSuffix',
         style: theme.textTheme.bodyMedium,
       ),
       children: [
-        for (final device in person.devices)
+        if (shown.length > 1)
+          _ActiveDeviceSwitcher(devices: shown, isOnline: isOnline)
+        else
           _DeviceRow(
-            key: ValueKey('monitoring-device-${device['id']}'),
-            device: device,
-            online: isOnline(device),
+            key: ValueKey('monitoring-device-${shown.first['id']}'),
+            device: shown.first,
+            online: isOnline(shown.first),
+          ),
+        // Collapsed by default (ExpansionTile's own initiallyExpanded
+        // defaults to false) — a nested tile rather than a hand-rolled
+        // bool, since ExpansionTile already owns exactly the expand/collapse
+        // state this needs.
+        if (stale.isNotEmpty)
+          ExpansionTile(
+            tilePadding: const EdgeInsets.fromLTRB(24, 0, 16, 0),
+            title: Text(
+              'Show ${stale.length} earlier '
+              'session${stale.length == 1 ? '' : 's'}',
+              style: theme.textTheme.bodyMedium,
+            ),
+            children: [
+              for (final device in stale)
+                _DeviceRow(
+                  key: ValueKey('monitoring-device-${device['id']}'),
+                  device: device,
+                  online: isOnline(device),
+                ),
+            ],
           ),
       ],
     );
   }
+}
+
+/// The device to show for a person nobody is currently signed in as — max by
+/// `last_seen_at`, so the tile is never empty just because everyone is
+/// offline. A missing or unparseable stamp sorts as the oldest possible,
+/// the same treatment [_seenAgo] gives it ("never").
+Map<String, dynamic> _mostRecentlySeen(List<Map<String, dynamic>> devices) {
+  var best = devices.first;
+  var bestSeen = DateTime.tryParse(best['last_seen_at'] as String? ?? '') ??
+      DateTime.fromMillisecondsSinceEpoch(0);
+
+  for (final device in devices.skip(1)) {
+    final seen = DateTime.tryParse(device['last_seen_at'] as String? ?? '') ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+    if (seen.isAfter(bestSeen)) {
+      best = device;
+      bestSeen = seen;
+    }
+  }
+
+  return best;
+}
+
+/// More than one device is active at once — a row of chips, one selected
+/// device's [_DeviceRow] shown below it, rather than every active session
+/// stacked as an equal row. The selected index is the only reason this
+/// needs to be a StatefulWidget instead of another loop in [_PersonTile].
+class _ActiveDeviceSwitcher extends StatefulWidget {
+  const _ActiveDeviceSwitcher({required this.devices, required this.isOnline});
+
+  final List<Map<String, dynamic>> devices;
+  final bool Function(Map<String, dynamic>) isOnline;
+
+  @override
+  State<_ActiveDeviceSwitcher> createState() => _ActiveDeviceSwitcherState();
+}
+
+class _ActiveDeviceSwitcherState extends State<_ActiveDeviceSwitcher> {
+  int _selected = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final index = _selected < widget.devices.length ? _selected : 0;
+    final device = widget.devices[index];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 16, 4),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              for (var i = 0; i < widget.devices.length; i++)
+                ChoiceChip(
+                  label: Text(_chipLabel(widget.devices[i])),
+                  selected: i == index,
+                  onSelected: (_) => setState(() => _selected = i),
+                ),
+            ],
+          ),
+        ),
+        _DeviceRow(
+          key: ValueKey('monitoring-device-${device['id']}'),
+          device: device,
+          online: widget.isOnline(device),
+        ),
+      ],
+    );
+  }
+}
+
+/// A switcher chip's label: platform badge + the row's own label, e.g.
+/// "WINDOWS Shop desktop" — same two facts [_DeviceRow] shows, just on one
+/// line, so the chip that swaps a device in is identifiable before you tap.
+String _chipLabel(Map<String, dynamic> device) {
+  final platform = (device['platform'] as String? ?? '').toUpperCase();
+  final label =
+      device['label'] as String? ?? device['platform'] as String? ?? 'Device';
+  return platform.isEmpty ? label : '$platform $label';
 }
 
 class _StatusDot extends StatelessWidget {
