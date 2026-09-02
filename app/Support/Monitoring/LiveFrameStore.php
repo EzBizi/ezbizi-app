@@ -51,6 +51,17 @@ class LiveFrameStore
         return (string) Storage::disk(self::DISK)->get($this->path($organizationId, $deviceId));
     }
 
+    /**
+     * Remove a device's live frame — for DevicePruner, when the device itself is
+     * being swept. Missing is not an error either: a device that was never
+     * watched has no frame, and deleting one twice must not fail (same contract
+     * as ScreenshotStore::delete).
+     */
+    public function delete(string $organizationId, string $deviceId): void
+    {
+        Storage::disk(self::DISK)->delete($this->path($organizationId, $deviceId));
+    }
+
     public function absolute(string $organizationId, string $deviceId): string
     {
         return Storage::disk(self::DISK)->path($this->path($organizationId, $deviceId));

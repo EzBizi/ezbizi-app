@@ -100,6 +100,15 @@ Schedule::command('ezbizi:dispatch-monitoring-device-offline')->everyFiveMinutes
 // nightly jobs don't contend for the same monitoring tables' locks.
 Schedule::command('ezbizi:prune-screenshots')->dailyAt('04:10')->withoutOverlapping();
 
+// Stale-device retention (DevicePruner::RETENTION_DAYS). monitored_devices is
+// one-current-row-per-device, never a log, so nothing trims it on its own —
+// every retired machine and one-off browser session leaves a row forever. This
+// sweeps a device silent past the window, taking its screenshots (files THEN
+// rows), its live frame and its activity with it. At 04:30: after
+// ezbizi:prune-screenshots (04:10) and clear of ezbizi:phone-usage (04:20), so
+// the two monitoring prunes never contend for the same tables' locks.
+Schedule::command('ezbizi:prune-devices')->dailyAt('04:30')->withoutOverlapping();
+
 // Backup health (§18 Phase 0 item 5). At 05:00, well after the 03:17 timer, so a
 // slow night is not reported as a missing one.
 //
