@@ -49,6 +49,7 @@ use App\Http\Controllers\Api\Monitoring\CamerasController as MonitoringCamerasCo
 use App\Http\Controllers\Api\Monitoring\DevicesController as MonitoringDevicesController;
 use App\Http\Controllers\Api\Monitoring\HeartbeatController as MonitoringHeartbeatController;
 use App\Http\Controllers\Api\Monitoring\LiveViewController as MonitoringLiveViewController;
+use App\Http\Controllers\Api\Monitoring\RemoteControlController as MonitoringRemoteControlController;
 use App\Http\Controllers\Api\Monitoring\ScreenshotsController as MonitoringScreenshotsController;
 use App\Http\Controllers\Api\NotificationsController;
 use App\Http\Controllers\Api\OrganizationCanvasController;
@@ -1427,6 +1428,17 @@ Route::prefix('v1')
         Route::post('monitoring/devices/{id}/watch', [MonitoringLiveViewController::class, 'watch']);
         Route::get('monitoring/devices/{id}/live-frame', [MonitoringLiveViewController::class, 'liveFrameShow']);
 
+        // ── Monitoring: Remote Control, the viewer's half (2026-09-02-monitoring-remote-control) ──
+        //
+        // Same idle reasoning as `watch` just above: a manager opening a
+        // control session, and the input they send while driving it, ARE
+        // navigation. The agent's poll — `input-pending` — is a background
+        // loop with no screen behind it, so it stays in the idle-less group
+        // below with the heartbeat instead. See RemoteControlController's
+        // docblock.
+        Route::post('monitoring/devices/{id}/control', [MonitoringRemoteControlController::class, 'control']);
+        Route::post('monitoring/devices/{id}/input', [MonitoringRemoteControlController::class, 'input']);
+
         // ── Monitoring: cameras (2026-09-01-monitoring-cameras, generic-protocol v1) ──
         //
         // A normal admin action (register/edit/remove a camera config), not a
@@ -1749,6 +1761,13 @@ Route::prefix('v1')
         Route::get('monitoring/live-wanted', [MonitoringLiveViewController::class, 'liveWanted'])
             ->middleware('throttle:120,1');
         Route::post('monitoring/live-frame', [MonitoringLiveViewController::class, 'liveFrame'])
+            ->middleware('throttle:120,1');
+
+        // Remote Control's agent half — "what should I apply, and is
+        // anyone still driving me" — same idle-less and throttle reasoning
+        // as `live-wanted` just above. See RemoteControlController's
+        // docblock.
+        Route::get('monitoring/input-pending', [MonitoringRemoteControlController::class, 'inputPending'])
             ->middleware('throttle:120,1');
     });
 

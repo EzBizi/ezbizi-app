@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "monitoring_input.h"
 #include "monitoring_screenshot.h"
 #include "monitoring_specs.h"
 
@@ -59,6 +60,10 @@ bool FlutterWindow::OnCreate() {
         }
         result->Success(flutter::EncodableValue(std::move(jpeg_bytes)));
       });
+
+  monitoring_input_channel_ =
+      RegisterMonitoringInputChannel(flutter_controller_->engine());
+
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -74,6 +79,10 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  if (monitoring_input_channel_) {
+    monitoring_input_channel_ = nullptr;
+  }
+
   if (monitoring_screenshot_channel_) {
     monitoring_screenshot_channel_ = nullptr;
   }
