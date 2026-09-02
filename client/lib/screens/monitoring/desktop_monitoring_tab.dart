@@ -1,7 +1,8 @@
 import 'dart:async';
-import 'dart:typed_data';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
@@ -162,8 +163,50 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
   // "never keep showing the last frame as if current" rule.
   static const int _maxConsecutiveLiveMisses = 2;
 
+  // ── Remote Control (2026-09-02-monitoring-remote-control, Part B) ───────
+  //
+  // The VIEWER half: while `_control` is true for `_selectedDeviceId`, the
+  // manager's pointer and keyboard over the live hero are captured, batched,
+  // and POSTed to the agent's input queue. The agent half applies them (see
+  // RemoteControlService). The same two-fact identity guard the live path
+  // uses — `_control && deviceId == _selectedDeviceId`, re-checked after every
+  // await — keeps one device's input from ever being posted under another's.
+  bool _control = false;
+
+  Timer? _controlTimer;
+  Timer? _flushTimer;
+
+  // Events captured since the last flush. A mouse drag is dozens of moves a
+  // second; posting one HTTP request per event would be absurd, so they pool
+  // here and go out in batches — on a short debounce, or the moment the buffer
+  // is full (see `_queueInput`).
+  final List<Map<String, Object?>> _pendingInput = [];
+
+  // Which mouse button a press started with, so the matching release names the
+  // same one — a PointerUpEvent's `buttons` is what is STILL held (usually
+  // none), which cannot tell us what was let go.
+  String _activeButton = 'left';
+
+  // Measures the rendered live-image box for coordinate mapping. A GlobalKey +
+  // RenderBox rather than a LayoutBuilder because the capture pane sits in a
+  // vertically-unbounded SingleChildScrollView, so a LayoutBuilder's max height
+  // is infinity there — the RenderBox's actual laid-out size is the only honest
+  // denominator.
+  final GlobalKey _liveImageKey = GlobalKey();
+
+  static const Duration _controlInterval = Duration(seconds: 8);
+  static const Duration _flushDebounce = Duration(milliseconds: 60);
+
+  // Flush without waiting for the debounce once this many events have pooled —
+  // so a fast drag becomes a few batched posts rather than one ever-growing
+  // buffer that only leaves on the timer.
+  static const int _flushThreshold = 20;
+
   bool get _canView =>
       widget.session.me?.can('monitoring.screenshots.view') ?? false;
+
+  bool get _canControl =>
+      widget.session.me?.can('monitoring.control') ?? false;
 
   @override
   void initState() {
@@ -175,6 +218,8 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
   void dispose() {
     _watchTimer?.cancel();
     _frameTimer?.cancel();
+    _controlTimer?.cancel();
+    _flushTimer?.cancel();
     super.dispose();
   }
 
@@ -350,6 +395,12 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
   }
 
   void _stopLive() {
+    // You cannot drive a machine you can no longer see, so leaving live ends
+    // control too — this is the single choke point every "stop watching" path
+    // funnels through (Stop button, device switch, dispose), so control can
+    // never outlive the feed it rides on.
+    _stopControl();
+
     _watchTimer?.cancel();
     _watchTimer = null;
     _frameTimer?.cancel();
@@ -409,6 +460,218 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
     setState(() {
       _liveBytes = Uint8List.fromList(bytes);
       _liveWaiting = false;
+    });
+  }
+
+  // ── Remote Control (Part B) ────────────────────────────────────────────
+
+  void _toggleControl(String deviceId) {
+    if (_control) {
+      _stopControl();
+    } else {
+      _startControl(deviceId);
+    }
+  }
+
+  void _startControl(String deviceId) {
+    // Taking control needs the screen you are driving — auto-start live if it
+    // is not already running, exactly as the plan requires. `_startLive` is a
+    // no-op-safe setState either way; if already live it is not re-entered.
+    if (!_live) _startLive(deviceId);
+
+    setState(() => _control = true);
+
+    // Assert interest immediately rather than waiting a full interval — the
+    // agent starts speeding its poll up the moment it sees `control_wanted`.
+    unawaited(_postControl(deviceId));
+    _controlTimer =
+        Timer.periodic(_controlInterval, (_) => unawaited(_postControl(deviceId)));
+  }
+
+  void _stopControl() {
+    _controlTimer?.cancel();
+    _controlTimer = null;
+    _flushTimer?.cancel();
+    _flushTimer = null;
+    _pendingInput.clear();
+    _activeButton = 'left';
+
+    if (!_control) return;
+    setState(() => _control = false);
+  }
+
+  /// Keeps the server's "somebody wants to drive this device" interest fresh —
+  /// POST /monitoring/devices/{id}/control, re-posted every [_controlInterval]
+  /// (which also keeps the live feed alive). The same identity guard as the
+  /// watch/frame posts: a control post for a device this tab has since left is
+  /// dropped rather than refreshing interest on the wrong machine.
+  Future<void> _postControl(String deviceId) async {
+    if (!_control || deviceId != _selectedDeviceId) return;
+    await widget.api.post('/monitoring/devices/$deviceId/control', const {});
+  }
+
+  /// Translate a pointer's GLOBAL position to the normalized 0..1 coordinates
+  /// the agent applies — `x = dx/width`, `y = dy/height`, clamped — measured
+  /// against the live image's own laid-out box (the primary-monitor frame
+  /// fills the hero). Null when the box is not laid out yet, so a stray early
+  /// event emits nothing rather than dividing by zero.
+  Offset? _normalized(Offset globalPosition) {
+    final box = _liveImageKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+
+    final size = box.size;
+    if (size.width <= 0 || size.height <= 0) return null;
+
+    final local = box.globalToLocal(globalPosition);
+    return Offset(
+      (local.dx / size.width).clamp(0.0, 1.0),
+      (local.dy / size.height).clamp(0.0, 1.0),
+    );
+  }
+
+  void _onPointerDown(String deviceId, PointerDownEvent event) {
+    final point = _normalized(event.position);
+    if (point == null) return;
+
+    _activeButton = _mouseButtonName(event.buttons);
+    _queueInput(deviceId, {'type': 'mouseMove', 'x': point.dx, 'y': point.dy});
+    _queueInput(
+      deviceId,
+      {'type': 'mouseButton', 'button': _activeButton, 'down': true},
+    );
+  }
+
+  void _onPointerMove(String deviceId, PointerEvent event) {
+    final point = _normalized(event.position);
+    if (point == null) return;
+    _queueInput(deviceId, {'type': 'mouseMove', 'x': point.dx, 'y': point.dy});
+  }
+
+  void _onPointerUp(String deviceId, PointerUpEvent event) {
+    final point = _normalized(event.position);
+    if (point != null) {
+      _queueInput(deviceId, {'type': 'mouseMove', 'x': point.dx, 'y': point.dy});
+    }
+    _queueInput(
+      deviceId,
+      {'type': 'mouseButton', 'button': _activeButton, 'down': false},
+    );
+  }
+
+  void _onPointerSignal(String deviceId, PointerSignalEvent event) {
+    if (event is! PointerScrollEvent) return;
+    // Flutter's positive scrollDelta.dy means "content moved up" — i.e. the
+    // wheel rolled toward the user (down). Negate so `dy` matches a normal
+    // Windows wheel notch, where positive is a roll away from the user (up).
+    final dy = -event.scrollDelta.dy.round();
+    if (dy == 0) return;
+    _queueInput(deviceId, {'type': 'scroll', 'dy': dy});
+  }
+
+  static String _mouseButtonName(int buttons) {
+    if (buttons & kSecondaryButton != 0) return 'right';
+    // The middle (wheel) button is Flutter's tertiary button.
+    if (buttons & kTertiaryButton != 0) return 'middle';
+    return 'left';
+  }
+
+  /// A subset of keys, mapped to Windows virtual-key codes. Modifiers and
+  /// hotkeys (Ctrl/Alt combos) are deliberately out of v1 scope — see
+  /// `_onKey`'s ponytail note.
+  static int? _virtualKeyFor(LogicalKeyboardKey key) {
+    if (key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.numpadEnter) {
+      return 0x0D;
+    }
+    if (key == LogicalKeyboardKey.backspace) return 0x08;
+    if (key == LogicalKeyboardKey.tab) return 0x09;
+    if (key == LogicalKeyboardKey.escape) return 0x1B;
+    if (key == LogicalKeyboardKey.delete) return 0x2E;
+    if (key == LogicalKeyboardKey.arrowLeft) return 0x25;
+    if (key == LogicalKeyboardKey.arrowUp) return 0x26;
+    if (key == LogicalKeyboardKey.arrowRight) return 0x27;
+    if (key == LogicalKeyboardKey.arrowDown) return 0x28;
+    if (key == LogicalKeyboardKey.home) return 0x24;
+    if (key == LogicalKeyboardKey.end) return 0x23;
+    if (key == LogicalKeyboardKey.pageUp) return 0x21;
+    if (key == LogicalKeyboardKey.pageDown) return 0x22;
+    return null;
+  }
+
+  KeyEventResult _onKey(String deviceId, KeyEvent event) {
+    if (!_control || deviceId != _selectedDeviceId) {
+      return KeyEventResult.ignored;
+    }
+
+    // Special keys → VK down/up events. A repeat counts as a press held.
+    final vk = _virtualKeyFor(event.logicalKey);
+    if (vk != null) {
+      if (event is KeyUpEvent) {
+        _queueInput(deviceId, {'type': 'key', 'code': vk, 'down': false});
+      } else {
+        _queueInput(deviceId, {'type': 'key', 'code': vk, 'down': true});
+      }
+      return KeyEventResult.handled;
+    }
+
+    // ponytail: v1 covers plain typing and the common navigation/editing keys.
+    // Full modifier and hotkey support — Ctrl+C, Alt+Tab, chorded shortcuts —
+    // is a v2: it needs the agent to hold modifier state across events, not
+    // just replay a character, so it is a native-side change too, not a knob
+    // here. Printable characters go through as a `text` event.
+    if (event is KeyDownEvent || event is KeyRepeatEvent) {
+      final character = event.character;
+      if (character != null && character.isNotEmpty && _isPrintable(character)) {
+        _queueInput(deviceId, {'type': 'text', 'text': character});
+        return KeyEventResult.handled;
+      }
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  static bool _isPrintable(String character) {
+    final code = character.runes.first;
+    // Above the C0 control range and not DEL — a control character arrives with
+    // a non-null `character` on some layouts and must not be typed as text.
+    return code >= 0x20 && code != 0x7F;
+  }
+
+  /// Pool one event and arrange for it to be sent — immediately if the buffer
+  /// is full, otherwise on a short debounce so a burst of moves leaves as one
+  /// batch. Guards the identity up front so nothing is ever queued for a device
+  /// this tab is no longer controlling.
+  void _queueInput(String deviceId, Map<String, Object?> event) {
+    if (!_control || deviceId != _selectedDeviceId) return;
+
+    _pendingInput.add(event);
+
+    if (_pendingInput.length >= _flushThreshold) {
+      unawaited(_flushInput(deviceId));
+      return;
+    }
+
+    _flushTimer?.cancel();
+    _flushTimer = Timer(_flushDebounce, () => unawaited(_flushInput(deviceId)));
+  }
+
+  Future<void> _flushInput(String deviceId) async {
+    _flushTimer?.cancel();
+    _flushTimer = null;
+
+    // Re-checked here, not just at queue time: control may have been released
+    // while the debounce was pending. Drop the buffer rather than posting input
+    // to a machine nobody is driving any more.
+    if (!_control || deviceId != _selectedDeviceId || _pendingInput.isEmpty) {
+      _pendingInput.clear();
+      return;
+    }
+
+    final batch = List<Map<String, Object?>>.from(_pendingInput);
+    _pendingInput.clear();
+
+    await widget.api.post('/monitoring/devices/$deviceId/input', {
+      'events': batch,
     });
   }
 
@@ -521,9 +784,24 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
         if (canCapture)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: _LiveToggle(
-              live: _live,
-              onToggle: () => _toggleLive(device['id'] as String),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _LiveToggle(
+                  live: _live,
+                  onToggle: () => _toggleLive(device['id'] as String),
+                ),
+                // "Take control" only when the role holds monitoring.control
+                // AND the selected device can actually be captured — you drive
+                // over the live feed, so there is nothing to control without
+                // one. Taking control auto-starts live (see `_startControl`).
+                if (_canControl)
+                  _ControlToggle(
+                    controlling: _control,
+                    onToggle: () => _toggleControl(device['id'] as String),
+                  ),
+              ],
             ),
           ),
         if (canCapture && newestAt != null)
@@ -534,7 +812,7 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
         if (!canCapture)
           _NoteCard(DesktopMonitoringTab.noAgentNote)
         else if (_live)
-          _LiveHero(bytes: _liveBytes, waiting: _liveWaiting)
+          _buildLive(device)
         else if (_loadingShots)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 24),
@@ -559,6 +837,46 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
             onSelect: (id) => setState(() => _heroId = id),
           ),
         ],
+      ],
+    );
+  }
+
+  /// The live hero, plus — while controlling — the pointer/keyboard capture
+  /// layer wrapped around it and a hint under it. When not controlling this is
+  /// just the plain [_LiveHero], so `Go live` without `Take control` behaves
+  /// exactly as it did before Part B.
+  Widget _buildLive(Map<String, dynamic> device) {
+    final deviceId = device['id'] as String;
+
+    final hero = _LiveHero(
+      bytes: _liveBytes,
+      waiting: _liveWaiting,
+      controlling: _control,
+      imageKey: _liveImageKey,
+    );
+
+    if (!_control) return hero;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Focus for keys, Listener for pointer. `autofocus` so keystrokes are
+        // captured the instant control starts, without a click to focus first.
+        Focus(
+          key: const Key('desktop-monitoring-control-surface'),
+          autofocus: true,
+          onKeyEvent: (_, event) => _onKey(deviceId, event),
+          child: Listener(
+            onPointerDown: (event) => _onPointerDown(deviceId, event),
+            onPointerMove: (event) => _onPointerMove(deviceId, event),
+            onPointerHover: (event) => _onPointerMove(deviceId, event),
+            onPointerUp: (event) => _onPointerUp(deviceId, event),
+            onPointerSignal: (event) => _onPointerSignal(deviceId, event),
+            child: hero,
+          ),
+        ),
+        const SizedBox(height: 8),
+        _ControlHint(),
       ],
     );
   }
@@ -929,14 +1247,53 @@ class _LiveToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: OutlinedButton.icon(
-        key: const Key('desktop-monitoring-live-toggle'),
-        onPressed: onToggle,
-        icon: Icon(live ? Icons.stop_circle_outlined : Icons.sensors),
-        label: Text(live ? 'Stop' : 'Go live'),
-      ),
+    return OutlinedButton.icon(
+      key: const Key('desktop-monitoring-live-toggle'),
+      onPressed: onToggle,
+      icon: Icon(live ? Icons.stop_circle_outlined : Icons.sensors),
+      label: Text(live ? 'Stop' : 'Go live'),
+    );
+  }
+}
+
+/// "Take control" / "Release" (2026-09-02-monitoring-remote-control, Part B).
+/// Shown beside [_LiveToggle] only when the role holds monitoring.control and
+/// the selected device is capture-capable. A filled button rather than an
+/// outlined one, so driving a remote machine never reads as an idle secondary
+/// action sitting next to "Go live".
+class _ControlToggle extends StatelessWidget {
+  const _ControlToggle({required this.controlling, required this.onToggle});
+
+  final bool controlling;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton.icon(
+      key: const Key('desktop-monitoring-control-toggle'),
+      onPressed: onToggle,
+      icon: Icon(controlling ? Icons.pan_tool_alt : Icons.mouse),
+      label: Text(controlling ? 'Release' : 'Take control'),
+    );
+  }
+}
+
+/// The plain-language warning under the hero while controlling — the badge on
+/// the frame says the state, this says what it MEANS, so nobody mistakes a
+/// live view they can click into for a passive one.
+class _ControlHint extends StatelessWidget {
+  const _ControlHint();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Text(
+      key: const Key('desktop-monitoring-control-hint'),
+      'You are driving this machine — your mouse and keyboard are going to the '
+      'remote screen.',
+      style: theme.textTheme.bodySmall
+          ?.copyWith(color: theme.colorScheme.primary),
     );
   }
 }
@@ -1035,13 +1392,28 @@ class _Hero extends StatelessWidget {
 /// exclusive in `_buildCapturePane`, so "the hero" is one concept whichever
 /// of the two is actually on screen.
 class _LiveHero extends StatelessWidget {
-  const _LiveHero({required this.bytes, required this.waiting});
+  const _LiveHero({
+    required this.bytes,
+    required this.waiting,
+    this.controlling = false,
+    this.imageKey,
+  });
 
   final Uint8List? bytes;
 
   /// True before the first frame has ever arrived, and again after two
   /// consecutive misses fetching `live-frame` — see `_fetchLiveFrame`.
   final bool waiting;
+
+  /// Whether the manager is currently driving this machine — draws the
+  /// CONTROLLING badge, so nobody forgets that their pointer and keyboard are
+  /// landing on the remote screen.
+  final bool controlling;
+
+  /// Keys the actual image box so the viewer can measure it (RenderBox) for
+  /// coordinate mapping — see `_normalized`. Null when not controlling, where
+  /// there is nothing to measure.
+  final GlobalKey? imageKey;
 
   static const String waitingText = 'Waiting for the live feed…';
 
@@ -1057,6 +1429,7 @@ class _LiveHero extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         AspectRatio(
+          key: imageKey,
           aspectRatio: 16 / 9,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(10),
@@ -1086,6 +1459,17 @@ class _LiveHero extends StatelessWidget {
                       text: 'LIVE',
                       background: scheme.error,
                       foreground: scheme.onError,
+                    ),
+                  ),
+                if (controlling)
+                  Positioned(
+                    left: 8,
+                    top: 8,
+                    child: _Badge(
+                      key: const Key('desktop-monitoring-controlling-badge'),
+                      text: 'CONTROLLING',
+                      background: scheme.primary,
+                      foreground: scheme.onPrimary,
                     ),
                   ),
               ],

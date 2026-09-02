@@ -656,6 +656,215 @@ void main() {
       );
     },
   );
+
+  // ── Remote Control (2026-09-02-monitoring-remote-control, Part B) ───────
+
+  testWidgets(
+    'without monitoring.control there is no "Take control" toggle, even with '
+    'screenshots.view granted',
+    (tester) async {
+      final harness = _liveHarness(
+        devices: [_raceDeviceA],
+        shotsFor: (_) => _raceShotsA,
+        liveFrame: (_) => _onePixelPng,
+        // grantControl defaults to false — view is granted, control is not.
+      );
+
+      await _pumpLiveTab(tester, harness.api);
+
+      expect(find.text('Go live'), findsOneWidget,
+          reason: 'Viewing still works — this is the control grant missing, '
+              'not the whole tab.');
+      expect(find.text('Take control'), findsNothing);
+      expect(find.byKey(const Key('desktop-monitoring-control-toggle')), findsNothing,
+          reason: 'The control gate is the monitoring.control grant — without '
+              'it the toggle must not exist at all.');
+    },
+  );
+
+  testWidgets(
+    'tapping "Take control" auto-starts live and posts to .../control',
+    (tester) async {
+      final harness = _liveHarness(
+        devices: [_raceDeviceA],
+        shotsFor: (_) => _raceShotsA,
+        liveFrame: (_) => _onePixelPng,
+        grantControl: true,
+      );
+
+      await _pumpLiveTab(tester, harness.api);
+
+      expect(find.text('Take control'), findsOneWidget);
+      expect(find.text('Go live'), findsOneWidget,
+          reason: 'Not live yet — Take control is what starts it.');
+
+      await tester.tap(find.byKey(const Key('desktop-monitoring-control-toggle')));
+      await _liveTick(tester);
+      await _liveTick(tester);
+
+      expect(find.text('Release'), findsOneWidget,
+          reason: 'The toggle flips to Release once control is on.');
+      expect(find.text('Stop'), findsOneWidget,
+          reason: 'Taking control must auto-start live — you cannot drive a '
+              'screen you cannot see.');
+      expect(harness.controlCalls, contains('dev-a'),
+          reason: 'Taking control must assert interest via POST .../control.');
+      expect(find.byKey(const Key('desktop-monitoring-controlling-badge')), findsOneWidget,
+          reason: 'A clear CONTROLLING badge must be shown while driving.');
+    },
+  );
+
+  testWidgets(
+    'a pointer-down on the hero posts an input batch carrying a mouseButton '
+    'and a mouseMove with normalized 0..1 coordinates',
+    (tester) async {
+      final harness = _liveHarness(
+        devices: [_raceDeviceA],
+        shotsFor: (_) => _raceShotsA,
+        liveFrame: (_) => _onePixelPng,
+        grantControl: true,
+      );
+
+      await _pumpLiveTab(tester, harness.api);
+
+      await tester.tap(find.byKey(const Key('desktop-monitoring-control-toggle')));
+      await _liveTick(tester);
+      await _liveTick(tester);
+
+      // Press at the centre of the hero — its box centre maps to (0.5, 0.5).
+      final center = tester.getCenter(find.byKey(const Key('desktop-monitoring-hero')));
+      final gesture = await tester.startGesture(center);
+      await tester.pump();
+      // Let the ~60ms flush debounce fire, then the post complete.
+      await tester.pump(const Duration(milliseconds: 60));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 60));
+      await tester.pump();
+
+      expect(harness.inputBatches, isNotEmpty,
+          reason: 'A pointer-down while controlling must post an input batch.');
+
+      final events = harness.inputBatches.expand((b) => b).cast<Map<String, dynamic>>().toList();
+
+      final moves = events.where((e) => e['type'] == 'mouseMove').toList();
+      final buttons = events.where((e) => e['type'] == 'mouseButton').toList();
+
+      expect(moves, isNotEmpty,
+          reason: 'The press must carry a mouseMove to the pressed point.');
+      expect(buttons, isNotEmpty,
+          reason: 'The press must carry a mouseButton event.');
+
+      final move = moves.first;
+      final x = (move['x'] as num).toDouble();
+      final y = (move['y'] as num).toDouble();
+      expect(x, inInclusiveRange(0.0, 1.0),
+          reason: 'x must be a normalized fraction of the hero width.');
+      expect(y, inInclusiveRange(0.0, 1.0),
+          reason: 'y must be a normalized fraction of the hero height.');
+
+      expect(buttons.first['button'], 'left',
+          reason: 'A primary press maps to the left button.');
+      expect(buttons.first['down'], true,
+          reason: 'A pointer-down is a button-down.');
+    },
+  );
+
+  testWidgets(
+    'releasing control stops capturing — a later pointer-down posts nothing',
+    (tester) async {
+      final harness = _liveHarness(
+        devices: [_raceDeviceA],
+        shotsFor: (_) => _raceShotsA,
+        liveFrame: (_) => _onePixelPng,
+        grantControl: true,
+      );
+
+      await _pumpLiveTab(tester, harness.api);
+
+      await tester.tap(find.byKey(const Key('desktop-monitoring-control-toggle')));
+      await _liveTick(tester);
+      await _liveTick(tester);
+
+      final center = tester.getCenter(find.byKey(const Key('desktop-monitoring-hero')));
+      final first = await tester.startGesture(center);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 60));
+      await tester.pump();
+      await first.up();
+      await tester.pump();
+
+      expect(harness.inputBatches, isNotEmpty,
+          reason: 'Sanity: input flows while controlling, or the next '
+              'assertion (that it STOPS) proves nothing.');
+      final batchesWhileControlling = harness.inputBatches.length;
+
+      // Release control — the toggle now reads Release.
+      await tester.tap(find.byKey(const Key('desktop-monitoring-control-toggle')));
+      await _liveTick(tester);
+
+      expect(find.text('Take control'), findsOneWidget,
+          reason: 'Releasing flips the toggle back to Take control.');
+      expect(find.byKey(const Key('desktop-monitoring-controlling-badge')), findsNothing);
+
+      // A press now lands on a hero no longer wrapped in the capture layer.
+      final second = await tester.startGesture(center);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 60));
+      await tester.pump();
+      await second.up();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 60));
+      await tester.pump();
+
+      expect(harness.inputBatches.length, batchesWhileControlling,
+          reason: 'After release the pointer must no longer be captured — no '
+              'further input posts.');
+    },
+  );
+
+  testWidgets(
+    'switching device while controlling cancels control outright',
+    (tester) async {
+      final harness = _liveHarness(
+        devices: [_raceDeviceA, _raceDeviceB],
+        shotsFor: (id) => id == 'dev-b' ? _raceShotsB : _raceShotsA,
+        liveFrame: (_) => _onePixelPng,
+        grantControl: true,
+      );
+
+      await _pumpLiveTab(tester, harness.api);
+
+      // Alice (dev-a) is the default selection.
+      await tester.tap(find.byKey(const Key('desktop-monitoring-control-toggle')));
+      await _liveTick(tester);
+      await _liveTick(tester);
+
+      expect(find.text('Release'), findsOneWidget);
+      expect(find.byKey(const Key('desktop-monitoring-controlling-badge')), findsOneWidget);
+
+      final inputsAtSwitch = harness.inputBatches.length;
+
+      // Switch to Bob via the person picker — a direct tap, never a dropdown.
+      await tester.tap(find.text('Bob Race'));
+      await _liveTick(tester);
+      await _liveTick(tester);
+
+      expect(find.text('Take control'), findsOneWidget,
+          reason: 'Switching device stops control rather than carrying it '
+              'onto the newly selected machine.');
+      expect(find.text('Go live'), findsOneWidget,
+          reason: 'And stops live with it — control cannot outlive its feed.');
+      expect(find.byKey(const Key('desktop-monitoring-controlling-badge')), findsNothing);
+
+      // Any buffered input must not leak to either device after the switch.
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump();
+      expect(harness.inputBatches.length, inputsAtSwitch,
+          reason: 'No input batch may be posted across a device switch.');
+    },
+  );
 }
 
 const _capableDevice = {
@@ -923,13 +1132,25 @@ Future<void> _advance(WidgetTester tester, [int steps = 10]) async {
 /// [liveFrame] answers every `GET .../devices/{id}/live-frame` — return
 /// bytes for a "frame arrived" tick, or `null` for a 404 ("no fresh frame"),
 /// which is exactly what `ApiClient.getBytes` turns a non-200 into.
-({ApiClient api, List<String> watchCalls, List<String> frameCalls}) _liveHarness({
+({
+  ApiClient api,
+  List<String> watchCalls,
+  List<String> frameCalls,
+  List<String> controlCalls,
+  List<List<dynamic>> inputBatches,
+}) _liveHarness({
   required List<Map<String, dynamic>> devices,
   required List<Map<String, dynamic>> Function(String deviceId) shotsFor,
   required List<int>? Function(String deviceId) liveFrame,
+  bool grantControl = false,
 }) {
   final watchCalls = <String>[];
   final frameCalls = <String>[];
+  // Remote Control (Part B): which device every `.../control` post named, and
+  // the decoded `events` list of every `.../input` batch — so a test can
+  // assert not just THAT input was posted but WHAT was in it and for whom.
+  final controlCalls = <String>[];
+  final inputBatches = <List<dynamic>>[];
 
   final api = ApiClient(
     client: MockClient((request) async {
@@ -940,7 +1161,11 @@ Future<void> _advance(WidgetTester tester, [int steps = 10]) async {
         return _json({
           'data': {
             ..._me,
-            'permissions': ['monitoring.view', 'monitoring.screenshots.view'],
+            'permissions': [
+              'monitoring.view',
+              'monitoring.screenshots.view',
+              if (grantControl) 'monitoring.control',
+            ],
           },
         });
       }
@@ -968,6 +1193,18 @@ Future<void> _advance(WidgetTester tester, [int steps = 10]) async {
         return http.Response('', 204);
       }
 
+      if (path.contains('/monitoring/devices/') && path.endsWith('/control')) {
+        final id = segments[segments.length - 2];
+        controlCalls.add(id);
+        return http.Response('', 204);
+      }
+
+      if (path.contains('/monitoring/devices/') && path.endsWith('/input')) {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        inputBatches.add((body['events'] as List<dynamic>?) ?? const []);
+        return http.Response('', 204);
+      }
+
       if (path.contains('/monitoring/devices/') && path.endsWith('/live-frame')) {
         final id = segments[segments.length - 2];
         frameCalls.add(id);
@@ -981,7 +1218,13 @@ Future<void> _advance(WidgetTester tester, [int steps = 10]) async {
     }),
   );
 
-  return (api: api, watchCalls: watchCalls, frameCalls: frameCalls);
+  return (
+    api: api,
+    watchCalls: watchCalls,
+    frameCalls: frameCalls,
+    controlCalls: controlCalls,
+    inputBatches: inputBatches,
+  );
 }
 
 Future<void> _pumpLiveTab(WidgetTester tester, ApiClient api) async {

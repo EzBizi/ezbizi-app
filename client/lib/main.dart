@@ -12,6 +12,7 @@ import 'core/live_view_service.dart';
 import 'core/module_screens.dart';
 import 'core/monitoring_heartbeat.dart';
 import 'core/permissions.dart';
+import 'core/remote_control_service.dart';
 import 'core/screenshot_service.dart';
 import 'core/session.dart';
 import 'core/staff_session.dart';
@@ -406,12 +407,20 @@ class _HomeShellState extends State<HomeShell> {
   /// above for why this has to be an explicit `initState` assignment.
   late final LiveViewService _liveView;
 
+  /// The agent half of Remote Control (2026-09-02-monitoring-remote-control,
+  /// Part A) — polls this device's input queue and applies a manager's
+  /// mouse/keyboard via the native channel. Same lifecycle as [_liveView] and
+  /// for the same reason: see [_heartbeat]'s doc comment above for why this
+  /// has to be an explicit `initState` assignment.
+  late final RemoteControlService _remoteControl;
+
   @override
   void initState() {
     super.initState();
     _heartbeat = MonitoringHeartbeat(widget.api);
     _screenshots = ScreenshotService(widget.api);
     _liveView = LiveViewService(widget.api);
+    _remoteControl = RemoteControlService(widget.api);
     _apply(widget.address?.path);
     _stopListening = widget.address?.listen((path) {
       if (!mounted) return;
@@ -425,6 +434,7 @@ class _HomeShellState extends State<HomeShell> {
     _heartbeat.dispose();
     _screenshots.dispose();
     _liveView.dispose();
+    _remoteControl.dispose();
     super.dispose();
   }
 
