@@ -15,9 +15,10 @@ import 'device_key_store_io.dart'
 /// 1. ACROSS restarts: `device_key_store_io.dart` (desktop) writes the key to a
 ///    plain per-user config file, and `device_key_store_web.dart` writes it to
 ///    localStorage — so a machine keeps the SAME key, and therefore the same
-///    `monitored_devices` row, launch after launch. (This store deliberately
-///    persists where token_store_io.dart does not: the device key is a
-///    non-secret install id, not a bearer token — see that file.)
+///    `monitored_devices` row, launch after launch. (Its own store, kept apart
+///    from the auth token's keychain in token_store_io.dart: the device key is
+///    a non-secret install id, not a bearer token, so it does not need — and
+///    stays out of — the keychain. See that file.)
 /// 2. WITHIN a process, before the first write has necessarily landed: the two
 ///    callers must not each do their own "read store, else generate + persist"
 ///    and, on a brand-new install where the store is still empty, each generate

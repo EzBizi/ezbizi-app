@@ -2,15 +2,16 @@ import 'dart:io';
 
 /// Desktop/VM persistence for the monitoring device key.
 ///
-/// Unlike the auth token — token_store_io.dart is a deliberate no-op, because a
-/// bearer token in a plain file on disk is worse than one that dies on restart
-/// — the device key is NOT a secret. It is a random per-install identifier the
-/// server maps to a `monitored_devices` row; whoever controls the machine
-/// already controls the agent, so persisting it in a plain per-user file leaks
-/// nothing. And persist it MUST: without this, every relaunch generated a fresh
-/// key and therefore a brand-new device row, so one physical machine showed up
-/// in the fleet as a new device on every start. This one persists, to a file
-/// under the user's per-user config directory.
+/// The auth token lives in the platform keychain (token_store_io.dart, via
+/// flutter_secure_storage — DPAPI/Keychain/libsecret), because a bearer token
+/// must be encrypted at rest. The device key does NOT need that: it is a random
+/// per-install identifier the server maps to a `monitored_devices` row, not a
+/// secret — whoever controls the machine already controls the agent, so a plain
+/// per-user file leaks nothing, and it stays out of the keychain (and out of the
+/// auth token's storage) rather than sharing it. Persist it it MUST, though:
+/// without this, every relaunch generated a fresh key and therefore a brand-new
+/// device row, so one physical machine showed up in the fleet as a new device on
+/// every start. This persists it, to a file under the user's config directory.
 
 /// Test seam: point persistence at a scratch directory instead of the real
 /// config dir. Null in production.
