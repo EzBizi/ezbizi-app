@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\Customer;
 use App\Models\InventoryVendor;
 use App\Models\PlatformStaff;
+use App\Models\User;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
@@ -108,6 +109,79 @@ class DataInventoryTest extends TestCase
             $events['rows'],
             'The audit count looks like it spans organizations.',
         );
+    }
+
+    /**
+     * The one count that is NOT the organization's, and must not become one.
+     *
+     * `Suggestion::personalDataPurpose()` is printed in this same response and
+     * promises the reader that "nobody at your own organization can" read
+     * these. This endpoint is reachable by an owner or an administrator, so an
+     * organization-wide `rows:` under that sentence would be the sentence's own
+     * refutation inside one JSON object: in a three-person company a number
+     * that moves when a colleague writes something says a suggestion was sent,
+     * when, and roughly by whom, and reading it weekly gives the frequency.
+     * That is exactly the fact the module's audit-row exemption withholds,
+     * arriving through a door nobody had checked.
+     *
+     * So the count is the READER's own, which is both a true answer to "what do
+     * you hold about me" and one that cannot be watched for somebody else's
+     * activity. This test fails the moment the organization-wide count returns.
+     */
+    public function test_the_suggestion_count_is_the_readers_own_and_never_a_colleagues(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        // Enough to read the inventory at all and nothing more — this endpoint
+        // takes every resource's VIEW permission. Suggestions itself is
+        // ungated on purpose (there is no permission key for it), so both of
+        // these people can send one.
+        $colleague = $this->userWithRole(
+            $alpha, 'Colleague', ['customers.view', 'jobs.view'],
+        );
+
+        $this->assertSame(0, $this->suggestionRows($alpha['admin']));
+
+        $this->signedInAs($colleague)
+            ->postJson('/api/v1/suggestions', ['body' => 'Nobody here may know I sent this.'])
+            ->assertCreated();
+
+        $this->assertSame(
+            0,
+            $this->suggestionRows($alpha['admin']),
+            'The administrator\'s inventory moved when a COLLEAGUE wrote a suggestion. That '
+            .'number sits directly under a sentence promising nobody at this organization '
+            .'can read them, and it has just become evidence that one was sent.',
+        );
+
+        // Not simply refused, either: the reader's own suggestions are the
+        // answer to the question the inventory is asked, so they are counted.
+        $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/suggestions', ['body' => 'Mine, and mine to read.'])
+            ->assertCreated();
+
+        $this->assertSame(1, $this->suggestionRows($alpha['admin']));
+
+        // The strongest form of the same check: with an organization-wide
+        // count both of these would now read 2.
+        $this->assertSame(1, $this->suggestionRows($colleague));
+    }
+
+    /** The `rows:` the inventory prints for suggestions, read as this person. */
+    private function suggestionRows(User $reader): int
+    {
+        $holdings = $this->signedInAs($reader)
+            ->getJson('/api/v1/exports/inventory')->assertOk()->json('holdings');
+
+        $suggestions = collect($holdings)->firstWhere('table', 'suggestions');
+
+        $this->assertNotNull(
+            $suggestions,
+            'The inventory does not list suggestions at all — it holds free text somebody '
+            .'wrote and has to be in the answer.',
+        );
+
+        return $suggestions['rows'];
     }
 
     /**
