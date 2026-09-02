@@ -1,0 +1,43 @@
+All seven items below, and the same information is now in the Notes field.
+
+1. SCREEN RECORDING
+Attached. Captured on a physical iPhone 16 Plus running iOS 26.6, beginning with launching EzBizi from the Home screen. It shows signing in, the dashboard, the core modules - Customers, Jobs, Inspections, Inventory, Fleet - then account deletion.
+
+Your four categories:
+
+- Registration: none. EzBizi is used by invitation; an organization invites its staff and each person sets a password from that invitation. There is no public sign-up.
+- Login: shown, using the credentials below.
+- Account deletion: shown. A person deletes their own account from the account screen. It asks for their password and for them to type DELETE, then erases their personal details and signs them out everywhere. One case is visible in the app: the sole administrator of an organization is told to make somebody else an administrator first, so a business is never left with nobody able to run it.
+- Paid content, purchases, subscriptions: none exist. Nothing is sold in the app.
+- User-generated content, reporting, blocking: none. No public content, no feed, no profiles, no way for one user to contact another. Everything written is a private business record visible only to that organization.
+- Prompts for sensitive data or device capabilities: none. EzBizi requests no device permissions. The binary declares one permission, network access, and uses no location, contacts, camera, microphone or App Tracking Transparency.
+
+2. DEVICES AND OS TESTED ON
+iPhone 16 Plus, iOS 26.6 (physical; used for the recording)
+iPhone 15 Pro Max, iOS 26.6 (physical)
+iPad Pro 13-inch (M4), iPadOS 26.0 (simulator)
+
+3. FUNCTION AND AUDIENCE
+EzBizi is field-service business software for companies running work across more than one location - chimney sweeps, garage-door installers and similar trades with several branches or franchises.
+
+The problem: the office and the field work from different systems. The customer record is in one place, the schedule in another, inspection notes on paper, the van's service history in a folder. Nobody answers a customer's question without asking three people.
+
+EzBizi puts customers, jobs, inspections, inventory, vehicles and staff on the same records, scoped so each location sees its own work while the group above sees all of it. A customer served by two locations is still one customer.
+
+Audience: owners, office staff and field technicians at multi-location service businesses. Sold to the business, not to consumers.
+
+4. SETUP AND ACCESS
+No setup required, no sample files. Sign in with apple@ezbizi.com and the password in the Sign-In Information field. That account administers a demonstration organization holding invented data only. One account type, reaching every feature. Account deletion is in the account screen, from the avatar.
+
+5. EXTERNAL SERVICES
+Infrastructure: Amazon Web Services (hosting, database), Amazon SES (transactional email).
+
+Optional per-tenant integrations, none required and none configured in the demo organization. Each is connected by the customer with their own account and can be disconnected at any time: Twilio (phone, SMS); Google and Microsoft 365 (company mailbox); Meta, TikTok, Pinterest, LinkedIn, X, YouTube (publishing the customer's own posts to their own accounts); Google Ads, Google Business Profile, Thumbtack (lead sources).
+
+Stated because you ask: no payment processor, no AI service, and no advertising, analytics, attribution or crash-reporting SDK.
+
+6. REGIONAL DIFFERENCES
+None. Identical in every region. English (United States) only, no region-gated features, no regional pricing, no content varying by territory.
+
+7. REGULATED INDUSTRY OR PROTECTED MATERIAL
+Neither applies. EzBizi is general business software for service companies, not a regulated service, and contains no licensed or protected third-party material. All content is EzBizi's own or entered by the customer about their own business.

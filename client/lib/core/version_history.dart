@@ -8,17 +8,9 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
-      version: '0.0.0133',
-      date: '1 Sep 2026',
+      version: '0.0.0137',
+      date: '2 Sep 2026',
       items: [
-        'Monitoring: a new module showing the machines your people work on '
-            'and whether they are healthy. Companies may use EzBizi to monitor '
-            'their team; this is covered in the terms of service.',
-        'Monitoring - PC Specs: the desktop app now reports each machine\'s '
-            'memory, free disk, operating system and Wi-Fi, so you can see the '
-            'hardware your team is on and not only that they are online. A '
-            'browser session still shows, marked as a browser session with no '
-            'specs to report.',
         'Monitoring - PC Specs now leads with a person\'s active device, adds '
             'a switcher when more than one is active, and folds older sessions '
             'away behind a toggle. Before, somebody who had signed in from '
@@ -26,7 +18,7 @@ class VersionHistory {
             'the same.',
         'Monitoring - a desktop machine is now recognised as the same device '
             'each time the app starts, instead of registering as a brand-new '
-            'device on every launch.',
+            'device on every launch and piling up duplicates.',
         'Monitoring - Desktop Monitoring: with the right permission, a manager '
             'can see periodic screenshots of a monitored Windows machine\'s '
             'screen. Images are kept for 30 days and then deleted on their own. '
@@ -36,6 +28,64 @@ class VersionHistory {
             'address - HLS, MJPEG, snapshot or RTSP - and watch it inside '
             'EzBizi. MJPEG and snapshot cameras play in the page; HLS and RTSP '
             'open in your own video player for now.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0136',
+      date: '2 Sep 2026',
+      items: [
+        'Adding a photo or a file works in the desktop app. The button was '
+            'there and pressing it did nothing at all - there was no file '
+            'dialog outside a browser, so nothing opened and nothing said so.',
+        'Email: signing in to a mail account from the desktop app opens your '
+            'own browser to do it, rather than having nowhere to go.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0135',
+      date: '2 Sep 2026',
+      items: [
+        'The desktop app keeps you signed in. Ticking "keep me signed in" had '
+            'never done anything outside a browser - the desktop app held your '
+            'session in memory only, so closing it, or updating it, signed you '
+            'out. The session is now kept in the Windows credential store, '
+            'encrypted to your Windows account, and only when you tick the '
+            'box. Leave it unticked and it still ends when you close the app.',
+        'Android now needs Android 8.0 or newer. Taking calls on the phone '
+            'uses Twilio, which does not support anything older, so this is '
+            'the floor for having calling at all rather than a preference.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0134',
+      date: '2 Sep 2026',
+      items: [
+        'Phone: calls work in the app on every platform that can carry audio, '
+            'not only in a browser tab.',
+        'Tasks: a task with no custom fields now saves. It was sending an '
+            'empty list where the server expects a set of named values, which '
+            'failed on exactly the tasks that had nothing extra filled in.',
+        'The tab you are on no longer covers its own icon. It looked like the '
+            'hover had stuck and not cleared.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0133',
+      date: '1 Sep 2026',
+      items: [
+        'Phone: you can take and make calls inside the app on Windows, '
+            'Android, iPhone and Mac, not only in a browser. On a phone an '
+            'incoming call rings like a phone call rather than a notification. '
+            'Incoming calls on phones need push credentials set up in Twilio '
+            'first; until then calls go out but do not come in.',
+        'Monitoring: a computer running the desktop app now reports what it '
+            'is - memory, free disk, Windows version, and which wifi network '
+            'it is on with how strong the signal is. Until now Monitoring '
+            'could say a machine was active and nothing about it, so "it is '
+            'slow" had no numbers next to it.',
+        'That only happens on the desktop app, and only on Windows so far. '
+            'Anywhere else the machine keeps reporting that it is active, '
+            'exactly as before, and simply sends no specs.',
       ],
     ),
     VersionRelease(
@@ -74,6 +124,11 @@ class VersionHistory {
             'hundred and nine places asking for a heading were quietly drawing '
             'ordinary text. That is why titles looked unrelated from one '
             'screen to the next.',
+        'The tab you are on no longer covers its own icon with a grey '
+            'circle. The circle followed the selected tab rather than the '
+            'mouse, so it looked like a hover effect stuck on the wrong tab. '
+            'It was the tick that gets drawn on top of the icon, which the '
+            'coloured background had already made unnecessary.',
         'Social: Facebook, Threads and Instagram can post. Until now a post '
             'could be written and scheduled for those three and nothing left '
             'EzBizi. Instagram needs the picture handed over in a separate '

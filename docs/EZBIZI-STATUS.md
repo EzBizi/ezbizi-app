@@ -1,6 +1,6 @@
 # EzBizi — where things stand
 
-**2026-09-01.** One page. If something contradicts another document, this one is right —
+**2026-09-02.** One page. If something contradicts another document, this one is right —
 which only works if it is the newest, and on 6 August it was not: it claimed the off-site
 backup was still outstanding some three hours after `EZBIZI-TODO.md` recorded it closed.
 **Update this page in the same pass as the thing it describes, or delete the claim.** The four
@@ -18,8 +18,8 @@ rather than for trying harder.
 | Stack | Laravel 13 · PHP 8.4 · MySQL 8 · Flutter web client |
 <!-- numbers:start -->
 | Tests | Not measured by this deploy — it ran without gates. Run `scripts/release.sh --gates` for a current count. |
-| Client version | `v0.0.0132` — shown bottom-left in the app and on sign-in, so a stale cache is visible rather than guessed at. |
-| Production data | **2 organization(s) · 7 companies · 18 franchises · 13 users · 14 customers · 25 jobs.** Counted 2026-09-01 against the live database by `scripts/status-numbers.sh`, not typed. |
+| Client version | `v0.0.0135` — shown bottom-left in the app and on sign-in, so a stale cache is visible rather than guessed at. |
+| Production data | **2 organization(s) · 7 companies · 18 franchises · 13 users · 14 customers · 25 jobs.** Counted 2026-09-02 against the live database by `scripts/status-numbers.sh`, not typed. |
 | Permissions in production | **99 rows.** `ezbizi:sync-permissions` runs on every deploy, between the migration and the caches. |
 <!-- numbers:end -->
 

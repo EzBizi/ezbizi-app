@@ -31,6 +31,15 @@ abstract class VoiceDevice {
   /// silently never rings.
   bool get registered;
 
+  /// A platform object the screen must MOUNT for this device to work, or null.
+  ///
+  /// Only Windows returns one, and it is not a display surface: WebView2
+  /// delivers the microphone permission prompt to the `Webview` WIDGET's
+  /// delegate, so a controller that is never put in the tree is never asked,
+  /// and `getUserMedia` fails with the phone looking perfectly healthy. The
+  /// Dial tab mounts it at zero size.
+  Object? get platformView;
+
   /// Place an outbound call. [to] is E.164 or `client:{identity}`.
   Future<void> connect({required String to, String? callerId});
 
