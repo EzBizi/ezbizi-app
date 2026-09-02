@@ -95,6 +95,11 @@ class TaskPresentationBar extends StatelessWidget {
         key: ValueKey('presentation-tab-${value.wire}'),
         avatar: Icon(icon, size: 16),
         label: Text(label),
+        // Material draws a tick over the avatar and darkens it with a disc to
+        // keep the tick readable — so the icon identifying the view vanishes
+        // at the moment you pick it, which reads as a stuck hover. The filled
+        // background already says which is selected.
+        showCheckmark: false,
         selected: presentation == value,
         onSelected: available ? (_) => onPresentationChanged(value) : null,
         tooltip: available ? null : '$label is not available yet.',

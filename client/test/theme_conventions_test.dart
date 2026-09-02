@@ -320,7 +320,13 @@ void main() {
     const baseline = 31;
 
     test('no new hardcoded colours outside theme.dart', () {
-      final pattern = RegExp(r'Color\(0x|Colors\.[a-z]');
+      // `Colors.transparent` is excluded, and it is the one exception worth
+      // making: it is the ABSENCE of paint, not a colour anybody chose, so
+      // "read it from the theme instead" is advice with no answer. Counting it
+      // sent the Tasks merge red over six `Colors.transparent` in a timeline
+      // widget — a false positive that costs a real gate its credibility, which
+      // is how gates end up being raised past instead of fixed.
+      final pattern = RegExp(r'Color\(0x|Colors\.(?!transparent\b)[a-z]');
       var found = 0;
       var scanned = 0;
       final worst = <String, int>{};
