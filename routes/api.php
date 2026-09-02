@@ -101,6 +101,7 @@ use App\Http\Controllers\Api\StaffAuthController;
 use App\Http\Controllers\Api\StaffClientVersionsController;
 use App\Http\Controllers\Api\StaffController;
 use App\Http\Controllers\Api\StaffPhoneRequestsController;
+use App\Http\Controllers\Api\SuggestionsController;
 use App\Http\Controllers\Api\Tasks\MyTasksController;
 use App\Http\Controllers\Api\Tasks\TaskBoardMembersController;
 use App\Http\Controllers\Api\Tasks\TaskBoardPreferencesController;
@@ -473,6 +474,17 @@ Route::prefix('v1')
     ->group(function () {
 
         Route::post('auth/logout', [AuthController::class, 'logout']);
+
+        /*
+         * Suggestions — the one module with no permission behind it.
+         *
+         * Deliberately absent from ModuleRegistry so that no organization can
+         * remove it (see App\Models\Suggestion), which means there is no key for
+         * EnsureModuleAvailable or a permission middleware to check. Reachable
+         * by anybody signed in, which is the requirement.
+         */
+        Route::get('suggestions', [SuggestionsController::class, 'index']);
+        Route::post('suggestions', [SuggestionsController::class, 'store']);
 
         Route::middleware(EnsureTaskRouteAccess::class)->group(function () {
             Route::get('tasks/folders', [TaskFoldersController::class, 'index']);
