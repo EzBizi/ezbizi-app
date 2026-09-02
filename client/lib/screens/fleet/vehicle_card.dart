@@ -6,10 +6,19 @@ import '../../widgets/calendar_day_field.dart';
 
 /// Shared chrome and labels for the vehicle cards (spec §11).
 class FleetSectionCard extends StatelessWidget {
-  const FleetSectionCard({super.key, required this.title, required this.child});
+  const FleetSectionCard({
+    super.key,
+    required this.title,
+    required this.child,
+    this.tags = const [],
+  });
 
   final String title;
   final Widget child;
+
+  /// State of the group, read before its fields — how much is filled, or what
+  /// is missing. Wraps under the title rather than pushing it off a 375 screen.
+  final List<Widget> tags;
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +28,14 @@ class FleetSectionCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              runSpacing: 4,
+              children: [
+                Text(title, style: Theme.of(context).textTheme.titleMedium),
+                ...tags,
+              ],
+            ),
             const SizedBox(height: 12),
             child,
           ],
@@ -27,6 +43,34 @@ class FleetSectionCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Short fields side by side when there is room, stacked when there is not.
+///
+/// The 375px floor is the whole point of grouping the identity card: three
+/// fields in a row is a desktop luxury, and below roughly 170px each a field
+/// cannot show its own label, so it stacks instead of shrinking.
+Widget fleetFieldRow(List<Widget> fields) {
+  return LayoutBuilder(
+    builder: (context, constraints) {
+      if (constraints.maxWidth < fields.length * 170) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: fields,
+        );
+      }
+
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < fields.length; i++) ...[
+            if (i > 0) const SizedBox(width: 12),
+            Expanded(child: fields[i]),
+          ],
+        ],
+      );
+    },
+  );
 }
 
 Map<String, dynamic>? fleetMap(dynamic value) =>

@@ -351,6 +351,104 @@ void main() {
     expect(find.text('A-1 Group'), findsNothing);
   });
 
+  // ── Identity card, layout 2 ────────────────────────────────────────────
+  //
+  // The card is five grouped cards rather than one twenty-one field column.
+  // The rules that are easy to break later: nothing hides because it is empty,
+  // the fold is the reader's, and money stays behind financials.
+
+  testWidgets('Identity is five groups, not one column', (tester) async {
+    await _pumpIdentity(tester);
+
+    expect(find.text('Identity'), findsOneWidget);
+    expect(find.text('Plates & registration'), findsOneWidget);
+    expect(find.text('Odometer & service'), findsOneWidget);
+    expect(find.text('Tolls'), findsOneWidget);
+    expect(find.text('Notes'), findsOneWidget);
+  });
+
+  testWidgets('an empty field is still drawn, because it has to be fillable', (
+    tester,
+  ) async {
+    await _pumpIdentity(tester);
+
+    // Trim is empty on every one of A-1's 24 vehicles. A field that hid when
+    // empty could never be filled in, so it stays and the group counts it.
+    expect(find.widgetWithText(TextField, 'Trim'), findsOneWidget);
+    expect(find.textContaining('of 9 filled'), findsOneWidget);
+  });
+
+  testWidgets('a state with no number reads as one incomplete plate', (
+    tester,
+  ) async {
+    await _pumpIdentity(tester);
+
+    // The finding the redesign exists for: 24 vehicles carry a state and 9 a
+    // number, so two separate fields showed "CT" beside an empty box.
+    expect(find.text('Plate number missing'), findsOneWidget);
+    expect(find.text('State and number are one plate.'), findsOneWidget);
+  });
+
+  testWidgets('Tolls starts folded when empty and stays open once opened', (
+    tester,
+  ) async {
+    await _pumpIdentity(tester);
+
+    expect(find.text('Nothing recorded'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Toll plan'), findsNothing);
+
+    final fold = find.text('Open to fill these in');
+    await tester.ensureVisible(fold);
+    await tester.pumpAndSettle();
+    await tester.tap(fold);
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextField, 'Toll plan'), findsOneWidget);
+    expect(find.text('Open to fill these in'), findsNothing);
+  });
+
+  testWidgets('Toll flat rate is disabled without financials, not hidden', (
+    tester,
+  ) async {
+    await _pumpIdentity(tester);
+
+    await tester.ensureVisible(find.text('Open to fill these in'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open to fill these in'));
+    await tester.pumpAndSettle();
+
+    // A hidden money control reads as a missing value. It stays on screen and
+    // says why, the way every other refused control in this app does.
+    expect(find.text('Flat rate needs Financials'), findsOneWidget);
+    final field = tester.widget<TextField>(
+      find.widgetWithText(TextField, 'Toll flat rate'),
+    );
+    expect(field.enabled, isFalse);
+  });
+
+  testWidgets('with financials the same control is live', (tester) async {
+    await _pumpIdentity(
+      tester,
+      permissions: const [
+        'fleet_management.view',
+        'fleet_management.edit',
+        'fleet_management.financials',
+      ],
+    );
+
+    await tester.ensureVisible(find.text('Open to fill these in'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open to fill these in'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Flat rate needs Financials'), findsNothing);
+    final field = tester.widget<TextField>(
+      find.widgetWithText(TextField, 'Toll flat rate'),
+    );
+    expect(field.enabled, isTrue);
+  });
+
+
 }
 
 const _van = {
@@ -584,6 +682,52 @@ const _subtreeVan = {
   'status': 'active',
   'company': {'id': 'co-ever', 'name': 'Everdoors'},
   'franchise': {'id': 'fr-ever', 'name': 'Ohio'},
+  'ownership': {'kind': 'owned'},
+  'assignment': null,
+};
+
+/// Open one vehicle and land on its Identity groups.
+Future<void> _pumpIdentity(
+  WidgetTester tester, {
+  List<String> permissions = const [
+    'fleet_management.view',
+    'fleet_management.edit',
+  ],
+}) async {
+  await _pumpScreen(
+    tester,
+    permissions: permissions,
+    vehicles: const [_platedVan],
+    size: const Size(1280, 2400),
+  );
+
+  await tester.tap(find.text(_platedVan['label']! as String).first);
+  await tester.pumpAndSettle();
+}
+
+/// A state and no number, which is fifteen of A-1's twenty-four vehicles, and
+/// no tolls at all, which is every one of them.
+const _platedVan = {
+  'id': 'v-3',
+  'number': 'V-00019',
+  'label': '2017 Toyota Tacoma',
+  'year': 2017,
+  'make': 'Toyota',
+  'model': 'Tacoma',
+  'trim': null,
+  'plate': null,
+  'plate_state': 'CT',
+  'vin': '5TFAX5GN1HX091234',
+  'colour': 'White',
+  'status': 'active',
+  'body_type': 'truck',
+  'fuel_type': 'gas',
+  'odometer_miles': 84210,
+  'toll_device_number': null,
+  'toll_plan': null,
+  'notes': null,
+  'company': {'id': 'co-1', 'name': 'A-1 Chimney'},
+  'franchise': {'id': 'fr-1', 'name': 'New Jersey'},
   'ownership': {'kind': 'owned'},
   'assignment': null,
 };
