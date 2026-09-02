@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Automations\CarriesAutomationScope;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
@@ -14,8 +15,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * A guide or test given to somebody, with an optional due date.
+ *
+ * `company_id`/`franchise_id` (see the migration) name where this row is
+ * FILED — copied from whichever target it carries when it is written
+ * (`AssignmentWriter::create`), the same place a guide or test itself
+ * carries (TrainingGuidePolicy, TrainingTestPolicy). [automationScope] below
+ * answers a different question — see its own docblock.
  */
-class TrainingAssignment extends Model implements HoldsPersonalData
+class TrainingAssignment extends Model implements CarriesAutomationScope, HoldsPersonalData
 {
     use HasUuids;
     use BelongsToTenant;
@@ -106,5 +113,50 @@ class TrainingAssignment extends Model implements HoldsPersonalData
     public function assignedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_by_user_id');
+    }
+
+    /**
+     * Where this assignment belongs, for §4 reach — the LEARNER'S place, not
+     * this row's own `company_id`/`franchise_id`.
+     *
+     * Copied from {@see TrainingProgress::automationScope()} — the settled
+     * shape for this module, reviewed twice there. The two questions are
+     * different for the identical reason TrainingProgress's own docblock
+     * gives: this row's `company_id`/`franchise_id` answer who may SEE it
+     * filed (§4, applied the way TrainingGuidePolicy/TrainingTestPolicy
+     * apply it to the content itself) — an organization-wide guide is filed
+     * everywhere, by design. A `training.assigned` notification answers who
+     * should be TOLD, and that is the learner's own place, not the
+     * content's.
+     *
+     * A ROLE assignment has no single learner — `assignee_id` names a role,
+     * not a user, so `User::find` on it finds nobody and this falls through
+     * to `[null, null]` exactly the way an unplaced person does. That is the
+     * conservative, organization-wide answer `NotificationDispatcher::audienceFor`
+     * already gives "no narrower place" (its own docblock) — the right
+     * default for an event that might be about anybody the role is ever
+     * held by, present or future (decision 1: a role assignment is one row,
+     * never expanded).
+     *
+     * A subject without `CarriesAutomationScope` falls through
+     * `NotificationDispatcher::audienceFor` to EVERY ACTIVE USER in the
+     * organization — implementing this is not optional (training task-9
+     * brief).
+     *
+     * @return array{0: string|null, 1: string|null}
+     */
+    public function automationScope(): array
+    {
+        $learner = $this->assignee_type === self::USER
+            ? User::query()->find($this->assignee_id)
+            : null;
+
+        $assignment = $learner?->assignments()->first();
+
+        return match ($assignment?->scopeType()) {
+            Assignment::SCOPE_FRANCHISE => ['franchise', $assignment->scopeId()],
+            Assignment::SCOPE_COMPANY => ['company', $assignment->scopeId()],
+            default => [null, null],
+        };
     }
 }

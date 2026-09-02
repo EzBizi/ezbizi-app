@@ -12,6 +12,7 @@ use App\Models\PhoneNumber;
 use App\Models\Task;
 use App\Models\TaskBoard;
 use App\Models\TaskGroup;
+use App\Models\TrainingAssignment;
 use App\Models\User;
 use App\Models\Vehicle;
 use App\Support\Audit\AuditLogger;
@@ -22,6 +23,8 @@ use App\Support\Scoping\ViewScope;
 use App\Support\Tasks\TaskUpdateWriter;
 use App\Support\Tasks\TaskWriter;
 use App\Support\TimeClock\TimeClock;
+use App\Support\Training\AssignmentWriter;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -175,6 +178,7 @@ class ActionRunner
         private readonly TimeClock $timeClock,
         private readonly SmsCompliance $smsCompliance,
         private readonly TwilioGateway $twilio,
+        private readonly AssignmentWriter $trainingAssignments,
     ) {}
 
     /**
@@ -227,6 +231,8 @@ class ActionRunner
 
             'time_clock.clock_in' => $this->punch($event, $subject, in: true),
             'time_clock.clock_out' => $this->punch($event, $subject, in: false),
+
+            'training.assign' => $this->assignTraining($action, $event, $subject, $automation),
 
             default => throw new InvalidArgumentException(
                 "Unknown automation action '{$type}'. Actions are declared by modules "
@@ -534,6 +540,89 @@ class ActionRunner
 
         return (string) $number->scope_type === (string) $automation->scope_type
             && (string) $number->scope_id === (string) $automation->scope_id;
+    }
+
+    /**
+     * Give a guide or a test to a person or a role, from a rule (training
+     * task-9 brief).
+     *
+     * Calls the exact `App\Support\Training\AssignmentWriter` that
+     * `AssignmentsController::store` calls — a rule and a person take the
+     * identical write path, so reach-bounding (`AssignmentReach`) cannot be
+     * bypassed by writing a rule instead of clicking a button. The ASSIGNER
+     * is the automation's own creator, resolved the same way
+     * [taskContext] already resolves it for every task action: a rule
+     * reaches no further than the person who saved it could reach by hand.
+     *
+     * The assignee comes from the action's own config when a rule author set
+     * one (`assignee_type`/`assignee_id` — the picker offers a specific
+     * person or role, same as `owner_user_id` does for `task.assign_owner`),
+     * and falls back to the triggering event's subject when it is a User —
+     * the shape the trigger's own description names: "Paired with 'Account
+     * activated' this is how an induction arrives on its own"
+     * (ModuleServiceProvider).
+     *
+     * Both of `AssignmentWriter::create`'s failure modes are caught here
+     * rather than left to bubble, per this class's own rule that a business
+     * refusal is a RESULT and not a throw: a `ValidationException` for a
+     * malformed target (neither/both of guide_id and test_id, or nobody
+     * named), and an `AuthorizationException` — the same `Refusal` sentence
+     * `AssignmentsController` would 403 with — for an assignee outside the
+     * creator's own reach.
+     */
+    private function assignTraining(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation): array
+    {
+        [$actor] = $this->taskContext($automation);
+
+        $assigneeType = $action['assignee_type'] ?? ($subject instanceof User ? TrainingAssignment::USER : null);
+        $assigneeId = $action['assignee_id'] ?? ($subject instanceof User ? $subject->getKey() : null);
+
+        $assignmentInput = [
+            'guide_id' => $action['guide_id'] ?? null,
+            'test_id' => $action['test_id'] ?? null,
+            'assignee_type' => $assigneeType,
+            'assignee_id' => $assigneeId,
+        ];
+
+        // KEY present only when the rule's OWN action config set one — never
+        // `$action['due_on'] ?? null`, which would put the key there
+        // unconditionally and, for a REPEAT assignment, read as "clear the
+        // stored date" every time the rule fires without one configured.
+        // AssignmentWriter::create's own docblock, "Absent is not the same
+        // as null" (round 3): a rule with no date, firing a second time,
+        // must not silently wipe a date a person set by hand.
+        if (array_key_exists('due_on', $action)) {
+            $assignmentInput['due_on'] = $action['due_on'];
+        }
+
+        try {
+            $assignment = $this->trainingAssignments->create($actor, $assignmentInput, causedBy: $event);
+        } catch (ValidationException $e) {
+            return [
+                'type' => 'training.assign',
+                'ok' => false,
+                'detail' => collect($e->errors())->flatten()->first() ?? $e->getMessage(),
+            ];
+        } catch (AuthorizationException $e) {
+            return [
+                'type' => 'training.assign',
+                'ok' => false,
+                'detail' => $e->getMessage(),
+            ];
+        }
+
+        // wasRecentlyCreated distinguishes a genuine insert from a repeat
+        // that resolved to the row already there — AssignmentWriter::create's
+        // own docblock, "a repeat assignment updates in place, never a
+        // second row". A rule firing twice for one instruction should say
+        // so, not claim to have assigned it a second time.
+        $verb = $assignment->wasRecentlyCreated ? 'Assigned' : 'Already assigned';
+
+        return [
+            'type' => 'training.assign',
+            'ok' => true,
+            'detail' => "{$verb} {$assigneeType}:{$assigneeId} training {$assignment->id}.",
+        ];
     }
 
     private function markVoicemailDealt(AutomationEvent $event, ?Model $subject): array

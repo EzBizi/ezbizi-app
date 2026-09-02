@@ -2216,8 +2216,13 @@ class ModuleServiceProvider extends ServiceProvider
              * nothing emitted any of them yet, and `isRaised: false` is what puts
              * "nothing raises this yet" on the row a tenant reads. `training.completed`
              * has since been flipped to `isRaised: true` (task 7's ProgressController
-             * raises it on a guide's final screen) — the other four are still
-             * `isRaised: false`; nothing else in this module emits yet.
+             * raises it on a guide's final screen), `training.passed` /
+             * `training.failed` have since been flipped to `isRaised: true` as well
+             * (task 8's LearnController::submit emits both), and `training.assigned`
+             * has since been flipped to `isRaised: true` too (task 9's
+             * AssignmentWriter::create emits it) — only `training.expired` is
+             * still declared `isRaised: false`; nothing else in this module emits
+             * yet.
              * ModuleRegistryTest holds the claim to the source for every one of the
              * five independently: the day any of them is emitted, the build fails
              * until its own flag is dropped, rather than the builder going on
@@ -2262,7 +2267,10 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A guide or a test was given out, to one person or to a '
                             .'whole role at once. It carries what was given, who or which role '
                             .'it went to, who gave it, and the date it is due if there is one.',
-                        isRaised: false,
+                        // Raised by AssignmentWriter::create (task 9), inside
+                        // the same transaction as the assignment row it
+                        // fires from — see its own docblock.
+                        isRaised: true,
                     ),
                     new TriggerDefinition(
                         key: 'training.completed',
@@ -2272,9 +2280,11 @@ class ModuleServiceProvider extends ServiceProvider
                             .'this.',
                         // Raised by ProgressController::seen (task 7), on the
                         // outbox and inside the same transaction as the
-                        // progress row — see its docblock. The other four
-                        // triggers in this module are still declared
-                        // isRaised: false; see the block comment above.
+                        // progress row — see its docblock. `training.passed` /
+                        // `training.failed` are raised too (task 8), and
+                        // `training.assigned` is raised too (task 9). Only
+                        // `training.expired` is still declared isRaised: false;
+                        // see the block comment above.
                         isRaised: true,
                     ),
                     new TriggerDefinition(
@@ -2282,14 +2292,14 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Test passed',
                         description: 'Somebody took a test and met its pass mark. It carries the '
                             .'score and, when the test expires, the date the pass runs out.',
-                        isRaised: false,
+                        isRaised: true,
                     ),
                     new TriggerDefinition(
                         key: 'training.failed',
                         label: 'Test failed',
                         description: 'Somebody took a test and did not meet the pass mark. '
                             .'Whether they may try again is the test\'s own retake setting.',
-                        isRaised: false,
+                        isRaised: true,
                     ),
                     /*
                      * Expiry is a fact about the CLOCK, and this is the event

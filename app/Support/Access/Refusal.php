@@ -329,4 +329,36 @@ final class Refusal
             .'instead of drawing a dependency between boards.'
         );
     }
+
+    /**
+     * A test's own gate is not open yet (training task-8 brief, decision 1).
+     *
+     * Not a §4 reach failure — the learner can already see this test, having
+     * passed the identical InventoryVisibility/published check every other
+     * learner read in this module runs; what is missing is a fact about
+     * THEIR OWN progress, not about where they are assigned. `requires_guide:
+     * true` with a null `guide_id` — the guide was deleted out from under it
+     * — is read as no gate at all and never reaches this method.
+     */
+    public static function trainingGuideNotFinished(): Response
+    {
+        return Response::deny(
+            'This test requires finishing its guide first, and the guide has not been '
+            .'finished yet.'
+        );
+    }
+
+    /**
+     * A test's own retake cap has been reached (training task-8 brief).
+     *
+     * The number is the test author's own setting, not a platform constant,
+     * so the sentence names it rather than leaving the caller to guess what
+     * the limit was.
+     */
+    public static function trainingAttemptCapReached(int $max): Response
+    {
+        return Response::deny(
+            "This test allows at most {$max} attempts, and that many have already been made."
+        );
+    }
 }

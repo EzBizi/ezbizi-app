@@ -4,17 +4,22 @@ namespace App\Http\Controllers\Api\Training;
 
 use App\Http\Controllers\Api\Controller;
 use App\Models\TrainingAssignment;
+use App\Models\TrainingAttempt;
 use App\Models\TrainingGuide;
+use App\Models\TrainingProgress;
 use App\Models\TrainingTest;
 use App\Models\User;
 use App\Support\Access\Refusal;
+use App\Support\Automations\EventEmitter;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
 use App\Support\Training\LearnerView;
+use App\Support\Training\TestGrader;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * The learner-facing read — what somebody is assigned, what else is on
@@ -67,6 +72,8 @@ use Illuminate\Support\Collection;
  */
 class LearnController extends Controller
 {
+    public function __construct(private readonly EventEmitter $events) {}
+
     /** GET /api/v1/training/learn */
     public function index(Request $request): JsonResponse
     {
@@ -105,6 +112,143 @@ class LearnController extends Controller
         )->findOrFail($test);
 
         return response()->json(['data' => $this->presentTest($row)]);
+    }
+
+    /**
+     * POST /api/v1/training/learn/tests/{test}/attempts (task 8)
+     *
+     * Marks against the STORED test, in order: the gate, the retake cap, the
+     * grade, the expiry. Never against anything the client sent — see
+     * TestGrader's own docblock.
+     *
+     * ── The gate (decision 1) ──────────────────────────────────────
+     *
+     * `requires_guide: true` with a null `guide_id` is read as NO gate: the
+     * test is takeable. Authoring refuses that combination
+     * (TestsController::assertGuideGateHasATarget), but `guide_id` is
+     * `nullOnDelete`, so deleting the guide reaches this with no API call of
+     * its own. The house rule is no dead ends — a test nobody can ever sit
+     * is one — so a null `guide_id` is never treated as an unsatisfiable
+     * gate.
+     *
+     * ── The retake cap is a race, not a read-then-write check ────────
+     *
+     * `max_attempts` is enforced inside the SAME transaction as the write,
+     * against a LOCKED read of the test — never a plain count taken before
+     * the transaction opens. Attempts are inserts, not upserts, so there is
+     * no existing attempt row a first submission could lock the way task 7
+     * locked `training_progress` after `insertOrIgnore`
+     * (ProgressController::seen). What is locked instead is the TEST row
+     * itself: the one row every submission against it already reads, so
+     * re-selecting it here with `lockForUpdate()` serializes every
+     * submission against this test through that one row — the same shape
+     * `TaskConcurrencyTest`'s writer/revoke workers use, locking the parent
+     * `TaskBoard` rather than a membership row that might not exist yet.
+     * Read-then-write with nothing in between is not a uniqueness rule, it
+     * is a race (StaffAccountsController::update's docblock).
+     *
+     * ── The event, and why it is an INSERT and not a dispatch ────────
+     *
+     * `EventEmitter::emit` is the outbox write itself, called inside the
+     * same transaction as the attempt row — see ProgressController's
+     * docblock and StartUp.md §10. `training.passed` / `training.failed`
+     * are written as single-quoted literals on purpose: `ModuleRegistryTest`
+     * is bidirectional (ModuleServiceProvider's own docblock on this
+     * module), and the literal is what flips `isRaised: true` for both.
+     */
+    public function submit(Request $request, string $test): JsonResponse
+    {
+        $user = $request->user();
+        $this->authorizeLearner($user);
+
+        $scope = ViewScope::forUser($user);
+
+        // Same 404-for-all-three shape as [showTest]: a sibling franchise's
+        // test, a draft, or one that does not exist come back identically.
+        $row = InventoryVisibility::constrain(
+            TrainingTest::query()->where('status', TrainingTest::PUBLISHED),
+            $user,
+            $scope,
+        )->findOrFail($test);
+
+        // present rather than required: an empty test is a real, gradeable
+        // shape (decision 3) and a client submitting against one sends an
+        // empty array — required would reject that as though the key were
+        // missing, when it is deliberately empty.
+        $input = $request->validate([
+            'answers' => ['present', 'array'],
+            'answers.*' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        if ($row->requires_guide && $row->guide_id !== null && ! $this->guideFinishedBy($user, $row->guide_id)) {
+            Refusal::trainingGuideNotFinished()->authorize();
+        }
+
+        $attempt = DB::transaction(function () use ($user, $row, $input) {
+            $lockedTest = TrainingTest::query()->whereKey($row->getKey())->lockForUpdate()->firstOrFail();
+
+            if ($lockedTest->max_attempts !== null) {
+                $taken = TrainingAttempt::query()
+                    ->where('user_id', $user->getKey())
+                    ->where('test_id', $lockedTest->getKey())
+                    ->count();
+
+                if ($taken >= $lockedTest->max_attempts) {
+                    Refusal::trainingAttemptCapReached($lockedTest->max_attempts)->authorize();
+                }
+            }
+
+            $result = TestGrader::grade($lockedTest, $input['answers']);
+
+            $attempt = TrainingAttempt::create([
+                'user_id' => $user->getKey(),
+                'test_id' => $lockedTest->getKey(),
+                'answers' => $input['answers'],
+                'score' => $result['score'],
+                'passed' => $result['passed'],
+                'taken_at' => now(),
+                'expires_on' => ($result['passed'] && $lockedTest->valid_for_days !== null)
+                    ? now()->addDays($lockedTest->valid_for_days)->toDateString()
+                    : null,
+            ]);
+
+            // Deliberately NOT 'answers' — §9 ACTIVITY personal data, and the
+            // published trigger description promises only "the score and,
+            // when the test expires, the date the pass runs out." A
+            // `webhook` action ships this payload verbatim to a URL the
+            // tenant chose, and AutomationsController surfaces payload
+            // values through condition_trace.actual — either would leak a
+            // named person's individual answers off a sentence that never
+            // said it would. The attempt row itself still holds them, for
+            // the Dashboard.
+            $this->events->emit($result['passed'] ? 'training.passed' : 'training.failed', $attempt, [
+                'after' => [
+                    'test_id' => $lockedTest->getKey(),
+                    'user_id' => $user->getKey(),
+                    'score' => $attempt->score,
+                    'passed' => $attempt->passed,
+                    'expires_on' => $attempt->expires_on?->toDateString(),
+                ],
+            ]);
+
+            return $attempt;
+        });
+
+        return response()->json([
+            'score' => $attempt->score,
+            'passed' => $attempt->passed,
+            'expires_on' => $attempt->expires_on?->toDateString(),
+        ]);
+    }
+
+    /** Whether THIS learner has finished THIS guide — never a blanket "does anybody". */
+    private function guideFinishedBy(User $user, string $guideId): bool
+    {
+        return TrainingProgress::query()
+            ->where('user_id', $user->getKey())
+            ->where('guide_id', $guideId)
+            ->whereNotNull('completed_at')
+            ->exists();
     }
 
     private function authorizeLearner(User $user): void

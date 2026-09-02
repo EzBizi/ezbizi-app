@@ -72,24 +72,23 @@ class AutomationsController extends Controller
         'time_clock.clock_in',
         'time_clock.clock_out',
         /*
-         * THE ONE ENTRY THE DOCBLOCK ABOVE IS NOT YET TRUE OF.
+         * `ActionRunner::assignTraining` (task 9) is the real arm — the same
+         * `App\Support\Training\AssignmentWriter` a person's own POST
+         * /training/assignments calls, so a rule reaches no further, and
+         * needs no more PERMISSION, than the rule's own creator would by
+         * hand: `AssignmentWriter::create` checks `training.assign` itself,
+         * first, before anything else — not merely §4 reach. (Round-1 review
+         * found this entry's earlier wording true of reach and silently
+         * false of permission: `training.assign` was checked only in
+         * `AssignmentsController::store`, so a rule using this action ran
+         * with no permission check at all. Fixed by moving the gate into
+         * `AssignmentWriter::create`, the one path both take — see its own
+         * docblock — rather than by adding a second check here.)
          *
-         * `ActionRunner` has NO arm for this. It falls to the `default =>
-         * throw new InvalidArgumentException` at the end of `run()`, so a rule
-         * that saves with this action records a FAILED run rather than doing
-         * anything. The arm lands with the assignment write path in Task 9, and
-         * this line stops being an exception the moment it does. Declared here
-         * ahead of the arm because the module and the const have to agree — an
-         * action in one and not the other publishes as implemented:false and is
-         * refused at save, silently, with nothing red anywhere.
-         *
-         * This is NOT the state time_clock is in: `run()` has real arms for both
-         * of those. They are merely absent from `actionTypes()`, which is a
-         * different list and a different gap.
-         *
-         * Spelled out here for the same reason time_clock is spelled out above:
-         * the module declares executionType: 'training.assign', or this entry
-         * would never match the bare `assign` that type() would default to.
+         * Spelled out here for the same reason time_clock is spelled out
+         * above: the module declares executionType: 'training.assign', or
+         * this entry would never match the bare `assign` that type() would
+         * default to.
          */
         'training.assign',
     ];
