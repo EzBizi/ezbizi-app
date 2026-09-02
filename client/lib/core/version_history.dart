@@ -8,43 +8,50 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
-      version: '0.0.0140',
-      date: '2 Sep 2026',
-      items: [
-        'Monitoring - Desktop Monitoring: you can now take control of a '
-            'monitored machine. With the new control permission - separate from '
-            'simply viewing - your mouse and typing drive the remote screen '
-            'while you watch it live, for helping someone at their desk. Like '
-            'the rest of monitoring it is silent and covered by the terms of '
-            'service. Full keyboard shortcuts (Ctrl and Alt combinations) come '
-            'in a later update.',
-      ],
-    ),
-    VersionRelease(
       version: '0.0.0139',
       date: '2 Sep 2026',
       items: [
-        'Monitoring - Desktop Monitoring: a "Go live" button now shows a '
-            'machine\'s screen updating every second or two, live, instead of '
-            'only the latest five-minute screenshot. The live view is never '
-            'recorded - frames are shown and thrown away, not kept - and if the '
-            'machine stops sending, the view says it is waiting rather than '
-            'leaving a stale picture up as if it were current.',
+        'Monitoring now shows one entry per person, led by the machine running '
+            'the desktop app, and names devices plainly ("Browser", "Desktop '
+            'app") instead of "web web" / "windows windows". You pick whose '
+            'screen to view from a searchable list of people, not a drop-down, '
+            'and only machines running the desktop app appear there.',
+        'Monitoring - Desktop Monitoring: a "Go live" button shows a machine\'s '
+            'screen updating every second or two, live, instead of only the '
+            'latest five-minute screenshot. The live view is never recorded, '
+            'and if the machine stops sending it says so rather than leaving a '
+            'stale picture up.',
+        'Monitoring - Desktop Monitoring: you can take control of a monitored '
+            'machine - your mouse and keyboard, including Ctrl and Alt '
+            'shortcuts, drive the remote screen while you watch it live. It '
+            'needs a separate control permission (viewing does not grant it). '
+            'An organisation can turn on a notice that shows on a machine while '
+            'it is being controlled; it is off, and silent, by default.',
+        'Monitoring - Camera Monitoring: HLS cameras now play inside the page '
+            'on the web, not only as an open-in-your-player link. RTSP still '
+            'opens in your own player.',
+        'Monitoring: devices not seen for 30 days are cleaned up on their own, '
+            'so old browser sessions and retired machines stop piling up.',
       ],
     ),
     VersionRelease(
       version: '0.0.0138',
       date: '2 Sep 2026',
       items: [
-        'Monitoring now shows one entry per person, led by the machine running '
-            'the desktop app, instead of a separate row for every browser tab '
-            'someone had ever signed in from. Old browser sessions are folded '
-            'away and named plainly ("Browser", "Desktop app") rather than '
-            'reading "web web" / "windows windows".',
-        'Monitoring - Desktop Monitoring: choose whose screen to view from a '
-            'searchable list of people down the side, not a long drop-down, and '
-            'only machines actually running the desktop app appear there - a '
-            'browser cannot be screen-viewed, so it no longer clutters the list.',
+        'Phone is now called Communication, and its first tab is Phone, '
+            'holding Dial, Messages and Voicemail. Nothing moved out of reach '
+            '- Messages and Voicemail are the Records views you already had, '
+            'now reachable in one tap.',
+        'Communication: you can choose which of the company lines you are '
+            'calling from, on the Dial screen. It used to be fixed to whichever '
+            'line was assigned to you, so covering a second business meant '
+            'ringing customers back as the wrong company. Your own line is '
+            'marked so switching away is deliberate.',
+        'On iPhone and iPad, taking a call in the app now asks for the '
+            'microphone the first time, and says what it is for. Apple requires '
+            'an app to explain itself before it may listen, and EzBizi did not '
+            'carry that sentence - so the App Store refused the build outright, '
+            'before anybody could install it.',
       ],
     ),
     VersionRelease(

@@ -4,6 +4,13 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<!-- Required because twilio_voice calls AVAudioSession/requestRecordPermission
+	     for in-app calling. Apple rejects the upload without it (ITMS-90683)
+	     whether or not the API is ever reached, and the string is shown to the
+	     person at the moment iOS asks - so it names the feature and gives the
+	     example Apple asks for, rather than saying "for audio". -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>EzBizi needs the microphone so you can speak during phone calls made and received in the app, such as calling a customer back about a job. It is used only while you are on a call.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

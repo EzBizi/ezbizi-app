@@ -497,6 +497,77 @@ void main() {
       reason: 'a browser that can place the call asked the server to instead',
     );
   });
+
+  /// A dispatcher can choose which line they call from.
+  ///
+  /// "Calling as" was a LABEL: it told you which line you were about to appear
+  /// as and gave you no way to change it. Somebody covering two businesses
+  /// could see they were about to ring a customer as the wrong company and
+  /// could do nothing about it.
+  ///
+  /// The line assigned to them is marked, so switching away is a thing they
+  /// notice doing rather than a state they end up in.
+  testWidgets('the line you call from can be changed, and yours is marked', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    addTearDown(device.dispose);
+
+    await _pump(
+      tester,
+      device: device,
+      size: const Size(900, 800),
+      numbers: const [
+        {
+          'id': 'n-1',
+          'connection_id': 'cx-1',
+          'e164': '+12035550142',
+          'label': 'CT main',
+          'assigned_to_me': true,
+        },
+        {
+          'id': 'n-2',
+          'connection_id': 'cx-1',
+          'e164': '+13055550188',
+          'label': 'Miami',
+          'assigned_to_me': false,
+        },
+      ],
+    );
+
+    expect(find.textContaining('CT main · +12035550142 — yours'), findsWidgets);
+
+    await _tap(tester, find.byType(DropdownButton<String>));
+    await tester.pumpAndSettle();
+    await _tap(tester, find.textContaining('Miami · +13055550188').last);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Number'),
+      '305 724 2199',
+    );
+    await tester.pumpAndSettle();
+    await _tap(tester, find.widgetWithText(FilledButton, 'Call'));
+
+    expect(
+      device.callerId,
+      '+13055550188',
+      reason: 'the call went out under the line they switched away from',
+    );
+  });
+
+  /// One line is not a choice, and a picker offering it is a control that
+  /// cannot do anything.
+  testWidgets('a single line is stated rather than offered as a choice', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    addTearDown(device.dispose);
+
+    await _pump(tester, device: device, size: const Size(900, 800));
+
+    expect(find.byType(DropdownButton<String>), findsNothing);
+    expect(find.textContaining('CT main'), findsWidgets);
+  });
 }
 
 class _FakeDevice implements VoiceDevice {

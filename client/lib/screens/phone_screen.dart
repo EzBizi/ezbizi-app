@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
-import 'phone/call_tab.dart';
+import 'phone/phone_tab.dart';
 import 'phone/records_tab.dart';
 import 'phone/reports_tab.dart';
 import 'phone/settings_tab.dart';
@@ -35,10 +35,13 @@ class _PhoneScreenState extends State<PhoneScreen> {
   final Set<int> _shown = {_call};
 
   late final List<(String, IconData, Widget Function())> _tabs = [
+    // Phone, holding Dial, Messages and Voicemail. The module is
+    // Communication now and a tab called Dial inside it would name one of
+    // three things it contains.
     (
-      'Dial',
+      'Phone',
       Icons.phone_outlined,
-      () => CallTab(api: widget.api, session: widget.session),
+      () => PhoneTab(api: widget.api, session: widget.session),
     ),
     (
       'Team',

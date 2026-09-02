@@ -101,8 +101,13 @@ class PhoneGrantTest extends TestCase
             'phone_numbers' => [$main->id],
         ])->assertStatus(422)->assertJsonPath(
             'errors.phone_numbers.0',
+            // Names the module the way the person reading it sees it in the
+            // sidebar, which is Communication now. The KEY is still 'phone' —
+            // it is what every permission and route is named after — so this
+            // is the one place the rename is visible, and that is the point of
+            // the refusal: it tells somebody which tab to grant.
             fn (string $m) => str_contains($m, 'would open nothing')
-                && str_contains($m, 'Phone'),
+                && str_contains($m, 'Communication'),
         );
     }
 
