@@ -97,7 +97,16 @@ class SettingsPane extends StatelessWidget {
                   ),
                   if (trailing != null) ...[
                     const SizedBox(width: 12),
-                    trailing!,
+                    // Flexible, so the trailing arrives with a BOUNDED width.
+                    //
+                    // As a bare child it was handed `maxWidth: infinity`, and
+                    // a trailing that contains an Expanded then either throws
+                    // in debug or, in release, quietly takes the whole row and
+                    // leaves the title a few pixels wide. Numbers shipped
+                    // exactly that. Flexible is loose by default, so a trailing
+                    // that sizes itself is unaffected — this only puts a
+                    // ceiling on one that does not.
+                    Flexible(child: trailing!),
                   ],
 
                   // Beside the title rather than under the failure, so its

@@ -11,6 +11,12 @@ class VersionHistory {
       version: '0.0.0140',
       date: '2 Sep 2026',
       items: [
+        'Communication - Settings - Numbers: the pane drew its own title one '
+            'letter per line down the page, on top of the rest of the screen. '
+            'It only did it for a business with more than one phone account, '
+            'because the account picker is the only thing drawn in that spot '
+            'and it was taking the whole width of the header. Every other '
+            'settings pane is now protected from the same thing.',
         'Tasks: a board can now be read four new ways as well as the table. '
             'Kanban puts cards in columns you can drag between. Calendar '
             'shows the month by due date. Timeline draws each task as a bar '

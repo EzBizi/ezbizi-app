@@ -446,14 +446,35 @@ class _NumbersPaneState extends State<NumbersPane> {
 
   Widget _placePicker(ThemeData theme) {
     return Row(
+      // Both of these, and they are the bug.
+      //
+      // This is handed to SettingsPane as `trailing`, which is a NON-FLEX
+      // child of the header's Row — so it arrives with an unbounded width
+      // constraint. A Row that is `mainAxisSize.max` under an unbounded width
+      // tries to be infinitely wide, and an `Expanded` inside it is the exact
+      // combination Flutter refuses: "children have non-zero flex but incoming
+      // width constraints are unbounded".
+      //
+      // In debug that throws. In a RELEASE build the assertion is skipped and
+      // the layout simply degrades — which is how it shipped: the title's own
+      // Expanded was squeezed to a few pixels and "Numbers" wrapped one letter
+      // per line down the page.
+      //
+      // It only appeared for an organization with more than one phone account,
+      // because that is the only time this picker is drawn at all.
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text('Phone account', style: theme.textTheme.bodySmall),
-        const SizedBox(width: 12),
-        Expanded(
+        SizedBox(
+          width: 260,
           child: DropdownButtonFormField<String>(
             isExpanded: true,
             initialValue: _scope?.id,
+            // The label goes INSIDE the field rather than beside it. Beside it
+            // this was a Row of two parts that together wanted more width than
+            // the header can spare, and a trailing that does not fit is how
+            // this broke in the first place. One self-sizing control cannot.
             decoration: const InputDecoration(
+              labelText: 'Phone account',
               border: OutlineInputBorder(),
               isDense: true,
             ),
