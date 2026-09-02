@@ -24,7 +24,7 @@ code, and do not infer it from a feature branch.
 | **Training** | Its tables are not on production. Ships in a later deploy. |
 | **Phone** | Works, but no production line has a ring group, so every inbound call reaches voicemail. "Phone system" while calls reach nobody is a promise we are not keeping. |
 | **Local Services enquiries arriving as leads** | **Contradicted, not merely unverified — and the evidence is a decoy.** Querying production returns `source = local_services` on 8 leads, which reads exactly like the confirmation this row has been waiting for. All 8 were created in the *same second* and none carries a provider id: they are `leads:seed-demo`, run on production by the deploy session on 2026-08-31. The `source` string was written by the seeder, not by Google. **True count of real Local Services enquiries: 0.** The checkable test for next time — a genuine enquiry carries a provider `external_id` and does not share a timestamp with seven siblings. This forbids the marketing claim, not the compliance page; see below. |
-| **That a post reaches every connected network, or reaches a TikTok profile** | Nine networks connect; **two publish**. `app/Support/Social/Publishing/Publishers.php:31` returns a publisher for Pinterest and TikTok and `default => null` for the other seven, which `refusalFor()` answers with "Publishing to X is not built yet". **TikTok posts to the creator's DRAFTS, not the profile** — TikTok requires an audit before an app may post publicly and ours has not had it, so somebody must finish the post in the TikTok app. Pinterest is **images only**; video publishing does not exist. Flagged 2026-08-31 by the deploy session as a live false statement in the in-app release notes; corrected on the site the same day. The checkable test: does `Publishers::for()` return non-null for that provider. |
+| **That a post reaches every connected network, or reaches a TikTok profile** | Nine networks connect; **five publish** — corrected upward 2026-09-02, see below. `Publishers::for()` returns a publisher for Facebook Pages, Threads, Instagram, Pinterest and TikTok, and `default => null` for LinkedIn, YouTube, X and Bluesky, which `refusalFor()` answers with "Publishing to X is not built yet". **TikTok posts to the creator's DRAFTS, not the profile** — TikTok requires an audit before an app may post publicly and ours has not had it, so somebody must finish the post in the TikTok app. Pinterest is **images only**; video publishing does not exist. Flagged 2026-08-31 by the deploy session as a live false statement in the in-app release notes; corrected on the site the same day. The checkable test: does `Publishers::for()` return non-null for that provider. |
 | **"Teams rely on it" about Inspections or Tasks** | Both modules are live and neither has ever been used by a customer. Not embarrassing, but not a usage claim. |
 | **Monitoring, Marketing** | Registered, but their dashboard summaries are explicitly placeholders. |
 
@@ -65,6 +65,40 @@ been verified clean an hour earlier.
 
 It was caught by one person running `git status` once more out of habit. That is
 not a control, and it does not survive the session that has the habit.
+
+## The publishing count moved on 2026-09-02, and the site was the last to hear
+
+**Corrected upward, which is the direction nobody watches for.** From
+2026-09-01 the site said "Two networks send today" and listed Facebook Pages,
+Instagram and Threads under *"Connect today; sending is not built."* That had
+been false for a day. Facebook and Threads publishing landed in `859f1f1` and
+Instagram in `095d49d`, both on 2026-09-01, and both shipped to customers in
+release **`0.0.0130`** — production runs `0.0.0141`.
+
+Recorded because the discipline in this file is aimed at overstating, and this
+was the opposite failure: a compliance page telling a Meta reviewer that we do
+not post to Facebook Pages while the deployed code posts to Facebook Pages. **A
+stale understatement is still a wrong published claim**, and on the pages a
+reviewer reads it is not the harmless direction.
+
+The tell was not a message. **No deploy session was reachable that evening** —
+`ezbizi-7e` answered "not the deploy desk, and I do not know who is", and no
+other peer answered at all. Three independent checks stood in for a row count,
+and they are the ones to repeat:
+
+1. `Publishers::for()` in the repo — the test this file already names.
+2. `client/lib/core/version_history.dart` — *"Social: Facebook, Threads and
+   Instagram can post"*, filed under a **released** version number.
+3. `/download/windows.json` → `0.0.0141`, built `c6b8bea`;
+   `git merge-base --is-ancestor 859f1f1 c6b8bea` and the same for `095d49d`
+   both pass. The manifest tracks the **deployed** release (see below), so
+   that is production evidence rather than repo evidence.
+
+Per-network caveats now on the page, all read off `cannotSend()`: **Instagram
+refuses text-only** ("Instagram does not post words on their own"), **Pinterest
+is images only**, **TikTok posts to drafts**. Facebook and Threads return
+`null` — no restriction. If a network is added, its row needs its `cannotSend()`
+sentence, not just its name.
 
 ## Checked, and deliberately left alone
 
