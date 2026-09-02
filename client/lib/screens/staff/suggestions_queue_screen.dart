@@ -33,11 +33,21 @@ import '../../widgets/error_note.dart';
 /// The note field is shared with Approve and Deny because layout 2 draws it
 /// that way — the same footer, same box, for every status. But moving a
 /// suggestion to `reviewing` is deliberately silent (no notification reaches
-/// the author), and the server currently has no opinion about a note arriving
-/// with that status. Whatever is sitting in the box when "Mark in review" is
-/// pressed is discarded rather than sent — the contained behaviour is a
-/// property of what this screen transmits, not of what it displays. That
-/// containment is somebody else's call to reopen, not this screen's.
+/// the author), and the server would accept a note with that status anyway —
+/// `GET /suggestions` returns `decision_note` whatever the status is, so the
+/// author's own tab would render it under "EzBizi answered" with no bell to
+/// send them there. So nothing here sends one. Closing that at the server is
+/// somebody else's call, and the containment is this screen's until they make
+/// it.
+///
+/// It used to reach that outcome by clearing the note on the way out, which
+/// bought the invariant with a worse one: a reviewer who typed "Good idea,
+/// scoping it for October" and pressed "Mark in review" lost the sentence with
+/// no message. Text a person typed does not vanish without a word. So the
+/// action is UNAVAILABLE while the box has content, and says so beside itself —
+/// the note is still there to approve or deny with, or to clear. `_decide`
+/// keeps blanking the note for `reviewing` as the backstop for a request that
+/// should no longer be reachable.
 class SuggestionsQueueScreen extends StatefulWidget {
   const SuggestionsQueueScreen({super.key, required this.staff});
 
@@ -153,8 +163,11 @@ class _SuggestionsQueueScreenState extends State<SuggestionsQueueScreen> {
   Future<void> _decide(Map<String, dynamic> row, String status) async {
     if (_saving) return;
 
-    // "Mark in review" is silent by design — see the class comment. Whatever
-    // is sitting in the box is never sent with it, regardless of status.
+    // "Mark in review" is silent by design — see the class comment. Nothing
+    // typed travels with it, and the button is disabled the moment the box has
+    // anything in it, so this is the backstop rather than the discard it once
+    // was: reaching here with a note means the control was somehow pressed
+    // while it was unavailable.
     final note = status == 'reviewing' ? '' : _note.text.trim();
 
     // The button offering this is disabled while the note is empty; this is
@@ -597,12 +610,20 @@ class _SuggestionsQueueScreenState extends State<SuggestionsQueueScreen> {
               // `reviewing`, or decided, there is nothing left to mark.
               if (status == 'new') ...[
                 const SizedBox(width: 4),
+                // Unavailable once the box has content, because this action
+                // sends none and silently dropping what somebody typed is the
+                // one thing it must not do. The sentence beside it changes to
+                // say so, rather than leaving a dead button unexplained.
                 OutlinedButton(
-                  onPressed: _saving ? null : () => _decide(row, 'reviewing'),
+                  onPressed: (_saving || hasNote)
+                      ? null
+                      : () => _decide(row, 'reviewing'),
                   child: const Text('Mark in review'),
                 ),
                 Text(
-                  'tells $first nothing — it only stops them rewriting it',
+                  hasNote
+                      ? 'sends no note — approve, deny, or clear the box to use it'
+                      : 'tells $first nothing — it only stops them rewriting it',
                   style: theme.textTheme.bodyMedium,
                 ),
               ],

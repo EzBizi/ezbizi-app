@@ -178,8 +178,8 @@ void main() {
   });
 
   testWidgets(
-    'marking in review sends no note, even one sitting in the box, because '
-    'that action tells the author nothing',
+    'marking in review sends no note, and is unavailable rather than silently '
+    'throwing away one somebody typed',
     (tester) async {
       Map<String, dynamic>? sent;
 
@@ -191,10 +191,42 @@ void main() {
       await tester.tap(_inRail('A-1 Chimney'));
       await tester.pumpAndSettle();
 
-      // A reviewer starts typing a note, then changes their mind and only
-      // marks it in review. What they typed must never travel with that
-      // action — see SuggestionsQueueScreen's class comment on why.
-      await tester.enterText(find.byType(TextField), 'Some note nobody reads');
+      // A reviewer types a note and then reaches for "Mark in review". That
+      // action is silent — no notification reaches the author — so nothing
+      // typed may travel with it. The screen used to send the status and drop
+      // the sentence with no message; now the action is simply not available
+      // while there is something to drop, and says so.
+      await tester.enterText(
+        find.byType(TextField),
+        'Good idea, scoping it for October.',
+      );
+      await tester.pumpAndSettle();
+
+      final marking = tester.widget<OutlinedButton>(
+        find.widgetWithText(OutlinedButton, 'Mark in review'),
+      );
+
+      expect(
+        marking.onPressed,
+        isNull,
+        reason:
+            'A note is in the box and this action sends none, so pressing it '
+            'would discard what somebody wrote without a word.',
+      );
+
+      expect(
+        find.textContaining('sends no note'),
+        findsOneWidget,
+        reason: 'The reason the action is unavailable is not on screen.',
+      );
+
+      await tester.tap(find.text('Mark in review'));
+      await tester.pumpAndSettle();
+
+      expect(sent, isNull, reason: 'A disabled control sent a decision.');
+
+      // Clearing the box makes it available again, and it still sends nothing.
+      await tester.enterText(find.byType(TextField), '');
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Mark in review'));
