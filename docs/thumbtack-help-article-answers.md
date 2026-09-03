@@ -9,19 +9,32 @@ aspirational answer here becomes a support ticket there.
 
 ---
 
-## The one thing to decide before filing
+## Two of the ten permissions cannot exist
 
-**Lead reading is not built.** EzBizi requests four scopes: `offline_access`,
-`supply::businesses.list`, and the two `associate-phone-numbers` scopes. It does
-not request `negotiations.read` or `messages.read`, and there is no code behind
-them. So this article describes a connection that keeps caller ID working, and
-says plainly that enquiries are not fetched.
+Jose ticked all ten boxes and asked whether we could actually have them. **Two
+of them nobody can have**, and that is verifiable from Thumbtack's own OpenAPI
+document rather than a judgement call:
 
-That is deliberate — asking for a scope you do not use is exactly what had to be
-unpicked from the Meta submission the same week — but it means **this article
-will need updating when lead ingestion ships.**
+| Ticked | Reality |
+|---|---|
+| Edit / update your business profile | **No endpoint.** The supply API has `POST /v4/businesses` (create) and nothing that updates one. |
+| Upload photos | **No endpoint.** `supply::businesses/media.write` is declared in their scope vocabulary and *zero* endpoints reference it. Same for `categories.write` and `preset-jobs.*`. |
 
----
+Both unticked. The other **eight are built** — see the commit "Eight of the ten
+Thumbtack permissions, and why the other two cannot exist".
+
+### Webhooks are lead delivery, not a notification option
+
+Their supply API can fetch a negotiation by id and has **no endpoint that lists
+them** — no cursor, no paging. A webhook is the only way EzBizi ever learns a
+lead exists, so "view leads" and "webhooks" are one feature, not two.
+
+Two consequences stated in the article because Pros will hit both:
+
+- An account connected without a registered webhook receives **nothing at all**,
+  rather than receiving things late.
+- **Nothing can backfill.** Enquiries from before registration are permanently
+  unreachable, because no endpoint would find them.
 
 ## Section 1 — Partner information
 
@@ -66,27 +79,24 @@ will need updating when lead ingestion ships.**
 
 **Data sent FROM Thumbtack TO EzBizi**
 
-> • Business ID
-> • Business name
-> • Business profile image URL
-> • Associate phone number ID
-> • Associate phone number
-> • Associate name
-> • Phone number created / updated timestamps
-> • Phone number deleted flag
->
-> Note: EzBizi does not currently read leads, messages, negotiations or job
-> requests from Thumbtack.
+Business ID, name and profile image URL; the connected Thumbtack user ID;
+associate phone number ID, number, name, created/updated timestamps and deleted
+flag; negotiation ID and created time; customer ID, first name, last name and
+phone; request ID; service category ID and name; proposed appointment times;
+message ID, text, sender, sent time and attachment file name/size/MIME/URL;
+review ID and content; webhook ID, URL, enabled flag and event types.
 
 **Data sent FROM EzBizi TO Thumbtack**
 
-> • Associate phone number (E.164 format, e.g. +15552345678)
-> • Associate name (the team member's name)
->
-> No customer data, job data, pricing or scheduling information is sent to
-> Thumbtack.
+Associate phone number (E.164) and associate name; message text for a reply a
+Pro sends from inside EzBizi; job status (`not_scheduled`, `appt_scheduled`,
+`job_complete`, `invoice_paid`, `customer_cancel`, `pro_cancel`) with the time
+it actually changed; invoice amount in cents for `invoice_paid`; and the webhook
+callback URL, event types and the credential EzBizi generates for Thumbtack to
+authenticate itself with.
 
----
+No customer records, pricing or scheduling data held in EzBizi is sent. The only
+job information sent is the status of work that came from a Thumbtack enquiry.
 
 ## Section 3 — Setup
 
@@ -160,25 +170,28 @@ will need updating when lead ingestion ships.**
 
 ## Section 4 — Permissions to tick
 
-Only these two, because only these two are requested:
+Eight, each with code behind it:
 
-- [x] **View your Thumbtack business profile and account details**
-      (`supply::businesses.list` — used to identify which business is connected)
-- [x] **View and manage phone numbers linked to your Thumbtack account**
-      (`supply::businesses/associate-phone-numbers.read` and `.write`)
+- [x] View your Thumbtack business profile and account details
+- [x] View and manage phone numbers linked to your Thumbtack account
+- [x] Read messages you receive from customers on Thumbtack
+- [x] Send messages to customers on your behalf via Thumbtack
+- [x] View your leads and job requests from Thumbtack
+- [x] Update job status
+- [x] Receive instant notifications when new leads arrive (webhooks)
+- [x] Disconnect / remove the integration from your Thumbtack account
 
-Deliberately **not** ticked — EzBizi requests none of these:
-edit/update profile, upload photos, read messages, send messages, view leads and
-job requests, update job status, webhooks, disconnect/remove.
-
----
+Unticked because **no endpoint exists** for either: edit/update profile, upload
+photos.
 
 ## Follow-ups this raised
 
-1. **Disconnect leaves numbers behind at Thumbtack.** Stated honestly above, but
-   it is a gap worth closing: a best-effort delete on disconnect, which must
-   never block the disconnect itself (an account that cannot be disconnected
-   because Thumbtack is down is worse).
+1. ~~Disconnect leaves numbers behind at Thumbtack.~~ **Closed.** Disconnecting
+   now removes the numbers, deletes the webhook and revokes the grant, in that
+   order — revoking first would make the other two impossible. Every step is
+   best-effort and none can block the disconnect, because the account somebody
+   is trying to disconnect is exactly the one whose token already stopped
+   working. The disconnect answer above must be re-worded before filing.
 2. **This article assumes the connect UI is deployed.** The Leads restructure
    and the Thumbtack Connect button are committed but not yet on
    app.ezbizi.com. The instructions above are wrong until that ships.
