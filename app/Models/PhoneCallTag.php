@@ -27,7 +27,7 @@ class PhoneCallTag extends Model implements StatesRetention
      * tag they chose to make legible becomes the one nobody can read. These
      * eight are checked against both surfaces.
      *
-     * Stored as hex, matching what Tasks already does for board colours — one
+     * Stored as hex, matching what other colour-bearing rows do — one
      * convention for user-chosen colour rather than a second one. This is data
      * a customer picked, not app chrome, so it does not go through theme.dart.
      *

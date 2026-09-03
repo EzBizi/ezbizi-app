@@ -58,7 +58,6 @@ class NotificationDispatcher
      */
     private const SOURCE_SETTINGS = [
         'automation' => 'notifications.automation_enabled',
-        'task' => 'notifications.task_enabled',
         'hr' => 'notifications.hr_enabled',
     ];
 

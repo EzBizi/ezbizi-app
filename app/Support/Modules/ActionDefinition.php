@@ -31,7 +31,7 @@ final class ActionDefinition extends AutomationDeclaration
             && ! preg_match('/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/', $this->executionType)) {
             throw new \InvalidArgumentException(
                 "Action execution type '{$this->executionType}' must use a dotted "
-                .'lower_snake_case key such as task.create.'
+                .'lower_snake_case key such as phone.sms.send.'
             );
         }
     }

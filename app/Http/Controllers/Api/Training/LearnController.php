@@ -141,9 +141,9 @@ class LearnController extends Controller
      * (ProgressController::seen). What is locked instead is the TEST row
      * itself: the one row every submission against it already reads, so
      * re-selecting it here with `lockForUpdate()` serializes every
-     * submission against this test through that one row — the same shape
-     * `TaskConcurrencyTest`'s writer/revoke workers use, locking the parent
-     * `TaskBoard` rather than a membership row that might not exist yet.
+     * submission against this test through that one row: lock the parent
+     * row every writer already reads, rather than a membership row that
+     * might not exist yet.
      * Read-then-write with nothing in between is not a uniqueness rule, it
      * is a race (StaffAccountsController::update's docblock).
      *

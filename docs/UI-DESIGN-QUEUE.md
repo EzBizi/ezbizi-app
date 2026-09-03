@@ -64,8 +64,8 @@ every one edits in place. Progressive disclosure has to be something the user
 controls, never something the data decides.
 
 **Assert `findsNothing` for `AlertDialog` and `showDialog` in every screen's widget
-test.** Tasks Phase 1 shipped two dialogs against the no-pop-ups rule and an audit
-caught them weeks later; every Phase 2 screen carries the assertion. It is the only
+test.** A module once shipped two dialogs against the no-pop-ups rule and an audit
+caught them weeks later; screens written since carry the assertion. It is the only
 reason the rule holds anywhere it holds. *Proposed as a house standard — the rules
 desk session ended before it could be recorded there.*
 
@@ -150,19 +150,18 @@ doing anything, and cannot ship without one.
   for, and `module.forecasting.subtitle` printed under a title is worse than no
   subtitle.
 - **A pane heading that repeats the tab is deleted, not kept.** That is what pays
-  for the header: it replaces a row rather than adding one. Four went — Tasks'
-  own name, Dashboard's own name, HR's "At a glance" under a lit *Dashboard*
-  chip, and Scheduling's "Availability" under a tab labelled *Availability*.
+  for the header: it replaces a row rather than adding one. Four went — one
+  module's own name repeated, Dashboard's own name, HR's "At a glance" under a lit
+  *Dashboard* chip, and Scheduling's "Availability" under a tab labelled *Availability*.
 - **Settings, Development and Your account get no header.** They are the other
   branches of the shell's switch, they have no server label, and each already
   says what it is.
 - **Enforced, not written down.** `module_navigation_test.dart` fails if a module
   opens without a header or if the title stops being the server's word.
 
-**Why the sixteen screens could not each be trusted to do it:** they were, and
-fifteen of them did not. Exactly one printed the module's name — Tasks, with a
-`fontSize: 25` typed into the screen. Asking sixteen places to remember a header
-is how you get fifteen that forget.
+**Why the screens could not each be trusted to do it:** they were, and all but one
+did not. Exactly one printed the module's name, with a `fontSize: 25` typed into the
+screen. Asking sixteen places to remember a header is how you get fifteen that forget.
 
 **A heading style that is not in `theme.dart` renders with no size and no
 weight.** `ThemeData` does **not** merge Material's typography in behind that
@@ -350,9 +349,9 @@ costs nothing.** That last clause is the practical half: the rule says where the
 transparency is allowed to go, not merely where it is forbidden.
 
 Found in a Gantt bar: `scheme.primary.withValues(alpha: dragging ? 0.5 : 1)` wrapping
-`Text(task.title, color: scheme.onPrimary)`. At 50% over white, #00AEEF composites to
+`Text(title, color: scheme.onPrimary)`. At 50% over white, #00AEEF composites to
 about #7FD6F7, and white on that is **≈1.6:1** — the label all but vanishes at the exact
-moment the user needs to know which task they are holding. Note this is **independent of
+moment the user needs to know which row they are holding. Note this is **independent of
 the token defect below**: `_cyanDeep` at 5.65:1, halved by the same alpha, lands near
 2.6:1 and still fails. Fixing the token would have made everyone believe this was handled.
 
@@ -360,21 +359,20 @@ the token defect below**: `_cyanDeep` at 5.65:1, halved by the same alpha, lands
 A table and a Gantt should scroll sideways — horizontal is the data's own axis. A tab
 strip or a view selector has no natural width; it is only as wide as someone's label
 list happens to be, which is not a reason to make a user drag. Chrome that overflows
-at 375px **wraps**. Tasks Phase 2 had two stacked chrome bars
-(`task_presentation_bar.dart`, `task_views_bar.dart`) both clipping flush at the right
-edge with no affordance.
+at 375px **wraps**. One screen had two stacked chrome bars — a presentation picker
+above a saved-view picker — both clipping flush at the right edge with no affordance.
 
 Prefer `Wrap` over any scroll cue. A fade needs a gradient stop — a colour literal, and
 a second one for dark mode, against the `theme.dart` rule. An arrow is a control that
 is not one: tap it and either nothing happens or it moves by an amount nobody chose. A
 peek is the best cue and still explains a scroll that need not exist.
 
-**An isolation widget test cannot see the chrome around what it mounts.** Tasks Phase 2
-asserted zero horizontal scrollers at 375px for `TaskKanbanView` — true, passing, and
-blind to two overflowing bars the screen mounts above it. Assert layout floors on the
-**screen**, not the widget.
+**An isolation widget test cannot see the chrome around what it mounts.** One suite
+asserted zero horizontal scrollers at 375px for a Kanban body widget — true, passing,
+and blind to two overflowing bars the screen mounts above it. Assert layout floors on
+the **screen**, not the widget.
 
-> **"A true measurement of the wrong thing."** The Tasks session's name for the failure
+> **"A true measurement of the wrong thing."** One session's name for the failure
 > shape behind four separate escapes in one plan: a suite proving a recurrence's first
 > hop and silent on the series; a timezone test that cannot fail on half the machines
 > that run it; a pixel diff perfect at *did only the intended region change* and
@@ -382,8 +380,8 @@ blind to two overflowing bars the screen mounts above it. Assert layout floors o
 > chrome above it. Every one passed. Every one was measuring correctly. Ask what a
 > green test is not looking at.
 
-**Goldens and briefs live on branch worktrees, not `main`.** `git worktree list` — Tasks
-Phase 2, Fleet, Training, Web Management and others each have their own tree. Reviewing
+**Goldens and briefs live on branch worktrees, not `main`.** `git worktree list` —
+Fleet, Training, Web Management and others each have their own tree. Reviewing
 a module's golden PNGs from `main` reviews the wrong file, silently, because the paths
 are identical. Confirm the tree before reporting pixel findings.
 
@@ -756,8 +754,8 @@ Asked for, alongside the array rather than instead of it:
 org-wide, same permission reach. If only one survives, `people_overdue`; it is the one an
 owner acts on.
 
-*Caught inside a closing window — after Task 11 it becomes a contract four Flutter tasks
-consume. Worth asking every module session what a home glance would need **before** its
+*Caught inside a closing window — after Task 11 it becomes a contract four Flutter
+steps consume. Worth asking every module session what a home glance would need **before** its
 module dashboard endpoint reviews clean, because the glance always wants a roll-up the
 per-row shape cannot answer.*
 
@@ -771,8 +769,6 @@ shape of process. Reopening either is his call, not design's.
   *Open question worth Jose's attention, not a change request:* Settings layout 8 is a
   storyboard strip, a pattern that exists nowhere else in the app — every other module
   uses list-beside-editor. It was flagged to him and he chose it anyway.
-- **Tasks Phase 2** — Kanban, Calendar, Timeline/Gantt, Workload, plus dependency and
-  recurrence panels. Approved in `docs/superpowers/specs/2026-08-28-tasks-phase-2-design.md`.
 - **Web Management · SEO panel** — two-pane list/detail, 288/900, shortcode as a copy
   **button** rather than helper text, setup blocks above the fields when a site is
   unconnected and below once connected. Shipped in 0.0.0118. The last two generalise

@@ -9,9 +9,9 @@ import 'package:ezbizi_client/core/theme.dart';
 ///
 /// Both exist because a rule nothing checks is a preference. The no-pop-ups rule
 /// was stated in StartUp.md in as many words and five `AlertDialog`s shipped
-/// anyway, found weeks later by an audit; the Tasks module now asserts
-/// `findsNothing` for them per screen, which is the only reason that rule holds
-/// where it holds. These are the colour equivalents.
+/// anyway, found weeks later by an audit; screens now assert `findsNothing`
+/// for them one by one, which is the only reason that rule holds where it
+/// holds. These are the colour equivalents.
 
 /// WCAG relative luminance. sRGB channel -> linear, then the standard weights.
 double _luminance(Color c) {

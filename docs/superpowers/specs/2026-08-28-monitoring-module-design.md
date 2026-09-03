@@ -206,7 +206,8 @@ The panel stacks **below** the roster at 375px (primary content first). Works at
 Emit `monitoring.new_device_seen` (first beat from an unseen device_key) and
 `monitoring.device_offline` (a scheduled check: no beat within N× the cadence).
 `device_offline` needs a scheduled command (`routes/console.php`) that scans
-`last_seen_at` and inserts outbox rows — same pattern as `task.overdue`.
+`last_seen_at` and inserts outbox rows — the same pattern every scheduled
+sweep in the app uses.
 
 ### Tests (risk-proportional, MySQL gate)
 

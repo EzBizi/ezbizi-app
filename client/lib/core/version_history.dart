@@ -98,27 +98,6 @@ class VersionHistory {
             'because the account picker is the only thing drawn in that spot '
             'and it was taking the whole width of the header. Every other '
             'settings pane is now protected from the same thing.',
-        'Tasks: a board can now be read four new ways as well as the table. '
-            'Kanban puts cards in columns you can drag between. Calendar '
-            'shows the month by due date. Timeline draws each task as a bar '
-            'from its start to its due date. Workload shows how many tasks '
-            'each person is holding, day by day or week by week.',
-        'Workload counts tasks, not hours. EzBizi does not know how long '
-            'anyone works, so it does not pretend to - there is no capacity '
-            'line and nothing turns red.',
-        'A task can be marked as blocked by another task on the same board. '
-            'The Timeline draws the line between them. It is a note about '
-            'order, not a rule: nothing stops you finishing work early.',
-        'A task can repeat, either a set time after you finish it - right '
-            'for servicing something - or on a fixed schedule whether or '
-            'not the last one was done, which is right for a filing '
-            'deadline.',
-        'Timeline, Calendar and Workload can also be opened across every '
-            'board you can see rather than one at a time. Those are for '
-            'reading; open the board itself to change anything.',
-        'A task can no longer be saved with a start date after its own due '
-            'date. It used to save quietly and read as wrong everywhere it '
-            'appeared.',
         'Training: a test is marked, and says why. A learner sees a '
             'score, which answers were wrong, and how many attempts are '
             'left; a test whose guide has not been finished says that '
@@ -211,7 +190,7 @@ class VersionHistory {
             'says which area has it.',
         'On a phone, a panel no longer opens underneath the clock and the '
             'battery. Anything that slides in from the right - the version '
-            'list, a customer, a task - was drawing from the very top of the '
+            'list, a customer, a record - was drawing from the very top of the '
             'screen, which put its close button under the status bar where it '
             'cannot be tapped. There is no other way out of a panel on a '
             'phone, so the app had to be force-quit to escape one. All '
@@ -250,9 +229,6 @@ class VersionHistory {
       items: [
         'Phone: calls work in the app on every platform that can carry audio, '
             'not only in a browser tab.',
-        'Tasks: a task with no custom fields now saves. It was sending an '
-            'empty list where the server expects a set of named values, which '
-            'failed on exactly the tasks that had nothing extra filled in.',
       ],
     ),
     VersionRelease(
@@ -433,11 +409,11 @@ class VersionHistory {
         'The brand cyan was too pale to read. As text on white it sat at about '
             'half the contrast needed to be legible, and white text on a cyan '
             'button was the same - which mattered most where a filled colour '
-            'carries words, like a task title on a Gantt bar. Buttons, links '
+            'carries words, like a title on a coloured bar. Buttons, links '
             'and the box outline you get when you click into a field are all a '
             'deeper shade now. Dark mode is unchanged.',
-        'Five modules were drawing a generic chart icon on the dashboard '
-            'because nobody had chosen one for them: Tasks, Reviews, Leads, '
+        'Four modules were drawing a generic chart icon on the dashboard '
+            'because nobody had chosen one for them: Reviews, Leads, '
             'Business profile and Monitoring. They have their own now.',
       ],
     ),
@@ -636,19 +612,6 @@ class VersionHistory {
             'answers itself again next month.',
         'The phone account picker said "company" three times. It names the '
             'place now, and only shows the one you are looking at.',
-      ],
-    ),
-    VersionRelease(
-      version: '0.0.0111',
-      date: '28 Aug 2026',
-      items: [
-        'Tasks: make boards for the organization, company, or franchise you are '
-            'looking at, then group, assign, follow, and finish the work.',
-        'The dense desktop table becomes touch-friendly cards and full task '
-            'details on a phone. My Tasks, saved views, filters, and search keep '
-            'large boards manageable.',
-        'Updates, files, linked EzBizi records, notifications, automations, and '
-            'safe spreadsheet import and export stay with the task.',
       ],
     ),
     VersionRelease(

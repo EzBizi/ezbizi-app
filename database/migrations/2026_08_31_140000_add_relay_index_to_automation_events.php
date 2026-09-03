@@ -5,12 +5,12 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Whole-branch review finding 5 (Tasks Phase 2 final review):
- * `TaskRecurrenceWorker::relayPendingCompletions()` queries
- * `automation_events` by `event_key` + `occurred_at` WITHOUT an
- * `organization_id` predicate — it is a cross-tenant hourly sweep for a
- * single outbox marker (`task.recurrence_instance_due`), deliberately
- * `withoutGlobalScopes()` because it has no one tenant to scope to.
+ * An hourly relay worker queried `automation_events` by `event_key` +
+ * `occurred_at` WITHOUT an `organization_id` predicate — a cross-tenant sweep
+ * for a single outbox marker, deliberately `withoutGlobalScopes()` because it
+ * had no one tenant to scope to. The worker was removed with its module; the
+ * index stays because the shape recurs and it is what any cross-tenant sweep
+ * of this table needs.
  *
  * The only existing covering index,
  * `automation_events_organization_id_event_key_occurred_at_index` (added by
@@ -20,8 +20,8 @@ use Illuminate\Support\Facades\Schema;
  * column cannot use it at all. `automation_events` is the shared outbox for
  * every business change in every organization, retained three months — it
  * is already one of the largest tables in the schema and grows every
- * automation-emitting write across the whole app, not just Tasks — so this
- * query has been a full table scan every hour since the relay shipped.
+ * automation-emitting write across the whole app — so that query was a full
+ * table scan every hour from the moment the relay shipped.
  *
  * Adds the index the relay actually needs, `(event_key, occurred_at)`,
  * rather than rewriting the query to iterate organizations: `event_key`

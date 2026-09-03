@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
  * scanned past. Colour is what makes a tag legible at the speed people
  * actually read a call list.
  *
- * Stored as a hex string, matching what Tasks already does for board colours —
+ * Stored as a hex string, matching what other colour-bearing rows do —
  * one convention for a user-chosen colour rather than a second one. Nullable,
  * because an untinted tag is a valid choice and every existing tag has to
  * remain one.

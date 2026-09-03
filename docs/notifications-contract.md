@@ -14,7 +14,6 @@ that only one of the system's four producers ever did:
 | Producer | Asked `enabled()` before? |
 |---|---|
 | `ActionRunner::notify()` (yours) | no |
-| Task pipeline | no |
 | Fleet/system dispatches | no |
 | `HrOnboardingsController` | yes |
 
@@ -37,7 +36,6 @@ That wording is yours to fix; see the open question below.
 |---|---|---|
 | `notifications.in_app_enabled` | true | master; off silences everything |
 | `notifications.automation_enabled` | true | **your notify action** |
-| `notifications.task_enabled` | true | assignments, mentions, reminders |
 | `notifications.hr_enabled` | true | contract amendments, onboarding |
 
 All four resolve org → company → franchise, and the **subject's** franchise is
@@ -46,9 +44,9 @@ that source carries "your trial ends tomorrow".
 
 `source` is the axis rather than a new taxonomy because it is the column that
 already separates these, and because finer control exists and is owned
-elsewhere — a single noisy rule is switched off by `Automation::is_active`, a
-single noisy task by a `TaskWatchPreference`. A per-rule toggle here would be a
-third place to look when somebody asks why they stopped hearing about something.
+elsewhere — a single noisy rule is switched off by `Automation::is_active`. A
+per-rule toggle here would be a third place to look when somebody asks why they
+stopped hearing about something.
 
 ## Two open questions that are yours to answer
 

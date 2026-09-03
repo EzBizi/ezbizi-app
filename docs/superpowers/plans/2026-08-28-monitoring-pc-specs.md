@@ -1070,8 +1070,8 @@ class DeviceOfflineTest extends TestCase
 
 - [ ] **Step 2: Run, verify failure.**
 
-- [ ] **Step 3: Write the worker** (pattern: `app/Support/Tasks/TaskDueWorker.php`
-  behind `DispatchTaskOverdue`). Iterate per-organization through `TenantContext` so
+- [ ] **Step 3: Write the worker** (an hourly command behind a scheduled
+  dispatcher). Iterate per-organization through `TenantContext` so
   `emit()` has a tenant; select devices `last_seen_at < now()-threshold` AND
   `offline_alerted_at IS NULL`, emit, then set `offline_alerted_at = now()`.
 

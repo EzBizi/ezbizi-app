@@ -98,7 +98,7 @@
       Every app you would compare this to solves it with a <b>command palette</b> — <kbd>⌘K</kbd>,
       a floating overlay, type and jump. <b>EzBizi has no modals.</b> The rule is stated in
       <code>StartUp.md</code> in as many words, five <code>AlertDialog</code>s were removed to
-      enforce it, and every Tasks screen now asserts <code>findsNothing</code> for it.
+      enforce it, and screens written since assert <code>findsNothing</code> for it.
       <b>A palette is a dialog.</b> Dimmed backdrop, traps focus, closes on Escape — it is the
       thing the rule forbids, wearing a keyboard shortcut. So it is not in this gallery, and I am
       naming it rather than quietly omitting it: if you want a palette, that is a decision to
@@ -140,7 +140,7 @@ const CAPTIONS = {
       "The recommendation mid-search. 'man' has narrowed sixteen to three, with the matched letters highlighted so Fleet MANagement and Web MANagement make obvious sense next to each other. A count sits above the results, because when a filter is on, the difference between 'three modules match' and 'three modules exist' is the whole meaning of the list. Beside it, the state that matters more than the happy path: nothing matched. It names what was typed, says the list is filtered rather than empty, and offers the way back — an empty sidebar with no explanation is indistinguishable from a broken one."]
 };
 
-const NAV = ['Dashboard','Tasks','Human Resources','Customers','Jobs','Scheduling','Inspection',
+const NAV = ['Dashboard','Human Resources','Customers','Jobs','Scheduling','Inspection',
              'Marketing','Web Management','Phone','Fleet Management','Inventory','Services',
              'Email','Automations','Monitoring'];
 

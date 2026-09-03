@@ -522,7 +522,7 @@ void main() {
     // underneath were unreachable rather than hidden, because there was nothing
     // to scroll with. Reported from a 900px screen.
     //
-    // 320px of height against sixteen destinations is well past the threshold.
+    // 320px of height against fifteen destinations is well past the threshold.
     tester.view.physicalSize = const Size(1200, 320);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -539,7 +539,7 @@ void main() {
                 width: 220,
                 destinations: [
                   for (final name in const [
-                    'Dashboard', 'Tasks', 'Human Resources', 'Customers',
+                    'Dashboard', 'Human Resources', 'Customers',
                     'Jobs', 'Scheduling', 'Inspection', 'Marketing',
                     'Web Management', 'Phone', 'Fleet Management', 'Inventory',
                     'Services', 'Email', 'Automations', 'Monitoring',
@@ -597,10 +597,10 @@ void main() {
     );
   });
 
-  /// The sixteen modules, in shell order.
+  /// The fifteen modules, in shell order.
   List<Destination> modules() => [
     for (final name in const [
-      'Dashboard', 'Tasks', 'Human Resources', 'Customers',
+      'Dashboard', 'Human Resources', 'Customers',
       'Jobs', 'Scheduling', 'Inspection', 'Marketing',
       'Web Management', 'Phone', 'Fleet Management', 'Inventory',
       'Services', 'Email', 'Automations', 'Monitoring',
@@ -643,28 +643,28 @@ void main() {
     //
     // NavigationRail addresses destinations by POSITION. Hand it a filtered
     // list and it reports the index within that list -- so the third visible
-    // row reports 2, which in the full list is Human Resources. Every row would
+    // row reports 1, which in the full list is Human Resources. Every row would
     // open a plausible, wrong module, with no error anywhere. Nothing about the
     // screen would look broken; you would just keep ending up somewhere else.
     final opened = <int>[];
     await tester.pumpWidget(sidebar(expanded: true, onSelected: opened.add));
 
-    // "man" keeps three of sixteen: Human Resources (2), Web Management (8),
-    // Fleet Management (10).
+    // "man" keeps three of fifteen: Human Resources (1), Web Management (7),
+    // Fleet Management (9).
     await tester.enterText(find.byType(TextField), 'man');
     await tester.pumpAndSettle();
 
     expect(find.text('Scheduling'), findsNothing, reason: 'the filter is on');
-    expect(find.text('3 of 16 modules'), findsOneWidget);
+    expect(find.text('3 of 15 modules'), findsOneWidget);
 
     await tester.tap(find.text('Fleet Management'));
     await tester.pumpAndSettle();
 
     expect(
       opened,
-      [10],
+      [9],
       reason:
-          'Fleet Management is destination 10. Reporting 2 means the rail was '
+          'Fleet Management is destination 9. Reporting 2 means the rail was '
           'handed a filtered list without mapping its indices back, and every '
           'row below the first removed one opens the wrong module.',
     );

@@ -46,9 +46,8 @@ use Tests\TestCase;
  * there is no existing attempt row a first submission could lock the way
  * task 7 locked `training_progress` after `insertOrIgnore`. What is locked
  * instead is the TEST itself — the one row every submission against it
- * already reads — the same way `TaskConcurrencyTest`'s writer/revoke workers
- * both lock the parent `TaskBoard` rather than a membership row that might
- * not exist yet. See `test_two_concurrent_submissions_for_the_last_retake_slot_admit_exactly_one`.
+ * already reads. Lock the parent row every writer already reads, rather than
+ * a membership row that might not exist yet. See `test_two_concurrent_submissions_for_the_last_retake_slot_admit_exactly_one`.
  */
 class TrainingGradingTest extends TestCase
 {

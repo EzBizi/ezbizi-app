@@ -10,7 +10,7 @@ import 'package:flutter/material.dart';
 /// ── What it is fixing ────────────────────────────────────────────
 ///
 /// Sixteen screens rendered the shared tab row and exactly one of them printed
-/// the module's name: Tasks, with a `fontSize: 25` typed into the screen. The
+/// the module's name, with a `fontSize: 25` typed into the screen. The
 /// other fifteen printed nothing, so the page never said which module you were
 /// in — and on a phone, where the sidebar is a Drawer, nothing on screen said
 /// so at all until you opened it.

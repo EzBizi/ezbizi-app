@@ -151,7 +151,7 @@
       The date of birth has a <b>calendar icon</b>. If that opens a date picker, it is a
       <b>dialog</b> — and this codebase has none: Hours was explicitly built with a
       <b>masked text field</b> rather than a time picker for exactly this reason
-      (<code>8910b88</code>), and every Tasks screen asserts <code>findsNothing</code> for
+      (<code>8910b88</code>), and screens written since assert <code>findsNothing</code> for
       <code>showDialog</code>. A date of birth is also the worst possible case for a picker:
       it is thirty years ago and nobody wants to page back through 360 months. <b>All three
       layouts use a masked field</b> — you type it, the same way Hours works.

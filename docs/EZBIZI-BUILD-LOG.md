@@ -505,56 +505,6 @@ Client `v0.0.0068`.
 
 ---
 
-## 2026-08-28 — Tasks Phase 1
-
-EzBizi now covers ordinary Monday board work without creating a second workspace model. A board
-is filed on the active organization, company, or franchise view; private membership only narrows
-that exact-view access. Dense desktop grids become grouped cards and full-screen detail on phones.
-
-Phase 1 includes groups, one-level subtasks, eight typed custom columns, My Tasks and saved views,
-updates/files/watchers/activity, governed EzBizi record links, durable in-app notifications, nine
-automation triggers, six actions, and bounded CSV/XLSX transfer. File-bearing paths opened only
-after the encrypted off-instance private-file restore proved exact. The JSON archive is a manifest,
-not a restorable backup. Planning views and the broader platform replacement remain Phase 2/3.
-
-Client `v0.0.0111`.
-
-## 2026-08-31 — Tasks Phase 2
-
-Five presentations over the one query surface Phase 1 already had: Kanban, Calendar,
-Timeline/Gantt, and Workload join Table behind `GET tasks/boards/{board}/rows`, selected by a
-`presentation` and `window` that travel inside the saved view's `configuration` JSON rather than
-as their own endpoints. Saved-view configuration moves to `schema:2` — upgraded on read, never
-rewritten in storage, so a rollback strands nothing. Windows are bounded per presentation: 400
-days for a range, 50 UUID-shaped buckets for Kanban, folded into the existing conditional ETag so
-a window change is a cache miss rather than stale data under a fresh tag.
-
-Dependencies are a "blocks" edge for Timeline and nothing else — display only, no completion
-refusal, no override path, no date propagation — with a cycle rejected at write time inside the
-same board-row lock that stops a concurrent insert from slipping one past the check. Workload
-counts tasks, never hours: no estimate field, no capacity model, no over/under-loaded threshold,
-just how many tasks land on each day or week a bounded window covers. Recurrence ships both modes
-— `on_schedule` walks forward from the series task's own dates on the hourly worker;
-`after_completion` never creates its occurrence inline, only emits an outbox marker at completion
-time, so a lock deadlock building the next instance can never abort the completion that triggered
-it. Cross-board Timeline/Calendar/Workload summaries reuse My Tasks' access path verbatim rather
-than re-deriving a check Phase 1 already proved against a membership-revocation race.
-
-Timeline needed no new column — `tasks.start_on` existed from Phase 1. One real behaviour change
-rode along: `PATCH /tasks/{id}` and task creation now refuse `start_on` after `due_on` with a
-422, closing a gap the Phase 1 design and the client's own copy had asserted was already closed
-and was not — a request that used to succeed and silently write the invalid pair now gets a
-sentence instead. Server-push refresh, listed as optional in the Phase 1 design, is dropped for
-real: Phase 1's polling already converges and was tested against a revocation race, and a push
-channel would need its own answer to every case polling already answers, for a refresh that
-already works. Decision recorded, not left to be silently revisited. The App Store freeze
-(`docs/ACTIVE-CONSTRAINTS.md`) that shaped several of these choices additively while `v0.0.0112`
-sat frozen against live production has since lifted.
-
-Client `v0.0.0123`.
-
----
-
 ## 2026-09-02 — Suggestions
 
 Any signed-in user can send EzBizi a written suggestion, correct or withdraw it while it is

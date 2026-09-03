@@ -553,8 +553,7 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
         : EzBiziTheme.clockOut(context);
     // `onErrorContainer`, not `error`: the background below is the full,
     // opaque container role (not an alpha-blended tint), and that is the
-    // foreground Material pairs with it — see TaskKanbanView's error banner
-    // for the same pairing on the same role.
+    // foreground Material pairs with it.
     final headingColor = approved
         ? EzBiziTheme.clockIn(context)
         : theme.colorScheme.onErrorContainer;

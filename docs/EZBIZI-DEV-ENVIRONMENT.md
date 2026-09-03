@@ -86,26 +86,24 @@ green gate. Three are missing libraries; one was fixed.
 | OpenSSL | `openssl_pkey_export(): Cannot get key from parameter 1` | **fixed 2026-08-17** — see below |
 | GD | `GD extension is not installed` — image tests | **fixed 2026-08-19** — `extension=gd` in this machine's `php.ini`. Not a repo file. |
 | dompdf | `Class "Dompdf\Dompdf" not found` — PDF tests | **fixed 2026-08-19** — `composer.phar install` pulled `dompdf/dompdf` from the lockfile; it had been missing from `vendor/`. |
-| phpspreadsheet | `Class "PhpOffice\PhpSpreadsheet\Spreadsheet" not found` — six Tasks XLSX transfer tests | **fixed 2026-08-28** — same shape as the dompdf row: in `composer.json` and the lockfile, absent from this machine's `vendor/`. `composer.phar install` pulled it. |
+| phpspreadsheet | `Class "PhpOffice\PhpSpreadsheet\Spreadsheet" not found` — six XLSX transfer tests | **fixed 2026-08-28** — same shape as the dompdf row: in `composer.json` and the lockfile, absent from this machine's `vendor/`. `composer.phar install` pulled it. |
 | Windows paths | `ErrorAuditTest::test_a_file_scope_closure_does_not_carry_the_deploy_root_into_the_trace` — the trace comes back with `tests\Fixtures\…` backslashes and the assertion wants the forward-slash form | **Windows only** |
 | Local TLS | **Thirteen red, not one** (count it, do not trust this number: it grows with every test added to those two files) — every `ImapTransportTest` and `ImapReplySenderTest` case that opens the fake IMAP/SMTP server. The connection to `localhost` fails on the certificate *before* anything the test is about, so each one reports the certificate instead (e.g. `test_a_credential_containing_a_line_break_is_refused` names the certificate rather than the line break). Confirmed 2026-08-28. | **Windows only** |
 
 **A full local run is no longer the nine-red of 2026-08-19 morning.** GD and Dompdf are on this machine now (`HrOnboardingDocumentPdfTest` 13/13). Two Windows-only rows remain (path separators in a stack trace, localhost TLS). The deploy gate does **not** run here — `scripts/deploy.sh` pipes `git archive main` to `/opt/ezbizi-test` on the box. A green local run is still the weaker signal.
 
 **It runs the other way too: this machine accepts a migration a stock MySQL refuses.**
-`2026_08_25_173000_create_task_view_and_delivery_tables` creates two triggers through
-`DB::unprepared` — `task_views_main_marker_immutable` and `task_views_main_permanent` — which
-make the permanent Main view's marker unchangeable and the view undeletable. A `CHECK`
-constraint cannot say "this column may not change", so a trigger is the mechanism; there is
-nothing wrong with the migration. But MySQL refuses `CREATE TRIGGER` without `SUPER` while
+A migration that creates a trigger through `DB::unprepared` is the case. A `CHECK` constraint
+cannot say "this column may not change", so a trigger is the only mechanism for that, and
+there is nothing wrong with writing one. But MySQL refuses `CREATE TRIGGER` without `SUPER` while
 binary logging is on (error 1419), and the application's MySQL user correctly does not have
 `SUPER`. Local `mysqld` here runs as a user process with different settings, so it never bit,
 and the migration passed every local run while blocking every deploy for two days.
 
 The server fix is `log_bin_trust_function_creators=ON`, persisted so it survives a restart —
 applied to the box on 2026-08-28. **Any fresh environment with binlog on will hit this**, and
-the failure is confusing rather than obvious: the migration dies partway, leaves tables and a
-`notifications.delivery_key` column behind unrecorded in `migrations`, and every later attempt
+the failure is confusing rather than obvious: the migration dies partway, leaves tables and
+columns behind unrecorded in `migrations`, and every later attempt
 fails somewhere downstream instead — 1050 table exists, then 1215 cannot add foreign key, then
 1060 duplicate column. Three symptoms, one cause. If you meet those, look for orphaned tables
 from a half-applied migration before believing any of them.
@@ -116,18 +114,6 @@ reached this migration. The gate was not slow so much as doomed — the constrai
 production *and* blocked the gate that existed to catch it blocking production. The SSH keepalive
 added the same day is a real fix for a real problem, but on its own it only bought a doomed run
 more time to fail in.
-
-**A trap worth knowing before you trust a filtered run.** `tests/Feature/Tasks` passes whole —
-152 tests, 1,929 assertions, from a database dropped and recreated empty. But
-`TaskSecurityTest` and `TaskConcurrencyTest` are order-dependent from an empty database:
-`TaskSecurityTest` alone passes 7/7, and the two files together from empty do not. Both spawn
-real worker processes that commit outside the test's transaction, and both reset with
-`migrate:fresh` in a `finally` because `RefreshDatabase`'s rollback cannot reach another
-process's connection. That reset is load-bearing in ways reading it does not reveal — an
-attempt to replace it with full-table truncation on 2026-08-28 errored 8 of 13 and was reverted.
-**Do not change how those two reset.** If the gate's wall clock ever needs to come down, move
-them to a suite that runs once; leave the cleanup alone. And if a filtered subset comes back
-red, run the whole directory before believing it.
 
 Run the full suite with `php -d memory_limit=1G vendor/bin/phpunit`. Plain `php artisan test` dies with a 128M exhaustion partway through — the parent's `-d` does not reach the processes it spawns.
 
@@ -187,19 +173,6 @@ restarting. Verify with `php -r 'var_dump(openssl_pkey_new([]) !== false);'`.
 
 A sqlite `:memory:` run is still not the gate (StartUp.md §8). This machine now has MySQL;
 use `php artisan test` with no sqlite overrides. GD and Dompdf are present as of 2026-08-19.
-
-## Task spreadsheet transfer
-
-Task-board CSV and XLSX import uses `phpoffice/phpspreadsheet` 5.9 after a bounded ZIP/workbook
-preflight; formulas, macros, encryption, external links/connections and embedded objects are
-refused before the library loads the workbook. The local and deploy PHP runtimes therefore need
-`ctype`, `dom`, `fileinfo`, `filter`, `gd`, `iconv`, `libxml`, `mbstring`, `simplexml`, `xml`,
-`xmlreader`, `xmlwriter`, `zip`, and `zlib`. Verify them with `php -m` before changing the lockfile.
-
-Monday data enters EzBizi through Monday's CSV/XLSX export and this normal board importer. Phase 1
-does not store Monday API credentials or promise a direct Monday connection. JSON output is a
-versioned archive manifest, not a backup or restore format, and deliberately excludes attachment
-bytes; authorized file entries contain only identifier, name, size, and SHA-256.
 
 ## Permissions model
 

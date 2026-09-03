@@ -732,7 +732,7 @@ designed, with the design pointed the wrong way:
   that deleted it. It fails honest work, and — the dangerous direction — it
   would equally have PASSED a deletion that live code still referenced.
 - **The suite proved the first hop and said nothing about the feature.** Eight
-  green tests on a recurring-task worker, not one of which completed a
+  green tests on a recurrence worker, not one of which completed a
   second-generation instance. "Service the truck every 3 months" serviced it
   twice and never again.
 - **`/version.json` reports `1.0.0` build `1`.** It is pubspec's default, it has
@@ -782,7 +782,7 @@ look like.
 Two on 2026-08-31, both caught this way and neither by a better method:
 
 - A sweep reported TWELVE entries of `IMPLEMENTED_ACTIONS` as unreachable,
-  including `task.create` and `time_clock.clock_in`. Twelve dead constants in
+  including `time_clock.clock_in`. Twelve dead constants in
   shipped, working code is not a thing that quietly happens. The sweep had
   iterated `$m->actions`, which holds PERMISSION strings — view, create, edit —
   rather than `$m->automationActions`, which holds the ActionDefinition objects.
@@ -1061,7 +1061,7 @@ That distinguishes "the colour changed" from "something moved" WITHOUT being abl
 to read any of the text, which matters because these frames render text as
 featureless blocks in the first place.
 
-Used on 2026-08-31 for eleven Tasks goldens after a brand-colour fix: every
+Used on 2026-08-31 for eleven goldens in one module after a brand-colour fix: every
 changed region was an accent-coloured element in its original position, so
 regenerating was correct. Say in the commit message what you checked for, so the
 module's owner can review the reasoning rather than take the result on trust.
@@ -1134,7 +1134,7 @@ The most expensive stale comment is not the one that is merely out of date. It i
 the one that ASSERTS A MECHANISM, because a reviewer reads the assertion instead
 of checking the mechanism, and the comment becomes the evidence.
 
-Measured 2026-08-31, in Tasks Phase 2: a `ConstrainedBox` with a `minHeight`
+Measured 2026-08-31: a `ConstrainedBox` with a `minHeight`
 carried a comment saying it prevented silent row loss. It could not — its parent
 was an `Expanded`, which passes TIGHT constraints, so the floor can never bite.
 **Two separate reviews accepted it**, and three documents plus that comment all

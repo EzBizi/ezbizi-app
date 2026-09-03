@@ -154,9 +154,9 @@ class _ActionRow {
   /// then told the other to hold a finished, correct commit.
   Map<String, dynamic> toJson(CatalogueActionType? definition) {
     // Any action that DECLARES parameters is built from them, rather than
-    // any action whose key happens to start with "task.".
+    // any action whose key happens to start with a particular prefix.
     //
-    // The prefix was accurate while Tasks was the only module with
+    // The prefix was accurate while one module was the only one with
     // configurable actions, and it silently stopped being a description of
     // anything the moment Phone added one: "Send a message" was selectable,
     // drew no fields, and fell to the throw below — a StateError on a rule
