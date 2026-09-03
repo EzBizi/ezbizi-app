@@ -1,3 +1,4 @@
+import '../core/phone_numbers.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -82,7 +83,7 @@ class _IdentityCardState extends State<IdentityCard> {
       _first.text = b['first_name'] as String? ?? '';
       _middle.text = b['middle_name'] as String? ?? '';
       _last.text = b['last_name'] as String? ?? '';
-      _phone.text = b['phone'] as String? ?? '';
+      _phone.text = formatPhoneNumber(b['phone'] as String?);
       _address.text = b['address'] as String? ?? '';
       _gender.text = b['gender'] as String? ?? '';
       _hasAvatar = b['has_avatar'] == true;
@@ -103,7 +104,8 @@ class _IdentityCardState extends State<IdentityCard> {
       // it. An omitted key means "leave it alone", which would make these
       // impossible to empty once filled.
       'middle_name': _middle.text.trim().isEmpty ? null : _middle.text.trim(),
-      'phone': _phone.text.trim().isEmpty ? null : _phone.text.trim(),
+      // Stored as E.164, never as the pretty form the field is showing.
+      'phone': toE164(_phone.text),
       'address': _address.text.trim().isEmpty ? null : _address.text.trim(),
       'gender': _gender.text.trim().isEmpty ? null : _gender.text.trim(),
       'date_of_birth': _dob.text.trim().isEmpty ? null : _dob.text.trim(),
@@ -270,7 +272,9 @@ class _IdentityCardState extends State<IdentityCard> {
                         children: [
                           Expanded(child: _field(_last, 'Last name')),
                           const SizedBox(width: 12),
-                          Expanded(child: _field(_phone, 'Phone number')),
+                          Expanded(
+                            child: _field(_phone, 'Phone number', phone: true),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 12),
@@ -365,10 +369,16 @@ class _IdentityCardState extends State<IdentityCard> {
     );
   }
 
-  Widget _field(TextEditingController c, String label, {int maxLines = 1}) =>
-      TextField(
+  Widget _field(
+    TextEditingController c,
+    String label, {
+    int maxLines = 1,
+    bool phone = false,
+  }) => TextField(
         controller: c,
         maxLines: maxLines,
+        keyboardType: phone ? TextInputType.phone : null,
+        inputFormatters: phone ? const [PhoneNumberInputFormatter()] : null,
         decoration: InputDecoration(
           labelText: label,
           isDense: true,

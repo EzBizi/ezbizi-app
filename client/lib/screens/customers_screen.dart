@@ -474,7 +474,7 @@ class _NewCustomerPanelState extends State<_NewCustomerPanel> {
     final response = await widget.api.post('/customers', {
       'owning_franchise_id': _franchiseId,
       'name': _name.text.trim(),
-      if (_phone.text.trim().isNotEmpty) 'phone': _phone.text.trim(),
+      if (_phone.text.trim().isNotEmpty) 'phone': toE164(_phone.text),
       if (_email.text.trim().isNotEmpty) 'email': _email.text.trim(),
       if (_line1.text.trim().isNotEmpty) 'address_line1': _line1.text.trim(),
       if (_line2.text.trim().isNotEmpty) 'address_line2': _line2.text.trim(),
@@ -550,6 +550,7 @@ class _NewCustomerPanelState extends State<_NewCustomerPanel> {
             controller: _phone,
             decoration: const InputDecoration(labelText: 'Phone'),
             keyboardType: TextInputType.phone,
+            inputFormatters: const [PhoneNumberInputFormatter()],
             enabled: !_busy,
           ),
           const SizedBox(height: 12),

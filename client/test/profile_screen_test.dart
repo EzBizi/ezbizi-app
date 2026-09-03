@@ -71,7 +71,7 @@ void main() {
     // opening anything -- you came to check the number was right.
     expect(find.text('Phone number'), findsOneWidget);
     expect(
-      find.text('+1 (305) 724 - 2199'),
+      find.text('+1 (305) 724-2199'),
       findsOneWidget,
       reason:
           'The row is being READ. +13057242199 is not a number anybody reads '

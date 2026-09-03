@@ -849,7 +849,7 @@ void main() {
     // The line is chosen from what the company holds.
     await _tap(tester, find.byType(DropdownButtonFormField<String>).last);
     await tester.pumpAndSettle();
-    await _tap(tester, find.text('Marketing · +1 (239) 456 - 0829').last);
+    await _tap(tester, find.text('Marketing · +1 (239) 456-0829').last);
 
     await _type(tester, 'Send to', '+13057242199');
     await _type(tester, 'Message', 'An email just arrived.');

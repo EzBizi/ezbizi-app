@@ -171,7 +171,10 @@ void main() {
       'password': 'a-long-enough-password',
       'first_name': 'Nadia',
       'last_name': 'Okafor',
-      'phone': '860 555 0142',
+      // Typed as '860 555 0142'; stored as E.164. The field formats what you
+      // see, toE164 decides what is sent — a payload carrying the pretty form
+      // would store a different number from the same digits typed elsewhere.
+      'phone': '+18605550142',
       'date_of_birth': '1994-02-11',
     });
 

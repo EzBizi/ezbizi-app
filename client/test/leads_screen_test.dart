@@ -58,7 +58,7 @@ void main() {
         {
           'id': 'lead-1',
           'contact_name': null,
-          'phone': '+1 (555) 123 - 4567',
+          'phone': '+1 (555) 123-4567',
           'category': 'chimney_sweep',
           'status': 'new',
           'received_at': null,
@@ -73,7 +73,7 @@ void main() {
       ],
     );
 
-    expect(find.text('+1 (555) 123 - 4567'), findsWidgets);
+    expect(find.text('+1 (555) 123-4567'), findsWidgets);
   });
 
   /// §4: a control that is offered must be a control that works.

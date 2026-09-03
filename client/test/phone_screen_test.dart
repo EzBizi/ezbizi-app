@@ -418,8 +418,8 @@ void main() {
       // it used to sit above the lines you open Numbers to look at.
       await _tap(tester, find.textContaining('Import'));
 
-      expect(find.text('EZBZ · +1 (561) 232 - 3929'), findsOneWidget);
-      expect(find.text('Bar · +1 (973) 782 - 0956'), findsOneWidget);
+      expect(find.text('EZBZ · +1 (561) 232-3929'), findsOneWidget);
+      expect(find.text('Bar · +1 (973) 782-0956'), findsOneWidget);
 
       // The one that still answers somewhere else says so BEFORE importing.
       expect(

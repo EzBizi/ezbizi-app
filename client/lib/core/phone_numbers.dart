@@ -16,7 +16,7 @@
 ///
 /// ── Why it refuses most of the world ─────────────────────────────
 ///
-/// `+1 (203) 555 - 0142` is a North American convention and only makes sense for
+/// `+1 (203) 555-0142` is a North American convention and only makes sense for
 /// North American numbers. A naive "insert brackets after three digits" would
 /// render a London number `+4 (420) 718-3875` — which is not a phone number in
 /// any country, and looks confident about it.
@@ -27,7 +27,9 @@
 /// this file is where that decision already lives.
 library;
 
-/// The North American form: `+1 (203) 555 - 0142`.
+import 'package:flutter/services.dart';
+
+/// The North American form: `+1 (203) 555-0142`.
 ///
 /// Anything else is returned unchanged — international numbers, short internal
 /// extensions, empty strings, and anything malformed. Callers can pass whatever
@@ -53,9 +55,84 @@ String formatPhoneNumber(String? raw) {
   if (digits[0] == '0' || digits[0] == '1') return value;
   if (digits[3] == '0' || digits[3] == '1') return value;
 
-  // Spaces around the dash, which is Jose's spelling of it (3 Sep) rather than
-  // the tighter `555-0142` this used to produce. One place decides it, so the
-  // whole app changes together if that ever changes again.
+  // US convention, tight around the dash. One place decides it, so the whole
+  // app changes together if that ever changes again.
   return '+1 (${digits.substring(0, 3)}) '
-      '${digits.substring(3, 6)} - ${digits.substring(6)}';
+      '${digits.substring(3, 6)}-${digits.substring(6)}';
+}
+
+/// The stored form of whatever somebody typed, or null if it is not a number.
+///
+/// The counterpart to [formatPhoneNumber]: that one is for eyes, this one is
+/// for the wire. A field using [PhoneNumberInputFormatter] holds the pretty
+/// form, and every save path must run it back through here — the API, the
+/// database and Twilio all key on E.164, and posting `+1 (305) 724-2199` would
+/// be stored as a different number from the same digits typed anywhere else.
+///
+/// Ten digits become `+1XXXXXXXXXX`. Eleven starting with 1 are the same number
+/// written with its country code. Anything else — an extension, an
+/// international number, a half-typed field — comes back as it arrived, so a
+/// caller can tell "not ready yet" from "definitely wrong".
+String? toE164(String? typed) {
+  final value = typed?.trim() ?? '';
+  if (value.isEmpty) return null;
+
+  final digits = value.replaceAll(RegExp(r'\D'), '');
+
+  // A leading + on something that is not NANP is an international number
+  // somebody typed deliberately. Keep it exactly, rather than mangling it into
+  // a +1.
+  if (value.startsWith('+') && !(digits.length == 11 && digits[0] == '1')) {
+    return digits.length == 10 ? '+1$digits' : value;
+  }
+
+  if (digits.length == 10) return '+1$digits';
+  if (digits.length == 11 && digits[0] == '1') return '+$digits';
+
+  return value;
+}
+
+/// Formats a North American number while it is being typed.
+///
+/// `3057242199` becomes `+1 (305) 724-2199` as the tenth digit lands. Anything
+/// that cannot be a NANP number — more than eleven digits, a leading 0 or 1 in
+/// the area code, an international `+` — is left exactly as typed, because a
+/// field that rewrites what somebody deliberately entered is worse than one
+/// that leaves it alone.
+class PhoneNumberInputFormatter extends TextInputFormatter {
+  const PhoneNumberInputFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final text = newValue.text;
+
+    // Deleting must be able to escape the formatting. Without this, backspacing
+    // over the ")" reformats it straight back and the caret never moves — the
+    // field appears frozen, which is the classic phone-mask bug.
+    if (text.length < oldValue.text.length) return newValue;
+
+    // An international number is the person's own business.
+    if (text.startsWith('+') && !text.startsWith('+1')) return newValue;
+
+    final digits = text.replaceAll(RegExp(r'\D'), '');
+    final national = digits.length == 11 && digits.startsWith('1')
+        ? digits.substring(1)
+        : digits;
+
+    if (national.length != 10) return newValue;
+    if (national[0] == '0' || national[0] == '1') return newValue;
+    if (national[3] == '0' || national[3] == '1') return newValue;
+
+    final formatted =
+        '+1 (${national.substring(0, 3)}) '
+        '${national.substring(3, 6)}-${national.substring(6)}';
+
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
 }

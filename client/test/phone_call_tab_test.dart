@@ -273,7 +273,7 @@ void main() {
     device.ring('+12035550199');
     await tester.pump();
 
-    expect(find.textContaining('Incoming from +1 (203) 555 - 0199'), findsOneWidget);
+    expect(find.textContaining('Incoming from +1 (203) 555-0199'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Accept'), findsOneWidget);
     expect(find.widgetWithText(OutlinedButton, 'Decline'), findsOneWidget);
     expect(find.byType(Dialog), findsNothing);
@@ -742,7 +742,7 @@ void main() {
     // box now, and what somebody sees in it IS the answer to "which line am I
     // about to appear as".
     expect(
-      find.textContaining('Mine · +1 (239) 747 - 0324 — yours'),
+      find.textContaining('Mine · +1 (239) 747-0324 — yours'),
       findsWidgets,
       reason: 'the desk did not open on the line assigned to this person',
     );
@@ -785,14 +785,14 @@ void main() {
       ],
     );
 
-    expect(find.textContaining('CT main · +1 (203) 555 - 0142 — yours'), findsWidgets);
+    expect(find.textContaining('CT main · +1 (203) 555-0142 — yours'), findsWidgets);
 
     // A searchable list, not a plain dropdown: a dispatcher with a line per
     // company and per branch reads thirty of them otherwise, and the one they
     // want has a name they already know.
     await tester.enterText(find.byType(TextField).first, 'Miami');
     await tester.pumpAndSettle();
-    await _tap(tester, find.textContaining('Miami · +1 (305) 555 - 0188').last);
+    await _tap(tester, find.textContaining('Miami · +1 (305) 555-0188').last);
 
     await tester.enterText(
       find.widgetWithText(TextField, 'Number'),

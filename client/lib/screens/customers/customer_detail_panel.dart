@@ -1,3 +1,4 @@
+import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -104,7 +105,9 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
 
   void _fill(Map<String, dynamic> row) {
     _name.text = row['name'] as String? ?? '';
-    _phone.text = row['phone'] as String? ?? '';
+    // Loaded formatted, saved back through toE164 — the field never shows
+    // the stored form and never sends the pretty one.
+    _phone.text = formatPhoneNumber(row['phone'] as String?);
     _email.text = row['email'] as String? ?? '';
     _notes.text = row['notes'] as String? ?? '';
 
@@ -124,7 +127,8 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
 
     final response = await widget.api.patch('/customers/${widget.id}', {
       'name': _name.text.trim(),
-      'phone': _phone.text.trim().isEmpty ? null : _phone.text.trim(),
+      // Stored as E.164, never as the pretty form the field is showing.
+      'phone': toE164(_phone.text),
       'email': _email.text.trim().isEmpty ? null : _email.text.trim(),
       'address_line1': _line1.text.trim().isEmpty ? null : _line1.text.trim(),
       'address_line2': _line2.text.trim().isEmpty ? null : _line2.text.trim(),
@@ -261,6 +265,7 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
                   controller: _phone,
                   decoration: const InputDecoration(labelText: 'Phone'),
                   keyboardType: TextInputType.phone,
+                  inputFormatters: const [PhoneNumberInputFormatter()],
                   enabled: editable,
                 ),
                 const SizedBox(height: 12),
