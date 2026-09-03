@@ -11,6 +11,20 @@ class VersionHistory {
       version: '0.0.0144',
       date: '3 Sep 2026',
       items: [
+        'Tasks has been removed. It is being rebuilt from scratch, and rather '
+            'than leave a half-working version in the sidebar it is gone until '
+            'the new one is ready. Boards, tasks and their updates are deleted '
+            'with it; nothing is kept behind the scenes.',
+        'Leads: Local Services enquiries load instead of failing. EzBizi was '
+            'asking Google for something that is not a real part of its API, '
+            'so Google answered with a plain "not found" page and the screen '
+            'turned that into an error with no explanation. An account with no '
+            'enquiries now says so, which is the honest answer rather than a '
+            'symptom.',
+        'Leads: being asked to slow down for a minute no longer reads as '
+            'having no access at all. Those are different problems with '
+            'different answers, and reporting the first as the second sent '
+            'people to re-apply for access they already had.',
         'Whether you are taking calls now sits at the top of every screen, '
             'next to Clock In, as a handset with a green or red dot. It used '
             'to live on the dial pad, so the only way to stop your phone '
