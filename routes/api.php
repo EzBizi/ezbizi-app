@@ -757,6 +757,12 @@ Route::prefix('v1')
         Route::get('hr/people/{user}/consents', [HrPeopleController::class, 'consents']);
         Route::patch('hr/people/{user}', [HrPeopleController::class, 'update']);
 
+        // Sign-in recovery, gated by hr.security.reset rather than hr.edit — see
+        // UserPolicy::resetSecurity for why clearing somebody's second factor is
+        // not the same authority as editing their row.
+        Route::post('hr/people/{user}/totp/reset', [HrPeopleController::class, 'resetTotp']);
+        Route::post('hr/people/{user}/reset-link', [HrPeopleController::class, 'resetLink']);
+
         Route::get('hr/invitations', [HrInvitationsController::class, 'index']);
         Route::post('hr/invitations', [HrInvitationsController::class, 'store']);
         // Resend and revoke, one at a time. The owner was explicit that there is

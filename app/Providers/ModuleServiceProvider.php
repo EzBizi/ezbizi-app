@@ -419,8 +419,15 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'hr',
                 label: 'Human Resources',
-                auditActionPrefixes: ['onboarding', 'invitation', 'contract'],
-                actions: ['view', 'create', 'edit'],
+                auditActionPrefixes: ['onboarding', 'invitation', 'contract', 'person'],
+                // `security.reset` is deliberately separate from `edit`: clearing
+                // somebody's second factor and handing out a password link is a
+                // bigger authority than maintaining their row, and folding it into
+                // `edit` would have granted it silently, on deploy, to everyone who
+                // already keeps the people list — see UserPolicy::resetSecurity.
+                // Same reasoning that keeps `monitoring.control` off
+                // `monitoring.screenshots.view`.
+                actions: ['view', 'create', 'edit', 'security.reset'],
                 triggers: [
                     /*
                      * ── Invitations ─────────────────────────────

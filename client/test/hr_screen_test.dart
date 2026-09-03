@@ -401,6 +401,89 @@ void main() {
     expect(patched, {'is_active': false});
   });
 
+  /// The lost-phone path, from the person who is not locked out.
+  ///
+  /// Built after Rodrigo lost his authenticator and the only way back in was
+  /// a shell on the production box. It is its own key — hr.edit does not
+  /// carry it — and it asks first, because it signs the colleague out
+  /// everywhere.
+  testWidgets('resetting an authenticator asks first, then posts', (
+    tester,
+  ) async {
+    String? posted;
+
+    await _pump(
+      tester,
+      _handler(
+        onPostPerson: (path) => posted = path,
+        me: {..._me, 'permissions': ['hr.view', 'hr.edit', 'hr.security.reset']},
+      ),
+    );
+
+    await _tap(tester, _tab('Records'));
+    await _tap(tester, find.byType(PopupMenuButton<String>).last);
+    await _tap(tester, find.text('Reset their authenticator'));
+
+    // Says what it does before it does it — signed out everywhere, and that
+    // nobody, including the administrator, is shown the new secret.
+    expect(find.textContaining('signed out on every device'), findsOneWidget);
+    expect(find.textContaining('you are never shown it'), findsOneWidget);
+    expect(posted, isNull, reason: 'it reset before anybody confirmed');
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Reset it'));
+
+    expect(posted, '/api/v1/hr/people/u-2/totp/reset');
+  });
+
+  testWidgets('a password reset link is posted for, then shown to hand over', (
+    tester,
+  ) async {
+    String? posted;
+
+    await _pump(
+      tester,
+      _handler(
+        onPostPerson: (path) => posted = path,
+        me: {..._me, 'permissions': ['hr.view', 'hr.edit', 'hr.security.reset']},
+      ),
+    );
+
+    await _tap(tester, _tab('Records'));
+    await _tap(tester, find.byType(PopupMenuButton<String>).last);
+    await _tap(tester, find.text('Password reset link'));
+
+    expect(posted, '/api/v1/hr/people/u-2/reset-link');
+    // The link is on screen to copy, not emailed — somebody locked out of
+    // their mailbox is the case this exists for.
+    expect(find.text('https://app.example.test/reset?token=abc123'), findsOneWidget);
+    expect(find.text('Copy and close'), findsOneWidget);
+  });
+
+  /// hr.edit alone is what every other test in this file holds, and it must
+  /// not reach these. Shown and refused rather than hidden, with the reason on
+  /// the item, the same as every other refused control on this list.
+  testWidgets('without hr.security.reset both recovery items are refused', (
+    tester,
+  ) async {
+    String? posted;
+
+    await _pump(tester, _handler(onPostPerson: (path) => posted = path));
+
+    await _tap(tester, _tab('Records'));
+    await _tap(tester, find.byType(PopupMenuButton<String>).last);
+
+    for (final label in ['Reset their authenticator', 'Password reset link']) {
+      final item = tester.widget<PopupMenuItem<String>>(
+        find.ancestor(of: find.text(label), matching: find.byType(PopupMenuItem<String>)),
+      );
+      expect(item.enabled, isFalse, reason: '"$label" was offered without the key');
+    }
+    expect(find.textContaining('reset somebody’s sign-in security'), findsNWidgets(2));
+
+    await _tap(tester, find.text('Reset their authenticator'));
+    expect(posted, isNull, reason: 'a refused item still posted');
+  });
+
   testWidgets('with no role to hand out, inviting is refused and says why', (
     tester,
   ) async {
@@ -616,6 +699,10 @@ MockClientHandler _handler({
   void Function(Map<String, dynamic> body)? onInvite,
   void Function(String path)? onResend,
   void Function(String path, Map<String, dynamic> body)? onPatchPerson,
+  void Function(String path)? onPostPerson,
+  // The signed-in person, so a test can hold or lack a key. Defaults to the
+  // administrator every other test in this file drives.
+  Map<String, Object?> me = _me,
   List<Map<String, Object?>> invitations = _invitations,
   Map<String, Object?> scopeOptions = _scopeOptions,
   int scopeOptionsStatus = 200,
@@ -624,7 +711,7 @@ MockClientHandler _handler({
   return (request) async {
     final path = request.url.path;
 
-    if (path.endsWith('/me')) return _json({'data': _me});
+    if (path.endsWith('/me')) return _json({'data': me});
 
     // The tab this screen now opens on, so every test in this file pays for it.
     // Enough for it to draw; what the chip DOES is defended in
@@ -697,6 +784,23 @@ MockClientHandler _handler({
           'last_page': 1,
         },
       });
+    }
+
+    if (path.contains('/hr/people/') && request.method == 'POST') {
+      onPostPerson?.call(path);
+      if (path.endsWith('/totp/reset')) {
+        return _json({'data': {
+          'had_factor': true,
+          'note': 'Their authenticator is removed and they have been signed out everywhere.',
+        }});
+      }
+      if (path.endsWith('/reset-link')) {
+        return _json({'data': {
+          'url': 'https://app.example.test/reset?token=abc123',
+          'expires_at': '2026-09-03T21:00:00-04:00',
+          'note': 'Single use, valid one hour.',
+        }});
+      }
     }
 
     if (path.contains('/hr/people/') && request.method == 'PATCH') {

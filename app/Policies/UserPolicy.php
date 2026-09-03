@@ -102,6 +102,51 @@ class UserPolicy
     }
 
     /**
+     * Strip somebody's second factor, or hand them a password reset link.
+     *
+     * ── Why this is not `hr.edit` ────────────────────────────────
+     *
+     * Editing a person's role and clearing their authenticator are different
+     * powers wearing the same job title. `hr.edit` is held today by anyone who
+     * maintains the people list; if this reused it, deploying would silently
+     * hand every one of them the ability to take the second factor off every
+     * colleague in reach — a privilege escalation nobody asked for and nobody
+     * would see happen.
+     *
+     * So it is its own key, ungranted until somebody grants it, on the same
+     * reasoning that made `monitoring.control` separate from watching a screen.
+     *
+     * ── Never yourself ───────────────────────────────────────────
+     *
+     * Not because it would strand you — it would not; you would simply enrol
+     * again. It is refused because "reset the second factor on the account I am
+     * signed in to" is precisely what somebody who has stolen a session wants,
+     * and it is the one use of this endpoint that never needs to exist: a person
+     * who still has their own authenticator can rotate it from Your account, and
+     * one who has lost it is asking a colleague anyway.
+     */
+    public function resetSecurity(User $user, User $person): Response
+    {
+        if (! $user->hasPermission('hr.security.reset')) {
+            return Refusal::permission('reset this person’s sign-in security');
+        }
+
+        if ($user->is($person)) {
+            return Response::deny(
+                'This is for somebody else’s account. To change your own '
+                .'authenticator, use Your account — that path keeps the current one '
+                .'working until the replacement is confirmed, and this one does not.'
+            );
+        }
+
+        if (! $this->withinReach($user, $person)) {
+            return $this->outOfBounds($user);
+        }
+
+        return Response::allow();
+    }
+
+    /**
      * They hold `hr.edit` and this person is not theirs. Which of two reasons?
      *
      * ── Neither the person nor their place is ever named ─────────

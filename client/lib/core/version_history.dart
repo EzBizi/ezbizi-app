@@ -8,6 +8,34 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0148',
+      date: '3 Sep 2026',
+      items: [
+        'Human Resources: an administrator can reset a colleague\'s '
+            'authenticator when the phone holding it is lost. It is on each '
+            'person\'s menu in Records. Their old authenticator stops working, '
+            'they are signed out on every device, and they set up a new one '
+            'themselves the next time they sign in - nobody, the administrator '
+            'included, is ever shown it. Until now the only way back in was a '
+            'developer working on the server.',
+        'Human Resources: an administrator can hand somebody a password reset '
+            'link. It is shown on screen to pass on directly rather than '
+            'emailed, because a person locked out of their mailbox is exactly '
+            'who needs one. Single use, and it expires in an hour. The '
+            'administrator never chooses or sees the password.',
+        'Both need their own permission - "security.reset" under Human '
+            'Resources - rather than coming with editing people. Taking the '
+            'second factor off a colleague is a bigger thing than changing '
+            'their role, and it should be given on purpose. Administrators '
+            'have it already.',
+        'Phone numbers already in the system are now stored the way new ones '
+            'are, so they read the same everywhere. Nineteen were written '
+            'another way; nine were real numbers and are corrected. The other '
+            'ten were never valid numbers to begin with and are left as they '
+            'were rather than guessed at.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0147',
       date: '3 Sep 2026',
       items: [
