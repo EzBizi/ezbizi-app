@@ -186,7 +186,7 @@
     <div class="ask">
       <strong>The decision each layout is really making: which name is the title?</strong>
       Two names compete. The <b>module</b> — Human Resources — and the <b>pane</b> — “At a glance”.
-      Today Scheduling and HR print only the pane name, Tasks prints only the module name, and most
+      Today Scheduling and HR print only the pane name, one module prints only its own name, and most
       print neither.
       <span class="brk">My reading, and every layout below is built on it: the module name is the title.</span>
       The tab row is already telling you which pane you are in, and it is highlighted while it does
@@ -220,7 +220,7 @@ const CAPTIONS = {
       "Large at rest, collapsing into the app bar as the content scrolls up, the way iOS settings does. It genuinely is the best of both: the title is prominent when you arrive and free once you are reading. Weakness is cost, not behaviour — it needs a scroll controller wired into each screen's own scroll view, and there are sixteen of them, several of which already own their scrolling in ways that would fight it. Worth doing later as one change to a shared header widget; worth not doing as the thing that blocks fifteen screens from having a title at all."]
 };
 
-const NAV = ['Dashboard','Tasks','Human Resources','Customers','Jobs','Scheduling','Inspection',
+const NAV = ['Dashboard','Human Resources','Customers','Jobs','Scheduling','Inspection',
              'Marketing','Web Management','Phone','Fleet Management','Inventory','Services'];
 
 const side = () => `
@@ -376,9 +376,9 @@ const M5 = () => `
       ${mbody}`)}
     ${P('<b>The subtitle, and why it is not here</b>', `
       ${mbar()}
-      <div class="mtitle"><h2>Tasks</h2>
-        <p class="strike">Plan, assign, and finish work in this view.<span class="gone">DROPPED</span></p></div>
-      <div class="tabs" style="padding:10px 16px"><span class="on">Boards</span><span>My Tasks</span></div>
+      <div class="mtitle"><h2>Inventory</h2>
+        <p class="strike">Track stock, orders, and locations in this view.<span class="gone">DROPPED</span></p></div>
+      <div class="tabs" style="padding:10px 16px"><span class="on">Stock</span><span>Items</span></div>
       <div class="body">
         <p class="note" style="margin:0">One sentence, about a fifth of everything you can see at
           once, read once ever by each person. <b>The title above it is read every time.</b> On a

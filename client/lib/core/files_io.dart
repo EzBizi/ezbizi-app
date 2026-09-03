@@ -8,7 +8,7 @@ import 'files.dart';
 /// These were `null` stubs until 2026-09-02, which is why Add photo did
 /// nothing on the Windows desktop build: `pickImage` answered null and the
 /// caller could not tell that from a cancelled dialog. Twenty call sites
-/// across Fleet, Tasks, Inspection, HR, Marketing, Services and Settings
+/// across Fleet, Inspection, HR, Marketing, Services and Settings
 /// shared the one fault.
 ///
 /// Flutter ships no file dialog, so this is a package or an FFI binding per
@@ -88,7 +88,7 @@ Future<PickedFile?> pickText() async {
 ///
 /// Saving needs `getSaveLocation` plus a real write, and the facade declares
 /// `void download(...)` — making it await would turn six call sites async in
-/// Settings, Tasks, Inspection and Fleet. That is a different change with a
+/// Settings, Inspection and Fleet. That is a different change with a
 /// different blast radius from fixing a picker that returns null, so it is not
 /// smuggled in beside one. Export and download still do nothing off the web.
 void download(String filename, List<int> content) {}

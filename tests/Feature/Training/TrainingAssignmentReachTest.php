@@ -733,9 +733,9 @@ class TrainingAssignmentReachTest extends TestCase
 
     /**
      * Round 2 review found `training.assign` checked ONLY in
-     * `AssignmentsController::store` — `assertTaskActionUsable`
-     * (`AutomationsController`) only runs its per-type permission check for
-     * `TASK_ACTIONS`, and `training.assign` is not one, so a rule using it
+     * `AssignmentsController::store` — the per-type action check in
+     * `AutomationsController` only covered the action types it enumerated,
+     * and `training.assign` was not one of them, so a rule using it
      * ran with no permission check anywhere: `training.view` plus the
      * automation permissions was enough to write a rule that did what a
      * direct `POST` correctly refused. Proven both ways on the SAME

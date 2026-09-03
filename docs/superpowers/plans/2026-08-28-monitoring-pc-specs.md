@@ -551,8 +551,8 @@ Confirm `ModuleRegistry`'s accessor name first (`grep -n 'public function' app/S
 Run: `DB_DATABASE=ezbizi_testing_monitoring vendor/bin/phpunit tests/Feature/Monitoring/MonitoringModuleRegistrationTest.php`
 Expected: FAIL — no module `monitoring`.
 
-- [ ] **Step 3: Add the module** (inside `businessModules()`, mirroring the `tasks`
-  block in the same file)
+- [ ] **Step 3: Add the module** (inside `businessModules()`, mirroring any
+  existing module block in the same file)
 
 ```php
 new ModuleDefinition(

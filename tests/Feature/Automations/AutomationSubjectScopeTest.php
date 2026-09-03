@@ -114,7 +114,7 @@ class AutomationSubjectScopeTest extends TestCase
      * class. Proposed by the Training session, whose reviewer hit it live.
      */
     private const HAS_NOT_DECLARED_WHAT_IT_EMITS = [
-        'tasks', 'companies', 'franchises', 'users', 'hr', 'time_clock',
+        'companies', 'franchises', 'users', 'hr', 'time_clock',
         'customers', 'jobs', 'inspection', 'marketing', 'phone',
         'fleet_management', 'inventory', 'services', 'leads', 'reviews',
         'business_profile', 'email', 'monitoring',

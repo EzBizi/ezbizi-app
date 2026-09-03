@@ -323,7 +323,7 @@ void main() {
       // `Colors.transparent` is excluded, and it is the one exception worth
       // making: it is the ABSENCE of paint, not a colour anybody chose, so
       // "read it from the theme instead" is advice with no answer. Counting it
-      // sent the Tasks merge red over six `Colors.transparent` in a timeline
+      // sent a merge red over six `Colors.transparent` in a timeline
       // widget — a false positive that costs a real gate its credibility, which
       // is how gates end up being raised past instead of fixed.
       final pattern = RegExp(r'Color\(0x|Colors\.(?!transparent\b)[a-z]');
