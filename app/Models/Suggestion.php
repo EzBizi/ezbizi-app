@@ -105,12 +105,21 @@ class Suggestion extends Model implements HoldsPersonalData
      * The reason NOT given here is volume. "It only grows when somebody
      * deliberately writes something" was the first draft of this sentence, and
      * it describes the screen rather than the endpoint: `POST /suggestions`
-     * takes an authenticated request and nothing throttles it — only signup,
-     * login, forgot-password and the WordPress plugin have limiters (see
-     * AppServiceProvider::defineRateLimiters) — so one API token in a loop
-     * against a never-expiring table is a growth path the sentence did not
-     * cover. What justifies `forever` is the value of the row, not any belief
-     * about how many there will be.
+     * takes an authenticated request and nothing throttles it. The authenticated
+     * `v1` group carries no rate limiter, so one API token in a loop against a
+     * never-expiring table is a growth path the sentence did not cover. What
+     * justifies `forever` is the value of the row, not any belief about how many
+     * there will be.
+     *
+     * An earlier draft of this paragraph cited
+     * `AppServiceProvider::defineRateLimiters` for the list of what IS limited
+     * and named signup, login, forgot-password and the WordPress plugin. That
+     * pointer was wrong in both directions and is corrected rather than deleted,
+     * because the conclusion above rests on it: that method registers `signup`,
+     * `invitation` and `web-plugin`; login and forgot-password are throttled in
+     * their own controllers instead, and roughly twenty more routes carry an
+     * inline `throttle:N,1`. Read the route file for what is limited, not that
+     * method alone.
      */
     public static function retention(): RetentionPolicy
     {

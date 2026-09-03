@@ -137,6 +137,26 @@ class DataInventory
                 .'through the accounts in it; they are listed in full to the person they '
                 .'belong to under "Your account", and they go when the account does.',
             /*
+             * The one row in the listing that is deliberately NOT an
+             * organization-wide count, said out loud because the page around it
+             * promises that it is.
+             *
+             * `Suggestion::narrowToOrganization` counts the reader's own rows —
+             * see countFor above for why an organization-wide number under that
+             * model's own purpose sentence would disclose the thing the module
+             * exists to keep private. The cost of that fix is that this
+             * inventory now UNDER-reports one table, and an inventory downloaded
+             * for a regulator that quietly holds back a number is its own
+             * defect. So it does not hold it back quietly.
+             */
+            'Suggestions sent to EzBizi are counted for you alone, not for the organization. '
+                .'They can be read only by the person who wrote one and by EzBizi staff — not '
+                .'by an administrator and not by the owner — so counting them for the whole '
+                .'organization would itself disclose what the module exists to keep private: '
+                .'that somebody wrote one, and when. The figure above is therefore smaller '
+                .'than the number of rows held, and no organization-wide total is available '
+                .'to anybody inside the organization.',
+            /*
              * The web session table, named because it is the one place in this
              * schema that holds an IP address nothing above can account for.
              *
