@@ -8,6 +8,18 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0144',
+      date: '3 Sep 2026',
+      items: [
+        'The desktop app can take calls again. It has been saying the phone '
+            'desk was not connected on every launch, and the reason was inside '
+            'the app rather than on your network: the part of the window that '
+            'the microphone permission is handed to was not on screen yet when '
+            'the phone asked for it, so the request went unanswered and Twilio '
+            'refused the connection. The browser was never affected.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0143',
       date: '3 Sep 2026',
       items: [
