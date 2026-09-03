@@ -257,6 +257,19 @@ curl -sS https://www.ezbizi.com/<page>/ | grep -c "<the string that had to go>"
 Fetch the page, grep for the sentence that had to disappear, and record the
 result. Not the deploy desk's word, and not the passage of time.
 
+**The pipeline is built to be quiet here, deliberately and correctly.**
+`scripts/deploy.sh:479` runs `deploy-www.sh` last and lets it fail *non-fatally*:
+
+    scripts/deploy-www.sh "$GATED_SHA" || echo "⚠ the SITE did not publish — the app release above is fine..." >&2
+
+The reasoning in its comment is sound — everything else has already shipped, and
+a red exit would report a failed release that is in fact live. The consequence is
+the part that matters to this file: **a green release is not evidence the site
+published.** The warning goes to stderr, on the deploy session's terminal, in a
+run that ends in success. Nobody watching from here would see it. That is the
+mechanism behind the rule above, and it is why the check has to be a fetch of the
+public URL rather than any report about the release.
+
 ## Two things that make this easier than it looks
 
 **Nothing is behind a feature flag.** `platform_module_flags` is empty and
