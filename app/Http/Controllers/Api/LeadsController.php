@@ -57,7 +57,15 @@ class LeadsController extends Controller
         if (! $user->canActOnOrganization($user->organization)) {
             $query->where(function ($q) use ($companyIds, $franchiseIds) {
                 $q->whereIn('company_id', $companyIds)
-                    ->orWhereIn('franchise_id', $franchiseIds);
+                    ->orWhereIn('franchise_id', $franchiseIds)
+                    // A row filed at organization level - both columns null,
+                    // which is every row from an organization-scoped
+                    // connection - belongs to everybody who can see this tab.
+                    // Matching the two columns alone hid all of them from
+                    // every user below organization level, while the policy
+                    // still allowed each one by id. Business Profile carried
+                    // this clause from the start; Leads and Reviews did not.
+                    ->orWhere(fn ($w) => $w->whereNull('company_id')->whereNull('franchise_id'));
             });
         }
 

@@ -44,6 +44,29 @@ class LeadsApiTest extends TestCase
         ]));
     }
 
+    /**
+     * A lead filed at organization level belongs to everybody who can see the tab.
+     *
+     * Every lead from an organization-scoped connection carries company_id AND
+     * franchise_id null. The reach filter matched company OR franchise in the
+     * user's reach, so such a row matched neither and vanished for every user
+     * who was not organization-level - while LeadPolicy::view still allowed it
+     * by id. BusinessProfileController::index already carried the clause this
+     * needs, with a comment saying why; Leads and Reviews never got it.
+     */
+    public function test_an_organization_level_lead_is_listed_for_a_branch_user(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $this->lead($t);   // company_id and franchise_id both null
+
+        $branch = $this->userWithRole($t, 'Branch', ['leads.view'], onlyAt: $t['franchise']);
+
+        $this->signedInAs($branch)
+            ->getJson(self::ENDPOINT)
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
+    }
+
     public function test_a_lead_is_listed_for_somebody_who_may_see_it(): void
     {
         $t = $this->provisionTenant('A1-Group');

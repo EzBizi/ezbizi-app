@@ -50,6 +50,14 @@ class LocalServicesLeads
      */
     private const FIRST_RUN_DAYS = 30;
 
+    /**
+     * A ceiling on the paging loop, so a token Google keeps re-issuing cannot
+     * spin a request forever spending the day's quota. googleAds:search pages
+     * at ten thousand rows, so this is two million leads - a backstop, not a
+     * limit anybody reaches.
+     */
+    private const MAX_PAGES = 200;
+
     public function __construct(
         private readonly GoogleAdsOAuth $oauth,
         private readonly EventEmitter $events,
@@ -69,6 +77,7 @@ class LocalServicesLeads
         $created = 0;
         $updated = 0;
         $pageToken = null;
+        $pages = 0;
 
         do {
             $page = $this->page($connection, $token, $since, $pageToken);
@@ -95,7 +104,7 @@ class LocalServicesLeads
             }
 
             $pageToken = $page['next'];
-        } while ($pageToken !== null);
+        } while ($pageToken !== null && ++$pages < self::MAX_PAGES);
 
         $connection->forceFill(['last_reached_at' => now()])->save();
 

@@ -60,7 +60,15 @@ class ReviewsController extends Controller
 
             $query->where(function ($q) use ($companyIds, $franchiseIds) {
                 $q->whereIn('company_id', $companyIds)
-                    ->orWhereIn('franchise_id', $franchiseIds);
+                    ->orWhereIn('franchise_id', $franchiseIds)
+                    // A row filed at organization level - both columns null,
+                    // which is every row from an organization-scoped
+                    // connection - belongs to everybody who can see this tab.
+                    // Matching the two columns alone hid all of them from
+                    // every user below organization level, while the policy
+                    // still allowed each one by id. Business Profile carried
+                    // this clause from the start; Leads and Reviews did not.
+                    ->orWhere(fn ($w) => $w->whereNull('company_id')->whereNull('franchise_id'));
             });
         }
 
@@ -311,12 +319,20 @@ class ReviewsController extends Controller
 
         $this->audit->log('review.synced', $request->user()->organization, metadata: $totals);
 
-        return response()->json(
-            ['data' => [...$totals, 'failures' => $failures]],
-            $failures !== [] && $totals['fetched'] === 0
-                ? Response::HTTP_BAD_GATEWAY
-                : Response::HTTP_OK,
-        );
+        // Failed only when EVERY profile failed. Zero reviews is the honest
+        // answer for a profile nobody has reviewed, not a failure - the same
+        // conflation LeadsController::sync was corrected for. And the reason
+        // goes on top as `message`, which is the one key the client renders;
+        // buried in data.failures it never reached the screen.
+        $failedOut = $failures !== [] && count($failures) === $connections->count();
+
+        $payload = ['data' => [...$totals, 'failures' => $failures]];
+
+        if ($failedOut) {
+            $payload['message'] = (string) ($failures[0]['because'] ?? 'Google would not return reviews.');
+        }
+
+        return response()->json($payload, $failedOut ? Response::HTTP_BAD_GATEWAY : Response::HTTP_OK);
     }
 
     private function unansweredCount($user): int
@@ -332,7 +348,15 @@ class ReviewsController extends Controller
 
             $query->where(function ($q) use ($companyIds, $franchiseIds) {
                 $q->whereIn('company_id', $companyIds)
-                    ->orWhereIn('franchise_id', $franchiseIds);
+                    ->orWhereIn('franchise_id', $franchiseIds)
+                    // A row filed at organization level - both columns null,
+                    // which is every row from an organization-scoped
+                    // connection - belongs to everybody who can see this tab.
+                    // Matching the two columns alone hid all of them from
+                    // every user below organization level, while the policy
+                    // still allowed each one by id. Business Profile carried
+                    // this clause from the start; Leads and Reviews did not.
+                    ->orWhere(fn ($w) => $w->whereNull('company_id')->whereNull('franchise_id'));
             });
         }
 

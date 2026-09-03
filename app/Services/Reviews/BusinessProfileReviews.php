@@ -44,6 +44,13 @@ class BusinessProfileReviews
 
     private const PAGE_SIZE = 50;
 
+    /**
+     * A ceiling on any paging loop, so a token Google keeps re-issuing cannot
+     * spin a request forever spending quota. Generous - at fifty reviews a page
+     * this is ten thousand reviews per location - and only ever a backstop.
+     */
+    private const MAX_PAGES = 200;
+
     public function __construct(private readonly EventEmitter $events) {}
 
     /**
@@ -62,6 +69,7 @@ class BusinessProfileReviews
 
         foreach ($this->locations($token, $account) as $location) {
             $pageToken = null;
+            $pages     = 0;
 
             do {
                 $page = $this->page($token, $location, $pageToken);
@@ -84,7 +92,7 @@ class BusinessProfileReviews
                 }
 
                 $pageToken = $page['next'];
-            } while ($pageToken !== null);
+            } while ($pageToken !== null && ++$pages < self::MAX_PAGES);
         }
 
         $connection->forceFill(['last_reached_at' => now()])->save();
@@ -146,31 +154,45 @@ class BusinessProfileReviews
      */
     private function locations(string $token, string $account): array
     {
-        try {
-            $response = Http::withToken($token)
-                ->timeout(self::TIMEOUT)
-                ->get(BusinessProfileOAuth::LEGACY_V4."/accounts/{$account}/locations", [
-                    'pageSize' => 100,
-                ]);
-        } catch (ConnectionException) {
-            throw new RuntimeException('Google did not answer while listing locations.');
-        }
+        $names     = [];
+        $pageToken = null;
+        $pages     = 0;
 
-        if ($response->failed()) {
-            throw $this->refused($response->status(), 'listing locations');
-        }
-
-        $names = [];
-
-        foreach ((array) $response->json('locations', []) as $location) {
-            $name = trim((string) ($location['name'] ?? ''));
-
-            if ($name !== '') {
-                $names[] = str_starts_with($name, 'accounts/')
-                    ? $name
-                    : "accounts/{$account}/".ltrim($name, '/');
+        // Every page, not the first one. This used to be a single call with
+        // pageSize 100 and no look at nextPageToken, so an account with more
+        // listings than that had reviews synced for the first hundred and
+        // silently nothing for the rest - in the product built for
+        // multi-location operators. The listings service beside this one
+        // paginated from the start.
+        do {
+            try {
+                $response = Http::withToken($token)
+                    ->timeout(self::TIMEOUT)
+                    ->get(BusinessProfileOAuth::LEGACY_V4."/accounts/{$account}/locations", array_filter([
+                        'pageSize'  => 100,
+                        'pageToken' => $pageToken,
+                    ], fn ($v) => $v !== null));
+            } catch (ConnectionException) {
+                throw new RuntimeException('Google did not answer while listing locations.');
             }
-        }
+
+            if ($response->failed()) {
+                throw $this->refused($response->status(), 'listing locations');
+            }
+
+            foreach ((array) $response->json('locations', []) as $location) {
+                $name = trim((string) ($location['name'] ?? ''));
+
+                if ($name !== '') {
+                    $names[] = str_starts_with($name, 'accounts/')
+                        ? $name
+                        : "accounts/{$account}/".ltrim($name, '/');
+                }
+            }
+
+            $next      = $response->json('nextPageToken');
+            $pageToken = is_string($next) && $next !== '' ? $next : null;
+        } while ($pageToken !== null && ++$pages < self::MAX_PAGES);
 
         return $names;
     }
@@ -286,11 +308,23 @@ class BusinessProfileReviews
     /** A refusal in words somebody can act on, not a status code. */
     private function refused(int $status, string $doing): RuntimeException
     {
-        if ($status === 429 || $status === 403) {
+        if ($status === 429) {
             return new RuntimeException(
                 'Google has not granted this installation any Business Profile quota yet, so '
                 .'reviews cannot be read. This is an approval EzBizi is waiting on, not a problem '
                 .'with the connected profile.'
+            );
+        }
+
+        // 403 used to share the quota sentence above, and that sentence told
+        // the customer to do nothing. A 403 from this API is PERMISSION_DENIED:
+        // a grant somebody revoked in their Google Account, or a listing this
+        // user may not read. That IS the connection, and the fix is to connect
+        // it again - which the quota wording actively steered them away from.
+        if ($status === 403 || $status === 401) {
+            return new RuntimeException(
+                'Google no longer accepts this connection\'s permission to read the profile, so '
+                .'reviews cannot be fetched. Connect the Business Profile again to grant it afresh.'
             );
         }
 

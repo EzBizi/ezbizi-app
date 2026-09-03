@@ -197,12 +197,20 @@ class BusinessProfileController extends Controller
 
         $this->audit->log('business_location.synced', $request->user()->organization, metadata: $totals);
 
-        return response()->json(
-            ['data' => [...$totals, 'failures' => $failures]],
-            $failures !== [] && $totals['fetched'] === 0
-                ? Response::HTTP_BAD_GATEWAY
-                : Response::HTTP_OK,
-        );
+        // Failed only when EVERY profile failed. Zero reviews is the honest
+        // answer for a profile with nothing Google will list, not a failure - the same
+        // conflation LeadsController::sync was corrected for. And the reason
+        // goes on top as `message`, which is the one key the client renders;
+        // buried in data.failures it never reached the screen.
+        $failedOut = $failures !== [] && count($failures) === $connections->count();
+
+        $payload = ['data' => [...$totals, 'failures' => $failures]];
+
+        if ($failedOut) {
+            $payload['message'] = (string) ($failures[0]['because'] ?? 'Google would not return listings.');
+        }
+
+        return response()->json($payload, $failedOut ? Response::HTTP_BAD_GATEWAY : Response::HTTP_OK);
     }
 
     /** @return array<int, array{provider: string, display_name: string, status: string}> */

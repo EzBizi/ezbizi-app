@@ -1,7 +1,7 @@
 # Business Profile
 
-**Google Business Profile API — never applied for. Quota is zero. Can be applied
-for now.**
+**Google Business Profile API — application filed 3 September 2026, case
+`5-6205000042241`. Quota is zero until Google approves it.**
 
 | | |
 |---|---|
@@ -11,9 +11,9 @@ for now.**
 | Host | `mybusinessaccountmanagement.googleapis.com/v1` |
 | API status | **Enabled** |
 | Quota | **0 requests/minute** |
-| Application | **Never submitted** |
+| Application | **Filed 3 September 2026** — case `5-6205000042241`, filed from `info@ezbizi.com`, review 7–10 business days |
 | Quota if approved | 300 QPM |
-| Last verified | 3 September 2026, Cloud console + Gmail + the form itself |
+| Last verified | 3 September 2026 — quota in the Cloud console; the application in the form's own confirmation |
 
 ---
 
@@ -52,44 +52,75 @@ so the consent screen grants it and the connection appears to succeed. Scope and
 quota are separate gates; we pass the first and fail the second. That is why the
 tab's error names quota rather than permissions.
 
-## 3 · It was never applied for
+## 3 · The application
 
-Established three independent ways on 3 September, because a note is not
-evidence:
+Filed **3 September 2026** from `info@ezbizi.com`, the account that owns
+EzBizi's Business Profile. Case **`5-6205000042241`**. Google's stated review
+time: 7–10 business days. Clarification questions go to **that inbox**, and one
+left unanswered stalls the application.
 
-1. Quota is 0 and no increase is pending.
-2. `development@ezbizi.com`'s mailbox holds no GBP correspondence at all.
-3. The application form itself reported **"No matching past cases found."**
-
-## 4 · The 60-day rule does not block us
-
-Earlier belief was that no application was possible until **24 October 2026**,
-60 days after EzBizi's own profile was verified on 25 August. **That was wrong.**
-Google's prerequisites say the qualifying profile:
-
-> *"can be the applicant's own office or headquarters **or it could belong to one
-> of the clients they manage**."*
-
-A-1 Chimney's profile is years old and satisfies the age requirement. The
-applicant stays **EZBIZI LLC** — pointing at a client's profile does not make the
-client the applicant.
-
-## 5 · The actual blocker
-
-The application must be filed by an account with a Business Profile linked to it.
-
-| Account | Result |
+| Field | Submitted |
 |---|---|
-| `development@ezbizi.com` | **Rejected** — *"There's no Business Profile linked"* |
-| `jose@a-1chimney.com` | Passes the check, but **wrong applicant** — this would file in A-1 Chimney's name |
+| Business | EzBizi, 800 SE 4th Ave #107 — Verified |
+| Cloud project number | `247590132639` |
+| Website | `https://www.ezbizi.com/` |
+| Primary reason | Reviews and Business Profile modules; each business authorises its own profile by OAuth; EzBizi never takes ownership of a customer's listing |
 
-The GBP **Organization account `EZBIZI LLC` already exists** — that is the
-one-attempt-per-company gate, and it is through. It currently manages **zero
-businesses**, which is the gap. Google's own overview page offers the remedy:
-*"Want to transfer a business?"*
+Nothing from any client is in it. The applicant is EzBizi throughout.
 
-**So: get a qualifying profile managed under the EzBizi organization, then apply
-as EzBizi.**
+Before this was filed it had been established three ways that no application had
+ever existed: quota 0 with nothing pending, no GBP correspondence in
+`development@ezbizi.com`, and the form reporting *"No matching past cases
+found."* Those findings are what made filing worth doing.
+
+## 4 · The 60-day rule — stated, not enforced at submission
+
+Google's prerequisites say the qualifying profile must be *"verified and active
+for 60+ days"*, and the form repeats it on the profile-selection step. EzBizi's
+profile was verified **25 August 2026** — nine days before filing.
+
+**The form accepted it anyway.** The 60-day rule is a review criterion, not a
+gate: the profile was listed as selectable, marked Verified, and the submission
+went through to a case number. Whether the reviewer rejects on age is now
+Google's call, and a rejection is not fatal — Google's page says to re-apply
+once the requirements are met.
+
+Google also allows the qualifying profile to belong to a client. **We chose not
+to use that.** Jose's ruling: the application stays entirely inside EzBizi, with
+no dependence on a client's Google assets — because if that client ever left,
+the ground under an approved application would leave with them.
+
+## 5 · Which account files it
+
+Not the organization admin, and not a client.
+
+Google's prereqs: *"Make sure that you are using an email address that is listed
+as an **owner/manager on your business's GBP**."*
+
+| Account | Role | Files the application? |
+|---|---|---|
+| `info@ezbizi.com` | Owns EzBizi's Business Profile | **Yes** — from 24 October |
+| `development@ezbizi.com` | Administers the `EZBIZI LLC` organization; owns the Cloud project | **No** — the form rejected it, *"There's no Business Profile linked"* |
+
+**Do not add `development@ezbizi.com` as an owner of the profile to get round
+this.** Google's organization rule is not only about creation:
+
+> *"Before a user can be added to an organization, their account **must not
+> directly own or manage any locations** or location groups."*
+
+That account administers the organization. Giving it a location puts it on the
+wrong side of that rule.
+
+**The Cloud project does not have to belong to the filing account.** The
+**Cloud Project ID is a field on the form** — typed in, not inferred from who is
+signed in. So `ezbizi-506117` living under `development@ezbizi.com` is fine while
+`info@ezbizi.com` files.
+
+Related, and it explains the whole shape: *"An organization account cannot
+directly own an individual profile... Organization accounts can only manage a
+location after the location grants permission to the organization."* The
+organization is never meant to hold profiles — locations grant it permission,
+the same way customers grant EzBizi access by OAuth.
 
 ## 6 · Multi-tenant is a supported, first-class shape
 
@@ -118,8 +149,10 @@ Access*. Signed in as an account with a linked profile.
 
 ## 8 · Outstanding
 
-- Get a qualifying profile under the **EZBIZI LLC** organization.
-- File the application **as EzBizi**, entity type *software platform*.
-- Settle the storage question in [Reviews §5](REVIEWS.md) first — approval
-  followed by suspension is worse than a delay. The same form's *General API
-  Question* option costs nothing and does not consume the Basic Access attempt.
+- **Watch `info@ezbizi.com`** for Google's clarification questions on case
+  `5-6205000042241`.
+- If rejected on profile age, re-file after **24 October 2026** — the same
+  form, same answers.
+- Settle the storage question in [Reviews §5](REVIEWS.md) before approval
+  lands — approval followed by suspension is worse than a delay. The form's
+  *General API Question* option costs nothing.
