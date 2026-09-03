@@ -32,15 +32,14 @@ use Tests\TestCase;
  *
  * ── Why reports are not in Attachables ───────────────────────────
  *
- * `inspection_reports` is an internal morph identity, the same way `tasks` is:
- * in the morph map so an attachment can point at one, absent from
- * Attachables::all() so the generic upload endpoint can never target one. It
- * has to be, because InspectionReportPolicy::update IS `archive` — anybody who
- * may hide a report would otherwise be able to add photographs to a frozen one,
- * or take one out of it. Removal is closed the same way tasks close it, in
- * AttachmentsController::destroy, and NOT with an `attachmentRemovalRefusal` on
- * the report: that hook refuses the §9 purge too, and the last test here is the
- * one that says the purge must win.
+ * `inspection_reports` is an internal morph identity: in the morph map so an
+ * attachment can point at one, absent from Attachables::all() so the generic
+ * upload endpoint can never target one. It has to be, because
+ * InspectionReportPolicy::update IS `archive` — anybody who may hide a report
+ * would otherwise be able to add photographs to a frozen one, or take one out
+ * of it. Removal is closed in AttachmentsController::destroy, and NOT with an
+ * `attachmentRemovalRefusal` on the report: that hook refuses the §9 purge
+ * too, and the last test here is the one that says the purge must win.
  */
 class InspectionPhotosTest extends TestCase
 {

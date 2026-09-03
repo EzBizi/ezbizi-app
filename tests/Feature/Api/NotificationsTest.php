@@ -279,23 +279,23 @@ class NotificationsTest extends TestCase
         // and it is the record's franchise that decides — resolving this against
         // the organization would leave the franchise override dead in the code
         // while still rendering as set in the settings screen.
-        $this->set('notifications.task_enabled', false, $this->org['franchise']);
+        $this->set('notifications.hr_enabled', false, $this->org['franchise']);
 
         $sent = $this->inTenant(fn () => app(NotificationDispatcher::class)->dispatch(
-            title: 'Task assigned',
+            title: 'Onboarding started',
             subject: $this->org['franchise'],
             onlyTo: $this->org['admin'],
-            source: 'task',
+            source: 'hr',
         ));
 
         $this->assertSame(0, $sent);
 
         // Same organization, same source, a subject that is not in that franchise.
         $sent = $this->inTenant(fn () => app(NotificationDispatcher::class)->dispatch(
-            title: 'Task assigned',
+            title: 'Onboarding started',
             subject: null,
             onlyTo: $this->org['admin'],
-            source: 'task',
+            source: 'hr',
         ));
 
         $this->assertSame(1, $sent, 'the override belongs to one franchise, not the organization');
