@@ -163,19 +163,23 @@ class MarketingModuleTest extends TestCase
     // ── the three modules drawn inside it ────────────────────────
 
     /**
-     * Leads, Reviews and Business Profile are tabs INSIDE Marketing.
+     * Web Management, Reviews and Business Profile are tabs INSIDE Marketing.
      *
-     * The owner's call: the sidebar was fifteen rows deep and three of them were
-     * the same subject — what the public is told about the business, what they
-     * say back, and who rang. They are still three modules, and this is the one
-     * fact that changed about them.
+     * The owner's call: the sidebar was fifteen rows deep and several of them
+     * were the same subject — what the public is told about the business, and
+     * what they say back.
+     *
+     * The trio changed on 2026-09-03. Leads left for a row of its own once
+     * Thumbtack became a second source, and Web Management took its place: a
+     * customer's website says something about the business in the same way its
+     * listing and its social accounts do.
      */
     public function test_the_three_public_facing_modules_are_drawn_inside_marketing(): void
     {
         $registry = app(ModuleRegistry::class);
 
         $this->assertSame(
-            ['leads', 'reviews', 'business_profile'],
+            ['web_management', 'reviews', 'business_profile'],
             array_map(fn ($m) => $m->key, $registry->childrenOf(self::MODULE)),
             'Registry order is the tab order, so this is the order of the strip.',
         );
@@ -205,7 +209,7 @@ class MarketingModuleTest extends TestCase
 
         $this->assertTrue($modules['marketing']['reachable']);
 
-        foreach (['leads', 'reviews', 'business_profile'] as $key) {
+        foreach (['web_management', 'reviews', 'business_profile'] as $key) {
             $this->assertFalse(
                 $modules[$key]['reachable'],
                 "{$key} came with marketing.view, which is a grant nobody made.",
@@ -225,15 +229,15 @@ class MarketingModuleTest extends TestCase
     public function test_a_child_is_reachable_without_the_parent(): void
     {
         $alpha  = $this->provisionTenant('Iota');
-        $caller = $this->userWithRole($alpha, 'Caller', ['leads.view']);
+        $caller = $this->userWithRole($alpha, 'Caller', ['web_management.view']);
 
         $modules = collect(
             $this->signedInAs($caller)->getJson('/api/v1/me')->assertOk()->json('data.modules')
         )->keyBy('key');
 
-        $this->assertTrue($modules['leads']['reachable']);
+        $this->assertTrue($modules['web_management']['reachable']);
         $this->assertFalse($modules['marketing']['reachable']);
-        $this->assertSame(self::MODULE, $modules['leads']['parent']);
+        $this->assertSame(self::MODULE, $modules['web_management']['parent']);
     }
 
     /** The roles editor is built from this, and nests on the same field. */
@@ -247,7 +251,7 @@ class MarketingModuleTest extends TestCase
                 ->json('modules')
         )->keyBy('key');
 
-        $this->assertSame(self::MODULE, $modules['leads']['parent']);
+        $this->assertSame(self::MODULE, $modules['web_management']['parent']);
         $this->assertNull($modules['marketing']['parent']);
     }
 
@@ -256,7 +260,7 @@ class MarketingModuleTest extends TestCase
     {
         $alpha  = $this->provisionTenant('Lambda');
         $caller = $this->userWithRole($alpha, 'Caller', [
-            'leads.view', 'marketing.view', 'automations.view',
+            'reviews.view', 'marketing.view', 'automations.view',
         ]);
 
         $modules = collect(
@@ -264,8 +268,53 @@ class MarketingModuleTest extends TestCase
                 ->json('data.modules')
         )->keyBy('key');
 
-        $this->assertSame(self::MODULE, $modules['leads']['parent']);
+        $this->assertSame(self::MODULE, $modules['reviews']['parent']);
         $this->assertNull($modules['marketing']['parent']);
+    }
+
+    /**
+     * Leads left Marketing and took nothing with it.
+     *
+     * This is the guard on the move itself. `parent` is documented as changing
+     * only where a module is DRAWN, and the whole risk of a reshuffle is that
+     * somebody "tidies up" the permission alongside the layout — renaming
+     * `leads.view`, folding it into `marketing.view`, or moving the `lead.*`
+     * triggers under a different subject. Any of those silently takes Leads
+     * away from every role that holds it, or hands it to every role that does
+     * not, and the sidebar would look correct either way.
+     */
+    public function test_leads_moved_out_without_taking_its_permissions_with_it(): void
+    {
+        $registry = app(ModuleRegistry::class);
+        $leads    = $registry->get('leads');
+
+        $this->assertNotNull($leads);
+        $this->assertNull($leads->parent, 'Leads is a row of its own now.');
+        $this->assertTrue($leads->sidebar);
+
+        // The permission keys are unchanged, so no role gained or lost anything.
+        $alpha  = $this->provisionTenant('Mu');
+        $caller = $this->userWithRole($alpha, 'Caller', ['leads.view']);
+
+        $modules = collect(
+            $this->signedInAs($caller)->getJson('/api/v1/me')->assertOk()->json('data.modules')
+        )->keyBy('key');
+
+        $this->assertTrue($modules['leads']['reachable'], 'leads.view still reaches Leads.');
+        $this->assertNull($modules['leads']['parent'], 'and it is drawn on its own.');
+
+        // Marketing did NOT come along for the ride. Before the move somebody
+        // holding leads.view was shown Marketing as a container; now there is
+        // nothing to contain it, and drawing Marketing anyway would show a tab
+        // whose every child is out of reach.
+        $this->assertFalse($modules['marketing']['reachable']);
+
+        // The events a rule is built on are keyed on the module, not its place.
+        $this->assertNotEmpty($leads->triggers, 'Leads lost its triggers in the move.');
+        $this->assertContains(
+            'lead.received',
+            array_map(fn ($t) => $t->key, $leads->triggers),
+        );
     }
 
     // ── the §5.5 standing rule, at the moment the module is declared ──

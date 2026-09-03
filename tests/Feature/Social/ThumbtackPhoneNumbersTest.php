@@ -21,6 +21,20 @@ class ThumbtackPhoneNumbersTest extends TestCase
 {
     private const BASE = 'https://api.thumbtack.com/api/v4/businesses/biz-1/associate-phone-numbers';
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        /*
+         * Pinned, because a developer with staging credentials in .env has
+         * THUMBTACK_API_BASE pointing at staging-api - and this suite asserts
+         * on whole URLs. Left to the ambient environment it passed alone and
+         * failed in the full run, which is the worst way for a test to be
+         * wrong: it looks like a real regression somewhere else.
+         */
+        config()->set('services.thumbtack.api_base', 'https://api.thumbtack.com/api');
+    }
+
     public function test_a_number_typed_any_of_the_usual_ways_becomes_one_e164_number(): void
     {
         foreach (['5552345678', '(555) 234-5678', '555.234.5678', '1-555-234-5678', '+15552345678'] as $typed) {

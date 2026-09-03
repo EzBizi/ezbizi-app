@@ -1129,6 +1129,20 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'web_management',
                 label: 'Web Management',
+                /*
+                 * Drawn inside Marketing as of 2026-09-03, swapping places with
+                 * Leads. It belongs there by subject: what a customer's site
+                 * says about the business is the same job as what its social
+                 * accounts and its listing say, and it was only ever a sidebar
+                 * row of its own because it landed before Marketing had a tab
+                 * strip to put it in.
+                 *
+                 * As with Leads, this moves nothing but the drawing.
+                 * `web_management.view` and `.edit` are the same keys held by
+                 * the same roles, and the WordPress plugin's token-authenticated
+                 * endpoints do not go through module nesting at all.
+                 */
+                parent: 'marketing',
                 auditExemptBecause: 'NOT AUDITED. A create, edit or delete here leaves no '
                     .'audit_events row, so there is no record of who changed what or when. '
                     .'This states a defect, not a decision, and it is not permission to stay '
@@ -1571,10 +1585,19 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'leads',
                 label: 'Leads',
-                // Drawn as a tab inside Marketing rather than as a row of its own
-                // in a sidebar that already holds fifteen. Its permissions are
-                // untouched by that: this says where it appears, not who reaches it.
-                parent: 'marketing',
+                /*
+                 * A row of its own, as of 2026-09-03. It was drawn inside
+                 * Marketing until Thumbtack became a second lead source: one
+                 * source is a tab, two are a module, and burying "where does
+                 * work come from" under Marketing stopped matching how anybody
+                 * uses it. Web Management moved the other way in the same
+                 * change and took the slot.
+                 *
+                 * Its permissions did not move with it, and could not: `parent`
+                 * says where a module is DRAWN and nothing else. `leads.view`
+                 * is the same key it was, held by the same roles, and the
+                 * automations keyed on `lead.*` are untouched.
+                 */
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export'],
                 subject: new AutomationSubject(Lead::class, 'Lead'),
                 triggers: [
