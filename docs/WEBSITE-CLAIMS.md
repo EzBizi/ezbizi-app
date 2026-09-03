@@ -42,6 +42,7 @@ SELECT COUNT(*) FROM leads WHERE remote_id NOT LIKE 'DEMO-%';   -- real enquirie
 | **That a post reaches every connected network, or reaches a TikTok profile** | Nine networks connect; **five publish** — corrected upward 2026-09-02, see below. `Publishers::for()` returns a publisher for Facebook Pages, Threads, Instagram, Pinterest and TikTok, and `default => null` for LinkedIn, YouTube, X and Bluesky, which `refusalFor()` answers with "Publishing to X is not built yet". **TikTok posts to the creator's DRAFTS, not the profile** — TikTok requires an audit before an app may post publicly and ours has not had it, so somebody must finish the post in the TikTok app. Pinterest is **images only**; video publishing does not exist. Flagged 2026-08-31 by the deploy session as a live false statement in the in-app release notes; corrected on the site the same day. The checkable test: does `Publishers::for()` return non-null for that provider. |
 | **Suggestions** | **INVERTED 2026-09-03 — it *is* on production, and this row said the opposite for a day.** All 17 commits are in the deployed tree (`git merge-base --is-ancestor 486668c 15c9762f` → true), merged at `e718748a`, and they were already in the *previous* production commit `678c3e83` — so it shipped in a deploy nobody announced, not in the 20:32 push. `create_suggestions_table` is in the deployed tree, so **the table test this row named has flipped to yes**, and production `client/VERSION` is `0.0.0147`. **The two design facts have not changed and still mean "present in the app" proves nothing either way**: it is still absent from `ModuleRegistry` (0 hits in the deployed tree) so a module count never sees it, and still pinned unconditionally for every user (`client/lib/main.dart:687` in the deployed tree — it was `:724` on the branch; re-read the line, do not trust this number). **Still do not put it on the site, for an entirely new reason.** The two screen layouts reached production *before* Jose reviewed them — he had delegated the choice for one night on the understanding they could change — and a defect is open against the §9 privacy inventory under-reporting the suggestion count. Neither makes the feature untrue; both make "we shipped this" a sentence we might have to retract. Revisit when the layouts are reviewed and the defect is closed. |
 | **That anybody has *set up* coverage and capacity** | Built and unused — a different state from unbuilt, and the two must not be flattened. The capability shipped in `0.0.0137`; `service_areas` and `service_area_slots` both hold **0 rows**, so no customer has created one. This does **not** forbid the "Coverage & capacity" card, which reads *"Set the areas each location covers and how much work a day can take"* — that is capability phrasing, and by the Inspections precedent below, built-and-unused is sellable as a capability and never as usage. **What it forbids is the tense**: "businesses set their coverage", "locations already covering", any sentence implying somebody has. If you are here because you read a 0 and reached for the card, leave the card alone. |
+| **Tasks — RETIRED, not merely unused** | **On the site until 2026-09-03, removed the same day it was checked.** `9175d19f` drops all 31 `task_*` tables and `51729347` removes it from tables it did not own, both ancestors of `d2d39304` — the SHA `/download/windows.json` names. **The decisive check is not the migration**, since a migration in the deployed tree has not necessarily run; it is that **the deployed client carries zero Tasks screens** (`git ls-tree -r d2d39304 -- client/lib/screens`, filtered for task → 0). A customer on `0.0.0148` has no Tasks screen at all. Removed from the site: the sidebar tab and its "9" pill, the whole `p-task` mock panel, the "Boards for the work that is not a job" card, and one word each in `privacy/` and `terms/`. **A retired module is a harder sweep than an unbuilt one** — it was legitimately on the site for weeks, so it reads as settled copy nobody thinks to re-check. |
 | **"Teams rely on it" about Inspections** | The module is live and has never been used by a customer. Not embarrassing, but not a usage claim. |
 | **Monitoring, Marketing** | Registered, but their dashboard summaries are explicitly placeholders. |
 
@@ -54,9 +55,24 @@ parses it, so edit it here and nowhere else.**
 ```forbidden-terms
 invoic
 estimat
-billing
+bill
 quotes &
 ```
+
+**`bill` replaced `billing` on 2026-09-03, because `billing` was escaped.** The
+homepage shipped *"**Bill** from the completed work, then see what it tells you
+about the business"* as step 04 of a four-stage loop, under a section intro
+reading "to the money in the bank". Published and live, and invisible twice over:
+the term was `billing` and the word was `Bill`, and the sentence described a
+*stage* rather than naming a module, so it read past a human sweep looking for
+feature claims too. `6c67efb` was written to clear this exact family and missed
+it. `bill` subsumes `billing` and matches nothing on the site today.
+
+**The known false positive is a person named Bill** — a testimonial or quoted
+customer fires this gate. That is the crying-wolf risk described below, accepted
+deliberately: a name is rare and recognisable in one look, and the alternative is
+a gate that the sentence above walks straight through. **If it fires on a name,
+reword to a surname or initial; do not add an exception.**
 
 **Deliberately narrow, and that is the point.** Only the billing family is
 machine-enforced, because those words cannot appear innocently on this site. The
@@ -134,18 +150,24 @@ sentence, not just its name.
 Two things look like violations to a grep and are not. Both were re-checked on
 2026-08-31; leave them, and do not "fix" them next run.
 
-**`www/index.html` — "Technician training round".** It is a row in a checklist
-mock, under COMPLETE, beside "Customer survey rollout" and "Supplier price
-review". It is the title of a to-do a business tracks, not a Training module. The
-Training row above forbids claiming the module exists; it does not forbid the
-English word inside a list item.
+**~~`www/index.html` — "Technician training round"~~ — GONE, and not by anyone
+deciding about the word.** It was a row in the Tasks mock, defended here twice as
+an innocent English use. It left the site on 2026-09-03 when the entire `p-task`
+panel was deleted for an unrelated reason: Tasks had been retired from the
+product. Kept as a note about method — **a false positive can be resolved by its
+context disappearing rather than by the judgement about it ever being revisited.**
+Do not go hunting this string; it is not there.
 
-> **That whole mock is a Tasks board, and Tasks was removed on 2026-09-02.**
-> `www/index.html` still draws a Tasks tab in the product shot (the button at
-> `:337`, the panel at `:447`, the heading at `:554`). The site is advertising a
-> module that no longer exists. That is a claim to fix, not a false positive —
-> it is listed here rather than changed because the marketing site's copy is not
-> this document's to rewrite.
+**The Tasks warning that used to sit here was right, and it sat here for a day.**
+A previous session found the retirement, wrote the exact line numbers into this
+file at 12:46 on 2026-09-03, and correctly left the page edits to whoever owns
+`www/` — this document does not rewrite the site. The website session then read
+this file and did not act on it, and the pages were fixed only that evening when
+a *second* website session ran an independent audit and raised it. **Flagging a
+live false claim in the right file is not the same as it being fixed**, and
+nothing here escalates. If you write a claim-to-fix into this document, also say
+it out loud to whoever owns the page, and do not assume the next reader will
+notice a note among rows that are mostly settled.
 
 **`www/google-ads-api/` — Local Services.** That page describes what the Leads
 module *does with the API*, for Google's API reviewer, and the code does it:
