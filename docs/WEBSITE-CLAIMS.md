@@ -8,10 +8,19 @@ of the last one. Without this file, the next run reads a landing page that does
 not mention Training, sees Training working in the app, and helpfully adds it
 back. Everything below was removed or narrowed on purpose.
 
-Authority is the deploy session's production baseline of **2026-08-31** (release
-`20260831170831`), answered with row counts from the live database and the module
-registry rather than from memory. Refresh it by asking; do not infer it from the
-code, and do not infer it from a feature branch.
+Authority is the deploy session's production baseline of **2026-09-02** (release
+`20260902210719`, production `main` at `c6b8bea` = `0.0.0141`), answered with row
+counts from the live database and by reading the deployed code rather than from
+memory. Refresh it by asking; do not infer it from the code in *this* tree, and do
+not infer it from a feature branch.
+
+**Three rows below were factually wrong when that baseline was taken, and each had
+been wrong for days.** Training's tables *are* on production. Two phone lines *do*
+have a ring group. And the Local Services row named a checkable test that cannot be
+run, because the column it names does not exist. A row that states a fact goes
+stale silently; a row that states a *test* fails loudly the first time somebody
+runs it — which is why every row below now carries one, and why the tests are
+written against columns rather than against counts.
 
 ---
 
@@ -21,9 +30,9 @@ code, and do not infer it from a feature branch.
 |---|---|
 | **Quotes, billing, invoicing, estimates, payments** | Does not exist. 151 production tables searched for `quote` / `invoic` / `bill` / `estimate` return nothing, and no such module is registered among 26. The only `payment` match is `vehicle_payments` — Fleet recording what it paid for a van. Removed in `6c67efb`. |
 | **Scheduling a job onto a calendar** | Not built. The Schedule tab is a placeholder until Scheduled Jobs ships. What *is* live: service areas, zip mapping, and configured capacity per slot per weekday — so "coverage and capacity" is true and "schedule your jobs" is not. |
-| **Training** | Its tables are not on production. Ships in a later deploy. |
-| **Phone** | Works, but no production line has a ring group, so every inbound call reaches voicemail. "Phone system" while calls reach nobody is a promise we are not keeping. |
-| **Local Services enquiries arriving as leads** | **Contradicted, not merely unverified — and the evidence is a decoy.** Querying production returns `source = local_services` on 8 leads, which reads exactly like the confirmation this row has been waiting for. All 8 were created in the *same second* and none carries a provider id: they are `leads:seed-demo`, run on production by the deploy session on 2026-08-31. The `source` string was written by the seeder, not by Google. **True count of real Local Services enquiries: 0.** The checkable test for next time — a genuine enquiry carries a provider `external_id` and does not share a timestamp with seven siblings. This forbids the marketing claim, not the compliance page; see below. |
+| **Training** | **Corrected 2026-09-02 — the old reason was false.** Its five tables *are* on production (`training_assignments`, `training_attempts`, `training_guides`, `training_progress`, `training_tests`); the row used to say they were not. The verdict does not change, but the reason does: **all five are empty**, so nothing has ever been assigned, attempted or completed. The checkable test is a row count in those tables, not their existence — the old test would now pass and the claim would still be false. |
+| **Phone / Communication** | **The old blocker has partly lifted; the answer is still no, for a smaller reason.** The row used to say no production line had a ring group and every inbound call reached voicemail. As of 2026-09-02 `phone_ring_groups` has **2 rows**, and **2 of 7** `phone_numbers` carry a non-null `ring_group_id`. So calls to those two reach a person. **Five of seven still dead-end at voicemail**, which is why "phone system" remains an overstatement rather than a promise kept — and the module was renamed **Communication** in `0.0.0141`, so any future copy names that, not "Phone". The checkable test: `phone_numbers` with a non-null `ring_group_id`, as a fraction of all of them. Do not write the claim off a lifted gate; write it off the fraction. |
+| **Local Services enquiries arriving as leads** | **Contradicted, not merely unverified — and the evidence is a decoy.** Querying production returns `source = local_services` on 8 leads, which reads exactly like the confirmation this row has been waiting for. All 8 were created in the *same second* and none carries a provider id: they are `leads:seed-demo`, run on production by the deploy session on 2026-08-31. The `source` string was written by the seeder, not by Google. **True count of real Local Services enquiries: 0**, re-confirmed 2026-09-02. **The test this row used to name does not work, and saying so is the point.** It told you to look for a provider `external_id`; there is no `external_id` column on `leads` and none anywhere in `database/migrations/`, so the check silently has nothing to compare and a careful session runs it, finds nothing, and cannot tell "no real leads" from "no such column". The replacement is structural rather than forensic: `2026_08_25_210000_create_leads_table.php` gives every lead a nullable `connection_id`, and `LocalServicesLeads.php:216,228` writes both `connection_id` and `synced_at` on **every** row the real sync creates. So — **a genuine enquiry has a `connection_id` pointing at a live `social_connections` row and a non-null `synced_at`; a seeded one has neither.** Prefer that to the old timestamp tell ("eight rows sharing a second"), which is true of today's seed and stops being true the moment somebody seeds nine rows, or seeds them a second apart. This forbids the marketing claim, not the compliance page; see below. |
 | **That a post reaches every connected network, or reaches a TikTok profile** | Nine networks connect; **five publish** — corrected upward 2026-09-02, see below. `Publishers::for()` returns a publisher for Facebook Pages, Threads, Instagram, Pinterest and TikTok, and `default => null` for LinkedIn, YouTube, X and Bluesky, which `refusalFor()` answers with "Publishing to X is not built yet". **TikTok posts to the creator's DRAFTS, not the profile** — TikTok requires an audit before an app may post publicly and ours has not had it, so somebody must finish the post in the TikTok app. Pinterest is **images only**; video publishing does not exist. Flagged 2026-08-31 by the deploy session as a live false statement in the in-app release notes; corrected on the site the same day. The checkable test: does `Publishers::for()` return non-null for that provider. |
 | **Suggestions** | Not on production, and it will not look that way. The module is built on the unmerged branch `session/suggestions` — `git merge-base --is-ancestor fb488b9 main` fails and `main` carries no `create_suggestions_table` migration, so no deploy can have taken it. **Its own design defeats both of the usual checks.** It is deliberately absent from `ModuleRegistry` (zero hits) so that no organization can switch it off, which means a check counting registered modules never sees it; and `client/lib/main.dart:724` pins it as a destination for every user with, in its own words, "no module key, no permission and no availability flag behind it". So a check that opens the app sees it working. **Neither answers whether it is live.** The only test that does: does the `suggestions` table exist on production. **When it ships, invert this row rather than deleting it.** The pin and the registry absence do not change at deploy, so "present in the app" will still be evidence of nothing and the table will still be the only reliable check. Only the verdict flips; the reasoning is what a later session needs. |
 | **"Teams rely on it" about Inspections or Tasks** | Both modules are live and neither has ever been used by a customer. Not embarrassing, but not a usage claim. |
@@ -82,10 +91,17 @@ not post to Facebook Pages while the deployed code posts to Facebook Pages. **A
 stale understatement is still a wrong published claim**, and on the pages a
 reviewer reads it is not the harmless direction.
 
-The tell was not a message. **No deploy session was reachable that evening** —
-`ezbizi-7e` answered "not the deploy desk, and I do not know who is", and no
-other peer answered at all. Three independent checks stood in for a row count,
-and they are the ones to repeat:
+**Confirmed at row level afterwards, and the inference held.** The deploy desk
+(`ezbizi-7b`) read `Publishers.php` out of the deployed release
+`/var/www/ezbizi-releases/20260902210719` — five publishers, `FacebookPage`,
+`Threads`, `InstagramProfessional`, `Pinterest`, `TikTok`. So "five networks send
+today" is right and the old sentence was wrong on production.
+
+That confirmation arrived *after* the edit, because no deploy session was
+reachable when it was made — `ezbizi-7e` answered "not the deploy desk, and I do
+not know who is", and the desk itself was mid-session elsewhere. Three
+independent checks stood in for the row count, they turned out to agree with it,
+and they are the ones to repeat when nobody answers:
 
 1. `Publishers::for()` in the repo — the test this file already names.
 2. `client/lib/core/version_history.dart` — *"Social: Facebook, Threads and
