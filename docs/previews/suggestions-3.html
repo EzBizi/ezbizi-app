@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi &mdash; Suggestions, layout 3</title>
+<style>
+  :root {
+    /* PROVENANCE, because a mockup that says "the real palette" has to mean it.
+       Everything marked (theme) is measured from client/lib/core/theme.dart via
+       EzBiziTheme.light() -- not eyeballed, and nothing invented for this file.
+       What is NOT a theme token is listed at the bottom of this block, in full. */
+    --cyan:#00AEEF;     /* (theme) EzBiziTheme.accent -- brand fills carrying no text */
+    --primary:#00708F;  /* (theme) light colorScheme.primary (_cyanDeep), 5.7:1 on white */
+    --ink:#060808;      /* (theme) _ink */
+    --muted:#5B6672;    /* (theme) _muted */
+    --line:#E9EDF1;     /* (theme) EzBiziTheme.edge, light */
+    --alt:#F5F8FA;      /* (theme) _surfaceAlt */
+    --page:#fff;        /* (theme) light colorScheme.surface */
+    --ok:#0B8F5B;       /* (theme) EzBiziTheme.clockIn, light */
+    --err:#E07070;      /* (theme) EzBiziTheme.clockOut, light -- the punch-out coral.
+                           Used here only as a 4px edge and never as text: it is about
+                           3:1 on white and cannot carry a word. */
+    --deny:#BA1A1A;     /* (theme) light colorScheme.error. MEASURED, not guessed --
+                           EzBiziTheme.light().colorScheme.error prints #BA1A1A, and the
+                           same probe confirmed primary #00708F light / #00AEEF dark.
+                           6.5:1 on white and 5.7:1 on --err-c, so it is the one red here
+                           that may be text; it is also the token development_screen.dart
+                           already uses for the control-plane banner. */
+
+    /* NOT theme tokens, and this is the complete list of them.
+       The four container tints are the docs/previews house convention, carried from the
+       galleries already using them, standing in for Material's *Container roles, which a
+       flat mockup cannot compute. The app's real light errorContainer is #FFDAD6;
+       #FDECEC is the previews' lighter stand-in, kept so this gallery matches the twenty
+       beside it rather than being the one that looks different. --warn is convention too
+       -- theme.dart carries no amber -- and it is used only in this gallery's own header
+       blocks, never in the drawn app. Four greys are mockup furniture and never app
+       colour: #DDE3E8 the gallery page ground, #9AA5AF placeholder text inside a drawn
+       field, #C9D3DB the drawn keyboard slab and the dashed empty-state border, #3F4A55
+       the label printed on that keyboard. */
+    --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 Inter, system-ui, "Segoe UI", sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1200px; margin:0 auto; padding:16px 16px 48px; }
+
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:20px; margin:0 0 4px; letter-spacing:-.3px; }
+  .chooser { display:flex; flex-wrap:wrap; gap:6px; align-items:center;
+    padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--line);
+    font-size:12px; color:var(--muted); }
+  .chooser .cg { font-weight:700; text-transform:uppercase; letter-spacing:1.2px;
+    font-size:11px; margin-right:2px; }
+  .chooser a { min-width:30px; text-align:center; padding:4px 9px; border-radius:7px;
+    border:1px solid var(--line); color:var(--primary); text-decoration:none; font-weight:600; }
+  .chooser a.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .chooser .sep { width:18px; }
+
+
+  .viewlab { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--muted); margin:26px 0 8px; }
+  .note { color:var(--muted); font-size:12px; margin:10px 0 0; max-width:96ch; }
+  .note b { color:var(--ink); }
+
+  .shell { display:grid; grid-template-columns:220px 1fr; height:680px;
+    background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px;
+    display:flex; flex-direction:column; }
+  nav.side .brand { font-weight:800; letter-spacing:-1px; font-size:20px;
+    margin-bottom:16px; padding:0 8px; }
+  nav.side .brand i { color:var(--cyan); font-style:normal; }
+  nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+    text-decoration:none; margin-bottom:2px; font-size:14px; }
+  nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  nav.side .tail { margin-top:auto; padding-top:10px; border-top:1px solid var(--line); }
+  nav.side .staff { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
+
+  .page { display:flex; flex-direction:column; min-width:0; min-height:0; }
+  .paneHead { padding:16px 24px 12px; border-bottom:1px solid var(--line); flex:none; }
+  .paneHead h2 { font-size:20px; margin:0 0 3px; letter-spacing:-.3px; font-weight:700; }
+  .paneHead p { margin:0; color:var(--muted); font-size:14px; max-width:74ch; }
+
+  .stream { flex:1; overflow:auto; padding:22px 24px 8px; background:var(--alt); min-height:0; }
+  .thread { max-width:820px; margin:0 auto; }
+  .daymark { text-align:center; font-size:11px; font-weight:700; letter-spacing:1.2px;
+    text-transform:uppercase; color:var(--muted); margin:20px 0 12px; }
+  .daymark:first-child { margin-top:0; }
+
+  /* yours: offset right. theirs: offset left. Text stays left-aligned in both --
+     a 2000-character bubble set ragged-left is unreadable. */
+  .mine { margin:0 0 6px 72px; background:var(--page); border:1px solid var(--line);
+    border-radius:14px 14px 4px 14px; padding:13px 16px; }
+  .mine .mb { font-size:15px; line-height:1.6; }
+  .meta { display:flex; align-items:center; gap:8px; margin:0 0 14px 72px;
+    font-size:12px; color:var(--muted); }
+  .meta.tight { margin-bottom:6px; }
+  .acts { display:flex; gap:8px; margin:0 0 16px 72px; }
+
+  .theirs { margin:0 72px 6px 0; border-radius:14px 14px 14px 4px; padding:13px 16px 13px 18px; }
+  .theirs.app { background:var(--ok-c); box-shadow:inset 4px 0 0 var(--ok); }
+  .theirs.den { background:var(--err-c); box-shadow:inset 4px 0 0 var(--err); }
+  .theirs .th { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    margin-bottom:6px; display:flex; align-items:center; gap:8px; }
+  .theirs.app .th { color:var(--ok); } .theirs.den .th { color:var(--deny); }
+  .theirs p { margin:0; font-size:15px; line-height:1.6; }
+  .theirmeta { margin:0 72px 18px 0; font-size:12px; color:var(--muted); }
+
+  .waiting { margin:0 72px 18px 0; border-radius:14px; padding:11px 16px;
+    background:var(--info-c); color:var(--primary); font-size:13px; font-weight:600; }
+
+  .composer { flex:none; border-top:1px solid var(--line); background:var(--page);
+    padding:12px 24px 14px; }
+  .cwrap { max-width:820px; margin:0 auto; border:1px solid var(--line); border-radius:12px;
+    overflow:hidden; }
+  .cwrap.focus { border-color:var(--primary); box-shadow:0 0 0 1px var(--primary); }
+  .cwrap .ta { padding:12px 14px; min-height:72px; color:#9AA5AF; font-size:15px;
+    line-height:1.55; }
+  .cwrap .ta.filled { color:var(--ink); }
+  .cwrap .cbar { display:flex; align-items:center; gap:10px; padding:9px 12px;
+    background:var(--alt); border-top:1px solid var(--line); }
+  .cwrap .count { color:var(--muted); font-size:12px; margin-right:auto; }
+  .cwrap .count b { color:var(--ink); font-weight:600; }
+  .clab { max-width:820px; margin:0 auto 8px; font-size:12px; color:var(--muted); }
+
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:9px;
+    padding:9px 16px; min-height:40px; font-weight:600; }
+  .btn.ghost { background:var(--page); color:var(--primary); border:1px solid var(--line); }
+  .btn.sm { min-height:34px; padding:5px 12px; font-size:13px; }
+  .btn.off { background:var(--page); color:var(--muted); border:1px solid var(--line); }
+  .btn.danger { color:var(--deny); }
+
+  .pill { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    padding:3px 9px; border-radius:999px; background:var(--alt); border:1px solid var(--line);
+    color:var(--muted); white-space:nowrap; }
+  .pill.s-new { background:var(--page); border-color:var(--muted); color:var(--ink); }
+  .pill.s-rev { background:var(--info-c); border-color:transparent; color:var(--primary); }
+
+  .blank { text-align:center; padding:60px 24px 30px; max-width:60ch; margin:0 auto; }
+  .blank h3 { font-size:18px; margin:0 0 8px; font-weight:700; }
+  .blank p { color:var(--muted); margin:0; }
+
+  .stage { display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; }
+  .phone { width:375px; border:8px solid var(--ink); border-radius:30px; overflow:hidden;
+    background:var(--page); height:700px; display:flex; flex-direction:column; }
+  .phlab { font-size:11px; color:var(--muted); text-align:center; margin-top:7px; width:375px; }
+  .bar { padding:12px 14px; border-bottom:1px solid var(--line); display:flex;
+    align-items:center; gap:9px; font-weight:700; font-size:16px; flex:none; }
+  .bar .back { color:var(--primary); font-weight:500; font-size:14px; }
+  .scroll { overflow:auto; flex:1; background:var(--alt); padding:14px 12px; min-height:0; }
+  .kb { flex:none; height:200px; background:#C9D3DB; border-top:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; color:#3F4A55; font-size:12px; }
+  .pcomp { flex:none; border-top:1px solid var(--line); padding:9px 12px; display:flex;
+    gap:8px; align-items:flex-end; background:var(--page); }
+  .pcomp .box { flex:1; border:1px solid var(--line); border-radius:18px; padding:9px 13px;
+    color:#9AA5AF; font-size:15px; min-height:42px; }
+  .pcomp .box.filled { color:var(--ink); border-color:var(--primary); }
+  .pcomp .send { width:42px; height:42px; border-radius:50%; background:var(--primary);
+    color:#fff; border:0; font-weight:700; flex:none; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <nav class="chooser">
+      <span class="cg">Your suggestions</span>
+      <a href="suggestions-1.html">1</a>
+      <a href="suggestions-2.html">2</a>
+      <a class="on" href="suggestions-3.html">3</a>
+      <span class="sep"></span>
+      <span class="cg">Development queue</span>
+      <a href="suggestions-queue-1.html">1</a>
+      <a href="suggestions-queue-2.html">2</a>
+      <a href="suggestions-queue-3.html">3</a>
+    </nav>
+    <h1>Suggestions &mdash; 3 &middot; Your correspondence with EzBizi</h1>
+  </header>
+
+  <h2 class="viewlab">Desktop &mdash; the stream, all four states, scrolled to the bottom</h2>
+  <div id="full"></div>
+
+  <h2 class="viewlab">Desktop &mdash; the first visit</h2>
+  <div id="empty"></div>
+
+  <h2 class="viewlab">375px &mdash; designed for the phone, not narrowed</h2>
+  <div class="stage" id="mobile"></div>
+</div>
+
+<script>
+const MINE = [
+  { st:'denied', sent:'12 August', ans:'19 August',
+    body:"Could the job list refresh itself every thirty seconds so I am not pressing reload all morning?",
+    note:"Not this one, and the reason is the moving list rather than the idea. A list that reloads under you moves the row you were about to click, and dispatch is the one screen in this app where that costs a real appointment. What we would rather build is a quiet line at the top saying three jobs have changed, which you press when you are ready. That is on the list; this exact request is not." },
+  { st:'reviewing', sent:'26 August',
+    body:"When the same customer rings twice in a day we get two entries in the call list and no way to tell it is one job. Could repeat calls from a number group together for the day?" },
+  { st:'approved', sent:'28 August', ans:'1 September',
+    body:"Let a tech mark a van out of service from their phone. Right now they ring the office, the office means to write it down, and dispatch finds out by sending somebody to a van that is up on a lift.",
+    note:"Agreed, and it is going into Fleet next. A tech with fleet access will be able to put a vehicle out of service from the phone, with a reason, and dispatch will see it on the board before they assign anything to it. Thank you for the example -- the lift is the part that made the case." },
+  { st:'new', sent:'Today, 9:12am',
+    body:"Techs get the address on the job card but not the gate code or the dog, so half of them ring the office from the driveway. The access notes are already on the customer -- could they ride along on the job card the way the phone number does?" }
+];
+
+const exchange = (s) => `
+  <div class="daymark">${s.sent}</div>
+  <div class="mine"><div class="mb">${s.body}</div></div>
+  <div class="meta${s.note || s.st === 'new' ? ' tight' : ''}">You &middot; ${s.sent}
+    ${s.st === 'new' ? '<span class="pill s-new">New</span>' : ''}
+    ${s.st === 'reviewing' ? '<span class="pill s-rev">In review</span>' : ''}</div>
+  ${s.st === 'new' ? `
+    <div class="acts">
+      <button class="btn ghost sm" type="button">Edit</button>
+      <button class="btn ghost sm danger" type="button">Withdraw</button></div>
+    <div class="meta">Nobody has read it yet, so you can still change it or take it back.</div>` : ''}
+  ${s.st === 'reviewing' ? `
+    <div class="waiting">Somebody at EzBizi is reading this one, so it is fixed while they
+      do.</div>` : ''}
+  ${s.note ? `
+    <div class="theirs ${s.st === 'approved' ? 'app' : 'den'}">
+      <div class="th">EzBizi &middot; ${s.st === 'approved' ? 'Approved' : 'Denied'}</div>
+      <p>${s.note}</p></div>
+    <div class="theirmeta">${s.ans} &middot; This one has been answered, so it stays as it was
+      written. Send another if there is more to say.</div>` : ''}`;
+
+const SIDE = `
+  <nav class="side">
+    <div class="brand"><i>Ez</i>Bizi</div>
+    <a>Dashboard</a><a>Customers</a><a>Jobs</a><a>Scheduling</a><a>Phone</a><a>Fleet</a>
+    <a>Human Resources</a>
+    <div class="tail"><a class="on">Suggestions</a><a>Settings</a></div>
+    <div class="staff"><a>Development</a></div>
+  </nav>`;
+
+const HEAD = `
+  <div class="paneHead">
+    <h2>Suggestions</h2>
+    <p>Tell EzBizi what the software should do differently. Only you and EzBizi staff can read
+      what you write here &mdash; nobody at your own organization can.</p>
+  </div>`;
+
+const composer = (filled) => `
+  <div class="composer">
+    <div class="clab">Send EzBizi another suggestion</div>
+    <div class="cwrap${filled ? ' focus' : ''}">
+      <div class="ta">What should EzBizi do differently?</div>
+      <div class="cbar"><span class="count"><b>0</b> / 2000</span>
+        <button class="btn off" type="button">Send it</button></div>
+    </div>
+  </div>`;
+
+const shell = (inner) => `<div class="shell">${SIDE}<div class="page">${HEAD}${inner}</div></div>`;
+
+document.getElementById('full').innerHTML = shell(`
+  <div class="stream"><div class="thread">${MINE.map(exchange).join('')}</div></div>
+  ${composer(false)}`);
+
+// A stream opens at the bottom, where the newest thing is. Done here so the drawing
+// shows what somebody actually meets: the New one, with its two buttons.
+const toBottom = () => document.querySelectorAll('#full .stream')
+  .forEach(s => { s.scrollTop = s.scrollHeight; });
+toBottom();
+window.addEventListener('load', toBottom);
+setTimeout(toBottom, 120);
+
+document.getElementById('empty').innerHTML = shell(`
+  <div class="stream"><div class="blank">
+    <h3>Nothing here yet</h3>
+    <p>Anything you would change &mdash; a step that takes too many clicks, a number that is never
+      right, something this app should do and does not. Write it below. It goes to the people who
+      build EzBizi, and they answer.</p>
+  </div></div>
+  ${composer(true)}`);
+
+const phone = (label, inner) =>
+  `<div><div class="phone">${inner}</div><div class="phlab">${label}</div></div>`;
+
+const pex = (s) => `
+  <div style="text-align:center;font-size:11px;font-weight:700;letter-spacing:1.2px;
+    text-transform:uppercase;color:var(--muted);margin:14px 0 10px">${s.sent}</div>
+  <div style="margin-left:36px;background:var(--page);border:1px solid var(--line);
+    border-radius:14px 14px 4px 14px;padding:11px 13px;font-size:15px;line-height:1.55">
+    ${s.body}</div>
+  <div style="margin:5px 0 10px 36px;font-size:12px;color:var(--muted)">You
+    ${s.st === 'new' ? '&middot; <b style="color:var(--ink)">New</b>' : ''}
+    ${s.st === 'reviewing' ? '&middot; <b style="color:var(--primary)">In review</b>' : ''}</div>
+  ${s.st === 'new' ? `<div style="display:flex;gap:8px;margin:0 0 6px 36px">
+      <button class="btn ghost sm" type="button">Edit</button>
+      <button class="btn ghost sm danger" type="button">Withdraw</button></div>
+    <div style="margin:0 0 12px 36px;font-size:12px;color:var(--muted)">Nobody has read it yet,
+      so you can still change it.</div>` : ''}
+  ${s.st === 'reviewing' ? `<div style="margin:0 36px 12px 0;background:var(--info-c);
+      color:var(--primary);border-radius:14px;padding:10px 13px;font-size:13px;font-weight:600">
+      Somebody at EzBizi is reading this one, so it is fixed while they do.</div>` : ''}
+  ${s.note ? `<div class="theirs ${s.st === 'approved' ? 'app' : 'den'}"
+      style="margin:0 36px 5px 0;padding:11px 13px 11px 15px">
+      <div class="th">EzBizi &middot; ${s.st === 'approved' ? 'Approved' : 'Denied'}</div>
+      <p style="font-size:14px">${s.note}</p></div>
+    <div style="margin:0 36px 12px 0;font-size:12px;color:var(--muted)">${s.ans} &middot; it stays
+      as it was written. Send another if there is more to say.</div>` : ''}`;
+
+document.getElementById('mobile').innerHTML =
+  phone('The stream, composer docked at the bottom', `
+    <div class="bar">Suggestions</div>
+    <div class="scroll">${MINE.slice(1).map(pex).join('')}</div>
+    <div class="pcomp"><div class="box">Send another suggestion</div>
+      <button class="send" type="button">&uarr;</button></div>`) +
+  phone('Typing &mdash; the composer rides on the keyboard', `
+    <div class="bar">Suggestions</div>
+    <div class="scroll">${pex(MINE[3])}</div>
+    <div class="pcomp"><div class="box filled">Also, could the gate code show on the map pin
+      &mdash;</div><button class="send" type="button">&uarr;</button></div>
+    <div class="kb">the keyboard &mdash; the box and Send sit on top of it</div>`);
+</script>
+</body>
+</html>

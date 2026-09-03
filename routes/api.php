@@ -101,6 +101,8 @@ use App\Http\Controllers\Api\StaffAuthController;
 use App\Http\Controllers\Api\StaffClientVersionsController;
 use App\Http\Controllers\Api\StaffController;
 use App\Http\Controllers\Api\StaffPhoneRequestsController;
+use App\Http\Controllers\Api\StaffSuggestionsController;
+use App\Http\Controllers\Api\SuggestionsController;
 use App\Http\Controllers\Api\Tasks\MyTasksController;
 use App\Http\Controllers\Api\Tasks\TaskBoardMembersController;
 use App\Http\Controllers\Api\Tasks\TaskBoardPreferencesController;
@@ -473,6 +475,19 @@ Route::prefix('v1')
     ->group(function () {
 
         Route::post('auth/logout', [AuthController::class, 'logout']);
+
+        /*
+         * Suggestions — the one module with no permission behind it.
+         *
+         * Deliberately absent from ModuleRegistry so that no organization can
+         * remove it (see App\Models\Suggestion), which means there is no key for
+         * EnsureModuleAvailable or a permission middleware to check. Reachable
+         * by anybody signed in, which is the requirement.
+         */
+        Route::get('suggestions', [SuggestionsController::class, 'index']);
+        Route::post('suggestions', [SuggestionsController::class, 'store']);
+        Route::patch('suggestions/{suggestion}', [SuggestionsController::class, 'update']);
+        Route::delete('suggestions/{suggestion}', [SuggestionsController::class, 'destroy']);
 
         Route::middleware(EnsureTaskRouteAccess::class)->group(function () {
             Route::get('tasks/folders', [TaskFoldersController::class, 'index']);
@@ -1862,6 +1877,11 @@ Route::prefix('v1/staff')
         // control plane, behind the `staff` middleware, not `tenant`.
         Route::get('phone-requests', [StaffPhoneRequestsController::class, 'index']);
         Route::post('phone-requests/{request}/decide', [StaffPhoneRequestsController::class, 'decide']);
+
+        // The suggestion queue. Reads across every tenant on purpose — control
+        // plane, behind the `staff` middleware, not `tenant`.
+        Route::get('suggestions', [StaffSuggestionsController::class, 'index']);
+        Route::post('suggestions/{suggestion}/decide', [StaffSuggestionsController::class, 'decide']);
 
         Route::get('client-versions', [StaffClientVersionsController::class, 'index']);
         Route::put('client-versions/{platform}', [StaffClientVersionsController::class, 'update']);

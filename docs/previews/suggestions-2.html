@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi &mdash; Suggestions, layout 2</title>
+<style>
+  :root {
+    /* PROVENANCE, because a mockup that says "the real palette" has to mean it.
+       Everything marked (theme) is measured from client/lib/core/theme.dart via
+       EzBiziTheme.light() -- not eyeballed, and nothing invented for this file.
+       What is NOT a theme token is listed at the bottom of this block, in full. */
+    --cyan:#00AEEF;     /* (theme) EzBiziTheme.accent -- brand fills carrying no text */
+    --primary:#00708F;  /* (theme) light colorScheme.primary (_cyanDeep), 5.7:1 on white */
+    --ink:#060808;      /* (theme) _ink */
+    --muted:#5B6672;    /* (theme) _muted */
+    --line:#E9EDF1;     /* (theme) EzBiziTheme.edge, light */
+    --alt:#F5F8FA;      /* (theme) _surfaceAlt */
+    --page:#fff;        /* (theme) light colorScheme.surface */
+    --ok:#0B8F5B;       /* (theme) EzBiziTheme.clockIn, light */
+    --err:#E07070;      /* (theme) EzBiziTheme.clockOut, light -- the punch-out coral.
+                           Used here only as a 4px edge and never as text: it is about
+                           3:1 on white and cannot carry a word. */
+    --deny:#BA1A1A;     /* (theme) light colorScheme.error. MEASURED, not guessed --
+                           EzBiziTheme.light().colorScheme.error prints #BA1A1A, and the
+                           same probe confirmed primary #00708F light / #00AEEF dark.
+                           6.5:1 on white and 5.7:1 on --err-c, so it is the one red here
+                           that may be text; it is also the token development_screen.dart
+                           already uses for the control-plane banner. */
+
+    /* NOT theme tokens, and this is the complete list of them.
+       The four container tints are the docs/previews house convention, carried from the
+       galleries already using them, standing in for Material's *Container roles, which a
+       flat mockup cannot compute. The app's real light errorContainer is #FFDAD6;
+       #FDECEC is the previews' lighter stand-in, kept so this gallery matches the twenty
+       beside it rather than being the one that looks different. --warn is convention too
+       -- theme.dart carries no amber -- and it is used only in this gallery's own header
+       blocks, never in the drawn app. Four greys are mockup furniture and never app
+       colour: #DDE3E8 the gallery page ground, #9AA5AF placeholder text inside a drawn
+       field, #C9D3DB the drawn keyboard slab and the dashed empty-state border, #3F4A55
+       the label printed on that keyboard. */
+    --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 Inter, system-ui, "Segoe UI", sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1240px; margin:0 auto; padding:16px 16px 48px; }
+
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:20px; margin:0 0 4px; letter-spacing:-.3px; }
+  .chooser { display:flex; flex-wrap:wrap; gap:6px; align-items:center;
+    padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--line);
+    font-size:12px; color:var(--muted); }
+  .chooser .cg { font-weight:700; text-transform:uppercase; letter-spacing:1.2px;
+    font-size:11px; margin-right:2px; }
+  .chooser a { min-width:30px; text-align:center; padding:4px 9px; border-radius:7px;
+    border:1px solid var(--line); color:var(--primary); text-decoration:none; font-weight:600; }
+  .chooser a.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .chooser .sep { width:18px; }
+
+
+  .viewlab { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--muted); margin:26px 0 8px; }
+  .note { color:var(--muted); font-size:12px; margin:10px 0 0; max-width:96ch; }
+  .note b { color:var(--ink); }
+
+  .shell { display:grid; grid-template-columns:220px 1fr; min-height:640px;
+    background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px;
+    display:flex; flex-direction:column; }
+  nav.side .brand { font-weight:800; letter-spacing:-1px; font-size:20px;
+    margin-bottom:16px; padding:0 8px; }
+  nav.side .brand i { color:var(--cyan); font-style:normal; }
+  nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+    text-decoration:none; margin-bottom:2px; font-size:14px; }
+  nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  nav.side .tail { margin-top:auto; padding-top:10px; border-top:1px solid var(--line); }
+  nav.side .staff { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
+
+  .page { display:flex; flex-direction:column; min-width:0; }
+  .paneHead { padding:18px 24px 14px; border-bottom:1px solid var(--line); }
+  .paneHead h2 { font-size:20px; margin:0 0 3px; letter-spacing:-.3px; font-weight:700; }
+  .paneHead p { margin:0; color:var(--muted); font-size:14px; max-width:74ch; }
+
+  /* the split */
+  .split { display:grid; grid-template-columns:320px 1fr; flex:1; min-height:0; }
+  .rail { border-right:1px solid var(--line); overflow:auto; display:flex;
+    flex-direction:column; }
+  .railTop { padding:12px; border-bottom:1px solid var(--line); }
+  .grph { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--muted); padding:14px 14px 6px; }
+  .r { padding:11px 14px; border-bottom:1px solid var(--line); cursor:pointer; }
+  .r.on { background:var(--info-c); box-shadow:inset 3px 0 0 var(--primary); }
+  .r .rt { display:flex; align-items:center; gap:8px; margin-bottom:5px; }
+  .r .rw { margin-left:auto; color:var(--muted); font-size:12px; white-space:nowrap; }
+  .r .rb { font-size:13px; line-height:1.45; color:var(--ink); }
+  .r .rm { font-size:12px; margin-top:6px; font-weight:600; }
+
+  .detail { display:flex; flex-direction:column; min-width:0; overflow:auto; }
+  .dHead { padding:18px 24px 14px; border-bottom:1px solid var(--line); display:flex;
+    align-items:center; gap:10px; }
+  .dHead h3 { font-size:18px; margin:0; font-weight:700; }
+  .dHead .when { margin-left:auto; color:var(--muted); font-size:13px; }
+  .dBody { padding:20px 24px; font-size:15px; line-height:1.6; max-width:76ch; }
+  .dFoot { margin-top:auto; border-top:1px solid var(--line); background:var(--alt);
+    padding:12px 24px; display:flex; align-items:center; gap:9px; }
+  .dFoot .why { color:var(--muted); font-size:12px; margin-right:auto; max-width:66ch; }
+
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:9px;
+    padding:9px 16px; min-height:40px; font-weight:600; }
+  .btn.ghost { background:transparent; color:var(--primary); border:1px solid var(--line);
+    background:var(--page); }
+  .btn.sm { min-height:34px; padding:5px 12px; font-size:13px; }
+  .btn.off { background:var(--page); color:var(--muted); border:1px solid var(--line); }
+  .btn.danger { color:var(--deny); }
+  .btn.wide { width:100%; }
+
+  .pill { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    padding:3px 9px; border-radius:999px; background:var(--alt); border:1px solid var(--line);
+    color:var(--muted); white-space:nowrap; }
+  .pill.s-new { background:var(--page); border-color:var(--muted); color:var(--ink); }
+  .pill.s-rev { background:var(--info-c); border-color:transparent; color:var(--primary); }
+  .pill.s-app { background:var(--ok-c); border-color:transparent; color:var(--ok); }
+  .pill.s-den { background:var(--err-c); border-color:transparent; color:var(--deny); }
+
+  .reply { margin:0 24px 22px; border-radius:10px; padding:14px 16px 14px 18px; max-width:76ch; }
+  .reply.app { background:var(--ok-c); box-shadow:inset 4px 0 0 var(--ok); }
+  .reply.den { background:var(--err-c); box-shadow:inset 4px 0 0 var(--err); }
+  .reply .rh { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    margin-bottom:6px; }
+  .reply.app .rh { color:var(--ok); } .reply.den .rh { color:var(--deny); }
+  .reply p { margin:0; font-size:14px; line-height:1.55; }
+
+  .compose { border:1px solid var(--line); border-radius:12px; overflow:hidden;
+    margin:20px 24px; max-width:76ch; }
+  .compose.focus { border-color:var(--primary); box-shadow:0 0 0 1px var(--primary); }
+  .compose .ta { padding:14px 16px; min-height:150px; color:#9AA5AF; font-size:15px;
+    line-height:1.55; }
+  .compose .cbar { display:flex; align-items:center; gap:10px; padding:10px 14px;
+    background:var(--alt); border-top:1px solid var(--line); }
+  .compose .count { color:var(--muted); font-size:12px; margin-right:auto; }
+  .compose .count b { color:var(--ink); font-weight:600; }
+
+  .blank { flex:1; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; text-align:center; padding:40px; }
+  .blank h3 { font-size:18px; margin:0 0 8px; font-weight:700; }
+  .blank p { color:var(--muted); max-width:56ch; margin:0 0 18px; }
+
+  .stage { display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; }
+  .phone { width:375px; border:8px solid var(--ink); border-radius:30px; overflow:hidden;
+    background:var(--page); height:700px; display:flex; flex-direction:column; }
+  .phlab { font-size:11px; color:var(--muted); text-align:center; margin-top:7px; width:375px; }
+  .bar { padding:12px 14px; border-bottom:1px solid var(--line); display:flex;
+    align-items:center; gap:9px; font-weight:700; font-size:16px; flex:none; }
+  .bar .back { color:var(--primary); font-weight:500; font-size:14px; }
+  .bar .act { margin-left:auto; color:var(--primary); font-weight:600; font-size:14px; }
+  .scroll { overflow:auto; flex:1; }
+  .seg { display:flex; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line); }
+  .seg span { flex:1; text-align:center; padding:8px 6px; border-radius:999px;
+    border:1px solid var(--line); font-size:13px; font-weight:600; color:var(--muted);
+    min-height:40px; display:flex; align-items:center; justify-content:center; }
+  .seg span.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .pfoot { flex:none; border-top:1px solid var(--line); background:var(--alt); padding:11px 14px;
+    display:flex; gap:8px; align-items:center; }
+  .pfoot .why { color:var(--muted); font-size:12px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <nav class="chooser">
+      <span class="cg">Your suggestions</span>
+      <a href="suggestions-1.html">1</a>
+      <a class="on" href="suggestions-2.html">2</a>
+      <a href="suggestions-3.html">3</a>
+      <span class="sep"></span>
+      <span class="cg">Development queue</span>
+      <a href="suggestions-queue-1.html">1</a>
+      <a href="suggestions-queue-2.html">2</a>
+      <a href="suggestions-queue-3.html">3</a>
+    </nav>
+    <h1>Suggestions &mdash; 2 &middot; What happened to what you sent</h1>
+  </header>
+
+  <h2 class="viewlab">Desktop &mdash; a denied one open, so the reviewer's words are in full</h2>
+  <div id="denied"></div>
+
+  <h2 class="viewlab">Desktop &mdash; the New one open, which is the only one you can still change</h2>
+  <div id="fresh"></div>
+
+  <h2 class="viewlab">Desktop &mdash; the one being read, which is frozen but not answered</h2>
+  <div id="reviewing"></div>
+
+  <h2 class="viewlab">Desktop &mdash; the first visit</h2>
+  <div id="empty"></div>
+
+  <h2 class="viewlab">375px &mdash; designed for the phone, not narrowed</h2>
+  <div class="stage" id="mobile"></div>
+</div>
+
+<script>
+const MINE = [
+  { id:1, st:'new', sent:'Sent today, 9:12am', short:'today',
+    body:"Techs get the address on the job card but not the gate code or the dog, so half of them ring the office from the driveway. The access notes are already on the customer -- could they ride along on the job card the way the phone number does?" },
+  { id:2, st:'approved', sent:'Sent 28 August', ans:'1 September', short:'28 Aug',
+    body:"Let a tech mark a van out of service from their phone. Right now they ring the office, the office means to write it down, and dispatch finds out by sending somebody to a van that is up on a lift.",
+    note:"Agreed, and it is going into Fleet next. A tech with fleet access will be able to put a vehicle out of service from the phone, with a reason, and dispatch will see it on the board before they assign anything to it. Thank you for the example -- the lift is the part that made the case." },
+  { id:3, st:'reviewing', sent:'Sent 26 August', short:'26 Aug',
+    body:"When the same customer rings twice in a day we get two entries in the call list and no way to tell it is one job. Could repeat calls from a number group together for the day?" },
+  { id:4, st:'denied', sent:'Sent 12 August', ans:'19 August', short:'12 Aug',
+    body:"Could the job list refresh itself every thirty seconds so I am not pressing reload all morning?",
+    note:"Not this one, and the reason is the moving list rather than the idea. A list that reloads under you moves the row you were about to click, and dispatch is the one screen in this app where that costs a real appointment. What we would rather build is a quiet line at the top saying three jobs have changed, which you press when you are ready. That is on the list; this exact request is not." }
+];
+
+const LABEL = { new:'New', reviewing:'In review', approved:'Approved', denied:'Denied' };
+const CLS   = { new:'s-new', reviewing:'s-rev', approved:'s-app', denied:'s-den' };
+const FROZEN = {
+  reviewing:'Somebody at EzBizi is reading this one, so it is fixed while they do. Send another if there is more to say.',
+  approved:'This one has been answered, so it stays as it was written. Send another if there is more to say.',
+  denied:'This one has been answered, so it stays as it was written. Send another if there is more to say.'
+};
+
+const SIDE = `
+  <nav class="side">
+    <div class="brand"><i>Ez</i>Bizi</div>
+    <a>Dashboard</a><a>Customers</a><a>Jobs</a><a>Scheduling</a><a>Phone</a><a>Fleet</a>
+    <a>Human Resources</a>
+    <div class="tail"><a class="on">Suggestions</a><a>Settings</a></div>
+    <div class="staff"><a>Development</a></div>
+  </nav>`;
+
+const HEAD = `
+  <div class="paneHead">
+    <h2>Suggestions</h2>
+    <p>Tell EzBizi what the software should do differently. Only you and EzBizi staff can read
+      what you write here &mdash; nobody at your own organization can.</p>
+  </div>`;
+
+const trim = (t, n) => t.length > n ? t.slice(0, n) + '&hellip;' : t;
+
+const railRow = (s, sel) => `
+  <div class="r${sel === s.id ? ' on' : ''}">
+    <div class="rt"><span class="pill ${CLS[s.st]}">${LABEL[s.st]}</span>
+      <span class="rw">${s.short}</span></div>
+    <div class="rb">${trim(s.body, 96)}</div>
+    ${s.st === 'new'
+      ? '<div class="rm" style="color:var(--primary)">You can still change this one</div>' : ''}
+    ${s.note ? `<div class="rm" style="color:${s.st === 'approved' ? 'var(--ok)' : 'var(--deny)'}">
+        EzBizi answered &middot; ${s.ans}</div>` : ''}
+  </div>`;
+
+const rail = (sel) => `
+  <div class="rail">
+    <div class="railTop"><button class="btn wide" type="button">Write a suggestion</button></div>
+    <div class="grph">Waiting on EzBizi &middot; 2</div>
+    ${MINE.filter(s => s.st === 'new' || s.st === 'reviewing').map(s => railRow(s, sel)).join('')}
+    <div class="grph">Answered &middot; 2</div>
+    ${MINE.filter(s => s.note).map(s => railRow(s, sel)).join('')}
+  </div>`;
+
+const detail = (s) => `
+  <div class="detail">
+    <div class="dHead"><span class="pill ${CLS[s.st]}">${LABEL[s.st]}</span>
+      <h3>Your suggestion</h3><span class="when">${s.sent}</span></div>
+    <div class="dBody">${s.body}</div>
+    ${s.note ? `<div class="reply ${s.st === 'approved' ? 'app' : 'den'}">
+        <div class="rh">EzBizi answered &middot; ${s.ans}</div><p>${s.note}</p></div>` : ''}
+    ${s.st === 'new'
+      ? `<div class="dFoot"><span class="why">Nobody has read it yet, so you can still change it
+           or take it back.</span>
+           <button class="btn ghost sm" type="button">Edit</button>
+           <button class="btn ghost sm danger" type="button">Withdraw</button></div>`
+      : `<div class="dFoot"><span class="why">${FROZEN[s.st]}</span></div>`}
+  </div>`;
+
+const shell = (inner) => `<div class="shell">${SIDE}<div class="page">${HEAD}
+  <div class="split">${inner}</div></div></div>`;
+
+document.getElementById('denied').innerHTML = shell(rail(4) + detail(MINE[3]));
+document.getElementById('fresh').innerHTML  = shell(rail(1) + detail(MINE[0]));
+document.getElementById('reviewing').innerHTML = shell(rail(3) + detail(MINE[2]));
+
+document.getElementById('empty').innerHTML = shell(`
+  <div class="rail">
+    <div class="railTop"><button class="btn wide" type="button">Write a suggestion</button></div>
+    <div style="padding:18px 14px;color:var(--muted);font-size:13px">Nothing here yet.</div>
+  </div>
+  <div class="detail">
+    <div class="blank">
+      <h3>Tell EzBizi what to do differently</h3>
+      <p>Anything you would change &mdash; a step that takes too many clicks, a number that is
+        never right, something this app should do and does not. It goes to the people who build
+        EzBizi, and they answer.</p>
+    </div>
+    <div class="compose focus" style="margin-top:0">
+      <div class="ta">What should EzBizi do differently?</div>
+      <div class="cbar"><span class="count"><b>0</b> / 2000</span>
+        <button class="btn off" type="button">Send it</button></div>
+    </div>
+  </div>`);
+
+const phone = (label, inner) =>
+  `<div><div class="phone">${inner}</div><div class="phlab">${label}</div></div>`;
+
+const prow = (s) => `
+  <div style="padding:13px 16px;border-bottom:1px solid var(--line)">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+      <span class="pill ${CLS[s.st]}">${LABEL[s.st]}</span>
+      <span style="margin-left:auto;color:var(--muted);font-size:12px">${s.short}</span></div>
+    <div style="font-size:14px;line-height:1.5">${trim(s.body, 112)}</div>
+    ${s.st === 'new' ? `<div style="margin-top:6px;font-size:12px;font-weight:600;
+      color:var(--primary)">You can still change this one</div>` : ''}
+    ${s.note ? `<div style="margin-top:6px;font-size:12px;font-weight:600;color:${
+      s.st === 'approved' ? 'var(--ok)' : 'var(--deny)'}">EzBizi answered &middot; ${s.ans}</div>` : ''}
+  </div>`;
+
+document.getElementById('mobile').innerHTML =
+  phone('Waiting &mdash; the two nobody has answered', `
+    <div class="bar">Suggestions <span class="act">Write</span></div>
+    <div class="seg"><span class="on">Waiting &middot; 2</span><span>Answered &middot; 2</span></div>
+    <div class="scroll">
+      ${MINE.filter(s => !s.note).map(prow).join('')}
+      <p class="note" style="padding:14px 16px">Only you and EzBizi staff can read these.</p>
+    </div>`) +
+  phone('The New one &mdash; the footer has both buttons', `
+    <div class="bar"><span class="back">&lsaquo; Waiting</span> New</div>
+    <div class="scroll">
+      <div style="padding:16px;font-size:15px;line-height:1.6">${MINE[0].body}</div>
+      <div style="padding:0 16px;color:var(--muted);font-size:12px">Sent today, 9:12am</div>
+    </div>
+    <div class="pfoot" style="flex-direction:column;align-items:stretch;gap:9px">
+      <span class="why">Nobody has read it yet, so you can still change it or take it back.</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn ghost" style="flex:1" type="button">Edit</button>
+        <button class="btn ghost danger" style="flex:1" type="button">Withdraw</button></div>
+    </div>`) +
+  phone('An answered one &mdash; the same footer, no buttons', `
+    <div class="bar"><span class="back">&lsaquo; Answered</span> Approved</div>
+    <div class="scroll">
+      <div style="padding:16px;font-size:15px;line-height:1.6">${MINE[1].body}</div>
+      <div style="padding:0 16px 16px;color:var(--muted);font-size:12px">Sent 28 August</div>
+      <div class="reply app" style="margin:0 16px 16px">
+        <div class="rh">EzBizi answered &middot; 1 September</div><p>${MINE[1].note}</p></div>
+    </div>
+    <div class="pfoot"><span class="why">${FROZEN.approved}</span></div>`);
+</script>
+</body>
+</html>

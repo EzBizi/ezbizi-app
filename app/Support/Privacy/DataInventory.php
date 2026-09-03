@@ -155,7 +155,9 @@ class DataInventory
     }
 
     /**
-     * Rows of this kind belonging to the organization in context.
+     * Rows of this kind belonging to the organization in context — unless the
+     * model says the organization is the wrong unit for it, which it does by
+     * declaring `narrowToOrganization`.
      *
      * Soft-deleted rows are counted. They are still personal data being held —
      * that is §9's whole point about the tension between soft delete and erasure
@@ -171,20 +173,8 @@ class DataInventory
         }
 
         /*
-         * The audit log is the model this branch exists for.
+         * A model that knows better than the organization gets asked FIRST.
          *
-         * It carries `organization_id` and deliberately has no tenant scope: it
-         * is written in platform scope too, by staff acting across customers
-         * (§4.2), and a global scope would make those writes unreadable to the
-         * code that made them. So the predicate is spelt out here rather than
-         * assumed — without it this would count every organization's entries
-         * and report the total as one customer's.
-         */
-        if (in_array(BelongsToTenant::class, class_uses_recursive($class), true)) {
-            return $query->count();          // the global scope has already done it
-        }
-
-        /*
          * Not every table that holds personal data holds an organization_id.
          *
          * `personal_access_tokens` is the one that found this: it carries an IP
@@ -199,9 +189,43 @@ class DataInventory
          * the counts rather than crashing the report — with its name in the
          * response, because "we hold this and cannot tell you how much" is a
          * true answer and silence is not.
+         *
+         * WHY THIS IS ABOVE THE TENANT BRANCH, and not below it as it was.
+         *
+         * Behind that branch the hook was unreachable for every tenant-scoped
+         * model, which made it look like an answer to one question — "how do I
+         * reach an organization from a table with no column for it" — when it
+         * is the answer to the more general one: "what is the right count for
+         * this table". `Suggestion` is the case that proves the difference. It
+         * IS tenant-scoped, so the branch below counted it correctly for the
+         * organization and incorrectly for the READER: the module exists so
+         * that a colleague and the org's own administrator cannot see what
+         * somebody wrote, and an organization-wide `rows:` printed directly
+         * under that promise tells an administrator of a three-person company
+         * that a suggestion was sent, when, and roughly by whom. The audit-row
+         * exemption on that model closes the same leak through the other door;
+         * this is the door nobody checked.
+         *
+         * A model that narrows differently must therefore be able to say so
+         * whether or not it carries the column — so the hook is asked first,
+         * and the branches below are the defaults for models that stay silent.
          */
         if (method_exists($class, 'narrowToOrganization')) {
             return $class::narrowToOrganization($query, $this->tenant->idOrFail())->count();
+        }
+
+        /*
+         * The audit log is the model this branch exists for.
+         *
+         * It carries `organization_id` and deliberately has no tenant scope: it
+         * is written in platform scope too, by staff acting across customers
+         * (§4.2), and a global scope would make those writes unreadable to the
+         * code that made them. So the predicate is spelt out here rather than
+         * assumed — without it this would count every organization's entries
+         * and report the total as one customer's.
+         */
+        if (in_array(BelongsToTenant::class, class_uses_recursive($class), true)) {
+            return $query->count();          // the global scope has already done it
         }
 
         if (! Schema::hasColumn((new $class)->getTable(), 'organization_id')) {
