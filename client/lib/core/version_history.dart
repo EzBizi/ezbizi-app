@@ -8,6 +8,23 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0142',
+      date: '3 Sep 2026',
+      items: [
+        'You can send a suggestion. Anything you think EzBizi should do '
+            'differently goes in from inside the app, and your own tab keeps '
+            'the ones you have sent with what came of each - waiting, being '
+            'read, taken up, or turned down with the reason.',
+        'A suggestion can be corrected or withdrawn while nobody has read it '
+            'yet. Once somebody has started reading it, it stays as you sent '
+            'it, because the person deciding should be answering what you '
+            'actually wrote.',
+        'Your suggestions are yours. Other people in your company cannot read '
+            'them, and the count on the data inventory is your own rather than '
+            'everybody\'s.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0141',
       date: '2 Sep 2026',
       items: [
