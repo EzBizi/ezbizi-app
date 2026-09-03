@@ -601,10 +601,20 @@ class _CallTabState extends State<CallTab> {
             Expanded(
               child: Text(
                 _device.supported
-                    ? 'This desk is not connected to the phone network, so it '
-                          'cannot take or make calls. Reload the page; if it '
-                          'keeps happening the network is blocking the '
-                          'connection.'
+                    // Say WHAT WENT WRONG when the platform told us, and only
+                    // guess when it did not. The old sentence named the
+                    // network every time, so an expired token, a rejected
+                    // identity or a missing audio device all read as "your
+                    // wifi" — and sent somebody to check a firewall for a
+                    // fault that was never there.
+                    ? (_device.registrationError != null
+                          ? 'This desk could not connect to the phone '
+                                'network, so it cannot take or make calls. '
+                                '${_device.registrationError}'
+                          : 'This desk is not connected to the phone network, '
+                                'so it cannot take or make calls. Reload the '
+                                'page; if it keeps happening the network is '
+                                'blocking the connection.')
                     // A PERMANENT FACT, NOT A FAULT — and no longer a
                     // refusal, which is why the wording changed again.
                     //

@@ -875,14 +875,19 @@ void main() {
       expect(sent!.containsKey('inboxes'), isFalse);
     });
 
-    /// Phone spec §6/§12: which line a role may answer is a grant, not a
-    /// permission. Without this the tab could be ticked and every number stayed
-    /// unreachable, which is a Phone module that draws and never rings.
+    /// Phone lines are NOT a per-role grant, and the editor must not offer
+    /// them — even if a server still sends the key.
     ///
-    /// The line the server sends is `e164`, not `address` or `name` — a phone
-    /// number has no address. That one word is why this asserts on the number
-    /// itself rather than only on the label.
-    testWidgets('phone lines nest under Phone and save as phone_numbers', (
+    /// This asserted the opposite until 3 Sep: that lines nested under Phone
+    /// and saved as `phone_numbers`. That stopped being true on 2 Sep when
+    /// access became module permission ∩ scope ∩ reach, and the picker carried
+    /// on being drawn with every box ticked and every change ignored.
+    ///
+    /// The catalogue below still sends `phone_numbers` on purpose. A deployed
+    /// client meets whatever the server has, and during a rollout that server
+    /// may be the older one; the client must not resurrect the section on being
+    /// handed the key. `grantKinds` no longer lists it, so it cannot.
+    testWidgets('phone lines are not offered as a grant, even if sent', (
       tester,
     ) async {
       _wide(tester);
@@ -916,22 +921,19 @@ void main() {
       await tester.tap(find.text('Phone'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Phone lines'), findsOneWidget);
-      expect(find.text('Front desk'), findsOneWidget);
-      expect(find.text('+12035550123'), findsOneWidget);
+      // Not the heading, not the instruction, not the line itself.
+      expect(find.text('Phone lines'), findsNothing);
+      expect(find.text('Front desk'), findsNothing);
+      expect(find.text('+12035550123'), findsNothing);
 
       await tester.tap(_tabCheckbox('phone'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('inbox:num-1')));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Save'));
       await tester.pumpAndSettle();
 
-      expect(sent!['phone_numbers'], ['num-1']);
-
-      // Nothing was drawn for mail, so nothing is asserted about it. Sending
-      // `inboxes: []` here would revoke every inbox on this role from a screen
-      // that never showed one.
+      // And nothing is sent for it. Sending `phone_numbers: []` from a screen
+      // that drew no picker would revoke rows the editor never showed.
+      expect(sent!.containsKey('phone_numbers'), isFalse);
       expect(sent!.containsKey('inboxes'), isFalse);
     });
 

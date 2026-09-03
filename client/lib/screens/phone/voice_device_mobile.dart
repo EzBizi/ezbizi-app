@@ -39,6 +39,10 @@ class MobileVoiceDevice implements VoiceDevice {
   @override
   bool get registered => _registered;
 
+  // Native SDK; a failure surfaces through its own callbacks, not here.
+  @override
+  String? get registrationError => null;
+
   @override
   Future<void> setup(String token) async {
     try {

@@ -44,20 +44,22 @@ final class PhoneNumberAccess
      */
     public function compose(array $modules, User $actor): array
     {
-        $owner = $this->moduleKey();
-        $mine = $this->heldByUser($actor);
-
-        foreach ($modules as $index => $module) {
-            if (($module['key'] ?? null) !== $owner) {
-                continue;
-            }
-
-            $modules[$index]['phone_numbers'] = array_map(
-                fn (GrantablePhoneNumber $item) => $item->toArray(in_array($item->id, $mine, true)),
-                $this->directory->forOrganization($actor->organization_id),
-            );
-        }
-
+        // Nothing. Phone lines are no longer a per-role grant, so the roles
+        // screen must not draw a picker for them.
+        //
+        // Removing `isGranted` on 2 Sep left this still hanging every line onto
+        // the Communication module, and the first attempt at a fix made the
+        // picker report "7 of 7 phone lines granted" with every box ticked —
+        // which is worse than the bug it replaced. It offered an administrator
+        // seven controls that decide nothing: untick a line, save, and the role
+        // still answers it. Jose's point when he asked for role-level access was
+        // that a company with a hundred numbers cannot tick them one at a time;
+        // a picker that shows all hundred pre-ticked and ignores every change
+        // does not answer that, it just hides the answer.
+        //
+        // Access is now module permission ∩ scope ∩ §4 reach — see [isGranted]
+        // and [mayView]. There is no fourth thing to tick, so there is no
+        // section to render.
         return $modules;
     }
 

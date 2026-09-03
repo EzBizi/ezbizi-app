@@ -63,6 +63,11 @@ class WindowsVoiceDevice implements VoiceDevice {
   @override
   bool get registered => _registered;
 
+  String? _registrationError;
+
+  @override
+  String? get registrationError => _registrationError;
+
   /// The WebView2 controller, for the Dial tab to mount. See the note above on
   /// why this cannot stay headless.
   @override
@@ -135,6 +140,11 @@ class WindowsVoiceDevice implements VoiceDevice {
         if (!_ready.isCompleted) _ready.complete();
       case 'ready':
         _registered = message['registered'] == true;
+        // The bridge sends `message` alongside `registered: false` and this
+        // discarded it, so the reason Twilio gave was thrown away one line
+        // before the desk started guessing at it.
+        final why = (message['message'] ?? '').toString().trim();
+        _registrationError = _registered || why.isEmpty ? null : why;
         if (_settled?.isCompleted == false) _settled!.complete();
       case 'incoming':
         onIncoming?.call(

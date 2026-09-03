@@ -49,10 +49,19 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-; Per-user by default so the installer does not need an administrator. A field
-; technician on a locked-down laptop can install it themselves, which is the
-; whole point of shipping a desktop build.
-PrivilegesRequiredOverridesAllowed=dialog
+; Per-user, always, and with no dialog about it.
+;
+; PrivilegesRequiredOverridesAllowed=dialog was here and it is what made an
+; automatic update stop and ask. It adds Inno's "Select Setup Install Mode"
+; page — install for all users, or just me — and every in-app update runs this
+; installer, so the app closed itself to be replaced and then put a question on
+; screen that nobody was there to answer. Jose's instruction on 3 Sep: an
+; update installs itself, no decision from the user.
+;
+; PrivilegesRequired=lowest keeps the reason the override existed: a per-user
+; install needs no administrator, so a field technician on a locked-down laptop
+; can still install it. Removing the OVERRIDE removes the question, not the
+; capability.
 PrivilegesRequired=lowest
 UninstallDisplayName=EzBizi
 

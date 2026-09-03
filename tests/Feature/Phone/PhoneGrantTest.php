@@ -20,12 +20,25 @@ class PhoneGrantTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
-    public function test_the_catalogue_nests_this_organizations_numbers_and_not_another_ones(): void
+    /**
+     * The roles editor is offered no phone lines to tick.
+     *
+     * This test asserted the opposite until 3 Sep — that the catalogue nested
+     * this organization's numbers under Phone, so an administrator could grant
+     * them one at a time. That picker stopped deciding anything on 2 Sep when
+     * [PhoneNumberAccess::isGranted] became unconditional, and the first fix
+     * left it on screen reporting "7 of 7 phone lines granted" with every box
+     * ticked and every change ignored.
+     *
+     * Jose's requirement is the reason it is gone rather than pre-ticked: a
+     * company may reach a hundred numbers, and no administrator should tick a
+     * hundred boxes per role for an answer the module permission already gave.
+     * A control that cannot change the outcome should not be drawn.
+     */
+    public function test_the_catalogue_offers_no_phone_lines_to_grant(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $bravo = $this->provisionTenant('Bravo');
         $this->number($alpha, '+12035551001', 'Alpha main');
-        $this->number($bravo, '+12035551009', 'Bravo main');
 
         $modules = $this->signedInAs($alpha['admin'])
             ->getJson('/api/v1/roles/catalogue')
@@ -33,26 +46,13 @@ class PhoneGrantTest extends TestCase
             ->json('modules');
 
         $phone = collect($modules)->firstWhere('key', 'phone');
-        $this->assertNotNull($phone);
-        $this->assertSame(['+12035551001'], array_column($phone['phone_numbers'], 'e164'));
-        $this->assertSame(['Alpha main'], array_column($phone['phone_numbers'], 'label'));
+        $this->assertNotNull($phone, 'Communication should still be a module.');
 
+        // Not "empty" — absent. An empty array would still draw the section
+        // heading and its instruction line, which is the thing being removed.
         foreach ($modules as $module) {
-            if ($module['key'] === 'phone') {
-                continue;
-            }
             $this->assertArrayNotHasKey('phone_numbers', $module);
         }
-
-        $theirs = $this->signedInAs($bravo['admin'])
-            ->getJson('/api/v1/roles/catalogue')
-            ->assertOk()
-            ->json('modules');
-
-        $this->assertSame(
-            ['+12035551009'],
-            array_column(collect($theirs)->firstWhere('key', 'phone')['phone_numbers'], 'e164'),
-        );
     }
 
     /**

@@ -69,6 +69,11 @@ class TwilioVoiceDevice implements VoiceDevice {
   @override
   bool get registered => _registered;
 
+  // The browser device awaits register() directly, so a failure is a thrown
+  // error rather than a message carrying a reason.
+  @override
+  String? get registrationError => null;
+
   @override
   Future<void> connect({required String to, String? callerId}) async {
     final device = _device;

@@ -322,6 +322,42 @@ void main() {
   /// again button. That is a transient-sounding diagnosis and a retry
   /// control for a permanent platform fact, so somebody goes and looks at
   /// their firewall, finds nothing, and comes back tomorrow.
+  /// The desk repeats what Twilio said, when Twilio said anything.
+  ///
+  /// The Windows bridge has always forwarded a reason alongside
+  /// `registered: false` and the Dart side discarded it one line before the
+  /// banner started guessing. Every failure therefore read as "the network is
+  /// blocking the connection" — an expired token, a rejected identity and a
+  /// missing audio device all sent somebody to check a firewall.
+  testWidgets('the desk-down banner repeats the reason it was given', (
+    tester,
+  ) async {
+    final device = _FakeDevice()
+      ..registered = false
+      ..registrationError = 'AccessTokenExpired (20104)';
+
+    await _pump(tester, device: device);
+
+    expect(find.textContaining('AccessTokenExpired (20104)'), findsOneWidget);
+    expect(
+      find.textContaining('the network is blocking'),
+      findsNothing,
+      reason: 'a stated reason was replaced by a guess about the network',
+    );
+  });
+
+  /// And still guesses when it was told nothing, because that is the one case
+  /// the old sentence was right about.
+  testWidgets('with no reason given it falls back to the network wording', (
+    tester,
+  ) async {
+    final device = _FakeDevice()..registered = false;
+
+    await _pump(tester, device: device);
+
+    expect(find.textContaining('the network is blocking'), findsOneWidget);
+  });
+
   testWidgets(
     'a build with no Voice SDK says so instead of blaming the network',
     (tester) async {
@@ -625,6 +661,11 @@ class _FakeDevice implements VoiceDevice {
   /// usable is the precondition for almost every case in this file.
   @override
   var registered = true;
+
+  /// Settable, so a test can assert the banner repeats the reason Twilio gave
+  /// rather than the guess about the network it used to print regardless.
+  @override
+  String? registrationError;
 
   /// A browser build unless a test says otherwise. Separate from [registered]
   /// because they mean different things: this build CANNOT call, versus this

@@ -31,6 +31,16 @@ abstract class VoiceDevice {
   /// silently never rings.
   bool get registered;
 
+  /// Why registration failed, when the platform was told.
+  ///
+  /// Null when registered, or when the platform had nothing to say. Twilio
+  /// reports a real reason — an expired token, a rejected identity, no audio
+  /// device — and the Windows bridge has always forwarded it; nothing read it,
+  /// so the desk fell back to guessing "the network is blocking the
+  /// connection". That guess sent Jose to check a firewall twice for faults
+  /// that were not the network.
+  String? get registrationError => null;
+
   /// A platform object the screen must MOUNT for this device to work, or null.
   ///
   /// Only Windows returns one, and it is not a display surface: WebView2

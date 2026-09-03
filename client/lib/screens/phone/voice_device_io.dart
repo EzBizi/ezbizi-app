@@ -53,6 +53,10 @@ class _SilentVoiceDevice implements VoiceDevice {
   @override
   bool get registered => false;
 
+  // Nothing to explain: this device never attempts to register.
+  @override
+  String? get registrationError => null;
+
   @override
   Future<void> connect({required String to, String? callerId}) async {}
 
