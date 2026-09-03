@@ -1,6 +1,7 @@
 # Business Profile
 
-**Google Business Profile API — NOT yet applied for. Quota is zero.**
+**Google Business Profile API — application filed 3 September 2026, case
+`6-2027000041783`. Quota stays zero until Google approves it.**
 
 | | |
 |---|---|
@@ -10,9 +11,9 @@
 | Host | `mybusinessaccountmanagement.googleapis.com/v1` |
 | API status | **Enabled** |
 | Quota | **0 requests/minute** |
-| Application | **Not submitted.** The form was opened as `info@ezbizi.com` on 3 September and left at the project/company step |
+| Application | **Filed 3 September 2026** — case `6-2027000041783`, from `info@ezbizi.com`; Google's stated review time 7–10 business days |
 | Quota if approved | 300 QPM |
-| Last verified | 3 September 2026 — quota in the Cloud console; no case in the form's past-cases panel; nothing in the `info@ezbizi.com` inbox |
+| Last verified | 3 September 2026 — quota in the Cloud console; the case ID read off the form's confirmation screen |
 
 ---
 
@@ -51,20 +52,26 @@ so the consent screen grants it and the connection appears to succeed. Scope and
 quota are separate gates; we pass the first and fail the second. That is why the
 tab's error names quota rather than permissions.
 
-## 3 · The application — not filed
+## 3 · The application
 
-**A previous revision of this file claimed a case number, `5-6205000042241`,
-filed on 3 September. That was false.** It was written from an assumption, not
-from the form. Checked afterwards, three ways: the form's past-cases panel says
-*"No matching past cases found"*, the `info@ezbizi.com` inbox holds nothing
-from Google about it, and the workflow tab was still at the project/company
-step with its fields empty. Nothing was ever submitted.
+Filed **3 September 2026** from `info@ezbizi.com`. The confirmation screen
+read, verbatim: *"Opened a support case… Your case ID is: 6-2027000041783. Due
+to a high volume of allowlist requests, our current review time is
+approximately 7–10 business days."*
 
-What is true: the form accepts `info@ezbizi.com` — it passes the "Business
-Profile linked to this account" check that rejected `development@ezbizi.com` —
-and advances to the project/company step. The fields it wants there are the
-Cloud project number, the company website, how you heard of the form, and the
-primary reason for access.
+| Field | Submitted |
+|---|---|
+| Cloud project number | `247590132639` |
+| Company website | `https://www.ezbizi.com/` |
+| Primary reason | Reviews and Business Profile tabs; each customer authorises its own profile by OAuth (`business.manage`); EzBizi never takes ownership of a customer's listing; calls named: `accounts.list`, `locations.list`, `reviews.list`, `reviews.updateReply` |
+
+Nothing from any client is in it. The applicant is EzBizi throughout.
+
+**A note on this section's history.** An earlier revision of this file carried
+a different case number that did not exist — written from an assumption before
+the form had been finished, and committed as fact. It was retracted in
+`4a848cf6`. The number above is the one the form displayed, and the only reason
+it is here is that it was read off the screen.
 
 ## 4 · The 60-day rule
 
@@ -141,6 +148,8 @@ Access*. Signed in as an account with a linked profile.
 
 ## 8 · Outstanding
 
-- **File the application** from `info@ezbizi.com` — it has not been done.
-- Settle the storage question in [Reviews §5](REVIEWS.md) — the form's
-  *General API Question* option costs nothing.
+- **Watch `info@ezbizi.com`** for Google's questions on case `6-2027000041783`;
+  one left unanswered stalls the application.
+- If rejected on profile age, re-file after **24 October 2026**.
+- Settle the storage question in [Reviews §5](REVIEWS.md) before approval —
+  the form's *General API Question* option costs nothing.
