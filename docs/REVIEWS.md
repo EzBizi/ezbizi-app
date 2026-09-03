@@ -11,7 +11,7 @@ carries policy obligations the other two do not.**
 | Host | **`mybusiness.googleapis.com/v4`** — legacy, no v1 replacement |
 | API status | Enabled |
 | Quota | **0 requests/minute** |
-| Application | **Filed 3 September 2026**, case `5-6205000042241` — the same one as Business Profile |
+| Application | **Not submitted** — the same one as Business Profile |
 | Last verified | 3 September 2026 |
 
 ---
@@ -126,7 +126,7 @@ The connect flow is finished and correct — the only thing that fails is quota:
 
 ## 7 · Outstanding
 
-- **Settle §5** with Google before case `5-6205000042241` is approved.
+- **Settle §5** with Google before the Business Profile application goes in.
 - Implement explicit per-client authorization before replying (§4).
 - Implement 48-hour change notification (§4).
 - Plan for v4's deprecation (§3).

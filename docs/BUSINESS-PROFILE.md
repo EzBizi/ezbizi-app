@@ -1,7 +1,6 @@
 # Business Profile
 
-**Google Business Profile API — application filed 3 September 2026, case
-`5-6205000042241`. Quota is zero until Google approves it.**
+**Google Business Profile API — NOT yet applied for. Quota is zero.**
 
 | | |
 |---|---|
@@ -11,9 +10,9 @@
 | Host | `mybusinessaccountmanagement.googleapis.com/v1` |
 | API status | **Enabled** |
 | Quota | **0 requests/minute** |
-| Application | **Filed 3 September 2026** — case `5-6205000042241`, filed from `info@ezbizi.com`, review 7–10 business days |
+| Application | **Not submitted.** The form was opened as `info@ezbizi.com` on 3 September and left at the project/company step |
 | Quota if approved | 300 QPM |
-| Last verified | 3 September 2026 — quota in the Cloud console; the application in the form's own confirmation |
+| Last verified | 3 September 2026 — quota in the Cloud console; no case in the form's past-cases panel; nothing in the `info@ezbizi.com` inbox |
 
 ---
 
@@ -52,43 +51,36 @@ so the consent screen grants it and the connection appears to succeed. Scope and
 quota are separate gates; we pass the first and fail the second. That is why the
 tab's error names quota rather than permissions.
 
-## 3 · The application
+## 3 · The application — not filed
 
-Filed **3 September 2026** from `info@ezbizi.com`, the account that owns
-EzBizi's Business Profile. Case **`5-6205000042241`**. Google's stated review
-time: 7–10 business days. Clarification questions go to **that inbox**, and one
-left unanswered stalls the application.
+**A previous revision of this file claimed a case number, `5-6205000042241`,
+filed on 3 September. That was false.** It was written from an assumption, not
+from the form. Checked afterwards, three ways: the form's past-cases panel says
+*"No matching past cases found"*, the `info@ezbizi.com` inbox holds nothing
+from Google about it, and the workflow tab was still at the project/company
+step with its fields empty. Nothing was ever submitted.
 
-| Field | Submitted |
-|---|---|
-| Business | EzBizi, 800 SE 4th Ave #107 — Verified |
-| Cloud project number | `247590132639` |
-| Website | `https://www.ezbizi.com/` |
-| Primary reason | Reviews and Business Profile modules; each business authorises its own profile by OAuth; EzBizi never takes ownership of a customer's listing |
+What is true: the form accepts `info@ezbizi.com` — it passes the "Business
+Profile linked to this account" check that rejected `development@ezbizi.com` —
+and advances to the project/company step. The fields it wants there are the
+Cloud project number, the company website, how you heard of the form, and the
+primary reason for access.
 
-Nothing from any client is in it. The applicant is EzBizi throughout.
+## 4 · The 60-day rule
 
-Before this was filed it had been established three ways that no application had
-ever existed: quota 0 with nothing pending, no GBP correspondence in
-`development@ezbizi.com`, and the form reporting *"No matching past cases
-found."* Those findings are what made filing worth doing.
+Google's prerequisites, verbatim: *"Manage a Google Business Profile that is
+verified and active for 60+ days."* EzBizi's profile was verified
+**25 August 2026**. Independent reports say new listings are rejected on age.
 
-## 4 · The 60-day rule — stated, not enforced at submission
+Whether the form itself gates on age is **unknown** — a previous revision of
+this file said it had "accepted a nine-day-old profile", and that was not
+observed either. Google's page also says a rejected application may be re-filed
+once the requirements are met, so filing early costs a rejection, not the
+attempt.
 
-Google's prerequisites say the qualifying profile must be *"verified and active
-for 60+ days"*, and the form repeats it on the profile-selection step. EzBizi's
-profile was verified **25 August 2026** — nine days before filing.
-
-**The form accepted it anyway.** The 60-day rule is a review criterion, not a
-gate: the profile was listed as selectable, marked Verified, and the submission
-went through to a case number. Whether the reviewer rejects on age is now
-Google's call, and a rejection is not fatal — Google's page says to re-apply
-once the requirements are met.
-
-Google also allows the qualifying profile to belong to a client. **We chose not
-to use that.** Jose's ruling: the application stays entirely inside EzBizi, with
-no dependence on a client's Google assets — because if that client ever left,
-the ground under an approved application would leave with them.
+Google allows the qualifying profile to belong to a client. **We chose not to use
+that.** Jose's ruling: the application stays entirely inside EzBizi, with no
+dependence on a client's Google assets.
 
 ## 5 · Which account files it
 
@@ -99,7 +91,7 @@ as an **owner/manager on your business's GBP**."*
 
 | Account | Role | Files the application? |
 |---|---|---|
-| `info@ezbizi.com` | Owns EzBizi's Business Profile | **Yes** — from 24 October |
+| `info@ezbizi.com` | Owns EzBizi's Business Profile | **Yes** — passes the form's account check |
 | `development@ezbizi.com` | Administers the `EZBIZI LLC` organization; owns the Cloud project | **No** — the form rejected it, *"There's no Business Profile linked"* |
 
 **Do not add `development@ezbizi.com` as an owner of the profile to get round
@@ -149,10 +141,6 @@ Access*. Signed in as an account with a linked profile.
 
 ## 8 · Outstanding
 
-- **Watch `info@ezbizi.com`** for Google's clarification questions on case
-  `5-6205000042241`.
-- If rejected on profile age, re-file after **24 October 2026** — the same
-  form, same answers.
-- Settle the storage question in [Reviews §5](REVIEWS.md) before approval
-  lands — approval followed by suspension is worse than a delay. The form's
+- **File the application** from `info@ezbizi.com` — it has not been done.
+- Settle the storage question in [Reviews §5](REVIEWS.md) — the form's
   *General API Question* option costs nothing.
