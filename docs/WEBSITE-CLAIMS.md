@@ -1,5 +1,37 @@
 # What the website claims, and on whose authority
 
+> ## ⚠ PENDING PUBLICATION — `c0b28cd`, committed 2026-09-03, NOT on the site
+>
+> **Two false claims are live on www.ezbizi.com until this is published.** The fix
+> is on `main`; only the publish is outstanding. Delete this block once the two
+> checks below pass.
+>
+> 1. **The site sells Tasks, which is retired from the product.** The deployed
+>    client carries zero Tasks screens, so a customer on `0.0.0148` has no Tasks
+>    screen at all.
+> 2. **A billing claim.** Homepage step 04 read "**Bill** from the completed
+>    work". `billing` was in the gate; the word was `Bill`.
+>
+> **Who publishes:** `scripts/deploy-www.sh`, which belongs to the deploy desk,
+> and the call is **Jose's** — an outward-facing publish is not actioned on a
+> peer's request. `docs/MODULE-OWNERS.md:147` names `ezbizi-a1` for Deploy and
+> **that session was not alive on 2026-09-03**; the roster's session column is
+> stale exactly as its own header warns. **The role had no address that night.**
+>
+> **Verify it published — do not infer it from a green release.** `deploy.sh:479`
+> runs the site publish last and non-fatally, warning only to stderr:
+>
+> ```
+> curl -sS https://www.ezbizi.com/ | grep -c "Bill from the completed work"   # must be 0
+> curl -sS https://www.ezbizi.com/ | grep -c "id=\"p-task\""                    # must be 0
+> curl -sS https://www.ezbizi.com/social-media/ | grep -c "Five networks send today"  # must be 1
+> ```
+>
+> **This is in a file rather than a message on purpose.** It was handed to a
+> deploy session that ended before publishing, and the next desk has a different
+> name. A message dies with its session; `main` and a file somebody reads do not.
+
+
 The public site says what EzBizi does. This page records **why each claim is
 allowed to be there**, and — more importantly — what must *not* go back on.
 
