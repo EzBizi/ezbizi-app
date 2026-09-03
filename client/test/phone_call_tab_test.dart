@@ -55,6 +55,57 @@ void main() {
     expect((history.top - pad.top).abs(), lessThan(8));
   });
 
+
+  /// The reader can drag the line between two columns.
+  ///
+  /// Every fixed split is wrong for two of the three things somebody does at
+  /// this screen: working a list wants the history wide, taking a call wants
+  /// the customer wide, dialling wants neither.
+  testWidgets('the divider beside the history resizes it', (tester) async {
+    await _pump(tester, size: const Size(1280, 900));
+
+    final before = tester
+        .getRect(find.byKey(const Key('phone-call-history')))
+        .width;
+
+    await tester.drag(
+      find.byKey(const Key('phone-split-history')),
+      const Offset(120, 0),
+    );
+    await tester.pumpAndSettle();
+
+    final after = tester
+        .getRect(find.byKey(const Key('phone-call-history')))
+        .width;
+
+    // 120 asked for, 20 of it eaten by the drag recogniser's slop.
+    expect(
+      after,
+      greaterThan(before + 90),
+      reason: 'dragging the divider right did not widen the history',
+    );
+  });
+
+  /// And it stops at the floor rather than closing the column.
+  ///
+  /// A pane dragged to nothing has no edge left to grab, so it never comes
+  /// back — the drag deletes a column and calls it a preference.
+  testWidgets('a column cannot be dragged shut', (tester) async {
+    await _pump(tester, size: const Size(1280, 900));
+
+    await tester.drag(
+      find.byKey(const Key('phone-split-history')),
+      const Offset(-2000, 0),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getRect(find.byKey(const Key('phone-call-history'))).width,
+      greaterThan(100),
+      reason: 'the history column was dragged shut and cannot be reopened',
+    );
+  });
+
   /// The customer column is not there with nobody to show.
   ///
   /// It is the widest of the three, and empty it holds a sentence explaining
@@ -103,7 +154,14 @@ void main() {
     );
   });
 
-  testWidgets('the desk gives the pad a quarter and the rest to history', (
+  /// The history opens NARROW, and the leftover goes to the pad.
+  ///
+  /// It used to take everything the pad did not want, so with no customer
+  /// column a 1600px desk gave 1199px to a list of phone numbers - which is
+  /// what it looked like, and what got reported. The pad centres its keypad
+  /// in whatever it is given, so the spare width is harmless there and would
+  /// not have been harmless here.
+  testWidgets('the history opens narrow, not on whatever is left', (
     tester,
   ) async {
     await _pump(tester, size: const Size(1600, 900));
@@ -111,9 +169,9 @@ void main() {
     final history = tester.getRect(find.byKey(const Key('phone-call-history')));
     final pad = tester.getRect(find.byKey(const Key('phone-call-pad')));
 
-    // 1599 after the single divider, with no customer column to feed.
-    expect((pad.width - 399.75).abs(), lessThan(1.5));
-    expect((history.width - 1199.25).abs(), lessThan(1.5));
+    // 1591 after the one grabbable divider.
+    expect((history.width - 1591 * 0.26).abs(), lessThan(1.5));
+    expect(history.width, lessThan(pad.width));
   });
 
   /// The roster is the Team face of the same widget, so the softphone it

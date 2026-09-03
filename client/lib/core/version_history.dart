@@ -8,6 +8,26 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0146',
+      date: '3 Sep 2026',
+      items: [
+        'The desktop app can take and make calls. It has been saying the phone '
+            'desk was not connected since the phone arrived on Windows, and '
+            'the fault was one line inside the app: the page that carries the '
+            'call audio was listening for the app on the wrong channel, so the '
+            'sign-in it was sent never reached it and it never started. The '
+            'page loaded, reported itself loaded, and then sat there. Nothing '
+            'was ever wrong with the network, the connection or Twilio - the '
+            'message blaming your network was the app guessing, because it had '
+            'been given no reason to report.',
+        'Communication - Phone - Dial: the columns can be resized. Drag the '
+            'line between any two of them. Recent calls used to take every '
+            'pixel the keypad did not want, which on a wide screen was most of '
+            'the window for a list of phone numbers; it now opens narrow, and '
+            'where you drag it stays for as long as the app is open.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0145',
       date: '3 Sep 2026',
       items: [

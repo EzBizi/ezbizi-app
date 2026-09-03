@@ -7,7 +7,10 @@
  *
  * ── The protocol, deliberately small ────────────────────────────────
  *
- * Dart -> JS, delivered by `postWebMessageAsString(json)`:
+ * Dart -> JS, arriving on `chrome.webview`'s message event. webview_windows
+ * sends with PostWebMessageAsJson, so `event.data` is a parsed OBJECT - it
+ * said AsString here for days while the listener was on the wrong object, and
+ * both halves of that sentence were wrong in the same direction:
  *
  *   {type:'setup',   token}     register with Twilio
  *   {type:'connect', to, callerId}
@@ -176,12 +179,34 @@
     );
   }
 
-  window.addEventListener('message', function (event) {
+  /*
+   * HOST MESSAGES ARRIVE ON `chrome.webview`, NOT ON `window`.
+   *
+   * This listened on `window` and so never heard the host at all. The page
+   * loaded, said so, and then sat there: the token was posted in and landed
+   * nowhere, `device.register()` was never called, no 'ready' ever went back,
+   * and Dart's 10-second wait expired on `registered: false` with no reason to
+   * report - which is the generic "the network is blocking the connection"
+   * banner that desktop showed on every launch for days. The page looked
+   * perfect. Nothing was wrong with the network, the token, or Twilio.
+   *
+   * `window.addEventListener('message')` is the right call in a BROWSER, for
+   * postMessage between frames. WebView2 host messages are a different channel
+   * and this is the one A-1 Tools uses, where the phone works.
+   *
+   * And `event.data` is already an OBJECT: webview_windows sends with
+   * PostWebMessageAsJson (webview.cc:714), so WebView2 parses it before we see
+   * it. `JSON.parse` on it throws, which the old catch swallowed - so fixing
+   * only the listener would have left the same silence.
+   */
+  function onHostMessage(raw) {
     var message;
     try {
-      message = JSON.parse(event.data);
+      message = typeof raw === 'string' ? JSON.parse(raw) : raw;
     } catch (e) {
-      return;
+      // Said out loud rather than dropped. A message the host sent and this
+      // page could not read is how the whole thing went quiet last time.
+      return fail('unreadable message from the app');
     }
     if (!message || !message.type) return;
 
@@ -201,8 +226,21 @@
         if (pendingCall) pendingCall.reject();
         return;
     }
-  });
+  }
 
+  try {
+    window.chrome.webview.addEventListener('message', function (event) {
+      onHostMessage(event.data);
+    });
+  } catch (e) {
+    // Opened directly in a browser rather than hosted by the app. The page
+    // still loads so a developer can exercise getUserMedia by hand; no host
+    // message will ever arrive, which is the honest state and not this bug.
+  }
+
+  // Posted LAST, after the listener is attached: Dart gates the token on it,
+  // and a token that arrives before there is anything listening is dropped
+  // with no retry.
   note('waiting for a token');
   send({ type: 'loaded' });
 })();

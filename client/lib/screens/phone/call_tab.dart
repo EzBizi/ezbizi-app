@@ -704,20 +704,24 @@ class _CallTabState extends State<CallTab> {
     );
   }
 
-  /// The three columns, at 25 · 25 · 50 with a floor under each.
+  /// The three columns, and the reader can drag the lines between them.
   ///
-  /// It was `SizedBox(220)` · `Expanded` · `SizedBox(280)`: the two panes
-  /// holding the most content were pinned at their smallest useful size and
-  /// every extra pixel went to the dial pad. On a 1440 screen that is about
-  /// 19 · 57 · 24, and the pad is capped at 184px of buttons besides — so the
-  /// middle column was 57% of the window around a keypad, with the roster and
-  /// the customer thread squeezed either side of it.
+  /// ── Why the widths are draggable rather than tuned ───────────────
   ///
-  /// The floors matter below about 1050 of desk width. Above that they never
-  /// bind and this is exactly the ratio. Below it the PAD stops shrinking
-  /// first, because it is the only one of the three with a hard minimum: a
-  /// roster or a message thread just gets narrower and stays usable, and a
-  /// keypad stops being tappable.
+  /// They were computed from ratios, and the ratio that is right depends on
+  /// what somebody is doing: working a list wants the history wide, taking a
+  /// call wants the customer wide, and dialling wants neither. Every fixed
+  /// split is wrong for two of the three. Dragging costs about thirty lines
+  /// and ends the argument.
+  ///
+  /// The computed ratios stay as the STARTING widths, so a desk that is never
+  /// dragged still looks deliberate.
+  ///
+  /// ── The floors are still here ────────────────────────────────────
+  ///
+  /// A draggable divider that can be dragged to zero is how a column
+  /// disappears and never comes back, because there is nothing left to grab.
+  /// Each pane keeps its floor and the drag stops there.
   Widget _wide() {
     // The roster is a whole tab now, not a column. It gets the width.
     if (widget.view == CallView.team) return _teammatesPane();
@@ -726,18 +730,34 @@ class _CallTabState extends State<CallTab> {
       builder: (context, constraints) {
         final showCustomer = _customerShowing;
 
-        // One divider when the customer pane is away, two when it is here.
-        final available = constraints.maxWidth - (showCustomer ? 2 : 1);
+        final available =
+            constraints.maxWidth - (showCustomer ? _grip * 2 : _grip);
+        if (available <= 0) return const SizedBox.shrink();
 
-        final pad = math.max(_padFloor, available * 0.25);
-        final rest = available - pad;
+        // Starting widths. The history opened at whatever was left over when
+        // the customer pane was away, which on a wide window was about three
+        // quarters of the screen for a list of phone numbers.
+        var history = _historyWidth ?? available * 0.26;
+        var customer = showCustomer ? (_customerWidth ?? available * 0.44) : 0.0;
 
-        // With no customer pane the history takes the rest rather than a
-        // third of it — otherwise hiding a column leaves a gap where it was,
-        // which reads as a rendering fault rather than as a hidden panel.
-        final history = showCustomer
-            ? math.min(math.max(_teamFloor, rest / 3), rest * 0.5)
-            : rest;
+        // The pad is the one with a hard minimum: a list just gets narrower
+        // and stays readable, a keypad stops being tappable. So it is paid
+        // first and the other two give the width back.
+        var pad = available - history - customer;
+        if (pad < _padFloor) {
+          final short = _padFloor - pad;
+          final give = (history - _historyFloor) + (customer - _customerFloor);
+
+          if (give <= 0) {
+            // Nothing left to take. Let the pad be squeezed rather than
+            // overflow the row, which is a yellow-and-black stripe.
+            pad = math.max(0, available - history - customer);
+          } else {
+            history -= short * ((history - _historyFloor) / give);
+            if (showCustomer) customer -= short * ((customer - _customerFloor) / give);
+            pad = available - history - customer;
+          }
+        }
 
         return Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -756,31 +776,70 @@ class _CallTabState extends State<CallTab> {
                 }),
               ),
             ),
-            VerticalDivider(
-              width: 1,
-              thickness: 1,
-              color: EzBiziTheme.edge(context),
+
+            // Dragging right widens the history and narrows the pad.
+            _resizer(
+              const Key('phone-split-history'),
+              'Drag to resize',
+              (dx) => setState(() {
+                _historyWidth = (history + dx).clamp(
+                  _historyFloor,
+                  available - customer - _padFloor,
+                );
+              }),
             ),
+
             SizedBox(
               key: const Key('phone-call-pad'),
               width: pad,
               child: _padPane(showBack: false, showPerson: false),
             ),
+
             if (showCustomer) ...[
-              VerticalDivider(
-                width: 1,
-                thickness: 1,
-                color: EzBiziTheme.edge(context),
+              // This one sits on the customer's left edge, so dragging right
+              // takes width FROM the customer pane.
+              _resizer(
+                const Key('phone-split-person'),
+                'Drag to resize',
+                (dx) => setState(() {
+                  _customerWidth = (customer - dx).clamp(
+                    _customerFloor,
+                    available - history - _padFloor,
+                  );
+                }),
               ),
               SizedBox(
                 key: const Key('phone-call-person'),
-                width: rest - history,
+                width: customer,
                 child: _personPane(showBack: false),
               ),
             ],
           ],
         );
       },
+    );
+  }
+
+  /// The line between two columns, with enough width either side to catch a
+  /// mouse. A 1px target is a divider nobody discovers is draggable.
+  Widget _resizer(Key key, String tooltip, void Function(double dx) onDrag) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeColumn,
+      child: GestureDetector(
+        key: key,
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragUpdate: (details) => onDrag(details.delta.dx),
+        child: Tooltip(
+          message: tooltip,
+          waitDuration: const Duration(seconds: 1),
+          child: SizedBox(
+            width: _grip,
+            child: Center(
+              child: Container(width: 1, color: EzBiziTheme.edge(context)),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -800,13 +859,23 @@ class _CallTabState extends State<CallTab> {
   bool get _customerShowing =>
       _customerPinned || _onCall || _incomingFrom != null || _peer != null;
 
-  /// Below these the panes stop giving width back.
+  /// Below these the panes stop giving width back, and a drag stops moving.
   ///
-  /// The customer pane has no constant of its own: it takes what is left, and
-  /// at the width where the other two are both exactly on their floors it
-  /// lands on 360, which is the third number the approved layout named.
-  static const double _teamFloor = 240;
+  /// The customer pane needed a constant of its own once it became draggable:
+  /// it used to take whatever was left, so it could not be dragged to nothing
+  /// because nothing ever dragged it.
+  static const double _historyFloor = 200;
   static const double _padFloor = 280;
+  static const double _customerFloor = 280;
+
+  /// The grabbable width of a divider. The line drawn in it is still 1px.
+  static const double _grip = 9;
+
+  /// Null until the reader drags. Held on the state rather than saved, so it
+  /// lasts as long as the app is open and resets on a restart - which is the
+  /// lazy half of this and the half to revisit if anybody minds.
+  double? _historyWidth;
+  double? _customerWidth;
 
   Widget _narrow() {
     return switch (_pane) {
