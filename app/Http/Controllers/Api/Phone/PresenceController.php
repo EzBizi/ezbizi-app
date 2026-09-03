@@ -59,6 +59,82 @@ class PresenceController extends Controller
     }
 
     /** PUT /api/v1/phone/presence */
+    /**
+     * GET /api/v1/phone/presence/me — am I available, across every line?
+     *
+     * Presence is stored per connection because a call arrives on one. But
+     * "I am not available" is a fact about the PERSON, and the app bar that
+     * shows it has no connection in hand and no business learning about one.
+     *
+     * Reported as the strictest state held anywhere: somebody on Do Not
+     * Disturb for one company and available for another is not available in
+     * any sense the chrome can usefully draw, and showing green because one
+     * row says so would be the reassuring half of a split answer.
+     */
+    public function mine(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $states = PhonePresence::query()
+            ->where('user_id', $user->id)
+            ->pluck('state')
+            ->all();
+
+        return response()->json(['data' => [
+            'has_line' => $states !== [],
+            'state' => in_array(PhonePresence::STATE_DND, $states, true)
+                ? PhonePresence::STATE_DND
+                : (in_array(PhonePresence::STATE_ON_CALL, $states, true)
+                    ? PhonePresence::STATE_ON_CALL
+                    : PhonePresence::STATE_REGISTERED),
+        ]]);
+    }
+
+    /**
+     * PUT /api/v1/phone/presence/me — set it everywhere at once.
+     *
+     * Somebody stepping away is stepping away from all of it. Setting this per
+     * connection would mean a dispatcher covering three companies has to say
+     * it three times and can leave one behind — and the one left behind is the
+     * one that rings.
+     *
+     * Only rows that already exist are updated. A row is created when a desk
+     * registers on a line; inventing one here would mark somebody present on a
+     * connection they have never opened.
+     */
+    public function setMine(Request $request): JsonResponse
+    {
+        $input = $request->validate([
+            'state' => ['required', Rule::in([
+                PhonePresence::STATE_REGISTERED,
+                PhonePresence::STATE_DND,
+            ])],
+        ]);
+
+        $user = $request->user();
+
+        $rows = PhonePresence::query()
+            ->where('user_id', $user->id)
+
+            // A live call is not a state anybody sets from a toggle, and
+            // overwriting it would mark somebody free while they are talking.
+            ->where('state', '!=', PhonePresence::STATE_ON_CALL);
+
+        // Counted BEFORE the update, not taken from its return value.
+        //
+        // `update()` reports rows it CHANGED, so somebody setting themselves
+        // available when they already are gets zero — a true number answering
+        // a question nobody asked. What a caller wants to know is how many of
+        // their lines this now applies to.
+        $lines = (clone $rows)->count();
+        $rows->update(['state' => $input['state']]);
+
+        return response()->json(['data' => [
+            'state' => $input['state'],
+            'lines' => $lines,
+        ]]);
+    }
+
     public function update(Request $request): JsonResponse
     {
         $this->authorize('viewAny', PhoneConnection::class);

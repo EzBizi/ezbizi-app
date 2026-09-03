@@ -44,8 +44,12 @@ class _PhoneScreenState extends State<PhoneScreen> {
       () => PhoneTab(api: widget.api, session: widget.session),
     ),
     (
-      'Team',
-      Icons.groups_outlined,
+      // Users, not Team. This tab assigns extensions and outbound lines to
+      // PEOPLE; the live roster you call and message is under Phone. Two tabs
+      // called Team, one of them administrative, is a name that tells you
+      // nothing about which one you want.
+      'Users',
+      Icons.badge_outlined,
       () => TeamTab(api: widget.api, session: widget.session),
     ),
     (

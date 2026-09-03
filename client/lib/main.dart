@@ -37,6 +37,7 @@ import 'widgets/module_page_header.dart';
 import 'widgets/notification_bell.dart';
 import 'widgets/scope_switcher.dart';
 import 'widgets/user_avatar.dart';
+import 'widgets/availability_button.dart';
 
 Future<void> main() async {
   // Bindings first: TokenStore.init reaches a platform channel (the keychain),
@@ -857,6 +858,13 @@ class _HomeShellState extends State<HomeShell> {
                   busy: _punching,
                   onPressed: _punch,
                 ),
+
+              // Beside Clock In, because they are the same kind of fact: am I
+              // here, and am I taking calls. It used to live on the Dial pad,
+              // so the only way to stop your phone ringing was to navigate to
+              // the phone — two taps away at exactly the moment you want it.
+              // Draws nothing for somebody who is not on a line.
+              AvailabilityButton(api: widget.api),
               // Light / dark, one tap, from anywhere.
               //
               // It is the same preference the account screen holds (§2.1 category

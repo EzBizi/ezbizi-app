@@ -1041,6 +1041,11 @@ Route::prefix('v1')
         // Ring my own handset, then the customer. The only way to place a
         // call from a platform with no Twilio Voice SDK, which is every one
         // of them except a browser.
+        // Availability as a fact about the PERSON, so the app bar can show and
+        // change it without knowing which connections they are on.
+        Route::get('phone/presence/me', [PhonePresenceController::class, 'mine']);
+        Route::put('phone/presence/me', [PhonePresenceController::class, 'setMine']);
+
         Route::post('phone/calls/bridge', [PhoneCallsController::class, 'bridge']);
 
         Route::get('phone/calls', [PhoneCallsController::class, 'index']);

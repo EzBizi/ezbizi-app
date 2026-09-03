@@ -11,6 +11,14 @@ class VersionHistory {
       version: '0.0.0144',
       date: '3 Sep 2026',
       items: [
+        'Whether you are taking calls now sits at the top of every screen, '
+            'next to Clock In, as a handset with a green or red dot. It used '
+            'to live on the dial pad, so the only way to stop your phone '
+            'ringing was to go to the phone. Setting it covers every line you '
+            'are on at once, and it will not interrupt a call you are already '
+            'on.',
+        'Communication: the Team tab is now called Users - it is where '
+            'extensions and outbound lines are assigned to people.',
         'The desktop app can take calls again. It has been saying the phone '
             'desk was not connected on every launch, and the reason was inside '
             'the app rather than on your network: the part of the window that '

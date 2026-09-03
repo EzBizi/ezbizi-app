@@ -315,19 +315,6 @@ class _CallTabState extends State<CallTab> {
   bool _bridging = false;
   String? _bridgeNote;
 
-  Future<void> _toggleDnd() async {
-    final number = _selected;
-    if (number == null) return;
-
-    final next = !_dnd;
-    setState(() => _dnd = next);
-
-    await widget.api.put('/phone/presence', {
-      'connection_id': number.connectionId,
-      'state': next ? 'dnd' : 'registered',
-    });
-  }
-
   Future<void> _placeCall({required bool internal}) async {
     final number = _selected;
     if (number == null) return;
@@ -1029,13 +1016,12 @@ class _CallTabState extends State<CallTab> {
                     ),
                 ],
               ),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton(
-                  onPressed: _toggleDnd,
-                  child: Text(_dnd ? 'Available' : 'Do not disturb'),
-                ),
-              ),
+              // The Do not disturb button moved to the app bar, beside Clock
+              // In, so it is reachable from anywhere rather than only from the
+              // screen you are trying to stop interrupting you. Two controls
+              // for one fact is the drift this module keeps removing, so this
+              // one is gone rather than mirrored — the line below still SAYS
+              // the state, which is reporting, not a second switch.
             ],
           ),
         ),
