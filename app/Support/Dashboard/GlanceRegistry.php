@@ -15,7 +15,6 @@ use App\Support\Dashboard\Glances\BusinessProfileGlance;
 use App\Support\Dashboard\Glances\LeadsGlance;
 use App\Support\Dashboard\Glances\ReviewsGlance;
 use App\Support\Dashboard\Glances\ServicesGlance;
-use App\Support\Dashboard\Glances\TasksGlance;
 use App\Support\Dashboard\Glances\WebManagementGlance;
 use App\Support\Modules\ModuleAvailability;
 use App\Support\Tenancy\TenantContext;
@@ -35,7 +34,7 @@ class GlanceRegistry
      * @var string[]
      */
     public const ORDER = [
-        'tasks', 'hr', 'customers', 'jobs', 'scheduling', 'inspection', 'marketing',
+        'hr', 'customers', 'jobs', 'scheduling', 'inspection', 'marketing',
         'web_management', 'phone', 'fleet_management', 'inventory',
         'services', 'leads', 'reviews', 'business_profile', 'email', 'training',
         'automations', 'monitoring',
@@ -96,7 +95,6 @@ class GlanceRegistry
      * @var class-string<Glance>[]
      */
     private const GLANCES = [
-        TasksGlance::class,
         HrGlance::class,
         CustomersGlance::class,
         JobsGlance::class,

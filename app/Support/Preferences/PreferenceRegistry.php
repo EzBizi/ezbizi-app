@@ -135,14 +135,6 @@ class PreferenceRegistry
                 'default' => '',
                 'help' => 'Leave blank to follow the organization. Login, the sidebar and Settings read this now; the rest of the app still follows later.',
             ],
-
-            'tasks.due_reminder_hours' => [
-                'label' => 'Task due reminder',
-                'type' => 'enum',
-                'default' => 24,
-                'options' => [1, 4, 24, 48, 72],
-                'help' => 'How many hours before the end of the due day to remind you.',
-            ],
         ];
     }
 

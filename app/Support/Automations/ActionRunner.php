@@ -9,9 +9,6 @@ use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\PhoneCall;
 use App\Models\PhoneNumber;
-use App\Models\Task;
-use App\Models\TaskBoard;
-use App\Models\TaskGroup;
 use App\Models\TrainingAssignment;
 use App\Models\User;
 use App\Models\Vehicle;
@@ -20,8 +17,6 @@ use App\Support\Fleet\VehicleStatus;
 use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Scoping\ViewScope;
-use App\Support\Tasks\TaskUpdateWriter;
-use App\Support\Tasks\TaskWriter;
 use App\Support\TimeClock\TimeClock;
 use App\Support\Training\AssignmentWriter;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -173,8 +168,6 @@ class ActionRunner
         private readonly AuditLogger $audit,
         private readonly NotificationDispatcher $notifications,
         private readonly RecordNumberGenerator $numbers,
-        private readonly TaskWriter $tasks,
-        private readonly TaskUpdateWriter $updates,
         private readonly TimeClock $timeClock,
         private readonly SmsCompliance $smsCompliance,
         private readonly TwilioGateway $twilio,
@@ -222,13 +215,6 @@ class ActionRunner
             'missed.create_job' => $this->createJobFromMissed($event, $subject),
             'sms.send' => $this->sendSms($action, $event, $automation),
 
-            'task.create' => $this->createTask($action, $event, $automation),
-            'task.assign_owner' => $this->updateTask($action, $event, $subject, $automation, 'owner_user_id'),
-            'task.set_status' => $this->updateTask($action, $event, $subject, $automation, 'status_option_id'),
-            'task.set_due_date' => $this->updateTask($action, $event, $subject, $automation, 'due_on'),
-            'task.move_group' => $this->moveTask($action, $event, $subject, $automation),
-            'task.add_update' => $this->addTaskUpdate($action, $event, $subject, $automation, $actionIndex),
-
             'time_clock.clock_in' => $this->punch($event, $subject, in: true),
             'time_clock.clock_out' => $this->punch($event, $subject, in: false),
 
@@ -241,105 +227,16 @@ class ActionRunner
         };
     }
 
-    private function createTask(array $action, AutomationEvent $event, ?Automation $automation): array
-    {
-        [$actor, $scope] = $this->taskContext($automation);
-        $board = TaskBoard::query()->active()->find($action['board_id'] ?? null);
-        if ($board === null) {
-            return ['type' => 'task.create', 'ok' => false, 'detail' => 'The selected task board is unavailable.'];
-        }
-        $task = $this->tasks->create($actor, $board, $scope, [
-            'title' => $action['title'] ?? null,
-            'description' => $action['description'] ?? null,
-            'group_id' => $action['group_id'] ?? null,
-            'status_option_id' => $action['status_option_id'] ?? null,
-            'owner_user_id' => $action['owner_user_id'] ?? null,
-            'due_on' => $action['due_on'] ?? null,
-        ], $event);
-
-        return ['type' => 'task.create', 'ok' => true, 'detail' => "Created {$task->number}."];
-    }
-
-    private function updateTask(
-        array $action,
-        AutomationEvent $event,
-        ?Model $subject,
-        ?Automation $automation,
-        string $field,
-    ): array {
-        if (! $subject instanceof Task) {
-            return ['type' => $action['type'], 'ok' => false, 'detail' => 'This action requires a Task trigger.'];
-        }
-        [$actor, $scope] = $this->taskContext($automation);
-        $value = match ($field) {
-            'owner_user_id' => $action['owner_user_id'] ?? null,
-            'status_option_id' => $action['status_option_id'] ?? null,
-            'due_on' => $action['due_on'] ?? null,
-        };
-        $updated = $this->tasks->update(
-            $actor,
-            $subject,
-            $scope,
-            (int) $subject->fresh()->version,
-            [$field => $value],
-            causationId: $event->id,
-            causedBy: $event,
-        );
-
-        return ['type' => $action['type'], 'ok' => true, 'detail' => "Updated {$updated->number}."];
-    }
-
-    private function moveTask(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation): array
-    {
-        if (! $subject instanceof Task || $subject->parent_task_id !== null) {
-            return ['type' => 'task.move_group', 'ok' => false, 'detail' => 'Only a top-level Task can move between groups.'];
-        }
-        [$actor, $scope] = $this->taskContext($automation);
-        $fresh = $subject->fresh();
-        $source = TaskGroup::query()->active()->where('board_id', $fresh->board_id)->findOrFail($fresh->group_id);
-        $destination = TaskGroup::query()->active()->where('board_id', $fresh->board_id)
-            ->findOrFail($action['group_id'] ?? null);
-        $moved = $this->tasks->reorder($actor, $fresh->board, $scope, [
-            'task_id' => $fresh->id,
-            'destination_group_id' => $destination->id,
-            'expected_task_version' => (int) $fresh->version,
-            'expected_source_order_version' => (int) $source->order_version,
-            'expected_destination_order_version' => (int) $destination->order_version,
-            'before_task_id' => null,
-            'after_task_id' => null,
-        ], $event);
-
-        return ['type' => 'task.move_group', 'ok' => true, 'detail' => "Moved {$moved->number}."];
-    }
-
-    private function addTaskUpdate(
-        array $action,
-        AutomationEvent $event,
-        ?Model $subject,
-        ?Automation $automation,
-        int $actionIndex,
-    ): array {
-        if (! $subject instanceof Task) {
-            return ['type' => 'task.add_update', 'ok' => false, 'detail' => 'This action requires a Task trigger.'];
-        }
-        [$actor, $scope] = $this->taskContext($automation);
-        $update = $this->updates->create(
-            $actor,
-            $subject,
-            $scope,
-            (string) ($action['body'] ?? ''),
-            "auto:{$automation->id}:{$event->id}:{$actionIndex}",
-            $event,
-        );
-
-        return ['type' => 'task.add_update', 'ok' => true, 'detail' => "Added update {$update->id}."];
-    }
-
-    /** @return array{0:User,1:ViewScope} */
+    /**
+     * The actor and scope an automation action runs as — its own creator,
+     * standing exactly where they stood when they saved the rule.
+     *
+     * @return array{0:User,1:ViewScope}
+     */
     private function taskContext(?Automation $automation): array
     {
         if ($automation === null) {
-            throw new InvalidArgumentException('A task automation action requires its rule identity.');
+            throw new InvalidArgumentException('This automation action requires its rule identity.');
         }
         $actor = User::query()->where('is_active', true)->find($automation->created_by);
         if ($actor === null) {
@@ -550,16 +447,14 @@ class ActionRunner
      * `AssignmentsController::store` calls — a rule and a person take the
      * identical write path, so reach-bounding (`AssignmentReach`) cannot be
      * bypassed by writing a rule instead of clicking a button. The ASSIGNER
-     * is the automation's own creator, resolved the same way
-     * [taskContext] already resolves it for every task action: a rule
+     * is the automation's own creator, resolved by [taskContext]: a rule
      * reaches no further than the person who saved it could reach by hand.
      *
      * The assignee comes from the action's own config when a rule author set
      * one (`assignee_type`/`assignee_id` — the picker offers a specific
-     * person or role, same as `owner_user_id` does for `task.assign_owner`),
-     * and falls back to the triggering event's subject when it is a User —
-     * the shape the trigger's own description names: "Paired with 'Account
-     * activated' this is how an induction arrives on its own"
+     * person or role), and falls back to the triggering event's subject when
+     * it is a User — the shape the trigger's own description names: "Paired
+     * with 'Account activated' this is how an induction arrives on its own"
      * (ModuleServiceProvider).
      *
      * Both of `AssignmentWriter::create`'s failure modes are caught here

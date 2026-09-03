@@ -147,14 +147,10 @@ class AppServiceProvider extends ServiceProvider
         \Illuminate\Database\Eloquent\Relations\Relation::morphMap(
             [
                 ...\App\Support\Files\Attachables::all(),
-                // Internal-only identities. They are intentionally absent from
-                // Attachables::all(), so the generic public upload/list API can
-                // never target Tasks or rebind an update attachment.
-                'tasks' => \App\Models\Task::class,
-                'task_updates' => \App\Models\TaskUpdate::class,
-                // A submitted inspection report, for the same reason: its
-                // photographs arrive by being re-pointed from the run at submit,
-                // never by an upload naming the report. See Attachables.
+                // A submitted inspection report is intentionally absent from
+                // Attachables::all() too: its photographs arrive by being
+                // re-pointed from the run at submit, never by an upload naming
+                // the report directly. See Attachables.
                 'inspection_reports' => \App\Models\InspectionReport::class,
             ],
         );

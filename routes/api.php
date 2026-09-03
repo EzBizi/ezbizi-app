@@ -103,35 +103,6 @@ use App\Http\Controllers\Api\StaffController;
 use App\Http\Controllers\Api\StaffPhoneRequestsController;
 use App\Http\Controllers\Api\StaffSuggestionsController;
 use App\Http\Controllers\Api\SuggestionsController;
-use App\Http\Controllers\Api\Tasks\MyTasksController;
-use App\Http\Controllers\Api\Tasks\TaskBoardMembersController;
-use App\Http\Controllers\Api\Tasks\TaskBoardPreferencesController;
-use App\Http\Controllers\Api\Tasks\TaskBoardRecoveryController;
-use App\Http\Controllers\Api\Tasks\TaskBoardRowsController;
-use App\Http\Controllers\Api\Tasks\TaskBoardsController;
-use App\Http\Controllers\Api\Tasks\TaskBulkController;
-use App\Http\Controllers\Api\Tasks\TaskCollaboratorsController;
-use App\Http\Controllers\Api\Tasks\TaskColumnsController;
-use App\Http\Controllers\Api\Tasks\TaskColumnValuesController;
-use App\Http\Controllers\Api\Tasks\TaskDependenciesController;
-use App\Http\Controllers\Api\Tasks\TaskDetailsController;
-use App\Http\Controllers\Api\Tasks\TaskDuplicationController;
-use App\Http\Controllers\Api\Tasks\TaskExportsController;
-use App\Http\Controllers\Api\Tasks\TaskFoldersController;
-use App\Http\Controllers\Api\Tasks\TaskGroupsController;
-use App\Http\Controllers\Api\Tasks\TaskImportsController;
-use App\Http\Controllers\Api\Tasks\TaskOrderController;
-use App\Http\Controllers\Api\Tasks\TaskParticipantsController;
-use App\Http\Controllers\Api\Tasks\TaskPrioritiesController;
-use App\Http\Controllers\Api\Tasks\TaskQuickSearchController;
-use App\Http\Controllers\Api\Tasks\TaskRecordLinksController;
-use App\Http\Controllers\Api\Tasks\TaskRecurrenceController;
-use App\Http\Controllers\Api\Tasks\TasksController;
-use App\Http\Controllers\Api\Tasks\TaskStatusesController;
-use App\Http\Controllers\Api\Tasks\TaskUpdateAttachmentsController;
-use App\Http\Controllers\Api\Tasks\TaskUpdatesController;
-use App\Http\Controllers\Api\Tasks\TaskViewsController;
-use App\Http\Controllers\Api\Tasks\TaskWatchPreferencesController;
 use App\Http\Controllers\Api\TimeClockController;
 use App\Http\Controllers\Api\Training\AssignmentsController as TrainingAssignmentsController;
 use App\Http\Controllers\Api\Training\GuidesController as TrainingGuidesController;
@@ -151,7 +122,6 @@ use App\Http\Controllers\Api\Web\PublicValuesController as WebPublicValuesContro
 use App\Http\Controllers\Api\Web\SnippetController as WebSnippetController;
 use App\Http\Controllers\Api\Web\SitesController as WebSitesController;
 use App\Http\Controllers\Api\Web\ValuesController as WebValuesController;
-use App\Http\Middleware\EnsureTaskRouteAccess;
 use App\Models\PlatformStaffLink;
 use App\Support\Auth\PasswordPolicy;
 use App\Support\Auth\TwoFactorPolicy;
@@ -488,97 +458,6 @@ Route::prefix('v1')
         Route::post('suggestions', [SuggestionsController::class, 'store']);
         Route::patch('suggestions/{suggestion}', [SuggestionsController::class, 'update']);
         Route::delete('suggestions/{suggestion}', [SuggestionsController::class, 'destroy']);
-
-        Route::middleware(EnsureTaskRouteAccess::class)->group(function () {
-            Route::get('tasks/folders', [TaskFoldersController::class, 'index']);
-            Route::post('tasks/folders', [TaskFoldersController::class, 'store']);
-            Route::patch('tasks/folders/{folder}', [TaskFoldersController::class, 'update']);
-            Route::post('tasks/folders/{folder}/archive', [TaskFoldersController::class, 'archive']);
-            Route::post('tasks/folders/{folder}/restore', [TaskFoldersController::class, 'restore']);
-
-            Route::get('tasks/boards', [TaskBoardsController::class, 'index']);
-            Route::post('tasks/boards', [TaskBoardsController::class, 'store']);
-            Route::get('tasks/my', [MyTasksController::class, 'index']);
-            Route::get('tasks/search', [TaskQuickSearchController::class, 'index']);
-            Route::get('tasks/boards/{board}', [TaskBoardsController::class, 'show']);
-            Route::patch('tasks/boards/{board}', [TaskBoardsController::class, 'update']);
-            Route::post('tasks/boards/{board}/archive', [TaskBoardsController::class, 'archive']);
-            Route::post('tasks/boards/{board}/restore', [TaskBoardsController::class, 'restore']);
-            Route::post('tasks/boards/{board}/duplicate', [TaskBoardsController::class, 'duplicate']);
-            Route::get('tasks/boards/{board}/duplicate-source', [TaskBoardsController::class, 'duplicateSource']);
-            Route::post('tasks/boards/{board}/imports/preview', [TaskImportsController::class, 'preview']);
-            Route::post('tasks/boards/{board}/imports/commit', [TaskImportsController::class, 'commit']);
-            Route::get('tasks/boards/{board}/exports/{format}', [TaskExportsController::class, 'show']);
-            Route::get('tasks/boards/{board}/rows', [TaskBoardRowsController::class, 'index']);
-            Route::get('tasks/boards/{board}/tasks/{taskId}', [TaskDetailsController::class, 'show']);
-            Route::get('tasks/boards/{board}/views', [TaskViewsController::class, 'index']);
-            Route::post('tasks/boards/{board}/views', [TaskViewsController::class, 'store']);
-            Route::post('tasks/boards/{board}/views/reorder', [TaskViewsController::class, 'reorder']);
-            Route::patch('tasks/boards/{board}/views/{viewId}', [TaskViewsController::class, 'update']);
-            Route::delete('tasks/boards/{board}/views/{viewId}', [TaskViewsController::class, 'destroy']);
-            Route::post('tasks/boards/{board}/views/{viewId}/duplicate', [TaskViewsController::class, 'duplicate']);
-            Route::put('tasks/boards/{board}/views/{viewId}/preference', [TaskViewsController::class, 'preference']);
-
-            Route::post('tasks/boards/{board}/tasks', [TasksController::class, 'store']);
-            Route::patch('tasks/{task}', [TasksController::class, 'update']);
-            Route::put('tasks/{task}/collaborators', [TaskCollaboratorsController::class, 'update']);
-            Route::put('tasks/{task}/watch', [TaskWatchPreferencesController::class, 'update']);
-            Route::put('tasks/{task}/recurrence', [TaskRecurrenceController::class, 'update']);
-            Route::post('tasks/{task}/update-attachments', [TaskUpdateAttachmentsController::class, 'store']);
-            Route::post('tasks/{task}/updates', [TaskUpdatesController::class, 'store']);
-            Route::patch('tasks/{task}/updates/{update}', [TaskUpdatesController::class, 'update']);
-            Route::post('tasks/{task}/updates/{update}/archive', [TaskUpdatesController::class, 'archive']);
-            Route::get('tasks/{task}/record-links/types', [TaskRecordLinksController::class, 'types']);
-            Route::get('tasks/{task}/record-links/search', [TaskRecordLinksController::class, 'search']);
-            Route::post('tasks/{task}/record-links', [TaskRecordLinksController::class, 'store']);
-            Route::delete('tasks/{task}/record-links/{link}', [TaskRecordLinksController::class, 'destroy']);
-            Route::post('tasks/{task}/dependencies', [TaskDependenciesController::class, 'store']);
-            Route::delete('tasks/dependencies/{dependency}', [TaskDependenciesController::class, 'destroy']);
-            Route::post('tasks/{task}/archive', [TasksController::class, 'archive']);
-            Route::post('tasks/{task}/restore', [TasksController::class, 'restore']);
-            Route::put('tasks/{task}/columns/{column}', [TaskColumnValuesController::class, 'update']);
-            Route::post('tasks/{task}/duplicate', [TaskDuplicationController::class, 'store']);
-            Route::post('tasks/boards/{board}/bulk', [TaskBulkController::class, 'store']);
-            Route::post('tasks/boards/{board}/order', [TaskOrderController::class, 'store']);
-
-            Route::get('tasks/boards/{board}/members', [TaskBoardMembersController::class, 'index']);
-            Route::post('tasks/boards/{board}/members', [TaskBoardMembersController::class, 'store']);
-            Route::patch('tasks/boards/{board}/members/{membership}', [TaskBoardMembersController::class, 'update']);
-            Route::delete('tasks/boards/{board}/members/{membership}', [TaskBoardMembersController::class, 'destroy']);
-            Route::post('tasks/boards/{board}/recovery', [TaskBoardRecoveryController::class, 'store']);
-            Route::put('tasks/boards/{board}/preference', [TaskBoardPreferencesController::class, 'update']);
-            Route::get('tasks/boards/{board}/participants', [TaskParticipantsController::class, 'index']);
-
-            Route::post('tasks/boards/{board}/groups', [TaskGroupsController::class, 'store']);
-            Route::post('tasks/boards/{board}/groups/reorder', [TaskGroupsController::class, 'reorder']);
-            Route::patch('tasks/boards/{board}/groups/{group}', [TaskGroupsController::class, 'update']);
-            Route::post('tasks/boards/{board}/groups/{group}/archive', [TaskGroupsController::class, 'archive']);
-            Route::post('tasks/boards/{board}/groups/{group}/restore', [TaskGroupsController::class, 'restore']);
-
-            Route::post('tasks/boards/{board}/statuses', [TaskStatusesController::class, 'store']);
-            Route::post('tasks/boards/{board}/statuses/reorder', [TaskStatusesController::class, 'reorder']);
-            Route::patch('tasks/boards/{board}/statuses/{status}', [TaskStatusesController::class, 'update']);
-            Route::post('tasks/boards/{board}/statuses/{status}/archive', [TaskStatusesController::class, 'archive']);
-            Route::post('tasks/boards/{board}/statuses/{status}/restore', [TaskStatusesController::class, 'restore']);
-
-            Route::post('tasks/boards/{board}/priorities', [TaskPrioritiesController::class, 'store']);
-            Route::post('tasks/boards/{board}/priorities/reorder', [TaskPrioritiesController::class, 'reorder']);
-            Route::patch('tasks/boards/{board}/priorities/{priority}', [TaskPrioritiesController::class, 'update']);
-            Route::post('tasks/boards/{board}/priorities/{priority}/archive', [TaskPrioritiesController::class, 'archive']);
-            Route::post('tasks/boards/{board}/priorities/{priority}/restore', [TaskPrioritiesController::class, 'restore']);
-
-            Route::post('tasks/boards/{board}/columns', [TaskColumnsController::class, 'store']);
-            Route::post('tasks/boards/{board}/columns/reorder', [TaskColumnsController::class, 'reorder']);
-            Route::patch('tasks/boards/{board}/columns/core/{coreKey}', [TaskColumnsController::class, 'updateCore']);
-            Route::post('tasks/boards/{board}/columns/{column}/options', [TaskColumnsController::class, 'storeOption']);
-            Route::post('tasks/boards/{board}/columns/{column}/options/reorder', [TaskColumnsController::class, 'reorderOptions']);
-            Route::patch('tasks/boards/{board}/columns/{column}/options/{option}', [TaskColumnsController::class, 'updateOption']);
-            Route::post('tasks/boards/{board}/columns/{column}/options/{option}/archive', [TaskColumnsController::class, 'archiveOption']);
-            Route::post('tasks/boards/{board}/columns/{column}/options/{option}/restore', [TaskColumnsController::class, 'restoreOption']);
-            Route::patch('tasks/boards/{board}/columns/{column}', [TaskColumnsController::class, 'update']);
-            Route::post('tasks/boards/{board}/columns/{column}/archive', [TaskColumnsController::class, 'archive']);
-            Route::post('tasks/boards/{board}/columns/{column}/restore', [TaskColumnsController::class, 'restore']);
-        });
 
         // ── The vertical slice: Customer → Job (§18 Phase 2) ─────
         //

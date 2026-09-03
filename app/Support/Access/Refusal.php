@@ -294,43 +294,6 @@ final class Refusal
     }
 
     /**
-     * A proposed "blocks" edge would make two tasks wait on each other,
-     * directly or through others in between (Tasks Phase 2 design §9,
-     * task-4 brief).
-     *
-     * Not a §4 reach failure — the actor holds `tasks.edit` and stands over
-     * the board perfectly well. What is refused is the shape of the graph
-     * itself, so there is nothing to name a place or a remedy-by-assignment
-     * for; the fix is picking a different blocker.
-     */
-    public static function dependencyCycle(): Response
-    {
-        return Response::deny(
-            'That would make each task wait on the other, directly or through others in '
-            .'between, so the dependency was not added. Pick a blocker this task does not '
-            .'already lead back to.'
-        );
-    }
-
-    /**
-     * A "blocks" edge is refused across two different boards (Tasks Phase 2
-     * design §9, task-4 brief).
-     *
-     * `task_dependencies` stores one `board_id` for the pair, and both task
-     * references are compound-keyed against it — a cross-board edge is not a
-     * row the schema can hold, so this is caught here with a sentence rather
-     * than surfacing as a database error.
-     */
-    public static function dependencyCrossBoard(): Response
-    {
-        return Response::deny(
-            'A task can only be blocked by another task on the same board, so this dependency '
-            .'was not added. Move both tasks onto the same board first, or link the record '
-            .'instead of drawing a dependency between boards.'
-        );
-    }
-
-    /**
      * A test's own gate is not open yet (training task-8 brief, decision 1).
      *
      * Not a §4 reach failure — the learner can already see this test, having
@@ -349,29 +312,6 @@ final class Refusal
     }
 
     /**
-     * Recurrence cannot be declared on a subtask (Tasks Phase 2 design §11,
-     * task-6 brief, fix round 2).
-     *
-     * Not a §4 reach failure — the actor holds `tasks.edit` and stands over
-     * the board perfectly well, same shape as [dependencyCycle]. What is
-     * refused is the shape of the request itself: a subtask is a checklist
-     * item under its parent rather than independent work, and Phase 1 has
-     * exactly one subtask level, so there is no defensible answer to what a
-     * recurring subtask does when its parent is archived, completed, or
-     * deleted. Refusing at declaration is one validation rather than
-     * teaching every later consumer of `recurrence` a second shape nobody
-     * asked for.
-     */
-    public static function recurrenceOnSubtask(): Response
-    {
-        return Response::deny(
-            'A subtask cannot recur on its own — it is a checklist item under its parent '
-            .'task rather than independent work. If this needs to repeat on its own '
-            .'schedule, make it a task of its own instead of a subtask.'
-        );
-    }
-
-    /**
      * A test's own retake cap has been reached (training task-8 brief).
      *
      * The number is the test author's own setting, not a platform constant,
@@ -382,30 +322,6 @@ final class Refusal
     {
         return Response::deny(
             "This test allows at most {$max} attempts, and that many have already been made."
-        );
-    }
-
-    /**
-     * A task's `start_on` would land after its own `due_on` (design spec §8;
-     * task-12 brief, fix round 1).
-     *
-     * Not a §4 reach failure, same shape as [dependencyCycle] and
-     * [recurrenceOnSubtask] — the actor holds `tasks.edit` and stands over
-     * the board perfectly well. What is refused is the shape of the two
-     * dates together, which is why `TaskWriter::applyUpdate` is the only
-     * place that can catch it: a `PATCH` may carry just one of the two
-     * fields, so checking the request in isolation misses the case where an
-     * incoming `start_on` lands after an EXISTING, untouched `due_on` (or
-     * the other way around) — only the writer holds the merged, final
-     * state to compare. Clearing either date is unaffected; a task with
-     * only one date, or neither, has nothing to compare and is always
-     * allowed.
-     */
-    public static function startAfterDue(): Response
-    {
-        return Response::deny(
-            'The start date cannot be after the due date. Move the due date out to match, '
-            .'or pick an earlier start date.'
         );
     }
 }

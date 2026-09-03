@@ -499,10 +499,6 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_STRING, default: 'V-',
             ),
             new SettingDefinition(
-                key: 'numbering.task_prefix', label: 'Task number prefix',
-                type: SettingDefinition::TYPE_STRING, default: 'T-',
-            ),
-            new SettingDefinition(
                 key: 'numbering.item_prefix', label: 'Item number prefix',
                 type: SettingDefinition::TYPE_STRING, default: 'I-',
             ),
@@ -639,21 +635,21 @@ class SettingRegistry
              * Per-SOURCE, which is the axis a company actually complains along.
              *
              * Nobody asks to be told less in general; they ask to stop hearing
-             * about one KIND of thing — "the task board is noisy, the automation
-             * alerts are not". `source` is already the column that separates
-             * those, so it is what these key on rather than a second taxonomy
-             * invented to sit beside it.
+             * about one KIND of thing — "the automation alerts are noisy, HR's
+             * are not". `source` is already the column that separates those, so
+             * it is what these key on rather than a second taxonomy invented to
+             * sit beside it.
              *
              * Finer control than this already exists and is owned elsewhere: a
              * single noisy automation is switched off by its own `is_active`
-             * (Automation::86), and a single noisy task by a TaskWatchPreference.
-             * A per-rule toggle here would be a third place to look when
-             * somebody asks why they stopped hearing about something.
+             * (Automation::86). A per-rule toggle here would be a third place to
+             * look when somebody asks why they stopped hearing about something.
              *
              * There is deliberately no `system` toggle. That source carries
              * "your trial ends tomorrow" and the things a business is worse off
              * for having silenced — the master switch above can still do it, but
-             * it cannot be done by accident while tidying up task noise.
+             * it cannot be done by accident while tidying up noise from one
+             * source.
              */
             new SettingDefinition(
                 key: 'notifications.automation_enabled', label: 'Notifications from automations',
@@ -662,23 +658,12 @@ class SettingRegistry
                     .'and their other actions working — it silences only the telling.',
             ),
             new SettingDefinition(
-                key: 'notifications.task_enabled', label: 'Notifications from tasks',
-                type: SettingDefinition::TYPE_BOOL, default: true,
-                help: 'Assignments, mentions, due reminders and overdue warnings.',
-            ),
-            new SettingDefinition(
                 key: 'notifications.hr_enabled', label: 'Notifications from HR',
                 type: SettingDefinition::TYPE_BOOL, default: true,
                 help: 'Contract amendments and onboarding. These are addressed to one named '
                     .'person rather than broadcast, so they are quiet by nature.',
             ),
 
-            new SettingDefinition(
-                key: 'tasks.due_reminders_enabled', label: 'Send task due reminders',
-                type: SettingDefinition::TYPE_BOOL, default: true,
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
-                help: 'Send each task owner one reminder before their task is due.',
-            ),
             new SettingDefinition(
                 key: 'notifications.quiet_hours', label: 'Quiet hours',
                 type: SettingDefinition::TYPE_TIME_RANGE,

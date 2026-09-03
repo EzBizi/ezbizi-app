@@ -80,23 +80,6 @@ Schedule::command('ezbizi:expire-social-handoffs')->hourly()->withoutOverlapping
 // above the sweep it feeds.
 Schedule::command('ezbizi:watch-mailboxes')->everyMinute()->withoutOverlapping(5);
 
-Schedule::command('ezbizi:dispatch-task-overdue')->hourly()->withoutOverlapping(10);
-Schedule::command('ezbizi:dispatch-task-due-reminders')->hourly()->withoutOverlapping(10);
-
-// Recurring task instances (Tasks Phase 2 design §11), both modes. Its own
-// overlap lock, keyed by this command's own signature same as the two
-// above — distinct from both, so a stuck run of one never blocks another.
-// `on_schedule` series are advanced directly here; `after_completion`
-// series relay through the outbox (TaskWriter emits a cheap marker at
-// completion — see TaskWriter::recordRecurrenceOnCompletion — and this
-// command's other half, TaskRecurrenceWorker::relayPendingCompletions,
-// does the actual lock-heavy instance creation, never inside the
-// completion's own transaction).
-Schedule::command('ezbizi:create-recurring-tasks')->hourly()->withoutOverlapping(10);
-Schedule::command('ezbizi:dispatch-task-notification-intents')->everyMinute()->withoutOverlapping(5);
-Schedule::command('ezbizi:expire-task-update-attachment-candidates')->hourly()->withoutOverlapping(10);
-Schedule::command('ezbizi:expire-task-import-sessions')->hourly()->withoutOverlapping(10);
-
 // Monitoring (2026-08-28-monitoring-pc-specs, task 6). Every five minutes so a
 // device that stops reporting is caught soon after the default 180-second
 // (monitoring.offline_after_seconds) threshold passes, without scanning on

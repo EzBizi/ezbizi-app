@@ -6,8 +6,6 @@ use App\Models\Automation;
 use App\Models\AutomationEvent;
 use App\Models\AutomationRun;
 use App\Models\AutomationVersion;
-use App\Models\Task;
-use App\Models\TaskBoard;
 use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Access\ScopeReach;
@@ -22,10 +20,7 @@ use App\Support\Modules\ModuleRegistry;
 use App\Support\Modules\PermissionCatalogue;
 use App\Support\Modules\TriggerDefinition;
 use App\Support\Privacy\SensitiveValues;
-use App\Support\Scoping\ViewScope;
-use App\Support\Tasks\TaskBoardAccess;
 use App\Support\Tenancy\TenantContext;
-use DateTimeImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -71,12 +66,6 @@ class AutomationsController extends Controller
         // it — an email arriving — can still send a text, so the line and the
         // destination come from the rule rather than the record.
         'sms.send',
-        'task.create',
-        'task.assign_owner',
-        'task.set_status',
-        'task.set_due_date',
-        'task.move_group',
-        'task.add_update',
         // Spelled out in the module too — a two-segment key would otherwise
         // execute as a bare `clock_in` in a namespace every module shares.
         'time_clock.clock_in',
@@ -103,15 +92,6 @@ class AutomationsController extends Controller
         'training.assign',
     ];
 
-    private const TASK_ACTIONS = [
-        'task.create',
-        'task.assign_owner',
-        'task.set_status',
-        'task.set_due_date',
-        'task.move_group',
-        'task.add_update',
-    ];
-
     public function __construct(
         private readonly ModuleRegistry $registry,
         private readonly AutomationEngine $engine,
@@ -120,7 +100,6 @@ class AutomationsController extends Controller
         private readonly TenantContext $tenant,
         private readonly PermissionCatalogue $permissions,
         private readonly ScopeReach $reach,
-        private readonly TaskBoardAccess $taskBoards,
     ) {}
 
     /**
@@ -863,14 +842,7 @@ class AutomationsController extends Controller
         $trigger = $input['trigger_key'] ?? $existing?->trigger_key;
 
         foreach ($input['actions'] ?? [] as $i => $action) {
-            $this->assertActionUsable(
-                $action,
-                $i,
-                $trigger,
-                $request->user(),
-                $scopeType,
-                $scopeId,
-            );
+            $this->assertActionUsable($action, $i, $trigger);
         }
 
         if (array_key_exists('conditions', $input) && $input['conditions'] !== null) {
@@ -1047,9 +1019,6 @@ class AutomationsController extends Controller
         array $action,
         int $index,
         ?string $triggerKey,
-        User $actor,
-        ?string $scopeType,
-        ?string $scopeId,
     ): void {
         $type = $action['type'] ?? null;
 
@@ -1088,139 +1057,6 @@ class AutomationsController extends Controller
 
             $this->assertStatusChangeable($index, $triggerKey);
         }
-
-        if (in_array($type, self::TASK_ACTIONS, strict: true)) {
-            $this->assertTaskActionUsable($action, $index, $triggerKey, $actor, $scopeType, $scopeId);
-        }
-    }
-
-    private function assertTaskActionUsable(
-        array $action,
-        int $index,
-        ?string $triggerKey,
-        User $actor,
-        ?string $scopeType,
-        ?string $scopeId,
-    ): void {
-        $type = $action['type'];
-        $key = "actions.{$index}";
-
-        if ($type !== 'task.create'
-            && $this->registry->subjectOfTrigger((string) $triggerKey)?->model !== Task::class) {
-            throw ValidationException::withMessages([
-                "{$key}.type" => 'This action needs a Task trigger because it changes the triggering task.',
-            ]);
-        }
-
-        $permission = match ($type) {
-            'task.create' => 'tasks.create',
-            'task.add_update' => 'tasks.comment',
-            default => 'tasks.edit',
-        };
-        if (! $actor->hasPermission($permission)) {
-            throw ValidationException::withMessages([
-                "{$key}.type" => "The automation creator needs {$permission} to use this action.",
-            ]);
-        }
-
-        match ($type) {
-            'task.create' => $this->assertCreateTaskAction($action, $key, $actor, $scopeType, $scopeId),
-            'task.assign_owner' => $this->assertUuidValue($action, 'owner_user_id', $key, nullable: true),
-            'task.set_status' => $this->assertUuidValue($action, 'status_option_id', $key),
-            'task.set_due_date' => $this->assertDateValue($action, 'due_on', $key, nullable: true),
-            'task.move_group' => $this->assertUuidValue($action, 'group_id', $key),
-            'task.add_update' => $this->assertNonBlankString($action, 'body', $key),
-        };
-    }
-
-    private function assertCreateTaskAction(
-        array $action,
-        string $key,
-        User $actor,
-        ?string $scopeType,
-        ?string $scopeId,
-    ): void {
-        foreach (['board_id', 'group_id', 'status_option_id'] as $field) {
-            $this->assertUuidValue($action, $field, $key);
-        }
-        $this->assertNonBlankString($action, 'title', $key, 255);
-        $this->assertDateValue($action, 'due_on', $key, nullable: true, required: false);
-        $this->assertUuidValue($action, 'owner_user_id', $key, nullable: true, required: false);
-
-        if (isset($action['description']) && ! is_string($action['description'])) {
-            throw ValidationException::withMessages(["{$key}.description" => 'The description must be text.']);
-        }
-
-        $board = TaskBoard::query()->active()->find($action['board_id']);
-        if ($board === null) {
-            throw ValidationException::withMessages(["{$key}.board_id" => 'That task board is unavailable.']);
-        }
-
-        $scope = ViewScope::forStoredAutomationScope($actor, $scopeType, $scopeId);
-        if ($this->taskBoards->viewDecision($actor, $board, $scope)->denied()) {
-            throw ValidationException::withMessages([
-                "{$key}.board_id" => 'That task board is outside the automation scope or is not shared with its creator.',
-            ]);
-        }
-        if (! $board->groups()->active()->whereKey($action['group_id'])->exists()) {
-            throw ValidationException::withMessages(["{$key}.group_id" => 'That group is not active on the selected board.']);
-        }
-        if (! $board->statusOptions()->active()->whereKey($action['status_option_id'])->exists()) {
-            throw ValidationException::withMessages(["{$key}.status_option_id" => 'That status is not active on the selected board.']);
-        }
-    }
-
-    private function assertUuidValue(
-        array $action,
-        string $field,
-        string $key,
-        bool $nullable = false,
-        bool $required = true,
-    ): void {
-        if (! array_key_exists($field, $action)) {
-            if (! $required) {
-                return;
-            }
-            throw ValidationException::withMessages(["{$key}.{$field}" => 'This field is required.']);
-        }
-        $value = $action[$field];
-        if ($value === null && $nullable) {
-            return;
-        }
-        if (! is_string($value) || ! preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $value)) {
-            throw ValidationException::withMessages(["{$key}.{$field}" => 'Choose a valid value.']);
-        }
-    }
-
-    private function assertDateValue(
-        array $action,
-        string $field,
-        string $key,
-        bool $nullable = false,
-        bool $required = true,
-    ): void {
-        if (! array_key_exists($field, $action)) {
-            if (! $required) {
-                return;
-            }
-            throw ValidationException::withMessages(["{$key}.{$field}" => 'This field is required.']);
-        }
-        $value = $action[$field];
-        if ($value === null && $nullable) {
-            return;
-        }
-        $date = is_string($value) ? DateTimeImmutable::createFromFormat('!Y-m-d', $value) : false;
-        if ($date === false || $date->format('Y-m-d') !== $value) {
-            throw ValidationException::withMessages(["{$key}.{$field}" => 'Use a real date in YYYY-MM-DD format.']);
-        }
-    }
-
-    private function assertNonBlankString(array $action, string $field, string $key, int $max = 100000): void
-    {
-        $value = $action[$field] ?? null;
-        if (! is_string($value) || trim($value) === '' || mb_strlen($value) > $max) {
-            throw ValidationException::withMessages(["{$key}.{$field}" => 'Enter a value for this field.']);
-        }
     }
 
     /** @return list<array{key:string,label:string,module_only:bool,parameters:array}> */
@@ -1256,30 +1092,6 @@ class AutomationsController extends Controller
                 $parameter('number_id', 'Send from', 'phone_number'),
                 $parameter('to', 'Send to', 'text'),
                 $parameter('body', 'Message', 'text'),
-            ]),
-            $type('task.create', 'Create a task', true, [
-                $parameter('board_id', 'Board', 'uuid'),
-                $parameter('group_id', 'Group', 'uuid'),
-                $parameter('status_option_id', 'Status', 'uuid'),
-                $parameter('title', 'Task title', 'text'),
-                $parameter('description', 'Description', 'rich_text', false, true),
-                $parameter('owner_user_id', 'Owner', 'uuid', false, true),
-                $parameter('due_on', 'Due date', 'date', false, true),
-            ]),
-            $type('task.assign_owner', 'Assign the owner', true, [
-                $parameter('owner_user_id', 'Owner', 'uuid', true, true),
-            ]),
-            $type('task.set_status', 'Set the status', true, [
-                $parameter('status_option_id', 'Status', 'uuid'),
-            ]),
-            $type('task.set_due_date', 'Set the due date', true, [
-                $parameter('due_on', 'Due date', 'date', true, true),
-            ]),
-            $type('task.move_group', 'Move to a group', true, [
-                $parameter('group_id', 'Group', 'uuid'),
-            ]),
-            $type('task.add_update', 'Add an update', true, [
-                $parameter('body', 'Update', 'rich_text'),
             ]),
         ];
     }
