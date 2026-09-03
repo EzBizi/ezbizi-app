@@ -157,14 +157,18 @@ job information sent is the status of work that came from a Thumbtack enquiry.
 > 4. Click **Disconnect** on the connected account and confirm.
 >
 > What happens afterwards:
-> • EzBizi deletes its stored Thumbtack access and refresh tokens immediately
->   and stops sending anything to Thumbtack. The disconnection is recorded in
->   your EzBizi audit log.
-> • **Phone numbers already registered with Thumbtack are not removed by
->   disconnecting.** They stay on your Thumbtack account until you remove them
->   in Thumbtack, or reconnect EzBizi and let the next sync reconcile them.
-> • Nothing else in EzBizi is affected — your jobs, customers and phone system
->   are untouched, because no Thumbtack data is used by them.
+> • EzBizi tidies up on your Thumbtack account: it removes the team phone
+>   numbers it registered, deletes the webhook it created, and revokes its own
+>   access, so the app no longer appears as connected on Thumbtack.
+> • If Thumbtack cannot be reached at that moment, the disconnection still
+>   completes and EzBizi tells you what it could not tidy up. You are never
+>   left stuck in a connection you cannot remove.
+> • EzBizi deletes its stored tokens immediately, and the disconnection is
+>   recorded in your EzBizi audit log.
+> • Enquiries already received stay in EzBizi as a record of work you did. No
+>   new ones arrive, and because Thumbtack cannot list past enquiries,
+>   reconnecting later will not fill in the gap.
+> • Nothing else in EzBizi is affected.
 
 ---
 
@@ -191,7 +195,7 @@ photos.
    order — revoking first would make the other two impossible. Every step is
    best-effort and none can block the disconnect, because the account somebody
    is trying to disconnect is exactly the one whose token already stopped
-   working. The disconnect answer above must be re-worded before filing.
+   working. The disconnect answer above has been re-worded to match.
 2. **This article assumes the connect UI is deployed.** The Leads restructure
    and the Thumbtack Connect button are committed but not yet on
    app.ezbizi.com. The instructions above are wrong until that ships.
