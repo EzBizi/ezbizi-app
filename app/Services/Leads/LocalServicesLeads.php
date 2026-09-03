@@ -11,6 +11,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 /**
@@ -38,9 +39,6 @@ use RuntimeException;
 class LocalServicesLeads
 {
     private const TIMEOUT = 20;
-
-    /** Google caps this itself; asking for more is refused rather than clamped. */
-    private const PAGE_SIZE = 100;
 
     /**
      * How far back a sync looks when the tenant has no leads yet.
@@ -135,13 +133,42 @@ class LocalServicesLeads
     ): array {
         $customerId = preg_replace('/\D/', '', (string) $connection->remote_id) ?? '';
 
-        $query = array_filter([
-            'pageSize'  => self::PAGE_SIZE,
+
+        /*
+         * GAQL against local_services_lead, not the invented REST method
+         * `localServices:searchDetailedLeadReports`.
+         *
+         * That path is not on googleads.googleapis.com. Production proved it
+         * on 2026-09-03: connect stored the Ads account, Fetch returned 502,
+         * and nothing was written to the log because the catch below used to
+         * throw a status number and swallow Google's body. The Ads API's
+         * read for Local Services leads is googleAds:search. Date literals
+         * are `Y-m-d H:i:s`, not ISO-8601 — the resource rejects the latter.
+         *
+         * And no pageSize. googleAds:search refuses one outright:
+         *
+         *   PAGE_SIZE_NOT_SUPPORTED — "Setting the page size is not supported.
+         *   Search Responses will have fixed page size of '10000' rows."
+         *
+         * Measured against A-1 Chimney's live account on 2026-09-03, checking
+         * this fix before it shipped: with pageSize the call is HTTP 400,
+         * without it HTTP 200. On the Leads screen a 400 looks exactly like the
+         * 404 the invented URL produced, so it would have read as "the fix did
+         * not work" rather than as a second, different fault.
+         *
+         * pageToken stays: the response still pages, it just sizes its own.
+         */
+        $body = array_filter([
             'pageToken' => $pageToken,
             'query'     => sprintf(
-                "SELECT lead_id, lead_type, lead_category, contact_details, lead_status, "
-                ."charge_status, creation_date_time WHERE creation_date_time >= '%s'",
-                $since->toIso8601String(),
+                'SELECT local_services_lead.id, local_services_lead.lead_type, '
+                .'local_services_lead.category_id, local_services_lead.contact_details, '
+                .'local_services_lead.lead_status, local_services_lead.lead_charged, '
+                .'local_services_lead.credit_details.credit_state, '
+                .'local_services_lead.creation_date_time '
+                .'FROM local_services_lead '
+                ."WHERE local_services_lead.creation_date_time >= '%s'",
+                $since->utc()->format('Y-m-d H:i:s'),
             ),
         ], fn ($v) => $v !== null);
 
@@ -149,20 +176,48 @@ class LocalServicesLeads
             $response = Http::withToken($token)
                 ->withHeaders([
                     'developer-token' => (string) config('services.google_ads.developer_token'),
+
+                    /*
+                     * The account being read is its own login customer.
+                     *
+                     * This was an installation-wide
+                     * `services.google_ads.login_customer_id`, and could not be
+                     * one: the manager an account sits under is a fact about
+                     * that connection, not about this deployment. Setting it to
+                     * fix a customer reached through EzBizi's MCC would send
+                     * that same id on every other tenant's request, and Google
+                     * answers PERMISSION_DENIED for any account that manager
+                     * does not manage - one customer fixed, the rest broken,
+                     * and nothing on screen saying why.
+                     *
+                     * listAccessibleCustomers returns accounts the signed-in
+                     * user reaches DIRECTLY and each is stored as its own
+                     * connection, so the customer id is the right login customer
+                     * for every row we hold. Manager-mediated access, if it is
+                     * ever needed, belongs in a column on the connection - put
+                     * there by the flow that knows which manager was used.
+                     */
+                    'login-customer-id' => $customerId,
                 ])
                 ->timeout(self::TIMEOUT)
-                ->get(
-                    GoogleAdsOAuth::endpoint()."/customers/{$customerId}/localServices:searchDetailedLeadReports",
-                    $query,
+                ->post(
+                    GoogleAdsOAuth::endpoint()."/customers/{$customerId}/googleAds:search",
+                    $body,
                 );
         } catch (ConnectionException) {
             throw new RuntimeException('Google did not answer while fetching leads.');
         }
 
         if ($response->failed()) {
-            // The message Google sends is for us, not for a tenant's screen —
-            // it names quotas and resource paths. The caller turns this into a
-            // sentence somebody can act on.
+            $error  = (array) $response->json('error', []);
+            $detail = is_string($error['message'] ?? null) ? (string) $error['message'] : '';
+
+            Log::warning('Google refused a Local Services lead fetch.', [
+                'http_status'   => $response->status(),
+                'google_status' => is_string($error['status'] ?? null) ? $error['status'] : null,
+                'detail'        => mb_substr($detail, 0, 300),
+            ]);
+
             throw new RuntimeException(sprintf(
                 'Google refused the lead request (HTTP %d).',
                 $response->status(),
@@ -172,8 +227,60 @@ class LocalServicesLeads
         $next = $response->json('nextPageToken');
 
         return [
-            'leads' => (array) $response->json('detailedLeadReports', []),
+            'leads' => array_values(array_filter(array_map(
+                fn ($row) => $this->fromSearchRow(is_array($row) ? $row : []),
+                (array) $response->json('results', []),
+            ))),
             'next'  => is_string($next) && $next !== '' ? $next : null,
+        ];
+    }
+
+    /**
+     * googleAds:search nests the resource. store() reads the flat names the
+     * old detailed-lead-report payload used, so this is a reshape, not a
+     * second writer.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>|null
+     */
+    private function fromSearchRow(array $row): ?array
+    {
+        $lead = (array) ($row['localServicesLead'] ?? []);
+        $id   = trim((string) ($lead['id'] ?? ''));
+
+        if ($id === '') {
+            return null;
+        }
+
+        $contact = (array) ($lead['contactDetails'] ?? []);
+        $credit  = (array) ($lead['creditDetails'] ?? []);
+
+        return [
+            'leadId'          => $id,
+            'leadType'        => $lead['leadType'] ?? null,
+            'leadCategory'    => $lead['categoryId'] ?? null,
+            'leadStatus'      => $lead['leadStatus'] ?? null,
+            /*
+             * CHARGED and CREDITED are opposite facts, not two names for one.
+             *
+             * `lead_charged` means Google billed for the lead.
+             * `credit_details.credit_state` = CREDITED means that charge was
+             * given back. Reading the first as the second marked every lead the
+             * customer paid for as refunded — and charge_status is handed to
+             * the client verbatim, so the wrong word reached a screen in the
+             * one module whose purpose is matching spend to the work it bought.
+             *
+             * The credit state wins when Google sends one, because a lead can
+             * be charged and later credited and the later fact is the answer.
+             */
+            'chargeStatus'    => $credit['creditState']
+                ?? ((isset($lead['leadCharged']) && $lead['leadCharged']) ? 'CHARGED' : null),
+            'creationDateTime'=> $lead['creationDateTime'] ?? null,
+            'contactDetails'  => [
+                'phoneNumber'  => $contact['phoneNumber'] ?? null,
+                'consumerName' => $contact['consumerName'] ?? null,
+                'email'        => $contact['email'] ?? null,
+            ],
         ];
     }
 

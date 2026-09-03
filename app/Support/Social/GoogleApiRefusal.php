@@ -92,6 +92,21 @@ final class GoogleApiRefusal
                 .'account. This clears when the access application is granted, not by trying again.';
         }
 
+        /*
+         * A per-minute 429 is not the same gate as "quota is zero forever".
+         *
+         * Production on 2026-09-03 returned RATE_LIMIT_EXCEEDED on
+         * mybusinessaccountmanagement.googleapis.com after several Connect
+         * attempts in a minute. Mapping that onto "Google has not granted
+         * EzBizi any quota yet" sent Jose back through Continue, which is
+         * exactly how you stay rate-limited. Wait, then try once.
+         */
+        if ($reason === 'RATE_LIMIT_EXCEEDED') {
+            return "Google is rate-limiting EzBizi's {$network} requests this minute, so nothing "
+                .'has been connected. That is not a problem with your account. Wait a minute and '
+                .'try once — pressing Continue again is what keeps the limit on.';
+        }
+
         if ($state === 'RESOURCE_EXHAUSTED' || $status === 429) {
             return "Google has not granted EzBizi any {$network} API quota yet. These APIs start at "
                 .'zero and stay there until an access application is approved, which is a separate '

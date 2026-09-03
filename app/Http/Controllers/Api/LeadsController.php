@@ -200,11 +200,35 @@ class LeadsController extends Controller
 
         $this->audit->log('lead.synced', $request->user()->organization, metadata: $totals);
 
-        return response()->json([
-            'data' => [...$totals, 'failures' => $failures],
-        ], $failures !== [] && $totals['fetched'] === 0
-            ? Response::HTTP_BAD_GATEWAY
-            : Response::HTTP_OK);
+        /*
+         * Failed only when EVERY account failed, not when none had leads.
+         *
+         * `fetched === 0` was standing in for "the fetch failed", but zero
+         * leads is also the correct answer for an account that simply has no
+         * enquiries. A-1 Chimney has 22 connected Ads accounts: the ordinary
+         * shape there is most of them answering honestly with nothing and one
+         * being suspended, which reported a hard 502 for a week whose true
+         * answer was "no enquiries yet".
+         *
+         * Counting failures against attempts keeps the case this was written
+         * for — nothing could be read at all — and drops the case it was not.
+         */
+        $failedOut = $failures !== [] && count($failures) === $connections->count();
+
+        $payload = ['data' => [...$totals, 'failures' => $failures]];
+
+        if ($failedOut) {
+            // Top-level `message` is what the client actually renders. Without
+            // it a 502 becomes "Something went wrong (HTTP 502)" and the
+            // sentence in `data.failures` never reaches the screen — which is
+            // how the 2026-09-03 A-1 Chimney fetch looked empty of a reason.
+            $payload['message'] = (string) ($failures[0]['because'] ?? 'Google would not return leads.');
+        }
+
+        return response()->json(
+            $payload,
+            $failedOut ? Response::HTTP_BAD_GATEWAY : Response::HTTP_OK,
+        );
     }
 
     /**

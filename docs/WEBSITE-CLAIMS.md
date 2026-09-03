@@ -142,9 +142,9 @@ forbid the English word inside a task name.
 
 **`www/google-ads-api/` — Local Services.** That page describes what the Leads
 module *does with the API*, for Google's API reviewer, and the code does it:
-`app/Services/Leads/LocalServicesLeads.php:155` calls
-`customers/{id}/localServices:searchDetailedLeadReports`, reached from
-`LeadsController:171`. "The module retrieves Local Services lead data" is a claim
+`app/Services/Leads/LocalServicesLeads.php` POSTs
+`customers/{id}/googleAds:search` with `FROM local_services_lead`, reached from
+`LeadsController` sync. "The module retrieves Local Services lead data" is a claim
 about code, and it is true.
 
 The forbidden claim is a different sentence: that enquiries **have arrived** as

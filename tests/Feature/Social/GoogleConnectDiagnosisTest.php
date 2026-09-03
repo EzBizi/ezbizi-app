@@ -142,6 +142,31 @@ class GoogleConnectDiagnosisTest extends TestCase
         }
     }
 
+    public function test_a_per_minute_rate_limit_says_to_wait_rather_than_claiming_quota_was_never_granted(): void
+    {
+        Http::fake(['mybusinessaccountmanagement.googleapis.com/*' => Http::response([
+            'error' => [
+                'code'    => 429,
+                'status'  => 'RESOURCE_EXHAUSTED',
+                'message' => "Quota exceeded for quota metric 'Requests' and limit 'Requests per minute'.",
+                'details' => [[
+                    '@type'  => 'type.googleapis.com/google.rpc.ErrorInfo',
+                    'reason' => 'RATE_LIMIT_EXCEEDED',
+                ]],
+            ],
+        ], 429)]);
+
+        try {
+            (new BusinessProfileOAuth)->identify($this->grant());
+            $this->fail('identify() should have refused');
+        } catch (SocialOAuthRefused $e) {
+            $said = $e->getMessage();
+            $this->assertStringContainsString('rate-limiting', $said);
+            $this->assertStringContainsString('Wait a minute', $said);
+            $this->assertStringNotContainsString('has not granted', $said);
+        }
+    }
+
     public function test_business_profile_quota_is_named_because_enabling_the_api_does_not_grant_it(): void
     {
         Http::fake(['mybusinessaccountmanagement.googleapis.com/*' => Http::response([
