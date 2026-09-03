@@ -8,6 +8,25 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0143',
+      date: '3 Sep 2026',
+      items: [
+        'Roles no longer ask you to tick phone lines one at a time. A role '
+            'with Communication gets the company lines, and the list of '
+            'seven tickboxes - which had stopped changing anything - is gone. '
+            'A company with a hundred numbers would have had a hundred boxes '
+            'per role.',
+        'The desktop app says what actually went wrong when the phone will not '
+            'connect, instead of blaming your network every time. Twilio was '
+            'always telling us the reason and the app was dropping it, so an '
+            'expired sign-in and a missing microphone both read as a firewall '
+            'problem.',
+        'An update no longer stops to ask whether to install for everyone or '
+            'just you. It installs, for you, and comes back - which is what an '
+            'automatic update was supposed to be.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0142',
       date: '3 Sep 2026',
       items: [
