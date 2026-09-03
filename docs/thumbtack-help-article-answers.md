@@ -196,8 +196,11 @@ photos.
    best-effort and none can block the disconnect, because the account somebody
    is trying to disconnect is exactly the one whose token already stopped
    working. The disconnect answer above has been re-worded to match.
-2. **This article assumes the connect UI is deployed.** The Leads restructure
-   and the Thumbtack Connect button are committed but not yet on
-   app.ezbizi.com. The instructions above are wrong until that ships.
+2. ~~This article assumes the connect UI is deployed.~~ **Closed 2026-09-03
+   20:32.** Production is 15c9762f. Verified live rather than assumed: the web
+   bundle contains the Thumbtack Leads tab and its "enquiries not fetched yet"
+   state, the module registry on the box reports `leads` top-level and
+   `web_management` under Marketing, and the webhook route answers. Every step
+   in §3 is now true on app.ezbizi.com.
 3. **Update when lead ingestion lands** — the permissions list, the data list
    and the "not fetched yet" wording all change together.
