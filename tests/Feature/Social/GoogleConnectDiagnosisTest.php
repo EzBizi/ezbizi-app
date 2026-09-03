@@ -124,6 +124,70 @@ class GoogleConnectDiagnosisTest extends TestCase
         );
     }
 
+    public function test_business_profile_at_zero_quota_is_not_described_as_a_passing_rate_limit(): void
+    {
+        /*
+         * Google's answer at zero quota is IDENTICAL to its answer when
+         * throttling: 429, RESOURCE_EXHAUSTED, RATE_LIMIT_EXCEEDED, "Quota
+         * exceeded for quota metric 'Requests' and limit 'Requests per minute'".
+         * At zero QPM every request exceeds the limit, so the status cannot tell
+         * the two apart.
+         *
+         * Production proved which it was, on 2026-09-03: five attempts logged
+         * across fifty minutes - 17:19, 17:21, 18:05, 18:08, 18:09 - all the
+         * same. A forty-four minute gap clears any per-minute limit that is
+         * really per-minute. The Business Profile APIs ship at zero and stay
+         * there until an access application is approved, which is what
+         * BusinessProfileOAuth has said in its own doc comment all along.
+         *
+         * So for this network the wait advice is not merely unhelpful, it is
+         * the one instruction guaranteed to fail, and it sent Jose back through
+         * Continue twice.
+         */
+        Http::fake(['mybusinessaccountmanagement.googleapis.com/*' => Http::response([
+            'error' => [
+                'code'    => 429,
+                'status'  => 'RESOURCE_EXHAUSTED',
+                'message' => "Quota exceeded for quota metric 'Requests' and limit 'Requests per minute' "
+                    ."of service 'mybusinessaccountmanagement.googleapis.com'.",
+                'details' => [[
+                    '@type'  => 'type.googleapis.com/google.rpc.ErrorInfo',
+                    'reason' => 'RATE_LIMIT_EXCEEDED',
+                ]],
+            ],
+        ], 429)]);
+
+        try {
+            (new BusinessProfileOAuth)->identify($this->grant());
+            $this->fail('identify() should have refused');
+        } catch (SocialOAuthRefused $e) {
+            $said = $e->getMessage();
+
+            $this->assertStringNotContainsString('Wait a minute', $said);
+            $this->assertStringContainsString('access application', $said);
+        }
+    }
+
+    public function test_a_network_whose_quota_was_granted_still_gets_the_wait_advice(): void
+    {
+        // The guard must not swallow real throttling. Google Ads has Basic
+        // Access, so RATE_LIMIT_EXCEEDED there genuinely is a passing limit and
+        // waiting genuinely is the answer.
+        $e = $this->adsFails([
+            'error' => [
+                'code'    => 429,
+                'status'  => 'RESOURCE_EXHAUSTED',
+                'message' => 'Too many requests.',
+                'details' => [[
+                    '@type'  => 'type.googleapis.com/google.rpc.ErrorInfo',
+                    'reason' => 'RATE_LIMIT_EXCEEDED',
+                ]],
+            ],
+        ], 429);
+
+        $this->assertStringContainsString('Wait a minute', $e->getMessage());
+    }
+
     public function test_signing_in_with_an_account_that_has_no_ads_accounts_is_not_a_failure_to_identify(): void
     {
         config(['services.google_ads.developer_token' => 'dev-token']);
@@ -142,30 +206,20 @@ class GoogleConnectDiagnosisTest extends TestCase
         }
     }
 
-    public function test_a_per_minute_rate_limit_says_to_wait_rather_than_claiming_quota_was_never_granted(): void
-    {
-        Http::fake(['mybusinessaccountmanagement.googleapis.com/*' => Http::response([
-            'error' => [
-                'code'    => 429,
-                'status'  => 'RESOURCE_EXHAUSTED',
-                'message' => "Quota exceeded for quota metric 'Requests' and limit 'Requests per minute'.",
-                'details' => [[
-                    '@type'  => 'type.googleapis.com/google.rpc.ErrorInfo',
-                    'reason' => 'RATE_LIMIT_EXCEEDED',
-                ]],
-            ],
-        ], 429)]);
-
-        try {
-            (new BusinessProfileOAuth)->identify($this->grant());
-            $this->fail('identify() should have refused');
-        } catch (SocialOAuthRefused $e) {
-            $said = $e->getMessage();
-            $this->assertStringContainsString('rate-limiting', $said);
-            $this->assertStringContainsString('Wait a minute', $said);
-            $this->assertStringNotContainsString('has not granted', $said);
-        }
-    }
+    /*
+     * Removed: test_a_per_minute_rate_limit_says_to_wait_rather_than_claiming_
+     * quota_was_never_granted.
+     *
+     * It faked Business Profile returning RATE_LIMIT_EXCEEDED and required the
+     * screen to answer "wait a minute". Production disproved that on the day it
+     * shipped - five identical refusals over fifty minutes, including a
+     * forty-four minute gap - and the test would have kept the wrong sentence
+     * in place, because it had written the bug down as a requirement.
+     *
+     * The case it meant to cover, a genuine passing limit, is covered by
+     * test_a_network_whose_quota_was_granted_still_gets_the_wait_advice, using
+     * a network whose quota Google has actually granted.
+     */
 
     public function test_business_profile_quota_is_named_because_enabling_the_api_does_not_grant_it(): void
     {

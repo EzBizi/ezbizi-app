@@ -31,6 +31,17 @@ final class GoogleApiRefusal
     /** Google's message can be long and is not ours; enough to identify, not to fill a log. */
     private const DETAIL_LIMIT = 300;
 
+    /**
+     * The network whose quota is zero until Google grants it.
+     *
+     * Matched on the label the caller passes, which is the only thing this
+     * class is given about which network it is speaking for. If a second
+     * zero-quota API ever arrives this becomes a list — it is not one yet, and
+     * guessing at the shape of the second entry would be inventing a rule
+     * nobody has needed.
+     */
+    private const STARTS_AT_ZERO_QUOTA = 'Google Business Profile';
+
     public static function from(string $network, Response $response): SocialOAuthRefused
     {
         $error  = (array) $response->json('error', []);
@@ -101,13 +112,41 @@ final class GoogleApiRefusal
          * EzBizi any quota yet" sent Jose back through Continue, which is
          * exactly how you stay rate-limited. Wait, then try once.
          */
+        $exhausted = $state === 'RESOURCE_EXHAUSTED' || $status === 429;
+
+        /*
+         * Zero quota and a passing rate limit are the SAME response.
+         *
+         * At zero QPM every request "exceeds the limit", so Google answers 429,
+         * RESOURCE_EXHAUSTED, RATE_LIMIT_EXCEEDED, "Quota exceeded ... limit
+         * 'Requests per minute'" — byte for byte what it sends while genuinely
+         * throttling. Nothing in the response separates them.
+         *
+         * What separates them is which network is asking. The Business Profile
+         * APIs ship at zero and stay there until an access application is
+         * approved; that is not an inference, it is what BusinessProfileOAuth's
+         * own doc comment has said since it was written. So for that network
+         * this is the zero, and "wait a minute" is the one instruction that
+         * cannot work.
+         *
+         * Production settled it on 2026-09-03: five attempts logged over fifty
+         * minutes, all identical. A forty-four minute gap clears any limit that
+         * is really per-minute. Jose pressed Continue twice on that advice.
+         */
+        if ($exhausted && $network === self::STARTS_AT_ZERO_QUOTA) {
+            return "Google has not granted EzBizi any {$network} API quota yet. These APIs start at "
+                .'zero and stay there until an access application is approved, which is a separate '
+                .'step from switching them on. Waiting will not change it and connecting again will '
+                .'get the same answer.';
+        }
+
         if ($reason === 'RATE_LIMIT_EXCEEDED') {
             return "Google is rate-limiting EzBizi's {$network} requests this minute, so nothing "
                 .'has been connected. That is not a problem with your account. Wait a minute and '
                 .'try once — pressing Continue again is what keeps the limit on.';
         }
 
-        if ($state === 'RESOURCE_EXHAUSTED' || $status === 429) {
+        if ($exhausted) {
             return "Google has not granted EzBizi any {$network} API quota yet. These APIs start at "
                 .'zero and stay there until an access application is approved, which is a separate '
                 .'step from switching them on. Connecting again will get the same answer.';
