@@ -110,6 +110,75 @@ void main() {
 
     expect(find.text('Connect Google Ads'), findsOneWidget);
   });
+
+  // ── the two sources, since Thumbtack arrived ──────────────────
+
+  testWidgets('each source gets its own tab, so one empty list cannot speak '
+      'for the other', (tester) async {
+    await _pump(tester, leads: const [], connections: const []);
+
+    expect(find.text('Google Leads'), findsOneWidget);
+    expect(find.text('Thumbtack Leads'), findsOneWidget);
+  });
+
+  testWidgets('an unconnected Thumbtack offers to connect and says what '
+      'connecting is for', (tester) async {
+    await _pump(tester, leads: const [], connections: const []);
+
+    await tester.tap(find.text('Thumbtack Leads'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('No Thumbtack account connected'), findsOneWidget);
+    expect(find.text('Connect Thumbtack'), findsOneWidget);
+
+    // Google's empty state must not bleed through the tab: its sentence is
+    // about advertising and would be wrong here.
+    expect(find.text('No advertising account connected'), findsNothing);
+  });
+
+  testWidgets('a connected Thumbtack says enquiries are not fetched yet, '
+      'rather than showing an empty list', (tester) async {
+    await _pump(
+      tester,
+      leads: const [],
+      connections: const [
+        {
+          'provider': 'thumbtack',
+          'display_name': 'A-1 Chimney',
+          'status': 'connected',
+        },
+      ],
+    );
+
+    await tester.tap(find.text('Thumbtack Leads'));
+    await tester.pumpAndSettle();
+
+    // The distinction the whole module exists for. An empty list here would
+    // tell somebody their week was quiet while their Thumbtack enquiries are
+    // arriving perfectly well in Thumbtack's own app.
+    expect(find.text('Connected — enquiries not fetched yet'), findsOneWidget);
+    expect(find.text('No enquiries yet'), findsNothing);
+    expect(find.textContaining('not missing'), findsOneWidget);
+  });
+
+  testWidgets('without leads.edit the Thumbtack tab names who can connect '
+      'instead of offering a button that would be refused', (tester) async {
+    await _pump(
+      tester,
+      leads: const [],
+      connections: const [],
+      permissions: const ['leads.view'],
+    );
+
+    await tester.tap(find.text('Thumbtack Leads'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Connect Thumbtack'), findsNothing);
+    expect(
+      find.textContaining('Somebody who can manage Leads'),
+      findsOneWidget,
+    );
+  });
 }
 
 Future<void> _pump(
