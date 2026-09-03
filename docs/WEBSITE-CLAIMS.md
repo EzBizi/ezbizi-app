@@ -40,7 +40,7 @@ SELECT COUNT(*) FROM leads WHERE remote_id NOT LIKE 'DEMO-%';   -- real enquirie
 
 **Measured on production 2026-09-03, and the dump is the proof rather than the count:** `remote_id NOT LIKE 'DEMO-%'` → **0**, out of 8 leads, **0 with a null `remote_id`** — so nothing hides in a third state between the two tests. All eight rows carry `has_connection_id = 1` **and** `has_synced_at = 1`, which is the wrong test failing visibly in the data: it would have counted all eight as real and reported the module in use. A count alone would have agreed with both tests; only the dump separates them. Note the command takes `--live`, which is how fiction reached production in the first place. **Read the seeder before trusting any test meant to exclude it** — three tests have now been written for this one row, and the two derived from the real code path both failed, because a good seeder imitates exactly the fields that path writes. This forbids the marketing claim, not the compliance page; see below. |
 | **That a post reaches every connected network, or reaches a TikTok profile** | Nine networks connect; **five publish** — corrected upward 2026-09-02, see below. `Publishers::for()` returns a publisher for Facebook Pages, Threads, Instagram, Pinterest and TikTok, and `default => null` for LinkedIn, YouTube, X and Bluesky, which `refusalFor()` answers with "Publishing to X is not built yet". **TikTok posts to the creator's DRAFTS, not the profile** — TikTok requires an audit before an app may post publicly and ours has not had it, so somebody must finish the post in the TikTok app. Pinterest is **images only**; video publishing does not exist. Flagged 2026-08-31 by the deploy session as a live false statement in the in-app release notes; corrected on the site the same day. The checkable test: does `Publishers::for()` return non-null for that provider. |
-| **Suggestions** | Not on production, and it will not look that way. The module is built on the unmerged branch `session/suggestions` — `git merge-base --is-ancestor fb488b9 main` fails and `main` carries no `create_suggestions_table` migration, so no deploy can have taken it. **Its own design defeats both of the usual checks.** It is deliberately absent from `ModuleRegistry` (zero hits) so that no organization can switch it off, which means a check counting registered modules never sees it; and `client/lib/main.dart:724` pins it as a destination for every user with, in its own words, "no module key, no permission and no availability flag behind it". So a check that opens the app sees it working. **Neither answers whether it is live.** The only test that does: does the `suggestions` table exist on production. **When it ships, invert this row rather than deleting it.** The pin and the registry absence do not change at deploy, so "present in the app" will still be evidence of nothing and the table will still be the only reliable check. Only the verdict flips; the reasoning is what a later session needs. |
+| **Suggestions** | **INVERTED 2026-09-03 — it *is* on production, and this row said the opposite for a day.** All 17 commits are in the deployed tree (`git merge-base --is-ancestor 486668c 15c9762f` → true), merged at `e718748a`, and they were already in the *previous* production commit `678c3e83` — so it shipped in a deploy nobody announced, not in the 20:32 push. `create_suggestions_table` is in the deployed tree, so **the table test this row named has flipped to yes**, and production `client/VERSION` is `0.0.0147`. **The two design facts have not changed and still mean "present in the app" proves nothing either way**: it is still absent from `ModuleRegistry` (0 hits in the deployed tree) so a module count never sees it, and still pinned unconditionally for every user (`client/lib/main.dart:687` in the deployed tree — it was `:724` on the branch; re-read the line, do not trust this number). **Still do not put it on the site, for an entirely new reason.** The two screen layouts reached production *before* Jose reviewed them — he had delegated the choice for one night on the understanding they could change — and a defect is open against the §9 privacy inventory under-reporting the suggestion count. Neither makes the feature untrue; both make "we shipped this" a sentence we might have to retract. Revisit when the layouts are reviewed and the defect is closed. |
 | **That anybody has *set up* coverage and capacity** | Built and unused — a different state from unbuilt, and the two must not be flattened. The capability shipped in `0.0.0137`; `service_areas` and `service_area_slots` both hold **0 rows**, so no customer has created one. This does **not** forbid the "Coverage & capacity" card, which reads *"Set the areas each location covers and how much work a day can take"* — that is capability phrasing, and by the Inspections precedent below, built-and-unused is sellable as a capability and never as usage. **What it forbids is the tense**: "businesses set their coverage", "locations already covering", any sentence implying somebody has. If you are here because you read a 0 and reached for the card, leave the card alone. |
 | **"Teams rely on it" about Inspections** | The module is live and has never been used by a customer. Not embarrassing, but not a usage claim. |
 | **Monitoring, Marketing** | Registered, but their dashboard summaries are explicitly placeholders. |
@@ -231,6 +231,39 @@ not read. The deploy desk applied exactly this rule to `7349e79` earlier the
 same day, declining to publish it on a peer's request; this is that rule
 turned around and pointed at its author. Land it when Jose has seen the
 words.
+
+## The Suggestions row inverted within a day, and the instruction to invert it is why that was cheap
+
+Written 2026-09-02 as "not on production", inverted 2026-09-03 to "on
+production". **It was already false when it was committed.** The branch owner
+measured it unmerged, told this session so in good faith, and it merged and
+deployed in between; nobody re-measured before the row was written. Two commits
+(`9341426`, `671d1340`) rest on that input.
+
+**The row survived being wrong**, because `671d1340` had added the instruction
+to invert it rather than delete it. A row that had merely asserted "not on
+production" would have been deleted on discovery, taking with it the two facts
+that are *still true and still load-bearing*: the `ModuleRegistry` absence and
+the unconditional pin, which are properties of the design and not of the deploy,
+and which are exactly why "present in the app" proves nothing either way. The
+verdict flipped; the reasoning did not. **That is the whole argument for writing
+the inversion instruction into any row whose verdict can change.**
+
+Three cheap lessons, all paid for once:
+
+1. **A peer's measurement is a timestamp, not a fact** — even a careful peer's,
+   even about its own branch. It was accurate when taken and stale within hours.
+   Re-measure at the moment of writing, the way `StartUp.md` §4 says to resolve
+   `BASE` at commit time rather than at review time. Same failure, different
+   surface.
+2. **Line numbers move.** This row cited `client/lib/main.dart:724` from the
+   branch; the deployed tree has it at `:687`. The row now says to re-read the
+   line rather than trust the number.
+3. **A thing can be live and still not sellable, for reasons that are not about
+   whether it works.** Suggestions is on production and does what it says. It
+   stays off the site because its layouts reached production before Jose saw
+   them and a privacy defect is open — "true" and "ready to claim publicly" are
+   different tests, and only the first is a row count.
 
 ## Absence of news is not a publish
 
