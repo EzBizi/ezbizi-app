@@ -96,6 +96,7 @@ use App\Http\Controllers\Api\SocialConnectionsController;
 use App\Http\Controllers\Api\SocialMediaHandoffController;
 use App\Http\Controllers\Api\SocialPostsController;
 use App\Http\Controllers\Api\SocialProvidersController;
+use App\Http\Controllers\Api\ThumbtackWebhookController;
 use App\Http\Controllers\Api\StaffAccountsController;
 use App\Http\Controllers\Api\StaffAuthController;
 use App\Http\Controllers\Api\StaffClientVersionsController;
@@ -316,6 +317,22 @@ Route::get('v1/social/media/{handle}', [SocialMediaHandoffController::class, 'sh
     ->middleware(['signed', 'throttle:30,1'])
     ->where('handle', '[0-9A-Za-z]+(\.[0-9a-z]+)?')
     ->name('social.media');
+
+/*
+| Thumbtack telling us a lead arrived.
+|
+| Unauthenticated in the session sense - Thumbtack calls it, so there is no
+| token and no user. A credential WE chose and gave them at registration comes
+| back in our own header, and that header is the whole authentication; the body
+| carries no proof of origin. See ThumbtackWebhookController.
+|
+| This is not a faster path to something we could poll for. Their API cannot
+| list negotiations at all, so an outage here loses enquiries permanently.
+| Throttled generously for that reason: refusing a real event costs a lead.
+*/
+Route::post('v1/social/thumbtack/webhook', ThumbtackWebhookController::class)
+    ->middleware('throttle:600,1')
+    ->name('social.thumbtack.webhook');
 
 Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callback'])
     ->middleware('throttle:30,1')

@@ -239,22 +239,40 @@ return [
         'api_base' => rtrim((string) env('THUMBTACK_API_BASE', 'https://api.thumbtack.com/api'), '/'),
 
         /*
-         * Only what EzBizi actually calls today.
+         * Only what EzBizi actually calls, and every one of these has code
+         * behind it. Asking for a scope you do not use is exactly the
+         * over-scoping that had to be unpicked from the Meta submission the
+         * same week, so this list and the classes are kept level deliberately.
          *
-         * `offline_access` because requiresRefreshToken() is true, businesses.list
-         * to identify the connected account, and the two associate-phone-number
-         * scopes for the caller-ID sync Thumbtack requires.
+         * WEBHOOKS ARE NOT OPTIONAL. Thumbtack's supply API can fetch a
+         * negotiation by id and has no endpoint that lists them, so a webhook
+         * is the only way EzBizi ever learns a lead exists. Drop those two
+         * scopes and lead reading does not degrade — it receives nothing.
          *
-         * Deliberately NOT negotiations.read or messages.read yet. Reading
-         * leads is the next slice and has no code behind it, and asking for a
-         * scope you do not use is exactly the over-scoping that had to be
-         * unpicked from the Meta submission the same week.
+         * Absent on purpose: `supply::businesses.create` (EzBizi does not make
+         * Thumbtack profiles) and `supply::businesses/reviews.*` (Reviews is a
+         * different module and connects its own sources).
+         *
+         * Two things Thumbtack's own scope vocabulary lists that CANNOT be
+         * used by anybody: `businesses/media.write` and
+         * `businesses/categories.write` are declared and no endpoint in their
+         * published OpenAPI document references them. Editing a profile has no
+         * endpoint at all — only create. That is why the Help Center article
+         * does not claim either.
          */
         'scopes' => env('THUMBTACK_SCOPES', implode(',', [
             'offline_access',
+            'supply::users.read',
+            'supply::users.disconnect',
             'supply::businesses.list',
             'supply::businesses/associate-phone-numbers.read',
             'supply::businesses/associate-phone-numbers.write',
+            'supply::negotiations.read',
+            'supply::negotiations.write',
+            'supply::messages.read',
+            'supply::messages.write',
+            'supply::webhooks.read',
+            'supply::webhooks.write',
         ])),
 
         // ORY Hydra supports PKCE and their spec does not mark it required, so
