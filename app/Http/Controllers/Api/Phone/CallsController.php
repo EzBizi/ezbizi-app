@@ -172,6 +172,22 @@ class CallsController extends Controller
             $query->whereNull('tag_id')->where('user_id', $request->user()->id);
         }
 
+        // Voicemails for one box.
+        //
+        // A box is not on the call — it is on the LINE the call arrived on, so
+        // this resolves the lines pointing at that box and asks for their
+        // calls. Doing it here rather than on screen keeps the Voicemails view
+        // from having to know how a box is attached to anything.
+        $boxId = (string) $request->query('box_id', '');
+        if ($boxId !== '') {
+            $query->where('voicemail', true)->whereIn(
+                'number_id',
+                PhoneNumber::query()
+                    ->where('voicemail_box_id', $boxId)
+                    ->pluck('id'),
+            );
+        }
+
         $perPage = (int) $request->query('per_page', 0);
         if ($perPage > 0) {
             $query->limit(min($perPage, 200));
@@ -275,6 +291,10 @@ class CallsController extends Controller
 
             'duration_seconds' => $call->duration_seconds,
             'voicemail' => (bool) $call->voicemail,
+
+            // Whether somebody has picked this voicemail up, so a box can show
+            // what is still waiting rather than everything ever left.
+            'dealt_at' => $call->dealt_at?->toIso8601String(),
             'recording_sid' => $call->recording_sid,
             'transcript' => $call->transcript,
             'customer_id' => $customerIds[$outside] ?? null,

@@ -21,49 +21,109 @@ void main() {
     expect(find.text('No phone lines yet. Add one in Settings.'), findsOneWidget);
   });
 
-  testWidgets('three columns at 900: teammates, pad, person', (tester) async {
+  /// The Dial face is HISTORY beside the pad, not the roster.
+  ///
+  /// The column used to hold colleagues, which is a list of people you are
+  /// mostly not trying to ring while standing at a keypad. What somebody
+  /// reaches for there is a number they were just speaking to, and that was
+  /// two tabs away in Records. The roster moved to its own sub-tab, where it
+  /// is what you went looking for.
+  testWidgets('Dial puts recent calls beside the pad, not the roster', (
+    tester,
+  ) async {
     await _pump(tester, size: const Size(900, 800));
 
     expect(find.text('Coming soon'), findsNothing);
     expect(find.byType(Dialog), findsNothing);
 
-    expect(find.byKey(const Key('phone-call-teammates')), findsOneWidget);
+    expect(find.byKey(const Key('phone-call-history')), findsOneWidget);
     expect(find.byKey(const Key('phone-call-pad')), findsOneWidget);
-    expect(find.byKey(const Key('phone-call-person')), findsOneWidget);
+    expect(
+      find.byKey(const Key('phone-call-teammates')),
+      findsNothing,
+      reason: 'the roster is a sub-tab now, not a column on the pad',
+    );
 
-    expect(find.text('Maya Chen'), findsOneWidget);
+    expect(find.text('Recent calls'), findsOneWidget);
     expect(find.text('Calling as'), findsOneWidget);
     expect(find.textContaining('CT main'), findsWidgets);
     expect(find.text('Call'), findsOneWidget);
-    expect(find.text('Live transcript is off on this number.'), findsOneWidget);
-    expect(find.text('Messages'), findsOneWidget);
 
-    final team = tester.getRect(find.byKey(const Key('phone-call-teammates')));
+    final history = tester.getRect(find.byKey(const Key('phone-call-history')));
     final pad = tester.getRect(find.byKey(const Key('phone-call-pad')));
-    final person = tester.getRect(find.byKey(const Key('phone-call-person')));
-    expect(team.left, lessThan(pad.left));
-    expect(pad.left, lessThan(person.left));
-    expect((team.top - pad.top).abs(), lessThan(8));
-
-    expect(find.byTooltip('Back to the team'), findsNothing);
+    expect(history.left, lessThan(pad.left));
+    expect((history.top - pad.top).abs(), lessThan(8));
   });
 
-  testWidgets('the desk is 25 / 25 / 50, not 19 / 57 / 24', (tester) async {
-    // It was SizedBox(220) - Expanded - SizedBox(280): the two panes holding
-    // the most content pinned at their smallest, and every extra pixel handed
-    // to the dial pad. The pad is capped at 184px of buttons, so the middle
-    // column was more than half the window around a keypad while the roster
-    // and the customer thread were squeezed either side.
+  /// The customer column is not there with nobody to show.
+  ///
+  /// It is the widest of the three, and empty it holds a sentence explaining
+  /// that it is empty — half a window given to "type a number to see who it
+  /// is" while the pad and the history share the rest.
+  testWidgets('the customer column stays away until there is somebody', (
+    tester,
+  ) async {
+    await _pump(tester, size: const Size(1280, 900));
+
+    expect(find.byKey(const Key('phone-call-person')), findsNothing);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Number'),
+      '305 724 2199',
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('phone-call-person')),
+      findsOneWidget,
+      reason: 'a number was typed and the customer column did not appear',
+    );
+  });
+
+  /// And it can be kept, because a panel that opens and closes under your
+  /// hands while you work a list is worse than one that is always there.
+  testWidgets('the customer column can be pinned open', (tester) async {
+    await _pump(tester, size: const Size(1280, 900));
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Number'),
+      '305 724 2199',
+    );
+    await tester.pumpAndSettle();
+
+    await _tap(tester, find.byTooltip('Keep this open between calls'));
+
+    await tester.enterText(find.widgetWithText(TextField, 'Number'), '');
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('phone-call-person')),
+      findsOneWidget,
+      reason: 'pinned, and it went away anyway',
+    );
+  });
+
+  testWidgets('the desk gives the pad a quarter and the rest to history', (
+    tester,
+  ) async {
     await _pump(tester, size: const Size(1600, 900));
 
-    final team = tester.getRect(find.byKey(const Key('phone-call-teammates')));
+    final history = tester.getRect(find.byKey(const Key('phone-call-history')));
     final pad = tester.getRect(find.byKey(const Key('phone-call-pad')));
-    final person = tester.getRect(find.byKey(const Key('phone-call-person')));
 
-    // 1598 after the two dividers.
-    expect((team.width - 399.5).abs(), lessThan(1.5));
-    expect((pad.width - 399.5).abs(), lessThan(1.5));
-    expect((person.width - 799.0).abs(), lessThan(1.5));
+    // 1599 after the single divider, with no customer column to feed.
+    expect((pad.width - 399.75).abs(), lessThan(1.5));
+    expect((history.width - 1199.25).abs(), lessThan(1.5));
+  });
+
+  /// The roster is the Team face of the same widget, so the softphone it
+  /// holds is not torn down every time somebody looks at their colleagues.
+  testWidgets('the Team face shows the roster and no keypad', (tester) async {
+    await _pump(tester, view: CallView.team, size: const Size(900, 800));
+
+    expect(find.text('Maya Chen'), findsOneWidget);
+    expect(find.byKey(const Key('phone-call-pad')), findsNothing);
+    expect(find.byKey(const Key('phone-call-history')), findsNothing);
   });
 
   testWidgets('the pad stops shrinking before the other two do', (
@@ -124,6 +184,14 @@ void main() {
     (tester) async {
       await _pump(tester, size: const Size(900, 800));
 
+      // The message box lives in the customer column, which stays away until
+      // there is somebody to show. Typing the number is what opens it.
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Number'),
+        '305 724 2199',
+      );
+      await tester.pumpAndSettle();
+
       expect(
         find.text('This line cannot send texts until messaging is approved.'),
         findsOneWidget,
@@ -171,7 +239,12 @@ void main() {
       isEmpty,
     );
     expect(find.text('Thursday morning still good?'), findsNothing);
-    expect(find.text('Type a number to see who it is.'), findsOneWidget);
+
+    // The empty state IS the absent column now. That sentence used to sit in
+    // the widest pane on the desk, explaining that the pane had nothing in it
+    // — half a window given over to saying so.
+    expect(find.byKey(const Key('phone-call-person')), findsNothing);
+    expect(find.text('Type a number to see who it is.'), findsNothing);
   });
 
   testWidgets('a plus number loads the thread with that peer', (tester) async {
@@ -241,7 +314,13 @@ void main() {
     final device = _FakeDevice();
     addTearDown(device.dispose);
 
-    await _pump(tester, device: device, size: const Size(900, 800));
+    // The roster is the Team face now, not a column on the pad.
+    await _pump(
+      tester,
+      device: device,
+      view: CallView.team,
+      size: const Size(900, 800),
+    );
 
     // Calling a colleague is a control ON the colleague now, not a mode on
     // the pad that did nothing until a row had already been selected.
@@ -261,6 +340,14 @@ void main() {
         {..._number, 'sms_outbound_allowed': true},
       ],
     );
+
+    // The customer column is where the message box lives, and it stays away
+    // until there is somebody to show. Typing the number is what opens it.
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Number'),
+      '305 724 2199',
+    );
+    await tester.pumpAndSettle();
 
     expect(
       find.text('This line cannot send texts until messaging is approved.'),
@@ -593,10 +680,14 @@ void main() {
       ],
     );
 
-    final picker = tester.widget<DropdownButton<String>>(
-      find.byType(DropdownButton<String>),
+    // Reads the field rather than a dropdown's value: the picker is a search
+    // box now, and what somebody sees in it IS the answer to "which line am I
+    // about to appear as".
+    expect(
+      find.textContaining('Mine · +12397470324 — yours'),
+      findsWidgets,
+      reason: 'the desk did not open on the line assigned to this person',
     );
-    expect(picker.value, 'n-2');
   });
 
   /// A dispatcher can choose which line they call from.
@@ -638,7 +729,10 @@ void main() {
 
     expect(find.textContaining('CT main · +12035550142 — yours'), findsWidgets);
 
-    await _tap(tester, find.byType(DropdownButton<String>));
+    // A searchable list, not a plain dropdown: a dispatcher with a line per
+    // company and per branch reads thirty of them otherwise, and the one they
+    // want has a name they already know.
+    await tester.enterText(find.byType(TextField).first, 'Miami');
     await tester.pumpAndSettle();
     await _tap(tester, find.textContaining('Miami · +13055550188').last);
 
@@ -666,7 +760,7 @@ void main() {
 
     await _pump(tester, device: device, size: const Size(900, 800));
 
-    expect(find.byType(DropdownButton<String>), findsNothing);
+    expect(find.byType(Autocomplete<Object>), findsNothing);
     expect(find.textContaining('CT main'), findsWidgets);
   });
 }
@@ -679,6 +773,9 @@ class _FakeDevice implements VoiceDevice {
 
   @override
   void Function(VoiceIncoming incoming)? onIncoming;
+
+  @override
+  void Function()? onRegistrationChanged;
 
   /// Registration succeeds unless a test says otherwise — the desk being
   /// usable is the precondition for almost every case in this file.
@@ -757,6 +854,7 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
 
 Future<void> _pump(
   WidgetTester tester, {
+  CallView view = CallView.dial,
   Size size = const Size(1280, 900),
   List<Map<String, Object?>>? numbers,
   VoiceDevice? device,
@@ -781,7 +879,12 @@ Future<void> _pump(
     MaterialApp(
       theme: EzBiziTheme.light(),
       home: Scaffold(
-        body: CallTab(api: api, session: session, device: device),
+        body: CallTab(
+          api: api,
+          session: session,
+          device: device,
+          view: view,
+        ),
       ),
     ),
   );

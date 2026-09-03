@@ -59,6 +59,9 @@ class WindowsVoiceDevice implements VoiceDevice {
   void Function(VoiceIncoming incoming)? onIncoming;
 
   @override
+  void Function()? onRegistrationChanged;
+
+  @override
   bool get supported => true;
 
   @override
@@ -180,6 +183,11 @@ class WindowsVoiceDevice implements VoiceDevice {
         final why = (message['message'] ?? '').toString().trim();
         _registrationError = _registered || why.isEmpty ? null : why;
         if (_settled?.isCompleted == false) _settled!.complete();
+
+        // Registration finishes AFTER setup() returns here, so the desk's one
+        // sample was always taken too early. Telling it is the only way the
+        // banner can stop being wrong.
+        onRegistrationChanged?.call();
       case 'incoming':
         onIncoming?.call(
           VoiceIncoming(from: (message['from'] ?? '').toString()),
@@ -217,6 +225,7 @@ class WindowsVoiceDevice implements VoiceDevice {
     _messages?.cancel();
     _messages = null;
     onIncoming = null;
+    onRegistrationChanged = null;
 
     final controller = _controller;
     _controller = null;

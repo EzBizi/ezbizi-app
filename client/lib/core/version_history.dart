@@ -8,6 +8,40 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0145',
+      date: '3 Sep 2026',
+      items: [
+        'Communication - Phone - Dial: the column beside the keypad is your '
+            'recent calls now, not the list of colleagues. The number somebody '
+            'reaches for while standing at a keypad is nearly always one they '
+            'have just been speaking to - a customer who rang off, a missed '
+            'call to return - and that was two tabs away in Records. Tapping a '
+            'call puts the number in the field rather than dialling it, so you '
+            'can read it back before it rings.',
+        'Communication - Phone - Team is its own tab. It has not gone; it is '
+            'where you go when the person is who you want, and moving between '
+            'it and the keypad no longer takes the phone off the hook.',
+        'Communication - Phone - Dial: the customer panel stays out of the way '
+            'until there is somebody to show. It used to hold half the screen '
+            'saying nothing. There is a pin if you would rather it stayed.',
+        'Communication - Phone - Dial: the Calling as list has a search box. A '
+            'dispatcher covering a business with thirty numbers was scrolling '
+            'to find one, and a scrolling list is how you dial out under the '
+            'wrong number.',
+        'Communication - Phone - Voicemail is a tab, split into boxes. A flat '
+            'list answers "did anybody ring" and not "did anybody ring me", '
+            'which on a shared account is the question - so it is split by '
+            'whose box it is and opens on yours. Each message shows its '
+            'transcript under it rather than behind a button; the recording is '
+            'still there to play, and still the record when the transcript is '
+            'blank or wrong.',
+        'The phone desk stops claiming to be disconnected once it has '
+            'connected. It read the connection once, at startup, and never '
+            'looked again - so a desk that came up a second late kept the '
+            'warning until the screen was reloaded.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0144',
       date: '3 Sep 2026',
       items: [

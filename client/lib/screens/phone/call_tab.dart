@@ -9,19 +9,31 @@ import '../../widgets/async_body.dart';
 import 'voice_device.dart';
 import 'staff_thread.dart';
 import 'voice_view.dart';
+import 'call_history_pane.dart';
 
 /// Call desk — layout 1: teammates, pad, person. Below 600px, one pane at a time.
+/// Which of the desk's two faces is showing.
+///
+/// Both are one widget on purpose. They share the softphone, and a Team tab
+/// that built its own would either register a second device or tear the first
+/// one down every time somebody looked at the roster — and a softphone that
+/// deregisters when you glance at your colleagues is a softphone that misses
+/// calls.
+enum CallView { dial, team }
+
 class CallTab extends StatefulWidget {
   const CallTab({
     super.key,
     required this.api,
     required this.session,
     this.device,
+    this.view = CallView.dial,
   });
 
   final ApiClient api;
   final Session session;
   final VoiceDevice? device;
+  final CallView view;
 
   static const double splitAbove = 600;
 
@@ -302,6 +314,14 @@ class _CallTabState extends State<CallTab> {
     // looks ready but can never ring is the failure this whole path had.
     if (mounted) setState(() => _deskDown = !_device.registered);
 
+    // And keep reading it. Registration finishes after setup() returns on
+    // Windows, so the line above is a sample taken while the answer is still
+    // false — which is how the desk came to say "not connected to the phone
+    // network" across the top of a call that was connected underneath it.
+    _device.onRegistrationChanged = () {
+      if (mounted) setState(() => _deskDown = !_device.registered);
+    };
+
     await widget.api.put('/phone/presence', {
       'connection_id': number.connectionId,
       'state': _dnd ? 'dnd' : 'registered',
@@ -310,6 +330,13 @@ class _CallTabState extends State<CallTab> {
 
   /// The Voice device never registered, so this desk cannot take a call.
   bool _deskDown = false;
+
+  /// Keep the customer column even with nobody on the line.
+  bool _customerPinned = false;
+
+  /// Bumped when a call ends, so the history beside the pad shows the row it
+  /// just gained without anybody reloading the screen.
+  int _historyToken = 0;
 
   /// A bridged call is being set up, and what came back from asking.
   bool _bridging = false;
@@ -375,7 +402,12 @@ class _CallTabState extends State<CallTab> {
 
   Future<void> _hangUp() async {
     _device.hangUp();
-    setState(() => _onCall = false);
+
+    // The call that just ended is a row the history does not have yet.
+    setState(() {
+      _onCall = false;
+      _historyToken++;
+    });
     final number = _selected;
     if (number == null) return;
     await widget.api.put('/phone/presence', {
@@ -687,28 +719,42 @@ class _CallTabState extends State<CallTab> {
   /// roster or a message thread just gets narrower and stays usable, and a
   /// keypad stops being tappable.
   Widget _wide() {
+    // The roster is a whole tab now, not a column. It gets the width.
+    if (widget.view == CallView.team) return _teammatesPane();
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        // The two dividers are a real pixel each and come off the top, or the
-        // three panes add up to more than the row can give and it overflows.
-        final available = constraints.maxWidth - 2;
+        final showCustomer = _customerShowing;
+
+        // One divider when the customer pane is away, two when it is here.
+        final available = constraints.maxWidth - (showCustomer ? 2 : 1);
 
         final pad = math.max(_padFloor, available * 0.25);
         final rest = available - pad;
 
-        // Never more than half of what is left, so that between the stacking
-        // breakpoint at 600 and the width where the floors fit, the roster
-        // cannot starve the customer pane instead of sharing with it.
-        final team = math.min(math.max(_teamFloor, rest / 3), rest * 0.5);
-        final person = rest - team;
+        // With no customer pane the history takes the rest rather than a
+        // third of it — otherwise hiding a column leaves a gap where it was,
+        // which reads as a rendering fault rather than as a hidden panel.
+        final history = showCustomer
+            ? math.min(math.max(_teamFloor, rest / 3), rest * 0.5)
+            : rest;
 
         return Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             SizedBox(
-              key: const Key('phone-call-teammates'),
-              width: team,
-              child: _teammatesPane(),
+              key: const Key('phone-call-history'),
+              width: history,
+              child: CallHistoryPane(
+                api: widget.api,
+                reloadToken: _historyToken,
+                onPick: (e164) => setState(() {
+                  _destination.text = e164;
+                  _destination.selection = TextSelection.collapsed(
+                    offset: e164.length,
+                  );
+                }),
+              ),
             ),
             VerticalDivider(
               width: 1,
@@ -720,21 +766,39 @@ class _CallTabState extends State<CallTab> {
               width: pad,
               child: _padPane(showBack: false, showPerson: false),
             ),
-            VerticalDivider(
-              width: 1,
-              thickness: 1,
-              color: EzBiziTheme.edge(context),
-            ),
-            SizedBox(
-              key: const Key('phone-call-person'),
-              width: person,
-              child: _personPane(showBack: false),
-            ),
+            if (showCustomer) ...[
+              VerticalDivider(
+                width: 1,
+                thickness: 1,
+                color: EzBiziTheme.edge(context),
+              ),
+              SizedBox(
+                key: const Key('phone-call-person'),
+                width: rest - history,
+                child: _personPane(showBack: false),
+              ),
+            ],
           ],
         );
       },
     );
   }
+
+  /// Whether the customer column is on screen.
+  ///
+  /// ── Why it is not simply always there ────────────────────────────
+  ///
+  /// It is the widest of the three and, with nobody on the line, it holds
+  /// "type a number to see who it is" — a column of empty space explaining
+  /// that it is empty. The dial pad and the history are what somebody uses
+  /// between calls, and they were sharing half a window with it.
+  ///
+  /// It appears the moment there is a person to show: a call ringing, a call
+  /// connected, or a number typed. And it can be PINNED, because somebody
+  /// working a list wants the thread to stay put and a panel that comes and
+  /// goes under your hands is worse than one that is always there.
+  bool get _customerShowing =>
+      _customerPinned || _onCall || _incomingFrom != null || _peer != null;
 
   /// Below these the panes stop giving width back.
   ///
@@ -983,29 +1047,12 @@ class _CallTabState extends State<CallTab> {
                             style: theme.textTheme.bodyMedium,
                             overflow: TextOverflow.ellipsis,
                           )
-                        : DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              value: number?.id,
-                              isExpanded: true,
-                              isDense: true,
-                              onChanged: _onCall
-                                  ? null
-                                  : (id) => setState(() => _numberId = id),
-                              items: [
-                                for (final line in _numbers)
-                                  DropdownMenuItem(
-                                    value: line.id,
-                                    child: Text(
-                                      // Says which one is yours, so switching
-                                      // away is a thing you notice doing.
-                                      line.assignedToMe
-                                          ? '${line.label} · ${line.e164} — yours'
-                                          : '${line.label} · ${line.e164}',
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                              ],
-                            ),
+                        : _LinePicker(
+                            lines: _numbers,
+                            selected: number,
+                            enabled: !_onCall,
+                            onPicked: (id) =>
+                                setState(() => _numberId = id),
                           ),
                   ),
                   if (showPerson)
@@ -1130,6 +1177,27 @@ class _CallTabState extends State<CallTab> {
               Expanded(
                 child: Text('Customer', style: theme.textTheme.titleSmall),
               ),
+
+              // Keep it, or let it come and go with the call.
+              //
+              // The panel appears on its own when there is somebody to show.
+              // Somebody working a list wants it to stay put instead —
+              // a column that opens and closes under your hands while you
+              // type is worse than one that is simply always there.
+              IconButton(
+                tooltip: _customerPinned
+                    ? 'Pinned — let it hide between calls'
+                    : 'Keep this open between calls',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(
+                  _customerPinned
+                      ? Icons.push_pin
+                      : Icons.push_pin_outlined,
+                  size: 18,
+                ),
+                onPressed: () =>
+                    setState(() => _customerPinned = !_customerPinned),
+              ),
             ],
           ),
         ),
@@ -1227,6 +1295,81 @@ class _CallTabState extends State<CallTab> {
     'dnd' => 'Do not disturb',
     _ => 'Available',
   };
+}
+
+/// Which line you are calling from, chosen from a searchable list.
+///
+/// ── Why a search box and not a plain dropdown ────────────────────
+///
+/// A dropdown is fine for three lines and useless for thirty. An organization
+/// with a line per company, per branch and per campaign gives a dispatcher a
+/// list they have to read top to bottom every time — and the one they want is
+/// identifiable by a name they already know, which is exactly what typing is
+/// for.
+///
+/// It is an Autocomplete rather than a dialog because the house rule is no
+/// modals: the list drops under the field, and nothing takes the screen away
+/// from a desk that may be mid-call.
+class _LinePicker extends StatelessWidget {
+  const _LinePicker({
+    required this.lines,
+    required this.selected,
+    required this.enabled,
+    required this.onPicked,
+  });
+
+  final List<_Number> lines;
+  final _Number? selected;
+  final bool enabled;
+  final void Function(String id) onPicked;
+
+  /// What a line reads as, and what typing searches over.
+  ///
+  /// The label AND the number, because people know a line by either — "the
+  /// Miami one" and "the one ending 0188" are the same request.
+  static String describe(_Number line) => line.assignedToMe
+      ? '${line.label} · ${line.e164} — yours'
+      : '${line.label} · ${line.e164}';
+
+  @override
+  Widget build(BuildContext context) {
+    return Autocomplete<_Number>(
+      initialValue: TextEditingValue(
+        text: selected == null ? '' : describe(selected!),
+      ),
+      displayStringForOption: describe,
+      optionsBuilder: (value) {
+        final query = value.text.trim().toLowerCase();
+
+        // An empty box offers everything rather than nothing: opening the list
+        // to see what there is has to work without knowing a name first.
+        if (query.isEmpty) return lines;
+
+        return lines.where(
+          (line) => describe(line).toLowerCase().contains(query),
+        );
+      },
+      onSelected: (line) => onPicked(line.id),
+      fieldViewBuilder: (context, controller, focus, onSubmit) => TextField(
+        controller: controller,
+        focusNode: focus,
+        enabled: enabled,
+        style: Theme.of(context).textTheme.bodyMedium,
+        decoration: const InputDecoration(
+          isDense: true,
+          border: InputBorder.none,
+          suffixIcon: Icon(Icons.arrow_drop_down),
+        ),
+
+        // Selecting the text on focus so the first keystroke searches rather
+        // than appending to the line's own name, which never matches anything.
+        onTap: () => controller.selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: controller.text.length,
+        ),
+      ),
+    );
+  }
 }
 
 class _Number {

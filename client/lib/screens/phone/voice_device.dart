@@ -76,6 +76,22 @@ abstract class VoiceDevice {
   /// Refuse the pending inbound call.
   void declineIncoming();
 
+  /// Called whenever [registered] changes after [setup] has returned.
+  ///
+  /// ── Why this exists rather than reading the flag ─────────────────
+  ///
+  /// The desk used to sample `registered` once, immediately after setup, and
+  /// draw its banner from that. On Windows registration finishes AFTER that
+  /// point — the page loads, the token goes in, a signalling socket opens —
+  /// so the sample was taken while the answer was still false and nothing ever
+  /// took another.
+  ///
+  /// The result was a desk that said "not connected to the phone network"
+  /// across the top while a call was connected underneath it, which is worse
+  /// than either fact alone: it teaches somebody the banner is noise, and then
+  /// they ignore it on the day it is true.
+  void Function()? onRegistrationChanged;
+
   /// Inbound ringing. Tests drive this; the web wrapper maps SDK `incoming`.
   void Function(VoiceIncoming incoming)? onIncoming;
 

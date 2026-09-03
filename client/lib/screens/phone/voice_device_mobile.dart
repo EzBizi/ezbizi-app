@@ -31,6 +31,9 @@ class MobileVoiceDevice implements VoiceDevice {
   void Function(VoiceIncoming incoming)? onIncoming;
 
   @override
+  void Function()? onRegistrationChanged;
+
+  @override
   Object? get platformView => null;
 
   @override

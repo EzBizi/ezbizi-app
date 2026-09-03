@@ -16,6 +16,7 @@ class RecordsTab extends StatefulWidget {
     this.player,
     this.initialFilter = RecordsFilter.calls,
     this.showFilters = true,
+    this.reloadToken = 0,
   });
 
   final ApiClient api;
@@ -24,6 +25,13 @@ class RecordsTab extends StatefulWidget {
 
   /// Which view this opens on.
   final RecordsFilter initialFilter;
+
+  /// Bumped when this view is opened again while kept alive in a stack.
+  ///
+  /// It is kept alive so the softphone beside it is not torn down, which means
+  /// it would otherwise show whatever it fetched the first time somebody
+  /// looked — and these rows change constantly.
+  final int reloadToken;
 
   /// Whether the Calls / Voicemail / SMS chips are shown.
   ///
@@ -218,6 +226,12 @@ class _RecordsTabState extends State<RecordsTab> {
     }
     if (!mounted) return;
     setState(() => _playing = true);
+  }
+
+  @override
+  void didUpdateWidget(RecordsTab old) {
+    super.didUpdateWidget(old);
+    if (old.reloadToken != widget.reloadToken) _load();
   }
 
   @override

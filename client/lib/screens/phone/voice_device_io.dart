@@ -77,5 +77,8 @@ class _SilentVoiceDevice implements VoiceDevice {
   void Function(VoiceIncoming incoming)? onIncoming;
 
   @override
+  void Function()? onRegistrationChanged;
+
+  @override
   void dispose() {}
 }

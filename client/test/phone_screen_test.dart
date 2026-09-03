@@ -1356,21 +1356,28 @@ void main() {
         presence: team,
       );
 
-      expect(find.byKey(const Key('phone-call-pad')), findsOneWidget);
-
+      // The roster is its own sub-tab now, so the thread takes THAT and the
+      // sub-tabs stay put. What must not happen is the same as before: the
+      // thread taking over the whole screen, so somebody messaging a colleague
+      // about a call loses the call.
+      await _tap(tester, find.widgetWithText(ChoiceChip, 'Team'));
       await _tap(tester, find.byTooltip('Message Ana'));
 
       expect(find.byTooltip('Back to the team'), findsOneWidget);
-      expect(
-        find.byKey(const Key('phone-call-pad')),
-        findsOneWidget,
-        reason: 'the thread evicted the dial pad',
-      );
-      expect(
-        find.byKey(const Key('phone-call-person')),
-        findsOneWidget,
-        reason: 'the thread evicted the customer column',
-      );
+
+      for (final section in ['Dial', 'Team', 'Messages', 'Voicemail']) {
+        expect(
+          find.widgetWithText(ChoiceChip, section),
+          findsOneWidget,
+          reason: 'the thread swallowed the $section tab',
+        );
+      }
+
+      // And the desk is still there behind it, not torn down — the softphone
+      // lives in it, and one that deregisters when you open a thread is one
+      // that misses the call you were about to talk about.
+      await _tap(tester, find.widgetWithText(ChoiceChip, 'Dial'));
+      expect(find.byKey(const Key('phone-call-pad')), findsOneWidget);
     });
 
     /// One total says you have messages without saying whose, and the roster
@@ -1388,6 +1395,9 @@ void main() {
       );
 
       // Against Ana, and not against Bar, who has sent nothing.
+      // The roster lives on the Team sub-tab now.
+      await _tap(tester, find.widgetWithText(ChoiceChip, 'Team'));
+
       final ana = find.ancestor(
         of: find.text('Ana'),
         matching: find.byType(Row),
@@ -1418,6 +1428,7 @@ void main() {
         ],
       );
 
+      await _tap(tester, find.widgetWithText(ChoiceChip, 'Team'));
       await _tap(tester, find.byTooltip('Message Ana'));
 
       expect(find.text('Is the van back?'), findsOneWidget);
@@ -1441,6 +1452,7 @@ void main() {
         onStaffMessage: (body) => sent = body,
       );
 
+      await _tap(tester, find.widgetWithText(ChoiceChip, 'Team'));
       await _tap(tester, find.byTooltip('Message Ana'));
 
       await tester.enterText(
@@ -1771,7 +1783,7 @@ void main() {
 
     await _tap(tester, _tab('Phone'));
 
-    for (final section in ['Dial', 'Messages', 'Voicemail']) {
+    for (final section in ['Dial', 'Team', 'Messages', 'Voicemail']) {
       expect(
         find.widgetWithText(ChoiceChip, section),
         findsOneWidget,
@@ -1791,6 +1803,63 @@ void main() {
       find.widgetWithText(ChoiceChip, 'SMS'),
       findsNothing,
       reason: 'the Messages tab also offered the filter it already is',
+    );
+  });
+
+  /// Voicemail is BOXES, and a box says whose it is.
+  ///
+  /// A flat list answers "did anybody ring" and not "did anybody ring ME",
+  /// which on a shared account is the question — so it is split the way
+  /// responsibility already is, and the transcript is shown rather than hidden
+  /// behind a control nobody presses.
+  testWidgets('Voicemail shows the boxes, whose they are, and transcripts', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      approvedCompanyIds: const ['co-1'],
+      connections: const [
+        {
+          'id': 'cx-1',
+          'scope_type': 'company',
+          'scope_id': 'co-1',
+          'scope_name': 'A-1 Chimney',
+          'kind': 'subaccount',
+          'status': 'connected',
+        },
+      ],
+      voicemailBoxes: const [
+        {
+          'id': 'vb-1',
+          'connection_id': 'cx-1',
+          'name': 'Front desk',
+          'owner_type': 'user',
+          'owner_id': 'u-ana',
+          'owner_name': 'Ana',
+        },
+      ],
+      calls: const [
+        {
+          'id': 'c-9',
+          'number_id': 'n-1',
+          'direction': 'inbound',
+          'from_e164': '+13055550100',
+          'to_e164': '+12035550142',
+          'voicemail': true,
+          'transcript': 'Can somebody call me back about the chimney',
+          'created_at': '2026-09-03T10:00:00+00:00',
+        },
+      ],
+    );
+
+    await _tap(tester, _tab('Phone'));
+    await _tap(tester, find.widgetWithText(ChoiceChip, 'Voicemail'));
+
+    expect(find.text("Ana's"), findsOneWidget);
+    expect(
+      find.textContaining('call me back about the chimney'),
+      findsOneWidget,
+      reason: 'the transcript was not shown on the voicemail',
     );
   });
 }

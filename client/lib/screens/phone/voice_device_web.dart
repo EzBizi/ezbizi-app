@@ -14,6 +14,9 @@ class TwilioVoiceDevice implements VoiceDevice {
   @override
   void Function(VoiceIncoming incoming)? onIncoming;
 
+  @override
+  void Function()? onRegistrationChanged;
+
   // The browser grants the microphone against the page itself, so there is
   // no widget that a permission has to reach.
   @override
@@ -51,11 +54,13 @@ class TwilioVoiceDevice implements VoiceDevice {
       // state the rest of the code already understands.
       await device.register().toDart.timeout(const Duration(seconds: 10));
       _registered = true;
+      onRegistrationChanged?.call();
     } catch (_) {
       // No SDK, a token Twilio refused, or signalling that never came up.
       // The desk still draws; `registered` is how Call knows not to pretend
       // it can take a call.
       _registered = false;
+      onRegistrationChanged?.call();
     }
   }
 
