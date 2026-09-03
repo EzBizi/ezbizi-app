@@ -86,6 +86,10 @@ BUMP=1
 WEB_REMOTE="app"
 WEB_DOWNLOADS="/var/www/www/download"
 
+# Kept whole, so the re-exec below can pass the release through to a pinned
+# worktree exactly as it was asked for.
+ORIG_ARGS=("$@")
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --only)    TARGETS="$2"; shift 2 ;;
@@ -182,6 +186,47 @@ elif [ "$DIRTY" -eq 1 ]; then
   echo "  your edits. Those would be two different builds wearing one version." >&2
   echo "  Commit (or stash) first." >&2
   exit 1
+fi
+
+# ── build from a worktree pinned to this commit ──────────────────
+#
+# Up to thirteen sessions share this working tree, and a release takes minutes.
+# Every target after the first therefore builds from whatever the tree happens
+# to be by the time it starts, not from what was gated and deployed.
+#
+# That is not theoretical. On 2-3 Sep it cost four releases: three where a
+# session edited mid-run and windows/android/ios all refused with "the working
+# tree has uncommitted changes" after web had already shipped, and one where the
+# .ipa recorded a different SHA from the .exe because main moved between them.
+# The recovery each time was to build the failed targets from a worktree pinned
+# to the SHA web shipped — so this does that up front instead of after the loss.
+#
+# The bump above has already been committed, so HEAD here is the release. The
+# worktree is detached at it and cannot move: another session's commit lands on
+# main and leaves this build untouched.
+#
+# EZBIZI_PINNED stops the re-exec recursing. --no-bump is forced because the
+# bump is done; without it the pinned run would bump again, and a detached HEAD
+# cannot carry that commit anywhere.
+if [ -z "${EZBIZI_PINNED:-}" ] && [ "$DRY_RUN" -eq 0 ]; then
+  PIN_SHA=$(git rev-parse HEAD)
+  PIN_DIR="$(dirname "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")")/wt/release-$(git rev-parse --short HEAD)"
+
+  if [ -d "$PIN_DIR" ]; then
+    echo "→ reusing pinned worktree $PIN_DIR"
+  else
+    echo "→ pinning the build to ${PIN_SHA:0:7} — $PIN_DIR"
+    git worktree add --detach "$PIN_DIR" "$PIN_SHA" >/dev/null
+  fi
+
+  # Gitignored, so a fresh worktree has no signing key and Android would fail
+  # its preflight for a reason that has nothing to do with the release.
+  if [ -f client/android/key.properties ]; then
+    cp client/android/key.properties "$PIN_DIR/client/android/key.properties"
+  fi
+
+  cd "$PIN_DIR"
+  EZBIZI_PINNED=1 exec bash scripts/release.sh --no-bump "${ORIG_ARGS[@]}"
 fi
 
 # ── android needs a real key before it needs anything else ───────
