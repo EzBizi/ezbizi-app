@@ -98,6 +98,11 @@ reviewer reads it is not the harmless direction.
 `Threads`, `InstagramProfessional`, `Pinterest`, `TikTok`. So "five networks send
 today" is right and the old sentence was wrong on production.
 
+**Published in `v0.0.0142` (`aa9be21`) on 2026-09-03** and verified against the
+live pages, not the repo: `/social-media/` returns "Five networks send today"
+and zero matches for "Two networks send today". Resolved — do not go hunting it
+again.
+
 That confirmation arrived *after* the edit, because no deploy session was
 reachable when it was made — `ezbizi-7e` answered "not the deploy desk, and I do
 not know who is", and the desk itself was mid-session elsewhere. Three
@@ -180,6 +185,31 @@ merged and not yet shipped.** On 2026-08-31 it did: manifest `0.0.0122`, repo
 The installer has to match the API it will talk to, so the manifest tracks the
 deployed release. Compare it to what production runs — ask the deploy session —
 or to the published `EzBizi-setup.exe`, not to the repo's next version bump.
+
+## Absence of news is not a publish
+
+**Never record a publish you have not fetched.** This run nearly did: having
+handed `7349e79` to the deploy desk, the plan was to "take silence as it having
+ridden the scheduled release". The desk refused that and was right to.
+
+Silence would equally have meant Jose declined it, or that the release failed on
+the web step — which happened **three times on 2026-09-02, and on two of those
+the web target shipped while the app targets did not**, so even a partly-failed
+release is quiet in the direction that matters here.
+
+It is the same defect as the two this file corrected the same day — a check
+resting on an absence, which passes for the wrong reason. `external_id` was
+missing so nothing matched; `jobs.scheduled_for` was expected missing and was
+not; and "no bad news" is the same trick played on a person instead of a column.
+**The check is one command, and it is the same one the daily audit already
+runs:**
+
+```
+curl -sS https://www.ezbizi.com/<page>/ | grep -c "<the string that had to go>"
+```
+
+Fetch the page, grep for the sentence that had to disappear, and record the
+result. Not the deploy desk's word, and not the passage of time.
 
 ## Two things that make this easier than it looks
 
