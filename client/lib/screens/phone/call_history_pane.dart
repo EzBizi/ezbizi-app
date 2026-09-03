@@ -1,3 +1,4 @@
+import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -148,7 +149,7 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
             ? theme.colorScheme.error
             : theme.colorScheme.onSurfaceVariant,
       ),
-      title: Text(peer, style: theme.textTheme.bodyMedium),
+      title: Text(formatPhoneNumber(peer), style: theme.textTheme.bodyMedium),
       subtitle: Text(
         row.subtitle,
         style: theme.textTheme.bodySmall?.copyWith(

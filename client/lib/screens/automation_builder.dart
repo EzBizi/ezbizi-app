@@ -1,3 +1,4 @@
+import '../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/automation_catalogue.dart';
@@ -286,7 +287,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
               (row['id'] ?? '').toString(),
               [
                 (row['label'] ?? '').toString(),
-                (row['e164'] ?? '').toString(),
+                formatPhoneNumber((row['e164'] ?? '').toString()),
               ].where((part) => part.isNotEmpty).join(' · '),
             ),
       ];

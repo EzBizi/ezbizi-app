@@ -16,7 +16,7 @@
 ///
 /// ── Why it refuses most of the world ─────────────────────────────
 ///
-/// `+1 (203) 555-0142` is a North American convention and only makes sense for
+/// `+1 (203) 555 - 0142` is a North American convention and only makes sense for
 /// North American numbers. A naive "insert brackets after three digits" would
 /// render a London number `+4 (420) 718-3875` — which is not a phone number in
 /// any country, and looks confident about it.
@@ -27,7 +27,7 @@
 /// this file is where that decision already lives.
 library;
 
-/// The North American form: `+1 (203) 555-0142`.
+/// The North American form: `+1 (203) 555 - 0142`.
 ///
 /// Anything else is returned unchanged — international numbers, short internal
 /// extensions, empty strings, and anything malformed. Callers can pass whatever
@@ -53,6 +53,9 @@ String formatPhoneNumber(String? raw) {
   if (digits[0] == '0' || digits[0] == '1') return value;
   if (digits[3] == '0' || digits[3] == '1') return value;
 
+  // Spaces around the dash, which is Jose's spelling of it (3 Sep) rather than
+  // the tighter `555-0142` this used to produce. One place decides it, so the
+  // whole app changes together if that ever changes again.
   return '+1 (${digits.substring(0, 3)}) '
-      '${digits.substring(3, 6)}-${digits.substring(6)}';
+      '${digits.substring(3, 6)} - ${digits.substring(6)}';
 }

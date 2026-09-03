@@ -1,3 +1,4 @@
+import '../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
@@ -338,7 +339,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
           child: Text(
             [
               customer['number'],
-              if (customer['phone'] != null) customer['phone'],
+              if (customer['phone'] != null)
+                formatPhoneNumber(customer['phone'] as String?),
               if (customer['email'] != null) customer['email'],
               '$jobs ${jobs == 1 ? 'job' : 'jobs'}',
             ].join(' · '),
@@ -390,7 +392,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                   contentPadding: EdgeInsets.zero,
                   title: Text('${dup['name']} (${dup['number']})'),
                   subtitle: Text(
-                    '${dup['phone'] ?? dup['email'] ?? ''} · ${owner['name'] ?? ''}',
+                    '${dup['phone'] != null ? formatPhoneNumber(dup['phone'] as String?) : (dup['email'] ?? '')} · ${owner['name'] ?? ''}',
                   ),
                 );
               }),

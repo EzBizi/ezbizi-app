@@ -1,3 +1,4 @@
+import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -279,8 +280,9 @@ class _Line {
   final bool transcribe;
   final List<_Step> steps;
 
-  String get heading =>
-      label.trim().isEmpty || label == e164 ? e164 : '$label · $e164';
+  String get heading => label.trim().isEmpty || label == e164
+      ? formatPhoneNumber(e164)
+      : '$label · ${formatPhoneNumber(e164)}';
 
   /// Whether a call to this line reaches a person at all — the step the whole
   /// screen exists to make impossible to miss.

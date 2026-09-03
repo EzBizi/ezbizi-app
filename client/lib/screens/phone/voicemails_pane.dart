@@ -1,3 +1,4 @@
+import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -289,7 +290,7 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
               children: [
                 Expanded(
                   child: Text(
-                    message.from,
+                    formatPhoneNumber(message.from),
                     style: theme.textTheme.titleSmall,
                   ),
                 ),

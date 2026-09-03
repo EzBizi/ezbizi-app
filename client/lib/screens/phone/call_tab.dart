@@ -1,3 +1,4 @@
+import '../../core/phone_numbers.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -691,7 +692,7 @@ class _CallTabState extends State<CallTab> {
           children: [
             Expanded(
               child: Text(
-                'Incoming from $_incomingFrom',
+                'Incoming from ${formatPhoneNumber(_incomingFrom)}',
                 style: theme.textTheme.bodyMedium,
               ),
             ),
@@ -1397,8 +1398,8 @@ class _LinePicker extends StatelessWidget {
   /// The label AND the number, because people know a line by either — "the
   /// Miami one" and "the one ending 0188" are the same request.
   static String describe(_Number line) => line.assignedToMe
-      ? '${line.label} · ${line.e164} — yours'
-      : '${line.label} · ${line.e164}';
+      ? '${line.label} · ${formatPhoneNumber(line.e164)} — yours'
+      : '${line.label} · ${formatPhoneNumber(line.e164)}';
 
   @override
   Widget build(BuildContext context) {

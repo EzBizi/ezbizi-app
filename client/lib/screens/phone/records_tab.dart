@@ -1,3 +1,4 @@
+import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -139,7 +140,8 @@ class _RecordsTabState extends State<RecordsTab> {
         if (row is Map<String, dynamic>) {
           final id = row['id'] as String? ?? '';
           labels[id] =
-              (row['label'] as String?) ?? (row['e164'] as String? ?? '');
+              (row['label'] as String?) ??
+              formatPhoneNumber(row['e164'] as String?);
         }
       }
     }

@@ -1,3 +1,4 @@
+import '../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -353,11 +354,14 @@ class _LeadsScreenState extends State<LeadsScreen> {
                 ? lead['contact_name'] as String
                 // A lead with no name is still a lead; the number is what
                 // somebody would call back, so it takes the title.
-                : (lead['phone'] as String? ?? 'Unnamed enquiry'),
+                : (lead['phone'] != null
+                      ? formatPhoneNumber(lead['phone'] as String?)
+                      : 'Unnamed enquiry'),
           ),
           subtitle: Text(
             [
-              if ((lead['phone'] as String?)?.isNotEmpty == true) lead['phone'],
+              if ((lead['phone'] as String?)?.isNotEmpty == true)
+                formatPhoneNumber(lead['phone'] as String?),
               if ((lead['category'] as String?)?.isNotEmpty == true)
                 (lead['category'] as String).replaceAll('_', ' '),
               if (lead['received_at'] != null)

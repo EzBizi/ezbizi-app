@@ -10,15 +10,15 @@ import 'package:ezbizi_client/core/phone_numbers.dart';
 void main() {
   group('formats North American numbers', () {
     test('the ordinary case', () {
-      expect(formatPhoneNumber('+12035550142'), '+1 (203) 555-0142');
+      expect(formatPhoneNumber('+12035550142'), '+1 (203) 555 - 0142');
     });
 
     test('a number whose digits repeat is not mangled by the grouping', () {
-      expect(formatPhoneNumber('+18888888888'), '+1 (888) 888-8888');
+      expect(formatPhoneNumber('+18888888888'), '+1 (888) 888 - 8888');
     });
 
     test('surrounding whitespace does not stop it', () {
-      expect(formatPhoneNumber('  +12035550142 '), '+1 (203) 555-0142');
+      expect(formatPhoneNumber('  +12035550142 '), '+1 (203) 555 - 0142');
     });
   });
 

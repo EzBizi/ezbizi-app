@@ -1,3 +1,4 @@
+import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -312,8 +313,8 @@ class _TeamTabState extends State<TeamTab> {
                     value: line.id,
                     child: Text(
                       line.label.isEmpty
-                          ? line.e164
-                          : '${line.label} · ${line.e164}',
+                          ? formatPhoneNumber(line.e164)
+                          : '${line.label} · ${formatPhoneNumber(line.e164)}',
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),

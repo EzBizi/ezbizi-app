@@ -72,7 +72,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Search'));
     await tester.pumpAndSettle();
 
-    expect(find.text('(561) 555-2468'), findsOneWidget);
+    expect(find.text('+1 (561) 555 - 2468'), findsOneWidget);
     expect(find.text('Jupiter, FL'), findsOneWidget);
     expect(find.widgetWithText(Chip, 'Calls'), findsOneWidget);
     expect(find.widgetWithText(Chip, 'Texts'), findsOneWidget);
@@ -126,7 +126,7 @@ void main() {
     expect(reloaded, isTrue);
 
     // Bought is no longer for sale.
-    expect(find.text('(561) 555-2468'), findsNothing);
+    expect(find.text('+1 (561) 555 - 2468'), findsNothing);
   });
 
   testWidgets('cancelling buys nothing', (tester) async {
@@ -156,7 +156,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(posted, isNull);
-    expect(find.text('(561) 555-2468'), findsOneWidget);
+    expect(find.text('+1 (561) 555 - 2468'), findsOneWidget);
   });
 
   testWidgets('nothing found says so rather than showing an empty box', (
