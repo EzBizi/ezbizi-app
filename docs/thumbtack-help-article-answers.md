@@ -1,7 +1,8 @@
 # Thumbtack Help Center article — submitted answers
 
-Filed from **development@ezbizi.com** (the account the partner application was
-made with). Form: *Thumbtack Help Article Submission — Integration Partners*.
+**Submitted 2026-09-03** from **development@ezbizi.com** (the account the partner
+application was made with). Thumbtack: "Your submission date determines how
+quickly we can issue production credentials." Production keys are gated on this. Form: *Thumbtack Help Article Submission — Integration Partners*.
 
 Every answer below describes what EzBizi **actually does today**, not what it is
 planned to do. Thumbtack publishes this as documentation Pros follow, so an
