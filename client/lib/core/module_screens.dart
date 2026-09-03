@@ -17,7 +17,6 @@ import '../screens/marketing_screen.dart';
 import '../screens/phone_screen.dart';
 import '../screens/scheduling_screen.dart';
 import '../screens/services_screen.dart';
-import '../screens/tasks_screen.dart';
 import '../screens/web_screen.dart';
 import 'api_client.dart';
 import 'session.dart';
@@ -54,15 +53,6 @@ final Map<String, ModuleScreen> moduleScreens = {
   'dashboard': ModuleScreen(
     Icons.dashboard_outlined,
     (api, session) => DashboardScreen(api: api, session: session),
-  ),
-  'tasks': ModuleScreen(
-    Icons.checklist_outlined,
-    (api, session) => TasksScreen(
-      api: api,
-      session: session,
-      // HomeShell supplies real address navigation for the live destination.
-      onOpenRecordRoute: (_) {},
-    ),
   ),
   'customers': ModuleScreen(
     Icons.people_outline,

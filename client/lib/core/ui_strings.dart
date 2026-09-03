@@ -30,7 +30,6 @@ class UiStrings {
     // /ui-strings can still override it.
     'module.dashboard.subtitle':
         'What each part of the business is doing right now.',
-    'module.tasks.subtitle': 'Plan, assign, and finish work in this view.',
     'module.customers.subtitle':
         'Everyone you work for, and the history behind each one.',
     'module.jobs.subtitle':

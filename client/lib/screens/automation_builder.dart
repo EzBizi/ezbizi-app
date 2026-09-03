@@ -202,12 +202,6 @@ class _ActionRow {
     'notify',
     'voicemail.mark_dealt',
     'missed.create_job',
-    'task.create',
-    'task.assign_owner',
-    'task.set_status',
-    'task.set_due_date',
-    'task.move_group',
-    'task.add_update',
   };
 
   void dispose() {
@@ -958,8 +952,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           'The webhook step needs an address to call.',
         'notify' when action.message.text.trim().isEmpty =>
           'The notification step needs a message.',
-        String type when type.startsWith('task.') || type == 'sms.send' =>
-          _missingParameter(action, type),
+        'sms.send' => _missingParameter(action, 'sms.send'),
         _ => null,
       };
 
@@ -1640,8 +1633,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       'voicemail.mark_dealt' || 'missed.create_job' => _note(
         'Uses the call that triggered the rule. Nothing else to fill in.',
       ),
-      String type when type.startsWith('task.') || type == 'sms.send' =>
-        _parameterForm(row, widget.catalogue.actionType(type)),
+      'sms.send' => _parameterForm(row, widget.catalogue.actionType('sms.send')),
       _ => TextField(
         controller: row.message,
         enabled: !_busy,

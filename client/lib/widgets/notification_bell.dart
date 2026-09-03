@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import '../core/address.dart';
 import '../core/api_client.dart';
 import '../core/os_notifications.dart';
 import 'side_panel.dart';
@@ -34,10 +33,9 @@ import 'tag.dart';
 /// likely to be wrong and the moment a person is most likely to look at it, and
 /// `resumed` is the only event that catches it.
 class NotificationBell extends StatefulWidget {
-  const NotificationBell({super.key, required this.api, this.onOpenTask});
+  const NotificationBell({super.key, required this.api});
 
   final ApiClient api;
-  final ValueChanged<TaskAddressIntent>? onOpenTask;
 
   @override
   State<NotificationBell> createState() => _NotificationBellState();
@@ -204,13 +202,6 @@ class _NotificationBellState extends State<NotificationBell>
     await _refresh();
   }
 
-  TaskAddressIntent? _taskIntent(Map<String, dynamic> notification) {
-    if (notification['source'] != 'task') return null;
-    final meta = notification['meta'];
-    final route = meta is Map ? meta['route'] : null;
-    return route is String ? Address.taskIntent(route) : null;
-  }
-
   Future<void> _open() async {
     // The user gesture the permission prompt has to come from. Its answer is
     // deliberately not checked: a refusal is a perfectly good outcome that
@@ -307,33 +298,13 @@ class _NotificationBellState extends State<NotificationBell>
                           }
                         }
 
-                        // Do not navigate from the row snapshot. Refreshing
-                        // confirms that this person still receives the item;
-                        // its canonical route is then converted into an opaque
-                        // typed intent before it leaves this widget.
                         await _refresh();
                         if (!context.mounted) return;
-                        final current = _items
-                            .cast<Map<String, dynamic>?>()
-                            .firstWhere(
-                              (item) => item?['id'] == n['id'],
-                              orElse: () => null,
-                            );
-                        final intent = current == null
-                            ? null
-                            : _taskIntent(current);
-                        if (intent != null && widget.onOpenTask != null) {
-                          if (context.mounted) {
-                            Navigator.of(context).pop();
-                            widget.onOpenTask!(intent);
-                          }
-                          return;
-                        }
 
                         // repaint, not setState: setState rebuilds the
                         // bell behind the panel, and the panel's own
                         // page is cached by the route.
-                        if (context.mounted) repaint(() {});
+                        repaint(() {});
                       },
                     );
                   },

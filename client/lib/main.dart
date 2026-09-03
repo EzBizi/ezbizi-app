@@ -27,7 +27,6 @@ import 'screens/profile_screen.dart';
 import 'screens/reset_password_screen.dart';
 import 'screens/signup_screen.dart';
 import 'screens/settings_shell.dart';
-import 'screens/tasks_screen.dart';
 import 'screens/staff/staff_login_screen.dart';
 import 'screens/staff/staff_shell.dart';
 import 'screens/suggestions_screen.dart';
@@ -372,8 +371,6 @@ enum _Rail { modules, pinned, staff, profile }
 
 class _HomeShellState extends State<HomeShell> {
   _Rail _rail = _Rail.modules;
-  TaskAddressIntent? _pendingTaskIntent;
-  int _taskNavigationEpoch = 0;
   void Function()? _stopListening;
 
   /// Reports this device's presence and which module is on screen
@@ -483,14 +480,10 @@ class _HomeShellState extends State<HomeShell> {
     // holds a destination; the strip inside one is not one.
     _rail = _Rail.modules;
     _selected = widget.session.me?.module(id)?.parent ?? id;
-    _pendingTaskIntent = id == 'tasks' ? Address.taskIntent(path ?? '') : null;
   }
 
   String _pathFor(_Rail rail, String? id) {
     if (rail == _Rail.profile || id == null || id.isEmpty) return '/account';
-    if (rail == _Rail.modules && id == 'tasks' && _pendingTaskIntent != null) {
-      return Address.taskPath(_pendingTaskIntent!);
-    }
     return Address.pathOf(id);
   }
 
@@ -534,35 +527,8 @@ class _HomeShellState extends State<HomeShell> {
   void _show(_Rail rail, String id) => setState(() {
     _rail = rail;
     _selected = id;
-    _pendingTaskIntent = null;
     widget.address?.push(_pathFor(rail, id));
     unawaited(_heartbeat.enter(id));
-  });
-
-  void _consumeTaskIntent() => setState(() {
-    _pendingTaskIntent = null;
-    widget.address?.replace('/tasks');
-  });
-
-  /// Record-link routes come from a target's authorized server presentation.
-  /// The shell forwards that exact metadata; it never derives a destination
-  /// from a record type or identifier.
-  void _openAuthorizedRecordRoute(String route) => setState(() {
-    _apply(route);
-    widget.address?.push(route);
-  });
-
-  /// Task notifications cross the shell boundary as an opaque typed intent.
-  /// Only Tasks resolves these IDs through authorized board/detail reads.
-  void _openTaskIntent(TaskAddressIntent intent) => setState(() {
-    _rail = _Rail.modules;
-    _selected = 'tasks';
-    _pendingTaskIntent = TaskAddressIntent(
-      boardId: intent.boardId,
-      taskId: intent.taskId,
-      navigationEpoch: ++_taskNavigationEpoch,
-    );
-    widget.address?.push(Address.taskPath(_pendingTaskIntent!));
   });
 
   /// "Your account" is reached from the avatar, not from a rail, so it has no
@@ -688,15 +654,7 @@ class _HomeShellState extends State<HomeShell> {
             Destination(
               module.label,
               screen.icon,
-              module.key == 'tasks'
-                  ? TasksScreen(
-                      api: widget.api,
-                      session: widget.session,
-                      pendingIntent: _pendingTaskIntent,
-                      onIntentConsumed: _consumeTaskIntent,
-                      onOpenRecordRoute: _openAuthorizedRecordRoute,
-                    )
-                  : screen.build(widget.api, widget.session),
+              screen.build(widget.api, widget.session),
               id: module.key,
             ),
     ];
@@ -791,11 +749,7 @@ class _HomeShellState extends State<HomeShell> {
         : railIndex != null
         ? destinations[railIndex].id
         : 'account';
-    _syncShown(
-      shownId == 'tasks' && _pendingTaskIntent != null
-          ? Address.taskPath(_pendingTaskIntent!)
-          : Address.pathOf(shownId),
-    );
+    _syncShown(Address.pathOf(shownId));
 
     return Scaffold(
       // The top bar belongs to the CHROME, not to the page.
@@ -937,7 +891,7 @@ class _HomeShellState extends State<HomeShell> {
                   },
                 ),
               ),
-              NotificationBell(api: widget.api, onOpenTask: _openTaskIntent),
+              NotificationBell(api: widget.api),
               // The organization requires a second factor and this person has
               // not set one up (§6). Every screen except their own account is
               // answering 403 until they do, so the chrome has to say why and
