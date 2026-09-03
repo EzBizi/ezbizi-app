@@ -8,6 +8,39 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0147',
+      date: '3 Sep 2026',
+      items: [
+        'Leads is its own module in the sidebar rather than a tab inside '
+            'Marketing, and Web Management moves in the other direction to sit '
+            'beside the other places a business says who it is. Where work '
+            'comes from was the wrong thing to keep buried.',
+        'Leads has a tab each for Google and Thumbtack. Google Ads enquiries '
+            'arrive, are stored and are worked here as before. Thumbtack can '
+            'be connected but does not deliver enquiries yet - what it does '
+            'today is keep your associate phone numbers in step, which is what '
+            'makes your caller ID right on their side.',
+        'Leads, Reviews and Business profile: rows belonging to the whole '
+            'organization were invisible to everyone below organization level. '
+            'A connection set up for the organization rather than one company '
+            'produced leads and reviews that nobody in a company or branch '
+            'could see in the list, while opening one directly still worked.',
+        'Reviews and Business profile: a sync that fails now says so instead '
+            'of reporting no reviews. "Nothing came back" and "we could not '
+            'ask" looked identical, and the reason was being sent somewhere '
+            'the screen never showed it.',
+        'Business profile: a business with more than a hundred locations now '
+            'sees reviews for all of them. Only the first hundred were ever '
+            'fetched, and the rest were silently absent.',
+        'Business profile: a revoked Google permission says it was revoked, '
+            'instead of telling you to wait for a quota approval that was '
+            'never coming.',
+        'Phone numbers read the same way everywhere - +1 (305) 724-2199 - on '
+            'every screen and in every module, instead of the stored form. '
+            'Typing ten digits into any phone field formats it as you go.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0146',
       date: '3 Sep 2026',
       items: [
