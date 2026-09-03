@@ -972,6 +972,29 @@ were in the CHECKING code rather than the changed code, and both failed toward
 "looks fine". That is the direction to expect: verification code is written in a
 hurry by someone who already believes the answer.
 
+### `--filter=<Module>` is not "the module's tests"
+
+`--filter` matches test CLASS and METHOD names. It does not know about
+directories. Run it as `--filter=Phone` and you get every test anywhere in the
+suite with "Phone" in its name, and you silently lose the ones in
+`tests/Feature/Phone/` that do not have it — which on 2026-09-03 was eight
+classes including `TwimlRendererTest` and `VoiceWebhookTest`, the two files the
+change under test had actually altered. It reported 228 passed. The directory is
+212, and 8 classes of it never ran.
+
+It fails toward "looks fine" twice over: the count goes UP, so the run looks
+broader than a directory run rather than narrower.
+
+To run a module, name the path:
+
+```bash
+DB_DATABASE=ezbizi_testing_<yourmodule> php -d memory_limit=1G artisan test tests/Feature/<Module>
+```
+
+Keep `--filter` for what it is good at: one named test while you are working on
+it. It is the §8 shape again — a result derived from a NAME rather than from the
+thing you meant to check, reported as though it had checked the thing.
+
 ### PHP's default 128M dies partway through a large filter
 
 `php -d memory_limit=1G vendor/bin/phpunit --filter=...` for anything broad. The
