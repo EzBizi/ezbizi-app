@@ -216,11 +216,50 @@ return [
         'redirect'      => env('THUMBTACK_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/thumbtack/callback',
 
-        'authorize_url' => env('THUMBTACK_AUTHORIZE_URL'),
-        'token_url'     => env('THUMBTACK_TOKEN_URL'),
-        'account_url'   => env('THUMBTACK_ACCOUNT_URL'),
-        'scopes'        => env('THUMBTACK_SCOPES'),
-        'pkce'          => env('THUMBTACK_PKCE', false),
+        /*
+         * Published values, at last. These were deliberately empty from
+         * 2026-08-30 until Thumbtack issued credentials on 2026-09-03, because
+         * a plausible-looking guess would have compiled, passed a test against
+         * a fake, and failed against Thumbtack. They now come from their own
+         * OpenAPI document (api.thumbtack.com/docs/thumbtack_api_latest.json,
+         * "HydraOAuth"), not from inference.
+         *
+         * Still env-overridable, because "Hydra" is ORY Hydra and a partner
+         * tenant can be moved.
+         */
+        'authorize_url' => env('THUMBTACK_AUTHORIZE_URL', 'https://auth.thumbtack.com/oauth2/auth'),
+        'token_url'     => env('THUMBTACK_TOKEN_URL', 'https://auth.thumbtack.com/oauth2/token'),
+
+        /*
+         * The API host, which is NOT the auth host and switches per
+         * environment. Staging credentials against the production host fail as
+         * an authorisation error rather than as a wrong-host error, so getting
+         * this wrong reads like bad keys.
+         */
+        'api_base' => rtrim((string) env('THUMBTACK_API_BASE', 'https://api.thumbtack.com/api'), '/'),
+
+        /*
+         * Only what EzBizi actually calls today.
+         *
+         * `offline_access` because requiresRefreshToken() is true, businesses.list
+         * to identify the connected account, and the two associate-phone-number
+         * scopes for the caller-ID sync Thumbtack requires.
+         *
+         * Deliberately NOT negotiations.read or messages.read yet. Reading
+         * leads is the next slice and has no code behind it, and asking for a
+         * scope you do not use is exactly the over-scoping that had to be
+         * unpicked from the Meta submission the same week.
+         */
+        'scopes' => env('THUMBTACK_SCOPES', implode(',', [
+            'offline_access',
+            'supply::businesses.list',
+            'supply::businesses/associate-phone-numbers.read',
+            'supply::businesses/associate-phone-numbers.write',
+        ])),
+
+        // ORY Hydra supports PKCE and their spec does not mark it required, so
+        // this stays off until a live authorize call says otherwise.
+        'pkce' => env('THUMBTACK_PKCE', false),
     ],
 
     'x' => [

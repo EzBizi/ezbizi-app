@@ -229,10 +229,15 @@ class SocialNetworkOAuthTest extends TestCase
     /**
      * Credentials alone are not enough to connect, and it says so.
      *
-     * Thumbtack publishes its API addresses with the partner documentation, so
-     * there is a real state where keys exist and endpoints do not. Left unsaid,
-     * Connect would open a window to an empty URL. The two refusals name
-     * different missing things because different people fix them.
+     * The addresses carry real defaults since Thumbtack issued credentials on
+     * 2026-09-03, so a blank one now means somebody emptied it in .env rather
+     * than that Thumbtack has not told us - which is why the wording changed
+     * from "we have not been given them" to "one of them is blank here".
+     *
+     * Still checked, because an empty authorize_url opens Connect on a window
+     * to nowhere, and "nothing happened" is the least diagnosable failure
+     * there is. The two refusals name different missing things because
+     * different people fix them.
      */
     public function test_thumbtack_says_which_piece_is_missing(): void
     {
@@ -245,11 +250,11 @@ class SocialNetworkOAuthTest extends TestCase
         config()->set('services.thumbtack.client_id', 'an-id');
         config()->set('services.thumbtack.client_secret', 'a-secret');
         config()->set('services.thumbtack.authorize_url', '');
-        $this->assertStringContainsString('not the API addresses', (string) $driver->notReadyBecause());
+        $this->assertStringContainsString('API addresses is blank', (string) $driver->notReadyBecause());
 
         config()->set('services.thumbtack.authorize_url', 'https://example.test/oauth');
         config()->set('services.thumbtack.token_url', 'https://example.test/token');
-        config()->set('services.thumbtack.account_url', 'https://example.test/me');
+        config()->set('services.thumbtack.api_base', 'https://example.test/api');
         $this->assertNull($driver->notReadyBecause());
     }
 

@@ -47,6 +47,16 @@ Schedule::command('ezbizi:dispatch-automation-events')->everyMinute()->withoutOv
 // first.
 Schedule::command('ezbizi:publish-due-social-posts')->everyMinute()->withoutOverlapping(5);
 
+// The phone numbers Thumbtack matches calls against, kept level with the
+// people actually assigned to each connected business.
+//
+// Nightly, and a sweep rather than a hook on "user saved", because Thumbtack
+// holds its own copy: a hook keeps the two in step only while every write ever
+// made succeeded, and one dropped request diverges them silently until a pro
+// asks why their van phone shows as an unknown number. This reads their list
+// and sends the difference, so it repairs drift instead of adding to it.
+Schedule::command('ezbizi:sync-thumbtack-phone-numbers')->dailyAt('04:40')->withoutOverlapping(30);
+
 // Media handed to Instagram, Threads or Facebook to fetch, and not cleaned up
 // because the worker died between the fetch and the `finally` that deletes it.
 //
