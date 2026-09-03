@@ -37,6 +37,7 @@ class WindowsVoiceDevice implements VoiceDevice {
   wvw.WebviewController? _controller;
   StreamSubscription<dynamic>? _messages;
 
+  bool _preparing = false;
   bool _registered = false;
   bool _starting = false;
 
@@ -74,9 +75,20 @@ class WindowsVoiceDevice implements VoiceDevice {
   Object? get platformView => _controller;
 
   @override
-  Future<void> setup(String token) async {
-    if (_starting) return;
-    _starting = true;
+  /// Phase one: build the controller and nothing else.
+  ///
+  /// Split out of [setup] on 3 Sep. [platformView] returns this controller, and
+  /// the Dial tab can only mount the widget once it is non-null — so while both
+  /// halves lived in one await, the page was already calling `getUserMedia`
+  /// with nothing in the tree to answer the permission. Registration therefore
+  /// failed on every desktop launch, and the banner blamed the network.
+  ///
+  /// Nothing here touches the page or the network: no navigation, no token.
+  /// Safe to call before the screen has anything to show.
+  @override
+  Future<void> prepare() async {
+    if (_controller != null || _preparing) return;
+    _preparing = true;
 
     try {
       final controller = wvw.WebviewController();
@@ -86,6 +98,8 @@ class WindowsVoiceDevice implements VoiceDevice {
       final assets = _assetsDir();
       if (assets == null) {
         _registered = false;
+        _registrationError =
+            'The softphone files are missing from this installation.';
 
         return;
       }
@@ -96,11 +110,31 @@ class WindowsVoiceDevice implements VoiceDevice {
         wvw.WebviewHostResourceAccessKind.allow,
       );
 
-      // Listening BEFORE navigating: the page posts as soon as it loads, and
-      // a listener attached afterwards misses the first message — which is the
-      // one saying whether the phone came up.
+      // Listening BEFORE navigating: the page posts as soon as it loads, and a
+      // listener attached afterwards misses the first message.
       _messages = controller.webMessage.listen(_receive);
       _controller = controller;
+    } catch (_) {
+      _registered = false;
+    } finally {
+      _preparing = false;
+    }
+  }
+
+  @override
+  Future<void> setup(String token) async {
+    if (_starting) return;
+    _starting = true;
+
+    try {
+      // Idempotent, and the fallback for any caller that skips phase one.
+      await prepare();
+      final controller = _controller;
+      if (controller == null) {
+        _registered = false;
+
+        return;
+      }
 
       await controller.loadUrl('https://$_virtualHost/$_hostPage');
       await _ready.future.timeout(

@@ -43,6 +43,10 @@ class MobileVoiceDevice implements VoiceDevice {
   @override
   String? get registrationError => null;
 
+  // The native SDK owns its own audio session; no widget is involved.
+  @override
+  Future<void> prepare() async {}
+
   @override
   Future<void> setup(String token) async {
     try {

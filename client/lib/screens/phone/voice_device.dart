@@ -21,6 +21,20 @@ abstract class VoiceDevice {
   bool get supported;
 
   /// Register with an access token from POST /phone/tokens.
+  /// Build whatever the screen must MOUNT, before [setup] registers.
+  ///
+  /// Two phases because the Windows device needs its WebView2 widget in the
+  /// tree BEFORE registration: the microphone prompt is delivered to the
+  /// widget's `permissionRequested` delegate, `getUserMedia` fails without an
+  /// answer, and Twilio's register() then rejects. [setup] used to create the
+  /// controller and register inside one await, so [platformView] was still
+  /// null while the page was asking — nothing was mounted, and every desktop
+  /// launch reported a desk that could not connect.
+  ///
+  /// A no-op everywhere else: the browser needs nothing mounted, and calling
+  /// this before [setup] is always safe.
+  Future<void> prepare() async {}
+
   Future<void> setup(String token);
 
   /// Whether [setup] actually reached Twilio.

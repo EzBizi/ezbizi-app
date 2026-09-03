@@ -270,6 +270,24 @@ class _CallTabState extends State<CallTab> {
     final number = _selected;
     if (number == null) return;
 
+    // Phase one FIRST, then a frame, then register.
+    //
+    // The Windows device's microphone prompt is delivered to its mounted
+    // widget; unmounted, `getUserMedia` goes unanswered and Twilio's register()
+    // rejects. [VoiceDevice.platformView] is null until prepare() has built the
+    // controller, so the widget cannot exist before this call — and awaiting
+    // one frame after it is what actually puts it in the tree. Without the
+    // frame this is the same bug with an extra method: prepared, still not
+    // mounted, still refused.
+    //
+    // A no-op on every other platform, so there is one path here rather than a
+    // Windows branch.
+    await _device.prepare();
+    if (!mounted) return;
+    setState(() {});
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+
     final token = await widget.api.post('/phone/tokens', {
       'connection_id': number.connectionId,
     });

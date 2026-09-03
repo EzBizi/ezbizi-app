@@ -14,6 +14,11 @@ class TwilioVoiceDevice implements VoiceDevice {
   @override
   void Function(VoiceIncoming incoming)? onIncoming;
 
+  // The browser grants the microphone against the page itself, so there is
+  // no widget that a permission has to reach.
+  @override
+  Future<void> prepare() async {}
+
   @override
   Future<void> setup(String token) async {
     if (_twilio == null) return;

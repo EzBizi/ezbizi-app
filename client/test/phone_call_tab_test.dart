@@ -358,6 +358,29 @@ void main() {
     expect(find.textContaining('the network is blocking'), findsOneWidget);
   });
 
+  /// Prepared, and given a frame to mount, before anything registers.
+  ///
+  /// On Windows the microphone prompt is delivered to the mounted WebView2
+  /// widget, and [VoiceDevice.platformView] is null until prepare() has built
+  /// the controller — so registering in the same await left nothing in the tree
+  /// to answer it. getUserMedia went unanswered, Twilio's register() rejected,
+  /// and the desk reported itself disconnected on every desktop launch while
+  /// the browser was fine.
+  testWidgets('the device is prepared before it is asked to register', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    addTearDown(device.dispose);
+
+    await _pump(tester, device: device);
+
+    expect(
+      device.prepareCalledBeforeSetup,
+      isTrue,
+      reason: 'setup() registered before the platform view could be mounted',
+    );
+  });
+
   testWidgets(
     'a build with no Voice SDK says so instead of blaming the network',
     (tester) async {
@@ -677,8 +700,24 @@ class _FakeDevice implements VoiceDevice {
   @override
   Object? get platformView => null;
 
+  /// Records the order, because the order IS the bug.
+  ///
+  /// The Windows device must be prepared — and its widget mounted — before
+  /// setup() registers, or the microphone prompt has nowhere to arrive and
+  /// Twilio refuses. A fake that ignores prepare() would let that regress
+  /// silently, so this one remembers whether it was called first.
+  var prepareCalledBeforeSetup = false;
+  var _prepared = false;
+
   @override
-  Future<void> setup(String token) async {}
+  Future<void> prepare() async {
+    _prepared = true;
+  }
+
+  @override
+  Future<void> setup(String token) async {
+    prepareCalledBeforeSetup = _prepared;
+  }
 
   @override
   Future<void> connect({required String to, String? callerId}) async {
