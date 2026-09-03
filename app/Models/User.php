@@ -187,11 +187,6 @@ class User extends Authenticatable implements HoldsPersonalData
         return $this->hasMany(Assignment::class);
     }
 
-    public function taskBoardMemberships(): HasMany
-    {
-        return $this->hasMany(TaskBoardMember::class);
-    }
-
     // ── permissions (§4) ─────────────────────────────────────────
 
     /**
