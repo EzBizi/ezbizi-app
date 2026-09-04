@@ -130,4 +130,4 @@ The connect flow is finished and correct — the only thing that fails is quota:
 - Implement explicit per-client authorization before replying (§4).
 - Implement 48-hour change notification (§4).
 - Plan for v4's deprecation (§3).
-- `7945fb0` is committed but **not deployed**.
+- ~~`7945fb0` undeployed~~ — shipped in `0.0.0150` (`3f7f222b`), verified against production 2026-09-04.

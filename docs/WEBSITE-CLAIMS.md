@@ -1,37 +1,5 @@
 # What the website claims, and on whose authority
 
-> ## ⚠ PENDING PUBLICATION — `c0b28cd`, committed 2026-09-03, NOT on the site
->
-> **Two false claims are live on www.ezbizi.com until this is published.** The fix
-> is on `main`; only the publish is outstanding. Delete this block once the two
-> checks below pass.
->
-> 1. **The site sells Tasks, which is retired from the product.** The deployed
->    client carries zero Tasks screens, so a customer on `0.0.0148` has no Tasks
->    screen at all.
-> 2. **A billing claim.** Homepage step 04 read "**Bill** from the completed
->    work". `billing` was in the gate; the word was `Bill`.
->
-> **Who publishes:** `scripts/deploy-www.sh`, which belongs to the deploy desk,
-> and the call is **Jose's** — an outward-facing publish is not actioned on a
-> peer's request. `docs/MODULE-OWNERS.md:147` names `ezbizi-a1` for Deploy and
-> **that session was not alive on 2026-09-03**; the roster's session column is
-> stale exactly as its own header warns. **The role had no address that night.**
->
-> **Verify it published — do not infer it from a green release.** `deploy.sh:479`
-> runs the site publish last and non-fatally, warning only to stderr:
->
-> ```
-> curl -sS https://www.ezbizi.com/ | grep -c "Bill from the completed work"   # must be 0
-> curl -sS https://www.ezbizi.com/ | grep -c "id=\"p-task\""                    # must be 0
-> curl -sS https://www.ezbizi.com/social-media/ | grep -c "Five networks send today"  # must be 1
-> ```
->
-> **This is in a file rather than a message on purpose.** It was handed to a
-> deploy session that ended before publishing, and the next desk has a different
-> name. A message dies with its session; `main` and a file somebody reads do not.
-
-
 The public site says what EzBizi does. This page records **why each claim is
 allowed to be there**, and — more importantly — what must *not* go back on.
 
@@ -318,6 +286,61 @@ Three cheap lessons, all paid for once:
    stays off the site because its layouts reached production before Jose saw
    them and a privacy defect is open — "true" and "ready to claim publicly" are
    different tests, and only the first is a row count.
+
+## The deploy desk HAS an address — read `docs/SESSIONS.md`, never `ListAgents`
+
+**INVERTED 2026-09-04.** This section said there was no deploy desk to find. That
+was wrong, and wrong in a way that cost three sessions an evening: we were all
+looking in the wrong place, and the right one was already committed.
+
+**The route.** `CLAUDE.md:6` tells every session to read `docs/SESSIONS.md`
+before messaging another one. Its Deployment row (≈:65) names a **desktop session
+id** — `local_<uuid>` — addressed with `ccd_session_mgmt send_message`, *not* with
+`SendMessage`.
+
+**Why every address we tried was dead.** We were using pipe names from
+`ListAgents` (`ezbizi-a1`, `ezbizi-5b`, `ezbizi-7b`, `local_a7c13d4e`). A pipe
+name is derived from the folder plus two hex digits and **dies with the process**;
+a desktop session id is permanent and never reassigned. Four dead addresses were
+not four dead desks — they were one live desk and the wrong kind of name.
+
+**The daily check's step 1 is therefore wrong at the source**: it opens by calling
+`ListAgents` and matching a session name. That procedure cannot succeed, and
+`CLAUDE.md` already says so. **Read `docs/SESSIONS.md` instead**, and fall through
+when the id errors — that file's own header warns the session column can go stale
+within the hour, and an unstaffed role takes a file in `docs/agents/inbox/`.
+
+**Write that file to the protocol or it is just a file.** `docs/agents/README.md`
+specifies a filename `NNNN-<from>-to-<to>-<slug>.md` and YAML frontmatter — `---`
+fences, lowercase `from:` `to:` `date:` `subject:` `needs:`, where `needs:` is
+`action | answer | fyi` and is the only field that changes what the receiver does.
+`to:` is the routing field. A note written without them can still be read, but
+only by a person who happens to look; it is not addressed to anyone. Acknowledge
+by `git mv`-ing the file to `done/` — moving it *is* the acknowledgement — and
+reply with a new message citing the number rather than editing theirs, because a
+sent message is the record of what its receiver worked from.
+
+**What survives the inversion, because it was never about the address:**
+
+- **The artefact answers "did it publish", never a peer.** Fetch the URL and grep
+  for the string that had to change. `deploy.sh:479` publishes the site last and
+  non-fatally, so a green release is not evidence.
+- **`www/` lives on `main`**, and the website session commits straight to `main`,
+  so a release of `main` ships the site as a side effect with no desk in the loop —
+  which is why `c0b28cd` published overnight with nobody answering. **This does not
+  generalise to a branch**: a marketing session watched the same release go out and
+  its own verified work stay behind. If `www/` ever moves to a branch, this route
+  stops working.
+- **Write the handoff where a reader already goes.** Not merely "write it down":
+  that same session first put its handoff on the branch that needed merging, where
+  whoever would merge it could not read it. This file works because the daily check
+  is *told* to open it first.
+
+**This session is already in `SESSIONS.md` and needs no registration** — the
+daily catalog is listed there as *not a role* ("it finds the deploy desk here;
+nobody needs to find it"), with all three of its rotating ids. Do not add a row
+for it, and do not claim the Website role's row (≈:79), which is a different
+session.
 
 ## Absence of news is not a publish
 
