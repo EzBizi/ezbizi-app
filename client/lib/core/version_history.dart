@@ -8,6 +8,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0151',
+      date: '4 Sep 2026',
+      items: [
+        '"Text me my codes" is on the account screen at a desk, not only on a '
+            'phone. It was added to the phone layout alone, so the setting '
+            'existed on a handset and did not exist on a computer - which is '
+            'where most people would have gone looking for it. It now sits '
+            'under Two-factor in both.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0150',
       date: '4 Sep 2026',
       items: [

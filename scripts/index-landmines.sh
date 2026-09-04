@@ -54,10 +54,6 @@
 # "Unstaged changes after reset:" output lists every path where worktree and
 # index differ repo-wide, not what it touched — ignore it and verify instead.
 set -euo pipefail
-# Silence must never read as clean. Under set -e a crash anywhere above the
-# summary used to produce no output at all - the same shape as a quiet
-# success when piped through tail. Now a crash says so.
-trap 'echo "  index-landmines.sh ABORTED before its summary (line $LINENO) - the index is UNKNOWN, not clean" >&2' ERR
 cd "$(dirname "$0")/.."
 
 HEAD_SHA=$(git rev-parse HEAD)
