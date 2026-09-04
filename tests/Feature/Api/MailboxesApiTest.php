@@ -555,6 +555,12 @@ class MailboxesApiTest extends TestCase
 
         $this->assertSame([
             'id', 'address', 'display_name', 'label', 'provider', 'provider_label',
+            // What this mailbox is set to, and whether the switch can be
+            // offered at all. Two fields because they answer different
+            // questions — a Gmail mailbox with the setting off and an Outlook
+            // mailbox that cannot have it are not the same state, and a screen
+            // that collapsed them would draw a switch it cannot honour.
+            'mark_read_at_source', 'can_mark_read_at_source',
             'scope_type', 'scope_id', 'status', 'status_reason', 'last_reached_at',
             'can_be_opened', 'unavailable_reason', 'mail_server',
             'may_read', 'may_read_reason', 'may_manage',

@@ -1114,6 +1114,13 @@ class WatchedInbox implements MailboxReader
         return ['INBOX'];
     }
 
+    public function canMarkReadAtSource(Mailbox $mailbox): bool
+    {
+        return false;
+    }
+
+    public function markReadAtSource(Mailbox $mailbox, string $messageId): void {}
+
     public function trash(Mailbox $mailbox, string $messageId): void {}
 
     public function downloadAttachment(Mailbox $mailbox, string $messageId, string $attachmentId): EmailPicture

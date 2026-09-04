@@ -102,6 +102,8 @@ class MailboxConnection {
     required this.lastReachedKnown,
     required this.mailServer,
     required this.mayManage,
+    required this.markReadAtSource,
+    required this.canMarkReadAtSource,
   });
 
   final String id;
@@ -169,6 +171,15 @@ class MailboxConnection {
   /// server's own answer, from the check that will be made again on the write.
   final bool mayManage;
 
+  /// Whether opening a message here also marks it read at the mail service.
+  final bool markReadAtSource;
+
+  /// Whether this connection CAN do that — the provider's answer, not a guess
+  /// from [provider]. A Gmail mailbox connected without the modify scope
+  /// cannot, and a screen holding its own table of which provider can do what
+  /// is a second dictionary that will one day disagree with the one deciding.
+  final bool canMarkReadAtSource;
+
   /// The line at the top of the row. The address always, and the nickname
   /// beside it only when it says something the address does not.
   bool get named =>
@@ -195,6 +206,8 @@ class MailboxConnection {
         lastReachedKnown: json.containsKey('last_reached_at'),
         mailServer: json['mail_server'] as Map<String, dynamic>? ?? const {},
         mayManage: json['may_manage'] == true,
+        markReadAtSource: json['mark_read_at_source'] == true,
+        canMarkReadAtSource: json['can_mark_read_at_source'] == true,
       );
 
   static List<MailboxConnection> listFrom(Object? data) => [

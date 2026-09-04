@@ -16,6 +16,10 @@ class VersionHistory {
             'existed on a handset and did not exist on a computer - which is '
             'where most people would have gone looking for it. It now sits '
             'under Two-factor in both.',
+        'Email: an inbox can now mark mail as read in the mail service itself, so '
+            'a message you open here stops being bold in Gmail too. Off unless you '
+            'turn it on, per inbox, on Email > Settings - because on an inbox your '
+            'team shares it would hide mail from a colleague who has not read it.',
       ],
     ),
     VersionRelease(
