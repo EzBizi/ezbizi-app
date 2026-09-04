@@ -78,11 +78,11 @@ they come back; the date says how stale.
 | Scheduling | `local_afb8a536-e66d-4fe3-b7a7-0126dba1cba4` | EzBizi - Scheduling Module | 2026-09-02 | — |
 | Website (marketing site) | `local_b7fcc2e8-6683-4ce1-bea2-8853ba859ab0` | EzBizi - Website | 2026-09-01 | — |
 | Email module | `local_8c185e1a-58d1-4882-8457-1ac0b338a35d` | EzBizi - Email Module | 2026-08-31 | — |
-| Inspection | `local_1afc8662-0b8a-4b3c-b747-401b97b2a211` | EzBizi - Inspection Module | 2026-08-31 | — |
+| Inspection | `local_1afc8662-0b8a-4b3c-b747-401b97b2a211` | EzBizi - Inspection Module | 2026-09-04 | — |
 | Services | `local_2410a68f-5246-4715-82ac-faeb089a3a1b` | EzBizi - Services Module | 2026-08-31 | — |
 | Inventory | `local_14fb86e6-7ca7-4051-96e7-d7ba4ec9a13b` | EzBizi - Inventory Module | 2026-08-31 | — |
 | Android | `local_36f6540f-4f54-49b4-bb1d-8ee29cd1585d` | EzBizi - Android | 2026-08-31 | — |
-| Customers | `local_90d427a5-c0b9-46e5-864a-efe9eb5b72da` | EzBizi - Customers | 2026-08-31 | — |
+| Customers | `local_90d427a5-c0b9-46e5-864a-efe9eb5b72da` | EzBizi - Customers | 2026-09-04 | — |
 | Notifications | `local_7b312565-f2f8-44cf-ac5e-5426683f2cbf` | EzBizi - Notifications | 2026-08-31 | — |
 | Training | `local_d30258ab-af2b-4b1b-9cf5-b0926fbe06ec` | EzBizi - Training Module | 2026-08-31 | — |
 | AWS migration (cwd `H:\Development\AWS`) | `local_079b6a6c-b0c8-49f9-8568-152a1dd2a6b1` | MIGRATION | 2026-09-04 | `aws-68` at 15:57 UTC (inferred from cwd, not confirmed) |
