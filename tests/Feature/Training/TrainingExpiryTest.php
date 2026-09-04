@@ -187,7 +187,143 @@ class TrainingExpiryTest extends TestCase
 
             $this->assertCount(1, $events, 'Exactly one lapsed pass is news: the current one.');
             $this->assertSame($later->id, $events->first()->subject_id);
-            $this->assertNotSame($earlier->id, $events->first()->subject_id);
+        });
+    }
+
+    /**
+     * `isSuperseded()` compares `taken_at`, not `expires_on`, and the two CAN
+     * disagree about which attempt is "later". Here the attempt taken MORE
+     * RECENTLY has the OLDER `expires_on` of the two — and the sweep still
+     * follows `taken_at`: it announces the attempt taken most recently, even
+     * though the OTHER attempt's `expires_on` is the more recent lapse in
+     * absolute date terms, and that other attempt never fires at all.
+     */
+    public function test_when_taken_at_and_expires_on_disagree_taken_at_decides(): void
+    {
+        $tenant = $this->provisionTenant('Disagree-'.Str::random(8));
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $tenant['franchise']);
+        $test = $this->aTest($tenant);
+
+        // Taken 31 days ago; lapsed only 1 day ago — the MORE RECENT lapse by
+        // expires_on, but the EARLIER attempt by taken_at.
+        $earlierByTakenAt = $this->inTenant($tenant['org'], fn () => TrainingAttempt::create([
+            'user_id' => $learner->id,
+            'test_id' => $test->id,
+            'answers' => [1, 0],
+            'score' => 90,
+            'passed' => true,
+            'taken_at' => now()->subDays(31),
+            'expires_on' => now()->subDay()->toDateString(),
+        ]));
+
+        // Taken 20 days ago; lapsed 10 days ago — the LATER attempt by
+        // taken_at, but an OLDER lapse by expires_on.
+        $laterByTakenAt = $this->inTenant($tenant['org'], fn () => TrainingAttempt::create([
+            'user_id' => $learner->id,
+            'test_id' => $test->id,
+            'answers' => [1, 0],
+            'score' => 90,
+            'passed' => true,
+            'taken_at' => now()->subDays(20),
+            'expires_on' => now()->subDays(10)->toDateString(),
+        ]));
+
+        $this->artisan('ezbizi:expire-training-passes')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($earlierByTakenAt, $laterByTakenAt) {
+            $events = AutomationEvent::query()->where('event_key', 'training.expired')->get();
+
+            $this->assertCount(1, $events);
+            $this->assertSame($laterByTakenAt->id, $events->first()->subject_id,
+                'isSuperseded() compares taken_at, so the attempt taken more recently is the '
+                .'one announced, even though the other attempt lapsed more recently by date.');
+        });
+    }
+
+    /**
+     * The sweep crosses tenants, deliberately — it runs `runWithoutTenant()`
+     * with no organization in context, and every other fixture in this file
+     * provisions exactly one tenant, so nothing before this test could catch
+     * a regression to a silently single-tenant sweep.
+     */
+    public function test_the_sweep_reaches_more_than_one_organization(): void
+    {
+        $alpha = $this->provisionTenant('Alpha-'.Str::random(8));
+        $beta = $this->provisionTenant('Beta-'.Str::random(8));
+
+        $attempts = [];
+
+        foreach ([$alpha, $beta] as $tenant) {
+            $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $tenant['franchise']);
+            $test = $this->aTest($tenant);
+
+            $attempts[$tenant['org']->id] = $this->inTenant($tenant['org'], fn () => TrainingAttempt::create([
+                'user_id' => $learner->id,
+                'test_id' => $test->id,
+                'answers' => [1, 0],
+                'score' => 90,
+                'passed' => true,
+                'taken_at' => now()->subDays(31),
+                'expires_on' => now()->subDay()->toDateString(),
+            ]));
+        }
+
+        $this->artisan('ezbizi:expire-training-passes')->assertSuccessful();
+
+        foreach ([$alpha, $beta] as $tenant) {
+            $this->inTenant($tenant['org'], function () use ($tenant, $attempts) {
+                $event = AutomationEvent::query()->where('event_key', 'training.expired')->first();
+
+                $this->assertNotNull($event, "No training.expired raised for {$tenant['org']->name}.");
+                $this->assertSame($attempts[$tenant['org']->id]->id, $event->subject_id);
+            });
+        }
+    }
+
+    /**
+     * The Critical from review round 1, proven closed the same way it was
+     * proven open: announce a lapse, delete the resulting outbox row (standing
+     * in for `ezbizi:expire-data` pruning it three months later), re-run the
+     * sweep, and assert there is NO second event. Before
+     * `training_attempts.expiry_announced_at` existed, this exact sequence
+     * inserted a second `training.expired` row for the same attempt — the
+     * outbox row was the only marker, and once it was gone the sweep had no
+     * memory that the lapse had ever been announced.
+     */
+    public function test_deleting_the_announced_outbox_row_does_not_reannounce_the_lapse(): void
+    {
+        [, , $tenant, $attempt] = $this->aPassedAttemptExpiring(daysAgo: 1);
+
+        $this->artisan('ezbizi:expire-training-passes')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($attempt) {
+            $this->assertSame(1, DB::table('automation_events')
+                ->where('event_key', 'training.expired')
+                ->where('subject_id', $attempt->id)->count());
+
+            // Simulate ezbizi:expire-data pruning the delivered outbox row
+            // three months later.
+            DB::table('automation_events')
+                ->where('event_key', 'training.expired')
+                ->where('subject_id', $attempt->id)
+                ->delete();
+        });
+
+        $this->artisan('ezbizi:expire-training-passes')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($attempt) {
+            $this->assertSame(0, DB::table('automation_events')
+                ->where('event_key', 'training.expired')
+                ->where('subject_id', $attempt->id)->count(),
+                'The outbox row is gone and it was never a marker of its own — '
+                .'training_attempts.expiry_announced_at is what stops the reannounce, and it '
+                .'is still set.');
+
+            $this->assertNotNull(
+                TrainingAttempt::find($attempt->id)->expiry_announced_at,
+                'expiry_announced_at should still be set even though the outbox row it '
+                .'produced was deleted.',
+            );
         });
     }
 

@@ -72,6 +72,14 @@ class TrainingAttempt extends Model implements CarriesAutomationScope, HoldsPers
         'passed' => 'bool',
         'taken_at' => 'datetime',
         'expires_on' => 'date',
+        // Not fillable — see ExpireTrainingPasses::announceWithinTenant(),
+        // the only writer. It is an operational marker ("did our own sweep
+        // already raise training.expired for this row"), not a fact about
+        // the person, so it is deliberately absent from personalDataHeld()
+        // below: it is not in the person-shaped-column list DataInventoryTest
+        // checks against, and it answers no §9 "what do you hold about me"
+        // question that `taken_at`/`expires_on` do not already answer.
+        'expiry_announced_at' => 'datetime',
     ];
 
     public function user(): BelongsTo
