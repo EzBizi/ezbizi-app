@@ -138,6 +138,7 @@ class Mailbox extends Model implements CarriesAutomationScope, HoldsSensitiveVal
     protected $fillable = [
         'organization_id', 'scope_type', 'scope_id',
         'address', 'display_name', 'provider', 'mail_server',
+        'mark_read_at_source',
     ];
 
     protected function casts(): array
@@ -153,6 +154,14 @@ class Mailbox extends Model implements CarriesAutomationScope, HoldsSensitiveVal
              */
             'credentials' => 'encrypted',
             'mail_server' => 'array',
+
+            /*
+             * Off unless somebody chose it. A missing column on an old row and
+             * "the customer said no" must read the same way, because the
+             * consequence of getting it wrong is a shared inbox quietly
+             * marking a colleague's unread mail as read.
+             */
+            'mark_read_at_source' => 'boolean',
 
             /*
              * When the mail service last actually answered.

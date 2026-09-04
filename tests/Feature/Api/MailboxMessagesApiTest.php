@@ -13,6 +13,7 @@ use App\Support\Email\Arrivals;
 use App\Support\Email\Block;
 use App\Support\Email\BlockKind;
 use App\Support\Email\BodySanitiser;
+use App\Support\Email\CannotChangeMail;
 use App\Support\Email\CannotReadMailbox;
 use App\Support\Email\EmailPicture;
 use App\Support\Email\MailboxReader;
@@ -66,6 +67,9 @@ class MailboxMessagesApiTest extends TestCase
         FakeMailboxReader::$downloads = [];
         FakeMailboxReader::$page      = null;
         FakeMailboxReader::$detail    = null;
+        FakeMailboxReader::$markedAtSource  = [];
+        FakeMailboxReader::$canMarkAtSource = true;
+        FakeMailboxReader::$sourceRefuses   = false;
     }
 
     /** @param array{org: \App\Models\Organization} $tenant */
@@ -897,6 +901,135 @@ class MailboxMessagesApiTest extends TestCase
         $this->assertSame([], FakeMailboxReader::$replies);
     }
 
+    // ══ 4a. MARKING READ AT THE MAIL SERVICE ═════════════════════
+
+    /**
+     * OFF unless somebody chose it, and off is what every existing mailbox is.
+     *
+     * The default is the whole safety of this feature. Read state at a provider
+     * is ONE GLOBAL FLAG; `message_seen` is per person. On a shared inbox,
+     * collapsing them means Jenny opening a customer's mail hides it from Bob,
+     * who sees "read" in Gmail and leaves it believing it is handled.
+     */
+    public function test_opening_a_message_does_not_touch_the_mail_service_by_default(): void
+    {
+        $this->withFakeProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+
+        FakeMailboxReader::$detail = new MessageDetail(
+            summary: $this->summary(),
+            blocks: (new BodySanitiser)->sanitise('<p>A promotion.</p>'),
+        );
+
+        $this->signedInAs($t['admin'])
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1")
+            ->assertOk()
+            ->assertJsonPath('data.seen_by', fn ($seen) => $seen !== null);
+
+        $this->assertSame(
+            [],
+            FakeMailboxReader::$markedAtSource,
+            'A mailbox nobody switched this on for reached out to the mail service.',
+        );
+    }
+
+    /**
+     * Switched on, OPENING a message marks it read at the service.
+     *
+     * Opening, not the explicit "mark as read" button — that is the act
+     * somebody described wanting: click a promotion here, and have it stop
+     * being bold in Gmail. Wiring only the button would have shipped a setting
+     * that does nothing in the case it was asked for.
+     */
+    public function test_opening_a_message_marks_it_read_at_the_service_when_switched_on(): void
+    {
+        $this->withFakeProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+
+        $this->inTenant($t['org'], fn () => $mailbox->update(['mark_read_at_source' => true]));
+
+        FakeMailboxReader::$detail = new MessageDetail(
+            summary: $this->summary(),
+            blocks: (new BodySanitiser)->sanitise('<p>A promotion.</p>'),
+        );
+
+        $this->signedInAs($t['admin'])
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1")
+            ->assertOk();
+
+        $this->assertSame(['m-1'], FakeMailboxReader::$markedAtSource);
+    }
+
+    public function test_the_mark_as_read_button_also_reaches_the_service(): void
+    {
+        $this->withFakeProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+
+        $this->inTenant($t['org'], fn () => $mailbox->update(['mark_read_at_source' => true]));
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/seen")
+            ->assertOk()
+            ->assertJsonPath('data.at_source', true);
+
+        $this->assertSame(['m-1'], FakeMailboxReader::$markedAtSource);
+    }
+
+    /**
+     * THE LOCAL MARK SURVIVES A PROVIDER THAT REFUSES.
+     *
+     * The local mark is what the person asked for and it is already written.
+     * Losing it because a secondary effect failed would be the request undoing
+     * itself over something nobody requested — so the outcome is REPORTED
+     * rather than thrown, and the degradation is to exactly how every mailbox
+     * behaved before this existed.
+     */
+    public function test_a_refusal_at_the_service_does_not_lose_the_local_mark(): void
+    {
+        $this->withFakeProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+
+        $this->inTenant($t['org'], fn () => $mailbox->update(['mark_read_at_source' => true]));
+
+        FakeMailboxReader::$sourceRefuses = true;
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/seen")
+            ->assertOk()
+            // Said, not swallowed: false is "tried and refused", which is what
+            // stops a switch that is quietly not working from looking like one
+            // that is.
+            ->assertJsonPath('data.at_source', false)
+            ->assertJsonPath('data.seen_by', fn ($seen) => $seen !== []);
+
+        // And the local row is really there, not merely echoed back.
+        $this->inTenant($t['org'], function () use ($mailbox) {
+            $this->assertSame(1, MessageSeen::where('mailbox_id', $mailbox->getKey())->count());
+        });
+    }
+
+    /** Null, not false: never asked for is not the same as tried and refused. */
+    public function test_at_source_is_null_when_the_mailbox_never_asked(): void
+    {
+        $this->withFakeProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/seen")
+            ->assertOk()
+            ->assertJsonPath('data.at_source', null);
+    }
+
     // ══ 4b. STARTING A CONVERSATION ══════════════════════════════
 
     public function test_a_composed_message_reaches_the_provider_whole(): void
@@ -1487,6 +1620,28 @@ class FakeMailboxReader implements MailboxReader
     public function availableFolders(Mailbox $mailbox): array
     {
         return self::$folders;
+    }
+
+    public static bool $canMarkAtSource = true;
+
+    /** @var list<string> */
+    public static array $markedAtSource = [];
+
+    /** Set to make the provider refuse, so the controller's fallback is exercised. */
+    public static bool $sourceRefuses = false;
+
+    public function canMarkReadAtSource(Mailbox $mailbox): bool
+    {
+        return self::$canMarkAtSource;
+    }
+
+    public function markReadAtSource(Mailbox $mailbox, string $messageId): void
+    {
+        if (self::$sourceRefuses) {
+            throw new CannotChangeMail('The mail service said no.');
+        }
+
+        self::$markedAtSource[] = $messageId;
     }
 
     public function send(Mailbox $mailbox, array $to, string $subject, string $body, array $attachments = []): void

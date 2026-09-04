@@ -96,6 +96,90 @@ void main() {
     expect(find.text('THE INBOX YOU ARE IN'), findsOneWidget);
   });
 
+  // ── marking read at the mail service ─────────────────────────────
+
+  /// The switch is drawn only where the SERVER said the connection can do it.
+  ///
+  /// Offering it on Outlook or on a password-connected mail server would be a
+  /// promise broken after the fact — and the fact, here, is a message already
+  /// marked read for every colleague. That is not a refusal anybody can act on,
+  /// which is why the capability is asked for rather than guessed from the
+  /// provider name.
+  testWidgets('the mail-service switch appears only where the server allows it', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(mailboxes: [
+      _row(
+        id: 'mb-1',
+        address: 'info@a-1chimney.com',
+        extra: const {'can_mark_read_at_source': true, 'mark_read_at_source': false},
+      ),
+      _row(
+        id: 'mb-outlook',
+        address: 'bookings@a-1chimney.com',
+        extra: const {'can_mark_read_at_source': false, 'mark_read_at_source': false},
+      ),
+    ]));
+
+    await _openSettings(tester);
+
+    // One switch, not two: the second inbox cannot do it and is not offered it.
+    expect(find.byType(SwitchListTile), findsOneWidget);
+    expect(find.text('Also mark mail read in the mail service'), findsOneWidget);
+
+    // The control: BOTH inboxes are on screen, so the missing switch is
+    // "not offered for that one" rather than "the card failed to draw".
+    expect(find.text('info@a-1chimney.com'), findsWidgets);
+    expect(find.text('bookings@a-1chimney.com'), findsWidgets);
+  });
+
+  /// Off says what it costs to turn on; on says what it now does.
+  ///
+  /// Somebody switching this on for a shared inbox needs to read the
+  /// consequence before the first customer is missed, not after.
+  testWidgets('the switch explains the consequence in both positions', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(mailboxes: [
+      _row(
+        id: 'mb-1',
+        address: 'info@a-1chimney.com',
+        extra: const {'can_mark_read_at_source': true, 'mark_read_at_source': false},
+      ),
+    ]));
+
+    await _openSettings(tester);
+
+    expect(
+      find.textContaining('a colleague looking at the mail service still sees it as unread'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('turning it on patches that inbox and nothing else', (tester) async {
+    final calls = <String, Map<String, dynamic>>{};
+
+    await _pump(tester, _handler(
+      mailboxes: [
+        _row(
+        id: 'mb-1',
+        address: 'info@a-1chimney.com',
+        extra: const {'can_mark_read_at_source': true, 'mark_read_at_source': false},
+      ),
+      ],
+      onRequest: (method, path, body) {
+        if (method == 'PATCH') calls[path] = body ?? {};
+      },
+    ));
+
+    await _openSettings(tester);
+    await tester.tap(find.byType(SwitchListTile));
+    await tester.pumpAndSettle();
+
+    expect(calls.keys.single, '/api/v1/email/mailboxes/mb-1');
+    expect(calls.values.single['mark_read_at_source'], true);
+  });
+
   testWidgets('a pending Workspace is a numbered list with a Google Admin link', (
     tester,
   ) async {
