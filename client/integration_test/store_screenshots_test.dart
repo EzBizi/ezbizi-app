@@ -55,6 +55,9 @@ void main() {
 
   const email = String.fromEnvironment('SHOT_EMAIL');
   const password = String.fromEnvironment('SHOT_PASSWORD');
+  // --probe runs with a placeholder password and is EXPECTED to stay on the
+  // sign-in screen; every other run must get past it, and says so below.
+  const probe = bool.fromEnvironment('SHOT_PROBE');
   final desktop =
       !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
 
@@ -142,6 +145,20 @@ void main() {
         await tester.tap(demo.first);
         await settle(10);
       }
+    }
+
+    // ── a run that did not sign in must fail here, not pass ────────
+    //
+    // snap() captures whatever is on screen. A wrong or missing password
+    // therefore produces a full set of plausible files - right names, right
+    // size, right stamp - every one of them the login form, and the driver
+    // still reports "All tests passed". That happened on 2026-09-04 and two
+    // such frames overwrote a real set on disk before anyone opened them.
+    if (!probe) {
+      expect(find.textContaining('do not match'), findsNothing,
+          reason: 'the server rejected the credentials - check screenshot.env on the Mac');
+      expect(find.text('Sign in'), findsNothing,
+          reason: 'still on the sign-in screen after signing in - nothing after this frame would be real');
     }
     // ── widen the view to the whole organization ──────────────────
     //
