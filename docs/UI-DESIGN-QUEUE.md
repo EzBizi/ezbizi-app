@@ -700,6 +700,23 @@ drawings, and it holds whichever number comes back.
   *whatever the status is* — so a note typed beside "In review" turns up on the author's
   screen with no notification and no explanation. All three queue layouts make it a bare
   button. **This is the `usable` shape again**: one column answering a second question.
+
+  **SETTLED DIFFERENTLY, 2026-09-04, and the requirement is met — read this before
+  filing it as unbuilt.** The shipped screen *does* draw the field, because the drawn
+  footer is shared with Approve and Deny, which need it; hiding it for one of three
+  actions would take a control away from the two that use it. Instead "Mark in review"
+  is **disabled while the box has content**, with the reason in place of the button's
+  usual hint: *"sends no note — approve, deny, or clear the box to use it"*. Nothing
+  typed is discarded, which was the failure worth preventing.
+
+  The half of this that mattered is now **structural rather than drawn**:
+  `StaffSuggestionsController::decide` refuses a note with `status: reviewing` outright
+  (`a0119847`) — *"In review tells them nothing — this note would show up on their
+  screen with no notice. Approve or deny it if there is something to say."* So the
+  guarantee no longer depends on a screen at all. That is the point: the previous
+  containment held because a button was disabled, and a disabled button is a
+  convention, not a guarantee. A module whose whole design rests on `ModuleRegistry`
+  absence being structural should not hold its other invariant by habit.
 - **Approving with no note is legal and should not be.** The notification's body *is* the
   note, so an empty one sends a bell reading "Your suggestion was approved" with nothing
   under it. The server permits it; the screen presses for a sentence anyway.
@@ -720,6 +737,18 @@ drawings, and it holds whichever number comes back.
 > pre-existing, the same shape as the `isExpanded` overflow. The fix is one line, but
 > `TabBarLike` is shared with Automations, so it changes two screens. All three queue
 > drawings show the strip wrapped, which is what fixed looks like.
+>
+> **DECIDED 2026-09-04: not changing it, and this is a decision rather than a gap.**
+> Jose put the three open Suggestions items back to me; on this one I left the widget
+> alone. Two reasons. It is shared with Automations, so a session that owns neither
+> would be restyling another module's tab strip without that session in the room — and
+> the drawings showing it wrapped are drawings of *Suggestions*, which is not a mandate
+> to restyle Automations. And Development is a staff control plane used at desk width,
+> where a strip that scrolls is an ordinary pattern rather than a defect somebody hits.
+> The settled rule it offends is real, and the honest position is that this is a
+> **known deviation with an owner-shaped gap**: whoever owns `TabBarLike` should fix it
+> once, for both screens, rather than a module session doing it sideways. Recorded here
+> so it stops resurfacing as an unanswered question every time somebody counts the chips.
 
 ---
 
