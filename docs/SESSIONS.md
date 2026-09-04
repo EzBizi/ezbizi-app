@@ -15,13 +15,18 @@ Measured 2026-09-04 by the deploy desk, from `~/.claude/sessions/*.json`,
 | **Desktop title** `EzBizi - <Role>` | the sidebar; the `From:` line of `ccd_session_mgmt send_message` | Jose in the sidebar, or the session with `set_session_title("self", …)` | Survives restarts and resumes. **Not unique** — three sessions are titled "Ezbizi website daily catalog" today. |
 | **Pipe name** `ezbizi-69`, `a1-tools-b1` | `ListAgents`; the address `SendMessage` takes | derived from the folder plus two hex digits | **Dies with the process.** Lives in `~/.claude/sessions/<pid>.json` as `name`, `nameSource: derived`. A restart is a new pid and a new name. |
 
-Every record ever written on this machine has `nameSource: derived` — no
-session has yet been renamed. The Claude Code docs say `/rename <name>` in a
-running session, or `claude --name <name>` at launch, pins the pipe name in
-the shared record so other sessions see it. `--name` is in the installed
-CLI's help; `/rename` in a desktop window has not been tried here yet. When
-it works, it pins the name for **that process only** — do it again after
-every restart. It does not change the desktop session id or title.
+**`/rename` works in a desktop window — measured 2026-09-04 16:03 UTC.** The
+Suggestions session typed `/rename EzBizi - Suggestions module`; its record
+went from `name: ezbizi-7e, nameSource: derived` to that string with
+`nameSource: user`, `ListAgents` showed the new name to every peer within
+the minute, and its `[066252]` ref did not change. Spaces are fine. It pins
+the name for **that process only** — do it again after every restart — and
+changes neither the desktop session id nor the title. `claude --name <name>`
+does the same at launch for CLI sessions.
+
+So the convention: **`/rename` to exactly your desktop title**, so the name
+`ListAgents` shows, the `From:` line of `send_message`, and this table all
+say the same words. Until a session has done that, its pipe name is noise.
 
 The record that names a pipe holds the CLI transcript id, not the desktop
 id, so nothing on disk maps `ezbizi-69` to `local_072bee23…`. Only the
@@ -57,11 +62,11 @@ they come back; the date says how stale.
 
 | Role | Desktop session id | Title today | Last seen | Pipe name (volatile) |
 |---|---|---|---|---|
-| **Deployment** (releases, `scripts/`, `client/VERSION`, stores) | `local_072bee23-4a25-4361-9335-c7a59fcfff11` | EzBizi - Deployment | 2026-09-04 | `ezbizi-69` at 15:57 UTC |
+| **Deployment** (releases, `scripts/`, `client/VERSION`, stores) | `local_072bee23-4a25-4361-9335-c7a59fcfff11` | EzBizi - Deployment | 2026-09-04 | `ezbizi-69` at 16:05 UTC, still derived — Jose to `/rename` it |
 | Apple (App Store Connect, screenshots, review) | `local_ac2289f8-a1a6-4454-962e-21adf9706bca` | EzBizi - Apple | 2026-09-04 | — |
 | Marketing module | `local_067b17d7-5a25-4047-8eef-d6d0da3565bc` | EzBizi - Marketing Module | 2026-09-04 | — |
 | Web Management (WordPress plugin) | `local_89561020-da81-4ac1-b953-62324562ea00` | EzBizi - Web Management - Plugin | 2026-09-04 | — |
-| Suggestions module | `local_cd7e62ef-dcf0-4939-8467-452f94ce3d63` | Suggestions module | 2026-09-04 | — |
+| Suggestions module | `local_cd7e62ef-dcf0-4939-8467-452f94ce3d63` | Suggestions module | 2026-09-04 | `EzBizi - Suggestions module` (user-set 16:03 UTC) |
 | UI / UX | `local_f82e74ac-d808-40cd-bc95-ce473619183a` | EzBizi - UI / UX | 2026-09-04 | — |
 | Phone system | `local_d95f72da-cef3-4ffb-b8b1-8f4de859e7f3` | EzBizi - Phone System | 2026-09-04 | — |
 | Google API | `local_8111908f-4bbb-400e-b842-6194f832387f` | EzBizi - Google API | 2026-09-03 | — |
