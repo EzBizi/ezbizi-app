@@ -235,8 +235,25 @@ if [ -z "${EZBIZI_PINNED:-}" ] && [ "$DRY_RUN" -eq 0 ]; then
     [ client/android/key.properties -ef "$PIN_DIR/client/android/key.properties" ]       || cp client/android/key.properties "$PIN_DIR/client/android/key.properties"
   fi
 
+  MAIN_DIR="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
   cd "$PIN_DIR"
-  EZBIZI_PINNED=1 exec bash scripts/release.sh --no-bump "${ORIG_ARGS[@]}"
+  # Not exec: this shell stays alive to remove the worktree afterwards. A
+  # finished release keeps nothing there — artefacts went to main's
+  # Distribution/ — and by 4 Sep 2026 seventeen dead checkouts had piled
+  # up under wt/, each dirty only with the docs/EZBIZI-STATUS.md that
+  # deploy.sh regenerates, hence --force. A failed release keeps its
+  # worktree and says where it is.
+  set +e
+  EZBIZI_PINNED=1 bash scripts/release.sh --no-bump "${ORIG_ARGS[@]}"
+  STATUS=$?
+  set -e
+  cd "$MAIN_DIR"
+  if [ "$STATUS" -eq 0 ]; then
+    git worktree remove --force "$PIN_DIR" && echo "→ removed pinned worktree $PIN_DIR"
+  else
+    echo "→ pinned worktree kept for inspection: $PIN_DIR"
+  fi
+  exit "$STATUS"
 fi
 
 # ── android needs a real key before it needs anything else ───────
@@ -566,7 +583,11 @@ if wants macos; then
 
   # A signed .pkg when the relay can sign for the store, an ad-hoc .zip when it
   # cannot; build-app.sh says which. Either is a build; neither is missing.
-  if [ "$DRY_RUN" -eq 0 ] && ! ls "$DIST_APPLE"/EzBizi-"${VERSION}"-*-macos.pkg "$DIST_APPLE"/EzBizi-"${VERSION}"-*-macos.zip >/dev/null 2>&1; then
+  # One ls per glob: ls given two globs fails when EITHER has no match, so
+  # a single ls of both declared the first real .pkg (0.0.0150) missing.
+  if [ "$DRY_RUN" -eq 0 ] \
+     && ! ls "$DIST_APPLE"/EzBizi-"${VERSION}"-*-macos.pkg >/dev/null 2>&1 \
+     && ! ls "$DIST_APPLE"/EzBizi-"${VERSION}"-*-macos.zip >/dev/null 2>&1; then
     echo "✗ build-app.sh finished but left no macOS .pkg or .zip in ${DIST_APPLE}/." >&2
     exit 1
   fi
