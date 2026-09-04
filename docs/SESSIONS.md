@@ -56,35 +56,36 @@ identifies nobody an hour later.
 
 ## EzBizi roles
 
-Ids are from `list_sessions` on 2026-09-04 15:57 UTC. Sessions not seen in
-two days are listed because their id is still the only way to reach them if
-they come back; the date says how stale.
+Ids from `list_sessions`; titles and dates refreshed from it at 2026-09-04
+16:24 UTC, after the restart below. Sessions not seen in two days stay
+listed because their id is still the only way to reach them; the date says
+how stale.
 
 | Role | Desktop session id | Title today | Last seen | Pipe name (volatile) |
 |---|---|---|---|---|
-| **Deployment** (releases, `scripts/`, `client/VERSION`, stores) | `local_072bee23-4a25-4361-9335-c7a59fcfff11` | EzBizi - Deployment | 2026-09-04 | `ezbizi-69` at 16:05 UTC, still derived — Jose to `/rename` it |
-| Apple (App Store Connect, screenshots, review) | `local_ac2289f8-a1a6-4454-962e-21adf9706bca` | EzBizi - Apple | 2026-09-04 | — |
+| **Deployment** (releases, `scripts/`, `client/VERSION`, stores) | `local_072bee23-4a25-4361-9335-c7a59fcfff11` | EzBizi - Deployment Lead | 2026-09-04 | `ezbizi-99` at 16:24 UTC, derived |
+| Apple (App Store Connect, screenshots, review) | `local_ac2289f8-a1a6-4454-962e-21adf9706bca` | EzBizi - Apple Module | 2026-09-04 | — |
 | Marketing module | `local_067b17d7-5a25-4047-8eef-d6d0da3565bc` | EzBizi - Marketing Module | 2026-09-04 | — |
-| Web Management (WordPress plugin) | `local_89561020-da81-4ac1-b953-62324562ea00` | EzBizi - Web Management - Plugin | 2026-09-04 | — |
-| Suggestions module | `local_cd7e62ef-dcf0-4939-8467-452f94ce3d63` | Suggestions module | 2026-09-04 | `EzBizi - Suggestions module` (user-set 16:03 UTC) |
-| UI / UX | `local_f82e74ac-d808-40cd-bc95-ce473619183a` | EzBizi - UI / UX | 2026-09-04 | — |
-| Phone system | `local_d95f72da-cef3-4ffb-b8b1-8f4de859e7f3` | EzBizi - Phone System | 2026-09-04 | — |
-| Google API | `local_8111908f-4bbb-400e-b842-6194f832387f` | EzBizi - Google API | 2026-09-03 | — |
-| API integrations | `local_e76e374a-d27b-405a-a0f5-41853bed9bba` | EzBizi - API Integrations | 2026-09-03 | — |
-| Amazon SES | `local_39c741ca-78e6-403b-a5e2-4a5d04cb7ed4` | EzBizi - Amazon SES | 2026-09-04 | — |
-| Automations | `local_44b29c1e-d2ee-49db-9bde-6a428bd30354` | EzBizi - Automations Module | 2026-09-02 | — |
-| Monitoring | `local_de24a58d-dac7-4a4b-9140-baba222174b2` | EzBizi - Monitoring | 2026-09-02 | — |
+| Web Management (WordPress plugin) | `local_89561020-da81-4ac1-b953-62324562ea00` | EzBizi - Web Module | 2026-09-04 | — |
+| Suggestions module | `local_cd7e62ef-dcf0-4939-8467-452f94ce3d63` | EzBizi - Suggestion Module | 2026-09-04 | — |
+| UI / UX | `local_f82e74ac-d808-40cd-bc95-ce473619183a` | EzBizi - UI-UX Manager | 2026-09-04 | — |
+| Phone system | `local_d95f72da-cef3-4ffb-b8b1-8f4de859e7f3` | EzBizi - Phone System Module | 2026-09-04 | — |
+| Google API | `local_8111908f-4bbb-400e-b842-6194f832387f` | EzBizi - Google API Module | 2026-09-04 | — |
+| API integrations | `local_e76e374a-d27b-405a-a0f5-41853bed9bba` | EzBizi - API Integrations | 2026-09-04 | — |
+| Amazon SES | `local_39c741ca-78e6-403b-a5e2-4a5d04cb7ed4` | EzBizi - Amazon SES Module | 2026-09-04 | — |
+| Automations | `local_44b29c1e-d2ee-49db-9bde-6a428bd30354` | EzBizi - Automation Module | 2026-09-04 | — |
+| Monitoring | `local_de24a58d-dac7-4a4b-9140-baba222174b2` | EzBizi - Monitoring Module | 2026-09-04 | — |
 | Fleet | `local_7b76b5b7-2908-4091-86a2-b4a89c69e130` | EzBizi - Fleet Management Module | 2026-09-04 | — |
-| Scheduling | `local_afb8a536-e66d-4fe3-b7a7-0126dba1cba4` | EzBizi - Scheduling Module | 2026-09-02 | — |
-| Website (marketing site) | `local_b7fcc2e8-6683-4ce1-bea2-8853ba859ab0` | EzBizi - Website | 2026-09-01 | — |
-| Email module | `local_8c185e1a-58d1-4882-8457-1ac0b338a35d` | EzBizi - Email Module | 2026-08-31 | — |
+| Scheduling | `local_afb8a536-e66d-4fe3-b7a7-0126dba1cba4` | EzBizi - Scheduling Module | 2026-09-04 | — |
+| Website (marketing site) | `local_b7fcc2e8-6683-4ce1-bea2-8853ba859ab0` | EzBizi - Website | 2026-09-04 | — |
+| Email module | `local_8c185e1a-58d1-4882-8457-1ac0b338a35d` | EzBizi - Email Module | 2026-09-04 | — |
 | Inspection | `local_1afc8662-0b8a-4b3c-b747-401b97b2a211` | EzBizi - Inspection Module | 2026-09-04 | — |
-| Services | `local_2410a68f-5246-4715-82ac-faeb089a3a1b` | EzBizi - Services Module | 2026-08-31 | — |
-| Inventory | `local_14fb86e6-7ca7-4051-96e7-d7ba4ec9a13b` | EzBizi - Inventory Module | 2026-08-31 | — |
-| Android | `local_36f6540f-4f54-49b4-bb1d-8ee29cd1585d` | EzBizi - Android | 2026-08-31 | — |
-| Customers | `local_90d427a5-c0b9-46e5-864a-efe9eb5b72da` | EzBizi - Customers | 2026-09-04 | — |
-| Notifications | `local_7b312565-f2f8-44cf-ac5e-5426683f2cbf` | EzBizi - Notifications | 2026-09-04 | — |
-| Training | `local_d30258ab-af2b-4b1b-9cf5-b0926fbe06ec` | EzBizi - Training Module | 2026-08-31 | — |
+| Services | `local_2410a68f-5246-4715-82ac-faeb089a3a1b` | EzBizi - Services Module | 2026-09-04 | — |
+| Inventory | `local_14fb86e6-7ca7-4051-96e7-d7ba4ec9a13b` | EzBizi - Inventory Module | 2026-09-04 | — |
+| Android | `local_36f6540f-4f54-49b4-bb1d-8ee29cd1585d` | EzBizi - Android Module | 2026-09-04 | — |
+| Customers | `local_90d427a5-c0b9-46e5-864a-efe9eb5b72da` | EzBizi - Customer Module | 2026-09-04 | — |
+| Notifications | `local_7b312565-f2f8-44cf-ac5e-5426683f2cbf` | EzBizi - Notifications Module | 2026-09-04 | — |
+| Training | `local_d30258ab-af2b-4b1b-9cf5-b0926fbe06ec` | EzBizi - Training Module | 2026-09-04 | — |
 | AWS migration (cwd `H:\Development\AWS`) | `local_079b6a6c-b0c8-49f9-8568-152a1dd2a6b1` | MIGRATION | 2026-09-04 | `aws-68` at 15:57 UTC (inferred from cwd, not confirmed) |
 
 **Website daily catalog** is not a role: a new session is started for it each
@@ -102,5 +103,15 @@ The Tasks-removal worktree session (`local_57b53ebf…`) finished on
 session then updates its title or id is confirming it; a row that never
 changes after a restart is stale, and the next person to reach it by id
 will learn that from the error, not from this file.
+
+**Power surge, 2026-09-04 about 16:15 UTC.** Every process on the machine
+restarted and every session was cut off mid-turn. Measured at 16:24 UTC:
+all 13 live pipe-name records are `nameSource: derived` again, none
+user-set — a restart discards `/rename` by construction. Jose's renames
+after the restart landed on the **desktop titles** (thirteen changed;
+the column above is refreshed from `list_sessions`), which is the half
+that persists. Ids are unchanged, as designed. The pipe-name column is
+therefore blank until a session runs `/rename` in its new process, and
+stays worth exactly one restart.
 
 A1 Tools sessions live in `H:\A1Chimney\a1_tools` and are outside this file.
