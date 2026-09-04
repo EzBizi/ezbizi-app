@@ -11,6 +11,11 @@ class VersionHistory {
       version: '0.0.0151',
       date: '4 Sep 2026',
       items: [
+        '"Text me my codes" is on the account screen at a desk, not only on a '
+            'phone. It was added to the phone layout alone, so the setting '
+            'existed on a handset and did not exist on a computer - which is '
+            'where most people would have gone looking for it. It now sits '
+            'under Two-factor in both.',
         'Email: an inbox can now mark mail as read in the mail service itself, so '
             'a message you open here stops being bold in Gmail too. Off unless you '
             'turn it on, per inbox, on Email > Settings - because on an inbox your '

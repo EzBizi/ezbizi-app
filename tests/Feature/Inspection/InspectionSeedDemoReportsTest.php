@@ -48,6 +48,33 @@ class InspectionSeedDemoReportsTest extends TestCase
     }
 
     /**
+     * On production, the right NAME is not enough — the id has to agree.
+     *
+     * The case this refuses is a second organization called "EzBizi Demo",
+     * which is not exotic: the name is editable from Settings and is not
+     * unique across the platform. Reached by faking the database name and
+     * passing --live, so the run gets past the first guard and is stopped by
+     * the second one specifically.
+     *
+     * The fixture tenant has its own id and therefore cannot match the
+     * production constant, which is the whole point — the assertion is that
+     * writing is refused, and the zero count is what proves it refused rather
+     * than merely complained.
+     */
+    public function test_on_production_a_matching_name_with_the_wrong_id_is_refused(): void
+    {
+        $impostor = $this->seedableTenant('EzBizi Demo');
+
+        config(['database.connections.'.config('database.default').'.database' => 'ezbizi']);
+
+        $this->artisan('inspection:seed-demo-reports', ['--live' => true, '--force' => true])
+            ->expectsOutputToContain('id this command does not know')
+            ->assertExitCode(1);
+
+        $this->assertSame(0, $this->reportCount($impostor), 'nothing may be written on an id mismatch');
+    }
+
+    /**
      * It files on the demo tenant, and A1-Group is untouched beside it.
      *
      * Both organizations are built the same way and both are equally

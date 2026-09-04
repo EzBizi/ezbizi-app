@@ -57,6 +57,24 @@ class InspectionSeedDemoReports extends Command
     /** The only organization this command can ever write to. */
     private const ORG_NAME = 'EzBizi Demo';
 
+    /**
+     * The same organization, by id, checked on production only.
+     *
+     * A name is editable from Settings and is not unique across the platform,
+     * so on the one database where a wrong tenant is unrecoverable the name is
+     * not enough on its own. Measured by the Apple session on 2026-09-04 and
+     * read here off `docs/demo-tenant-gaps.md` at c576b5e8 rather than off a
+     * message.
+     *
+     * Safe to carry without having measured it myself, because the check is
+     * FAIL-CLOSED: a wrong id here refuses the run. It cannot send a write
+     * somewhere else, so the worst it can cost is a refusal and a re-measure.
+     *
+     * Not checked outside production — a test tenant has its own id, and a
+     * constant that only holds on one machine would make this untestable.
+     */
+    private const PRODUCTION_ORG_ID = '01a03e4f-f9a1-7012-9515-96bc9260d2f8';
+
     private const HOW_MANY = 3;
 
     /**
@@ -91,6 +109,14 @@ class InspectionSeedDemoReports extends Command
         if ($organization === null) {
             $this->error('No organization named '.self::ORG_NAME.' on ['.$database.'].');
             $this->line('Run review:seed-organization first — this only adds reports to it.');
+
+            return self::FAILURE;
+        }
+
+        if ($database === 'ezbizi' && $organization->id !== self::PRODUCTION_ORG_ID) {
+            $this->error('An organization named '.self::ORG_NAME.' is on production with an id this command does not know.');
+            $this->line('Expected '.self::PRODUCTION_ORG_ID.', found '.$organization->id.'.');
+            $this->line('Re-measure before changing the constant — two tenants sharing a name is the case this refuses.');
 
             return self::FAILURE;
         }

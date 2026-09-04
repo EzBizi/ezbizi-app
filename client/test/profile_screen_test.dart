@@ -83,7 +83,37 @@ void main() {
     // failed to load, and this list is mostly read rather than tapped.
     expect(find.text('Not given'), findsWidgets);
   });
+  /// Every control on this screen has to exist at BOTH widths.
+  ///
+  /// "Text me my codes" was added to the phone layout alone and was missing
+  /// from the desktop one for a day. Nothing failed — the narrow tests passed,
+  /// the card rendered perfectly where it was, and a desk simply had no such
+  /// control. It was found by opening the real screen in a browser, which is
+  /// not a thing that happens on a schedule.
+  ///
+  /// So the assertion is the pair, not either one. Checking only the width you
+  /// happen to be thinking about is how the defect got in.
+  testWidgets('the account screen offers the same controls at both widths', (
+    tester,
+  ) async {
+    for (final size in const [Size(1280, 900), Size(390, 780)]) {
+      await _pump(tester, size: size);
+
+      expect(
+        find.textContaining('Text me my codes', findRichText: true),
+        findsWidgets,
+        reason: 'no way to reach the text-codes setting at ${size.width}px',
+      );
+
+      expect(
+        find.textContaining('Two-factor', findRichText: true),
+        findsWidgets,
+        reason: 'no way to reach two-factor at ${size.width}px',
+      );
+    }
+  });
 }
+
 
 Future<void> _pump(WidgetTester tester, {required Size size}) async {
   tester.view.physicalSize = size;
