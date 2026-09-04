@@ -43,45 +43,26 @@ never take one from a document: `ezbizi-a1`, `ezbizi-5b` and the desktop id
 `local_a7c13d4e…` were all tried for the deploy desk on 2026-09-04 and all
 three were dead. The live one was in this table's first row the whole time.
 
-## Registration — two calls at the start of every session
+## Registration — one writer, and it is the deploy desk
 
-1. `get_session("self")`. If the title is not `EzBizi - <Role>` for the role
-   you are holding, `set_session_title("self", "EzBizi - <Role>")`.
-2. Find your role below. If the id is not yours, you are the new holder:
-   replace the id and the date, stage **only this file**, commit. A row
-   with a dead id is a dead letter; a row with a wrong id is worse.
+**Only the deploy desk edits this file.** It refreshes ids, titles and
+dates from `list_sessions` and today's pipe names from what sessions report.
+Every other session does two things at start and nothing else here:
 
-   **Staging only this file is necessary and not sufficient.** Path-limiting
-   stops you taking another *file*; it does not stop you taking another
-   session's uncommitted *lines inside this one*, because `git commit --
-   <path>` commits the WORKING TREE state of that path. On 2026-09-04 two
-   sessions proved it within minutes: `9032be78` says "Inspection" and carries
-   the Customers row too, and `eac81763` says "Customers" and actually moved
-   the Notifications row. Nothing was lost — every row was right either way —
-   but both messages are wrong about what they contain, in the one file whose
-   whole purpose is being trustworthy about who is who.
-
-   Build the blob from HEAD plus your own line, so nothing can ride along:
-
-   ```bash
-   BASE=$(git rev-parse HEAD)
-   git show "$BASE":docs/SESSIONS.md > /tmp/row.md
-   # edit ONLY your row in /tmp/row.md
-   export GIT_INDEX_FILE=$(mktemp -u)
-   git read-tree "$BASE"
-   git update-index --cacheinfo 100644,"$(git hash-object -w /tmp/row.md)",docs/SESSIONS.md
-   C=$(git commit-tree "$(git write-tree)" -p "$BASE" -F /tmp/msg)
-   git update-ref refs/heads/main "$C" "$BASE"
-   ```
-
-   `GIT_INDEX_FILE` is per-SHELL and every agent tool call is a fresh shell, so
-   stage and commit in ONE call or git silently uses the shared index instead.
-   Check the result with `git show <sha> --stat` AFTER the fact — never with
-   the stat you printed while staging, which is accurate about a tree your
-   commit may not have used.
+1. `get_session("self")` and read your row. Title, id, date — all of it is
+   the desk's reading of the desktop, and the **title is Jose's**: he sets
+   it in the sidebar. Never call `set_session_title` on yourself; on
+   2026-09-04 a session did, on this file's earlier instruction, and undid
+   the rename Jose had just made.
+2. If your row is wrong or missing, `send_message` the Deployment id below
+   with the correction. Do not edit the table. Two sessions tried "stage only
+   this file" on 2026-09-04 and each commit still carried the *other's*
+   uncommitted row, so two commit messages in this file's history describe
+   changes they do not contain (9032be78, eac81763). Path-limiting keeps out
+   other files, not other sessions' lines in this one.
 
 Sign anything that matters with your desktop id. A pipe name in a message
-identifies nobody an hour later.
+identifies nobody an hour later — and, measured below, not even now.
 
 ## EzBizi roles
 
@@ -90,31 +71,31 @@ Ids from `list_sessions`; titles and dates refreshed from it at 2026-09-04
 listed because their id is still the only way to reach them; the date says
 how stale.
 
-| Role | Desktop session id | Title today | Last seen | Pipe name (volatile) |
+| Role | Desktop session id | Title (Jose's, from the sidebar) | Last seen | Pipe name at 17:55 UTC 2026-09-04 — recognition only, never an address |
 |---|---|---|---|---|
-| **Deployment** (releases, `scripts/`, `client/VERSION`, stores) | `local_072bee23-4a25-4361-9335-c7a59fcfff11` | EzBizi - Deployment Lead | 2026-09-04 | `ezbizi-99` at 16:24 UTC, derived |
-| Apple (App Store Connect, screenshots, review) | `local_ac2289f8-a1a6-4454-962e-21adf9706bca` | EzBizi - Apple Module | 2026-09-04 | — |
-| Marketing module | `local_067b17d7-5a25-4047-8eef-d6d0da3565bc` | EzBizi - Marketing Module | 2026-09-04 | — |
-| Web Management (WordPress plugin) | `local_89561020-da81-4ac1-b953-62324562ea00` | EzBizi - Web Module | 2026-09-04 | — |
-| Suggestions module | `local_cd7e62ef-dcf0-4939-8467-452f94ce3d63` | EzBizi - Suggestion Module | 2026-09-04 | — |
-| UI / UX | `local_f82e74ac-d808-40cd-bc95-ce473619183a` | EzBizi - UI-UX Manager | 2026-09-04 | — |
-| Phone system | `local_d95f72da-cef3-4ffb-b8b1-8f4de859e7f3` | EzBizi - Phone System Module | 2026-09-04 | — |
-| Google API | `local_8111908f-4bbb-400e-b842-6194f832387f` | EzBizi - Google API Module | 2026-09-04 | — |
-| API integrations | `local_e76e374a-d27b-405a-a0f5-41853bed9bba` | EzBizi - API Integrations | 2026-09-04 | — |
-| Amazon SES | `local_39c741ca-78e6-403b-a5e2-4a5d04cb7ed4` | EzBizi - Amazon SES Module | 2026-09-04 | — |
-| Automations | `local_44b29c1e-d2ee-49db-9bde-6a428bd30354` | EzBizi - Automation Module | 2026-09-04 | — |
-| Monitoring | `local_de24a58d-dac7-4a4b-9140-baba222174b2` | EzBizi - Monitoring Module | 2026-09-04 | — |
-| Fleet | `local_7b76b5b7-2908-4091-86a2-b4a89c69e130` | EzBizi - Fleet Management Module | 2026-09-04 | — |
-| Scheduling | `local_afb8a536-e66d-4fe3-b7a7-0126dba1cba4` | EzBizi - Scheduling Module | 2026-09-04 | — |
-| Website (marketing site) | `local_b7fcc2e8-6683-4ce1-bea2-8853ba859ab0` | EzBizi - Website | 2026-09-04 | — |
-| Email module | `local_8c185e1a-58d1-4882-8457-1ac0b338a35d` | EzBizi - Email Module | 2026-09-04 | — |
-| Inspection | `local_1afc8662-0b8a-4b3c-b747-401b97b2a211` | EzBizi - Inspection Module | 2026-09-04 | — |
-| Services | `local_2410a68f-5246-4715-82ac-faeb089a3a1b` | EzBizi - Services Module | 2026-09-04 | — |
-| Inventory | `local_14fb86e6-7ca7-4051-96e7-d7ba4ec9a13b` | EzBizi - Inventory Module | 2026-09-04 | — |
-| Android | `local_36f6540f-4f54-49b4-bb1d-8ee29cd1585d` | EzBizi - Android Module | 2026-09-04 | — |
-| Customers | `local_90d427a5-c0b9-46e5-864a-efe9eb5b72da` | EzBizi - Customer Module | 2026-09-04 | — |
-| Notifications | `local_7b312565-f2f8-44cf-ac5e-5426683f2cbf` | EzBizi - Notifications Module | 2026-09-04 | — |
-| Training | `local_d30258ab-af2b-4b1b-9cf5-b0926fbe06ec` | EzBizi - Training Module | 2026-09-04 | — |
+| **Deployment** (releases, `scripts/`, `client/VERSION`, stores) | `local_072bee23-4a25-4361-9335-c7a59fcfff11` | EzBizi - Deployment Lead | 2026-09-04 | `ezbizi-99 [57ae91]` |
+| Apple (App Store Connect, screenshots, review) | `local_ac2289f8-a1a6-4454-962e-21adf9706bca` | EzBizi - Apple Module | 2026-09-04 | `ezbizi-e0 [c500d7]` |
+| Marketing module | `local_067b17d7-5a25-4047-8eef-d6d0da3565bc` | EzBizi - Marketing Module | 2026-09-04 | `ezbizi-76 [7f2040]` |
+| Web Management (WordPress plugin) | `local_89561020-da81-4ac1-b953-62324562ea00` | EzBizi - Web Module | 2026-09-04 | — (no reply yet) |
+| Suggestions module | `local_cd7e62ef-dcf0-4939-8467-452f94ce3d63` | EzBizi - Suggestion Module | 2026-09-04 | `ezbizi-83 [67ea80]` |
+| UI / UX | `local_f82e74ac-d808-40cd-bc95-ce473619183a` | EzBizi - UI-UX Manager | 2026-09-04 | `ezbizi-e3 [a6b36a]` |
+| Phone system | `local_d95f72da-cef3-4ffb-b8b1-8f4de859e7f3` | EzBizi - Phone System Module | 2026-09-04 | `ezbizi-7e [74574e]` |
+| Google API | `local_8111908f-4bbb-400e-b842-6194f832387f` | EzBizi - Google API Module | 2026-09-04 | `ezbizi-02 [dd7f64]` — **same name as Inventory this minute** |
+| API integrations | `local_e76e374a-d27b-405a-a0f5-41853bed9bba` | EzBizi - API Integrations | 2026-09-04 | `ezbizi-60 [a0a79f]` |
+| Amazon SES | `local_39c741ca-78e6-403b-a5e2-4a5d04cb7ed4` | EzBizi - Amazon SES Module | 2026-09-04 | `ezbizi-d2 [59dcdf]` |
+| Automations | `local_44b29c1e-d2ee-49db-9bde-6a428bd30354` | EzBizi - Automation Module | 2026-09-04 | `ezbizi-a1 [3b8cb3]` — **the old deploy desk's name; a stale note reaches Automations now** |
+| Monitoring | `local_de24a58d-dac7-4a4b-9140-baba222174b2` | EzBizi - Monitoring Module | 2026-09-04 | `ezbizi-69 [d20c3b]` — was Deployment's name this morning |
+| Fleet | `local_7b76b5b7-2908-4091-86a2-b4a89c69e130` | EzBizi - Fleet Management Module | 2026-09-04 | `ezbizi-85 [ff0aad]` |
+| Scheduling | `local_afb8a536-e66d-4fe3-b7a7-0126dba1cba4` | EzBizi - Scheduling Module | 2026-09-04 | `ezbizi-a6 [d7a198]` |
+| Website (marketing site) | `local_b7fcc2e8-6683-4ce1-bea2-8853ba859ab0` | EzBizi - Website | 2026-09-04 | `ezbizi-42 [e8b441]` |
+| Email module | `local_8c185e1a-58d1-4882-8457-1ac0b338a35d` | EzBizi - Email Module | 2026-09-04 | `ezbizi-25 [e01003]` |
+| Inspection | `local_1afc8662-0b8a-4b3c-b747-401b97b2a211` | EzBizi - Inspection Module | 2026-09-04 | `ezbizi-b8 [b0b326]` |
+| Services | `local_2410a68f-5246-4715-82ac-faeb089a3a1b` | EzBizi - Services Module | 2026-09-04 | `ezbizi-d6 [d828ae]` |
+| Inventory | `local_14fb86e6-7ca7-4051-96e7-d7ba4ec9a13b` | EzBizi - Inventory Module | 2026-09-04 | `ezbizi-02 [f15798]` — **same name as Google API this minute** |
+| Android | `local_36f6540f-4f54-49b4-bb1d-8ee29cd1585d` | EzBizi - Android Module | 2026-09-04 | `ezbizi-f6 [b4987d]` |
+| Customers | `local_90d427a5-c0b9-46e5-864a-efe9eb5b72da` | EzBizi - Customer Module | 2026-09-04 | `ezbizi-c2 [9c1c83]` — its fifth name today |
+| Notifications | `local_7b312565-f2f8-44cf-ac5e-5426683f2cbf` | EzBizi - Notifications Module | 2026-09-04 | `ezbizi-b2 [708399]` |
+| Training | `local_d30258ab-af2b-4b1b-9cf5-b0926fbe06ec` | EzBizi - Training Module | 2026-09-04 | `ezbizi-0f [d43683]` |
 | AWS migration (cwd `H:\Development\AWS`) | `local_079b6a6c-b0c8-49f9-8568-152a1dd2a6b1` | MIGRATION | 2026-09-04 | `aws-68` at 15:57 UTC (inferred from cwd, not confirmed) |
 
 **Website daily catalog** is not a role: a new session is started for it each
@@ -140,7 +121,17 @@ user-set — a restart discards `/rename` by construction. Jose's renames
 after the restart landed on the **desktop titles** (thirteen changed;
 the column above is refreshed from `list_sessions`), which is the half
 that persists. Ids are unchanged, as designed. The pipe-name column is
-therefore blank until a session runs `/rename` in its new process, and
-stays worth exactly one restart.
+therefore filled from what each session reported at about 17:55 UTC and
+is worth exactly one restart.
+
+**Two things the replies measured that make a pipe name worse than
+volatile.** It is not unique even at the same instant: `ezbizi-02` was two
+live sessions at once, Inventory `[f15798]` and Google API `[dd7f64]`, in
+the same `ListAgents` output. And it is recycled within the hour: `ezbizi-a1`,
+the name the deploy desk answered to yesterday and three sessions spent a
+day sending handoffs to, is Automations now; `ezbizi-69`, this desk's name
+this morning, is Monitoring; Customers has had five names today. A dead
+name bounces; a recycled one delivers to a stranger and looks fine. So the
+column carries the `[ref]`, is dated, and is never something to send to.
 
 A1 Tools sessions live in `H:\A1Chimney\a1_tools` and are outside this file.
