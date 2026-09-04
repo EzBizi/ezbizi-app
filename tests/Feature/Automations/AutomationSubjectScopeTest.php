@@ -94,10 +94,41 @@ use Tests\TestCase;
  * flattened to `[null, null]`, this file stays entirely green. Their mutation
  * to `$emits` was caught here; their mutation to the MAPPING was not.
  *
- * Four of the eight models implementing the interface have no test anywhere
- * that reads their answer — `Invitation`, `PhoneCall`, `PhoneMessage`,
- * `TrainingAssignment`. `Mailbox`, `Onboarding`, `TrainingAttempt` and
- * `TrainingProgress` do, in their own modules' suites.
+ * Of the eight models implementing the interface, THREE have no test anywhere
+ * that reads their answer — `Invitation`, `Onboarding`, `TrainingAssignment`.
+ * `Mailbox`, `PhoneCall`, `PhoneMessage`, `TrainingAttempt` and
+ * `TrainingProgress` are read, in their own modules' suites.
+ *
+ * An earlier version of this paragraph said `Onboarding` was covered and named
+ * `PhoneCall`/`PhoneMessage` as owed. Phone has since landed
+ * `PhoneAutomationScopeTest`; `Onboarding` was never covered at all, and both
+ * the deploy desk and this file had it wrong for the same reason — a grep for
+ * "a test that mentions Onboarding and calls automationScope()" matches
+ * `TrainingProgressTest`, which names it three times (:212, :215, :613) in
+ * DOCBLOCKS, describing the model Training copied its shape from. Every call in
+ * that file is on a `TrainingProgress`. **Co-occurrence in a file is not
+ * coverage of a model** — check the receiver of the call, not the presence of
+ * the name.
+ *
+ * ONBOARDING IS THE WORST ONE TO HAVE MISCOUNTED, and it is why the correction
+ * is recorded here rather than quietly applied. This interface exists because
+ * HR shipped a leak and fixed it "by putting the interface on Onboarding and
+ * Invitation" — see the top of this docblock. Those two are the records the
+ * whole class was discovered on, and they are two of the three whose answers
+ * nothing verifies. The fix was applied to them and has never once been read
+ * back. `Onboarding::automationScope` at Onboarding.php:467 is a `match` with
+ * two named arms over a `default => [null, null]`, which is precisely the shape
+ * Marketing's mutation proved this file cannot see.
+ *
+ * ── And a warning about checking this by grep ────────────────────
+ *
+ * The paragraph above is itself a hazard, because it names all eight models and
+ * contains the string `automationScope()`. A coverage check written as "some
+ * test file mentions model M and calls automationScope" therefore matches THIS
+ * FILE for every M and reports eight of eight covered. That happened — the
+ * false green was produced by this very comment within an hour of it being
+ * committed. Any real coverage assertion has to observe the call's receiver at
+ * runtime, not the text of a file.
  *
  * ── Why the obvious fix is not written here ──────────────────────
  *
