@@ -147,6 +147,7 @@ export GIT_INDEX_FILE=$(mktemp -u)
 git read-tree "$BASE"                      # replaces this index; ignores .git/index
 git add <your paths>                       # or update-index --cacheinfo for a blob you built
 TREE=$(git write-tree)
+git diff-tree --stat "$BASE" "$TREE"                 # ← UNFILTERED. See below.
 git diff-tree -p "$BASE" "$TREE" -- <your paths>    # ← READ THE HUNKS. Not the stat.
 COMMIT=$(git commit-tree "$TREE" -p "$BASE" -F msg)
 git update-ref refs/heads/main "$COMMIT" "$BASE"     # fails if main moved
@@ -155,6 +156,27 @@ unset GIT_INDEX_FILE
 git reset -q HEAD -- <your paths>          # ← STEP 8. Not optional. See below.
 scripts/index-landmines.sh                 # must read 0 stale, 0 live
 ```
+
+**The verification has to be UNFILTERED, and this is the one line above that is
+easy to get wrong.**
+
+`diff-tree -p "$BASE" "$TREE" -- <your paths>` reads the hunks of the files you
+meant to change, which is the right check for *those* files and is structurally
+blind to the failure this whole section is about. A stale tree reverts files that
+are **not in your list**, so filtering by your list cannot show them. Run the
+unfiltered `--stat` first: anything in it that is not yours is a revert you are
+about to commit, every time, with no exceptions and no conflict to warn you.
+
+That is not hypothetical. `b0e41deb` on 2026-09-04 carried
+`scripts/index-landmines.sh | 4 ----`, undoing the crash trap another session had
+added minutes earlier. The cause was resolving the base TWICE: `read-tree HEAD`
+at the top of the script and `rev-parse HEAD` several commands later. Main moved
+between the two, so the tree came from the older snapshot while the parent and
+the `update-ref` guard both used the newer one — and the old-value guard passed,
+because the parent was genuinely current. **The CAS protects the window after you
+resolve the base. It cannot see the window before it.** Resolve `BASE` once, into
+a variable, and pass that variable to `read-tree`, `commit-tree` and
+`update-ref`; never write the word `HEAD` again below that line.
 
 **THE INDEX RE-ACCUMULATES, SO CHECK IT IMMEDIATELY BEFORE EACH COMMIT — NOT
 AFTER THE LAST ONE.**

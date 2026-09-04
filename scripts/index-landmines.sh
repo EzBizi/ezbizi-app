@@ -54,6 +54,10 @@
 # "Unstaged changes after reset:" output lists every path where worktree and
 # index differ repo-wide, not what it touched — ignore it and verify instead.
 set -euo pipefail
+# Silence must never read as clean. Under set -e a crash anywhere above the
+# summary used to produce no output at all - the same shape as a quiet
+# success when piped through tail. Now a crash says so.
+trap 'echo "  index-landmines.sh ABORTED before its summary (line $LINENO) - the index is UNKNOWN, not clean" >&2' ERR
 cd "$(dirname "$0")/.."
 
 HEAD_SHA=$(git rev-parse HEAD)
@@ -107,7 +111,12 @@ while IFS= read -r f; do
     hit=$(git rev-list main -- "$f" | while read -r c; do
             b=$(git rev-parse "$c:$f" 2>/dev/null) || continue
             [ "$b" = "$blob" ] && { echo "$c"; break; }
-          done | head -1)
+          done | head -1) || true
+    # || true: with no match the loop ends on a failed read after a false
+    # test, the pipeline returns non-zero, and set -e would kill the script
+    # right here - before the "live" line below could print. An empty hit is
+    # the answer, not a failure. Found by the Website session on 2026-09-04
+    # by staging the case rather than running the script on a clean index.
   fi
 
   if [ -n "$hit" ]; then
