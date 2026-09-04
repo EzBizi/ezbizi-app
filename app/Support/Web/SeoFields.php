@@ -73,10 +73,48 @@ class SeoFields
                 // Plenty of trades take calls and no email.
                 'requirement' => self::CONDITIONAL,
             ],
+            /*
+             * The address is FIVE fields and one derived line.
+             *
+             * It started as one string, which was the outlier in this codebase:
+             * Customers and Jobs already store address_line1, address_line2,
+             * city, state and postal_code, and the marketing site's JSON-LD wants
+             * exactly those parts. So the parts are the truth and `address` is
+             * composed from them by ValueResolver — a site that set only the
+             * old single string keeps publishing it, and one that fills the parts
+             * gets the line built for it. Nothing that used `[ezbizi_address]`
+             * changes.
+             */
+            'address_line1' => [
+                'label' => 'Street address',
+                'hint' => 'Number and street.',
+                'requirement' => self::REQUIRED,
+            ],
+            'address_line2' => [
+                'label' => 'Suite or unit',
+                'hint' => 'Only if there is one.',
+                'requirement' => self::OPTIONAL,
+            ],
+            'city' => [
+                'label' => 'City',
+                'hint' => '',
+                'requirement' => self::REQUIRED,
+            ],
+            'state' => [
+                'label' => 'State',
+                'hint' => 'Two letters.',
+                'requirement' => self::REQUIRED,
+            ],
+            'postal_code' => [
+                'label' => 'ZIP',
+                'hint' => '',
+                'requirement' => self::REQUIRED,
+            ],
             'address' => [
-                'label' => 'Address',
-                'hint' => 'The address shown in the footer and on contact pages.',
-                // The footer and the structured data both want it.
+                'label' => 'Address, one line',
+                'hint' => 'Built from the parts above. This is what the footer renders.',
+                // Derived when the parts exist; a plain string on sites that
+                // pre-date the parts.
                 'requirement' => self::REQUIRED,
             ],
             'hours' => [

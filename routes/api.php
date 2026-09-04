@@ -579,6 +579,10 @@ Route::prefix('v1')
         // The browser key. Separate from the token above because they are different
         // credentials with different blast radii — see rotatePublicKey.
         Route::post('web/sites/{site}/public-key', [WebSitesController::class, 'rotatePublicKey']);
+        // The site the company's others inherit from, per key, wherever they
+        // say nothing themselves. `edit` gates it: choosing the primary changes
+        // what every other site publishes.
+        Route::post('web/sites/{site}/primary', [WebSitesController::class, 'makePrimary']);
         Route::get('web/sites/{site}/values', [WebValuesController::class, 'index']);
         Route::put('web/sites/{site}/values', [WebValuesController::class, 'update']);
         Route::post('inventory/purchase-orders/{purchase_order}/open', [InventoryPurchaseOrdersController::class, 'open']);

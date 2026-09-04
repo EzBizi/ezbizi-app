@@ -859,7 +859,263 @@ class WebManagementTest extends TestCase
             ),
         ));
 
-        $this->assertSame(['company_name', 'phone', 'address'], $required);
+        $this->assertSame(
+            ['company_name', 'phone', 'address_line1', 'city', 'state', 'postal_code', 'address'],
+            $required,
+        );
+    }
+
+    // ── 7. a primary site, and what the others inherit ──────────────
+
+    /**
+     * The chain, end to end: page override → site value → primary's value.
+     *
+     * Per KEY rather than per site, which is the whole point. A branch that
+     * overrides only the phone still publishes the primary's company name.
+     */
+    public function test_a_branch_inherits_what_it_does_not_say_itself(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $main = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+        $branch = $this->registerSite($editor, $tenant, 'nj.a-1chimney.com');
+
+        $this->signedInAs($editor)
+            ->postJson("/api/v1/web/sites/{$main['data']['id']}/primary")
+            ->assertOk();
+
+        $this->setValues($editor, $main['data']['id'], [
+            'company_name' => 'A-1 Chimney',
+            'phone' => '555-0100',
+        ]);
+
+        // The branch answers for itself on ONE key only.
+        $this->setValues($editor, $branch['data']['id'], ['phone' => '555-0200']);
+
+        $read = $this->pluginRead($branch['token'], 'nj.a-1chimney.com')->assertOk();
+
+        $this->assertSame('555-0200', $read->json('values.phone'));
+        $this->assertSame(
+            'A-1 Chimney',
+            $read->json('values.company_name'),
+            'The branch said nothing about its company name, so it publishes the primary one.',
+        );
+    }
+
+    public function test_the_primary_publishes_only_its_own(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $main = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+        $branch = $this->registerSite($editor, $tenant, 'nj.a-1chimney.com');
+
+        $this->signedInAs($editor)
+            ->postJson("/api/v1/web/sites/{$main['data']['id']}/primary")->assertOk();
+
+        $this->setValues($editor, $branch['data']['id'], ['phone' => '555-0200']);
+
+        // Inheritance runs one way. The primary must not pick up the branch's.
+        $this->assertNull(
+            $this->pluginRead($main['token'], 'a-1chimney.com')->assertOk()->json('values.phone'),
+        );
+    }
+
+    /**
+     * Page overrides are NOT inherited, and this is the test that says so.
+     *
+     * A path on the primary is a statement about a page of THAT site. Handing
+     * it to a branch because the URLs happen to match would be a coincidence
+     * dressed up as a rule.
+     */
+    public function test_a_page_override_on_the_primary_stays_there(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $main = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+        $branch = $this->registerSite($editor, $tenant, 'nj.a-1chimney.com');
+
+        $this->signedInAs($editor)
+            ->postJson("/api/v1/web/sites/{$main['data']['id']}/primary")->assertOk();
+
+        $this->signedInAs($editor)->putJson(
+            "/api/v1/web/sites/{$main['data']['id']}/values",
+            ['path' => '/contact', 'values' => ['phone' => '555-0999']],
+        )->assertOk();
+
+        $this->assertSame(
+            [],
+            (array) $this->pluginRead($branch['token'], 'nj.a-1chimney.com')
+                ->assertOk()->json('pages'),
+        );
+    }
+
+    /** Only one primary per company, and the database is what enforces it. */
+    public function test_making_a_second_site_primary_moves_it(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $first = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+        $second = $this->registerSite($editor, $tenant, 'nj.a-1chimney.com');
+
+        foreach ([$first, $second] as $site) {
+            $this->signedInAs($editor)
+                ->postJson("/api/v1/web/sites/{$site['data']['id']}/primary")->assertOk();
+        }
+
+        $sites = $this->signedInAs($editor)->getJson('/api/v1/web/sites')
+            ->assertOk()->json('data');
+
+        $primaries = collect($sites)->where('is_primary', true);
+
+        $this->assertCount(1, $primaries, 'A company may have exactly one primary.');
+        $this->assertSame('nj.a-1chimney.com', $primaries->first()['host']);
+    }
+
+    /** With no primary, nothing inherits and the module behaves as before. */
+    public function test_without_a_primary_nothing_is_inherited(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $one = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+        $two = $this->registerSite($editor, $tenant, 'nj.a-1chimney.com');
+
+        $this->setValues($editor, $one['data']['id'], ['company_name' => 'A-1 Chimney']);
+
+        $this->assertNull(
+            $this->pluginRead($two['token'], 'nj.a-1chimney.com')
+                ->assertOk()->json('values.company_name'),
+        );
+    }
+
+    /**
+     * The editor needs BOTH layers — its own answers and what it would fall
+     * back to — or it cannot show that a blank box is inherited rather than
+     * empty. That distinction is the whole reason the screen can be honest.
+     */
+    public function test_the_editor_is_told_what_it_would_inherit(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $main = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+        $branch = $this->registerSite($editor, $tenant, 'nj.a-1chimney.com');
+
+        $this->signedInAs($editor)
+            ->postJson("/api/v1/web/sites/{$main['data']['id']}/primary")->assertOk();
+
+        $this->setValues($editor, $main['data']['id'], ['company_name' => 'A-1 Chimney']);
+
+        $body = $this->signedInAs($editor)
+            ->getJson("/api/v1/web/sites/{$branch['data']['id']}/values")
+            ->assertOk()->json('data');
+
+        $this->assertSame([], (array) $body['values'], 'The branch has set nothing.');
+        $this->assertSame('A-1 Chimney', $body['inherited']['company_name']);
+    }
+
+    public function test_a_viewer_cannot_choose_the_primary(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+        $viewer = $this->userWithRole($tenant, 'Viewer', ['web_management.view']);
+
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+
+        $this->signedInAs($viewer)
+            ->postJson("/api/v1/web/sites/{$site['data']['id']}/primary")
+            ->assertForbidden();
+    }
+
+    // ── 8. the address is parts, and one line built from them ────────
+
+    /**
+     * The one-liner is DERIVED whenever parts exist, and left alone when they
+     * do not. Both halves matter: the first is why correcting a ZIP updates the
+     * footer, the second is why no site that pre-dates the split changes.
+     */
+    public function test_the_address_line_is_built_from_its_parts(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+
+        $this->setValues($editor, $site['data']['id'], [
+            'address_line1' => '112 Bloomfield Ave',
+            'address_line2' => 'Suite 4',
+            'city' => 'Caldwell',
+            'state' => 'NJ',
+            'postal_code' => '07006',
+        ]);
+
+        $this->assertSame(
+            '112 Bloomfield Ave, Suite 4, Caldwell, NJ 07006',
+            $this->pluginRead($site['token'], 'a-1chimney.com')->assertOk()->json('values.address'),
+        );
+    }
+
+    public function test_a_site_from_before_the_split_keeps_its_one_line_address(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+
+        // Only the old single string, exactly as such a site has it stored.
+        $this->setValues($editor, $site['data']['id'], ['address' => '5 Old Way, Somewhere, NJ 07000']);
+
+        $this->assertSame(
+            '5 Old Way, Somewhere, NJ 07000',
+            $this->pluginRead($site['token'], 'a-1chimney.com')->assertOk()->json('values.address'),
+        );
+    }
+
+    public function test_the_parts_win_over_a_stale_one_line_address(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+
+        $this->setValues($editor, $site['data']['id'], [
+            'address' => '5 Old Way, Somewhere, NJ 07000',
+            'address_line1' => '112 Bloomfield Ave',
+            'city' => 'Caldwell',
+            'state' => 'NJ',
+            'postal_code' => '07006',
+        ]);
+
+        $this->assertSame(
+            '112 Bloomfield Ave, Caldwell, NJ 07006',
+            $this->pluginRead($site['token'], 'a-1chimney.com')->assertOk()->json('values.address'),
+            'A one-liner left over from before the split must not outlive a corrected ZIP.',
+        );
+    }
+
+    /** Inheritance composes too — a branch with only its own street gets the primary city. */
+    public function test_address_parts_inherit_individually(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $main = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+        $branch = $this->registerSite($editor, $tenant, 'nj.a-1chimney.com');
+
+        $this->signedInAs($editor)
+            ->postJson("/api/v1/web/sites/{$main['data']['id']}/primary")->assertOk();
+
+        $this->setValues($editor, $main['data']['id'], [
+            'address_line1' => '112 Bloomfield Ave', 'city' => 'Caldwell',
+            'state' => 'NJ', 'postal_code' => '07006',
+        ]);
+        $this->setValues($editor, $branch['data']['id'], ['address_line1' => '9 Branch Rd']);
+
+        $this->assertSame(
+            '9 Branch Rd, Caldwell, NJ 07006',
+            $this->pluginRead($branch['token'], 'nj.a-1chimney.com')->assertOk()->json('values.address'),
+        );
     }
 
     // ── helpers ─────────────────────────────────────────────────────

@@ -7,7 +7,7 @@ use App\Models\WebSite;
 use App\Models\WebValue;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Web\SeoFields;
-use App\Support\Web\ValuePayload;
+use App\Support\Web\ValueResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -90,7 +90,7 @@ class PublicValuesController extends Controller
 
             return response()->json([
                 'fields' => SeoFields::catalogue(),
-                ...ValuePayload::forRows($rows),
+                ...ValueResolver::forReaders($rows, ValueResolver::inheritedRowsFor($site)),
             ])->withHeaders($this->browserHeaders());
         });
     }

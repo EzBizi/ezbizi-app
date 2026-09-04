@@ -9,6 +9,7 @@ use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -256,6 +257,34 @@ class SitesController extends Controller
         return response()->json(['data' => $this->present($site->fresh())]);
     }
 
+    /**
+     * POST /api/v1/web/sites/{site}/primary
+     *
+     * The company's other sites inherit from this one, per key, wherever they
+     * say nothing themselves. Setting a new primary demotes the old one — the
+     * database refuses two, so doing it in a transaction is what makes the swap
+     * possible rather than a unique-key violation.
+     *
+     * There is no "unset": a company with sites and no primary is a company
+     * where nothing inherits, which is the state this feature exists to end.
+     * Moving it elsewhere is the way to change your mind.
+     */
+    public function makePrimary(WebSite $site): JsonResponse
+    {
+        $this->authorize('update', $site);
+
+        DB::transaction(function () use ($site): void {
+            WebSite::query()
+                ->where('company_id', $site->company_id)
+                ->whereNotNull('primary_company_id')
+                ->update(['primary_company_id' => null]);
+
+            $site->forceFill(['primary_company_id' => $site->company_id])->save();
+        });
+
+        return response()->json(['data' => $this->present($site->fresh())]);
+    }
+
     private function newToken(): string
     {
         return 'ezb_'.Str::random(48);
@@ -290,6 +319,7 @@ class SitesController extends Controller
             'id' => $site->id,
             'host' => $site->host,
             'label' => $site->label,
+            'is_primary' => (bool) $site->is_primary,
             /*
              * Safe to return on every read, unlike the token. This one is meant
              * to be pasted into a public page, so hiding it here would only stop
