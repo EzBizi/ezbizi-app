@@ -51,6 +51,35 @@ three were dead. The live one was in this table's first row the whole time.
    replace the id and the date, stage **only this file**, commit. A row
    with a dead id is a dead letter; a row with a wrong id is worse.
 
+   **Staging only this file is necessary and not sufficient.** Path-limiting
+   stops you taking another *file*; it does not stop you taking another
+   session's uncommitted *lines inside this one*, because `git commit --
+   <path>` commits the WORKING TREE state of that path. On 2026-09-04 two
+   sessions proved it within minutes: `9032be78` says "Inspection" and carries
+   the Customers row too, and `eac81763` says "Customers" and actually moved
+   the Notifications row. Nothing was lost — every row was right either way —
+   but both messages are wrong about what they contain, in the one file whose
+   whole purpose is being trustworthy about who is who.
+
+   Build the blob from HEAD plus your own line, so nothing can ride along:
+
+   ```bash
+   BASE=$(git rev-parse HEAD)
+   git show "$BASE":docs/SESSIONS.md > /tmp/row.md
+   # edit ONLY your row in /tmp/row.md
+   export GIT_INDEX_FILE=$(mktemp -u)
+   git read-tree "$BASE"
+   git update-index --cacheinfo 100644,"$(git hash-object -w /tmp/row.md)",docs/SESSIONS.md
+   C=$(git commit-tree "$(git write-tree)" -p "$BASE" -F /tmp/msg)
+   git update-ref refs/heads/main "$C" "$BASE"
+   ```
+
+   `GIT_INDEX_FILE` is per-SHELL and every agent tool call is a fresh shell, so
+   stage and commit in ONE call or git silently uses the shared index instead.
+   Check the result with `git show <sha> --stat` AFTER the fact — never with
+   the stat you printed while staging, which is accurate about a tree your
+   commit may not have used.
+
 Sign anything that matters with your desktop id. A pipe name in a message
 identifies nobody an hour later.
 
