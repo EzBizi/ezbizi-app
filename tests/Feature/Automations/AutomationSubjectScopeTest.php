@@ -148,6 +148,28 @@ use Tests\TestCase;
  * down rather than fixed silently, because a gate trusted for something it does
  * not do is how the leak it guards gets re-introduced by somebody who checked.
  *
+ * ── What an owed test has to contain (from Marketing, 2026-09-04) ─
+ *
+ * TWO CHECKS, and a module doing only the second has not verified its mapping.
+ *
+ *   1. THE MODEL CHECK. `assertSame(['franchise', $id], $record->automationScope())`
+ *      for a record filed at a franchise, and the company equivalent. This is
+ *      the one that catches a flattened arm, and it is the whole point.
+ *
+ *   2. THE ENGINE CHECK. Run that answer through `Automation::coversScope()`
+ *      with the NEGATIVE cases too — the branch next door does not cover this
+ *      record; a branch-scoped rule does not reach a company-wide one. Largely
+ *      redundant with (1) for a model-side change, and that is fine: what it
+ *      buys is a guard on the ENGINE. If `coversScope` semantics move, the
+ *      module finds out instead of silently widening to everybody.
+ *
+ * **Pass the company chain.** `coversScope(?string $scopeType, ?string $scopeId,
+ * array $companyChain = [])` — Automation.php:66, and the third argument
+ * DEFAULTS TO EMPTY. A company-scoped rule is `in_array($this->scope_id,
+ * $companyChain)`, so omitting the chain compiles, runs, and answers "does not
+ * cover" for every company rule. Marketing dropped it and reproduced Phone's
+ * false negative — which reads exactly like a broken mapping and is not one.
+ *
  * When those four owed tests exist, the assertion worth adding here is a
  * COVERAGE one — every model implementing the interface is read by some test
  * somewhere — which needs no factories and turns the absence above into a red
