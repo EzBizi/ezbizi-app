@@ -107,7 +107,12 @@ while IFS= read -r f; do
     hit=$(git rev-list main -- "$f" | while read -r c; do
             b=$(git rev-parse "$c:$f" 2>/dev/null) || continue
             [ "$b" = "$blob" ] && { echo "$c"; break; }
-          done | head -1)
+          done | head -1) || true
+    # || true: with no match the loop ends on a failed read after a false
+    # test, the pipeline returns non-zero, and set -e would kill the script
+    # right here - before the "live" line below could print. An empty hit is
+    # the answer, not a failure. Found by the Website session on 2026-09-04
+    # by staging the case rather than running the script on a clean index.
   fi
 
   if [ -n "$hit" ]; then
