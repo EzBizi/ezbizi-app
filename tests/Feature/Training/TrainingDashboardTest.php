@@ -92,6 +92,36 @@ class TrainingDashboardTest extends TestCase
         $this->assertSame(0, $row['overdue']);
     }
 
+    /**
+     * Important 5 (task-11 review): `statesFor`'s docblock used to claim a
+     * person outside all four states was always ASSIGNED-but-not-yet-due.
+     * That was false — Training has a LIBRARY as well as an assignment
+     * system, so somebody can pass, and later lapse, a test nobody assigned
+     * them. `people_assigned: 0` beside `people_due_for_retaking: 1` is the
+     * honest shape of that, not a bug. Pins the BEHAVIOUR (already correct);
+     * only the comment was wrong.
+     */
+    public function test_a_library_pass_can_lapse_with_nobody_assigned(): void
+    {
+        $tenant = $this->provisionTenant('Library-'.Str::random(8));
+        $monitor = $this->userWithRole($tenant, 'Monitor', ['training.monitor']);
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $tenant['franchise']);
+
+        $test = $this->aPublishedTest($tenant, 'Library Test');
+
+        // No assignRow() at all — this is a library pass, never assigned.
+        $this->aLapsedPass($tenant, $learner, $test, daysAgo: 1);
+
+        $body = $this->signedInAs($monitor)->getJson('/api/v1/training/dashboard')->json();
+
+        $row = collect($body['data'])->firstWhere('id', $test->id);
+        $this->assertSame(0, $row['assigned'], 'Nobody assigned this test to this person.');
+        $this->assertSame(1, $row['retaking'], 'Their library pass lapsed all the same.');
+
+        $this->assertSame(0, $body['summary']['people_assigned']);
+        $this->assertSame(1, $body['summary']['people_due_for_retaking']);
+    }
+
     // ── No "certification" anywhere ───────────────────────────────
 
     public function test_the_dashboard_never_says_certification(): void
@@ -182,6 +212,42 @@ class TrainingDashboardTest extends TestCase
         );
     }
 
+    /**
+     * The person-reach case content scope cannot catch: an
+     * ORGANIZATION-WIDE test is visible to every monitor, so
+     * `InventoryVisibility` constrains nothing for it at all. It is still
+     * `summary`'s job — via `ScopeReach::constrainToVisiblePeople` — to
+     * never count a Northgate-only person's lapsed pass for a Riverside-only
+     * monitor. Reproduces task-11 review Important 3, proven live: this
+     * exact fixture returned `people_due_for_retaking: 1` before the fix.
+     */
+    public function test_the_summary_does_not_count_a_person_outside_reach_on_an_organization_wide_test(): void
+    {
+        $tenant = $this->provisionTenant('SummaryReach-'.Str::random(8));
+        $riverside = $tenant['franchise'];
+        $northgate = $this->extraFranchise($tenant, 'Northgate');
+
+        $riversideMonitor = $this->userWithRole($tenant, 'RiversideMonitor', ['training.monitor'], onlyAt: $riverside);
+        $northgateLearner = $this->userWithRole($tenant, 'NorthgateLearner', ['training.view'], onlyAt: $northgate);
+
+        $orgWideTest = $this->anOrgWideTest($tenant, 'Org Wide Ladder Test');
+        $this->aLapsedPass($tenant, $northgateLearner, $orgWideTest, daysAgo: 1);
+
+        $body = $this->signedInAs($riversideMonitor)->getJson('/api/v1/training/dashboard')->json();
+
+        $titles = collect($body['data'])->pluck('title');
+        $this->assertContains('Org Wide Ladder Test', $titles, 'The row itself is content-scope visible everywhere.');
+
+        $this->assertSame(
+            0,
+            $body['summary']['people_due_for_retaking'],
+            "A Northgate-only person's lapsed pass must not count for a Riverside-only monitor, even on an organization-wide test.",
+        );
+
+        $row = collect($body['data'])->firstWhere('title', 'Org Wide Ladder Test');
+        $this->assertSame(0, $row['retaking'], 'The row itself must not count the out-of-reach person either.');
+    }
+
     // ── Gate ─────────────────────────────────────────────────────
 
     public function test_the_dashboard_requires_monitor_and_refuses_view_only(): void
@@ -256,6 +322,40 @@ class TrainingDashboardTest extends TestCase
             ->assertNotFound();
     }
 
+    /**
+     * Critical 2 (task-11 review): the pane's own person reach, on an
+     * ORGANIZATION-WIDE test — content scope (`findVisibleItem`) admits the
+     * item as a row for every monitor, so the pane must filter its audience
+     * by `ScopeReach::constrainToVisiblePeople`, not by the item's own
+     * visibility. Proven live before the fix: this fixture's `/people`
+     * response named the Northgate learner and their score to a
+     * Riverside-only monitor.
+     */
+    public function test_the_people_pane_excludes_a_person_outside_reach_on_an_organization_wide_test(): void
+    {
+        $tenant = $this->provisionTenant('PaneReach-'.Str::random(8));
+        $riverside = $tenant['franchise'];
+        $northgate = $this->extraFranchise($tenant, 'Northgate');
+
+        $riversideMonitor = $this->userWithRole($tenant, 'RiversideMonitor', ['training.monitor'], onlyAt: $riverside);
+        $northgateLearner = $this->userWithRole($tenant, 'NorthgateLearner', ['training.view'], onlyAt: $northgate);
+
+        $orgWideTest = $this->anOrgWideTest($tenant, 'Org Wide Ladder Test');
+        $this->aLapsedPass($tenant, $northgateLearner, $orgWideTest, daysAgo: 1);
+
+        $response = $this->signedInAs($riversideMonitor)
+            ->getJson("/api/v1/training/dashboard/{$orgWideTest->id}/people");
+
+        $response->assertOk();
+
+        $rows = collect($response->json('data'));
+        $this->assertNull(
+            $rows->firstWhere('user_id', $northgateLearner->id),
+            'A Northgate-only learner must not appear to a Riverside-only monitor, even on an organization-wide test.',
+        );
+        $this->assertStringNotContainsString('NorthgateLearner', $response->getContent());
+    }
+
     // ── Records, for HR to render ────────────────────────────────
 
     public function test_records_returns_that_persons_training_including_the_lapsed_pass(): void
@@ -291,6 +391,85 @@ class TrainingDashboardTest extends TestCase
         // Training owns its data; HR reads it. Nothing this endpoint does
         // may write to a table outside training_*.
         $this->assertDatabaseCount('training_attempts', 1);
+    }
+
+    /**
+     * Critical 1 (task-11 review): the ONLY check `records` had on the
+     * subject was `Rule::exists('users','id')->where('organization_id', …)`
+     * — a TENANT check, not a reach check. On an ORGANIZATION-WIDE test
+     * (visible to every monitor, so content scope constrains nothing) a
+     * Riverside-only monitor could name a Northgate-only learner and read
+     * their score. Proven live before the fix: this exact fixture returned
+     * `status=200` with the learner's name and a 91-equivalent score.
+     */
+    public function test_records_refuses_a_person_outside_reach_on_an_organization_wide_test(): void
+    {
+        $tenant = $this->provisionTenant('RecordsReach-'.Str::random(8));
+        $riverside = $tenant['franchise'];
+        $northgate = $this->extraFranchise($tenant, 'Northgate');
+
+        $riversideMonitor = $this->userWithRole($tenant, 'RiversideMonitor', ['training.monitor'], onlyAt: $riverside);
+        $northgateLearner = $this->userWithRole($tenant, 'NorthgateLearner', ['training.view'], onlyAt: $northgate);
+
+        $orgWideTest = $this->anOrgWideTest($tenant, 'Org Wide Ladder Test');
+        $this->aLapsedPass($tenant, $northgateLearner, $orgWideTest, daysAgo: 1);
+
+        $response = $this->signedInAs($riversideMonitor)
+            ->getJson("/api/v1/training/records?user={$northgateLearner->id}");
+
+        $response->assertForbidden();
+        $this->assertStringNotContainsString('NorthgateLearner', $response->getContent());
+        $this->assertStringNotContainsString('Org Wide Ladder Test', $response->getContent());
+
+        // A plain sentence — never a section number, a class name, or
+        // "immutable" (task-11 constraints; §4's own house style).
+        $message = $response->json('message');
+        $this->assertIsString($message);
+        $this->assertStringNotContainsStringIgnoringCase('§', $message);
+        $this->assertStringNotContainsStringIgnoringCase('immutable', $message);
+    }
+
+    /**
+     * A genuinely different ORGANIZATION, not a sibling franchise — the
+     * tenant boundary `records` validates independently of person reach
+     * (task-11 review, Important 4: "all 17 tests use a single tenant, so
+     * even the organization boundary on records is unpinned").
+     */
+    public function test_records_refuses_a_user_from_a_different_organization(): void
+    {
+        $tenantA = $this->provisionTenant('OrgA-'.Str::random(8));
+        $tenantB = $this->provisionTenant('OrgB-'.Str::random(8));
+
+        $monitorA = $this->userWithRole($tenantA, 'Monitor', ['training.monitor']);
+        $learnerB = $this->userWithRole($tenantB, 'Learner', ['training.view']);
+
+        $this->signedInAs($monitorA)
+            ->getJson("/api/v1/training/records?user={$learnerB->id}")
+            ->assertStatus(422);
+    }
+
+    /**
+     * Finding 8 (task-11 review): identity was disclosed independently of
+     * whether there was anything to show it alongside. A monitor who DOES
+     * reach this person, but for whom every guide/test row was filtered
+     * out (nothing assigned, nothing attempted), must not learn the
+     * person's name from an otherwise-empty response either.
+     */
+    public function test_records_omits_identity_when_there_is_nothing_to_show(): void
+    {
+        $tenant = $this->provisionTenant('RecordsEmpty-'.Str::random(8));
+        $monitor = $this->userWithRole($tenant, 'Monitor', ['training.monitor']);
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $tenant['franchise']);
+
+        // Reachable, and a published item exists — but the learner has never
+        // touched it: no assignment, no progress, no attempt.
+        $this->aPublishedTest($tenant, 'Untouched Test');
+
+        $body = $this->signedInAs($monitor)
+            ->getJson("/api/v1/training/records?user={$learner->id}")->json();
+
+        $this->assertSame([], $body['data']);
+        $this->assertNull($body['user'], 'No content means no identity either — see [records]\'s finding-8 note.');
     }
 
     // ── The unmet acceptance criterion: a lapsed pass reappears in Learn ──
@@ -423,6 +602,28 @@ class TrainingDashboardTest extends TestCase
             'requires_guide' => false,
             'pass_mark' => 40,
             'valid_for_days' => $validForDays,
+        ]));
+    }
+
+    /**
+     * `company_id`/`franchise_id` both null — General/organization-wide, per
+     * `InventoryVisibility`'s own docblock ("Organization rows (`company_id`
+     * null) are the group register: anyone with reach in the tenant sees
+     * them"). Visible to every monitor in the tenant regardless of
+     * franchise, which is exactly the case content scope cannot narrow and
+     * person reach has to.
+     */
+    private function anOrgWideTest(array $tenant, string $title = 'A Test'): TrainingTest
+    {
+        return $this->inTenant($tenant['org'], fn () => TrainingTest::create([
+            'company_id' => null,
+            'franchise_id' => null,
+            'title' => $title,
+            'status' => TrainingTest::PUBLISHED,
+            'questions' => $this->twoQuestions(),
+            'requires_guide' => false,
+            'pass_mark' => 40,
+            'valid_for_days' => 30,
         ]));
     }
 

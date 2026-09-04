@@ -651,10 +651,11 @@ Route::prefix('v1')
         // and AssignmentReach.
         Route::post('training/assignments', [TrainingAssignmentsController::class, 'store']);
         // How an organization watches training (task 11) — `training.monitor`,
-        // never `.manage` or `.view`. `{id}/people` is declared before the
-        // bare dashboard route would matter only if one were a prefix of the
-        // other's own children, which they are not, but stays grouped here so
-        // both dashboard routes read together. See DashboardController.
+        // never `.manage` or `.view`. `{id}/people` is declared AFTER the
+        // bare dashboard route; the order would only matter if one route
+        // were a prefix of the other's own children, which they are not —
+        // it stays grouped here so both dashboard routes read together. See
+        // DashboardController.
         Route::get('training/dashboard', [TrainingDashboardController::class, 'index']);
         Route::get('training/dashboard/{id}/people', [TrainingDashboardController::class, 'people']);
         // The read HR's screen renders from — same `training.monitor` gate.
