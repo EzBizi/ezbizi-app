@@ -51,15 +51,19 @@ Every other session does two things at start and nothing else here:
 
 1. `get_session("self")` and read your row. Title, id, date — all of it is
    the desk's reading of the desktop, and the **title is Jose's**: he sets
-   it in the sidebar. Never call `set_session_title` on yourself; on
-   2026-09-04 a session did, on this file's earlier instruction, and undid
-   the rename Jose had just made.
+   it in the sidebar. Never call `set_session_title` on yourself. An earlier
+   version of this file asked every session to, minutes before Jose renamed
+   every window himself; no session had acted on it (checked with the one
+   that was suspected), but any that had would have undone his rename and
+   the desk would have mirrored the wrong string here. Withdrawn for that.
 2. If your row is wrong or missing, `send_message` the Deployment id below
    with the correction. Do not edit the table. Two sessions tried "stage only
    this file" on 2026-09-04 and each commit still carried the *other's*
    uncommitted row, so two commit messages in this file's history describe
    changes they do not contain (9032be78, eac81763). Path-limiting keeps out
-   other files, not other sessions' lines in this one.
+   other files, not other sessions' lines in this one. And the stakes are
+   asymmetric: a row with a dead id is a dead letter, and somebody notices;
+   a row with a wrong id delivers to the wrong session, and nobody does.
 
 Sign anything that matters with your desktop id. A pipe name in a message
 identifies nobody an hour later — and, measured below, not even now.
