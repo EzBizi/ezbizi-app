@@ -2192,11 +2192,13 @@ class ModuleServiceProvider extends ServiceProvider
              * has since been flipped to `isRaised: true` (task 7's ProgressController
              * raises it on a guide's final screen), `training.passed` /
              * `training.failed` have since been flipped to `isRaised: true` as well
-             * (task 8's LearnController::submit emits both), and `training.assigned`
+             * (task 8's LearnController::submit emits both), `training.assigned`
              * has since been flipped to `isRaised: true` too (task 9's
-             * AssignmentWriter::create emits it) — only `training.expired` is
-             * still declared `isRaised: false`; nothing else in this module emits
-             * yet.
+             * AssignmentWriter::create emits it), and `training.expired` has since
+             * been flipped to `isRaised: true` as well (task 10's
+             * ExpireTrainingPasses nightly sweep emits it) — all five of this
+             * module's triggers are now raised; none remain declared
+             * `isRaised: false`.
              * ModuleRegistryTest holds the claim to the source for every one of the
              * five independently: the day any of them is emitted, the build fails
              * until its own flag is dropped, rather than the builder going on
@@ -2222,7 +2224,19 @@ class ModuleServiceProvider extends ServiceProvider
                  * CarriesAutomationScope, declared in the same commit that flipped
                  * `training.completed` to raised.
                  */
-                emits: [\App\Models\TrainingProgress::class],
+                /*
+                 * Three, because Training's five triggers carry three different
+                 * records: a guide finished is progress, a test passed or failed
+                 * is an attempt, and training given out is an assignment. That is
+                 * the same multiplicity that makes `subject` null here — but where
+                 * `subject` had to pick one and so picks none, `emits` can name all
+                 * three, which is the whole reason it exists.
+                 */
+                emits: [
+                    \App\Models\TrainingProgress::class,
+                    \App\Models\TrainingAttempt::class,
+                    \App\Models\TrainingAssignment::class,
+                ],
                 actions: ['view', 'monitor', 'manage', 'assign'],
                 triggers: [
                     new TriggerDefinition(
@@ -2255,10 +2269,10 @@ class ModuleServiceProvider extends ServiceProvider
                         // Raised by ProgressController::seen (task 7), on the
                         // outbox and inside the same transaction as the
                         // progress row — see its docblock. `training.passed` /
-                        // `training.failed` are raised too (task 8), and
-                        // `training.assigned` is raised too (task 9). Only
-                        // `training.expired` is still declared isRaised: false;
-                        // see the block comment above.
+                        // `training.failed` are raised too (task 8),
+                        // `training.assigned` is raised too (task 9), and
+                        // `training.expired` is raised too (task 10) — see the
+                        // block comment above.
                         isRaised: true,
                     ),
                     new TriggerDefinition(
@@ -2291,7 +2305,10 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Pass ran out',
                         description: 'A test pass reached the end of the period it was good for. '
                             .'The training reappears in that person\'s list as due for retaking.',
-                        isRaised: false,
+                        // Raised by ExpireTrainingPasses (task 10), the nightly
+                        // sweep — an INSERT into the outbox, never a dispatch;
+                        // see that command's own docblock and StartUp.md §10.
+                        isRaised: true,
                     ),
                 ],
                 automationActions: [

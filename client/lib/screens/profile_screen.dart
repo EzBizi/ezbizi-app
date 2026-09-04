@@ -166,6 +166,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
       const SizedBox(height: 12),
       TwoFactorCard(api: widget.api, session: widget.session),
       const SizedBox(height: 12),
+
+      // Beside the authenticator in BOTH layouts.
+      //
+      // It went into _rows() alone when it was written, so it existed on a
+      // phone and did not exist on a desk — which is where the people who
+      // would switch it on actually sit. Nothing failed: the narrow tests
+      // passed, the card rendered perfectly in the layout it was in, and the
+      // desktop simply had no such control. Found by going to look at it on a
+      // real screen, not by a test.
+      SmsCodesCard(api: widget.api, session: widget.session),
+      const SizedBox(height: 12),
       PasswordCard(api: widget.api, session: widget.session),
       const SizedBox(height: 12),
       _sessionsCard(),

@@ -517,8 +517,8 @@ on main may have moved on.
 | 🔨 | **Phone · Hours** | **Layout 3 approved** — `docs/previews/phone-hours-layouts.html` @ `f545c31`. Today’s shape kept: opening a set **replaces the pane**, with Back. **Deliberate, not an oversight** — Numbers is a split and Hours is not, because seven rows of masked time fields want full width. *Say so in the code*, or somebody will later “fix” Hours to match Numbers. Holidays get their own bordered block above the week; a day with no times is an absent row, never empty fields. **No time picker** (`8910b88`). |
 | 🔨 | **Phone · Ring groups** | **Layout 1 approved** (split pane). `docs/previews/phone-ring-groups-layouts.html` @ `f545c31`. **The point is not the split:** reachability is a COLUMN of the member list, drawn from `DialPlan::batches()` — a group of four can ring nobody and look fine today. Tally is timestamped ("as of a few seconds ago"), never implied live. Keep the 60-second timeout explanation inline. Expect latent overflow in the narrowed detail column — pre-existing, not caused. |
 | ✅ | **Phone · Settings rail** | **SHIPPED `0d8e52c`.** Layout 1 (grouped rail) — `docs/previews/phone-settings-rail-layouts.html` @ `6389714`. Queued behind Trust with the Phone session. |
-| 📐 | **Suggestions · the author's tab** | **1 chosen — PROVISIONALLY, by Claude under delegation, not by Jose.** `docs/previews/suggestions-1.html`, `-2.html`, `-3.html` — 1 compose-first, 2 what-happened-to-what-you-sent, 3 correspondence. Jose left for the day at the gate and said "pick your recommended layouts, and we'll change them tomorrow if I don't like any", so **1** was chosen on these grounds: 2's master-detail rail and 3's stream are both built for a volume nobody will have (0–5 suggestions, ever), and 3's correspondence metaphor promises a reply the backend does not support — one note per suggestion, and the author cannot answer it. 1 matches the data, and its empty state *is* the compose box, which is what nearly every first visit will be. **This is a standing invitation to overrule, not a settled decision.** Backend `f13dd81..f845c4e`. |
-| 📐 | **Suggestions · the Development queue** | **2 chosen — PROVISIONALLY, by Claude under delegation, not by Jose.** `docs/previews/suggestions-queue-1.html`, `-2.html`, `-3.html` — 1 worklist table, 2 list-beside-the-answer, 3 everything-in-full. **2** on these grounds: the act this screen exists for is to read a suggestion in full and write a sentence the author reads verbatim, which is why the server makes a note mandatory to deny. 1 truncates into table cells the prose you have to judge; 3 keeps the full text but repeats the answer box on all 200 cards. 2 holds the suggestion in the pane while the note is written in the footer. Same standing invitation to overrule. |
+| ✅ | **Suggestions · the author's tab** | **2 — JOSE'S CHOICE, 2026-09-04: "i like 2 for both".** Overrules the provisional 1 below, which had already shipped, so this is a change to a live screen and not a branch edit. **Layout 2 is `what happened to what you sent`:** a rail split into Waiting on EzBizi / Answered with a Write-a-suggestion button above it, and the selected one in full in a detail pane. My argument for 1 was that 2 is built for a volume nobody will have — that argument lost, and it was only ever a guess about how people would use a tab nobody had used yet. Recorded because the reasoning below is now history and must not read as current. *Previously:* **1 chosen — PROVISIONALLY, by Claude under delegation, not by Jose.** `docs/previews/suggestions-1.html`, `-2.html`, `-3.html` — 1 compose-first, 2 what-happened-to-what-you-sent, 3 correspondence. Jose left for the day at the gate and said "pick your recommended layouts, and we'll change them tomorrow if I don't like any", so **1** was chosen on these grounds: 2's master-detail rail and 3's stream are both built for a volume nobody will have (0–5 suggestions, ever), and 3's correspondence metaphor promises a reply the backend does not support — one note per suggestion, and the author cannot answer it. 1 matches the data, and its empty state *is* the compose box, which is what nearly every first visit will be. **This is a standing invitation to overrule, not a settled decision.** Backend `f13dd81..f845c4e`. |
+| ✅ | **Suggestions · the Development queue** | **2 — JOSE'S CHOICE, 2026-09-04: "i like 2 for both".** Confirms what already shipped, so **no code changes for this row** — it is recorded so nobody later reads a provisional marker and rebuilds a screen that is already the approved one. *Previously:* **2 chosen — PROVISIONALLY, by Claude under delegation, not by Jose.** `docs/previews/suggestions-queue-1.html`, `-2.html`, `-3.html` — 1 worklist table, 2 list-beside-the-answer, 3 everything-in-full. **2** on these grounds: the act this screen exists for is to read a suggestion in full and write a sentence the author reads verbatim, which is why the server makes a note mandatory to deny. 1 truncates into table cells the prose you have to judge; 3 keeps the full text but repeats the answer box on all 200 cards. 2 holds the suggestion in the pane while the note is written in the footer. Same standing invitation to overrule. |
 | 4 | **Web Management · per-page value overrides** | Briefed. `license` ruled **conditional**. Not started. |
 
 **Phone, shipped 2026-08-31 and not re-listed above:** Voicemail on the shared pane skeleton (`3223015`), Numbers split pane (`b25c3db`), staff messaging (`ed3b35f`), extensions (`8b82ed2`), and the rail-is-a-switch guard (`753556b`). Still approved and NOT built: **Connection**, **Hours**, **Ring groups** — the three 🔨 rows above, held by the Phone session (`ezbizi-0b` → this one).
@@ -700,6 +700,23 @@ drawings, and it holds whichever number comes back.
   *whatever the status is* — so a note typed beside "In review" turns up on the author's
   screen with no notification and no explanation. All three queue layouts make it a bare
   button. **This is the `usable` shape again**: one column answering a second question.
+
+  **SETTLED DIFFERENTLY, 2026-09-04, and the requirement is met — read this before
+  filing it as unbuilt.** The shipped screen *does* draw the field, because the drawn
+  footer is shared with Approve and Deny, which need it; hiding it for one of three
+  actions would take a control away from the two that use it. Instead "Mark in review"
+  is **disabled while the box has content**, with the reason in place of the button's
+  usual hint: *"sends no note — approve, deny, or clear the box to use it"*. Nothing
+  typed is discarded, which was the failure worth preventing.
+
+  The half of this that mattered is now **structural rather than drawn**:
+  `StaffSuggestionsController::decide` refuses a note with `status: reviewing` outright
+  (`a0119847`) — *"In review tells them nothing — this note would show up on their
+  screen with no notice. Approve or deny it if there is something to say."* So the
+  guarantee no longer depends on a screen at all. That is the point: the previous
+  containment held because a button was disabled, and a disabled button is a
+  convention, not a guarantee. A module whose whole design rests on `ModuleRegistry`
+  absence being structural should not hold its other invariant by habit.
 - **Approving with no note is legal and should not be.** The notification's body *is* the
   note, so an empty one sends a bell reading "Your suggestion was approved" with nothing
   under it. The server permits it; the screen presses for a sentence anyway.
@@ -720,6 +737,18 @@ drawings, and it holds whichever number comes back.
 > pre-existing, the same shape as the `isExpanded` overflow. The fix is one line, but
 > `TabBarLike` is shared with Automations, so it changes two screens. All three queue
 > drawings show the strip wrapped, which is what fixed looks like.
+>
+> **DECIDED 2026-09-04: not changing it, and this is a decision rather than a gap.**
+> Jose put the three open Suggestions items back to me; on this one I left the widget
+> alone. Two reasons. It is shared with Automations, so a session that owns neither
+> would be restyling another module's tab strip without that session in the room — and
+> the drawings showing it wrapped are drawings of *Suggestions*, which is not a mandate
+> to restyle Automations. And Development is a staff control plane used at desk width,
+> where a strip that scrolls is an ordinary pattern rather than a defect somebody hits.
+> The settled rule it offends is real, and the honest position is that this is a
+> **known deviation with an owner-shaped gap**: whoever owns `TabBarLike` should fix it
+> once, for both screens, rather than a module session doing it sideways. Recorded here
+> so it stops resurfacing as an unanswered question every time somebody counts the chips.
 
 ---
 
