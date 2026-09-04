@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi — Marketing › Newsletter layouts</title>
+<style>
+  :root {
+    --cyan:#00AEEF; --primary:#00708F; --cyan-deep:#00708F;
+    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+    --ok:#0B8F5B; --err:#E07070; --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1320px; margin:0 auto; padding:16px 16px 48px; }
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:18px; margin:0 0 4px; }
+  header.picker p { margin:0 0 12px; color:var(--muted); max-width:88ch; }
+  .locked, .ask { font-size:13px; border-radius:8px; padding:10px 12px;
+    margin-bottom:12px; max-width:96ch; }
+  .locked { background:var(--info-c); } .ask { background:var(--warn-c); }
+  .locked strong, .ask strong { display:block; margin-bottom:4px; }
+  .locked strong { color:var(--cyan-deep); } .ask strong { color:var(--warn); }
+  .ask b { display:block; margin-top:7px; }
+  .nums { display:flex; flex-wrap:wrap; gap:8px; }
+  .nums button { min-width:44px; min-height:44px; border-radius:8px;
+    border:1px solid var(--line); background:var(--page); color:var(--ink); }
+  .nums button[aria-pressed="true"] { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:96ch; }
+  .caption strong { display:block; margin-bottom:4px; }
+  .caption em { color:var(--muted); font-style:normal; display:block; margin-top:6px; }
+
+  .shell { display:grid; grid-template-columns:200px 1fr; min-height:760px;
+    background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px; }
+  nav.side .brand { font-weight:700; color:var(--cyan-deep); margin-bottom:16px; padding:0 8px; }
+  nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+    text-decoration:none; margin-bottom:2px; }
+  nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  .page { display:flex; flex-direction:column; min-width:0; }
+  .chips { display:flex; gap:8px; padding:12px 16px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .chips span { padding:8px 14px; border-radius:999px; border:1px solid var(--line);
+    color:var(--muted); background:var(--page); }
+  .chips span.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .sub { display:flex; gap:6px; padding:10px 16px; border-bottom:1px solid var(--line); }
+  .sub span { padding:6px 12px; border-radius:8px; color:var(--muted); font-size:13px; }
+  .sub span.on { background:var(--alt); color:var(--ink); font-weight:600; }
+  .body { flex:1; min-height:0; }
+
+  .card { background:var(--page); border:1px solid var(--line); border-radius:12px; }
+  .ttl { font-weight:600; padding:10px 12px; border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:8px; justify-content:space-between; }
+  .ttl small { font-weight:400; color:var(--muted); }
+  .pad { padding:12px; }
+  .btn { padding:8px 14px; border-radius:8px; border:1px solid var(--primary);
+    background:var(--primary); color:#fff; }
+  .btn.ghost { background:var(--page); color:var(--primary); }
+  .btn.sm { padding:5px 10px; font-size:13px; }
+  .note { font-size:12.5px; color:var(--muted); }
+  .pill { display:inline-block; font-size:12px; padding:2px 8px; border-radius:999px;
+    background:var(--alt); color:var(--muted); }
+  .pill.ok { background:var(--ok-c); color:var(--ok); }
+  .pill.warn { background:var(--warn-c); color:var(--warn); }
+
+  /* block palette */
+  .palette { display:flex; flex-direction:column; gap:6px; }
+  .blk { border:1px dashed #C9D4DD; border-radius:8px; padding:9px 10px; background:var(--page);
+    display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); }
+  .blk i { width:18px; height:18px; border-radius:4px; background:var(--info-c); display:inline-block; }
+
+  /* the email canvas */
+  .canvas { background:#EDF1F4; padding:18px; overflow:auto; }
+  .sheet { max-width:600px; margin:0 auto; background:#fff; border:1px solid var(--line);
+    border-radius:6px; overflow:hidden; }
+  .eb { padding:14px 20px; position:relative; border:2px solid transparent; }
+  .eb.sel { border-color:var(--cyan); }
+  .eb .tag { position:absolute; top:-1px; right:-1px; background:var(--cyan); color:#fff;
+    font-size:11px; padding:1px 7px; border-radius:0 0 0 6px; }
+  .eb h2 { margin:0; font-size:22px; }
+  .eb p { margin:0; color:#3a4650; }
+  .ebimg { height:120px; background:linear-gradient(135deg,#CFE6F2,#EAF4FA);
+    display:flex; align-items:center; justify-content:center; color:var(--cyan-deep); font-size:13px; }
+  .ebbtn { display:inline-block; background:var(--primary); color:#fff; padding:10px 18px;
+    border-radius:6px; font-weight:600; font-size:14px; }
+  .ebfoot { background:var(--alt); color:var(--muted); font-size:11.5px; text-align:center; padding:14px 20px; }
+  .hr { height:1px; background:var(--line); }
+
+  /* inspector */
+  .fld { margin-bottom:10px; }
+  .fld label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .fld .in { border:1px solid var(--line); border-radius:8px; padding:7px 9px; background:var(--page); font-size:13px; }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+
+  /* code mode */
+  .code { background:#0E1720; color:#CBD9E3; font:12.5px/1.6 ui-monospace,Consolas,monospace;
+    padding:14px; overflow:auto; height:100%; }
+  .code .t { color:#7FD1F0; } .code .a { color:#B9E58B; } .code .s { color:#F2C97D; }
+
+  /* mode switch */
+  .modes { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  .modes b { padding:6px 12px; font-size:13px; font-weight:500; color:var(--muted); background:var(--page); }
+  .modes b.on { background:var(--primary); color:#fff; }
+
+  .audience { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .src { border:1px solid var(--line); border-radius:10px; padding:8px 12px; display:flex;
+    gap:8px; align-items:center; font-size:13px; }
+  .src.on { border-color:var(--primary); background:var(--info-c); }
+
+  .steps { display:flex; gap:0; align-items:center; padding:12px 16px; border-bottom:1px solid var(--line); }
+  .steps div { display:flex; align-items:center; gap:8px; color:var(--muted); font-size:13px; }
+  .steps div.on { color:var(--ink); font-weight:600; }
+  .steps .n { width:22px; height:22px; border-radius:999px; background:var(--alt);
+    display:grid; place-items:center; font-size:12px; }
+  .steps div.on .n { background:var(--primary); color:#fff; }
+  .steps .sep { flex:1; height:1px; background:var(--line); margin:0 12px; }
+
+  .panel { position:absolute; top:0; right:0; bottom:0; width:340px; background:var(--page);
+    border-left:1px solid var(--line); box-shadow:-8px 0 24px rgba(6,8,8,.08); padding:14px; }
+  .rel { position:relative; }
+  .phone { width:375px; border:1px solid var(--line); border-radius:12px; overflow:hidden; margin:0 auto; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>Marketing › Newsletter — layout options</h1>
+    <p>Four ways to arrange the same screen. Every option carries the whole brief: a block editor,
+       an HTML mode, a live preview, and an audience that can be an EzBizi list <em>or</em> a
+       connected Mailchimp audience. Real palette from <code>client/lib/core/theme.dart</code>.
+       Answer by number.</p>
+
+    <div class="locked">
+      <strong>Settled before these were drawn</strong>
+      Mailchimp is a per-company connection, the way each social network already is — the company
+      connects their own account and the send goes out through it, so the SES sandbox never applies.
+      The list can be an EzBizi audience or one of theirs. Nothing here sends as EzBizi.
+    </div>
+
+    <div class="ask">
+      <strong>What I still need from you, beyond the number</strong>
+      <b>1. Does the block editor need columns?</b> All four draw a single-column email, which is what
+         survives Outlook and every phone. Two-column rows are the single biggest jump in build size
+         and email-client breakage — say if you want them and I will draw them.
+      <b>2. What happens when no Mailchimp is connected?</b> My assumption in all four: Newsletter is
+         reachable, composing works, and Send is refused with the server's sentence — the same
+         <code>can_publish</code> shape Social already uses. Say if it should be hidden instead.
+      <b>3. Who can send?</b> Assumed <code>marketing.edit</code>, matching publishing to a social account.
+    </div>
+
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+  <div id="stage"></div>
+</div>
+
+<script>
+const SIDE = `
+  <nav class="side">
+    <div class="brand">EzBizi</div>
+    <a>Dashboard</a><a>Customers</a><a>Jobs</a><a class="on">Marketing</a>
+    <a>Inventory</a><a>Fleet</a><a>Phone</a><a>Human Resources</a><a>Settings</a>
+  </nav>`;
+
+const CHIPS = `
+  <div class="chips">
+    <span class="on">Newsletter</span><span>Social Media Management</span>
+    <span>Leads</span><span>Web Management</span>
+  </div>`;
+
+const SUBCHIPS = (on) => `
+  <div class="sub">
+    ${['Compose','Audiences','Sent'].map(s =>
+      `<span class="${s===on?'on':''}">${s}</span>`).join('')}
+  </div>`;
+
+const AUDIENCE = `
+  <div class="audience">
+    <div class="src on"><b>A-1 Chimney customers</b> <span class="pill">128 people</span></div>
+    <div class="src">Mailchimp · Main Audience <span class="pill">1,204</span></div>
+    <button class="btn ghost sm">Change</button>
+    <span class="note">Sends through A-1 Chimney's own Mailchimp.</span>
+  </div>`;
+
+const EMAIL = (sel) => `
+  <div class="sheet">
+    <div class="eb ${sel===1?'sel':''}">${sel===1?'<span class="tag">Heading</span>':''}
+      <h2>Autumn sweep season is here</h2></div>
+    <div class="eb ${sel===2?'sel':''}">${sel===2?'<span class="tag">Text</span>':''}
+      <p>Chimneys work hardest in the first cold week — and that is exactly when the
+         diary fills. Book now and pick your morning.</p></div>
+    <div class="eb ${sel===3?'sel':''}" style="padding:0 20px">
+      <div class="ebimg">chimney-autumn.jpg</div></div>
+    <div class="eb" style="text-align:center"><span class="ebbtn">Book a sweep</span></div>
+    <div class="hr"></div>
+    <div class="ebfoot">A-1 Chimney · 14 Mill Road, Connecticut<br>
+      You are receiving this because you are a customer. <u>Unsubscribe</u></div>
+  </div>`;
+
+const PALETTE = `
+  <div class="palette">
+    ${['Heading','Text','Image','Button','Divider','Spacer','Social links']
+      .map(b => `<div class="blk"><i></i>${b}</div>`).join('')}
+  </div>`;
+
+const INSPECTOR = `
+  <div class="fld"><label>Text</label><div class="in">Autumn sweep season is here</div></div>
+  <div class="row2">
+    <div class="fld"><label>Size</label><div class="in">22 px</div></div>
+    <div class="fld"><label>Align</label><div class="in">Left</div></div>
+  </div>
+  <div class="row2">
+    <div class="fld"><label>Colour</label><div class="in">Ink</div></div>
+    <div class="fld"><label>Weight</label><div class="in">Bold</div></div>
+  </div>
+  <div class="note">Colours come from the theme, so a newsletter cannot drift off-brand.</div>`;
+
+const CODE = `
+  <div class="code">
+<span class="t">&lt;table</span> <span class="a">role</span>=<span class="s">"presentation"</span>
+       <span class="a">width</span>=<span class="s">"600"</span><span class="t">&gt;</span>
+  <span class="t">&lt;tr&gt;&lt;td</span> <span class="a">style</span>=<span class="s">"padding:14px 20px"</span><span class="t">&gt;</span>
+    <span class="t">&lt;h2&gt;</span>Autumn sweep season is here<span class="t">&lt;/h2&gt;</span>
+  <span class="t">&lt;/td&gt;&lt;/tr&gt;</span>
+  <span class="t">&lt;tr&gt;&lt;td</span> <span class="a">style</span>=<span class="s">"padding:14px 20px"</span><span class="t">&gt;</span>
+    <span class="t">&lt;p&gt;</span>Chimneys work hardest in the first
+    cold week…<span class="t">&lt;/p&gt;</span>
+  <span class="t">&lt;/td&gt;&lt;/tr&gt;</span>
+<span class="t">&lt;/table&gt;</span>
+  </div>`;
+
+const SENDBAR = `
+  <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;
+              padding:10px 16px;border-top:1px solid var(--line)">
+    <span class="note">Draft saved · last edited just now</span>
+    <div style="display:flex;gap:8px">
+      <button class="btn ghost">Send a test to me</button>
+      <button class="btn ghost">Send later</button>
+      <button class="btn">Send now</button>
+    </div>
+  </div>`;
+
+/* 1 — three-column workbench */
+const L1 = () => `
+<div class="shell">${SIDE}
+  <div class="page">${CHIPS}${SUBCHIPS('Compose')}
+    <div class="pad" style="border-bottom:1px solid var(--line)">${AUDIENCE}</div>
+    <div class="body" style="display:grid;grid-template-columns:190px 1fr 300px">
+      <div style="border-right:1px solid var(--line);padding:12px;background:var(--alt)">
+        <div class="ttl" style="border:0;padding:0 0 10px">Blocks</div>${PALETTE}</div>
+      <div style="display:flex;flex-direction:column;min-width:0">
+        <div style="display:flex;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line)">
+          <div class="modes"><b class="on">Design</b><b>HTML</b><b>Preview</b></div>
+          <span class="note">Subject: <b>Autumn sweep season is here</b></span>
+        </div>
+        <div class="canvas" style="flex:1">${EMAIL(1)}</div>
+      </div>
+      <div style="border-left:1px solid var(--line);padding:12px">
+        <div class="ttl" style="border:0;padding:0 0 10px">Heading block</div>${INSPECTOR}</div>
+    </div>
+    ${SENDBAR}
+  </div>
+</div>`;
+
+/* 2 — canvas first, panels slide in */
+const L2 = () => `
+<div class="shell">${SIDE}
+  <div class="page">${CHIPS}${SUBCHIPS('Compose')}
+    <div class="pad" style="border-bottom:1px solid var(--line)">${AUDIENCE}</div>
+    <div style="display:flex;gap:10px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line)">
+      <div class="modes"><b class="on">Design</b><b>HTML</b><b>Preview</b></div>
+      <button class="btn ghost sm">+ Add block</button>
+      <span class="note">Click any block to edit it in the panel.</span>
+    </div>
+    <div class="body rel">
+      <div class="canvas" style="height:100%">${EMAIL(1)}</div>
+      <div class="panel">
+        <div class="ttl" style="border:0;padding:0 0 10px">Heading block <button class="btn ghost sm">Done</button></div>
+        ${INSPECTOR}
+      </div>
+    </div>
+    ${SENDBAR}
+  </div>
+</div>`;
+
+/* 3 — split: edit left, live email right */
+const L3 = () => `
+<div class="shell">${SIDE}
+  <div class="page">${CHIPS}${SUBCHIPS('Compose')}
+    <div class="pad" style="border-bottom:1px solid var(--line)">${AUDIENCE}</div>
+    <div class="body" style="display:grid;grid-template-columns:1fr 1fr">
+      <div style="display:flex;flex-direction:column;border-right:1px solid var(--line);min-width:0">
+        <div style="display:flex;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line)">
+          <div class="modes"><b class="on">Design</b><b>HTML</b></div>
+          <span class="note">Preview is always on the right.</span>
+        </div>
+        <div style="padding:12px;overflow:auto;flex:1">
+          <div class="fld"><label>Subject</label><div class="in">Autumn sweep season is here</div></div>
+          <div class="card" style="margin-bottom:8px">
+            <div class="ttl">Heading <small>selected</small></div>
+            <div class="pad">${INSPECTOR}</div>
+          </div>
+          <div class="card" style="margin-bottom:8px"><div class="ttl">Text <small>click to edit</small></div></div>
+          <div class="card" style="margin-bottom:8px"><div class="ttl">Image <small>chimney-autumn.jpg</small></div></div>
+          <div class="card" style="margin-bottom:8px"><div class="ttl">Button <small>Book a sweep</small></div></div>
+          <div class="blk" style="justify-content:center">+ Add a block</div>
+        </div>
+      </div>
+      <div class="canvas">${EMAIL(1)}</div>
+    </div>
+    ${SENDBAR}
+  </div>
+</div>`;
+
+/* 4 — stepped: audience, design, review */
+const L4 = () => `
+<div class="shell">${SIDE}
+  <div class="page">${CHIPS}
+    <div class="steps">
+      <div><span class="n">1</span> Audience</div><span class="sep"></span>
+      <div class="on"><span class="n">2</span> Design</div><span class="sep"></span>
+      <div><span class="n">3</span> Review &amp; send</div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line)">
+      <div class="modes"><b class="on">Design</b><b>HTML</b><b>Preview</b></div>
+      <span class="note">Going to <b>A-1 Chimney customers</b> · 128 people, via their Mailchimp.</span>
+    </div>
+    <div class="body" style="display:grid;grid-template-columns:190px 1fr">
+      <div style="border-right:1px solid var(--line);padding:12px;background:var(--alt)">
+        <div class="ttl" style="border:0;padding:0 0 10px">Blocks</div>${PALETTE}</div>
+      <div class="canvas">${EMAIL(1)}</div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:space-between;padding:10px 16px;border-top:1px solid var(--line)">
+      <button class="btn ghost">Back to audience</button>
+      <button class="btn">Continue to review</button>
+    </div>
+  </div>
+</div>`;
+
+const CAPTIONS = {
+  1: ['1 · Three-column workbench — palette, canvas, inspector',
+      'The shape every email builder has, so nobody has to learn it. Blocks on the left, the email in the middle, the selected block\'s settings on the right. HTML and Preview are modes over the canvas.<em>Cost: the canvas is squeezed to roughly 700px on a 1280 screen, and three columns cannot survive 375px — mobile becomes a different screen rather than the same one narrower. Most build of the four.</em>'],
+  2: ['2 · Canvas first, settings in a side panel',
+      'The email gets the whole width. Clicking a block slides in the panel EzBizi already uses everywhere else, so this borrows a component rather than inventing one — and it is the only option that obeys "no modals" without special pleading. 375px works by the panel going full-width.<em>Cost: the panel covers part of the email while you edit it, which is exactly when you want to see it. Adding blocks is a button rather than a visible palette, so the vocabulary is less discoverable.</em>'],
+  3: ['3 · Split — edit on the left, the real email on the right (recommended)',
+      'The preview is never a mode you switch to; it is just there, updating as you type. HTML mode swaps only the left pane, so you still see the rendered result beside the markup you are editing — which is the thing an HTML mode is actually for. Blocks are a stack of cards, expanding in place.<em>Cost: each pane is half-width, so the editing side is tighter than option 1\'s inspector. At 375px the two panes stack, preview under editor. Middle of the pack for build size.</em>'],
+  4: ['4 · Stepped — audience, then design, then review',
+      'One decision at a time, and the audience is settled before a word is written — which is the order that stops somebody writing to the wrong list. The review step is where "this goes to 1,204 people through Mailchimp" can be said plainly before anything is sent.<em>Cost: iterating means walking back through steps, and a newsletter is edited far more than it is created. Better suited to somebody sending one a quarter than to somebody drafting all morning.</em>'],
+};
+
+const LAYOUTS = { 1:L1, 2:L2, 3:L3, 4:L4 };
+const nums = document.getElementById('nums'), stage = document.getElementById('stage'),
+      caption = document.getElementById('caption');
+Object.keys(LAYOUTS).forEach(k => {
+  const b = document.createElement('button'); b.type='button'; b.textContent=k;
+  b.addEventListener('click', () => show(+k)); nums.appendChild(b);
+});
+function show(i) {
+  [...nums.children].forEach((b,x) => b.setAttribute('aria-pressed', x+1===i ? 'true':'false'));
+  const e = CAPTIONS[i];
+  caption.innerHTML = '<strong>'+e[0]+'</strong>'+e[1];
+  stage.innerHTML = LAYOUTS[i]();
+}
+show(3);
+</script>
+</body>
+</html>

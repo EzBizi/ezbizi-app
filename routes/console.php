@@ -47,6 +47,16 @@ Schedule::command('ezbizi:dispatch-automation-events')->everyMinute()->withoutOv
 // first.
 Schedule::command('ezbizi:publish-due-social-posts')->everyMinute()->withoutOverlapping(5);
 
+// Scheduled newsletters. The composer writes a wall time and leaves the send
+// `queued`; this is the only thing that turns one into a job.
+//
+// Every minute, matching the resolution the composer offers. `withoutOverlapping`
+// and the claim inside the command are two lines of defence against the same
+// thing, and it is worth more here than anywhere else in the app: Mailchimp has
+// no idempotency key, so a double release is twelve hundred people receiving the
+// same mailing twice.
+Schedule::command('ezbizi:send-due-newsletters')->everyMinute()->withoutOverlapping(5);
+
 // The phone numbers Thumbtack matches calls against, kept level with the
 // people actually assigned to each connected business.
 //
