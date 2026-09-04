@@ -160,6 +160,59 @@ void main() {
     expect(find.textContaining('[ezbizi_phone]'), findsOneWidget);
   });
 
+  /// SEO has sections now, and General is the one that exists.
+  testWidgets('SEO opens on its General section', (tester) async {
+    await _pumpDestination(tester, permissions: ['web_management.view']);
+
+    expect(find.text('General'), findsOneWidget);
+  });
+
+  /// An inherited value must be VISIBLE, or the screen lies by omission.
+  ///
+  /// On a branch site most boxes are legitimately empty because the primary
+  /// answers for them. An empty box that publishes a phone number would have
+  /// somebody clear a field, watch it stay blank, and find the old number still
+  /// on their website. So the field shows what it will publish and says where
+  /// it came from.
+  testWidgets('a blank field says what it inherits and from where', (
+    tester,
+  ) async {
+    await _pumpDestination(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      emptyValues: true,
+    );
+
+    // The fixture's branch has nothing of its own and inherits two values.
+    expect(find.textContaining('From '), findsWidgets);
+  });
+
+  /// Hours is a grid, not a box. Jose asked for pickers and closed switches,
+  /// and a text field would let somebody type a string that renders on a
+  /// public page with a typo in it.
+  testWidgets('hours is seven days of controls, never a line of text', (
+    tester,
+  ) async {
+    await _pumpDestination(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+    );
+
+    expect(find.text('Monday'), findsOneWidget);
+    expect(find.text('Sunday'), findsOneWidget);
+
+    // One switch per day, and nothing to type into.
+    expect(find.byType(Switch), findsNWidgets(7));
+  });
+
+  /// Choosing the primary changes what every OTHER site publishes, so it is
+  /// gated on edit like any other change to a value.
+  testWidgets('view alone cannot make a site primary', (tester) async {
+    await _pumpDestination(tester, permissions: ['web_management.view']);
+
+    expect(find.text('Make primary'), findsNothing);
+  });
+
   /// The plugin download must point at the directory, not at our own box.
   ///
   /// `/web/plugin` builds a zip from whatever release is deployed, so it lags
@@ -417,12 +470,29 @@ Future<http.Response> Function(http.Request) _respond(
               'hint': 'The number this site should show.',
               'shortcode': '[ezbizi_phone]',
             },
+            {
+              'key': 'company_name',
+              'label': 'Company name',
+              'hint': '',
+              'shortcode': '[ezbizi_company_name]',
+            },
+            {
+              'key': 'hours',
+              'label': 'Hours of operation',
+              'hint': '',
+              'shortcode': '[ezbizi_hours]',
+            },
           ],
           // An empty map arrives from PHP as `[]`, not `{}` — the shape that
           // used to deadlock this panel. Serving the real thing is the only
           // way this test means anything.
           'values': emptyValues ? <Object?>[] : {'phone': '555-0100'},
           'pages': emptyValues ? <Object?>[] : <String, Object?>{},
+          // What this site would publish if it said nothing. A branch usually
+          // has more of these than answers of its own.
+          'inherited': emptyValues
+              ? {'phone': '555-0100', 'company_name': 'A-1 Chimney'}
+              : <String, Object?>{},
         },
       };
     }
