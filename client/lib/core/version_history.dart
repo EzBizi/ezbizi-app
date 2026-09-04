@@ -8,6 +8,24 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0149',
+      date: '4 Sep 2026',
+      items: [
+        'Your account now has a "Text me my codes" setting, next to '
+            'Two-factor. Give it your mobile number, tick the box, and EzBizi '
+            'texts you a code to confirm the number is yours. You can turn it '
+            'off at any time without a password, or by replying STOP to any '
+            'message. It stays switched off, and says so, until EzBizi has its '
+            'own number to send from - which is being registered with the '
+            'carriers now.',
+        'The number EzBizi texts you on is deliberately not one of your '
+            'business lines. A business phone number is registered with the '
+            'carriers for that business and its customers, and sending EzBizi '
+            'sign-in codes from it is the kind of mismatch that gets the whole '
+            'number blocked.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0148',
       date: '3 Sep 2026',
       items: [

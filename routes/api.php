@@ -110,6 +110,7 @@ use App\Http\Controllers\Api\Training\GuidesController as TrainingGuidesControll
 use App\Http\Controllers\Api\Training\LearnController as TrainingLearnController;
 use App\Http\Controllers\Api\Training\ProgressController as TrainingProgressController;
 use App\Http\Controllers\Api\Training\TestsController as TrainingTestsController;
+use App\Http\Controllers\Api\SmsCodesController;
 use App\Http\Controllers\Api\TwoFactorController;
 use App\Http\Controllers\Api\UiStringsController;
 use App\Http\Controllers\Api\VehicleAssignmentsController;
@@ -1437,6 +1438,16 @@ Route::prefix('v1')
         Route::post('me/totp', [TwoFactorController::class, 'begin']);
         Route::post('me/totp/confirm', [TwoFactorController::class, 'confirm']);
         Route::delete('me/totp', [TwoFactorController::class, 'disable']);
+
+        // EzBizi texting the person, from EzBizi's own number - not any
+        // tenant's line. Beside the authenticator because it is the same
+        // question ("how do we know it is you"), and under /me for the same
+        // reason: RequireTwoFactorEnrolment exempts /me, so somebody who has
+        // not enrolled can still reach the thing that lets them.
+        Route::get('me/sms-codes', [SmsCodesController::class, 'show']);
+        Route::post('me/sms-codes', [SmsCodesController::class, 'begin']);
+        Route::post('me/sms-codes/confirm', [SmsCodesController::class, 'confirm']);
+        Route::delete('me/sms-codes', [SmsCodesController::class, 'disable']);
 
         // ── Notifications (§12) ──────────────────────────────────
         //

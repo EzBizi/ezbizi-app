@@ -8,6 +8,7 @@ import '../widgets/identity_card.dart';
 import '../widgets/tag.dart';
 import '../widgets/password_card.dart';
 import '../widgets/side_panel.dart';
+import '../widgets/sms_codes_card.dart';
 import '../widgets/two_factor_card.dart';
 import '../widgets/account_facts_card.dart';
 import '../core/phone_numbers.dart';
@@ -264,6 +265,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
               context,
               'Two-factor',
               TwoFactorCard(api: widget.api, session: widget.session),
+            );
+          }),
+
+          // Beside the authenticator because it answers the same question -
+          // how do we know it is you - and not under Communication, which is
+          // the tenant's phone system. This is EzBizi texting the person.
+          _row(context, Icons.sms_outlined, 'Text me my codes', '', () {
+            _open(
+              context,
+              'Text me my codes',
+              SmsCodesCard(api: widget.api, session: widget.session),
             );
           }),
         ]),

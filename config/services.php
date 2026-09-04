@@ -369,6 +369,21 @@ return [
         // connection's webhooks. The same restriction is why key auth cannot
         // read into a subaccount, delete a key in one, or move a number out.
         'platform_auth_token'  => env('TWILIO_PLATFORM_AUTH_TOKEN'),
+
+        // The number EzBizi ITSELF texts from: verification codes to our own
+        // users, on the platform account rather than any tenant's subaccount.
+        //
+        // Deliberately separate from every number in the Phone module. Those
+        // belong to a customer's business and carry that business's carrier
+        // registration — A-1 Chimney's toll-free is verified as A-1 Chimney,
+        // for A-1 Chimney's customer-care traffic, and sending EzBizi sign-in
+        // codes from it is traffic matching no field of its filing. Carriers
+        // filter on exactly that, and the penalty is losing the verification.
+        //
+        // Unset until a number is bought and registered as EzBizi, and the
+        // feature is OFF rather than broken while it is unset — see
+        // PlatformSms::configured().
+        'platform_sms_from'    => env('TWILIO_PLATFORM_SMS_FROM'),
     ],
 
 ];
