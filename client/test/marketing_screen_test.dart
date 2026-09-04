@@ -5,6 +5,8 @@ import 'package:ezbizi_client/core/files.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
+import 'package:ezbizi_client/screens/email/message_html.dart';
+import 'package:ezbizi_client/screens/marketing/newsletter_tab.dart';
 import 'package:ezbizi_client/screens/marketing/social_media_tab.dart';
 import 'package:ezbizi_client/screens/marketing_screen.dart';
 import 'package:ezbizi_client/widgets/dashboard_card.dart';
@@ -17,24 +19,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// Marketing — Newsletter is declared and not built; Social Media Management
-/// has its first screen.
+/// Marketing — Newsletter and Social Media Management, both built.
 ///
 /// ── What these are about ─────────────────────────────────────────
 ///
-/// A placeholder is the easiest thing in the app to ship broken, because
-/// "broken" and "not built yet" look identical from the outside: a screen with
-/// nothing on it. So the assertions below are mostly about SENTENCES — that
-/// somebody who opens Newsletter learns what it will be, learns what has to
-/// exist before it can run, and is never handed a blank page for any reason,
-/// including a request that failed.
+/// Most of these assert SENTENCES rather than pixels: which refusal a disabled
+/// control carries, and whether it is the server's words or the screen's. §4 —
+/// a control that is offered must be a control that works, and when it cannot,
+/// it has to say which of several reasons applies.
 ///
-/// The second half is about the automation surface, and it is the part with a
-/// wrong answer worth catching. Marketing declared its events at the moment it
-/// declared itself, none of them fire, and a screen that listed them without
-/// saying so would be worse than one that hid them: somebody would go to the
-/// automation builder, write a rule on "Newsletter sent", switch it on, and
-/// wait forever.
+/// This file described a Newsletter placeholder until 2026-09-04. The
+/// placeholder's tests went with it rather than being adapted: they asserted
+/// that the screen said it was NOT BUILT, which is now the opposite of the
+/// truth, and a test kept alive past the thing it describes is how a suite
+/// starts defending the wrong behaviour.
 void main() {
   group('the tab says what it is rather than showing nothing', () {
     testWidgets('the sub-module is named, and named as unbuilt', (
@@ -49,9 +47,6 @@ void main() {
         find.widgetWithText(ChoiceChip, 'Social Media Management'),
         findsOneWidget,
       );
-
-      // And the state, in the same words the HR dashboard's unbuilt panel uses.
-      expect(find.text('Not built yet'), findsOneWidget);
     });
 
     testWidgets('Social Media Management is a second sub-tab, not a blank page', (
@@ -69,7 +64,6 @@ void main() {
       expect(find.text('Weekly Calendar'), findsOneWidget);
       expect(find.text('Monthly Calendar'), findsOneWidget);
       expect(find.text('Publish now'), findsOneWidget);
-      expect(find.text('Not built yet'), findsNothing);
     });
 
     testWidgets('the month calendar can be moved back and forth', (
@@ -456,34 +450,6 @@ void main() {
       },
     );
 
-    testWidgets('it says what Newsletter will be', (tester) async {
-      await _pumpTab(tester, _handler());
-
-      expect(
-        find.textContaining('writes to its own customers'),
-        findsOneWidget,
-        reason: 'A badge with no sentence beside it says only that something '
-            'is missing, not what.',
-      );
-
-      // The owner's actual requirement: the mail leaves from the company's
-      // address, not the platform's.
-      expect(find.textContaining('own address'), findsOneWidget);
-    });
-
-    testWidgets('it names what has to exist before it can run', (tester) async {
-      await _pumpTab(tester, _handler());
-
-      expect(find.text('Before it can run'), findsOneWidget);
-
-      // Both, and each says WHY rather than just naming a gap.
-      expect(find.text('Somebody to send to'), findsOneWidget);
-      expect(find.textContaining('agreed to receive marketing mail'),
-          findsOneWidget);
-
-      expect(find.text('Something written to send'), findsOneWidget);
-      expect(find.textContaining('no record of what went out'), findsOneWidget);
-    });
   });
 
   /// Composing and publishing.
@@ -999,90 +965,148 @@ void main() {
     });
   });
 
-  group('the automation surface it has already declared', () {
-    testWidgets('the declared events are listed in the module’s own words', (
+
+  /// Newsletter — layout 3, and the promises it makes.
+  ///
+  /// The preview is the whole reason this layout was chosen: a newsletter is
+  /// the one artefact in the product that looks nothing like its editor, and a
+  /// form that yields an email you cannot see until you send it is how a broken
+  /// mailing reaches twelve hundred people.
+  group('newsletter', () {
+    testWidgets('the email is shown beside the editor, from the server', (
       tester,
     ) async {
-      await _pumpTab(tester, _handler());
+      await _pumpNewsletter(
+        tester,
+        _handler(
+          canEdit: true,
+          newsletters: const [_draft],
+          previewHtml: '<h1>Autumn sweeps</h1>',
+        ),
+      );
 
-      expect(find.text('Already in the automation builder'), findsOneWidget);
+      // Both halves, at once. Layout 3 is the preview never hiding.
+      expect(find.text('Newsletter'), findsWidgets);
+      expect(find.text('What they will get'), findsOneWidget);
 
-      expect(find.text('Newsletter sent'), findsOneWidget);
-      expect(find.text('Somebody unsubscribed'), findsOneWidget);
-
-      // The description too, not just the name. The label says what it is
-      // called; only this says when it fires.
-      expect(find.textContaining('went out to its audience'), findsOneWidget);
-    });
-
-    testWidgets('every event nothing raises yet is marked as such', (
-      tester,
-    ) async {
-      await _pumpTab(tester, _handler());
-
+      // And it is the SERVER's HTML in the viewer the Email module uses, not
+      // markup this screen built. A Dart renderer would drift from the one
+      // that makes the real email.
+      expect(find.byType(MessageHtmlView), findsOneWidget);
       expect(
-        find.text('Does not fire yet'),
-        findsNWidgets(2),
-        reason: 'An unmarked trigger is one somebody builds a rule on and '
-            'never hears from again.',
+        tester.widget<MessageHtmlView>(find.byType(MessageHtmlView)).html,
+        contains('Autumn sweeps'),
       );
     });
 
-    /// The control for the test above. A mark drawn unconditionally would pass
-    /// it while telling a permanent lie about an event that had started firing.
-    testWidgets('an event that has started firing loses its mark', (
+    testWidgets('Send says which of its reasons is stopping it', (
       tester,
     ) async {
-      await _pumpTab(tester, _handler(sentIsRaised: true));
+      // No permission is the first refusal, because it is the one nothing on
+      // the screen can fix.
+      await _pumpNewsletter(
+        tester,
+        _handler(newsletters: const [_draft]),
+      );
 
-      expect(find.text('Newsletter sent'), findsOneWidget);
       expect(
-        find.text('Does not fire yet'),
-        findsOneWidget,
-        reason: 'The mark comes from the server’s flag, so the one event that '
-            'now fires must lose it and the other must keep it.',
+        _refusalOn(tester, 'Send now'),
+        contains('do not have permission to send a newsletter'),
       );
     });
 
-    testWidgets('what a rule will be able to do is listed, unmarked', (
+    testWidgets('with no mailing account it carries the server sentence', (
       tester,
     ) async {
-      await _pumpTab(tester, _handler());
+      await _pumpNewsletter(
+        tester,
+        _handler(
+          canEdit: true,
+          newsletters: const [_draft],
+          sendingRefusedBecause:
+              'No mailing account is connected in Everdoors, so there is '
+              'nowhere to send from.',
+        ),
+      );
 
-      expect(find.text('And what a rule will be able to do here'),
-          findsOneWidget);
-      expect(find.text('Send a newsletter'), findsOneWidget);
-      expect(find.text('Add somebody to a mailing list'), findsOneWidget);
-
-      // Two triggers carry the mark and neither action does — an action under
-      // an event that never fires cannot run, and saying it twice is how two
-      // answers start disagreeing.
-      expect(find.text('Does not fire yet'), findsNWidgets(2));
+      // The server's words, not the screen's — the same rule the social
+      // composer follows, so the two cannot drift apart.
+      expect(
+        _refusalOn(tester, 'Send now'),
+        contains('nowhere to send from'),
+      );
     });
 
-    /// The control against a card that is right by being empty: a server that
-    /// sent nothing would satisfy every "findsNothing" in this file.
-    testWidgets('a build that declares nothing says so rather than drawing an '
-        'empty card', (tester) async {
-      await _pumpTab(tester, _handler(triggers: const [], actions: const []));
+    testWidgets('with an account but no list it asks for the list', (
+      tester,
+    ) async {
+      await _pumpNewsletter(
+        tester,
+        _handler(
+          canEdit: true,
+          newsletters: const [_draftWithoutAudience],
+          audiences: const [_audience],
+        ),
+      );
 
-      expect(find.text('Newsletter sent'), findsNothing);
-      expect(find.textContaining('nothing here for a rule to be built on'),
-          findsOneWidget);
+      expect(_refusalOn(tester, 'Send now'), contains('Choose who this goes to'));
+    });
+
+    testWidgets('a block can be added, and columns are offered', (
+      tester,
+    ) async {
+      await _pumpNewsletter(
+        tester,
+        _handler(canEdit: true, newsletters: const [_draft]),
+      );
+
+      // The full vocabulary the server can render, columns included — Jose
+      // asked for columns specifically.
+      for (final label in ['Heading', 'Text', 'Image', 'Button', 'Columns']) {
+        expect(
+          find.widgetWithText(OutlinedButton, label),
+          findsOneWidget,
+          reason: '$label is missing from the block palette.',
+        );
+      }
+    });
+
+    testWidgets('HTML mode replaces the blocks and says so', (tester) async {
+      await _pumpNewsletter(
+        tester,
+        _handler(canEdit: true, newsletters: const [_draft]),
+      );
+
+      await tester.tap(find.text('HTML'));
+      await tester.pumpAndSettle();
+
+      // Two sources of truth for one email is how somebody edits the markup,
+      // adds a block, and silently loses the markup. The screen says which
+      // wins rather than leaving it to be discovered.
+      expect(find.textContaining('it is what goes out'), findsOneWidget);
+    });
+
+    testWidgets('it lays out on a 375-point window without overflowing', (
+      tester,
+    ) async {
+      await _pumpNewsletter(
+        tester,
+        _handler(canEdit: true, newsletters: const [_draft]),
+        size: const Size(375, 2400),
+      );
+
+      expect(tester.takeException(), isNull);
+
+      // Not merely "no exception" — a screen that rendered nothing throws
+      // nothing either. The preview is still there, below rather than beside,
+      // because a newsletter you cannot see is what this layout prevents.
+      expect(find.text('What they will get'), findsOneWidget);
     });
   });
 
-  /// The coupling that has silently broken before.
-  ///
-  /// The sidebar is the intersection of what the server declares with what this
-  /// bundle has a screen for, and a module missing from `moduleScreens` is a
-  /// tab that quietly does not appear — which is how Dashboard vanished for
-  /// everybody, Administrator included, the first time that list came off the
-  /// server. `ClientModuleScreensTest` catches the mistake in one direction
-  /// only: a screen with no module. This is the other direction, for this tab.
   group('the tab is actually reachable from the sidebar', () {
     testWidgets('a role granted Marketing gets the destination, and it opens '
-        'on the placeholder', (tester) async {
+        'on Newsletter rather than a blank body', (tester) async {
       tester.view.physicalSize = const Size(1280, 900);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
@@ -1118,94 +1142,61 @@ void main() {
       await tester.tap(inSidebar);
       await tester.pumpAndSettle();
 
-      // Landed on the sub-module, in its unbuilt state — not on a blank body.
-      expect(find.text('Not built yet'), findsOneWidget);
-      expect(find.text('Before it can run'), findsOneWidget);
-    });
-  });
-
-  group('nothing is ever a blank page', () {
-    testWidgets('a refusal is the server’s sentence and a way back', (
-      tester,
-    ) async {
-      await _pumpTab(
-        tester,
-        _handler(
-          status: 403,
-          message: 'You do not have permission to open Marketing. That is part '
-              'of a role rather than of an account, so somebody who can edit '
-              'roles can add it to yours.',
-        ),
-      );
-
-      expect(find.textContaining('permission to open Marketing'), findsOneWidget);
-      expect(find.text('Try again'), findsOneWidget);
-
-      // R8 travels: the sentence names the remedy and never a permission key.
-      expect(find.textContaining('marketing.view'), findsNothing);
-    });
-
-    /// The other end of R7, and a claim that was false when it was first
-    /// written.
-    ///
-    /// A ListView hands its children a TIGHT cross-axis width, and
-    /// `BoxConstraints.enforce` clamps an additional max into the parent's
-    /// range — so `ConstrainedBox(maxWidth: 760)` inside a 1352-point list
-    /// resolves to 1352 and caps nothing at all. The comment said the cards
-    /// stopped growing; they did not. It is an Align now, and this is what
-    /// holds it: a cap nothing measures is a cap that quietly stops working.
-    testWidgets('on a wide window the prose stops at a readable width', (
-      tester,
-    ) async {
-      await _pumpTab(tester, _handler(), size: const Size(1600, 1600));
-
-      expect(
-        tester.getRect(find.text('Before it can run')).left,
-        lessThan(200),
-        reason: 'The content is centred rather than sitting against the '
-            'margin every other tab uses.',
-      );
-
-      expect(
-        tester.getSize(find.byType(DashboardCard).first).width,
-        lessThanOrEqualTo(760),
-        reason: 'The card grew with the window, so the paragraphs inside it '
-            'are one very long line each.',
-      );
-    });
-
-    /// R7. A phone is the narrow case this whole screen is prose, and prose
-    /// beside a badge is what overflows.
-    testWidgets('it lays out on a 375-point window without overflowing', (
-      tester,
-    ) async {
-      await _pumpTab(tester, _handler(), size: const Size(375, 2400));
-
-      expect(
-        tester.takeException(),
-        isNull,
-        reason: 'The screen overflowed at 375 points.',
-      );
-
-      // Not merely "no exception" — a screen that rendered nothing also throws
-      // nothing. The content is there, and it is inside the window.
-      expect(find.text('Not built yet'), findsOneWidget);
-      expect(find.text('Newsletter sent'), findsOneWidget);
-
-      for (final label in ['Newsletter sent', 'Somebody unsubscribed']) {
-        expect(
-          tester.getRect(find.text(label)).right,
-          lessThanOrEqualTo(375),
-          reason: '“$label” is laid out past the right edge of the window.',
-        );
-      }
+      // Landed on the sub-module and it drew something. The chips prove the
+      // strip rendered; the card proves the tab under it did too, which a
+      // blank body would not.
+      expect(find.widgetWithText(ChoiceChip, 'Newsletter'), findsOneWidget);
+      expect(find.text('Newsletter'), findsWidgets);
     });
   });
 }
 
-// ── driving the screen ─────────────────────────────────────────────
 
-/// The whole destination, tab strip and all.
+/// Newsletter on its own, which is where the editor and preview live.
+Future<void> _pumpNewsletter(
+  WidgetTester tester,
+  MockClientHandler handler, {
+  Size size = const Size(1400, 1600),
+}) =>
+    _pump(tester, handler, size, (api, session) =>
+        NewsletterTab(api: api, session: session));
+
+/// The sentence on a disabled button, or null when it may be pressed.
+String? _refusalOn(WidgetTester tester, String label) => tester
+    .widget<Refused>(
+      find.ancestor(
+        of: find.widgetWithText(FilledButton, label),
+        matching: find.byType(Refused),
+      ),
+    )
+    .reason;
+
+const _draft = {
+  'id': 'n-1',
+  'subject': 'Autumn sweeps',
+  'status': 'draft',
+  'audience': {'id': 'a-1', 'name': 'Customers', 'kind': 'customers'},
+  'blocks': [
+    {'type': 'heading', 'text': 'Autumn sweeps', 'align': 'left'},
+  ],
+};
+
+const _draftWithoutAudience = {
+  'id': 'n-2',
+  'subject': 'No list yet',
+  'status': 'draft',
+  'audience': null,
+  'blocks': [
+    {'type': 'text', 'text': 'Words.', 'align': 'left'},
+  ],
+};
+
+const _audience = {
+  'id': 'a-1',
+  'name': 'Customers',
+  'kind': 'customers',
+};
+
 Future<void> _pumpScreen(
   WidgetTester tester,
   MockClientHandler handler, {
@@ -1213,15 +1204,6 @@ Future<void> _pumpScreen(
 }) =>
     _pump(tester, handler, size, (api, session) =>
         MarketingScreen(api: api, session: session));
-
-/// Just the sub-tab, which is where everything under test lives.
-Future<void> _pumpTab(
-  WidgetTester tester,
-  MockClientHandler handler, {
-  Size size = const Size(1400, 1600),
-}) =>
-    _pump(tester, handler, size, (api, session) =>
-        NewsletterTab(api: api, session: session));
 
 Future<void> _pump(
   WidgetTester tester,
@@ -1340,6 +1322,10 @@ MockClientHandler _handler({
   /// Publishing needs `marketing.edit`; the default role here holds only
   /// `marketing.view`, so a test about composing has to ask for it.
   bool canEdit = false,
+  List<Map<String, Object?>>? newsletters,
+  List<Map<String, Object?>>? audiences,
+  String? sendingRefusedBecause,
+  String? previewHtml,
   List<Map<String, Object?>>? posts,
   /// Called per GET, so a test can make the queue change its mind between
   /// polls — which is the whole behaviour under test.
@@ -1402,7 +1388,15 @@ MockClientHandler _handler({
           ..._me,
           'permissions': [
             'marketing.view',
+            'newsletter.view',
             if (canEdit) 'marketing.edit',
+            // Newsletter's own keys. `canEdit` stands for "this role can do
+            // things in Marketing", and sending is one of them — a separate
+            // flag per key would make every test declare five booleans to ask
+            // one question.
+            if (canEdit) 'newsletter.create',
+            if (canEdit) 'newsletter.edit',
+            if (canEdit) 'newsletter.send',
           ],
         },
       });
@@ -1457,6 +1451,23 @@ MockClientHandler _handler({
             },
         ],
       });
+    }
+
+    if (path.endsWith('/newsletters')) {
+      return _json({
+        'data': newsletters ?? <Map<String, Object?>>[],
+        'sending': {'refused_because': sendingRefusedBecause},
+      });
+    }
+
+    if (path.contains('/newsletters/') && path.endsWith('/preview')) {
+      return _json({
+        'data': {'html': previewHtml ?? '<p>Preview</p>'},
+      });
+    }
+
+    if (path.endsWith('/newsletter/audiences')) {
+      return _json({'data': audiences ?? <Map<String, Object?>>[]});
     }
 
     if (path.endsWith('/social/connections')) {
