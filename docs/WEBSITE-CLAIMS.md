@@ -22,6 +22,18 @@ stale silently; a row that states a *test* fails loudly the first time somebody
 runs it — which is why every row below now carries one, and why the tests are
 written against columns rather than against counts.
 
+**Standing authority, set by Jose on 2026-09-04: "do as you recommend, stop
+asking me for approvals."** Verified, accurate copy ships — do not hold it for
+his sight and do not open a FOR YOU TO DO item asking him to approve wording.
+A card was held a full day for that reason before he said this.
+
+**This makes the file below the only gate, so it carries the whole load.** The
+question stopped being "has he seen the words" and is now "is every clause
+checked against the deployed code or a production row". Publish what passes
+that; hold what does not, and say plainly that you are holding it and why.
+Keep FOR YOU TO DO for things only a person can do — a console login, a store
+submission, a filing — never for permission.
+
 ---
 
 ## Do not put these on the site
