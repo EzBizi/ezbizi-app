@@ -913,6 +913,26 @@ class ModuleServiceProvider extends ServiceProvider
                 key: 'inspection',
                 label: 'Inspection',
                 actions: ['view', 'create', 'edit', 'delete', 'archive'],
+                /*
+                 * Both record types this module broadcasts, not just the one
+                 * that matters most.
+                 *
+                 * The RUN is the sharper of the two and the reason to be
+                 * careful here: it is personal, and InspectionRunPolicy answers
+                 * "no such run" to anybody but the person who started it,
+                 * because a draft's existence is itself private. A `notify` on
+                 * `inspection.started` reaching every active user would tell
+                 * them a named technician started a named inspection for a
+                 * named customer — the exact fact the policy refuses to a
+                 * direct request.
+                 *
+                 * Both now implement CarriesAutomationScope, answering with the
+                 * job's franchise and falling back to the customer's.
+                 */
+                emits: [
+                    \App\Models\InspectionRun::class,
+                    \App\Models\InspectionReport::class,
+                ],
                 triggers: [
                     new TriggerDefinition(
                         key: 'inspection.started',
