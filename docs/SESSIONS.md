@@ -83,7 +83,7 @@ they come back; the date says how stale.
 | Inventory | `local_14fb86e6-7ca7-4051-96e7-d7ba4ec9a13b` | EzBizi - Inventory Module | 2026-08-31 | — |
 | Android | `local_36f6540f-4f54-49b4-bb1d-8ee29cd1585d` | EzBizi - Android | 2026-08-31 | — |
 | Customers | `local_90d427a5-c0b9-46e5-864a-efe9eb5b72da` | EzBizi - Customers | 2026-09-04 | — |
-| Notifications | `local_7b312565-f2f8-44cf-ac5e-5426683f2cbf` | EzBizi - Notifications | 2026-08-31 | — |
+| Notifications | `local_7b312565-f2f8-44cf-ac5e-5426683f2cbf` | EzBizi - Notifications | 2026-09-04 | — |
 | Training | `local_d30258ab-af2b-4b1b-9cf5-b0926fbe06ec` | EzBizi - Training Module | 2026-08-31 | — |
 | AWS migration (cwd `H:\Development\AWS`) | `local_079b6a6c-b0c8-49f9-8568-152a1dd2a6b1` | MIGRATION | 2026-09-04 | `aws-68` at 15:57 UTC (inferred from cwd, not confirmed) |
 
