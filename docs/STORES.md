@@ -76,7 +76,9 @@ Then, in App Store Connect:
 3. Fill in the privacy questionnaire. EzBizi handles customer contact details and
    staff personal data, so answer it against `HoldsPersonalData` and the data
    inventory rather than from memory.
-4. Screenshots at the required sizes, for each device class.
+4. Screenshots at the required sizes, for each device class. For the Mac,
+   `scripts/store-screenshots.sh` takes the whole set from the real app on the
+   relay in one command; its header says where the demo credentials live.
 5. Upload a build. Builds come from the Mac relay — see `scripts/build-app.sh`,
    which currently builds `--no-codesign`. Signed builds need the team and a
    provisioning profile installed on the relay first.
