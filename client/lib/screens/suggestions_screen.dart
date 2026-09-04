@@ -161,8 +161,15 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
       }
 
       // Nothing to select when the list is genuinely empty — the empty
-      // state's own compose box, not a blank pane.
-      if (_rows.isEmpty) _composing = true;
+      // state's own compose box, not a blank pane. Below the split width
+      // that means the narrow layout must default onto the detail pane too:
+      // otherwise a first-time phone visitor sees "Nothing here yet." behind
+      // the Write-a-suggestion button instead of the compose box layout 1
+      // always opened on.
+      if (_rows.isEmpty) {
+        _composing = true;
+        _openNarrow = true;
+      }
     });
   }
 
@@ -432,6 +439,11 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
       'an unrecorded time',
       formats: widget.formats,
     );
+    final decidedAt = formatStamp(
+      row['decided_at'],
+      'an unrecorded time',
+      formats: widget.formats,
+    );
 
     return InkWell(
       onTap: () => _select(row),
@@ -488,7 +500,7 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
             ] else if (note != null) ...[
               const SizedBox(height: 5),
               Text(
-                'EzBizi answered',
+                'EzBizi answered · $decidedAt',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: status == 'approved'
                       ? EzBiziTheme.clockIn(context)
@@ -563,7 +575,13 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
                   ),
                 )
               : ListView(
-                  key: const Key('suggestions-rail'),
+                  // Its own key, not `suggestions-rail`: the narrow list only
+                  // ever shows one band (`shown`) at a time behind the
+                  // segmented control, unlike the wide rail which renders
+                  // both bands together. Reusing the wide rail's key would
+                  // let a future `_inRail`-style finder written at a narrow
+                  // width quietly miss whichever band is not selected.
+                  key: const Key('suggestions-narrow-list'),
                   children: [for (final row in shown) _railRow(context, row)],
                 ),
         ),
@@ -752,7 +770,6 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
       formats: widget.formats,
     );
     final editingThis = _editingId == id;
-    final decided = status == 'approved' || status == 'denied';
 
     return Column(
       key: const Key('suggestion-detail'),
@@ -760,8 +777,15 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 20, 13),
+          // Pill leading, stamp trailing — `docs/previews/suggestions-2.html`
+          // `.dHead` is a single row (pill, then the title, then `.when`
+          // pushed right by its own `margin-left:auto`), not the title
+          // leading with the pill on the far side. Title and stamp are both
+          // flexible (rather than the stamp sitting at its natural width) so
+          // the row degrades by eliding text instead of overflowing at
+          // phone widths, where the back button leaves little room.
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               if (showBack)
                 IconButton(
@@ -769,28 +793,25 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
                   tooltip: 'Back to the list',
                   onPressed: () => setState(() => _openNarrow = false),
                 ),
+              _pill(context, status),
+              const SizedBox(width: 10),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Your suggestion', style: theme.textTheme.titleLarge),
-                    const SizedBox(height: 2),
-                    Text('Sent $createdAt', style: theme.textTheme.bodyMedium),
-                  ],
+                child: Text(
+                  'Your suggestion',
+                  style: theme.textTheme.titleLarge,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  _pill(context, status),
-                  if (decided) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      'answered $decidedAt',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ],
-                ],
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  'Sent $createdAt',
+                  style: theme.textTheme.bodyMedium,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                ),
               ),
             ],
           ),
