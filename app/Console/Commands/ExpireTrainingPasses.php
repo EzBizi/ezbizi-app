@@ -6,6 +6,7 @@ use App\Models\Organization;
 use App\Models\TrainingAttempt;
 use App\Support\Automations\EventEmitter;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Training\LapsedPasses;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -256,20 +257,15 @@ final class ExpireTrainingPasses extends Command
      * Compares `taken_at`, not `expires_on` — the two can disagree about
      * which attempt is "later" (see this class's own docblock and
      * `test_when_taken_at_and_expires_on_disagree_taken_at_decides`).
+     *
+     * Delegates to `LapsedPasses::isSuperseded` (task 11) — that class now
+     * holds this exact check, moved verbatim, so the Dashboard's `retaking`
+     * count and the Learn read that resurfaces a lapsed pass agree with this
+     * sweep about what "lapsed" means by construction, rather than by three
+     * copies happening to match today. See its own docblock.
      */
     private function isSuperseded(TrainingAttempt $attempt): bool
     {
-        return TrainingAttempt::query()
-            ->where('user_id', $attempt->user_id)
-            ->where('test_id', $attempt->test_id)
-            ->where('passed', true)
-            ->where(function ($query) use ($attempt) {
-                $query->where('taken_at', '>', $attempt->taken_at)
-                    ->orWhere(function ($query) use ($attempt) {
-                        $query->where('taken_at', $attempt->taken_at)
-                            ->where('id', '>', $attempt->id);
-                    });
-            })
-            ->exists();
+        return LapsedPasses::isSuperseded($attempt);
     }
 }
