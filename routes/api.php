@@ -1625,7 +1625,7 @@ Route::prefix('v1')
                         return $staff === null ? null : [
                             'tier' => $staff->tier,
                             'staff_name' => $staff->name,
-                            'focused_at' => 'https://dev.ezbizi.com',
+                            'focused_at' => (string) config('ezbizi.hosts.staff'),
                         ];
                     })(),
                     // The organization requires a second factor and this account

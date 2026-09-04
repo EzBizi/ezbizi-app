@@ -270,13 +270,30 @@ MAC_DEFINES="${MAC_DEFINES} --build-name=${VERSION} --build-number=${BUILD_NUMBE
   # produces a .app that cannot be installed on a phone at all — it is a
   # compile check, not a deliverable. Both are worth having now; neither is
   # worth mistaking for a release.
-  wants macos && ssh "$MAC_REMOTE" "
-    export PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH
-    set -e
-    cd ${MAC_PROJECT}
-    ${MAC_FLUTTER} pub get
-    ${MAC_FLUTTER} build macos --release ${MAC_DEFINES}
-  "
+  if wants macos; then
+    echo "→ building macos"
+    ssh "$MAC_REMOTE" "
+      export PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH
+      set -e
+      cd ${MAC_PROJECT}
+      ${MAC_FLUTTER} pub get
+      ${MAC_FLUTTER} build macos --release ${MAC_DEFINES}
+    "
+
+    # Bring it home, the way the .ipa comes home below. An .app is a folder,
+    # so it travels as a zip; ditto keeps the bundle's resource forks and
+    # symlinks intact where a plain zip would flatten them and Gatekeeper
+    # would then refuse the result as damaged.
+    mkdir -p "$DIST_APPLE"
+    APP_REMOTE=$(ssh "$MAC_REMOTE" "ls -d ${MAC_PROJECT}/build/macos/Build/Products/Release/*.app 2>/dev/null | head -1")
+    if [ -z "$APP_REMOTE" ]; then
+      echo "✗ flutter build macos reported success but left no .app on the Mac" >&2
+      exit 1
+    fi
+    ssh "$MAC_REMOTE" "cd '$(dirname "$APP_REMOTE")' && ditto -c -k --keepParent '$(basename "$APP_REMOTE")' /tmp/ezbizi-macos.zip"
+    scp -q "${MAC_REMOTE}:/tmp/ezbizi-macos.zip" "${DIST_APPLE}/EzBizi-${VERSION}-${COMMIT}-macos.zip"
+    echo "  → ${DIST_APPLE}/EzBizi-${VERSION}-${COMMIT}-macos.zip"
+  fi
 
   # ── iOS ────────────────────────────────────────────────────────
   #

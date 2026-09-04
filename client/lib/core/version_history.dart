@@ -11,6 +11,27 @@ class VersionHistory {
       version: '0.0.0149',
       date: '4 Sep 2026',
       items: [
+        'Marketing: a company can connect its own Mailchimp account and send '
+            'a newsletter to its own list, under its own name. EzBizi does not '
+            'send the mailing - Mailchimp does, on the company\'s reputation - '
+            'so one business can never affect another\'s deliverability.',
+        'An administrator can let a locked-out colleague back in. Somebody '
+            'who loses the phone holding their authenticator, or forgets their '
+            'password, no longer needs a developer: from their person record '
+            'you can clear the second factor or issue a reset link, and the '
+            'one thing you cannot do is either of those to yourself.',
+        'Leads matches every other screen. It was the one tab strip still '
+            'drawn Material\'s way - underlined, no icons, stretched full '
+            'width - so beside Services or Communication it read as a '
+            'different application.',
+        'Communication - Settings has a consent page you can photograph. A US '
+            'carrier will not carry a verification text unless the sender can '
+            'show where the person agreed to receive it, and Twilio names the '
+            'eight things that screenshot must show. This page is all eight.',
+        'The data inventory says when a count is only your own. Suggestions '
+            'are private to their author, so the organization-wide count '
+            'cannot include everybody\'s - and a compliance export that '
+            'quietly held a number back is a defect in its own right.',
         'Your account now has a "Text me my codes" setting, next to '
             'Two-factor. Give it your mobile number, tick the box, and EzBizi '
             'texts you a code to confirm the number is yours. You can turn it '

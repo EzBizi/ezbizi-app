@@ -430,7 +430,10 @@ class StaffAccountsController extends Controller
         ]);
 
         return response()->json(['data' => [
-            'url'        => 'https://dev.ezbizi.com/reset?token='.$issued['token'],
+            // config('ezbizi.hosts.staff'), not a literal: PasswordResetLink and
+            // the customer-host middleware already read that key, and a second
+            // spelling of the staff host here is the one that would not move.
+            'url'        => rtrim((string) config('ezbizi.hosts.staff'), '/').'/reset?token='.$issued['token'],
             'expires_at' => $issued['expires_at']->toIso8601String(),
             'note'       => 'Single use, one hour. Email delivery is not wired up yet '
                 .'(MAIL_MAILER=log), so hand this over directly.',

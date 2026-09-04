@@ -74,7 +74,7 @@ DIST_APPLE="$DIST/Apple"
 # exit. One asleep machine or one broken toolchain should cost that platform,
 # not the other three.
 FAILED=()
-TARGETS="web,windows,android,ios"
+TARGETS="web,windows,android,ios,macos"
 DRY_RUN=0
 SKIP_GATES=--skip-gates   # gates are OFF by default; --gates turns them on
 BUMP=1
@@ -101,7 +101,7 @@ while [ $# -gt 0 ]; do
     --no-bump) BUMP=0; shift ;;
     -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown argument: $1" >&2
-       echo "usage: $0 [--only web,windows,android,ios] [--dry-run] [--gates] [--no-bump]" >&2
+       echo "usage: $0 [--only web,windows,android,ios,macos] [--dry-run] [--gates] [--no-bump]" >&2
        exit 2 ;;
   esac
 done
@@ -110,7 +110,7 @@ wants() { printf '%s' ",$TARGETS," | grep -q ",$1,"; }
 
 for t in $(printf '%s' "$TARGETS" | tr ',' ' '); do
   case "$t" in
-    web|windows|android|ios) ;;
+    web|windows|android|ios|macos) ;;
     *) echo "✗ unknown target '$t'. Pick from: web windows android ios" >&2; exit 2 ;;
   esac
 done
@@ -166,7 +166,13 @@ fi
 VERSION=$(tr -d '[:space:]' < client/VERSION)
 COMMIT=$(git rev-parse --short HEAD)
 DIRTY=0
-git diff --quiet && git diff --cached --quiet || DIRTY=1
+# docs/ is excluded, as build-app.sh already excludes it. Nothing under docs/
+# reaches an installer or the API, and the pinned worktree below builds from
+# HEAD regardless of the working tree — so the only thing a modified doc could
+# do here is refuse a release. It did that twice on 3-4 Sep: another session
+# had four docs open from the previous afternoon, and this line stopped a
+# five-target release for files that were never going to ship.
+git diff --quiet -- . ':(exclude)docs' && git diff --cached --quiet -- . ':(exclude)docs' || DIRTY=1
 
 echo "── EzBizi release v${VERSION} · ${COMMIT} ──"
 echo "   targets: ${TARGETS}"
@@ -222,7 +228,11 @@ if [ -z "${EZBIZI_PINNED:-}" ] && [ "$DRY_RUN" -eq 0 ]; then
   # Gitignored, so a fresh worktree has no signing key and Android would fail
   # its preflight for a reason that has nothing to do with the release.
   if [ -f client/android/key.properties ]; then
-    cp client/android/key.properties "$PIN_DIR/client/android/key.properties"
+    # -ef: the same inode. Running this from INSIDE the pinned worktree (which
+    # is what the re-exec below does, and what a person retrying a failed
+    # release does) makes source and destination the same file, and cp refuses.
+    # That aborted 0.0.0147's first attempt before it built anything.
+    [ client/android/key.properties -ef "$PIN_DIR/client/android/key.properties" ]       || cp client/android/key.properties "$PIN_DIR/client/android/key.properties"
   fi
 
   cd "$PIN_DIR"
@@ -536,6 +546,34 @@ if wants ios; then
 else
   FAILED+=("ios")
   echo "   ✗ ios failed — skipped its packaging, continuing"
+fi
+fi
+
+# ── 5. macos ─────────────────────────────────────────────────────
+#
+# Added 4 Sep, the day Apple approved the app. Same relay, same source sync
+# as iOS, so it goes last with it. build-app.sh compiles on the Mac and brings
+# the .app home zipped; nothing is published from here yet.
+#
+# What ships today is a compiled, ad-hoc-signed .app — runnable on a Mac that
+# right-clicks past Gatekeeper, and nothing more. Two Apple-portal artefacts
+# stand between this and the Mac App Store, neither of which a script can
+# create: a Mac App Store provisioning profile for com.ezbizi.app (the relay
+# holds only the iOS .mobileprovision) and a "3rd Party Mac Developer
+# Installer" certificate for the .pkg. The identity the relay does hold —
+# Apple Distribution: EzBizi LLC — is the right one, and is idle until then.
+if wants macos; then
+  echo
+  echo "→ macos — building on the Mac relay"
+  if run ./scripts/build-app.sh macos ${GATES}; then
+
+  if [ "$DRY_RUN" -eq 0 ] && ! ls "$DIST_APPLE"/EzBizi-"${VERSION}"-*-macos.zip >/dev/null 2>&1; then
+    echo "✗ build-app.sh finished but left no macOS .zip in ${DIST_APPLE}/." >&2
+    exit 1
+  fi
+else
+  FAILED+=("macos")
+  echo "   ✗ macos failed — skipped its packaging, continuing"
 fi
 fi
 
