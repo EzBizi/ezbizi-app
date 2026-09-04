@@ -177,8 +177,11 @@ class GoogleConnectPermissionTest extends TestCase
         $pattern = SocialProvider::oauthRoutePattern();
 
         foreach (SocialProvider::cases() as $provider) {
-            if ($provider === SocialProvider::Bluesky) {
-                continue;   // handle + app password, its own route
+            // Same property as the driver guard below: a provider that does
+            // not connect by OAuth has its own endpoint and must be absent from
+            // this pattern, not present in it.
+            if (! $provider->connectsByOauth()) {
+                continue;
             }
 
             $this->assertMatchesRegularExpression(
@@ -205,18 +208,23 @@ class GoogleConnectPermissionTest extends TestCase
      * registers a route nothing can resolve. Both sides read from the enum
      * today; this is what keeps it that way.
      *
-     * Bluesky is exempt and it is the only one: handle plus app password, no
-     * consent window, its own route and no SocialOAuth driver at all.
+     * Providers that do NOT connect by OAuth are exempt, and the exemption is
+     * read off `connectsBy()` rather than named here. It said "Bluesky, and it
+     * is the only one" until Mailchimp arrived on 2026-09-04 — at which point a
+     * list of names would have had to be found and edited in three places, one
+     * of them a route pattern that would have registered a `/start` path
+     * resolving to no driver. A property cannot be forgotten in two of three.
      */
     public function test_no_provider_is_half_registered(): void
     {
         $drivers = app(SocialOAuthDrivers::class);
 
         foreach (SocialProvider::cases() as $provider) {
-            if ($provider === SocialProvider::Bluesky) {
+            if (! $provider->connectsByOauth()) {
                 $this->assertNull(
                     $drivers->for($provider),
-                    'Bluesky connects by password and must not gain an OAuth driver.',
+                    "{$provider->value} connects by {$provider->connectsBy()} and must not "
+                    .'gain an OAuth driver.',
                 );
 
                 continue;

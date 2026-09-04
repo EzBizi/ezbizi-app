@@ -1021,40 +1021,9 @@ class ModuleServiceProvider extends ServiceProvider
                      * property of the transport chosen for tenant mail, not of
                      * this module. It is declared where that path is built.
                      */
-                    new TriggerDefinition(
-                        key: 'newsletter.sent',
-                        label: 'Newsletter sent',
-                        description: 'A newsletter went out to its audience. It carries which '
-                            .'one, how many addresses it went to and the identity it was sent '
-                            .'from — not whether anybody read it.',
-                        isRaised: false,
-                    ),
                     /*
-                     * The one that must exist on day one rather than day two.
-                     *
-                     * Somebody asking to stop receiving marketing mail is the only
-                     * event here the business is obliged to honour, and honouring
-                     * it usually means touching a record this module does not own:
-                     * flag the customer, stop the other campaign, tell the branch.
-                     * That is a rule, and this is the trigger it hangs off.
-                     *
-                     * Declared beside "sent" rather than after it, because a
-                     * mailing programme that can send before it can be left is the
-                     * shape of this that would be wrong.
-                     */
-                    new TriggerDefinition(
-                        key: 'newsletter.unsubscribed',
-                        label: 'Somebody unsubscribed',
-                        description: 'A recipient asked to stop receiving marketing mail. It '
-                            .'carries the address and which mailing it was asked from, and it '
-                            .'is a decision the person made rather than a list being tidied.',
-                        isRaised: false,
-                    ),
-
-                    /*
-                     * These two are raised, unlike the newsletter pair above:
-                     * `PublishSocialTarget` emits one or the other every time it
-                     * runs.
+                     * `PublishSocialTarget` emits one or the other every time
+                     * it runs.
                      *
                      * One event per ACCOUNT rather than one per post, because
                      * that is the grain a rule can act on. A post to three
@@ -1082,25 +1051,80 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                 ],
                 /*
-                 * The engine runs none of these, and the catalogue already says so
-                 * per row: `implemented` is computed from the generic set the
-                 * engine has, so neither of these needs a flag of its own and
-                 * neither can claim to work by being forgotten about.
+                 * No actions of its own. Marketing's only automation surface is
+                 * now the social pair above; everything a rule could DO to a
+                 * newsletter moved to the `newsletter` module below, beside the
+                 * events it would react to.
+                 */
+            ),
+
+            /*
+             * Newsletter — write a mailing, choose who gets it, send it through
+             * the account the company brought.
+             *
+             * ── Why this is its own module and not two more marketing keys ──
+             *
+             * `send` has to be grantable on its own. Writing a mailing and
+             * putting it in front of twelve hundred customers are different
+             * acts, and plenty of organizations want somebody who can draft but
+             * not send — the same split that keeps `inventory.financials` off
+             * `inventory.view`. That is not expressible as `marketing.edit`.
+             *
+             * `parent: 'marketing'` says where it is DRAWN and nothing else, the
+             * same as Leads. These are new keys, held by nobody until an
+             * organization grants them (§4).
+             *
+             * ── Why there is no subject ─────────────────────────────
+             *
+             * Events here are about a mailing, an audience or an address, and
+             * naming any one of the three would make the field picker wrong
+             * about the other two. Same cost HR pays: `update_field` is refused
+             * at save, in a sentence.
+             */
+            new ModuleDefinition(
+                key: 'newsletter',
+                label: 'Newsletter',
+                parent: 'marketing',
+                auditActionPrefixes: ['newsletter'],
+                actions: ['view', 'create', 'edit', 'delete', 'send'],
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'newsletter.sent',
+                        label: 'Newsletter sent',
+                        description: 'A newsletter went out to its audience. It carries which '
+                            .'one, how many addresses it went to and the account it was sent '
+                            .'through — not whether anybody read it.',
+                    ),
+                    /*
+                     * The one that had to exist on day one rather than day two.
+                     *
+                     * Somebody asking to stop receiving marketing mail is the
+                     * only event here the business is obliged to honour, and
+                     * honouring it usually means touching a record this module
+                     * does not own: flag the customer, stop the other campaign,
+                     * tell the branch. That is a rule, and this is the trigger it
+                     * hangs off.
+                     */
+                    new TriggerDefinition(
+                        key: 'newsletter.unsubscribed',
+                        label: 'Somebody unsubscribed',
+                        description: 'A recipient asked to stop receiving marketing mail. It '
+                            .'carries the address and which audience it was asked from, and it '
+                            .'is a decision the person made rather than a list being tidied.',
+                    ),
+                ],
+                /*
+                 * `add_to_audience` and nothing that WRITES a mailing, for the
+                 * reason HR has no action that publishes a contract version: the
+                 * entire value of a message going to twelve hundred people is
+                 * that a person read it first, and a rule that composes one
+                 * bypasses the only review there is.
                  *
-                 * What is deliberately absent is anything that WRITES the wording
-                 * of a newsletter, for the reason HR has no action that publishes
-                 * a contract version: the entire value of a message going to ten
-                 * thousand people is that a person read it first, and a rule that
-                 * composes one bypasses the only review there is.
+                 * Sending is absent for the same reason and a sharper one — a
+                 * rule that mails a real audience with nobody looking is the one
+                 * mistake in this module that cannot be taken back.
                  */
                 automationActions: [
-                    new ActionDefinition(
-                        key: 'newsletter.send',
-                        label: 'Send a newsletter',
-                        description: 'Sends a mailing that has already been written and '
-                            .'approved, to the audience it was written for. The rule names '
-                            .'which one; it cannot compose one.',
-                    ),
                     new ActionDefinition(
                         key: 'newsletter.add_to_audience',
                         label: 'Add somebody to a mailing list',

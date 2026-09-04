@@ -53,8 +53,19 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class MarketingController extends Controller
 {
-    /** The module key, which is also the permission prefix. */
-    private const MODULE = 'marketing';
+    /**
+     * The module whose surface this publishes.
+     *
+     * It was `marketing` until 2026-09-04, when Newsletter became a module of
+     * its own so that `send` could be granted separately from `edit`. The
+     * events and the action moved with it, so reading `marketing` here would
+     * now answer with the SOCIAL pair — a screen about newsletters listing the
+     * triggers for social posts, which is worse than listing nothing.
+     */
+    private const MODULE = 'newsletter';
+
+    /** What somebody needs to reach this at all. */
+    private const GATE = 'newsletter.view';
 
     public function __construct(private readonly ModuleRegistry $registry) {}
 
@@ -79,9 +90,9 @@ class MarketingController extends Controller
     public function newsletter(Request $request): array
     {
         abort_unless(
-            $request->user()->hasPermission(self::MODULE.'.view'),
+            $request->user()->hasPermission(self::GATE),
             Response::HTTP_FORBIDDEN,
-            Refusal::permission('open Marketing')->message(),
+            Refusal::permission('open Newsletter')->message(),
         );
 
         /*

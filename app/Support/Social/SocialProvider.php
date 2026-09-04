@@ -44,6 +44,20 @@ enum SocialProvider: string
     case GoogleAds = 'google_ads';
     case Thumbtack = 'thumbtack';
 
+    /*
+     * A third kind again: an account EzBizi SENDS THROUGH. Not a network we
+     * post to, and not a source we read from — the tenant's own mailing
+     * provider, carrying their newsletter on their reputation to their list.
+     *
+     * Here rather than in a table of its own for the reason this file's header
+     * already gives about the read side: XOR scoping, encrypted credentials,
+     * view filtering and audited disconnect are built and tested here, and a
+     * parallel table would be a second implementation of the security-critical
+     * half. The naming cost is the same one already accepted, and the same
+     * remedy applies if it ever bites — split the storage, keep the drivers.
+     */
+    case Mailchimp = 'mailchimp';
+
     public function label(): string
     {
         return match ($this) {
@@ -56,6 +70,7 @@ enum SocialProvider: string
             self::YouTube => 'YouTube',
             self::X => 'X',
             self::Bluesky => 'Bluesky',
+            self::Mailchimp => 'Mailchimp',
             self::GoogleBusinessProfile => 'Google Business Profile',
             self::GoogleAds => 'Google Ads',
             self::Thumbtack => 'Thumbtack',
@@ -75,15 +90,39 @@ enum SocialProvider: string
             self::YouTube => 'youtube',
             self::X => 'x',
             self::Bluesky => 'bluesky',
+            self::Mailchimp => 'mailchimp',
             self::GoogleBusinessProfile => 'business-profile',
             self::GoogleAds => 'google-ads',
             self::Thumbtack => 'thumbtack',
         };
     }
 
+    /**
+     * How a tenant proves the account is theirs.
+     *
+     * `sign_in` means an OAuth consent window and a driver. The other two are
+     * credentials the company already holds and pastes once, revocable at the
+     * provider without asking us — which is why neither has, or should gain, a
+     * `SocialOAuth` driver.
+     *
+     * Read as a property rather than checked against a list of names, because
+     * everything that used to say `!== Bluesky` had to be found and changed the
+     * day Mailchimp arrived, and one of them was a route pattern that would
+     * have registered `/social/mailchimp/start` pointing at nothing.
+     */
     public function connectsBy(): string
     {
-        return $this === self::Bluesky ? 'password' : 'sign_in';
+        return match ($this) {
+            self::Bluesky   => 'password',
+            self::Mailchimp => 'api_key',
+            default         => 'sign_in',
+        };
+    }
+
+    /** Does this provider go through the OAuth consent window at all? */
+    public function connectsByOauth(): bool
+    {
+        return $this->connectsBy() === 'sign_in';
     }
 
     /**
@@ -96,7 +135,23 @@ enum SocialProvider: string
      */
     public function isPublishingNetwork(): bool
     {
-        return ! in_array($this, self::dataSources(), true);
+        return ! in_array($this, self::dataSources(), true)
+            && ! in_array($this, self::sendingProviders(), true);
+    }
+
+    /**
+     * Accounts EzBizi sends the tenant's own mail THROUGH (Newsletter).
+     *
+     * Excluded from `all()` for the same reason the data sources are: the
+     * Marketing catalogue offers a Connect button per network you can post to,
+     * and "post to Mailchimp" is not an act that exists. It is connected from
+     * Newsletter, and from Settings › Integrations.
+     *
+     * @return self[]
+     */
+    public static function sendingProviders(): array
+    {
+        return [self::Mailchimp];
     }
 
     /**
@@ -129,6 +184,11 @@ enum SocialProvider: string
             self::GoogleAds => 'leads.edit',
             self::Thumbtack => 'leads.edit',
             self::GoogleBusinessProfile => 'reviews.edit',
+            // Connecting the account you MAIL THROUGH is a newsletter act, and
+            // `newsletter.send` is the permission that can actually use it —
+            // offering Connect to somebody who could never send would be a
+            // control that does not work (§4).
+            self::Mailchimp => 'newsletter.send',
             default => 'marketing.edit',
         };
     }
@@ -151,7 +211,12 @@ enum SocialProvider: string
     {
         $keys = array_map(
             fn (self $p) => preg_quote($p->routeKey(), '/'),
-            array_filter(self::cases(), fn (self $p) => $p !== self::Bluesky),
+            // Only the OAuth ones. A provider that connects with a pasted
+            // credential has its own endpoint, and giving it a `/start` route
+            // would register a path that resolves to no driver — a Connect
+            // button that fails on press rather than one that 404s and is
+            // noticed.
+            array_filter(self::cases(), fn (self $p) => $p->connectsByOauth()),
         );
 
         return implode('|', $keys);

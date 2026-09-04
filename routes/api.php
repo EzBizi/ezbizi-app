@@ -94,6 +94,10 @@ use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\SocialAuthController;
 use App\Http\Controllers\Api\SocialConnectionsController;
 use App\Http\Controllers\Api\SocialMediaHandoffController;
+use App\Http\Controllers\Api\MailchimpConnectController;
+use App\Http\Controllers\Api\NewsletterAudiencesController;
+use App\Http\Controllers\Api\NewslettersController;
+use App\Http\Controllers\Api\NewsletterUnsubscribeController;
 use App\Http\Controllers\Api\SocialPostsController;
 use App\Http\Controllers\Api\SocialProvidersController;
 use App\Http\Controllers\Api\ThumbtackWebhookController;
@@ -333,6 +337,22 @@ Route::get('v1/social/media/{handle}', [SocialMediaHandoffController::class, 'sh
 Route::post('v1/social/thumbtack/webhook', ThumbtackWebhookController::class)
     ->middleware('throttle:600,1')
     ->name('social.thumbtack.webhook');
+
+/*
+ * Unsubscribe — PUBLIC and unauthenticated, and it has to be.
+ *
+ * The person clicking is a customer of a customer. They have no EzBizi account
+ * and never will, so any gate here would be a gate on the only lawful way out
+ * of a mailing list.
+ *
+ * GET renders a page with a button and changes NOTHING: mail clients and
+ * security scanners fetch every link in a message before a human sees it, and a
+ * GET that unsubscribed people would empty a list silently. POST is what
+ * records it. See the controller for what this does and does not defend against.
+ */
+Route::get('v1/newsletter/unsubscribe/{newsletter}', [NewsletterUnsubscribeController::class, 'show']);
+Route::post('v1/newsletter/unsubscribe/{newsletter}', [NewsletterUnsubscribeController::class, 'store'])
+    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class]);
 
 Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callback'])
     ->middleware('throttle:30,1')
@@ -899,6 +919,36 @@ Route::prefix('v1')
         //
         // The send itself is a job per account, so a 201 here means queued and
         // never means posted. The targets it answers say which.
+        // ── Newsletter ───────────────────────────────────────────
+        //
+        // Its own module (`newsletter.*`), drawn inside Marketing. Five
+        // permissions rather than two, because `send` has to be grantable on
+        // its own: writing a mailing and putting it in front of twelve hundred
+        // customers are different acts.
+        //
+        // Everything files on the VIEW and reads by the same rule connections
+        // use — an organization-level newsletter is visible down, a sibling
+        // company's never is. Out of view answers 404, not 403, because a
+        // sibling learning a mailing exists is itself the leak.
+        Route::get('newsletters', [NewslettersController::class, 'index']);
+        Route::post('newsletters', [NewslettersController::class, 'store']);
+        Route::put('newsletters/{newsletter}', [NewslettersController::class, 'update']);
+        Route::delete('newsletters/{newsletter}', [NewslettersController::class, 'destroy']);
+
+        // The preview is the SAME document the send carries, rendered by the
+        // same class — see BlockRenderer on why nothing renders twice.
+        Route::get('newsletters/{newsletter}/preview', [NewslettersController::class, 'preview']);
+        Route::post('newsletters/{newsletter}/send', [NewslettersController::class, 'send']);
+
+        Route::get('newsletter/audiences', [NewsletterAudiencesController::class, 'index']);
+        Route::post('newsletter/audiences', [NewsletterAudiencesController::class, 'store']);
+
+        // Mailchimp is connected here and from Settings > Integrations. It is
+        // NOT in the social catalogue: `SocialProvider::all()` filters to
+        // publishing networks, and "post to Mailchimp" is not an act.
+        Route::post('newsletter/mailchimp/connect', [MailchimpConnectController::class, 'store']);
+        Route::get('newsletter/mailchimp/lists', [MailchimpConnectController::class, 'lists']);
+
         Route::get('social/posts', [SocialPostsController::class, 'index']);
         Route::post('social/posts', [SocialPostsController::class, 'store']);
         Route::delete('social/connections/{connection}', [SocialConnectionsController::class, 'destroy']);

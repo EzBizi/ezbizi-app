@@ -1,0 +1,218 @@
+<?php
+
+namespace App\Support\Newsletter;
+
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Http;
+
+/**
+ * Mailchimp, spoken to with the tenant's own API key.
+ *
+ * ── Why a key and not OAuth ─────────────────────────────────────
+ *
+ * OAuth would need EzBizi to register an app with Mailchimp and every tenant to
+ * pass through a consent screen we would have to host a callback for. A key is
+ * something the company already has, pastes once, and can revoke at Mailchimp
+ * without asking us — which is the same bargain Bluesky's app password makes,
+ * and this reuses that path rather than inventing a second Connect shape.
+ *
+ * It is a swap, not a fork: OAuth later writes different values into the same
+ * connection row, and nothing above this class learns about it.
+ *
+ * ── Nothing here knows about HTTP status codes ──────────────────
+ *
+ * Every failure is a `NewsletterSendFailed` carrying a sentence. Turning that
+ * into a 422 at connect time or a red row at send time is the caller's job,
+ * because the same refusal means different things in those two places and this
+ * class has no way to tell which it is in.
+ *
+ * ── The datacentre lives in the key ─────────────────────────────
+ *
+ * A Mailchimp key ends `-us14`, and that suffix names the API host. So the key
+ * is sufficient to reach the account, and a key without one cannot be used at
+ * all — which is worth refusing loudly at connect time rather than discovering
+ * as a DNS failure on the morning somebody sends to twelve hundred people.
+ */
+class MailchimpClient
+{
+    private const TIMEOUT = 30;
+
+    /** @return array{account_name: string, email: string, dc: string, total_subscribers: int} */
+    public function verify(string $apiKey): array
+    {
+        $body = $this->call($apiKey, 'get', '/');
+
+        return [
+            'account_name' => (string) ($body['account_name'] ?? 'Mailchimp'),
+            'email'        => (string) ($body['email'] ?? ''),
+            'dc'           => $this->datacentre($apiKey),
+            'total_subscribers' => (int) ($body['total_subscribers'] ?? 0),
+        ];
+    }
+
+    /**
+     * The audiences this account holds.
+     *
+     * @return array<int, array{id: string, name: string, members: int}>
+     */
+    public function lists(string $apiKey): array
+    {
+        $body = $this->call($apiKey, 'get', '/lists', ['count' => 100, 'fields' => 'lists.id,lists.name,lists.stats.member_count']);
+
+        return array_map(fn (array $l) => [
+            'id'      => (string) ($l['id'] ?? ''),
+            'name'    => (string) ($l['name'] ?? 'Untitled audience'),
+            'members' => (int) ($l['stats']['member_count'] ?? 0),
+        ], (array) ($body['lists'] ?? []));
+    }
+
+    /**
+     * Put addresses into one of the account's audiences.
+     *
+     * Used only by a `customers` audience, where the list lives in EzBizi and
+     * has to reach Mailchimp before a campaign can go to it. `status: subscribed`
+     * rather than `pending` because these are the company's own customers, whose
+     * relationship predates this feature — a double opt-in email to somebody who
+     * has been buying from you for six years is not consent hygiene, it is a
+     * confusing email.
+     *
+     * `skip_merge_validation` is not set, and `update_existing` is: somebody
+     * already on the list must not be re-added or reset, which would resurrect a
+     * person who had unsubscribed AT MAILCHIMP.
+     *
+     * @param  array<int, array{email: string, first_name?: string, last_name?: string}>  $people
+     * @return int how many were accepted
+     */
+    public function syncMembers(string $apiKey, string $listId, array $people): int
+    {
+        if ($people === []) {
+            return 0;
+        }
+
+        $body = $this->call($apiKey, 'post', "/lists/{$listId}", [
+            'members' => array_map(fn (array $p) => [
+                'email_address' => $p['email'],
+                'status'        => 'subscribed',
+                'merge_fields'  => array_filter([
+                    'FNAME' => $p['first_name'] ?? null,
+                    'LNAME' => $p['last_name'] ?? null,
+                ], fn ($v) => $v !== null && $v !== ''),
+            ], $people),
+            'update_existing' => true,
+        ]);
+
+        /*
+         * Mailchimp answers 200 with per-address errors rather than failing the
+         * request, so a silent partial success is the normal case. The count of
+         * what it actually took is the only honest number to report back.
+         */
+        return (int) ($body['total_created'] ?? 0) + (int) ($body['total_updated'] ?? 0);
+    }
+
+    /**
+     * Create a campaign, put the HTML in it, and send it.
+     *
+     * Three calls because Mailchimp models it as three things, and collapsing
+     * them would mean pretending a half-created campaign cannot happen. If
+     * content or send fails, the campaign exists as a draft in the tenant's
+     * account — which is the recoverable end of the failure, and the sentence
+     * says so rather than leaving them hunting.
+     *
+     * @return array{id: string, recipients: int}
+     */
+    public function sendCampaign(
+        string $apiKey,
+        string $listId,
+        string $subject,
+        string $fromName,
+        string $replyTo,
+        string $html,
+    ): array {
+        $campaign = $this->call($apiKey, 'post', '/campaigns', [
+            'type'       => 'regular',
+            'recipients' => ['list_id' => $listId],
+            'settings'   => [
+                'subject_line' => $subject,
+                'title'        => $subject,
+                'from_name'    => $fromName,
+                'reply_to'     => $replyTo,
+            ],
+        ]);
+
+        $id = (string) ($campaign['id'] ?? '');
+
+        if ($id === '') {
+            throw new NewsletterSendFailed('Mailchimp created no campaign and said nothing about why.');
+        }
+
+        $recipients = (int) ($campaign['recipients']['recipient_count'] ?? 0);
+
+        $this->call($apiKey, 'put', "/campaigns/{$id}/content", ['html' => $html]);
+
+        /*
+         * `actions/send` answers 204 with no body on success. Anything else is
+         * a refusal, and Mailchimp's own `detail` is worth far more than a
+         * status code — "You must have a From email address" is actionable in a
+         * way that "HTTP 400" is not.
+         */
+        $this->call($apiKey, 'post', "/campaigns/{$id}/actions/send", []);
+
+        return ['id' => $id, 'recipients' => $recipients];
+    }
+
+    /**
+     * The host for this key, or a refusal naming what is wrong with it.
+     */
+    public function datacentre(string $apiKey): string
+    {
+        $parts = explode('-', trim($apiKey));
+        $dc    = count($parts) > 1 ? end($parts) : '';
+
+        if ($dc === '' || ! preg_match('/^[a-z]{2}[0-9]{1,3}$/', $dc)) {
+            throw new NewsletterSendFailed(
+                'That does not look like a Mailchimp API key. A key ends with its '
+                .'datacentre, like “-us14”, and without it EzBizi cannot tell which '
+                .'Mailchimp to talk to.'
+            );
+        }
+
+        return $dc;
+    }
+
+    /** @return array<string, mixed> */
+    private function call(string $apiKey, string $method, string $path, array $payload = []): array
+    {
+        $url = 'https://'.$this->datacentre($apiKey).'.api.mailchimp.com/3.0'.rtrim($path, '/');
+
+        try {
+            // Basic auth with any username — Mailchimp's documented shape for a
+            // key. `anystring` is theirs, not a placeholder left in by mistake.
+            $request = Http::withBasicAuth('anystring', $apiKey)
+                ->timeout(self::TIMEOUT)
+                ->acceptJson();
+
+            $response = match ($method) {
+                'get'  => $request->get($url, $payload),
+                'put'  => $request->put($url, $payload),
+                default => $request->post($url, $payload),
+            };
+        } catch (ConnectionException) {
+            throw new NewsletterSendFailed('EzBizi could not reach Mailchimp.');
+        }
+
+        if ($response->status() === 401) {
+            throw new NewsletterSendFailed(
+                'Mailchimp did not accept that key. Check it was copied whole, and that it '
+                .'has not been revoked in your Mailchimp account.'
+            );
+        }
+
+        if ($response->failed()) {
+            throw new NewsletterSendFailed('Mailchimp refused it: '.(string) (
+                $response->json('detail') ?? $response->json('title') ?? 'HTTP '.$response->status()
+            ));
+        }
+
+        return (array) ($response->json() ?? []);
+    }
+}
