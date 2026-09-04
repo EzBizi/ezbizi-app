@@ -39,8 +39,9 @@ if [ "${1:-}" = "--remote" ]; then
   # message nowhere near the real cause.
   export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH
   cd ~/ezbizi-build
+  SHOT_PROBE=false
   if [ "${PROBE:-0}" = "1" ]; then
-    SHOT_EMAIL=apple@ezbizi.com; SHOT_PASSWORD=placeholder
+    SHOT_EMAIL=apple@ezbizi.com; SHOT_PASSWORD=placeholder; SHOT_PROBE=true
   else
     if [ ! -f ~/ezbizi-signing/screenshot.env ]; then
       echo "✗ ~/ezbizi-signing/screenshot.env is missing on the Mac (SHOT_EMAIL=, SHOT_PASSWORD=)" >&2
@@ -60,7 +61,7 @@ if [ "${1:-}" = "--remote" ]; then
     --dart-define=APP_FACE=customer \
     --dart-define=APP_VERSION="${APP_VERSION:-dev}" \
     --dart-define=BUILD_ID="${BUILD_ID:-local}" \
-    --dart-define=SHOT_EMAIL="$SHOT_EMAIL" \
+    --dart-define=SHOT_PROBE="$SHOT_PROBE"     --dart-define=SHOT_EMAIL="$SHOT_EMAIL" \
     --dart-define=SHOT_PASSWORD="$SHOT_PASSWORD" > "$LOG" 2>&1 || true
   pkill -x EzBizi 2>/dev/null || true
   grep -E "wrote |skipped |All tests passed|Some tests failed" "$LOG" || true
@@ -81,6 +82,10 @@ MAC=mac
 MAC_PROJECT='~/ezbizi-build'
 PROBE=0; [ "${1:-}" = "--probe" ] && PROBE=1
 DIST="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/Distribution/Apple/screenshots/macos"
+# A probe's frames are sign-in screens with an error banner. Written into the
+# real set they overwrite 01-sign-in and 02-dashboard with wrong pictures under
+# right names, which happened once on 2026-09-04. Probes get their own folder.
+[ "$PROBE" -eq 1 ] && DIST="${DIST}-probe"
 mkdir -p "$DIST"
 APP_VERSION=$(tr -d '[:space:]' < client/VERSION)
 BUILD_ID=$(git rev-parse --short HEAD)
