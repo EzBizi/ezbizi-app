@@ -24,6 +24,29 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
+  // One EzBizi at a time. A second launch - the taskbar icon, the Start menu,
+  // a second click on the shortcut - used to open a second full copy with its
+  // own softphone registration, so calls rang in two places and the updater
+  // could run twice. The mutex is held for the life of the process and the OS
+  // releases it on exit, so a crash cannot leave it behind. An unprefixed name
+  // lives in this Windows session's namespace; another user gets their own.
+  HANDLE instance_mutex =
+      ::CreateMutexW(nullptr, TRUE, L"EzBizi.Desktop.SingleInstance");
+  if (instance_mutex != nullptr && ::GetLastError() == ERROR_ALREADY_EXISTS) {
+    // Bring the running one forward instead of making another. Class AND
+    // title, because every Flutter desktop app on the machine shares the class.
+    HWND existing = ::FindWindowW(L"FLUTTER_RUNNER_WIN32_WINDOW", L"EzBizi");
+    if (existing != nullptr) {
+      if (::IsIconic(existing)) {
+        ::ShowWindow(existing, SW_RESTORE);
+      }
+      ::SetForegroundWindow(existing);
+    }
+    ::CloseHandle(instance_mutex);
+    ::CoUninitialize();
+    return EXIT_SUCCESS;
+  }
+
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);

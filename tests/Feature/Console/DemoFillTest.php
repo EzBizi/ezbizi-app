@@ -93,11 +93,16 @@ class DemoFillTest extends TestCase
 
     public function test_it_refuses_an_organization_that_is_not_the_demo_one(): void
     {
-        $this->provisionTenant('Northgate Garage Doors');
+        $tenant = $this->provisionTenant('Northgate Garage Doors');
+        $this->makeVehicle($tenant, 'V-00001');
 
-        $this->artisan('demo:fill')
-            ->expectsOutputToContain('Refusing to run')
-            ->assertFailed();
+        $code = $this->artisan('demo:fill')->run();
+
+        // A real tenant, and the property is that it is untouched. This test
+        // asserted only the message and the exit code until 2026-09-04, which
+        // is to say it never once looked at the thing it was named after.
+        $this->assertSame($this->emptyCounts(), $this->counts(), 'a tenant that is not the demo one must be untouched');
+        $this->assertSame(1, $code);
     }
 
     /**
@@ -155,11 +160,10 @@ class DemoFillTest extends TestCase
     {
         $this->demoTenant();
 
-        $this->artisan('demo:fill', ['--dry-run' => true])->assertSuccessful();
+        $code = $this->artisan('demo:fill', ['--dry-run' => true])->run();
 
-        $this->assertSame(0, ServiceArea::query()->withoutGlobalScopes()->count());
-        $this->assertSame(0, VehicleAssignment::query()->withoutGlobalScopes()->count());
-        $this->assertSame(0, TimeClockShift::query()->withoutGlobalScopes()->count());
+        $this->assertSame($this->emptyCounts(), $this->counts(), '--dry-run must write nothing at all');
+        $this->assertSame(0, $code);
     }
 
     public function test_it_fills_scheduling_fleet_and_the_time_clock(): void
@@ -168,7 +172,7 @@ class DemoFillTest extends TestCase
         $this->makeVehicle($tenant, 'V-00001');
         $this->makeVehicle($tenant, 'V-00002');
 
-        $this->artisan('demo:fill')->assertSuccessful();
+        $code = $this->artisan('demo:fill')->run();
 
         // Scheduling: an area with zips and a working week is what turns the
         // screen from a search box over nothing into something photographable.
@@ -182,6 +186,8 @@ class DemoFillTest extends TestCase
         $this->assertSame(2, VehicleServiceVisit::query()->withoutGlobalScopes()->count());
 
         $this->assertGreaterThan(0, TimeClockShift::query()->withoutGlobalScopes()->count());
+
+        $this->assertSame(0, $code);
     }
 
     public function test_running_it_twice_adds_nothing(): void
@@ -192,9 +198,13 @@ class DemoFillTest extends TestCase
         $this->artisan('demo:fill')->assertSuccessful();
         $before = $this->counts();
 
-        $this->artisan('demo:fill')->assertSuccessful();
+        $second = $this->artisan('demo:fill')->run();
 
+        // State first, exit code last. assertSuccessful() chained onto artisan()
+        // throws before a row is read, so a run that doubled AND failed would
+        // report the failure and never mention the doubling.
         $this->assertSame($before, $this->counts(), 'a second run must be a no-op, not doubles');
+        $this->assertSame(0, $second);
     }
 
     public function test_running_it_again_a_week_later_adds_nothing(): void
@@ -213,9 +223,10 @@ class DemoFillTest extends TestCase
         $before = $this->counts();
 
         $this->travel(8)->days();
-        $this->artisan('demo:fill')->assertSuccessful();
+        $later = $this->artisan('demo:fill')->run();
 
         $this->assertSame($before, $this->counts(), 'a run on a later day must still be a no-op');
+        $this->assertSame(0, $later);
     }
 
     /** @return array<string, int> */
