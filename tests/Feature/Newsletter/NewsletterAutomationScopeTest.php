@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Newsletter;
 
+use App\Models\Automation;
 use App\Models\Company;
 use App\Models\Newsletter;
 use App\Support\Automations\CarriesAutomationScope;
@@ -46,6 +47,28 @@ class NewsletterAutomationScopeTest extends TestCase
                 ['franchise', $t['franchise']->id],
                 $mailing->automationScope(),
             );
+
+            // And the words actually route. Asserting the return value alone
+            // proves the model reports a branch; it does not prove a rule
+            // reaches that branch and no other, which is the whole point.
+            [$scopeType, $scopeId] = $mailing->automationScope();
+
+            $ownBranch = new Automation(['scope_type' => 'franchise', 'scope_id' => $t['franchise']->id]);
+            $nextDoor  = new Automation(['scope_type' => 'franchise', 'scope_id' => 'another-branch']);
+            $wholeOrg  = new Automation(['scope_type' => null, 'scope_id' => null]);
+
+            $this->assertTrue(
+                $ownBranch->coversScope($scopeType, $scopeId),
+                'a branch rule did not cover its own branch mailing',
+            );
+
+            $this->assertFalse(
+                $nextDoor->coversScope($scopeType, $scopeId),
+                "one branch's rule fired on another branch's mailing — and an "
+                .'unsubscribe payload carries the subscriber email',
+            );
+
+            $this->assertTrue($wholeOrg->coversScope($scopeType, $scopeId));
         });
     }
 
@@ -59,6 +82,32 @@ class NewsletterAutomationScopeTest extends TestCase
             $this->assertSame(
                 ['company', $t['company']->id],
                 $mailing->automationScope(),
+            );
+
+            [$scopeType, $scopeId] = $mailing->automationScope();
+
+            $theCompany = new Automation(['scope_type' => 'company', 'scope_id' => $t['company']->id]);
+            $aBranch    = new Automation(['scope_type' => 'franchise', 'scope_id' => $t['franchise']->id]);
+
+            /*
+             * The THIRD argument is the trap, and it is why this case is worth
+             * writing rather than assuming: a company rule is not matched by
+             * scope equality. `coversScope` answers it from the company CHAIN,
+             * which `AutomationEngine::companyChain` builds so a company rule
+             * also reaches the franchises of its Sub Companies — and the engine
+             * always passes it. A bare two-argument call here answers false for
+             * a rule that fires perfectly well in production, so the obvious
+             * version of this test reports a defect that does not exist. Phone
+             * lost a red test to exactly that.
+             */
+            $this->assertTrue(
+                $theCompany->coversScope($scopeType, $scopeId, [$t['company']->id]),
+                'a company rule did not cover its own company mailing',
+            );
+
+            $this->assertFalse(
+                $aBranch->coversScope($scopeType, $scopeId, [$t['company']->id]),
+                'a branch rule reached up to a company-wide mailing',
             );
         });
     }
