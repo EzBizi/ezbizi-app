@@ -976,7 +976,7 @@ void main() {
     testWidgets('the email is shown beside the editor, from the server', (
       tester,
     ) async {
-      await _pumpNewsletter(
+      await _pumpComposer(
         tester,
         _handler(
           canEdit: true,
@@ -1004,7 +1004,7 @@ void main() {
     ) async {
       // No permission is the first refusal, because it is the one nothing on
       // the screen can fix.
-      await _pumpNewsletter(
+      await _pumpComposer(
         tester,
         _handler(newsletters: const [_draft]),
       );
@@ -1018,7 +1018,7 @@ void main() {
     testWidgets('with no mailing account it carries the server sentence', (
       tester,
     ) async {
-      await _pumpNewsletter(
+      await _pumpComposer(
         tester,
         _handler(
           canEdit: true,
@@ -1040,7 +1040,7 @@ void main() {
     testWidgets('with an account but no list it asks for the list', (
       tester,
     ) async {
-      await _pumpNewsletter(
+      await _pumpComposer(
         tester,
         _handler(
           canEdit: true,
@@ -1055,7 +1055,7 @@ void main() {
     testWidgets('a block can be added, and columns are offered', (
       tester,
     ) async {
-      await _pumpNewsletter(
+      await _pumpComposer(
         tester,
         _handler(canEdit: true, newsletters: const [_draft]),
       );
@@ -1072,7 +1072,7 @@ void main() {
     });
 
     testWidgets('HTML mode replaces the blocks and says so', (tester) async {
-      await _pumpNewsletter(
+      await _pumpComposer(
         tester,
         _handler(canEdit: true, newsletters: const [_draft]),
       );
@@ -1089,7 +1089,7 @@ void main() {
     testWidgets('it lays out on a 375-point window without overflowing', (
       tester,
     ) async {
-      await _pumpNewsletter(
+      await _pumpComposer(
         tester,
         _handler(canEdit: true, newsletters: const [_draft]),
         size: const Size(375, 2400),
@@ -1101,6 +1101,139 @@ void main() {
       // nothing either. The preview is still there, below rather than beside,
       // because a newsletter you cannot see is what this layout prevents.
       expect(find.text('What they will get'), findsOneWidget);
+    });
+  });
+
+
+  /// The dashboard and the settings chip.
+  ///
+  /// Newsletter opens on the Dashboard, deliberately: "what is going out, and
+  /// when" is what somebody arriving wants, and an empty composer answers no
+  /// question. The calendar is the point — a scheduled mailing is invisible
+  /// until it lands in an inbox, and this is the only place that shows the
+  /// month.
+  group('newsletter dashboard and settings', () {
+    testWidgets('it opens on the dashboard with the numbers the server gave', (
+      tester,
+    ) async {
+      await _pumpNewsletter(
+        tester,
+        _handler(
+          canEdit: true,
+          newsletters: const [_draft],
+          stats: const {
+            'drafts': 3,
+            'scheduled': 2,
+            'sent': 7,
+            'recipients': 1240,
+            'last_sent_at': '2026-09-01T10:00:00Z',
+          },
+        ),
+      );
+
+      expect(find.widgetWithText(ChoiceChip, 'Dashboard'), findsOneWidget);
+      expect(find.widgetWithText(ChoiceChip, 'Composer'), findsOneWidget);
+      expect(find.widgetWithText(ChoiceChip, 'Settings'), findsOneWidget);
+
+      // The server's counts, not a count of the fifty rows the list carries.
+      // Scoped to the stats card: a bare `find.text('7')` also matches the
+      // calendar's seventh day, which is what this assertion tripped on first.
+      final statsCard = find.widgetWithText(DashboardCard, 'Mailings in Everdoors');
+      expect(statsCard, findsOneWidget);
+      expect(find.descendant(of: statsCard, matching: find.text('7')), findsOneWidget);
+      expect(find.descendant(of: statsCard, matching: find.text('1240')), findsOneWidget);
+
+      // Named honestly. EzBizi knows what the provider ACCEPTED; "delivered"
+      // would be a claim it cannot stand behind.
+      expect(find.text('Addresses reached'), findsOneWidget);
+      expect(find.textContaining('delivered'), findsNothing);
+    });
+
+    testWidgets('a scheduled mailing sits on its day and opens for editing', (
+      tester,
+    ) async {
+      final now = DateTime.now();
+      final day = DateTime(now.year, now.month, 15);
+      final wall =
+          '${day.year}-${_two(day.month)}-${_two(day.day)} 09:00';
+
+      await _pumpNewsletter(
+        tester,
+        _handler(
+          canEdit: true,
+          newsletters: [
+            {
+              'id': 'n-9',
+              'subject': 'Autumn sweeps',
+              'status': 'scheduled',
+              'scheduled_for': wall,
+              'audience': {'id': 'a-1', 'name': 'Customers', 'kind': 'customers'},
+              'blocks': const [
+                {'type': 'text', 'text': 'Words.', 'align': 'left'},
+              ],
+            },
+          ],
+        ),
+      );
+
+      // On the calendar, in the current month, by subject.
+      expect(find.text('Scheduled'), findsWidgets);
+      expect(find.text('Autumn sweeps'), findsOneWidget);
+
+      // "Review them or edit them" — tapping it lands in the composer with
+      // that mailing open. A date with no way in is a poster.
+      await tester.tap(find.text('Autumn sweeps'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('What they will get'), findsOneWidget);
+      expect(
+        tester.widget<TextField>(find.widgetWithText(TextField, 'Subject')).controller?.text,
+        'Autumn sweeps',
+      );
+    });
+
+    testWidgets('an empty month says so instead of drawing blank squares', (
+      tester,
+    ) async {
+      await _pumpNewsletter(tester, _handler(canEdit: true));
+
+      expect(find.textContaining('Nothing is scheduled this month'), findsOneWidget);
+    });
+
+    testWidgets('settings offers Connect with nothing connected', (
+      tester,
+    ) async {
+      await _pumpNewsletter(tester, _handler(canEdit: true));
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Settings'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Mailchimp API key'), findsOneWidget);
+
+      // Dead until a key is typed, and it says why — an empty Connect that
+      // fails on the round trip is a slower version of the same refusal.
+      expect(
+        _refusalOn(tester, 'Connect'),
+        contains('Paste the API key'),
+      );
+    });
+
+    testWidgets('settings shows the connected account and a way out', (
+      tester,
+    ) async {
+      await _pumpNewsletter(
+        tester,
+        _handler(canEdit: true, connections: const [_mailchimp]),
+      );
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Settings'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Everdoors Mail'), findsOneWidget);
+      expect(find.textContaining('newsletters send through this account'), findsOneWidget);
+      expect(find.widgetWithText(TextButton, 'Disconnect'), findsOneWidget);
+      // No second Connect form beside a live connection.
+      expect(find.text('Mailchimp API key'), findsNothing);
     });
   });
 
@@ -1161,6 +1294,18 @@ Future<void> _pumpNewsletter(
     _pump(tester, handler, size, (api, session) =>
         NewsletterTab(api: api, session: session));
 
+/// Newsletter, on the Composer chip. It opens on Dashboard, so a test about
+/// the editor has to walk there the way a person would.
+Future<void> _pumpComposer(
+  WidgetTester tester,
+  MockClientHandler handler, {
+  Size size = const Size(1400, 1600),
+}) async {
+  await _pumpNewsletter(tester, handler, size: size);
+  await tester.tap(find.widgetWithText(ChoiceChip, 'Composer'));
+  await tester.pumpAndSettle();
+}
+
 /// The sentence on a disabled button, or null when it may be pressed.
 String? _refusalOn(WidgetTester tester, String label) => tester
     .widget<Refused>(
@@ -1189,6 +1334,20 @@ const _draftWithoutAudience = {
   'blocks': [
     {'type': 'text', 'text': 'Words.', 'align': 'left'},
   ],
+};
+
+const _mailchimp = {
+  'id': 'conn-mc',
+  'display_name': 'Everdoors Mail',
+  'provider': 'mailchimp',
+  'provider_label': 'Mailchimp',
+  'handle': null,
+  'scope_type': 'company',
+  'status': 'connected',
+  'status_reason': null,
+  'can_publish': false,
+  'cannot_publish_because': null,
+  'posting_note': null,
 };
 
 const _audience = {
@@ -1326,6 +1485,7 @@ MockClientHandler _handler({
   List<Map<String, Object?>>? audiences,
   String? sendingRefusedBecause,
   String? previewHtml,
+  Map<String, Object?>? stats,
   List<Map<String, Object?>>? posts,
   /// Called per GET, so a test can make the queue change its mind between
   /// polls — which is the whole behaviour under test.
@@ -1457,6 +1617,14 @@ MockClientHandler _handler({
       return _json({
         'data': newsletters ?? <Map<String, Object?>>[],
         'sending': {'refused_because': sendingRefusedBecause},
+        'stats': stats ??
+            {
+              'drafts': 0,
+              'scheduled': 0,
+              'sent': 0,
+              'recipients': 0,
+              'last_sent_at': null,
+            },
       });
     }
 

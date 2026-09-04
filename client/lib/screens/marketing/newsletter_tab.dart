@@ -7,9 +7,12 @@ import '../../core/session.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/side_panel.dart';
+import '../../widgets/tab_bar_like.dart';
 import '../email/message_html.dart';
 import 'newsletter_blocks.dart';
+import 'newsletter_dashboard.dart';
 import 'newsletter_editor.dart';
+import 'newsletter_settings.dart';
 
 /// Marketing › Newsletter — write it on the left, see the real email on the
 /// right.
@@ -47,6 +50,15 @@ class _NewsletterTabState extends State<NewsletterTab> {
   /// Long enough that typing a sentence is one save, short enough that the
   /// preview feels attached to the keyboard.
   static const _settle = Duration(milliseconds: 700);
+
+  /// Dashboard · Composer · Settings.
+  ///
+  /// Dashboard first, deliberately: opening Newsletter and landing in an empty
+  /// composer answers no question, whereas "what is going out, and when" is
+  /// what somebody arriving actually wants. The composer is one chip away.
+  int _tab = 0;
+
+  NewsletterStats _stats = const NewsletterStats();
 
   List<_Newsletter> _all = const [];
   List<NewsletterAudience> _audiences = const [];
@@ -118,6 +130,11 @@ class _NewsletterTabState extends State<NewsletterTab> {
       _sendingRefusedBecause = sending is Map
           ? sending['refused_because'] as String?
           : null;
+
+      final stats = letters.body['stats'];
+      _stats = stats is Map<String, dynamic>
+          ? NewsletterStats.fromJson(stats)
+          : const NewsletterStats();
 
       _audiences = !audiences.ok
           ? const []
@@ -256,13 +273,68 @@ class _NewsletterTabState extends State<NewsletterTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _bar(context),
-        const Divider(height: 1),
-        Expanded(
-          child: _selected == null ? _empty(context) : _split(context),
+        TabBarLike(
+          labels: const [
+            ('Dashboard', Icons.insights_outlined),
+            ('Composer', Icons.edit_outlined),
+            ('Settings', Icons.tune_outlined),
+          ],
+          selected: _tab,
+          onSelected: (tab) => setState(() => _tab = tab),
         ),
+        const Divider(height: 1),
+        Expanded(child: _body(context)),
       ],
     );
+  }
+
+  Widget _body(BuildContext context) {
+    return switch (_tab) {
+      0 => NewsletterDashboard(
+        stats: _stats,
+        viewName: _viewName,
+        scheduled: [
+          for (final n in _all)
+            if (n.status == 'scheduled' && n.scheduledFor != null)
+              ScheduledNewsletter(
+                id: n.id,
+                subject: n.subject,
+                wall: n.scheduledFor!,
+                at: DateTime.tryParse(n.scheduledFor!.replaceFirst(' ', 'T')),
+              ),
+        ],
+        // Tapping a scheduled mailing opens it in the composer, because
+        // "review them or edit them" is the reason to draw the calendar at
+        // all — a date with no way in is a poster.
+        onOpen: (id) {
+          final picked = _all.where((n) => n.id == id).toList();
+          if (picked.isEmpty) return;
+          setState(() {
+            _open(picked.first);
+            _tab = 1;
+          });
+          _refreshPreview();
+        },
+      ),
+      1 => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _bar(context),
+          const Divider(height: 1),
+          Expanded(
+            child: _selected == null ? _empty(context) : _split(context),
+          ),
+        ],
+      ),
+      _ => NewsletterSettings(
+        api: widget.api,
+        session: widget.session,
+        viewName: _viewName,
+        // Connecting an account changes whether Send can work at all, and
+        // that answer is carried on the newsletter list.
+        onChanged: _load,
+      ),
+    };
   }
 
   Widget _bar(BuildContext context) {

@@ -75,7 +75,54 @@ class NewslettersController extends Controller
             'sending' => [
                 'refused_because' => NewsletterSenders::refusalForView($this->connectionsInView($user)),
             ],
+
+            /*
+             * Counted over EVERY newsletter this view can see, not over the
+             * fifty the list returns.
+             *
+             * The distinction matters the moment a company has sent more than
+             * fifty: a dashboard whose "sent" figure quietly means "sent, among
+             * the last fifty" is worse than no figure, because it looks like an
+             * answer. `$rows` above is a page; this is the whole set.
+             */
+            'stats' => $this->statsFor($user),
         ]);
+    }
+
+    /**
+     * What the dashboard reports, scoped the same way the list is.
+     *
+     * @return array<string, mixed>
+     */
+    private function statsFor(\App\Models\User $user): array
+    {
+        $all = Newsletter::query()
+            ->with('sends')
+            ->get()
+            ->filter(fn (Newsletter $n) => $this->inView($user, $n));
+
+        $sent = $all->where('status', Newsletter::STATUS_SENT);
+
+        return [
+            'drafts'    => $all->where('status', Newsletter::STATUS_DRAFT)->count(),
+            'scheduled' => $all->where('status', Newsletter::STATUS_SCHEDULED)->count(),
+            'sent'      => $sent->count(),
+
+            /*
+             * Addresses the provider ACCEPTED, summed across every send. Not
+             * "delivered" and deliberately not called that: what happens after
+             * the provider takes it is the provider's to report, and naming
+             * this "delivered" would be a claim EzBizi cannot stand behind.
+             */
+            'recipients' => $sent->sum(
+                fn (Newsletter $n) => (int) ($n->sends->last()?->recipients ?? 0),
+            ),
+
+            'last_sent_at' => $sent
+                ->map(fn (Newsletter $n) => $n->sends->last()?->sent_at)
+                ->filter()
+                ->max()?->toIso8601String(),
+        ];
     }
 
     public function store(Request $request): JsonResponse
