@@ -126,7 +126,6 @@ class _ItemListState extends State<ItemList> {
       error: _error,
       onRetry: _load,
       header: PanelHeader(
-        title: 'Items',
         note: (_loading || _error != null)
             ? 'The catalogue for this view.'
             : _items.length < _total

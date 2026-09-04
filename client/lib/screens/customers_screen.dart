@@ -173,7 +173,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
                 // reasonably expects not to be true: customers are shared
                 // organization-wide (§5.2) and a reader can be forgiven for
                 // assuming a shared record needs no place.
-                note: 'A ${label.toLowerCase()} has to be accountable for the '
+                note:
+                    'A ${label.toLowerCase()} has to be accountable for the '
                     'relationship.',
               )
             : null);
@@ -182,7 +183,6 @@ class _CustomersScreenState extends State<CustomersScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PanelHeader(
-          title: 'Customers',
           note: (_loading || _error != null)
               ? 'Shared across the organization — the $label tag shows who is accountable.'
               : _customers.length < _total

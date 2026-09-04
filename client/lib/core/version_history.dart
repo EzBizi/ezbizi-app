@@ -11,6 +11,12 @@ class VersionHistory {
       version: '0.0.0150',
       date: '4 Sep 2026',
       items: [
+        'A module no longer prints its own name twice. The page header added '
+            'in 0.0.0137 says which module you are in, and fifteen screens '
+            'were already saying it themselves - four the module name, eleven '
+            'their own tab label - so Customers sat under Customers and '
+            'Records under a highlighted Records tab. The sentence under each '
+            'heading stays: it carries the count.',
         'The Mac build is now signed and packaged the way the Mac App Store '
             'requires, and every release delivers it to App Store Connect the '
             'same way the iPhone build reaches TestFlight. Nothing inside the '

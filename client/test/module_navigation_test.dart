@@ -150,6 +150,44 @@ void main() {
     );
   });
 
+  /// A module says its name ONCE.
+  ///
+  /// The shell began drawing every module's name at the top of the page, and
+  /// four screens were already drawing it themselves through `PanelHeader` —
+  /// so Customers, Jobs, Fleet and Automations each printed their own name
+  /// twice, twenty pixels apart. Eleven more panes repeated their own tab's
+  /// label the same way.
+  ///
+  /// The audit that preceded the header missed all fifteen: it grepped the
+  /// SCREENS for heading styles, and `PanelHeader` lives in `widgets/` and uses
+  /// a style none of those screens mention. This test is the check that grep
+  /// should have been — it renders the thing and counts.
+  testWidgets('a module prints its own name once, not twice', (tester) async {
+    _wide(tester);
+
+    for (final module in const [
+      ('customers', 'Customers'),
+      ('jobs', 'Jobs'),
+      ('automations', 'Automations'),
+    ]) {
+      await _pumpShell(tester, modules: [_module(module.$1, module.$2)]);
+
+      // The sidebar says it too, legitimately — that is the row you clicked.
+      // What must not happen is the PAGE saying it twice.
+      final onPage =
+          find.text(module.$2).evaluate().length -
+          _inSidebar(module.$2).evaluate().length;
+
+      expect(
+        onPage,
+        1,
+        reason:
+            '"${module.$2}" appears $onPage times on the page. The shell draws '
+            'the module name; a screen that also draws it prints it twice.',
+      );
+    }
+  });
+
   /// Settings, Development and Your account are not modules.
   ///
   /// They have no server label, they are the other branches of the shell's

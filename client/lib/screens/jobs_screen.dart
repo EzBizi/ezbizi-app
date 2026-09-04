@@ -201,7 +201,6 @@ class _JobsScreenState extends State<JobsScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PanelHeader(
-          title: 'Jobs',
           note: (_loading || _error != null)
               ? 'Everything you can reach.'
               : _jobs.length < _total
@@ -293,10 +292,8 @@ class _JobsScreenState extends State<JobsScreen> {
                   dropdownMenuEntries: [
                     const DropdownMenuEntry(value: null, label: 'Any role'),
                     ..._roles.entries.map(
-                      (role) => DropdownMenuEntry(
-                        value: role.key,
-                        label: role.value,
-                      ),
+                      (role) =>
+                          DropdownMenuEntry(value: role.key, label: role.value),
                     ),
                   ],
                   onSelected: (value) {

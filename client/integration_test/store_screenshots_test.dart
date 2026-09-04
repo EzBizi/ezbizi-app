@@ -9,6 +9,10 @@ import 'package:integration_test/integration_test.dart';
 
 import 'package:ezbizi_client/core/module_screens.dart';
 import 'package:ezbizi_client/main.dart' as app;
+// Its own import: main.dart imports scope_switcher.dart but does not re-export
+// it, so app.ScopeSwitcher does not resolve. NavigationSidebar is different -
+// that one is declared in main.dart itself.
+import 'package:ezbizi_client/widgets/scope_switcher.dart' show ScopeSwitcher;
 
 /// App Store screenshots, taken from the real app on a real simulator — or,
 /// since 4 Sep 2026, from the real app in a real window on the relay Mac.
@@ -104,9 +108,19 @@ void main() {
     }
 
     await settle(6);
-    // A sign-in page sells nothing on a Mac listing; phones keep it because
-    // Apple's iPhone set has room for it.
-    if (!desktop) await snap('01-sign-in');
+    // The sign-in screen, on every platform.
+    //
+    // The desktop path skipped it on the reasoning that a login page sells
+    // nothing on a Mac listing, which is sound as far as it goes - Apple's own
+    // 2.3.3 says screenshots must show the app in use, 'not merely the title
+    // art, login page, or splash screen'. The operative word is MERELY: one
+    // sign-in frame among ten of the product working is not that, and the iOS
+    // listing already carries one. Jose asked for it, so both platforms take it.
+    //
+    // It must stay FIRST in name and LAST in the order Apple shows them only if
+    // you upload it first - so upload 02 onward ahead of it if you would rather
+    // the store lead with the dashboard.
+    await snap('01-sign-in');
 
     // ── sign in ───────────────────────────────────────────────────
     final fields = find.byType(TextField);
@@ -129,6 +143,38 @@ void main() {
         await settle(10);
       }
     }
+    // ── widen the view to the whole organization ──────────────────
+    //
+    // A fresh sign-in lands on whatever scope the account was last in, and for
+    // the demo account that is one franchise: the first macOS run captured
+    // 'Northgate Garage Doors > Northgate - Orlando', so the dashboard read
+    // 'Nobody on the books yet' and Customers listed three of the tenant's
+    // thirteen. The data was never thin; the window onto it was.
+    //
+    // The picker's widest row is labelled with the organization's own name
+    // (scope_picker_panel.dart:81), so tapping the entry containing 'Demo'
+    // selects it. Best-effort: if the switcher or the row is not found the run
+    // continues and captures whatever scope it is in, because a narrow
+    // screenshot beats no screenshot.
+    try {
+      final switcher = find.byType(ScopeSwitcher);
+      if (switcher.evaluate().isNotEmpty) {
+        await tester.tap(switcher.first);
+        await settle(6);
+        final org = find.textContaining('Demo');
+        if (org.evaluate().isNotEmpty) {
+          await tester.tap(org.last);
+          await settle(10);
+        } else {
+          // ignore: avoid_print
+          print('  scope: no organization row found, keeping the current view');
+        }
+      }
+    } catch (e) {
+      // ignore: avoid_print
+      print('  scope: could not widen the view ($e) - continuing');
+    }
+
     await snap('02-dashboard');
 
     // ── one screenshot per module worth showing ───────────────────

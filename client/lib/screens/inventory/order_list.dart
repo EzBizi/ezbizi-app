@@ -183,7 +183,6 @@ class _OrderListState extends State<OrderList> {
       error: _error,
       onRetry: _load,
       header: PanelHeader(
-        title: 'Orders',
         note: (_loading || _error != null)
             ? 'Purchase orders, sales, and issues.'
             : 'Buy in, sell out, and what has already gone to a job.',
@@ -512,11 +511,7 @@ class _OrderListState extends State<OrderList> {
     if (row == null) return const SizedBox.shrink();
 
     if (_kind == 'issue') {
-      return IssuePane(
-        issue: row,
-        showBack: showBack,
-        onBack: _clearPane,
-      );
+      return IssuePane(issue: row, showBack: showBack, onBack: _clearPane);
     }
 
     if (_kind == 'sale') {

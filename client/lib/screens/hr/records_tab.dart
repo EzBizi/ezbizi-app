@@ -206,7 +206,6 @@ class _RecordsTabState extends State<RecordsTab> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PanelHeader(
-          title: 'Records',
           note: _loading || _error != null
               ? 'Everybody with an account here, including the ones switched '
                     'off.'
@@ -518,7 +517,8 @@ class _RecordsTabState extends State<RecordsTab> {
   // ── the two things this tab can change ───────────────────────────
 
   Future<void> _changeRole(Map<String, dynamic> person) async {
-    final current = (person['role'] as Map<String, dynamic>?)?['id']?.toString();
+    final current = (person['role'] as Map<String, dynamic>?)?['id']
+        ?.toString();
 
     final chosen = await showSidePanel<String>(
       context,
