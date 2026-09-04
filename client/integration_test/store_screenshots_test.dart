@@ -234,7 +234,22 @@ void main() {
       await shoot('scheduling', 'Scheduling', '08-scheduling');
       await shoot('phone', 'Communication', '09-communication');
       await shoot('marketing', 'Marketing', '10-marketing');
-      await shoot('hr', 'HR', '11-hr');
     }
+
+    // HR last, and on every platform.
+    //
+    // It was inside the desktop block, which is why the first iPad run stopped
+    // at seven frames with nothing to show for the strongest module in the demo
+    // tenant: eight people on the books, a chart, and real contract copy. That
+    // was the best of the eleven macOS frames and the tablet could not reach it.
+    //
+    // Kept last so the desktop numbering does not move. The label matters here
+    // in a way it does not on desktop: the desktop path finds the sidebar item
+    // by moduleScreens' icon, but the drawer path matches rendered TEXT, and the
+    // server calls this module 'Human Resources', not 'HR'. The old 'HR' string
+    // was harmless only because the desktop path never read it. If the server
+    // ever renames it, shoot() prints a skip line and the run still produces
+    // every other frame.
+    await shoot('hr', 'Human Resources', '11-hr');
   });
 }
