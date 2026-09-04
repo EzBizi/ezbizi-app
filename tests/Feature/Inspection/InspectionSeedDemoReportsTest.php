@@ -128,18 +128,40 @@ class InspectionSeedDemoReportsTest extends TestCase
         $this->assertSame(3, $this->reportCount($demo), 'the demo tenant should have three reports');
     }
 
-    /** Running it twice adds nothing — it is safe to re-run against a live tenant. */
-    public function test_a_second_run_adds_nothing(): void
+    /**
+     * Running it twice adds nothing, including on a later day.
+     *
+     * The clock moves between the runs, and that is not decoration. The Apple
+     * session found that their seeder was idempotent only within a single
+     * second: two of their rows had no natural key and one had been invented
+     * out of `now()->subMonths(2)`, which forms a DIFFERENT key tomorrow, so a
+     * second run on a later day appended a whole new set. Their test could not
+     * see it because both runs happened in the same second and the dates
+     * agreed — a test asserting a property it could not have observed the
+     * absence of, which is the third instance of that shape found today.
+     *
+     * This command's early return asks `exists()` and has no date in it, so it
+     * is time-independent by construction rather than by luck. The travel is
+     * here so that stays true: `submitted_at` IS computed from now(), and the
+     * day somebody turns that into a lookup key, this fails.
+     */
+    public function test_a_second_run_adds_nothing_even_on_a_later_day(): void
     {
         $demo = $this->seedableTenant('EzBizi Demo');
 
         $this->artisan('inspection:seed-demo-reports', ['--force' => true])->assertExitCode(0);
 
-        $this->artisan('inspection:seed-demo-reports', ['--force' => true])
-            ->expectsOutputToContain('already has reports')
-            ->assertExitCode(0);
+        $this->travel(8)->days();
 
-        $this->assertSame(3, $this->reportCount($demo), 'the second run must not add a fourth');
+        // Rows before status, and no output expectation at all — the third
+        // time in this file that a chained assertion masked the real one. A
+        // date-dependent early return makes the second run FILE AGAIN, and
+        // "already has reports" is the first thing that stops being printed,
+        // so a test checking the message fails on the message and never counts.
+        $status = $this->artisan('inspection:seed-demo-reports', ['--force' => true])->run();
+
+        $this->assertSame(3, $this->reportCount($demo), 'a run on a later day must still be a no-op');
+        $this->assertSame(0, $status, 'a no-op re-run still succeeds');
     }
 
     /** Every answer the published version asks for is filled in. */
