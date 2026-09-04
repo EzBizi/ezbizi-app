@@ -92,6 +92,22 @@ Schedule::command('ezbizi:dispatch-monitoring-device-offline')->everyFiveMinutes
 // it useful is that a MISSING verdict counts as a failure — see the command.
 Schedule::command('ezbizi:check-backups --quiet-when-healthy')->dailyAt('05:00');
 
+// Training pass expiry (2026-08-28-training-module, task 10). At 04:10 — after
+// the data-expiry sweep at 03:50 and clear of the Twilio cost job at 04:20, so
+// none of the three ever contend for the same minute.
+//
+// This is the sweep that makes the whole "a pass runs out" option worth
+// having: it is the only thing that ever looks at `training_attempts.expires_on`
+// again after LearnController::submit stamps it, and `training.expired` is
+// what lets an organization write "re-assign the ladder guide when the pass
+// lapses."
+//
+// It inserts outbox rows and dispatches nothing itself — same reasoning as
+// the watch-mailboxes sweep above and StartUp.md §10: one automation rule
+// failing while re-assigning one lapsed pass must never take the sweep down
+// for everybody else's.
+Schedule::command('ezbizi:expire-training-passes')->dailyAt('04:10');
+
 // Per-company Twilio cost (§5). At 04:20 — after midnight in every US zone the
 // platform serves, so "yesterday" is a day Twilio has finished totting up, and
 // clear of the 03:17 backup timer and the 05:00 health check.
