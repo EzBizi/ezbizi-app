@@ -11,6 +11,9 @@ class VersionHistory {
       version: '0.0.0148',
       date: '3 Sep 2026',
       items: [
+        'Leads now has the same tabs as every other module. It was the one '
+            'screen still using a full-width underlined strip, so it looked '
+            'like a different application from the page next to it.',
         'Human Resources: an administrator can reset a colleague\'s '
             'authenticator when the phone holding it is lost. It is on each '
             'person\'s menu in Records. Their old authenticator stops working, '

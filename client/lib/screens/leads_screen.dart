@@ -6,6 +6,7 @@ import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
 import '../widgets/connected_account.dart';
+import '../widgets/tab_bar_like.dart';
 
 /// Leads — enquiries from connected advertising (EZ Leads).
 ///
@@ -33,6 +34,20 @@ class LeadsScreen extends StatefulWidget {
 
 class _LeadsScreenState extends State<LeadsScreen> {
   final _search = TextEditingController();
+
+  /// Which source tab is open, and which have ever been opened.
+  ///
+  /// The same two fields every other tabbed screen keeps. `_shown` is what
+  /// makes the second tab cost nothing until somebody asks for it — Thumbtack
+  /// does not deliver leads yet, so building it on arrival would be a fetch
+  /// for a list that cannot exist.
+  int _tab = 0;
+  final Set<int> _shown = {0};
+
+  void _select(int tab) => setState(() {
+    _tab = tab;
+    _shown.add(tab);
+  });
 
   bool _loading = true;
   bool _syncing = false;
@@ -182,25 +197,45 @@ class _LeadsScreenState extends State<LeadsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return DefaultTabController(
-      length: 2,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TabBar(
-            tabs: const [
-              Tab(text: 'Google Leads'),
-              Tab(text: 'Thumbtack Leads'),
+    // The same tab strip as the other sixteen screens, rather than Material's
+    // TabBar. This was the one screen in the app still using the underlined,
+    // full-width version, so Leads looked like a different product from the
+    // page beside it.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Material(
+          color: Theme.of(context).colorScheme.surface,
+          child: TabBarLike(
+            labels: const [
+              ('Google Leads', Icons.campaign_outlined),
+              ('Thumbtack Leads', Icons.handyman_outlined),
+            ],
+            selected: _tab,
+            onSelected: _select,
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          // Offstage rather than IndexedStack, and rather than the TabBarView
+          // this replaces. IndexedStack leaves its hidden children in the
+          // semantics tree, so a screen reader would announce the other tab's
+          // contents; Offstage takes them out of layout, painting and
+          // semantics while leaving their State exactly where it was.
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              for (var i = 0; i < 2; i++)
+                Offstage(
+                  offstage: i != _tab,
+                  child: _shown.contains(i)
+                      ? (i == 0 ? _googleTab(theme) : _thumbtackTab(theme))
+                      : const SizedBox.shrink(),
+                ),
             ],
           ),
-          const Divider(height: 1),
-          Expanded(
-            child: TabBarView(
-              children: [_googleTab(theme), _thumbtackTab(theme)],
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 

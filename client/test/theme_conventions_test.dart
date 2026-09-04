@@ -102,6 +102,66 @@ void main() {
   /// Enumerated rather than listed, because the two known cases are the two
   /// somebody happened to find. This is the same reason `titleSmall` was missed
   /// by a hand-written audit on the same day.
+  /// One tab strip, so two screens cannot look like two products.
+  ///
+  /// Sixteen screens use `TabBarLike` — a row of chips. Leads used Material's
+  /// `TabBar`: underlined, stretched across the full width, no icons. Side by
+  /// side with Services or Communication it read as a different application,
+  /// which is what got it reported.
+  ///
+  /// Enumerated rather than fixed where it was found. Leads was the only one
+  /// left, and the only way to keep that true is to check all of them.
+  group('every screen uses the same tab strip', () {
+    test('no screen falls back to a Material TabBar', () {
+      final banned = RegExp(r'\b(TabBar|TabBarView|DefaultTabController)\(');
+      var scanned = 0;
+      var usesShared = 0;
+      final offenders = <String>[];
+
+      for (final file in Directory('lib')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.dart'))) {
+        scanned++;
+        final rel = file.path.replaceAll(r'\', '/');
+        final source = file.readAsStringSync();
+
+        if (source.contains('TabBarLike(')) usesShared++;
+
+        // The shared widget is allowed to be called TabBarLike without this
+        // matching it, and it is the one place a raw strip could legitimately
+        // live if it ever needed one.
+        if (rel.endsWith('widgets/tab_bar_like.dart')) continue;
+
+        for (final match in banned.allMatches(source)) {
+          // `TabBarLike(` starts with TabBar but is the thing we want.
+          if (source.startsWith('TabBarLike(', match.start)) continue;
+          final line = '\n'.allMatches(source.substring(0, match.start)).length + 1;
+          offenders.add('$rel:$line  ${match.group(1)}');
+        }
+      }
+
+      // Floors before the rule, as everywhere else here.
+      expect(scanned, greaterThan(100),
+          reason: 'Only $scanned .dart files scanned under lib/.');
+      expect(usesShared, greaterThan(10),
+          reason: 'Found TabBarLike in only $usesShared files. It is in more '
+              'than ten; the scan is broken and this test is reporting '
+              'nothing rather than reporting clean.');
+
+      expect(
+        offenders,
+        isEmpty,
+        reason:
+            'These use Material\'s tab strip instead of the app\'s:\n  '
+            '${offenders.join('\n  ')}\n'
+            'TabBarLike is a row of chips with icons; TabBar is underlined and '
+            'full width. A screen with the wrong one looks like a different '
+            'product from the page next to it.',
+      );
+    });
+  });
+
   group('a chip does not cover its own icon', () {
     test('every selectable chip with an avatar sets showCheckmark', () {
       var scanned = 0;
