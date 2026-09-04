@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Automations\CarriesAutomationScope;
 use App\Models\Concerns\HasAttachments;
 use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
@@ -18,7 +19,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * cannot hide behind SQL NULL. Auto-saved; discarded on start-again; removed
  * when submitted (the frozen copy is the report).
  */
-class InspectionRun extends Model implements StatesRetention
+class InspectionRun extends Model implements CarriesAutomationScope, StatesRetention
 {
     use BelongsToTenant;
     use HasAttachments;
@@ -44,6 +45,51 @@ class InspectionRun extends Model implements StatesRetention
         return [
             'answers' => 'array',
         ];
+    }
+
+
+    /**
+     * Where this sits, for an automation rule and for who gets notified.
+     *
+     * ── What this closes ────────────────────────────────────────
+     *
+     * `NotificationDispatcher::audienceFor` falls through to EVERY ACTIVE USER
+     * in the organization when the subject of an event cannot say where it is —
+     * no `CarriesAutomationScope`, no `franchise_id`, no `owning_franchise_id`.
+     * This model has none of those columns, so every event it raised was in
+     * that fallback, and a tenant may attach `notify` to any raised trigger.
+     *
+     * ── The job first, then the customer ────────────────────────
+     *
+     * A job names a franchise outright and is the stronger answer. A
+     * customer-only inspection is a real case rather than a defensive one — the
+     * picker allows starting against a client with no job — and its customer's
+     * `owning_franchise_id` is where that work belongs.
+     *
+     * `withTrashed()` on the job, and it is not tidiness: a job soft-deletes
+     * and this record outlives it. Read through the default scope, a deleted
+     * job answers null and the record falls back to the whole organization —
+     * so the very cases most likely to be discussed loudly would land in the
+     * widest possible audience.
+     *
+     * Never `['company', …]`: an inspection is always done somewhere specific.
+     * `[null, null]` only when neither a job nor a customer survives, which
+     * means the thing it was about is gone and only an organization-wide rule
+     * can sensibly cover what is left.
+     *
+     * @return array{0: string|null, 1: string|null}
+     */
+    public function automationScope(): array
+    {
+        $franchiseId = $this->job_id === null
+            ? null
+            : Job::withTrashed()->whereKey($this->job_id)->value('franchise_id');
+
+        $franchiseId ??= $this->customer_id === null
+            ? null
+            : Customer::withTrashed()->whereKey($this->customer_id)->value('owning_franchise_id');
+
+        return $franchiseId === null ? [null, null] : ['franchise', $franchiseId];
     }
 
     public function user(): BelongsTo
