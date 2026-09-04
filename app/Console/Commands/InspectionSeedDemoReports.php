@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Support\Inspection\BoundAnswers;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 /**
  * File a few inspections on the demonstration tenant, so the module has
@@ -62,13 +63,17 @@ class InspectionSeedDemoReports extends Command
      *
      * A name is editable from Settings and is not unique across the platform,
      * so on the one database where a wrong tenant is unrecoverable the name is
-     * not enough on its own. Measured by the Apple session on 2026-09-04 and
-     * read here off `docs/demo-tenant-gaps.md` at c576b5e8 rather than off a
-     * message.
+     * not enough on its own.
      *
-     * Safe to carry without having measured it myself, because the check is
-     * FAIL-CLOSED: a wrong id here refuses the run. It cannot send a write
-     * somewhere else, so the worst it can cost is a refusal and a re-measure.
+     * Measured by the Apple session against production on 2026-09-04 —
+     * `Organization::all(['id','name'])` as www-data returned exactly two rows,
+     * A1-Group and this one — and written into `docs/demo-tenant-gaps.md` at
+     * c576b5e8, which is where I read it. I have not queried production myself.
+     *
+     * That is tolerable here for a reason that does NOT generalise: this check
+     * is FAIL-CLOSED. A wrong id refuses the run; it cannot redirect a write.
+     * A gate that instead PROCEEDS on a matching id has to be measured
+     * first-hand, because there a wrong constant sends writes somewhere.
      *
      * Not checked outside production — a test tenant has its own id, and a
      * constant that only holds on one machine would make this untestable.
@@ -109,6 +114,25 @@ class InspectionSeedDemoReports extends Command
         if ($organization === null) {
             $this->error('No organization named '.self::ORG_NAME.' on ['.$database.'].');
             $this->line('Run review:seed-organization first — this only adds reports to it.');
+
+            return self::FAILURE;
+        }
+
+        /*
+         * The semantically correct question, and the only one of the three
+         * that is about what the tenant IS rather than what it is called or
+         * where it sits. `organizations.is_demo` has existed since the
+         * foundation migration and `ProvisionOrganization` sets it; both this
+         * command and the Apple session's had reinvented it, one with a name
+         * and one with a hard-coded id, before either of us looked.
+         *
+         * Checked on every database, not only production. A command that fills
+         * "the demo tenant" has no business writing to a tenant that says it is
+         * not one, wherever it is running.
+         */
+        if ($organization->is_demo !== true) {
+            $this->error(self::ORG_NAME.' is not flagged as a demo organization (is_demo is not true).');
+            $this->line('Refusing. This command only ever fills a tenant that says it is a demonstration one.');
 
             return self::FAILURE;
         }
@@ -175,27 +199,47 @@ class InspectionSeedDemoReports extends Command
         $version = $definition->currentVersion;
         $screens = is_array($version->screens) ? $version->screens : [];
 
-        foreach ($jobs as $index => $job) {
-            InspectionReport::create([
-                'organization_id' => $organizationId,
-                'customer_id' => $job->customer_id,
-                'job_id' => $job->id,
-                'inspection_definition_id' => $definition->id,
-                'inspection_definition_version_id' => $version->id,
-                'submitted_by' => $submitter,
-                // Spread across recent weeks, so the list is ordered by
-                // something rather than three rows sharing one timestamp.
-                'submitted_at' => now()->subDays(($index + 1) * 9),
-                'answers' => BoundAnswers::freeze(
-                    $job->customer,
-                    $job,
-                    $screens,
-                    $this->answersFor($screens),
-                ),
-                'layout_preset' => $version->layout_preset ?? 'step_strip',
-                'definition_name' => $definition->name,
-            ]);
-        }
+        /*
+         * All of them or none of them.
+         *
+         * The Apple session pointed out that "return early if any report
+         * exists" is not the same property as a per-row firstOrCreate: it makes
+         * a second full run a no-op, which is what was wanted, but it also
+         * makes a second run unable to FINISH a first one that died halfway.
+         * Three reports written one at a time, failing on the second, would
+         * leave the tenant holding one forever, with the early return refusing
+         * to complete it and nothing saying so.
+         *
+         * A transaction is the answer rather than firstOrCreate because it
+         * removes the state instead of healing it — a failed run leaves zero
+         * reports, so the early return is telling the truth again and the fix
+         * is to run it a second time. firstOrCreate would also need a natural
+         * key per report, and there isn't an honest one: a tenant may legibly
+         * have two inspections of the same job.
+         */
+        DB::transaction(function () use ($jobs, $definition, $version, $screens, $submitter, $organizationId) {
+            foreach ($jobs as $index => $job) {
+                InspectionReport::create([
+                    'organization_id' => $organizationId,
+                    'customer_id' => $job->customer_id,
+                    'job_id' => $job->id,
+                    'inspection_definition_id' => $definition->id,
+                    'inspection_definition_version_id' => $version->id,
+                    'submitted_by' => $submitter,
+                    // Spread across recent weeks, so the list is ordered by
+                    // something rather than three rows sharing one timestamp.
+                    'submitted_at' => now()->subDays(($index + 1) * 9),
+                    'answers' => BoundAnswers::freeze(
+                        $job->customer,
+                        $job,
+                        $screens,
+                        $this->answersFor($screens),
+                    ),
+                    'layout_preset' => $version->layout_preset ?? 'step_strip',
+                    'definition_name' => $definition->name,
+                ]);
+            }
+        });
 
         $this->info('Filed '.$jobs->count().' reports on '.self::ORG_NAME.'.');
 
