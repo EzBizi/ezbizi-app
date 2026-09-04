@@ -71,7 +71,7 @@ they come back; the date says how stale.
 | Phone system | `local_d95f72da-cef3-4ffb-b8b1-8f4de859e7f3` | EzBizi - Phone System | 2026-09-04 | — |
 | Google API | `local_8111908f-4bbb-400e-b842-6194f832387f` | EzBizi - Google API | 2026-09-03 | — |
 | API integrations | `local_e76e374a-d27b-405a-a0f5-41853bed9bba` | EzBizi - API Integrations | 2026-09-03 | — |
-| Amazon SES | `local_39c741ca-78e6-403b-a5e2-4a5d04cb7ed4` | EzBizi - Amazon SES | 2026-09-02 | — |
+| Amazon SES | `local_39c741ca-78e6-403b-a5e2-4a5d04cb7ed4` | EzBizi - Amazon SES | 2026-09-04 | — |
 | Automations | `local_44b29c1e-d2ee-49db-9bde-6a428bd30354` | EzBizi - Automations Module | 2026-09-02 | — |
 | Monitoring | `local_de24a58d-dac7-4a4b-9140-baba222174b2` | EzBizi - Monitoring | 2026-09-02 | — |
 | Fleet | `local_7b76b5b7-2908-4091-86a2-b4a89c69e130` | EzBizi - Fleet Management Module | 2026-09-02 | — |
