@@ -18,11 +18,25 @@
 #
 # Output: Distribution/Apple/screenshots/macos/*.png at 1440x900 (or 2880x1800
 # on a Retina relay), which are two of the four sizes Apple accepts for Mac.
+#
+# The footer of every frame carries APP_VERSION and BUILD_ID. Those describe
+# the tree this run SYNCS to the Mac, not merely the caller's HEAD: the first
+# version of this script stamped the caller's SHA onto whatever build-app.sh
+# had last left in ~/ezbizi-build, and one run stamped b8bd4286 onto a tree
+# that differed from it by 17 .dart files (the Apple session hashed all 272
+# to prove it). So the run syncs first, the same way the release does, and
+# the stamp is true because the tree is the one compiled. A dirty caller
+# tree gets the same "+" build-app.sh puts on its artefacts.
 set -euo pipefail
 
 # ── remote half ─────────────────────────────────────────────────────
 # Runs on the Mac via `bash -s`, so this file needs no nested quoting.
 if [ "${1:-}" = "--remote" ]; then
+  # A non-interactive ssh shell has no flutter on PATH, and the Mac holds two
+  # installs: ~/dev/flutter (3.41.5, Dart 3.11.3, FAILS pubspec's ^3.11.4) and
+  # /opt/homebrew/bin/flutter (3.41.6, Dart 3.11.4, the working one). Homebrew
+  # first, or the run dies at dependency resolution with an SDK-version
+  # message nowhere near the real cause.
   export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH
   cd ~/ezbizi-build
   if [ "${PROBE:-0}" = "1" ]; then
@@ -39,9 +53,6 @@ if [ "${1:-}" = "--remote" ]; then
   rm -rf "$OUT"
   pkill -x EzBizi 2>/dev/null || true
   LOG=/tmp/store-screenshots.log
-  # APP_VERSION and BUILD_ID come from the local half. Without them the
-  # footer of every frame reads "vdev · local", which is what a flutter-drive
-  # build says about itself and not what a store page should.
   EZBIZI_WINDOW=1440x900 flutter drive -d macos \
     --driver=test_driver/screenshots.dart \
     --target=integration_test/store_screenshots_test.dart \
@@ -67,16 +78,46 @@ fi
 # ── local half ──────────────────────────────────────────────────────
 cd "$(dirname "$0")/.."
 MAC=mac
+MAC_PROJECT='~/ezbizi-build'
 PROBE=0; [ "${1:-}" = "--probe" ] && PROBE=1
 DIST="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/Distribution/Apple/screenshots/macos"
 mkdir -p "$DIST"
 APP_VERSION=$(tr -d '[:space:]' < client/VERSION)
 BUILD_ID=$(git rev-parse --short HEAD)
+# Same marker, same exclusion, as build-app.sh: another session's open doc is
+# not this build's dirt. Screenshots are not a release artefact, so a dirty
+# tree is allowed here — but the frame says so of itself.
+if [ -n "$(git status --porcelain --untracked-files=no -- . ':(exclude)docs')" ]; then
+  BUILD_ID="${BUILD_ID}+"
+fi
 
-# The release sync in build-app.sh carries lib/, ios/ and macos/ — not the two
-# test halves — so send what this run needs on top of whatever it last synced.
-scp -q -r client/integration_test client/test_driver "$MAC:ezbizi-build/"
-scp -q client/macos/Runner/MainFlutterWindow.swift client/macos/Runner/DebugProfile.entitlements "$MAC:ezbizi-build/macos/Runner/"
+# The sync below wipes the relay's project directory. A release mid-build
+# there would lose its tree under xcodebuild's feet.
+if ssh "$MAC" 'pgrep -f "xcodebuild|flutter_tools" >/dev/null 2>&1'; then
+  echo "✗ the relay is compiling something right now (xcodebuild or flutter running). Try again when it is quiet." >&2
+  exit 4
+fi
+
+# Sync the caller's client tree, the way build-app.sh does and with its
+# exclude list (keep the two in step; each exclude there has a reason written
+# beside it), plus the two test halves the release sync deliberately omits.
+echo "→ syncing client tree ${APP_VERSION} · ${BUILD_ID} to the Mac"
+ssh "$MAC" "rm -rf ${MAC_PROJECT} && mkdir -p ${MAC_PROJECT}"
+tar -cz \
+  --exclude='.symlinks' \
+  --exclude='Pods' \
+  --exclude='build' \
+  --exclude='.dart_tool' \
+  --exclude='Flutter/Generated.xcconfig' \
+  --exclude='Flutter/flutter_export_environment.sh' \
+  --exclude='Flutter/ephemeral' \
+  --exclude='.last_build_id' \
+  --exclude='Podfile.lock' \
+  --exclude='DerivedData' \
+  --exclude='.DS_Store' \
+  -C client \
+  VERSION pubspec.yaml pubspec.lock analysis_options.yaml lib ios macos integration_test test_driver \
+  | ssh "$MAC" "tar -xz -C ${MAC_PROJECT}"
 
 echo "→ macos — capturing on the Mac relay as v${APP_VERSION} · ${BUILD_ID}$([ "$PROBE" -eq 1 ] && echo ' (probe: placeholder password)')"
 ssh "$MAC" "PROBE=$PROBE APP_VERSION=$APP_VERSION BUILD_ID=$BUILD_ID bash -s -- --remote" < "$0"
