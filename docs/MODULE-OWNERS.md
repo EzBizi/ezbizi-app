@@ -1,5 +1,9 @@
 # Who owns what
 
+**To reach a role, use `docs/SESSIONS.md`.** It carries the desktop session id
+per role — the only identifier that cannot land on the wrong session — and the
+registration each session does at start. This file stays about what is owned.
+
 This exists because the roster kept living in one session's context, and a session
 is the one place in this project that provably does not survive. A coordinating
 session restarted three times in one afternoon and lost it each time; one of those
