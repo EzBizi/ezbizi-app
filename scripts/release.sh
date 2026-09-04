@@ -555,20 +555,19 @@ fi
 # as iOS, so it goes last with it. build-app.sh compiles on the Mac and brings
 # the .app home zipped; nothing is published from here yet.
 #
-# What ships today is a compiled, ad-hoc-signed .app — runnable on a Mac that
-# right-clicks past Gatekeeper, and nothing more. Two Apple-portal artefacts
-# stand between this and the Mac App Store, neither of which a script can
-# create: a Mac App Store provisioning profile for com.ezbizi.app (the relay
-# holds only the iOS .mobileprovision) and a "3rd Party Mac Developer
-# Installer" certificate for the .pkg. The identity the relay does hold —
-# Apple Distribution: EzBizi LLC — is the right one, and is idle until then.
+# Signed for the Mac App Store when the relay holds the two identities and
+# the profile (all three created 4 Sep 2026), and uploaded like iOS is. When
+# it cannot sign, build-app.sh falls back to an ad-hoc .app zip and says so,
+# rather than failing the target — a compile check is still worth having.
 if wants macos; then
   echo
   echo "→ macos — building on the Mac relay"
-  if run ./scripts/build-app.sh macos ${GATES}; then
+  if run ./scripts/build-app.sh macos ${GATES} --upload; then
 
-  if [ "$DRY_RUN" -eq 0 ] && ! ls "$DIST_APPLE"/EzBizi-"${VERSION}"-*-macos.zip >/dev/null 2>&1; then
-    echo "✗ build-app.sh finished but left no macOS .zip in ${DIST_APPLE}/." >&2
+  # A signed .pkg when the relay can sign for the store, an ad-hoc .zip when it
+  # cannot; build-app.sh says which. Either is a build; neither is missing.
+  if [ "$DRY_RUN" -eq 0 ] && ! ls "$DIST_APPLE"/EzBizi-"${VERSION}"-*-macos.pkg "$DIST_APPLE"/EzBizi-"${VERSION}"-*-macos.zip >/dev/null 2>&1; then
+    echo "✗ build-app.sh finished but left no macOS .pkg or .zip in ${DIST_APPLE}/." >&2
     exit 1
   fi
 else
