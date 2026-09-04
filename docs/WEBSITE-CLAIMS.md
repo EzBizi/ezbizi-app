@@ -22,6 +22,18 @@ stale silently; a row that states a *test* fails loudly the first time somebody
 runs it — which is why every row below now carries one, and why the tests are
 written against columns rather than against counts.
 
+**Standing authority, set by Jose on 2026-09-04: "do as you recommend, stop
+asking me for approvals."** Verified, accurate copy ships — do not hold it for
+his sight and do not open a FOR YOU TO DO item asking him to approve wording.
+A card was held a full day for that reason before he said this.
+
+**This makes the file below the only gate, so it carries the whole load.** The
+question stopped being "has he seen the words" and is now "is every clause
+checked against the deployed code or a production row". Publish what passes
+that; hold what does not, and say plainly that you are holding it and why.
+Keep FOR YOU TO DO for things only a person can do — a console login, a store
+submission, a filing — never for permission.
+
 ---
 
 ## Do not put these on the site
@@ -31,7 +43,7 @@ written against columns rather than against counts.
 | **Quotes, billing, invoicing, estimates, payments** | Does not exist. 151 production tables searched for `quote` / `invoic` / `bill` / `estimate` return nothing, and no such module is registered among 26. The only `payment` match is `vehicle_payments` — Fleet recording what it paid for a van. Removed in `6c67efb`. |
 | **Scheduling a job onto a calendar** | Not built, and **test the relation, not a column.** The obvious check — "`jobs` has no scheduled-date column" — is already false: `jobs.scheduled_for` (datetime) and `jobs.assigned_role_id` exist on production, and **0 of 25 jobs have either set**. The durable test is structural: **no table carries both a job reference and a date-or-slot reference.** `service_area_slots` is `(service_area_id, weekday, start_time, end_time, max_jobs)` — a recurring weekly capacity *template* with no `job_id`, no date and no per-occurrence row, so it cannot express "this job, this day, this slot" even in principle. That stays true until the module is actually built, which is exactly when the claim should change. |
 | **Training** | **Corrected 2026-09-02 — the old reason was false.** Its five tables *are* on production (`training_assignments`, `training_attempts`, `training_guides`, `training_progress`, `training_tests`); the row used to say they were not. The verdict does not change, but the reason does: **all five are empty**, so nothing has ever been assigned, attempted or completed. The checkable test is a row count in those tables, not their existence — the old test would now pass and the claim would still be false. |
-| **Phone / Communication** | **Jose approved it for the site on 2026-09-03** (relayed by the deploy session, which put the 2-of-7 fraction to him explicitly). **The approval covers the capability, not any particular sentence, and the fraction has not moved.** Draft copy is below, unpublished, awaiting his sight of the actual words. Everything following is the measurement that shapes them.<br><br>**The old blocker has partly lifted; the answer is still no to the strong claim, for a smaller reason.** The row used to say no production line had a ring group and every inbound call reached voicemail. As of 2026-09-02 `phone_ring_groups` has **2 rows**, and **2 of 7** `phone_numbers` carry a non-null `ring_group_id`. So calls to those two reach a person. **Five of seven still dead-end at voicemail**, which is why "phone system" remains an overstatement rather than a promise kept — and the module was renamed **Communication** in `0.0.0141`, so any future copy names that, not "Phone". The checkable test: `phone_numbers` with a non-null `ring_group_id`, as a fraction of all of them. Do not write the claim off a lifted gate; write it off the fraction. |
+| **Phone / Communication** | **PUBLISHED 2026-09-04 as a card reading "Your business numbers in one place — dial, texts and voicemail…" — the row now governs only what may NOT be added to it.** **Jose approved it for the site on 2026-09-03** (relayed by the deploy session, which put the 2-of-7 fraction to him explicitly). **The approval covers the capability, not any particular sentence, and the fraction has not moved.** Draft copy is below, unpublished, awaiting his sight of the actual words. Everything following is the measurement that shapes them.<br><br>**The old blocker has partly lifted; the answer is still no to the strong claim, for a smaller reason.** The row used to say no production line had a ring group and every inbound call reached voicemail. As of 2026-09-02 `phone_ring_groups` has **2 rows**, and **2 of 7** `phone_numbers` carry a non-null `ring_group_id`. So calls to those two reach a person. **Five of seven still dead-end at voicemail**, which is why "phone system" remains an overstatement rather than a promise kept — and the module was renamed **Communication** in `0.0.0141`, so any future copy names that, not "Phone". The checkable test: `phone_numbers` with a non-null `ring_group_id`, as a fraction of all of them. Do not write the claim off a lifted gate; write it off the fraction. |
 | **Local Services enquiries arriving as leads** | **Contradicted, not merely unverified — and the evidence is a decoy.** Querying production returns `source = local_services` on 8 leads, which reads exactly like the confirmation this row has been waiting for. All 8 were created in the *same second* and none carries a provider id: they are `leads:seed-demo`, run on production by the deploy session on 2026-08-31. The `source` string was written by the seeder, not by Google. **True count of real Local Services enquiries: 0**, re-confirmed 2026-09-02. **The test this row used to name does not work, and saying so is the point.** It told you to look for a provider `external_id`; there is no `external_id` column on `leads` and none anywhere in `database/migrations/`, so the check silently has nothing to compare and a careful session runs it, finds nothing, and cannot tell "no real leads" from "no such column". **The first replacement written for this row was also wrong, and it is left here as the warning.** It said a genuine enquiry has a `connection_id` and a non-null `synced_at` while a seeded one has neither — reasoned from the real sync path (`LocalServicesLeads.php:216,228`) without ever opening the seeder. **`LeadsSeedDemo.php:132,143` writes both**, pointing `connection_id` at a genuine `social_connections` row it creates. The seeded rows are indistinguishable from real ones on every field that describes *how a lead arrives*, because the seeder's whole job is to look real. **The test that works is the one the seeder deliberately leaves behind:** `LeadsSeedDemo.php:45` stamps `private const PREFIX = 'DEMO-'` onto `remote_id` on every row it plants (`:128`). So — **a real enquiry's `remote_id` is Google's own id and never begins `DEMO-`:**
 
 ```sql
@@ -221,9 +233,12 @@ The installer has to match the API it will talk to, so the manifest tracks the
 deployed release. Compare it to what production runs — ask the deploy session —
 or to the published `EzBizi-setup.exe`, not to the repo's next version bump.
 
-## Communication — approved, drafted, not published
+## Communication — PUBLISHED 2026-09-04
 
-Jose said yes on 2026-09-03. The card is written and deliberately not committed:
+Jose said yes on 2026-09-03; the card was held unpublished because the approval
+reached this desk relayed through a peer. **On 2026-09-04 he lifted that
+requirement directly — "do as you recommend, stop asking me for approvals" —
+and the card landed.** It reads:
 
 ```html
 <h3>Communication</h3>
@@ -244,15 +259,30 @@ card says. **An approval to describe a capability is not evidence the
 capability's weakest number has changed** — and 2-of-7 is the number that
 stops this sentence drifting.
 
-**Why it is not committed.** On this pipeline a commit to `main` *is* a
-publish: `deploy.sh` ships `www/` with every web deploy, so there is no
-staging step between the two. The approval reached this session relayed
-through a peer rather than from Jose directly, which is enough authority to
-*write* an outward-facing sentence and not enough to *publish* one he has
-not read. The deploy desk applied exactly this rule to `7349e79` earlier the
-same day, declining to publish it on a peer's request; this is that rule
-turned around and pointed at its author. Land it when Jose has seen the
-words.
+**Why it was held, and what replaced the rule.** On this pipeline a commit to
+`main` *is* a publish: `deploy.sh` ships `www/` with every web deploy, so
+there is no staging step. A peer-relayed approval was judged enough authority
+to *write* an outward-facing sentence and not enough to *publish* one Jose had
+not read.
+
+**That gate is gone, and only that gate.** Jose lifted it on 2026-09-04. What
+it was protecting against — a claim reaching the public that nobody had
+checked — is now carried entirely by the verification, so the verification is
+the thing that must not slip. **Every clause of this card was re-checked
+against the code before it shipped**, not taken from the draft:
+
+    Dial / Messages / Voicemail   phone_tab.dart:44, :46, :47
+    the module is "Communication" phone_tab.dart docstring, "Communication > Phone"
+    role-level lines              role_inboxes.dart:84 — "A role with Communication
+                                  now gets its company's lines by reach, not one
+                                  tick at a time"
+
+**The fraction still governs what may not be said.** 2 of 7 production lines
+route to a ring group; five land in voicemail. So no sentence may imply a call
+reaches a person — not "never miss a call", not "your calls reach your team",
+not "phone system". The published card says none of them, and a grep for all
+four phrasings across `www/` returns zero. That check is worth re-running
+whenever this card is edited.
 
 ## The Suggestions row inverted within a day, and the instruction to invert it is why that was cheap
 
