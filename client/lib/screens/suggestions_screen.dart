@@ -24,9 +24,22 @@ import '../widgets/error_note.dart';
 /// the three other states show the server's own sentence in the footer slot
 /// the buttons vacate instead.
 ///
-/// Arrangement is `docs/previews/suggestions-1.html` #1 — compose first, the
-/// "What you have sent" receipt below it, newest first exactly as the server
-/// sends it (`Suggestion::query()->latest('created_at')`, never resorted here).
+/// Arrangement is `docs/previews/suggestions-2.html` #2 — JOSE'S CHOICE,
+/// 2026-09-04 ("i like 2 for both"), overruling the provisional #1 this screen
+/// shipped with. "What happened to what you sent": a rail split into Waiting
+/// on EzBizi / Answered with a Write-a-suggestion button above it, and the
+/// selected suggestion in full in a detail pane. The rail's bands are this
+/// client's own arrangement — `GET /suggestions` returns newest first and
+/// nothing else (`Suggestion::query()->latest('created_at')`), so each band
+/// keeps the server's order rather than resorting within itself.
+///
+/// ── Why the first suggestion is preselected ──────────────────────
+///
+/// Same ruling as `SuggestionsQueueScreen`: a master-detail layout with
+/// nothing selected shows an empty pane, and a test that asserts a value
+/// appears exactly once would force that emptiness rather than degrade. Here
+/// the layout wins — the newest suggestion opens on load, the same way the
+/// queue opens on its own first row.
 class SuggestionsScreen extends StatefulWidget {
   const SuggestionsScreen({super.key, required this.api, required this.formats});
 
@@ -49,6 +62,11 @@ class SuggestionsScreen extends StatefulWidget {
 class _SuggestionsScreenState extends State<SuggestionsScreen> {
   static const int _maxLength = 2000;
 
+  /// Below this the rail and the detail pane cannot both fit — the same
+  /// threshold `SuggestionsQueueScreen` uses for its own split.
+  static const double _splitAbove = 860;
+  static const double _railWidth = 340;
+
   bool _loading = true;
 
   /// Which load owns the screen, the same rule as ClientVersionsScreen: a send,
@@ -60,19 +78,36 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
   String? _error;
   List<Map<String, dynamic>> _rows = [];
 
+  String? _selectedId;
+
+  /// True while the detail pane is showing the compose form rather than a
+  /// selected suggestion — forced on whenever [_rows] is empty (there is
+  /// nothing else it could show), and available on demand from the rail's
+  /// "Write a suggestion" button otherwise.
+  bool _composing = false;
+
   final _composeController = TextEditingController();
   bool _sending = false;
 
   /// One slot for every action's refusal — sending, saving an edit, or
   /// withdrawing — kept on the screen rather than a snack bar, because the
-  /// server's sentences here explain a rule and are written to be read.
+  /// server's sentences here explain a rule and are written to be read. Safe
+  /// as a single slot because composing and viewing a suggestion are mutually
+  /// exclusive panes: only one action is ever reachable at a time.
   String? _actionError;
 
   String? _editingId;
   final _editController = TextEditingController();
   bool _editSending = false;
 
-  String? _withdrawingId;
+  bool _withdrawing = false;
+
+  /// Narrow layout only: which of the rail and the detail pane is on screen.
+  /// Ignored once the layout is wide enough to show both at once.
+  bool _openNarrow = false;
+
+  /// Narrow layout only: which band the rail's segmented control is showing.
+  String _narrowSegment = 'waiting';
 
   @override
   void initState() {
@@ -102,13 +137,70 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
 
     setState(() {
       _loading = false;
-      if (response.ok) {
-        _rows = List<Map<String, dynamic>>.from(
-          response.data as List? ?? const [],
-        );
-      } else {
+
+      if (!response.ok) {
         _error = response.message;
+        return;
       }
+
+      _rows = List<Map<String, dynamic>>.from(
+        response.data as List? ?? const [],
+      );
+
+      final selected = _rowById(_selectedId);
+      if (selected == null) {
+        if (_rows.isNotEmpty) {
+          // Nothing selected yet, or the previous selection is gone (just
+          // withdrawn, or just sent — either way the newest row is first).
+          // Default to it rather than opening on an empty pane.
+          _selectedId = _rows.first['id'] as String?;
+          _composing = false;
+        } else {
+          _selectedId = null;
+        }
+      }
+
+      // Nothing to select when the list is genuinely empty — the empty
+      // state's own compose box, not a blank pane.
+      if (_rows.isEmpty) _composing = true;
+    });
+  }
+
+  Map<String, dynamic>? _rowById(String? id) {
+    if (id == null) return null;
+    for (final row in _rows) {
+      if (row['id'] == id) return row;
+    }
+    return null;
+  }
+
+  void _select(Map<String, dynamic> row) {
+    setState(() {
+      _selectedId = row['id'] as String?;
+      _composing = false;
+      _editingId = null;
+      _actionError = null;
+      _openNarrow = true;
+    });
+  }
+
+  void _startCompose() {
+    setState(() {
+      _composing = true;
+      _editingId = null;
+      _actionError = null;
+      _composeController.clear();
+      _openNarrow = true;
+    });
+  }
+
+  /// Unavailable when the list is empty — there is nowhere to cancel back to,
+  /// and the empty state's compose box has no Cancel beside it for the same
+  /// reason.
+  void _cancelCompose() {
+    setState(() {
+      _composing = false;
+      _actionError = null;
     });
   }
 
@@ -133,6 +225,13 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
     }
 
     _composeController.clear();
+    setState(() {
+      _composing = false;
+      // Clears the previous selection so `_load`'s own "nothing selected"
+      // branch opens the pane on the row just sent — newest first, so it is
+      // `_rows.first` the moment the reload lands.
+      _selectedId = null;
+    });
     await _load();
   }
 
@@ -178,10 +277,10 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
   }
 
   Future<void> _withdraw(String id) async {
-    if (_withdrawingId != null) return;
+    if (_withdrawing) return;
 
     setState(() {
-      _withdrawingId = id;
+      _withdrawing = true;
       _actionError = null;
     });
 
@@ -189,20 +288,21 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
 
     if (!mounted) return;
 
-    setState(() => _withdrawingId = null);
+    setState(() => _withdrawing = false);
 
     if (!response.ok) {
       setState(() => _actionError = response.message);
       return;
     }
 
+    // The withdrawn row is gone once `_load` lands; its own "selection is
+    // gone" branch picks the new first row, or forces the compose pane back
+    // on if that was the only suggestion there was.
     await _load();
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -218,51 +318,313 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
             loading: _loading,
             error: _error,
             onRetry: _load,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 760),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (_rows.isEmpty) ...[
-                      _emptyState(context),
-                      const SizedBox(height: 16),
-                    ],
-                    _composeBox(
-                      context,
-                      controller: _composeController,
-                      sending: _sending,
-                      sendLabel: 'Send it',
-                      autofocus: _rows.isEmpty,
-                      onSend: _send,
-                    ),
-                    if (_rows.isEmpty) ...[
-                      const SizedBox(height: 10),
-                      Text(
-                        'Up to 2000 characters. You can correct it or take '
-                        'it back until somebody reads it.',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ],
-                    if (_actionError != null) ...[
-                      const SizedBox(height: 12),
-                      ErrorNote(_actionError!),
-                    ],
-                    if (_rows.isNotEmpty) ...[
-                      const SizedBox(height: 26),
-                      Text(
-                        'What you have sent',
-                        style: theme.textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 10),
-                      for (final row in _rows) ...[
-                        _row(context, row),
-                        const SizedBox(height: 12),
-                      ],
-                    ],
-                  ],
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final wide = constraints.maxWidth >= _splitAbove;
+                return wide ? _wide(context) : _narrow(context);
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _wide(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      SizedBox(width: _railWidth, child: _rail(context)),
+      VerticalDivider(width: 1, color: EzBiziTheme.edge(context)),
+      Expanded(child: _detailArea(context)),
+    ],
+  );
+
+  Widget _narrow(BuildContext context) =>
+      _openNarrow ? _detailArea(context, showBack: true) : _narrowList(context);
+
+  Widget _detailArea(BuildContext context, {bool showBack = false}) {
+    if (_composing) {
+      return _composeArea(context, showBack: showBack);
+    }
+
+    final row = _rowById(_selectedId);
+
+    if (row == null) {
+      // Only reachable while a load is in flight and the previous selection
+      // has not yet been replaced — `_load` never leaves both `_composing`
+      // false and the selection unresolved once it lands.
+      return const SizedBox.shrink();
+    }
+
+    return _detail(context, row, showBack: showBack);
+  }
+
+  Widget _rail(BuildContext context) {
+    final waiting = _rows
+        .where((r) => r['status'] == 'new' || r['status'] == 'reviewing')
+        .toList();
+    final answered = _rows
+        .where((r) => r['status'] == 'approved' || r['status'] == 'denied')
+        .toList();
+
+    return ListView(
+      key: const Key('suggestions-rail'),
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: _startCompose,
+              child: const Text('Write a suggestion'),
+            ),
+          ),
+        ),
+        Divider(height: 1, color: EzBiziTheme.edge(context)),
+        if (_rows.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              'Nothing here yet.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          )
+        else ...[
+          _band(context, 'Waiting on EzBizi', waiting.length),
+          for (final row in waiting) _railRow(context, row),
+          _band(context, 'Answered', answered.length),
+          for (final row in answered) _railRow(context, row),
+        ],
+      ],
+    );
+  }
+
+  Widget _band(BuildContext context, String label, int count) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
+      child: Row(
+        children: [
+          Text(label, style: theme.textTheme.labelSmall),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+            decoration: BoxDecoration(
+              border: Border.all(color: EzBiziTheme.edge(context)),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text('$count', style: theme.textTheme.labelSmall),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _railRow(BuildContext context, Map<String, dynamic> row) {
+    final theme = Theme.of(context);
+    final id = row['id'] as String?;
+    final selected = !_composing && id != null && id == _selectedId;
+    final status = row['status'] as String? ?? 'new';
+    final note = row['decision_note'] as String?;
+    final createdAt = formatStamp(
+      row['created_at'],
+      'an unrecorded time',
+      formats: widget.formats,
+    );
+
+    return InkWell(
+      onTap: () => _select(row),
+      child: Container(
+        decoration: BoxDecoration(
+          color: selected
+              ? theme.colorScheme.primaryContainer.withValues(alpha: 0.25)
+              : null,
+          border: Border(
+            bottom: BorderSide(color: EzBiziTheme.edge(context)),
+            left: BorderSide(
+              color: selected ? theme.colorScheme.primary : Colors.transparent,
+              width: 3,
+            ),
+          ),
+        ),
+        padding: const EdgeInsets.fromLTRB(13, 11, 14, 11),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                _pill(context, status),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    createdAt,
+                    textAlign: TextAlign.right,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall,
+                  ),
                 ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Text(
+              row['body']?.toString() ?? '',
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+            if (status == 'new') ...[
+              const SizedBox(height: 5),
+              Text(
+                'You can still change this one',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ] else if (note != null) ...[
+              const SizedBox(height: 5),
+              Text(
+                'EzBizi answered',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: status == 'approved'
+                      ? EzBiziTheme.clockIn(context)
+                      : theme.colorScheme.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Narrow layout's own list pane: a "Write a suggestion" action and a
+  /// segmented Waiting / Answered toggle over the same two bands the wide
+  /// rail draws side by side, since there is no room here to show both bands
+  /// scrolling at once alongside a detail pane.
+  Widget _narrowList(BuildContext context) {
+    final waiting = _rows
+        .where((r) => r['status'] == 'new' || r['status'] == 'reviewing')
+        .toList();
+    final answered = _rows
+        .where((r) => r['status'] == 'approved' || r['status'] == 'denied')
+        .toList();
+    final shown = _narrowSegment == 'waiting' ? waiting : answered;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+          child: FilledButton(
+            onPressed: _startCompose,
+            child: const Text('Write a suggestion'),
+          ),
+        ),
+        if (_rows.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: SegmentedButton<String>(
+              segments: [
+                ButtonSegment(
+                  value: 'waiting',
+                  label: Text('Waiting · ${waiting.length}'),
+                ),
+                ButtonSegment(
+                  value: 'answered',
+                  label: Text('Answered · ${answered.length}'),
+                ),
+              ],
+              selected: {_narrowSegment},
+              onSelectionChanged: (next) =>
+                  setState(() => _narrowSegment = next.first),
+            ),
+          ),
+        Expanded(
+          child: _rows.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    'Nothing here yet.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                )
+              : shown.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    'Nothing in this one yet.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                )
+              : ListView(
+                  key: const Key('suggestions-rail'),
+                  children: [for (final row in shown) _railRow(context, row)],
+                ),
+        ),
+      ],
+    );
+  }
+
+  /// The compose pane: the empty state's own hero text above the box on the
+  /// first visit (there is nothing else this pane could show), or the bare
+  /// box with a Cancel back to the previous selection once something has
+  /// already been sent.
+  Widget _composeArea(BuildContext context, {bool showBack = false}) {
+    final theme = Theme.of(context);
+    final canCancel = _rows.isNotEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (showBack)
+          IconButton(
+            icon: const Icon(Icons.arrow_back),
+            tooltip: 'Back to the list',
+            onPressed: () => setState(() => _openNarrow = false),
+          ),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 700),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_rows.isEmpty) ...[
+                    Text(
+                      'Tell EzBizi what to do differently',
+                      style: theme.textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Anything you would change — a step that takes too '
+                      'many clicks, a number that is never right, something '
+                      'this app should do and does not. It goes to the '
+                      'people who build EzBizi, and they answer.',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                  _composeBox(
+                    context,
+                    controller: _composeController,
+                    sending: _sending,
+                    sendLabel: 'Send it',
+                    autofocus: true,
+                    onCancel: canCancel ? _cancelCompose : null,
+                    onSend: _send,
+                  ),
+                  if (_actionError != null) ...[
+                    const SizedBox(height: 12),
+                    ErrorNote(_actionError!),
+                  ],
+                ],
               ),
             ),
           ),
@@ -271,41 +633,10 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
     );
   }
 
-  Widget _emptyState(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(24, 26, 24, 26),
-      decoration: BoxDecoration(
-        color: theme.scaffoldBackgroundColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: EzBiziTheme.edge(context)),
-      ),
-      child: Column(
-        children: [
-          Text(
-            'Nothing sent yet',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.titleLarge,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Anything you would change — a step that takes too many clicks, '
-            'a number that is never right, something this app should do and '
-            'does not. It goes to the people who build EzBizi, and they '
-            'answer.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium,
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// One compose box, reused for a new suggestion (top of the screen) and for
-  /// correcting an existing one in place (inside its own card) — the same
-  /// shape both times, just a different label on the primary button and an
-  /// extra Cancel beside it when correcting.
+  /// One compose box, reused for a new suggestion and for correcting an
+  /// existing one in place — the same shape both times, just a different
+  /// label on the primary button and an extra Cancel beside it when correcting
+  /// or when there is somewhere to cancel back to.
   Widget _composeBox(
     BuildContext context, {
     required TextEditingController controller,
@@ -400,7 +731,11 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
     );
   }
 
-  Widget _row(BuildContext context, Map<String, dynamic> row) {
+  Widget _detail(
+    BuildContext context,
+    Map<String, dynamic> row, {
+    required bool showBack,
+  }) {
     final theme = Theme.of(context);
     final id = row['id'] as String;
     final status = row['status'] as String? ?? 'new';
@@ -417,116 +752,160 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
       formats: widget.formats,
     );
     final editingThis = _editingId == id;
-    final busy = _withdrawingId != null;
+    final decided = status == 'approved' || status == 'denied';
 
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 11, 16, 11),
-            decoration: BoxDecoration(
-              color: theme.scaffoldBackgroundColor,
-              border: Border(
-                bottom: BorderSide(color: EzBiziTheme.edge(context)),
-              ),
-            ),
-            child: Row(
-              children: [
-                _pill(context, status),
-                const Spacer(),
-                Text(createdAt, style: theme.textTheme.bodySmall),
-              ],
-            ),
-          ),
-          if (editingThis)
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: _composeBox(
-                context,
-                controller: _editController,
-                sending: _editSending,
-                sendLabel: 'Save',
-                autofocus: true,
-                onCancel: _cancelEdit,
-                onSend: () => _saveEdit(id),
-              ),
-            )
-          else ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-              child: Text(
-                body,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurface,
+    return Column(
+      key: const Key('suggestion-detail'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 20, 13),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (showBack)
+                IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  tooltip: 'Back to the list',
+                  onPressed: () => setState(() => _openNarrow = false),
                 ),
-              ),
-            ),
-            if (note != null)
-              _reply(
-                context,
-                status: status,
-                note: note,
-                decidedAt: decidedAt,
-              ),
-            if (status == 'new')
-              Container(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                decoration: BoxDecoration(
-                  border: Border(
-                    top: BorderSide(color: EzBiziTheme.edge(context)),
-                  ),
-                ),
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Nobody has read it yet, so you can still change it '
-                      'or take it back.',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: busy ? null : () => _startEdit(row),
-                      icon: const Icon(Icons.edit_outlined, size: 16),
-                      label: const Text('Edit'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: (busy || _withdrawingId == id)
-                          ? null
-                          : () => _withdraw(id),
-                      icon: const Icon(Icons.delete_outline, size: 16),
-                      label: const Text('Withdraw'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: theme.colorScheme.error,
-                        side: BorderSide(
-                          color: theme.colorScheme.error.withValues(
-                            alpha: 0.5,
-                          ),
-                        ),
-                      ),
-                    ),
+                    Text('Your suggestion', style: theme.textTheme.titleLarge),
+                    const SizedBox(height: 2),
+                    Text('Sent $createdAt', style: theme.textTheme.bodyMedium),
                   ],
                 ),
-              )
-            else
-              Container(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                decoration: BoxDecoration(
-                  color: theme.scaffoldBackgroundColor,
-                  border: Border(
-                    top: BorderSide(color: EzBiziTheme.edge(context)),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  _pill(context, status),
+                  if (decided) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'answered $decidedAt',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
+        Divider(height: 1, color: EzBiziTheme.edge(context)),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 700),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (editingThis)
+                    _composeBox(
+                      context,
+                      controller: _editController,
+                      sending: _editSending,
+                      sendLabel: 'Save',
+                      autofocus: true,
+                      onCancel: _cancelEdit,
+                      onSend: () => _saveEdit(id),
+                    )
+                  else
+                    Text(
+                      body,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                  if (editingThis && _actionError != null) ...[
+                    const SizedBox(height: 12),
+                    ErrorNote(_actionError!),
+                  ],
+                  if (!editingThis && note != null) ...[
+                    const SizedBox(height: 18),
+                    _reply(
+                      context,
+                      status: status,
+                      note: note,
+                      decidedAt: decidedAt,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (!editingThis) ...[
+          Divider(height: 1, color: EzBiziTheme.edge(context)),
+          _footer(context, row, status: status),
+        ],
+      ],
+    );
+  }
+
+  Widget _footer(
+    BuildContext context,
+    Map<String, dynamic> row, {
+    required String status,
+  }) {
+    final theme = Theme.of(context);
+    final id = row['id'] as String;
+
+    if (status != 'new') {
+      return Container(
+        color: theme.scaffoldBackgroundColor,
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
+        child: Text(
+          // Word for word from `SuggestionsController::frozen` — see
+          // `_frozenReason`.
+          '${_frozenReason(status)} Send another if there is more to say.',
+          style: theme.textTheme.bodyMedium,
+        ),
+      );
+    }
+
+    return Container(
+      color: theme.scaffoldBackgroundColor,
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_actionError != null) ...[
+            ErrorNote(_actionError!),
+            const SizedBox(height: 8),
+          ],
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                'Nobody has read it yet, so you can still change it or take '
+                'it back.',
+                style: theme.textTheme.bodySmall,
+              ),
+              OutlinedButton.icon(
+                onPressed: _withdrawing ? null : () => _startEdit(row),
+                icon: const Icon(Icons.edit_outlined, size: 16),
+                label: const Text('Edit'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _withdrawing ? null : () => _withdraw(id),
+                icon: const Icon(Icons.delete_outline, size: 16),
+                label: const Text('Withdraw'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: theme.colorScheme.error,
+                  side: BorderSide(
+                    color: theme.colorScheme.error.withValues(alpha: 0.5),
                   ),
                 ),
-                child: Text(
-                  '${_frozenReason(status)} Send another if there is more '
-                  'to say.',
-                  style: theme.textTheme.bodySmall,
-                ),
               ),
-          ],
+            ],
+          ),
         ],
       ),
     );
@@ -565,10 +944,8 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
       padding: const EdgeInsets.fromLTRB(14, 14, 16, 14),
       decoration: BoxDecoration(
         color: background,
-        border: Border(
-          top: BorderSide(color: EzBiziTheme.edge(context)),
-          left: BorderSide(color: stripe, width: 4),
-        ),
+        borderRadius: BorderRadius.circular(10),
+        border: Border(left: BorderSide(color: stripe, width: 4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
