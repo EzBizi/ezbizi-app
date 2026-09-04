@@ -79,6 +79,50 @@ use Tests\TestCase;
  * `emit('user.invited', payload: [...])` with the subject skipped entirely, so
  * the subject is `null` and reaches the same fallthrough. There is no model to
  * hand an interface to. Closing that means `emit()` refusing a missing subject.
+ *
+ * ── AND IT CHECKS SHAPE, NEVER THE ANSWER ────────────────────────
+ *
+ * The sharpest limitation, because it is the one this file's own name hides.
+ * Nothing here ever CALLS `automationScope()` — grep this file for it and the
+ * count is zero. Every assertion is about whether the interface is present,
+ * not about what it returns.
+ *
+ * So a model can implement `CarriesAutomationScope`, satisfy every check in
+ * these 344 lines, and still answer "the whole organization" for a record that
+ * belongs to one franchise — which is the widening the interface exists to
+ * prevent. Measured by the Marketing session: with Newsletter's franchise arm
+ * flattened to `[null, null]`, this file stays entirely green. Their mutation
+ * to `$emits` was caught here; their mutation to the MAPPING was not.
+ *
+ * Four of the eight models implementing the interface have no test anywhere
+ * that reads their answer — `Invitation`, `PhoneCall`, `PhoneMessage`,
+ * `TrainingAssignment`. `Mailbox`, `Onboarding`, `TrainingAttempt` and
+ * `TrainingProgress` do, in their own modules' suites.
+ *
+ * ── Why the obvious fix is not written here ──────────────────────
+ *
+ * The proposal was: for each declared emitter that has a factory, assert a
+ * record filed at a franchise does not answer `[null, null]`. **NONE of the
+ * eight models has a factory** (checked 2026-09-04: no `Invitation`,
+ * `Mailbox`, `Onboarding`, `PhoneCall`, `PhoneMessage`, `TrainingAssignment`,
+ * `TrainingAttempt` or `TrainingProgress` factory exists). That assertion would
+ * iterate an empty set and pass — a check that is green because it never ran,
+ * which is strictly worse than no check, because the next reader counts it.
+ *
+ * Building the eight factories is not a test-file change either: each needs a
+ * whole tenant graph, and each belongs to its module rather than here.
+ *
+ * **So the honest division is: this file proves the interface is DECLARED, and
+ * each module owes a test that reads what its own records ANSWER.** Written
+ * down rather than fixed silently, because a gate trusted for something it does
+ * not do is how the leak it guards gets re-introduced by somebody who checked.
+ *
+ * When those four owed tests exist, the assertion worth adding here is a
+ * COVERAGE one — every model implementing the interface is read by some test
+ * somewhere — which needs no factories and turns the absence above into a red
+ * build. It is not added today only because it would go red on four modules
+ * that have not been asked yet, and a shared gate is not the place to open a
+ * conversation.
  */
 class AutomationSubjectScopeTest extends TestCase
 {
