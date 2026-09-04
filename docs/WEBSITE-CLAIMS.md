@@ -308,8 +308,17 @@ not four dead desks — they were one live desk and the wrong kind of name.
 `ListAgents` and matching a session name. That procedure cannot succeed, and
 `CLAUDE.md` already says so. **Read `docs/SESSIONS.md` instead**, and fall through
 when the id errors — that file's own header warns the session column can go stale
-within the hour, and an unstaffed role takes a file in `docs/agents/inbox/`
-(protocol in `docs/agents/README.md`).
+within the hour, and an unstaffed role takes a file in `docs/agents/inbox/`.
+
+**Write that file to the protocol or it is just a file.** `docs/agents/README.md`
+specifies a filename `NNNN-<from>-to-<to>-<slug>.md` and YAML frontmatter — `---`
+fences, lowercase `from:` `to:` `date:` `subject:` `needs:`, where `needs:` is
+`action | answer | fyi` and is the only field that changes what the receiver does.
+`to:` is the routing field. A note written without them can still be read, but
+only by a person who happens to look; it is not addressed to anyone. Acknowledge
+by `git mv`-ing the file to `done/` — moving it *is* the acknowledgement — and
+reply with a new message citing the number rather than editing theirs, because a
+sent message is the record of what its receiver worked from.
 
 **What survives the inversion, because it was never about the address:**
 
