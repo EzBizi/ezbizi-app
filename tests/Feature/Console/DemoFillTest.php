@@ -100,17 +100,32 @@ class DemoFillTest extends TestCase
             ->assertFailed();
     }
 
+    /**
+     * The refusals assert on ROWS first and never on the message.
+     *
+     * expectsOutputToContain() is checked as the command runs, so a test written
+     * message-first stops at execution when the wording changes and the row
+     * assertion — the one carrying the actual constraint — never runs at all. It
+     * looks like a guard test and is really a spelling test. The Inspection
+     * session hit exactly this on 2026-09-04 sabotaging its own equivalent.
+     *
+     * assertFailed() is not enough either, and sabotaging the guard is what
+     * showed it: with the checks removed these failed on "Unexpected status code
+     * 0" — caught, but again before counting a single row. So the exit code is
+     * taken with run() and asserted AFTER the rows, and a broken guard now fails
+     * saying what was written. The wording is pinned once, separately, in the
+     * test below where the message IS the subject.
+     */
     public function test_it_refuses_the_right_id_under_the_wrong_name(): void
     {
         // The case the name half of the guard exists for: an id recycled onto,
         // or a demo organization renamed into, something real.
         $this->demoTenant('A1-Group');
 
-        $this->artisan('demo:fill')
-            ->expectsOutputToContain('Refusing to run')
-            ->assertFailed();
+        $code = $this->artisan('demo:fill')->run();
 
-        $this->assertSame(0, ServiceArea::query()->withoutGlobalScopes()->count());
+        $this->assertSame($this->emptyCounts(), $this->counts(), 'nothing may be written to a tenant that is not the demo one');
+        $this->assertSame(1, $code);
     }
 
     public function test_it_refuses_when_is_demo_is_not_set(): void
@@ -119,11 +134,21 @@ class DemoFillTest extends TestCase
         // holds invented data" says no. That is the one to believe.
         $this->demoTenant(self::DEMO_NAME, isDemo: false);
 
+        $code = $this->artisan('demo:fill')->run();
+
+        $this->assertSame($this->emptyCounts(), $this->counts(), 'is_demo unset must stop every write');
+        $this->assertSame(1, $code);
+    }
+
+    public function test_the_refusal_says_which_check_failed(): void
+    {
+        // Separate, because here the wording is the point: somebody reading a
+        // refusal at 2am needs to know WHICH of the three gates said no.
+        $this->demoTenant(self::DEMO_NAME, isDemo: false);
+
         $this->artisan('demo:fill')
             ->expectsOutputToContain('is_demo UNSET')
             ->assertFailed();
-
-        $this->assertSame(0, ServiceArea::query()->withoutGlobalScopes()->count());
     }
 
     public function test_dry_run_writes_nothing(): void
@@ -170,6 +195,12 @@ class DemoFillTest extends TestCase
         $this->artisan('demo:fill')->assertSuccessful();
 
         $this->assertSame($before, $this->counts(), 'a second run must be a no-op, not doubles');
+    }
+
+    /** @return array<string, int> */
+    private function emptyCounts(): array
+    {
+        return array_fill_keys(array_keys($this->counts()), 0);
     }
 
     /** @return array<string, int> */
