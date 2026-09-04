@@ -178,7 +178,6 @@ class _ContractsTabState extends State<ContractsTab> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PanelHeader(
-          title: 'Contracts',
           note:
               'A contract decides what onboarding asks, who is asked it, and '
               'what merges into the document. Editing one publishes a new '

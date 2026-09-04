@@ -182,7 +182,6 @@ class _InvitationsTabState extends State<InvitationsTab> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PanelHeader(
-          title: 'Invitations',
           note:
               'One person at a time. A link works once and expires after a '
               'week; “received” means they opened it.',
@@ -242,10 +241,10 @@ class _InvitationsTabState extends State<InvitationsTab> {
     final scope = invitation['scope'] as Map<String, dynamic>?;
     final invitedBy = invitation['invited_by'] as Map<String, dynamic>?;
 
-    final name = [invitation['first_name'], invitation['last_name']]
-        .whereType<String>()
-        .where((part) => part.trim().isNotEmpty)
-        .join(' ');
+    final name = [
+      invitation['first_name'],
+      invitation['last_name'],
+    ].whereType<String>().where((part) => part.trim().isNotEmpty).join(' ');
 
     // Two ends, and neither has anything left to do to it.
     //
@@ -493,21 +492,18 @@ class _InvitationsTabState extends State<InvitationsTab> {
             // `emailed` field, and the honest thing there is to claim
             // neither outcome: say what to do, promise nothing about what
             // happened.
-            Text(
-              switch (emailed) {
-                true =>
-                  'The invitation has been emailed to them. The link below is '
-                  'the same one — you only need it if the message goes astray.',
-                false =>
-                  'The email could not be sent, so nothing has reached them. '
-                  'Copy the link and get it to them yourself, or they will be '
-                  'waiting for a message that never arrives.',
-                null =>
-                  'Copy the link and get it to them yourself if you are not '
-                  'certain the email reached them.',
-              },
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
+            Text(switch (emailed) {
+              true =>
+                'The invitation has been emailed to them. The link below is '
+                    'the same one — you only need it if the message goes astray.',
+              false =>
+                'The email could not be sent, so nothing has reached them. '
+                    'Copy the link and get it to them yourself, or they will be '
+                    'waiting for a message that never arrives.',
+              null =>
+                'Copy the link and get it to them yourself if you are not '
+                    'certain the email reached them.',
+            }, style: Theme.of(context).textTheme.bodyMedium),
             const SizedBox(height: 16),
             if (url == null || url.isEmpty)
               const ErrorNote(

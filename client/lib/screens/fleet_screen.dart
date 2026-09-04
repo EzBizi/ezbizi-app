@@ -170,7 +170,6 @@ class _FleetScreenState extends State<FleetScreen> {
           children: [
             if (!paneOnly)
               PanelHeader(
-                title: 'Fleet',
                 note: (_loading || _error != null)
                     ? 'The company\'s vehicles, who has the keys, and what is due.'
                     : _vehicles.length < _total

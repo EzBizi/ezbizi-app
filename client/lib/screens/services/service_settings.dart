@@ -84,7 +84,6 @@ class _ServiceSettingsState extends State<ServiceSettings> {
       error: _error,
       onRetry: _load,
       header: const PanelHeader(
-        title: 'Settings',
         note: 'Groups and labels you can assign to a service.',
       ),
       list: ListView(
@@ -232,10 +231,7 @@ class _TaxonomyCardState extends State<_TaxonomyCard> {
             Text(widget.title, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
             if (widget.rows.isEmpty)
-              Text(
-                'None yet.',
-                style: Theme.of(context).textTheme.bodyMedium,
-              )
+              Text('None yet.', style: Theme.of(context).textTheme.bodyMedium)
             else
               for (final row in widget.rows)
                 ListTile(
@@ -268,16 +264,13 @@ class _TaxonomyCardState extends State<_TaxonomyCard> {
                   _companyId = v;
                   _franchiseId = null;
                 }),
-                onFranchiseChanged: (v) =>
-                    setState(() => _franchiseId = v),
+                onFranchiseChanged: (v) => setState(() => _franchiseId = v),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _name,
                 enabled: !_busy,
-                decoration: InputDecoration(
-                  labelText: 'New ${widget.addNoun}',
-                ),
+                decoration: InputDecoration(labelText: 'New ${widget.addNoun}'),
                 onChanged: (_) => setState(() {}),
               ),
               if (_error != null) ...[

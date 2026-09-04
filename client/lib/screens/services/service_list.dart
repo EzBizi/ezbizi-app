@@ -129,7 +129,6 @@ class _ServiceListState extends State<ServiceList> {
       error: _error,
       onRetry: _load,
       header: PanelHeader(
-        title: 'Catalogue',
         note: (_loading || _error != null)
             ? 'What this company sells as work.'
             : _services.length < _total

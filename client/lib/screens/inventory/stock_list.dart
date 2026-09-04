@@ -126,7 +126,6 @@ class _StockListState extends State<StockList> {
       error: _error,
       onRetry: _load,
       header: PanelHeader(
-        title: 'Stock',
         note: (_loading || _error != null)
             ? 'On-hand at each place.'
             : _rows.length < _total
