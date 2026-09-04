@@ -67,26 +67,53 @@ class InspectionSeedDemoReportsTest extends TestCase
 
         config(['database.connections.'.config('database.default').'.database' => 'ezbizi']);
 
-        $this->artisan('inspection:seed-demo-reports', ['--live' => true, '--force' => true])
-            ->expectsOutputToContain('id this command does not know')
-            ->assertExitCode(1);
+        // The exit code comes back from run() and is asserted AFTER the rows.
+        // Asserting it inside the chain throws first, so a guard that refused
+        // correctly and wrote anyway would look identical to one that worked —
+        // the Apple session hit exactly that in their own refusal tests.
+        $status = $this->artisan('inspection:seed-demo-reports', ['--live' => true, '--force' => true])->run();
 
         $this->assertSame(0, $this->reportCount($impostor), 'nothing may be written on an id mismatch');
+        $this->assertSame(1, $status, 'an id mismatch must exit non-zero');
+    }
+
+    /**
+     * The flag is the question that actually matters.
+     *
+     * `organizations.is_demo` is the first-class marker for "this tenant is a
+     * demonstration"; the name and the id are stand-ins that both this command
+     * and the Apple session's had invented before either of us noticed the
+     * column. A tenant carrying the right name and the wrong flag is refused,
+     * on every database rather than only on production.
+     */
+    public function test_a_tenant_that_says_it_is_not_a_demo_is_refused(): void
+    {
+        $notReallyDemo = $this->seedableTenant('EzBizi Demo', isDemo: false);
+
+        $status = $this->artisan('inspection:seed-demo-reports', ['--force' => true])->run();
+
+        $this->assertSame(0, $this->reportCount($notReallyDemo), 'nothing may be written to a non-demo tenant');
+        $this->assertSame(1, $status, 'a non-demo tenant must exit non-zero');
     }
 
     /**
      * It files on the demo tenant, and A1-Group is untouched beside it.
      *
-     * Both organizations are built the same way and both are equally
-     * submittable — same published definition, same jobs with customers — so
-     * the only thing separating them is the name the command is pinned to. A
-     * fixture where A1-Group had no jobs would pass against a command that
-     * targeted it.
+     * Both organizations are equally SUBMITTABLE — same published definition,
+     * same jobs with customers — so a fixture where A1-Group simply had no
+     * jobs would pass against a command that targeted it, and this one does
+     * not.
+     *
+     * What separates them is the guard stack rather than any one gate: the
+     * name it is pinned to, and `is_demo`, which A1-Group honestly does not
+     * carry. Retargeting the name alone is caught by the flag, and that is the
+     * defence working rather than the test being loose — the assertion below is
+     * that A1-Group holds no rows, however the command was pointed at it.
      */
     public function test_it_files_on_the_demo_tenant_and_never_on_a1_group(): void
     {
         $demo = $this->seedableTenant('EzBizi Demo');
-        $a1 = $this->seedableTenant('A1-Group');
+        $a1 = $this->seedableTenant('A1-Group', isDemo: false);
 
         // Deliberately NOT asserting the "Filed 3 reports on EzBizi Demo"
         // line. It is the first thing to change if the command is retargeted,
@@ -133,10 +160,17 @@ class InspectionSeedDemoReportsTest extends TestCase
 
     // ── fixtures ─────────────────────────────────────────────────
 
-    /** An organization the command could file against, if it were allowed to. */
-    private function seedableTenant(string $name): Organization
+    /**
+     * An organization the command could file against, if it were allowed to.
+     *
+     * `is_demo` is a real column set by `ProvisionOrganization`, and the
+     * command now gates on it, so the fixture has to carry it honestly: the
+     * demo tenant says it is one, A1-Group says it is not.
+     */
+    private function seedableTenant(string $name, bool $isDemo = true): Organization
     {
         $tenant = $this->provisionTenant($name);
+        $tenant['org']->forceFill(['is_demo' => $isDemo])->save();
 
         $screens = [
             ['name' => 'Exterior', 'fields' => [['key' => 'crown', 'label' => 'Crown condition', 'type' => 'text']]],
