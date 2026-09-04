@@ -40,8 +40,11 @@ use Illuminate\Support\Carbon;
  * stops it rather than a typo reaching a customer. It only ever inserts. There
  * is no truncate, no delete, no update of an existing row anywhere below, so the
  * worst a bug here can do is add rows to a tenant that exists to hold invented
- * ones. Every write is firstOrCreate on a natural key, so running it twice is a
- * no-op rather than doubles.
+ * ones. Running it twice is a no-op rather than doubles, on any day — where a
+ * row has a real natural key (an area's name, a zip, a weekday slot, a
+ * vehicle's one open assignment) that key does it; where it has none, the guard
+ * is whether the parent already has demo history, because the alternative keys
+ * are dates derived from now() and those stop matching tomorrow.
  *
  * ── What it deliberately does not fill ──────────────────────────
  *
@@ -70,18 +73,29 @@ class DemoFill extends Command
     protected $description = 'Give the demo tenant enough data that its screens are not empty';
 
     /**
-     * Three conditions, and each covers the others' blind spot.
+     * Three conditions, all of which must hold. Being exact about what each one
+     * buys, because a comment that flatters the guard is worse than none.
      *
-     * `is_demo` is the real answer: the column exists for exactly this question
-     * and production has it true on EzBizi Demo and false on A1-Group. It is
-     * checked first because it is the one a future demo tenant would also set,
-     * and anything relying only on a literal id below would silently refuse to
-     * help that tenant while looking like it worked.
+     * The ID IS THE LOOKUP, not a check — handle() finds by it, so this command
+     * addresses one row of one table and can address no other. That is the whole
+     * safety property. It also means a SECOND demo tenant, however honestly it
+     * set is_demo, is not served here at all; it would need this constant
+     * changed. That is a limitation, not an oversight, and it is the right way
+     * round for something that writes to the production database.
      *
-     * The id and the name are then belt and braces against the one way the flag
-     * fails: somebody setting is_demo on a real tenant to try something out. The
-     * id alone would still fire if that id were recycled; the name alone would
-     * fire on anything somebody happened to call this.
+     * `is_demo` and the name are refusals stacked on top, for the case where
+     * that one id stops meaning what it means today — recycled onto something
+     * real, or the demo organization renamed into a customer. is_demo is the
+     * column the schema provides for this exact question
+     * (create_foundation_tables, set by ProvisionOrganization) and production
+     * has it true on EzBizi Demo and false on A1-Group; the name catches a flag
+     * somebody set on a real tenant to try something out.
+     *
+     * Measured, not copied: both ids were read off production directly on
+     * 2026-09-04. That matters here in a way it would not in a purely
+     * fail-closed gate — this one PROCEEDS on a match, so a wrong constant
+     * could have pointed a write at the wrong tenant rather than merely
+     * refusing. Re-measure before trusting it, per docs/demo-tenant-gaps.md.
      */
     private const DEMO_ID = '01a03e4f-f9a1-7012-9515-96bc9260d2f8';
 
@@ -214,10 +228,23 @@ class DemoFill extends Command
                 'note' => 'Assigned for demonstration data.',
             ]);
 
-            VehicleServiceVisit::query()->firstOrCreate([
+            // NOT firstOrCreate on the date. `occurred_on` is derived from
+            // now(), so the key it forms is different tomorrow: a second run on
+            // a later day would match nothing and add a second visit, and a
+            // third would add a third. The idempotency would have looked real
+            // in any test that runs both passes in the same second, which is
+            // every test that does not travel.
+            //
+            // There is no natural key here — a vehicle may legibly have two
+            // services on one day — so the honest question is not "does THIS
+            // visit exist" but "has this vehicle been given demo history yet".
+            $hasHistory = VehicleServiceVisit::query()
+                ->where('vehicle_id', $vehicle->id)
+                ->exists();
+
+            $hasHistory || VehicleServiceVisit::query()->create([
                 'vehicle_id' => $vehicle->id,
                 'occurred_on' => Carbon::now()->subMonths(2)->toDateString(),
-            ], [
                 // VehicleServiceKind has no generic 'service' case — oil, tires,
                 // brakes, repair, inspection, registration, other.
                 'kind' => 'oil',
@@ -247,6 +274,16 @@ class DemoFill extends Command
         }
 
         foreach ($staff as $i => $person) {
+            // Same trap as the service visits, same answer: clocked_in_at is
+            // derived from now(), so keying on it makes a run on a later day
+            // add a second pair of shifts rather than find the first. A person
+            // has no natural key for "the demo shift" — two shifts on one day
+            // is ordinary — so the question is whether this person has any
+            // history at all.
+            $hasShifts = TimeClockShift::query()
+                ->where('user_id', $person->id)
+                ->exists();
+
             // Two closed shifts each over the last week, and the first two
             // people still on the clock today, so the screen shows both states.
             foreach ([3, 2] as $daysAgo) {
@@ -258,10 +295,13 @@ class DemoFill extends Command
                     continue;
                 }
 
-                TimeClockShift::query()->firstOrCreate([
+                if ($hasShifts) {
+                    continue;
+                }
+
+                TimeClockShift::query()->create([
                     'user_id' => $person->id,
                     'clocked_in_at' => $in,
-                ], [
                     'clocked_out_at' => $in->copy()->setTime(16, 30),
                 ]);
             }

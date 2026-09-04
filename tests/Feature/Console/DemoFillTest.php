@@ -197,6 +197,27 @@ class DemoFillTest extends TestCase
         $this->assertSame($before, $this->counts(), 'a second run must be a no-op, not doubles');
     }
 
+    public function test_running_it_again_a_week_later_adds_nothing(): void
+    {
+        // The same-second test above cannot see the bug this one exists for.
+        // Service visits and closed shifts have no natural key, so they were
+        // keyed on dates computed from now() — which form a DIFFERENT key
+        // tomorrow, so a later run matched nothing and appended a second set.
+        // Idempotency that only holds within one day is not idempotency, and
+        // the demo tenant would have grown a new pair of shifts per person
+        // every time anybody ran this.
+        $tenant = $this->demoTenant();
+        $this->makeVehicle($tenant, 'V-00001');
+
+        $this->artisan('demo:fill')->assertSuccessful();
+        $before = $this->counts();
+
+        $this->travel(8)->days();
+        $this->artisan('demo:fill')->assertSuccessful();
+
+        $this->assertSame($before, $this->counts(), 'a run on a later day must still be a no-op');
+    }
+
     /** @return array<string, int> */
     private function emptyCounts(): array
     {
