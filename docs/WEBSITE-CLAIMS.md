@@ -287,36 +287,51 @@ Three cheap lessons, all paid for once:
    them and a privacy defect is open — "true" and "ready to claim publicly" are
    different tests, and only the first is a row count.
 
-## There is no deploy desk to find. Route through a file.
+## The deploy desk HAS an address — read `docs/SESSIONS.md`, never `ListAgents`
 
-**Step 1 of the daily check — "call ListAgents, find the session that owns
-deploys" — failed completely on 2026-09-03.** Four addresses were dead
-(`ezbizi-a1`, `ezbizi-5b`, `ezbizi-7b`, `local_a7c13d4e`), and three separate
-sessions spent that evening hunting the same absent desk. `docs/MODULE-OWNERS.md`
-(≈:62-72) settles it and should be believed rather than re-litigated each night:
+**INVERTED 2026-09-04.** This section said there was no deploy desk to find. That
+was wrong, and wrong in a way that cost three sessions an evening: we were all
+looking in the wrong place, and the right one was already committed.
 
-> There is no role address on this machine. When the session behind a role dies,
-> the role has no address at all, and the only things that still work are the
-> durable artefacts.
+**The route.** `CLAUDE.md:6` tells every session to read `docs/SESSIONS.md`
+before messaging another one. Its Deployment row (≈:65) names a **desktop session
+id** — `local_<uuid>` — addressed with `ccd_session_mgmt send_message`, *not* with
+`SendMessage`.
 
-**So do not treat "no desk answered" as "it will not ship".** That inference cost
-an evening. `c0b28cd` published overnight without anyone ever replying — somebody
-with deploy access ran a release of `main` and it carried the site with it.
+**Why every address we tried was dead.** We were using pipe names from
+`ListAgents` (`ezbizi-a1`, `ezbizi-5b`, `ezbizi-7b`, `local_a7c13d4e`). A pipe
+name is derived from the folder plus two hex digits and **dies with the process**;
+a desktop session id is permanent and never reassigned. Four dead addresses were
+not four dead desks — they were one live desk and the wrong kind of name.
 
-**Why it carried, precisely, because the reason is the whole mechanism:** `www/`
-lives on `main`, and the website session commits straight to `main`. A release of
-`main` therefore ships the site as a side effect, with no desk in the loop.
-**This does not generalise to a branch.** A marketing session watched the same
-release go out and its own verified work stay unshipped, because unmerged work
-cannot ride a sweep of `main` no matter how live deploy access is. If `www/` ever
-moves to a branch, this entire route stops working and the section is wrong.
+**The daily check's step 1 is therefore wrong at the source**: it opens by calling
+`ListAgents` and matching a session name. That procedure cannot succeed, and
+`CLAUDE.md` already says so. **Read `docs/SESSIONS.md` instead**, and fall through
+when the id errors — that file's own header warns the session column can go stale
+within the hour, and an unstaffed role takes a file in `docs/agents/inbox/`
+(protocol in `docs/agents/README.md`).
 
-**The handoff therefore names a file, not a correspondent** — a block at the top
-of *this* file, which every website session is told to read before anything else.
-It survived the session that wrote it, which is more than any message did. One
-caution learned the same night: a handoff note committed to the branch that needs
-merging cannot be read by whoever would merge it. Put it where a reader already
-goes.
+**What survives the inversion, because it was never about the address:**
+
+- **The artefact answers "did it publish", never a peer.** Fetch the URL and grep
+  for the string that had to change. `deploy.sh:479` publishes the site last and
+  non-fatally, so a green release is not evidence.
+- **`www/` lives on `main`**, and the website session commits straight to `main`,
+  so a release of `main` ships the site as a side effect with no desk in the loop —
+  which is why `c0b28cd` published overnight with nobody answering. **This does not
+  generalise to a branch**: a marketing session watched the same release go out and
+  its own verified work stay behind. If `www/` ever moves to a branch, this route
+  stops working.
+- **Write the handoff where a reader already goes.** Not merely "write it down":
+  that same session first put its handoff on the branch that needed merging, where
+  whoever would merge it could not read it. This file works because the daily check
+  is *told* to open it first.
+
+**This session is already in `SESSIONS.md` and needs no registration** — the
+daily catalog is listed there as *not a role* ("it finds the deploy desk here;
+nobody needs to find it"), with all three of its rotating ids. Do not add a row
+for it, and do not claim the Website role's row (≈:79), which is a different
+session.
 
 ## Absence of news is not a publish
 
