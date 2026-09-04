@@ -287,6 +287,37 @@ Three cheap lessons, all paid for once:
    them and a privacy defect is open — "true" and "ready to claim publicly" are
    different tests, and only the first is a row count.
 
+## There is no deploy desk to find. Route through a file.
+
+**Step 1 of the daily check — "call ListAgents, find the session that owns
+deploys" — failed completely on 2026-09-03.** Four addresses were dead
+(`ezbizi-a1`, `ezbizi-5b`, `ezbizi-7b`, `local_a7c13d4e`), and three separate
+sessions spent that evening hunting the same absent desk. `docs/MODULE-OWNERS.md`
+(≈:62-72) settles it and should be believed rather than re-litigated each night:
+
+> There is no role address on this machine. When the session behind a role dies,
+> the role has no address at all, and the only things that still work are the
+> durable artefacts.
+
+**So do not treat "no desk answered" as "it will not ship".** That inference cost
+an evening. `c0b28cd` published overnight without anyone ever replying — somebody
+with deploy access ran a release of `main` and it carried the site with it.
+
+**Why it carried, precisely, because the reason is the whole mechanism:** `www/`
+lives on `main`, and the website session commits straight to `main`. A release of
+`main` therefore ships the site as a side effect, with no desk in the loop.
+**This does not generalise to a branch.** A marketing session watched the same
+release go out and its own verified work stay unshipped, because unmerged work
+cannot ride a sweep of `main` no matter how live deploy access is. If `www/` ever
+moves to a branch, this entire route stops working and the section is wrong.
+
+**The handoff therefore names a file, not a correspondent** — a block at the top
+of *this* file, which every website session is told to read before anything else.
+It survived the session that wrote it, which is more than any message did. One
+caution learned the same night: a handoff note committed to the branch that needs
+merging cannot be read by whoever would merge it. Put it where a reader already
+goes.
+
 ## Absence of news is not a publish
 
 **Never record a publish you have not fetched.** This run nearly did: having
