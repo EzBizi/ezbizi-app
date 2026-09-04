@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Inspection;
 
+use App\Models\Automation;
 use App\Models\Customer;
 use App\Models\InspectionDefinition;
 use App\Models\InspectionDefinitionVersion;
@@ -188,6 +189,65 @@ class InspectionAutomationScopeTest extends TestCase
         });
 
         $this->assertSame(['franchise', $franchiseId], $scope);
+    }
+
+    /**
+     * The answer, run through the engine that consumes it.
+     *
+     * Marketing's note on the shared scope test (2026-09-04) is right that a
+     * model check alone is half the work. `automationScope()` returning
+     * `['franchise', $id]` is only correct if `Automation::coversScope` then
+     * routes it the way this module needs, and the NEGATIVE cases are where
+     * that is decided: the branch next door must not be reached, and a company
+     * rule must reach down.
+     *
+     * `coversScope` reads only `scope_type` and `scope_id`, so these rules are
+     * built UNSAVED - no factory, no rows, nothing to clean up.
+     *
+     * The chain is written out rather than computed, and that is deliberate.
+     * `AutomationEngine::companyChain` is private and `coversScope`'s third
+     * argument DEFAULTS TO EMPTY, so a test that omits it answers "does not
+     * cover" for every company rule and reads exactly like a broken mapping -
+     * Marketing reproduced Phone's false negative that way. Re-implementing
+     * the walk is the other half of the same trap, because a copy can drift
+     * from the engine's. This fixture is one company deep, so the chain IS
+     * that company's id: a fact about the fixture, not a copy of the loop.
+     */
+    public function test_the_scope_this_answers_is_routed_the_way_the_module_needs(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $sibling = $this->extraFranchise($tenant, 'Second');
+
+        [$scope, $chain, $siblingId, $companyId] = $this->inTenant(
+            $tenant['org'],
+            function () use ($tenant, $sibling) {
+                $customer = $this->customer($tenant);
+                $report = $this->report($tenant, $customer, $this->job($tenant, $customer));
+
+                return [
+                    $report->automationScope(),
+                    [$tenant['company']->id],
+                    $sibling->id,
+                    $tenant['company']->id,
+                ];
+            },
+        );
+
+        [$scopeType, $scopeId] = $scope;
+
+        $covers = fn (?string $type, ?string $id): bool => (new Automation([
+            'scope_type' => $type,
+            'scope_id' => $id,
+        ]))->coversScope($scopeType, $scopeId, companyChain: $chain);
+
+        $this->assertTrue($covers(null, null), 'an organization-wide rule covers every inspection');
+        $this->assertTrue($covers('franchise', $scopeId), 'the branch that did the work is reached');
+        $this->assertFalse($covers('franchise', $siblingId), 'the branch next door must not be reached');
+        $this->assertTrue($covers('company', $companyId), 'a company rule reaches down to its branch');
+        $this->assertFalse(
+            $covers('company', (string) \Illuminate\Support\Str::uuid()),
+            'a rule at another company does not reach this branch',
+        );
     }
 
     // ── fixtures ─────────────────────────────────────────────────
