@@ -41,7 +41,7 @@
 # ── what it can and cannot tell you ──────────────────────────────
 #
 # STALE means the staged blob is byte-identical to some commit in history:
-# provably a snapshot rather than anybody's work in progress, so clearing it
+# a snapshot of a commit main still carries, so not anybody's work in progress, so clearing it
 # with `git reset -q HEAD -- <path>` can only remove a landmine.
 #
 # LIVE means the staged blob matches no commit anywhere. That is somebody's
@@ -92,11 +92,19 @@ while IFS= read -r f; do
     continue
   fi
 
-  # Is the staged content a snapshot of some commit, or somebody's edit?
+  # Is the staged content a snapshot of some commit ON MAIN, or somebody's edit?
+  #
+  # main, not --all. On 2026-09-04 a commit that had been on main for one
+  # minute and was then soft-reset off it survived inside another session's
+  # branch (they had merged main inside that minute). --all found it, this
+  # script called the staged file STALE, and its clearing advice would have
+  # deleted the only copy of twelve lines of unpublished work. A blob that
+  # matches a commit main never kept is not a snapshot of anything; it is
+  # somebody's work, and it stays LIVE.
   blob=$(git ls-files --stage -- "$f" | awk '{print $2}')
   hit=""
   if [ -n "$blob" ]; then
-    hit=$(git rev-list --all -- "$f" | while read -r c; do
+    hit=$(git rev-list main -- "$f" | while read -r c; do
             b=$(git rev-parse "$c:$f" 2>/dev/null) || continue
             [ "$b" = "$blob" ] && { echo "$c"; break; }
           done | head -1)
