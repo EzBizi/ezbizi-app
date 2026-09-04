@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0150',
+      date: '4 Sep 2026',
+      items: [
+        'The Mac build is now signed and packaged the way the Mac App Store '
+            'requires, and every release delivers it to App Store Connect the '
+            'same way the iPhone build reaches TestFlight. Nothing inside the '
+            'app changed in this version.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0149',
       date: '4 Sep 2026',
       items: [
