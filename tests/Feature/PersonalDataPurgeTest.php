@@ -15,13 +15,6 @@ use App\Models\OnboardingDocument;
 use App\Models\Organization;
 use App\Models\PasswordReset;
 use App\Models\Role;
-use App\Models\Task;
-use App\Models\TaskBoard;
-use App\Models\TaskGroup;
-use App\Models\TaskRecordLink;
-use App\Models\TaskStatusOption;
-use App\Models\TaskView;
-use App\Models\TaskViewPreference;
 use App\Models\User;
 use App\Services\Auth\PasswordResets;
 use App\Support\Privacy\Anonymiser;
@@ -62,93 +55,6 @@ class PersonalDataPurgeTest extends TestCase
         parent::setUp();
 
         Storage::fake('local');
-    }
-
-    public function test_a_personal_task_view_and_its_preferences_are_dropped_in_dependency_order(): void
-    {
-        $alpha = $this->provisionTenant('Alpha');
-
-        [$viewId, $preferenceId] = $this->inTenant($alpha['org'], function () use ($alpha) {
-            $board = $this->taskBoard($alpha);
-
-            $view = TaskView::create([
-                'board_id' => $board->id,
-                'owner_user_id' => $alpha['admin']->id,
-                'visibility' => 'personal',
-                'name' => 'My work',
-                'is_locked' => false,
-                'configuration' => [],
-            ]);
-
-            $preference = TaskViewPreference::create([
-                'board_id' => $board->id,
-                'view_id' => $view->id,
-                'user_id' => $alpha['admin']->id,
-                'collapsed_group_ids' => [],
-                'density' => 'compact',
-                'is_last_active' => true,
-                'scroll_left' => 12,
-                'scroll_top' => 34,
-            ]);
-
-            return [$view->id, $preference->id];
-        });
-
-        $this->purgeWalking([TaskView::class, TaskViewPreference::class], $alpha['admin']);
-
-        $this->inTenant($alpha['org'], function () use ($viewId, $preferenceId) {
-            $this->assertNull(TaskView::find($viewId));
-            $this->assertNull(TaskViewPreference::find($preferenceId));
-        });
-    }
-
-    public function test_a_governed_task_link_redacts_only_the_erased_targets_snapshot(): void
-    {
-        $alpha = $this->provisionTenant('Alpha');
-
-        [$customer, $customerLinkId, $personLinkId] = $this->inTenant($alpha['org'], function () use ($alpha) {
-            $customer = Customer::create([
-                'owning_franchise_id' => $alpha['franchise']->id,
-                'number' => 'C-TASKS-1',
-                'name' => 'Marta Ruiz',
-            ]);
-            $task = $this->taskFor($alpha);
-
-            $customerLink = TaskRecordLink::create([
-                'board_id' => $task->board_id,
-                'task_id' => $task->id,
-                'record_type' => 'customer',
-                'record_id' => $customer->id,
-                'display_snapshot' => ['label' => 'Marta Ruiz'],
-                'created_by' => $alpha['admin']->id,
-            ]);
-            $personLink = TaskRecordLink::create([
-                'board_id' => $task->board_id,
-                'task_id' => $task->id,
-                'record_type' => 'hr_person',
-                'record_id' => $alpha['admin']->id,
-                'display_snapshot' => ['label' => 'Alpha Admin'],
-                'created_by' => $alpha['admin']->id,
-            ]);
-
-            return [$customer, $customerLink->id, $personLink->id];
-        });
-
-        $userReport = $this->purgeWalking([TaskRecordLink::class], $alpha['admin']);
-
-        $this->assertSame(2, $this->tableLine($userReport, 'task_record_links')['rows'],
-            'The link the user created is personal activity and must remain visible in the purge report even though its target snapshot belongs to somebody else.');
-
-        $this->inTenant($alpha['org'], function () use ($customerLinkId, $personLinkId) {
-            $this->assertSame(['label' => 'Marta Ruiz'], TaskRecordLink::findOrFail($customerLinkId)->display_snapshot);
-            $this->assertNull(TaskRecordLink::findOrFail($personLinkId)->display_snapshot);
-        });
-
-        $this->purgeWalking([TaskRecordLink::class], $customer);
-
-        $this->inTenant($alpha['org'], fn () => $this->assertNull(
-            TaskRecordLink::findOrFail($customerLinkId)->display_snapshot,
-        ));
     }
 
     // ── 1. anonymise in place, which is the whole design ─────────
@@ -1025,64 +931,6 @@ class PersonalDataPurgeTest extends TestCase
     }
 
     // ── helpers ──────────────────────────────────────────────────
-
-    /** @param array{org: Organization, admin: User} $tenant */
-    private function taskBoard(array $tenant): TaskBoard
-    {
-        $board = new TaskBoard;
-        $board->forceFill([
-            'organization_id' => $tenant['org']->id,
-            'company_id' => null,
-            'franchise_id' => null,
-            'folder_id' => null,
-            'name' => 'Privacy test board',
-            'visibility' => 'scope',
-            'position' => 0,
-            'created_by' => $tenant['admin']->id,
-            'updated_by' => $tenant['admin']->id,
-        ])->save();
-
-        return $board;
-    }
-
-    /** @param array{org: Organization, admin: User} $tenant */
-    private function taskFor(array $tenant): Task
-    {
-        $board = $this->taskBoard($tenant);
-
-        $group = new TaskGroup;
-        $group->forceFill([
-            'organization_id' => $tenant['org']->id,
-            'board_id' => $board->id,
-            'name' => 'To do',
-            'position' => 0,
-        ])->save();
-
-        $status = new TaskStatusOption;
-        $status->forceFill([
-            'organization_id' => $tenant['org']->id,
-            'board_id' => $board->id,
-            'name' => 'Working on it',
-            'color' => '#fdab3d',
-            'category' => 'active',
-            'position' => 0,
-        ])->save();
-
-        $task = new Task;
-        $task->forceFill([
-            'organization_id' => $tenant['org']->id,
-            'board_id' => $board->id,
-            'group_id' => $group->id,
-            'number' => 'T-1',
-            'title' => 'Privacy test task',
-            'status_option_id' => $status->id,
-            'position' => 0,
-            'created_by' => $tenant['admin']->id,
-            'updated_by' => $tenant['admin']->id,
-        ])->save();
-
-        return $task;
-    }
 
     private function purge(Model $subject): array
     {

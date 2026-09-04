@@ -1,0 +1,200 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+/// A notification the operating system shows, rather than the bell (plan §12).
+///
+/// ── Why there is no conditional import here ──────────────────────
+///
+/// Every other cross-platform seam in this folder is a `foo.dart` /
+/// `foo_io.dart` / `foo_web.dart` trio, because `dart:io` does not exist in a
+/// browser and one import of it takes the web build down. This one is a single
+/// file because the plugin is already federated the same way underneath:
+/// `flutter_local_notifications` 22 ships a web implementation that registers
+/// its own service worker out of its own package assets, so there is nothing
+/// for `client/web/index.html` to declare and nothing for this file to branch
+/// on. Writing the trio anyway would be a second dispatch layer sitting on top
+/// of one that already works.
+///
+/// ── What "works" means on each of the four, honestly ─────────────
+///
+/// These are LOCAL notifications: the app must be running for one to appear.
+/// That is the whole of it on web and desktop, where a running app is the
+/// normal state. On a phone it is the real limit — close EzBizi and the handset
+/// stays quiet, because waking a sleeping phone is remote push (FCM/APNs), a
+/// different mechanism with its own server, its own credentials and its own
+/// device registry. None of that is built, and this class does not pretend to
+/// be a substitute for it: it makes the app that is open tell you something,
+/// which is exactly what it says on the tin and no more.
+///
+/// ── Why permission is asked from a tap and never at startup ──────
+///
+/// The browsers punish the alternative. Requesting notification permission on
+/// page load can have the request auto-denied AND the origin marked abusive, at
+/// which point no prompt is ever shown again — a permanent loss, taken in
+/// exchange for asking a second earlier. So [enable] is called from the bell
+/// when somebody opens it, which is a deliberate act by a person who has just
+/// demonstrated they care about notifications.
+class OsNotifications {
+  OsNotifications._();
+
+  static final FlutterLocalNotificationsPlugin _plugin =
+      FlutterLocalNotificationsPlugin();
+
+  /// The Windows toast identity, which is not free-form.
+  ///
+  /// `guid` is the same one Inno Setup already registers as the installer's
+  /// `AppId` (scripts/windows-installer.iss). Reused rather than generated so
+  /// the app has ONE identity on a Windows machine: a second GUID here would
+  /// mean the thing that installs EzBizi and the thing that raises its toasts
+  /// disagree about what EzBizi is, and Windows resolves that disagreement by
+  /// showing nothing.
+  static const String _windowsGuid = '8F3A6C21-4D7E-4B90-9E52-1C6A0B7D4E38';
+
+  static bool _initialised = false;
+  static bool _permitted = false;
+
+  /// Ask for permission, initialising the plugin the first time.
+  ///
+  /// Returns whether an OS notification can actually be shown. False is a
+  /// completely normal answer — permission refused, a browser without service
+  /// workers, a Linux desktop with no notification daemon — and callers are
+  /// expected to carry on without it rather than surface an error. The bell is
+  /// the notification; this is a courtesy on top of it.
+  static Future<bool> enable() async {
+    if (_permitted) return true;
+
+    try {
+      if (!_initialised) {
+        _initialised =
+            await _plugin.initialize(
+              settings: const InitializationSettings(
+                // The launcher icon, which every Flutter Android project has
+                // already. A dedicated white-on-transparent status bar icon
+                // would look better on Android and is the kind of asset that
+                // needs a designer, not a developer inventing one.
+                android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+                // Permission flags are all false: this class asks below, from
+                // a tap, and asking twice would show the person two prompts.
+                iOS: DarwinInitializationSettings(
+                  requestAlertPermission: false,
+                  requestBadgePermission: false,
+                  requestSoundPermission: false,
+                ),
+                macOS: DarwinInitializationSettings(
+                  requestAlertPermission: false,
+                  requestBadgePermission: false,
+                  requestSoundPermission: false,
+                ),
+                windows: WindowsInitializationSettings(
+                  appName: 'EzBizi',
+                  appUserModelId: 'EzBizi.DesktopClient',
+                  guid: _windowsGuid,
+                ),
+                linux: LinuxInitializationSettings(
+                  defaultActionName: 'Open EzBizi',
+                ),
+                web: WebInitializationSettings(),
+              ),
+            ) ??
+            false;
+      }
+
+      _permitted = _initialised && await _requestPermission();
+
+      return _permitted;
+    } catch (_) {
+      // A platform that cannot do this at all throws rather than returning
+      // false — an unsupported browser, a desktop with no notification service.
+      // Swallowed on purpose: the bell has already shown the person everything
+      // this would have told them, so there is nothing here worth interrupting
+      // them about.
+      return false;
+    }
+  }
+
+  /// Show one, if [enable] has succeeded. A no-op otherwise.
+  ///
+  /// [id] replaces rather than stacks when reused, on every platform including
+  /// the web (where the plugin maps it onto the notification `tag`). Callers
+  /// pass a fresh id per distinct thing to say, and reuse one deliberately to
+  /// overwrite — see the summary in NotificationBell.
+  static Future<void> show({
+    required int id,
+    required String title,
+    String? body,
+  }) async {
+    if (!_permitted) return;
+
+    try {
+      await _plugin.show(
+        id: id,
+        title: title,
+        body: body,
+        notificationDetails: const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'ezbizi_notifications',
+            'EzBizi notifications',
+            channelDescription:
+                'Assignments, mentions, reminders and alerts from EzBizi.',
+            importance: Importance.defaultImportance,
+            priority: Priority.defaultPriority,
+          ),
+        ),
+      );
+    } catch (_) {
+      // Same reasoning as above. A failed toast must never be able to take a
+      // poll cycle down with it.
+    }
+  }
+
+  /// Per-platform, because the four ask in four different ways.
+  ///
+  /// Android has had a runtime notification permission since 13 and grants it
+  /// silently below that; Darwin asks for alert/badge/sound together; Windows
+  /// has no prompt at all — the toast is allowed unless the person has turned
+  /// EzBizi off in Windows Settings, which is not something the app can see or
+  /// should try to. A null answer from any resolver means "this platform does
+  /// not gate it", so it reads as permitted.
+  static Future<bool> _requestPermission() async {
+    if (defaultTargetPlatform == TargetPlatform.android && !kIsWeb) {
+      return await _plugin
+              .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin
+              >()
+              ?.requestNotificationsPermission() ??
+          true;
+    }
+
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+      return await _plugin
+              .resolvePlatformSpecificImplementation<
+                IOSFlutterLocalNotificationsPlugin
+              >()
+              ?.requestPermissions(alert: true, badge: true, sound: true) ??
+          true;
+    }
+
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.macOS) {
+      return await _plugin
+              .resolvePlatformSpecificImplementation<
+                MacOSFlutterLocalNotificationsPlugin
+              >()
+              ?.requestPermissions(alert: true, badge: true, sound: true) ??
+          true;
+    }
+
+    if (kIsWeb) {
+      // False rather than true when the resolver gives nothing back: a browser
+      // is the one platform here that will not show a notification without an
+      // explicit grant, so "we could not ask" has to mean "we may not show".
+      return await _plugin
+              .resolvePlatformSpecificImplementation<
+                WebFlutterLocalNotificationsPlugin
+              >()
+              ?.requestNotificationsPermission() ??
+          false;
+    }
+
+    return true;
+  }
+}

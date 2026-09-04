@@ -95,13 +95,6 @@ class PhoneTokenTest extends TestCase
             ]);
             $connection->writeSecrets('SK-secret', 'auth-token');
 
-            PhoneNumber::factory()->create([
-                'connection_id' => $connection->id,
-                'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
-                'scope_id' => $t['org']->id,
-                'e164' => '+12035551009',
-            ]);
-
             return $connection;
         });
 
@@ -247,13 +240,6 @@ class PhoneTokenTest extends TestCase
                 'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
                 'scope_id' => $t['org']->id,
             ]);
-            PhoneNumber::factory()->create([
-                'connection_id' => $connection->id,
-                'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
-                'scope_id' => $t['org']->id,
-                'e164' => '+12035551042',
-            ]);
-
             return $connection;
         });
 
@@ -276,13 +262,6 @@ class PhoneTokenTest extends TestCase
                 'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
                 'scope_id' => $t['org']->id,
             ]);
-            PhoneNumber::factory()->create([
-                'connection_id' => $connection->id,
-                'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
-                'scope_id' => $t['org']->id,
-                'e164' => '+12035551031',
-            ]);
-
             return $connection;
         });
 

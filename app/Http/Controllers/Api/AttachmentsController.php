@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Attachment;
 use App\Models\InventoryPurchaseOrder;
-use App\Models\TaskUpdateAttachmentCandidate;
 use App\Support\Audit\AuditLogger;
 use App\Support\Files\Attachables;
 use App\Support\Files\AttachmentUploader;
@@ -14,7 +13,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -139,25 +137,6 @@ class AttachmentsController extends Controller
      */
     public function show(Attachment $attachment): StreamedResponse
     {
-        $candidate = TaskUpdateAttachmentCandidate::query()
-            ->where('attachment_id', $attachment->id)->first();
-        if ($candidate !== null) {
-            $task = $candidate->task()->active()->first();
-            $available = $task !== null
-                && $candidate->actor_user_id === request()->user()->id
-                && $candidate->expires_at->isFuture()
-                && $attachment->attachable_type === 'tasks'
-                && $attachment->attachable_id === $candidate->task_id
-                && $attachment->uploaded_by_user_id === $candidate->actor_user_id
-                && Gate::forUser(request()->user())->check('comment', $task);
-            abort_unless($available, Response::HTTP_NOT_FOUND);
-
-            return $this->files->serve(
-                $attachment->path, $attachment->disk, $attachment->mime,
-                $attachment->original_name, disposition: 'attachment',
-            );
-        }
-
         $subject = $this->subjectOf($attachment);
 
         $this->authorizeAttachment('view', $subject);
@@ -212,9 +191,9 @@ class AttachmentsController extends Controller
     public function destroy(Attachment $attachment): JsonResponse
     {
         /*
-         * Types this endpoint does not manage — the internal morph identities
+         * A type this endpoint does not manage — the internal morph identity
          * from AppServiceProvider that Attachables deliberately omits. Upload
-         * already refuses them by validation; this is the other half.
+         * already refuses it by validation; this is the other half.
          *
          * `inspection_reports` is here rather than behind an
          * `attachmentRemovalRefusal` on the report, and the difference matters:
@@ -227,7 +206,7 @@ class AttachmentsController extends Controller
          * photograph out of a frozen one.
          */
         abort_if(
-            in_array($attachment->attachable_type, ['tasks', 'task_updates', 'inspection_reports'], true),
+            $attachment->attachable_type === 'inspection_reports',
             Response::HTTP_NOT_FOUND,
         );
 

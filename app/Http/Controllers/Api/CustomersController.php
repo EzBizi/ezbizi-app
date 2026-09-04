@@ -3,8 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Customer;
+use Illuminate\Support\Collection;
+use Illuminate\Database\Eloquent\Model;
 use App\Models\Franchise;
-use App\Services\Customers\DuplicateCustomerFinder;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Numbering\RecordNumberGenerator;
@@ -31,7 +32,6 @@ class CustomersController extends Controller
 {
     public function __construct(
         private readonly RecordNumberGenerator $numbers,
-        private readonly DuplicateCustomerFinder $duplicates,
         private readonly SettingsResolver $settings,
         private readonly AuditLogger $audit,
         private readonly TenantContext $tenant,
@@ -166,8 +166,8 @@ class CustomersController extends Controller
 
         return response()->json([
             'data' => $this->present($customer->fresh(), detailed: true),
-            'possible_duplicates' => $this->duplicates
-                ->candidates($input, $franchise, ignoreId: $customer->getKey())
+            'possible_duplicates' => $this
+                ->duplicateCandidates($input, $franchise, ignoreId: $customer->getKey())
                 ->map(fn (Customer $c) => $this->present($c)),
         ], Response::HTTP_CREATED);
     }
@@ -357,5 +357,80 @@ class CustomersController extends Controller
             ),
             'created_at' => $customer->created_at->toIso8601String(),
         ];
+    }
+    // ── possible duplicates ──────────────────────────────────────
+    //
+    // Inlined from App\Services\Customers\DuplicateCustomerFinder on 4 Sep. It
+    // had this controller as its only caller and no test of its own, and every
+    // dependency it took is one this controller already holds — a class whose
+    // whole reason to exist was to be injected here, into the one place that
+    // could have called it directly.
+
+    /**
+     * Customers that look like this one, by whatever the organization has
+     * chosen to match on. Never blocks a save; the list rides along in the
+     * response so a person can decide.
+     */
+    private function duplicateCandidates(array $attributes, Model $scope, ?string $ignoreId = null): Collection
+    {
+        $mode = (string) $this->settings->get('customers.duplicate_match_on', $scope);
+
+        if ($mode === 'off') {
+            return collect();
+        }
+
+        $query = Customer::query()->when($ignoreId, fn ($q) => $q->whereKeyNot($ignoreId));
+        $phone = $this->duplicatePhone($attributes['phone'] ?? null);
+        $email = $this->duplicateEmail($attributes['email'] ?? null);
+
+        $matched = match ($mode) {
+            'phone' => $phone === null ? null : $query->whereRaw(
+                $this->duplicatePhoneExpression(), [$phone]
+            ),
+            'email' => $email === null ? null : $query->where('email', $email),
+            'phone_or_email' => ($phone === null && $email === null) ? null : $query->where(
+                function ($q) use ($phone, $email) {
+                    if ($phone !== null) {
+                        $q->orWhereRaw($this->duplicatePhoneExpression(), [$phone]);
+                    }
+                    if ($email !== null) {
+                        $q->orWhere('email', $email);
+                    }
+                }
+            ),
+            'name_and_address' => blank($attributes['name'] ?? null) ? null : $query
+                ->where('name', $attributes['name'])
+                ->where('postal_code', $attributes['postal_code'] ?? null),
+            default => null,
+        };
+
+        if ($matched === null) {
+            return collect();
+        }
+
+        return $matched
+            ->with('owningFranchise:id,name,company_id', 'owningFranchise.company:id,name')
+            ->limit(10)
+            ->get();
+    }
+
+    private function duplicatePhone(?string $phone): ?string
+    {
+        if (blank($phone)) {
+            return null;
+        }
+        $digits = preg_replace('/\D+/', '', $phone);
+
+        return strlen((string) $digits) >= 7 ? $digits : null;
+    }
+
+    private function duplicateEmail(?string $email): ?string
+    {
+        return blank($email) ? null : strtolower(trim($email));
+    }
+
+    private function duplicatePhoneExpression(): string
+    {
+        return "REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '') = ?";
     }
 }

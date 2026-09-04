@@ -1,25 +1,50 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import '../core/address.dart';
 import '../core/api_client.dart';
+import '../core/os_notifications.dart';
 import 'side_panel.dart';
 import 'tag.dart';
 
 /// The bell (plan §12).
 ///
 /// Polled, not pushed. Real-time delivery needs a websocket or a push service
-/// and neither is built; a poll on open plus a refresh is honest about that and
-/// costs one query. When push arrives this widget is what changes, not the API.
+/// and neither is built; a poll plus a refresh is honest about that and costs
+/// one query. When push arrives this widget is what changes, not the API.
+///
+/// ── Why it polls on a timer rather than only when opened ─────────
+///
+/// It used to fetch exactly once, in [initState]. Everything after that was a
+/// consequence of somebody opening the panel — so for a person who left EzBizi
+/// open on the jobs list all afternoon, which is how the app is actually used,
+/// the badge showed whatever had been true when they signed in. A notification
+/// nobody is told about is a row in a table, and the one thing the bell is for
+/// is being the telling.
+///
+/// Sixty seconds, matching MonitoringHeartbeat's keep-alive, so the two
+/// background timers in the client tick at the same rate rather than at two
+/// numbers somebody has to reconcile later.
+///
+/// ── Why the lifecycle observer, on top of the timer ──────────────
+///
+/// A timer does not run in a backgrounded app, and on the web a hidden tab has
+/// its timers throttled to something like once a minute at best and frozen at
+/// worst. Coming back to the app is therefore the moment the count is most
+/// likely to be wrong and the moment a person is most likely to look at it, and
+/// `resumed` is the only event that catches it.
 class NotificationBell extends StatefulWidget {
-  const NotificationBell({super.key, required this.api, this.onOpenTask});
+  const NotificationBell({super.key, required this.api});
 
   final ApiClient api;
-  final ValueChanged<TaskAddressIntent>? onOpenTask;
 
   @override
   State<NotificationBell> createState() => _NotificationBellState();
 }
 
-class _NotificationBellState extends State<NotificationBell> {
+class _NotificationBellState extends State<NotificationBell>
+    with WidgetsBindingObserver {
+  static const Duration _pollEvery = Duration(seconds: 60);
+
   int _unread = 0;
 
   // A failed fetch used to render as "Nothing yet.", so an outage and an empty
@@ -29,10 +54,42 @@ class _NotificationBellState extends State<NotificationBell> {
   bool _loading = false;
   List<Map<String, dynamic>> _items = [];
 
+  Timer? _poll;
+
+  /// Ids already handed to the operating system, so nothing is announced twice.
+  ///
+  /// Seeded on the very first fetch WITHOUT announcing anything (see
+  /// [_announce]): signing in with eleven unread notifications must not fire
+  /// eleven toasts about things that happened while the app was shut.
+  final Set<String> _announced = <String>{};
+  bool _seeded = false;
+
+  /// Ids for the OS are ints, and this is the counter that supplies them.
+  ///
+  /// Not the notification's own uuid hashed down to an int: [OsNotifications]
+  /// treats a repeated id as REPLACING the notification that had it, so a hash
+  /// collision between two unrelated notifications would silently swallow one
+  /// of them. A counter cannot collide with itself.
+  int _osId = 0;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _refresh();
+    _poll = Timer.periodic(_pollEvery, (_) => unawaited(_refresh()));
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_refresh());
   }
 
   Future<void> _refresh() async {
@@ -43,6 +100,11 @@ class _NotificationBellState extends State<NotificationBell> {
     final response = await widget.api.get('/notifications', {'limit': '20'});
 
     if (!mounted) return;
+
+    // Worked out before setState rebuilds _items out from under the comparison.
+    final List<Map<String, dynamic>> arrived = response.ok
+        ? _arrivals(response.data as List)
+        : const [];
 
     setState(() {
       _loading = false;
@@ -63,6 +125,64 @@ class _NotificationBellState extends State<NotificationBell> {
           (response.body['meta'] as Map<String, dynamic>?)?['unread'] as int? ??
           0;
     });
+
+    unawaited(_announce(arrived));
+  }
+
+  /// The unread ones this widget has not already accounted for.
+  ///
+  /// Unread rather than merely new: a notification the person has already
+  /// opened on their phone should not raise a toast on their desktop a minute
+  /// later, and `read_at` is the server's record of exactly that.
+  ///
+  /// Every id seen is remembered whether or not it gets announced, so the first
+  /// fetch after sign-in fills the set and announces nothing.
+  List<Map<String, dynamic>> _arrivals(List raw) {
+    final arrivals = <Map<String, dynamic>>[];
+
+    for (final item in raw.cast<Map<String, dynamic>>()) {
+      final id = item['id'] as String?;
+      if (id == null) continue;
+
+      final isNew = _announced.add(id);
+
+      if (isNew && _seeded && item['read_at'] == null) arrivals.add(item);
+    }
+
+    _seeded = true;
+
+    return arrivals;
+  }
+
+  /// Hand them to the operating system — see [OsNotifications].
+  ///
+  /// Permission is never requested here. [enable] is called when somebody opens
+  /// the panel, and until they have, this quietly does nothing: a background
+  /// poll is not a user gesture, and asking from one is what gets an origin
+  /// permanently barred from ever asking again.
+  Future<void> _announce(List<Map<String, dynamic>> arrivals) async {
+    if (arrivals.isEmpty) return;
+
+    // A rule that fires across a whole franchise can land a dozen at once, and
+    // a dozen toasts is not twelve times as informative as one — it is a wall
+    // of notifications somebody dismisses without reading, including the one
+    // that mattered. Past three, say how many and let the bell hold the detail.
+    if (arrivals.length > 3) {
+      await OsNotifications.show(
+        id: _osId++,
+        title: '${arrivals.length} new notifications',
+        body: 'Open EzBizi to see them.',
+      );
+      return;
+    }
+
+    for (final item in arrivals) {
+      await OsNotifications.show(
+        id: _osId++,
+        title: item['title'] as String? ?? 'EzBizi',
+        body: item['body'] as String?,
+      );
+    }
   }
 
   Future<void> _markAllRead() async {
@@ -82,14 +202,13 @@ class _NotificationBellState extends State<NotificationBell> {
     await _refresh();
   }
 
-  TaskAddressIntent? _taskIntent(Map<String, dynamic> notification) {
-    if (notification['source'] != 'task') return null;
-    final meta = notification['meta'];
-    final route = meta is Map ? meta['route'] : null;
-    return route is String ? Address.taskIntent(route) : null;
-  }
-
   Future<void> _open() async {
+    // The user gesture the permission prompt has to come from. Its answer is
+    // deliberately not checked: a refusal is a perfectly good outcome that
+    // leaves the panel below working exactly as it always has, and nagging
+    // somebody who has said no is how an app trains people to say no faster.
+    unawaited(OsNotifications.enable());
+
     await _refresh();
 
     if (!mounted) return;
@@ -179,33 +298,13 @@ class _NotificationBellState extends State<NotificationBell> {
                           }
                         }
 
-                        // Do not navigate from the row snapshot. Refreshing
-                        // confirms that this person still receives the item;
-                        // its canonical route is then converted into an opaque
-                        // typed intent before it leaves this widget.
                         await _refresh();
                         if (!context.mounted) return;
-                        final current = _items
-                            .cast<Map<String, dynamic>?>()
-                            .firstWhere(
-                              (item) => item?['id'] == n['id'],
-                              orElse: () => null,
-                            );
-                        final intent = current == null
-                            ? null
-                            : _taskIntent(current);
-                        if (intent != null && widget.onOpenTask != null) {
-                          if (context.mounted) {
-                            Navigator.of(context).pop();
-                            widget.onOpenTask!(intent);
-                          }
-                          return;
-                        }
 
                         // repaint, not setState: setState rebuilds the
                         // bell behind the panel, and the panel's own
                         // page is cached by the route.
-                        if (context.mounted) repaint(() {});
+                        repaint(() {});
                       },
                     );
                   },

@@ -11,7 +11,9 @@ use App\Models\Customer;
 use App\Models\Job;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Automations\AutomationEngine;
+use App\Support\Automations\ConditionEvaluator;
 use App\Support\Automations\OutboundWebhook;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
@@ -445,6 +447,96 @@ class AutomationEngineTest extends TestCase
         // whatever actually broke.
         $this->assertNotNull($automation->disabled_at);
         $this->assertStringContainsString('consecutive failures', $automation->disabled_reason);
+    }
+
+    /**
+     * A flat payload is readable by a condition.
+     *
+     * The customer's rule, verbatim: mail from notify@ringcentral.com whose
+     * subject says Missed. `email.received` carries its keys at the top level,
+     * not under `after`, and the subject of the event is the MAILBOX — which has
+     * no `subject` and no `from_address`. Before the middle arm in valueOf()
+     * both clauses read null, so the rule skipped every run since it was
+     * written and the trace said "the value at the time was nothing".
+     *
+     * Break it by deleting that arm and both assertions go red.
+     */
+    public function test_a_condition_reads_a_flat_payload_and_not_only_an_update(): void
+    {
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'email.received',
+            'payload'         => [
+                // Exactly what MailboxWatcher::payload() writes.
+                'address'      => 'office@example.test',
+                'subject'      => 'Missed call from (954) 555-0111',
+                'from_name'    => 'RingCentral',
+                'from_address' => 'notify@ringcentral.com',
+                'has_attachments' => false,
+            ],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        $evaluator = app(ConditionEvaluator::class);
+
+        $matched = $evaluator->evaluate(['all' => [
+            ['field' => 'from_address', 'op' => 'eq', 'value' => 'notify@ringcentral.com'],
+            ['field' => 'subject', 'op' => 'contains', 'value' => 'Missed'],
+        ]], $event, null);
+
+        $this->assertTrue($matched['matched'], 'both clauses describe the payload and must match');
+
+        // The trace is what the customer reads when a rule does not fire, so it
+        // has to carry the real value rather than the null that was there.
+        $this->assertSame(
+            'notify@ringcentral.com',
+            $matched['trace']['children'][0]['actual'],
+            'the trace must show the value the condition actually saw',
+        );
+
+        // And the negative still works — a flat payload readable does not mean
+        // everything now matches.
+        $this->assertFalse(
+            $evaluator->evaluate(
+                ['all' => [['field' => 'subject', 'op' => 'contains', 'value' => 'Voicemail']]],
+                $event,
+                null,
+            )['matched'],
+        );
+    }
+
+    /**
+     * Zero recipients has two causes and they send you to different places.
+     *
+     * Break it by returning the old single sentence from ActionRunner::notify()
+     * and this goes red on the "switched off" assertion.
+     */
+    public function test_a_silenced_company_is_told_so_rather_than_that_nobody_had_reach(): void
+    {
+        $automation = $this->automation('job.created', null,
+            [['type' => 'notify', 'message' => 'New job']]);
+
+        // Nothing about the rule changes — it still matches, still runs, still
+        // reaches the same people. Only the company's setting moves.
+        $this->inTenant(fn () => app(SettingsResolver::class)
+            ->set('notifications.automation_enabled', $this->org['organization'], false));
+
+        $this->makeJob();
+        $this->drain();
+
+        $detail = $this->inTenant(fn () => AutomationRun::query()
+            ->where('automation_id', $automation->id)
+            ->latest('started_at')
+            ->firstOrFail()
+            ->action_results[0]['detail'] ?? '');
+
+        $this->assertStringContainsString('switched off', $detail);
+
+        // The failure this exists for: a settings toggle reported as a scoping
+        // problem, sending whoever debugs the rule to look at franchise
+        // assignments for a reason that is not there.
+        $this->assertStringNotContainsString('Nobody has reach', $detail);
     }
 
     public function test_a_version_cannot_be_edited(): void

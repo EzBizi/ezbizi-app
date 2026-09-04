@@ -216,11 +216,68 @@ return [
         'redirect'      => env('THUMBTACK_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/thumbtack/callback',
 
-        'authorize_url' => env('THUMBTACK_AUTHORIZE_URL'),
-        'token_url'     => env('THUMBTACK_TOKEN_URL'),
-        'account_url'   => env('THUMBTACK_ACCOUNT_URL'),
-        'scopes'        => env('THUMBTACK_SCOPES'),
-        'pkce'          => env('THUMBTACK_PKCE', false),
+        /*
+         * Published values, at last. These were deliberately empty from
+         * 2026-08-30 until Thumbtack issued credentials on 2026-09-03, because
+         * a plausible-looking guess would have compiled, passed a test against
+         * a fake, and failed against Thumbtack. They now come from their own
+         * OpenAPI document (api.thumbtack.com/docs/thumbtack_api_latest.json,
+         * "HydraOAuth"), not from inference.
+         *
+         * Still env-overridable, because "Hydra" is ORY Hydra and a partner
+         * tenant can be moved.
+         */
+        'authorize_url' => env('THUMBTACK_AUTHORIZE_URL', 'https://auth.thumbtack.com/oauth2/auth'),
+        'token_url'     => env('THUMBTACK_TOKEN_URL', 'https://auth.thumbtack.com/oauth2/token'),
+
+        /*
+         * The API host, which is NOT the auth host and switches per
+         * environment. Staging credentials against the production host fail as
+         * an authorisation error rather than as a wrong-host error, so getting
+         * this wrong reads like bad keys.
+         */
+        'api_base' => rtrim((string) env('THUMBTACK_API_BASE', 'https://api.thumbtack.com/api'), '/'),
+
+        /*
+         * Only what EzBizi actually calls, and every one of these has code
+         * behind it. Asking for a scope you do not use is exactly the
+         * over-scoping that had to be unpicked from the Meta submission the
+         * same week, so this list and the classes are kept level deliberately.
+         *
+         * WEBHOOKS ARE NOT OPTIONAL. Thumbtack's supply API can fetch a
+         * negotiation by id and has no endpoint that lists them, so a webhook
+         * is the only way EzBizi ever learns a lead exists. Drop those two
+         * scopes and lead reading does not degrade — it receives nothing.
+         *
+         * Absent on purpose: `supply::businesses.create` (EzBizi does not make
+         * Thumbtack profiles) and `supply::businesses/reviews.*` (Reviews is a
+         * different module and connects its own sources).
+         *
+         * Two things Thumbtack's own scope vocabulary lists that CANNOT be
+         * used by anybody: `businesses/media.write` and
+         * `businesses/categories.write` are declared and no endpoint in their
+         * published OpenAPI document references them. Editing a profile has no
+         * endpoint at all — only create. That is why the Help Center article
+         * does not claim either.
+         */
+        'scopes' => env('THUMBTACK_SCOPES', implode(',', [
+            'offline_access',
+            'supply::users.read',
+            'supply::users.disconnect',
+            'supply::businesses.list',
+            'supply::businesses/associate-phone-numbers.read',
+            'supply::businesses/associate-phone-numbers.write',
+            'supply::negotiations.read',
+            'supply::negotiations.write',
+            'supply::messages.read',
+            'supply::messages.write',
+            'supply::webhooks.read',
+            'supply::webhooks.write',
+        ])),
+
+        // ORY Hydra supports PKCE and their spec does not mark it required, so
+        // this stays off until a live authorize call says otherwise.
+        'pkce' => env('THUMBTACK_PKCE', false),
     ],
 
     'x' => [
@@ -284,7 +341,7 @@ return [
         // Google retires Ads API versions on a published schedule and a retired
         // one answers 404 to everything. Pinned here so the day it moves is an
         // env change on the box, not a release.
-        'version' => env('GOOGLE_ADS_API_VERSION', 'v21'),
+        'version' => env('GOOGLE_ADS_API_VERSION', 'v24'),
     ],
 
     /*
@@ -312,6 +369,21 @@ return [
         // connection's webhooks. The same restriction is why key auth cannot
         // read into a subaccount, delete a key in one, or move a number out.
         'platform_auth_token'  => env('TWILIO_PLATFORM_AUTH_TOKEN'),
+
+        // The number EzBizi ITSELF texts from: verification codes to our own
+        // users, on the platform account rather than any tenant's subaccount.
+        //
+        // Deliberately separate from every number in the Phone module. Those
+        // belong to a customer's business and carry that business's carrier
+        // registration — A-1 Chimney's toll-free is verified as A-1 Chimney,
+        // for A-1 Chimney's customer-care traffic, and sending EzBizi sign-in
+        // codes from it is traffic matching no field of its filing. Carriers
+        // filter on exactly that, and the penalty is losing the verification.
+        //
+        // Unset until a number is bought and registered as EzBizi, and the
+        // feature is OFF rather than broken while it is unset — see
+        // PlatformSms::configured().
+        'platform_sms_from'    => env('TWILIO_PLATFORM_SMS_FROM'),
     ],
 
 ];

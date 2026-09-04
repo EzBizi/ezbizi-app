@@ -13,7 +13,6 @@ use App\Models\MonitoredDevice;
 use App\Models\Organization;
 use App\Models\Review;
 use App\Models\Service;
-use App\Models\Task;
 use App\Models\User;
 use App\Models\Vehicle;
 use App\Support\Modules\ActionDefinition;
@@ -109,121 +108,6 @@ class ModuleServiceProvider extends ServiceProvider
                 actions: ['view'],
                 automationExemptBecause: 'The dashboard only reads what other modules already record; '
                     .'there is no event here that another module does not raise first.',
-            ),
-
-            new ModuleDefinition(
-                key: 'tasks',
-                label: 'Tasks',
-                actions: ['view', 'create', 'edit', 'comment', 'delete', 'export', 'manage'],
-                triggers: [
-                    new TriggerDefinition(
-                        key: 'task.created',
-                        label: 'Created',
-                        description: 'A task or one-level subtask was created.',
-                        isRaised: true,
-                    ),
-                    new TriggerDefinition(
-                        key: 'task.owner_changed',
-                        label: 'Owner changed',
-                        description: 'The accountable owner was assigned, changed, or cleared.',
-                        isRaised: true,
-                    ),
-                    new TriggerDefinition(
-                        key: 'task.status_changed',
-                        label: 'Status changed',
-                        description: 'The selected workflow status changed on a task.',
-                        isRaised: true,
-                    ),
-                    new TriggerDefinition(
-                        key: 'task.due_date_changed',
-                        label: 'Due date changed',
-                        description: 'The due date was set, changed, or cleared.',
-                        isRaised: true,
-                    ),
-                    new TriggerDefinition(
-                        key: 'task.completed',
-                        label: 'Completed',
-                        description: 'The workflow status entered its completed category.',
-                        isRaised: true,
-                    ),
-                    new TriggerDefinition(
-                        key: 'task.reopened',
-                        label: 'Reopened',
-                        description: 'The workflow status left completed for active work.',
-                        isRaised: true,
-                    ),
-                    new TriggerDefinition(
-                        key: 'task.update_added',
-                        label: 'Update added',
-                        description: 'A person added an update to the conversation.',
-                        isRaised: true,
-                    ),
-                    new TriggerDefinition(
-                        key: 'task.archived',
-                        label: 'Archived',
-                        description: 'A task was archived from its active board.',
-                        isRaised: true,
-                    ),
-                    new TriggerDefinition(
-                        key: 'task.overdue',
-                        label: 'Overdue',
-                        description: 'The scheduled check first observed unfinished late work.',
-                        isRaised: true,
-                    ),
-                    new TriggerDefinition(
-                        key: 'task.dependency_added',
-                        label: 'Dependency added',
-                        description: 'A "blocks" edge was drawn between two tasks on the same board.',
-                        isRaised: true,
-                    ),
-                    new TriggerDefinition(
-                        key: 'task.dependency_removed',
-                        label: 'Dependency removed',
-                        description: 'A "blocks" edge between two tasks was removed.',
-                        isRaised: true,
-                    ),
-                ],
-                automationActions: [
-                    new ActionDefinition(
-                        key: 'task.create',
-                        label: 'Create a task',
-                        description: 'Creates follow-up work on a selected board and group.',
-                        executionType: 'task.create',
-                        subjectBound: false,
-                    ),
-                    new ActionDefinition(
-                        key: 'task.assign_owner',
-                        label: 'Assign the owner',
-                        description: 'Assigns or clears the accountable owner on the triggering task.',
-                        executionType: 'task.assign_owner',
-                    ),
-                    new ActionDefinition(
-                        key: 'task.set_status',
-                        label: 'Set the status',
-                        description: 'Changes the triggering task to a status on its board.',
-                        executionType: 'task.set_status',
-                    ),
-                    new ActionDefinition(
-                        key: 'task.set_due_date',
-                        label: 'Set the due date',
-                        description: 'Sets or clears the due date on the triggering task.',
-                        executionType: 'task.set_due_date',
-                    ),
-                    new ActionDefinition(
-                        key: 'task.move_group',
-                        label: 'Move to a group',
-                        description: 'Moves the triggering task within its existing board.',
-                        executionType: 'task.move_group',
-                    ),
-                    new ActionDefinition(
-                        key: 'task.add_update',
-                        label: 'Add an update',
-                        description: 'Adds a system-authored update to the triggering task.',
-                        executionType: 'task.add_update',
-                    ),
-                ],
-                subject: new AutomationSubject(Task::class, 'Task'),
-                sidebar: true,
             ),
 
             new ModuleDefinition(
@@ -535,8 +419,15 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'hr',
                 label: 'Human Resources',
-                auditActionPrefixes: ['onboarding', 'invitation', 'contract'],
-                actions: ['view', 'create', 'edit'],
+                auditActionPrefixes: ['onboarding', 'invitation', 'contract', 'person'],
+                // `security.reset` is deliberately separate from `edit`: clearing
+                // somebody's second factor and handing out a password link is a
+                // bigger authority than maintaining their row, and folding it into
+                // `edit` would have granted it silently, on deploy, to everyone who
+                // already keeps the people list — see UserPolicy::resetSecurity.
+                // Same reasoning that keeps `monitoring.control` off
+                // `monitoring.screenshots.view`.
+                actions: ['view', 'create', 'edit', 'security.reset'],
                 triggers: [
                     /*
                      * ── Invitations ─────────────────────────────
@@ -767,7 +658,7 @@ class ModuleServiceProvider extends ServiceProvider
                 automationActions: [
                     /*
                      * `executionType` is spelled out rather than derived, the
-                     * way the Task actions spell theirs out. Left to itself
+                     * way `training.assign` spells its out. Left to itself
                      * ActionDefinition keeps everything after the FIRST dot, so
                      * these would execute as bare `clock_in` / `clock_out` in a
                      * namespace every module shares — and "clock in" is a phrase
@@ -1022,6 +913,26 @@ class ModuleServiceProvider extends ServiceProvider
                 key: 'inspection',
                 label: 'Inspection',
                 actions: ['view', 'create', 'edit', 'delete', 'archive'],
+                /*
+                 * Both record types this module broadcasts, not just the one
+                 * that matters most.
+                 *
+                 * The RUN is the sharper of the two and the reason to be
+                 * careful here: it is personal, and InspectionRunPolicy answers
+                 * "no such run" to anybody but the person who started it,
+                 * because a draft's existence is itself private. A `notify` on
+                 * `inspection.started` reaching every active user would tell
+                 * them a named technician started a named inspection for a
+                 * named customer — the exact fact the policy refuses to a
+                 * direct request.
+                 *
+                 * Both now implement CarriesAutomationScope, answering with the
+                 * job's franchise and falling back to the customer's.
+                 */
+                emits: [
+                    \App\Models\InspectionRun::class,
+                    \App\Models\InspectionReport::class,
+                ],
                 triggers: [
                     new TriggerDefinition(
                         key: 'inspection.started',
@@ -1130,40 +1041,9 @@ class ModuleServiceProvider extends ServiceProvider
                      * property of the transport chosen for tenant mail, not of
                      * this module. It is declared where that path is built.
                      */
-                    new TriggerDefinition(
-                        key: 'newsletter.sent',
-                        label: 'Newsletter sent',
-                        description: 'A newsletter went out to its audience. It carries which '
-                            .'one, how many addresses it went to and the identity it was sent '
-                            .'from — not whether anybody read it.',
-                        isRaised: false,
-                    ),
                     /*
-                     * The one that must exist on day one rather than day two.
-                     *
-                     * Somebody asking to stop receiving marketing mail is the only
-                     * event here the business is obliged to honour, and honouring
-                     * it usually means touching a record this module does not own:
-                     * flag the customer, stop the other campaign, tell the branch.
-                     * That is a rule, and this is the trigger it hangs off.
-                     *
-                     * Declared beside "sent" rather than after it, because a
-                     * mailing programme that can send before it can be left is the
-                     * shape of this that would be wrong.
-                     */
-                    new TriggerDefinition(
-                        key: 'newsletter.unsubscribed',
-                        label: 'Somebody unsubscribed',
-                        description: 'A recipient asked to stop receiving marketing mail. It '
-                            .'carries the address and which mailing it was asked from, and it '
-                            .'is a decision the person made rather than a list being tidied.',
-                        isRaised: false,
-                    ),
-
-                    /*
-                     * These two are raised, unlike the newsletter pair above:
-                     * `PublishSocialTarget` emits one or the other every time it
-                     * runs.
+                     * `PublishSocialTarget` emits one or the other every time
+                     * it runs.
                      *
                      * One event per ACCOUNT rather than one per post, because
                      * that is the grain a rule can act on. A post to three
@@ -1191,25 +1071,80 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                 ],
                 /*
-                 * The engine runs none of these, and the catalogue already says so
-                 * per row: `implemented` is computed from the generic set the
-                 * engine has, so neither of these needs a flag of its own and
-                 * neither can claim to work by being forgotten about.
+                 * No actions of its own. Marketing's only automation surface is
+                 * now the social pair above; everything a rule could DO to a
+                 * newsletter moved to the `newsletter` module below, beside the
+                 * events it would react to.
+                 */
+            ),
+
+            /*
+             * Newsletter — write a mailing, choose who gets it, send it through
+             * the account the company brought.
+             *
+             * ── Why this is its own module and not two more marketing keys ──
+             *
+             * `send` has to be grantable on its own. Writing a mailing and
+             * putting it in front of twelve hundred customers are different
+             * acts, and plenty of organizations want somebody who can draft but
+             * not send — the same split that keeps `inventory.financials` off
+             * `inventory.view`. That is not expressible as `marketing.edit`.
+             *
+             * `parent: 'marketing'` says where it is DRAWN and nothing else, the
+             * same as Leads. These are new keys, held by nobody until an
+             * organization grants them (§4).
+             *
+             * ── Why there is no subject ─────────────────────────────
+             *
+             * Events here are about a mailing, an audience or an address, and
+             * naming any one of the three would make the field picker wrong
+             * about the other two. Same cost HR pays: `update_field` is refused
+             * at save, in a sentence.
+             */
+            new ModuleDefinition(
+                key: 'newsletter',
+                label: 'Newsletter',
+                parent: 'marketing',
+                auditActionPrefixes: ['newsletter'],
+                actions: ['view', 'create', 'edit', 'delete', 'send'],
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'newsletter.sent',
+                        label: 'Newsletter sent',
+                        description: 'A newsletter went out to its audience. It carries which '
+                            .'one, how many addresses it went to and the account it was sent '
+                            .'through — not whether anybody read it.',
+                    ),
+                    /*
+                     * The one that had to exist on day one rather than day two.
+                     *
+                     * Somebody asking to stop receiving marketing mail is the
+                     * only event here the business is obliged to honour, and
+                     * honouring it usually means touching a record this module
+                     * does not own: flag the customer, stop the other campaign,
+                     * tell the branch. That is a rule, and this is the trigger it
+                     * hangs off.
+                     */
+                    new TriggerDefinition(
+                        key: 'newsletter.unsubscribed',
+                        label: 'Somebody unsubscribed',
+                        description: 'A recipient asked to stop receiving marketing mail. It '
+                            .'carries the address and which audience it was asked from, and it '
+                            .'is a decision the person made rather than a list being tidied.',
+                    ),
+                ],
+                /*
+                 * `add_to_audience` and nothing that WRITES a mailing, for the
+                 * reason HR has no action that publishes a contract version: the
+                 * entire value of a message going to twelve hundred people is
+                 * that a person read it first, and a rule that composes one
+                 * bypasses the only review there is.
                  *
-                 * What is deliberately absent is anything that WRITES the wording
-                 * of a newsletter, for the reason HR has no action that publishes
-                 * a contract version: the entire value of a message going to ten
-                 * thousand people is that a person read it first, and a rule that
-                 * composes one bypasses the only review there is.
+                 * Sending is absent for the same reason and a sharper one — a
+                 * rule that mails a real audience with nobody looking is the one
+                 * mistake in this module that cannot be taken back.
                  */
                 automationActions: [
-                    new ActionDefinition(
-                        key: 'newsletter.send',
-                        label: 'Send a newsletter',
-                        description: 'Sends a mailing that has already been written and '
-                            .'approved, to the audience it was written for. The rule names '
-                            .'which one; it cannot compose one.',
-                    ),
                     new ActionDefinition(
                         key: 'newsletter.add_to_audience',
                         label: 'Add somebody to a mailing list',
@@ -1245,6 +1180,20 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'web_management',
                 label: 'Web Management',
+                /*
+                 * Drawn inside Marketing as of 2026-09-03, swapping places with
+                 * Leads. It belongs there by subject: what a customer's site
+                 * says about the business is the same job as what its social
+                 * accounts and its listing say, and it was only ever a sidebar
+                 * row of its own because it landed before Marketing had a tab
+                 * strip to put it in.
+                 *
+                 * As with Leads, this moves nothing but the drawing.
+                 * `web_management.view` and `.edit` are the same keys held by
+                 * the same roles, and the WordPress plugin's token-authenticated
+                 * endpoints do not go through module nesting at all.
+                 */
+                parent: 'marketing',
                 auditExemptBecause: 'NOT AUDITED. A create, edit or delete here leaves no '
                     .'audit_events row, so there is no record of who changed what or when. '
                     .'This states a defect, not a decision, and it is not permission to stay '
@@ -1281,7 +1230,13 @@ class ModuleServiceProvider extends ServiceProvider
              */
             new ModuleDefinition(
                 key: 'phone',
-                label: 'Phone',
+
+                // The KEY stays 'phone'. It is what every permission
+                // (phone.view, phone.edit), every route and every automation
+                // trigger is named after, and renaming it would revoke access
+                // for everybody holding those permissions while looking like a
+                // relabel.
+                label: 'Communication',
                 auditExemptBecause: 'NOT AUDITED. A create, edit or delete here leaves no '
                     .'audit_events row, so there is no record of who changed what or when. '
                     .'This states a defect, not a decision, and it is not permission to stay '
@@ -1353,6 +1308,32 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Create a job from a missed call',
                         description: 'Opens a job in reach titled from the caller number so '
                             .'somebody can follow up. It does not place a call or send a text.',
+                    ),
+
+                    /*
+                     * NOT subject-bound, and that is the point of it.
+                     *
+                     * Every other Phone action works on the record the event
+                     * was about — a call, a voicemail. This one is asked for
+                     * precisely so a rule on something that is NOT a phone
+                     * record can still send a text: an email arriving, a job
+                     * changing status. The subject is whatever set the rule
+                     * off and this action does not read it.
+                     *
+                     * So the line to send from and the number to send to are
+                     * both stated in the rule. There is nothing to infer them
+                     * from, and inferring is how you send a customer's text to
+                     * whoever happened to be in the payload.
+                     */
+                    new ActionDefinition(
+                        key: 'phone.sms.send',
+                        label: 'Send a message',
+                        description: 'Sends a text from one of the company phone lines to '
+                            .'a number you give. Works on any trigger, including ones that have '
+                            .'nothing to do with the phone. The line has to be approved for '
+                            .'messaging first, and the message is recorded under Records like '
+                            .'any other.',
+                        subjectBound: false,
                     ),
                 ],
             ),
@@ -1655,10 +1636,19 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'leads',
                 label: 'Leads',
-                // Drawn as a tab inside Marketing rather than as a row of its own
-                // in a sidebar that already holds fifteen. Its permissions are
-                // untouched by that: this says where it appears, not who reaches it.
-                parent: 'marketing',
+                /*
+                 * A row of its own, as of 2026-09-03. It was drawn inside
+                 * Marketing until Thumbtack became a second lead source: one
+                 * source is a tab, two are a module, and burying "where does
+                 * work come from" under Marketing stopped matching how anybody
+                 * uses it. Web Management moved the other way in the same
+                 * change and took the slot.
+                 *
+                 * Its permissions did not move with it, and could not: `parent`
+                 * says where a module is DRAWN and nothing else. `leads.view`
+                 * is the same key it was, held by the same roles, and the
+                 * automations keyed on `lead.*` are untouched.
+                 */
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export'],
                 subject: new AutomationSubject(Lead::class, 'Lead'),
                 triggers: [
@@ -2201,6 +2191,24 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'training',
                 label: 'Training',
+                /*
+                 * The first module to declare this, and the worked example for
+                 * the other nineteen.
+                 *
+                 * NOT `subject:` — that names the one model whose fields an
+                 * `update_field` action may set, and Training emits three record
+                 * types (progress now; attempts and assignments in Tasks 8-10).
+                 * Naming one would make the field picker silently wrong about the
+                 * other two, which is why this module correctly declares no
+                 * subject at all.
+                 *
+                 * `emits` is the audience question instead: every record type
+                 * passed to `events->emit()`, so a test can ask of each whether it
+                 * can say where it sits. TrainingProgress implements
+                 * CarriesAutomationScope, declared in the same commit that flipped
+                 * `training.completed` to raised.
+                 */
+                emits: [\App\Models\TrainingProgress::class],
                 actions: ['view', 'monitor', 'manage', 'assign'],
                 triggers: [
                     new TriggerDefinition(
@@ -2340,11 +2348,22 @@ class ModuleServiceProvider extends ServiceProvider
              * `device_offline` flipped the same way once DeviceOfflineWorker
              * started calling EventEmitter::emit('monitoring.device_offline',
              * ...) from its scheduled sweep (task 6).
+             *
+             * `cameras.view` / `cameras.manage` (2026-09-01-monitoring-cameras,
+             * generic-protocol v1) added the same add-only way `screenshots.view`
+             * was: a camera is CRUD (unlike a device, which is only ever
+             * reported), so it gets its own write grant rather than reusing
+             * `view` — see MonitoringCameraPolicy.
              */
             new ModuleDefinition(
                 key: 'monitoring',
                 label: 'Monitoring',
-                actions: ['view', 'specs.view'],
+                // `control` is deliberately separate from `screenshots.view`:
+                // driving another machine's mouse and keyboard is a bigger
+                // authority than watching its screen, and an organization
+                // must be able to grant one without the other — see
+                // RemoteControlController's docblock (2026-09-02-monitoring-remote-control).
+                actions: ['view', 'specs.view', 'screenshots.view', 'cameras.view', 'cameras.manage', 'control'],
                 triggers: [
                     new TriggerDefinition(
                         key: 'monitoring.new_device_seen',

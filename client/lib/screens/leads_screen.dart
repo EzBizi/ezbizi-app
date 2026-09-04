@@ -1,9 +1,12 @@
+import '../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
+import '../widgets/connected_account.dart';
+import '../widgets/tab_bar_like.dart';
 
 /// Leads — enquiries from connected advertising (EZ Leads).
 ///
@@ -31,6 +34,20 @@ class LeadsScreen extends StatefulWidget {
 
 class _LeadsScreenState extends State<LeadsScreen> {
   final _search = TextEditingController();
+
+  /// Which source tab is open, and which have ever been opened.
+  ///
+  /// The same two fields every other tabbed screen keeps. `_shown` is what
+  /// makes the second tab cost nothing until somebody asks for it — Thumbtack
+  /// does not deliver leads yet, so building it on arrival would be a fetch
+  /// for a list that cannot exist.
+  int _tab = 0;
+  final Set<int> _shown = {0};
+
+  void _select(int tab) => setState(() {
+    _tab = tab;
+    _shown.add(tab);
+  });
 
   bool _loading = true;
   bool _syncing = false;
@@ -154,10 +171,75 @@ class _LeadsScreenState extends State<LeadsScreen> {
   bool get _anyGoogleAds =>
       _connections.any((c) => c['provider'] == 'google_ads');
 
+  /// The connected account itself, so the tab can name it and remove it.
+  Map<String, dynamic>? get _googleAds => _connectionFor('google_ads');
+
+  Map<String, dynamic>? get _thumbtack => _connectionFor('thumbtack');
+
+  Map<String, dynamic>? _connectionFor(String provider) {
+    for (final c in _connections) {
+      if (c['provider'] == provider) return c;
+    }
+
+    return null;
+  }
+
+  bool get _canConnect => widget.session.me?.can('leads.edit') ?? false;
+
+  /// One tab per source, because the two are not one list yet.
+  ///
+  /// Google Ads leads are fetched, stored and worked here. Thumbtack is
+  /// connected here and does not yet deliver leads — and those are different
+  /// enough that merging them into one list would put an empty Thumbtack behind
+  /// the same "no enquiries yet" sentence Google gets for a quiet week. A tab
+  /// each lets the Thumbtack one say what is actually true about it.
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    // The same tab strip as the other sixteen screens, rather than Material's
+    // TabBar. This was the one screen in the app still using the underlined,
+    // full-width version, so Leads looked like a different product from the
+    // page beside it.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Material(
+          color: Theme.of(context).colorScheme.surface,
+          child: TabBarLike(
+            labels: const [
+              ('Google Leads', Icons.campaign_outlined),
+              ('Thumbtack Leads', Icons.handyman_outlined),
+            ],
+            selected: _tab,
+            onSelected: _select,
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          // Offstage rather than IndexedStack, and rather than the TabBarView
+          // this replaces. IndexedStack leaves its hidden children in the
+          // semantics tree, so a screen reader would announce the other tab's
+          // contents; Offstage takes them out of layout, painting and
+          // semantics while leaving their State exactly where it was.
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              for (var i = 0; i < 2; i++)
+                Offstage(
+                  offstage: i != _tab,
+                  child: _shown.contains(i)
+                      ? (i == 0 ? _googleTab(theme) : _thumbtackTab(theme))
+                      : const SizedBox.shrink(),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _googleTab(ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -216,6 +298,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
             ],
           ),
         ),
+        if (_googleAds != null)
+          ConnectedAccount(
+            api: widget.api,
+            connection: _googleAds!,
+            onDisconnected: _load,
+          ),
         if (_notice != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -244,10 +332,112 @@ class _LeadsScreenState extends State<LeadsScreen> {
     );
   }
 
+  /// Thumbtack: connected here, not yet delivering.
+  ///
+  /// ── Why this tab does not show an empty list ─────────────────
+  ///
+  /// Because an empty list is a lie shaped like a fact. EzBizi can connect a
+  /// Thumbtack business and keep its associate phone numbers in step — which is
+  /// what makes caller ID work on Thumbtack's side — and it cannot yet read
+  /// enquiries. A list rendering nothing would say "no leads this week" to
+  /// somebody whose leads are arriving perfectly well on Thumbtack's own app.
+  ///
+  /// So the tab says the two things separately: the account is connected, and
+  /// enquiries are not being fetched yet. When ingestion lands this becomes the
+  /// same list as Google's and this paragraph goes with it.
+  Widget _thumbtackTab(ThemeData theme) {
+    final connection = _thumbtack;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (connection != null) ...[
+                ConnectedAccount(
+                  api: widget.api,
+                  connection: connection,
+                  onDisconnected: _load,
+                ),
+                const SizedBox(height: 20),
+                Icon(
+                  Icons.hourglass_empty,
+                  size: 36,
+                  color: theme.colorScheme.outline,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Connected — enquiries not fetched yet',
+                  style: theme.textTheme.titleMedium,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'EzBizi keeps this business\'s associate phone numbers in step '
+                  'with Thumbtack, so calls from your team are recognised as '
+                  'coming from the business. Reading enquiries into this list is '
+                  'not switched on yet — until it is, your Thumbtack leads are '
+                  'on Thumbtack, not missing.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ] else ...[
+                Icon(
+                  Icons.link_off,
+                  size: 40,
+                  color: theme.colorScheme.outline,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'No Thumbtack account connected',
+                  style: theme.textTheme.titleMedium,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Connecting lets EzBizi keep your team\'s phone numbers in step '
+                  'with Thumbtack, so a technician calling a customer is shown as '
+                  'the business rather than an unknown number.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 18),
+                // Same rule as Google's half: a control that is offered must be
+                // a control that works, so somebody holding only `leads.view`
+                // is told who can do it rather than given a button that 403s.
+                if (_canConnect)
+                  ConnectAccount(
+                    api: widget.api,
+                    label: 'Thumbtack',
+                    startPath: '/social/thumbtack/start',
+                    onConnected: _load,
+                  )
+                else
+                  Text(
+                    'Somebody who can manage Leads needs to connect the account.',
+                    style: theme.textTheme.bodySmall,
+                    textAlign: TextAlign.center,
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Two different nothings, and they must not read the same.
   Widget _empty(ThemeData theme) {
     final connected = _anyGoogleAds;
-    final canConnect = widget.session.me?.can('leads.edit') ?? false;
+    final canConnect = _canConnect;
 
     return Center(
       child: ConstrainedBox(
@@ -337,11 +527,14 @@ class _LeadsScreenState extends State<LeadsScreen> {
                 ? lead['contact_name'] as String
                 // A lead with no name is still a lead; the number is what
                 // somebody would call back, so it takes the title.
-                : (lead['phone'] as String? ?? 'Unnamed enquiry'),
+                : (lead['phone'] != null
+                      ? formatPhoneNumber(lead['phone'] as String?)
+                      : 'Unnamed enquiry'),
           ),
           subtitle: Text(
             [
-              if ((lead['phone'] as String?)?.isNotEmpty == true) lead['phone'],
+              if ((lead['phone'] as String?)?.isNotEmpty == true)
+                formatPhoneNumber(lead['phone'] as String?),
               if ((lead['category'] as String?)?.isNotEmpty == true)
                 (lead['category'] as String).replaceAll('_', ' '),
               if (lead['received_at'] != null)

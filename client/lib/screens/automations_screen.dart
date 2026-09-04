@@ -138,7 +138,6 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PanelHeader(
-          title: 'Automations',
           note:
               'When something happens, do something. Rules are yours — they '
               'never need a new release.',
@@ -297,7 +296,10 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                       label: 'Open and edit',
                       reason: noEdit,
                     ),
-                    const PopupMenuItem(value: 'runs', child: Text('Run history')),
+                    const PopupMenuItem(
+                      value: 'runs',
+                      child: Text('Run history'),
+                    ),
                     // A rehearsal is authorized as `update`, not `view` —
                     // AutomationsController::test — because rehearsing is part
                     // of authoring a rule rather than of reading one.

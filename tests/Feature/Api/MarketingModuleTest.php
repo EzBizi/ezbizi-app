@@ -105,12 +105,15 @@ class MarketingModuleTest extends TestCase
             ->json('message');
 
         // R8: a sentence saying what to do, naming the act and the remedy.
-        $this->assertStringContainsString('open Marketing', $message);
+        // The act is opening NEWSLETTER since 2026-09-04 — the endpoint moved
+        // behind that module's own gate when `send` needed to be grantable
+        // apart from `edit`.
+        $this->assertStringContainsString('open Newsletter', $message);
         $this->assertStringContainsString('role', $message);
 
-        // And never the key. Somebody reading "marketing.view" learns a string
+        // And never the key. Somebody reading "newsletter.view" learns a string
         // they cannot act on, and the roles screen is not where they are.
-        $this->assertStringNotContainsString('marketing.view', $message);
+        $this->assertStringNotContainsString('newsletter.view', $message);
     }
 
     /**
@@ -123,7 +126,7 @@ class MarketingModuleTest extends TestCase
     public function test_a_role_the_organization_granted_it_reaches_the_tab(): void
     {
         $alpha    = $this->provisionTenant('Gamma');
-        $marketer = $this->userWithRole($alpha, 'Marketer', ['marketing.view']);
+        $marketer = $this->userWithRole($alpha, 'Marketer', ['newsletter.view']);
 
         $this->signedInAs($marketer)->getJson(self::NEWSLETTER)->assertOk();
     }
@@ -163,19 +166,27 @@ class MarketingModuleTest extends TestCase
     // ── the three modules drawn inside it ────────────────────────
 
     /**
-     * Leads, Reviews and Business Profile are tabs INSIDE Marketing.
+     * Web Management, Reviews and Business Profile are tabs INSIDE Marketing.
      *
-     * The owner's call: the sidebar was fifteen rows deep and three of them were
-     * the same subject — what the public is told about the business, what they
-     * say back, and who rang. They are still three modules, and this is the one
-     * fact that changed about them.
+     * The owner's call: the sidebar was fifteen rows deep and several of them
+     * were the same subject — what the public is told about the business, and
+     * what they say back.
+     *
+     * The trio changed on 2026-09-03. Leads left for a row of its own once
+     * Thumbtack became a second source, and Web Management took its place: a
+     * customer's website says something about the business in the same way its
+     * listing and its social accounts do.
      */
-    public function test_the_three_public_facing_modules_are_drawn_inside_marketing(): void
+    public function test_the_public_facing_modules_are_drawn_inside_marketing(): void
     {
         $registry = app(ModuleRegistry::class);
 
+        // Newsletter joined on 2026-09-04. It was a chip with no permissions of
+        // its own until `send` had to be grantable separately from `edit` —
+        // drafting a mailing and putting it in front of twelve hundred
+        // customers are different acts, and only a module can express that.
         $this->assertSame(
-            ['leads', 'reviews', 'business_profile'],
+            ['newsletter', 'web_management', 'reviews', 'business_profile'],
             array_map(fn ($m) => $m->key, $registry->childrenOf(self::MODULE)),
             'Registry order is the tab order, so this is the order of the strip.',
         );
@@ -205,7 +216,7 @@ class MarketingModuleTest extends TestCase
 
         $this->assertTrue($modules['marketing']['reachable']);
 
-        foreach (['leads', 'reviews', 'business_profile'] as $key) {
+        foreach (['web_management', 'reviews', 'business_profile'] as $key) {
             $this->assertFalse(
                 $modules[$key]['reachable'],
                 "{$key} came with marketing.view, which is a grant nobody made.",
@@ -225,15 +236,15 @@ class MarketingModuleTest extends TestCase
     public function test_a_child_is_reachable_without_the_parent(): void
     {
         $alpha  = $this->provisionTenant('Iota');
-        $caller = $this->userWithRole($alpha, 'Caller', ['leads.view']);
+        $caller = $this->userWithRole($alpha, 'Caller', ['web_management.view']);
 
         $modules = collect(
             $this->signedInAs($caller)->getJson('/api/v1/me')->assertOk()->json('data.modules')
         )->keyBy('key');
 
-        $this->assertTrue($modules['leads']['reachable']);
+        $this->assertTrue($modules['web_management']['reachable']);
         $this->assertFalse($modules['marketing']['reachable']);
-        $this->assertSame(self::MODULE, $modules['leads']['parent']);
+        $this->assertSame(self::MODULE, $modules['web_management']['parent']);
     }
 
     /** The roles editor is built from this, and nests on the same field. */
@@ -247,7 +258,7 @@ class MarketingModuleTest extends TestCase
                 ->json('modules')
         )->keyBy('key');
 
-        $this->assertSame(self::MODULE, $modules['leads']['parent']);
+        $this->assertSame(self::MODULE, $modules['web_management']['parent']);
         $this->assertNull($modules['marketing']['parent']);
     }
 
@@ -256,7 +267,7 @@ class MarketingModuleTest extends TestCase
     {
         $alpha  = $this->provisionTenant('Lambda');
         $caller = $this->userWithRole($alpha, 'Caller', [
-            'leads.view', 'marketing.view', 'automations.view',
+            'reviews.view', 'marketing.view', 'automations.view',
         ]);
 
         $modules = collect(
@@ -264,8 +275,53 @@ class MarketingModuleTest extends TestCase
                 ->json('data.modules')
         )->keyBy('key');
 
-        $this->assertSame(self::MODULE, $modules['leads']['parent']);
+        $this->assertSame(self::MODULE, $modules['reviews']['parent']);
         $this->assertNull($modules['marketing']['parent']);
+    }
+
+    /**
+     * Leads left Marketing and took nothing with it.
+     *
+     * This is the guard on the move itself. `parent` is documented as changing
+     * only where a module is DRAWN, and the whole risk of a reshuffle is that
+     * somebody "tidies up" the permission alongside the layout — renaming
+     * `leads.view`, folding it into `marketing.view`, or moving the `lead.*`
+     * triggers under a different subject. Any of those silently takes Leads
+     * away from every role that holds it, or hands it to every role that does
+     * not, and the sidebar would look correct either way.
+     */
+    public function test_leads_moved_out_without_taking_its_permissions_with_it(): void
+    {
+        $registry = app(ModuleRegistry::class);
+        $leads    = $registry->get('leads');
+
+        $this->assertNotNull($leads);
+        $this->assertNull($leads->parent, 'Leads is a row of its own now.');
+        $this->assertTrue($leads->sidebar);
+
+        // The permission keys are unchanged, so no role gained or lost anything.
+        $alpha  = $this->provisionTenant('Mu');
+        $caller = $this->userWithRole($alpha, 'Caller', ['leads.view']);
+
+        $modules = collect(
+            $this->signedInAs($caller)->getJson('/api/v1/me')->assertOk()->json('data.modules')
+        )->keyBy('key');
+
+        $this->assertTrue($modules['leads']['reachable'], 'leads.view still reaches Leads.');
+        $this->assertNull($modules['leads']['parent'], 'and it is drawn on its own.');
+
+        // Marketing did NOT come along for the ride. Before the move somebody
+        // holding leads.view was shown Marketing as a container; now there is
+        // nothing to contain it, and drawing Marketing anyway would show a tab
+        // whose every child is out of reach.
+        $this->assertFalse($modules['marketing']['reachable']);
+
+        // The events a rule is built on are keyed on the module, not its place.
+        $this->assertNotEmpty($leads->triggers, 'Leads lost its triggers in the move.');
+        $this->assertContains(
+            'lead.received',
+            array_map(fn ($t) => $t->key, $leads->triggers),
+        );
     }
 
     // ── the §5.5 standing rule, at the moment the module is declared ──
@@ -281,7 +337,20 @@ class MarketingModuleTest extends TestCase
         );
 
         $this->assertNotEmpty($module->triggers, 'Marketing declares no events.');
-        $this->assertNotEmpty($module->automationActions, 'Marketing declares no actions.');
+
+        /*
+         * No assertion that Marketing declares ACTIONS, and that is the change
+         * of 2026-09-04 rather than a gap. Its only actions were the newsletter
+         * pair, and they moved to the `newsletter` module beside the events they
+         * act on. §5.5 asks a module for an automation surface or an honest
+         * exemption; triggers alone are a surface, and Marketing's are the two
+         * social events that fire on every publish.
+         */
+        $newsletter = app(ModuleRegistry::class)->get('newsletter');
+        $this->assertNotEmpty(
+            $newsletter->automationActions,
+            'The newsletter actions did not arrive with the module they moved to.',
+        );
 
         $this->assertArrayNotHasKey(
             self::MODULE,
@@ -290,30 +359,29 @@ class MarketingModuleTest extends TestCase
     }
 
     /**
-     * The honesty half, and the reason `isRaised` exists.
+     * Marketing's own events, and every one of them fires.
      *
-     * Nothing sends a newsletter, so those events must say so — a trigger listed
-     * without that mark is one somebody builds a rule on, switches on and never
-     * hears from again. `ModuleRegistryTest` holds the flag to the source in the
-     * other direction; this holds it to the truth today.
+     * ── What this test used to be, and why it changed twice ─────
      *
-     * ── Why this is two lists and no longer one ──────────────────
+     * It began as "every trigger Marketing declares is unraised", which was true
+     * while Newsletter was all the module had. Publishing landed and it became
+     * two named lists, one waiting and one firing — because "they are all false"
+     * passes just as happily against a flag hardcoded false as against a correct
+     * one.
      *
-     * It used to assert that EVERY trigger Marketing declares is unraised, which
-     * was true while Newsletter was all the module had and stopped being true
-     * the day publishing landed. Asserting both sides is the better test anyway:
-     * "they are all false" would pass just as happily against a flag that was
-     * hardcoded false and could never say otherwise.
+     * On 2026-09-04 the waiting half emptied: the newsletter events moved to the
+     * `newsletter` module and BOTH now fire, so Marketing is left with the
+     * social pair. The two-list shape is kept anyway — a module that grows a new
+     * unraised event should land in `$waiting` rather than quietly weakening
+     * this into a loop of assertTrue.
      */
-    public function test_the_newsletter_events_say_nothing_raises_them_and_the_publishing_ones_do_not(): void
+    public function test_marketings_events_are_the_publishing_pair_and_both_fire(): void
     {
         $module = app(ModuleRegistry::class)->get(self::MODULE);
 
-        $waiting = ['newsletter.sent', 'newsletter.unsubscribed'];
+        $waiting = [];
         $firing  = ['social.published', 'social.publish_failed'];
 
-        // The control. Every assertion below is inside a loop, so a module that
-        // declared nothing at all would pass this while proving nothing.
         $this->assertSame(
             [...$waiting, ...$firing],
             array_map(fn (TriggerDefinition $t) => $t->key, $module->triggers),
@@ -321,12 +389,7 @@ class MarketingModuleTest extends TestCase
 
         foreach ($module->triggers as $trigger) {
             if (in_array($trigger->key, $waiting, true)) {
-                $this->assertFalse(
-                    $trigger->isRaised,
-                    "'{$trigger->key}' claims something raises it. If that is now true it is "
-                    .'very welcome, and the wording has to stop saying otherwise.',
-                );
-
+                $this->assertFalse($trigger->isRaised, "'{$trigger->key}' claims something raises it.");
                 $this->assertStringContainsString(
                     TriggerDefinition::NOT_RAISED_YET,
                     $trigger->description,
@@ -338,7 +401,7 @@ class MarketingModuleTest extends TestCase
 
             $this->assertTrue(
                 $trigger->isRaised,
-                "'{$trigger->key}' is declared unraised, but publishing emits it — a tenant "
+                "'{$trigger->key}' is declared unraised, but something emits it — a tenant "
                 .'would be told a working rule cannot run.',
             );
 
@@ -348,6 +411,41 @@ class MarketingModuleTest extends TestCase
                 "'{$trigger->key}' fires, and the description still warns that it does not.",
             );
         }
+    }
+
+    /**
+     * The newsletter events went WITH the module, and started firing.
+     *
+     * They were declared unraised on Marketing from the day Marketing existed.
+     * Moving them without turning them on would have been the same lie in a new
+     * place; turning them on without moving them would have left a rule about
+     * mailings filed under the wrong subject in the builder.
+     */
+    public function test_the_newsletter_events_moved_to_their_module_and_now_fire(): void
+    {
+        $newsletter = app(ModuleRegistry::class)->get('newsletter');
+
+        $this->assertSame(
+            ['newsletter.sent', 'newsletter.unsubscribed'],
+            array_map(fn (TriggerDefinition $t) => $t->key, $newsletter->triggers),
+        );
+
+        foreach ($newsletter->triggers as $trigger) {
+            $this->assertTrue($trigger->isRaised, "'{$trigger->key}' is declared unraised.");
+            $this->assertStringNotContainsString(
+                TriggerDefinition::NOT_RAISED_YET,
+                $trigger->description,
+                "'{$trigger->key}' fires, and still warns that it does not.",
+            );
+        }
+
+        // `send` is the reason this is a module rather than two more marketing
+        // keys: drafting and mailing twelve hundred people are different acts.
+        $this->assertSame(
+            ['view', 'create', 'edit', 'delete', 'send'],
+            $newsletter->actions,
+        );
+        $this->assertSame('marketing', $newsletter->parent);
     }
 
     /**
@@ -410,14 +508,17 @@ class MarketingModuleTest extends TestCase
     public function test_the_endpoint_publishes_what_the_module_declared_and_invents_nothing(): void
     {
         $alpha    = $this->provisionTenant('Zeta');
-        $marketer = $this->userWithRole($alpha, 'Marketer', ['marketing.view']);
+        $marketer = $this->userWithRole($alpha, 'Marketer', ['newsletter.view']);
 
         $body = $this->signedInAs($marketer)
             ->getJson(self::NEWSLETTER)->assertOk()->json('data');
 
-        $module = app(ModuleRegistry::class)->get(self::MODULE);
+        // The endpoint moved from `marketing` to `newsletter` on 2026-09-04,
+        // with the events it publishes. Reading `marketing` here would assert
+        // against the social pair.
+        $module = app(ModuleRegistry::class)->get('newsletter');
 
-        $this->assertSame(['key' => self::MODULE, 'label' => 'Marketing'], $body['module']);
+        $this->assertSame(['key' => 'newsletter', 'label' => 'Newsletter'], $body['module']);
 
         $this->assertSame(
             array_map(fn (TriggerDefinition $t) => [
@@ -427,7 +528,7 @@ class MarketingModuleTest extends TestCase
                 'raised'      => $t->isRaised,
             ], $module->triggers),
             $body['triggers'],
-            'The endpoint and the registry disagree about what Marketing raises.',
+            'The endpoint and the registry disagree about what Newsletter raises.',
         );
 
         $this->assertSame(
@@ -454,7 +555,7 @@ class MarketingModuleTest extends TestCase
     public function test_the_payload_flags_each_event_that_nothing_raises(): void
     {
         $alpha    = $this->provisionTenant('Eta');
-        $marketer = $this->userWithRole($alpha, 'Marketer', ['marketing.view']);
+        $marketer = $this->userWithRole($alpha, 'Marketer', ['newsletter.view']);
 
         $triggers = $this->signedInAs($marketer)
             ->getJson(self::NEWSLETTER)->assertOk()->json('data.triggers');
@@ -464,11 +565,13 @@ class MarketingModuleTest extends TestCase
         // Both values, keyed by trigger. A payload that answered false for
         // everything would satisfy a loop of assertFalse and tell the screen
         // nothing — the flag is only worth publishing if it can say either.
+        // Both fire now. The flag is still worth publishing, and this still
+        // asserts the VALUE rather than looping assertTrue, because a payload
+        // that answered true for everything would satisfy a loop and tell the
+        // screen nothing.
         $this->assertSame([
-            'newsletter.sent'        => false,
-            'newsletter.unsubscribed' => false,
-            'social.published'       => true,
-            'social.publish_failed'  => true,
+            'newsletter.sent'         => true,
+            'newsletter.unsubscribed' => true,
         ], collect($triggers)->pluck('raised', 'key')->all());
     }
 }

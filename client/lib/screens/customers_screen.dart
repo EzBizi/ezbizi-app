@@ -1,3 +1,4 @@
+import '../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
@@ -172,7 +173,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
                 // reasonably expects not to be true: customers are shared
                 // organization-wide (§5.2) and a reader can be forgiven for
                 // assuming a shared record needs no place.
-                note: 'A ${label.toLowerCase()} has to be accountable for the '
+                note:
+                    'A ${label.toLowerCase()} has to be accountable for the '
                     'relationship.',
               )
             : null);
@@ -181,7 +183,6 @@ class _CustomersScreenState extends State<CustomersScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PanelHeader(
-          title: 'Customers',
           note: (_loading || _error != null)
               ? 'Shared across the organization — the $label tag shows who is accountable.'
               : _customers.length < _total
@@ -338,7 +339,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
           child: Text(
             [
               customer['number'],
-              if (customer['phone'] != null) customer['phone'],
+              if (customer['phone'] != null)
+                formatPhoneNumber(customer['phone'] as String?),
               if (customer['email'] != null) customer['email'],
               '$jobs ${jobs == 1 ? 'job' : 'jobs'}',
             ].join(' · '),
@@ -390,7 +392,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                   contentPadding: EdgeInsets.zero,
                   title: Text('${dup['name']} (${dup['number']})'),
                   subtitle: Text(
-                    '${dup['phone'] ?? dup['email'] ?? ''} · ${owner['name'] ?? ''}',
+                    '${dup['phone'] != null ? formatPhoneNumber(dup['phone'] as String?) : (dup['email'] ?? '')} · ${owner['name'] ?? ''}',
                   ),
                 );
               }),
@@ -472,7 +474,7 @@ class _NewCustomerPanelState extends State<_NewCustomerPanel> {
     final response = await widget.api.post('/customers', {
       'owning_franchise_id': _franchiseId,
       'name': _name.text.trim(),
-      if (_phone.text.trim().isNotEmpty) 'phone': _phone.text.trim(),
+      if (_phone.text.trim().isNotEmpty) 'phone': toE164(_phone.text),
       if (_email.text.trim().isNotEmpty) 'email': _email.text.trim(),
       if (_line1.text.trim().isNotEmpty) 'address_line1': _line1.text.trim(),
       if (_line2.text.trim().isNotEmpty) 'address_line2': _line2.text.trim(),
@@ -548,6 +550,7 @@ class _NewCustomerPanelState extends State<_NewCustomerPanel> {
             controller: _phone,
             decoration: const InputDecoration(labelText: 'Phone'),
             keyboardType: TextInputType.phone,
+            inputFormatters: const [PhoneNumberInputFormatter()],
             enabled: !_busy,
           ),
           const SizedBox(height: 12),

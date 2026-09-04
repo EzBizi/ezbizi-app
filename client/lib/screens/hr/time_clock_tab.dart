@@ -88,7 +88,7 @@ class _TimeClockTabState extends State<TimeClockTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        PanelHeader(title: UiStrings.t('time_clock.tab'), note: caption),
+        PanelHeader(note: caption),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [

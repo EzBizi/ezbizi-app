@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Download EzBizi — EzBizi</title>
-<meta name="description" content="Install EzBizi on Windows, or use it in any browser. Android and iOS are on the way.">
+<meta name="description" content="Get EzBizi on the App Store or Google Play, install it on Windows, or use it in any browser.">
 <meta name="robots" content="index,follow">
 <meta name="google-site-verification" content="OaHJgW-pM3f9sFFx7ZF1KxAPlCXH7yycOREAvjpNeko">
 <link rel="canonical" href="https://www.ezbizi.com/download/">
@@ -15,18 +15,20 @@
 <meta property="og:site_name" content="EzBizi">
 <meta property="og:url" content="https://www.ezbizi.com/download/">
 <meta property="og:title" content="Download EzBizi">
-<meta property="og:description" content="Install EzBizi on Windows, or use it in any browser.">
+<meta property="og:description" content="Get EzBizi on the App Store or Google Play, install it on Windows, or use it in any browser.">
 <meta property="og:image" content="https://www.ezbizi.com/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="theme-color" content="#00aeef">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Download EzBizi">
-<meta name="twitter:description" content="Install EzBizi on Windows, or use it in any browser.">
+<meta name="twitter:description" content="Get EzBizi on the App Store or Google Play, install it on Windows, or use it in any browser.">
 <meta name="twitter:image" content="https://www.ezbizi.com/og.png">
 <script type="application/ld+json">
 {"@context":"https://schema.org","@graph":[
   {"@type":"SoftwareApplication","@id":"https://www.ezbizi.com/download/#win","name":"EzBizi for Windows","applicationCategory":"BusinessApplication","operatingSystem":"Windows 10, Windows 11","downloadUrl":"https://www.ezbizi.com/download/EzBizi-setup.exe","softwareHelp":"https://www.ezbizi.com/download/","publisher":{"@type":"Organization","name":"EZBIZI LLC","url":"https://www.ezbizi.com/"}},
+  {"@type":"SoftwareApplication","@id":"https://www.ezbizi.com/download/#android","name":"EzBizi for Android","applicationCategory":"BusinessApplication","operatingSystem":"Android","downloadUrl":"https://play.google.com/store/apps/details?id=com.ezbizi.app","installUrl":"https://play.google.com/store/apps/details?id=com.ezbizi.app","publisher":{"@type":"Organization","name":"EZBIZI LLC","url":"https://www.ezbizi.com/"}},
+  {"@type":"SoftwareApplication","@id":"https://www.ezbizi.com/download/#ios","name":"EzBizi for iPhone and iPad","applicationCategory":"BusinessApplication","operatingSystem":"iOS 15.0 or later","downloadUrl":"https://apps.apple.com/app/id6805979795","installUrl":"https://apps.apple.com/app/id6805979795","publisher":{"@type":"Organization","name":"EZBIZI LLC","url":"https://www.ezbizi.com/"}},
   {"@type":"WebPage","@id":"https://www.ezbizi.com/download/#page","url":"https://www.ezbizi.com/download/","name":"Download EzBizi","isPartOf":{"@type":"WebSite","url":"https://www.ezbizi.com/","name":"EzBizi"},"inLanguage":"en-US"}
 ]}
 </script>
@@ -142,10 +144,11 @@ footer p{font-size:.83rem;color:var(--muted-2)}
 <header class="hero">
   <div class="wrap">
     <div class="eyebrow"><span class="dot"></span> Downloads</div>
-    <h1>Get <em>EzBizi</em> on your computer</h1>
+    <h1>Get <em>EzBizi</em> on your phone or your computer</h1>
     <p class="sub">
-      The desktop app is the same EzBizi as the browser, installed locally and kept
-      up to date on its own. You need an account from your organization to sign in.
+      EzBizi is on Google Play and on Windows, and it runs in any browser without
+      installing anything. Whichever you pick it is the same EzBizi, and you need an
+      account from your organization to sign in.
     </p>
   </div>
 </header>
@@ -174,54 +177,54 @@ footer p{font-size:.83rem;color:var(--muted-2)}
         </div>
       </article>
 
-      <!-- Android — real, but not public -->
-      <article class="card soon">
+      <!-- Android — live on Google Play -->
+      <article class="card live">
         <div class="ico" aria-hidden="true">
           <svg viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="2.5"/><path d="M11 18.2h2"/></svg>
         </div>
-        <span class="tag off">In testing</span>
+        <span class="tag on">Available</span>
         <h2>Android</h2>
         <p>
-          The Android app is built and working its way through Google Play. It will
-          appear there once that finishes — we would rather post the link than a date.
+          Phones and tablets, from Google Play. The same EzBizi as the browser, and
+          it updates itself the way every other app on the device does. You need an
+          account from your organization to sign in.
         </p>
         <div class="foot">
-          <span class="btn btn-lg" aria-disabled="true">Coming to Google Play</span>
-          <p class="meta">Use EzBizi in your phone's browser meanwhile.</p>
+          <a class="btn btn-primary btn-lg" href="https://play.google.com/store/apps/details?id=com.ezbizi.app"
+             rel="noopener">Get it on Google Play</a>
+          <p class="meta">Or open <a href="https://app.ezbizi.com">app.ezbizi.com</a> in your phone's browser.</p>
         </div>
       </article>
 
-      <!-- Neither app is on a public store. That is not taken on trust from a
-           session - it is two commands, and they are the cheapest way to find out
-           that a listing went live and this page did not notice:
+      <!-- Every store link on this page was checked against the store, not taken
+           on trust. The two commands that answer it:
 
-             curl -s "https://itunes.apple.com/lookup?bundleId=com.ezbizi.app" 
              curl -sI "https://play.google.com/store/apps/details?id=com.ezbizi.app"
+             curl -s  "https://itunes.apple.com/lookup?bundleId=com.ezbizi.app"
 
-           resultCount 0 and HTTP 404 mean not published. The moment either answers,
-           these two cards owe the public a link. -->
-      <!-- iOS says only what is checkable: built and signed (true - a signed .ipa
-           exists), and not on the store (true - the lookup below returns nothing).
-           It deliberately does NOT say "in review". docs/MODULE-OWNERS.md records
-           App Store Connect reading "Waiting for Review" AND, in the same list, that
-           EU trader status "blocks submission outright". Those two cannot both
-           describe the same moment, nobody owns that console today, and a public
-           status page is the wrong place to guess between them. -->
+           iOS was approved 3 Sep 2026. Apple's CDN takes a few hours to publish a
+           new listing worldwide, so the lookup can still answer resultCount 0 for a
+           while after approval — that is propagation, not a problem.
+
+           The link is region-agnostic on purpose: apps.apple.com/app/id... sends a
+           visitor to their OWN storefront. A /us/ URL would send all 175 regions to
+           the American one. -->
       <!-- iPhone and iPad -->
-      <article class="card soon">
+      <article class="card">
         <div class="ico" aria-hidden="true">
           <svg viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 5.4h3"/></svg>
         </div>
-        <span class="tag off">Not yet</span>
+        <span class="tag">iOS 15 or newer</span>
         <h2>iPhone and iPad</h2>
         <p>
-          The iOS app is built and signed. It is not on the App Store yet — the
-          remaining steps are Apple's, and we would rather post the link when it is
-          there than promise a date we have not earned.
+          On the App Store. It installs and updates itself the way every other app on
+          the device does, and runs on iPhone and iPad. You need an account from your
+          organization to sign in.
         </p>
         <div class="foot">
-          <span class="btn btn-lg" aria-disabled="true">Coming to the App Store</span>
-          <p class="meta">Use EzBizi in Safari meanwhile.</p>
+          <a class="btn btn-primary btn-lg" href="https://apps.apple.com/app/id6805979795"
+             rel="noopener">Download on the App Store</a>
+          <p class="meta">Or open <a href="https://app.ezbizi.com">app.ezbizi.com</a> in Safari.</p>
         </div>
       </article>
 

@@ -9,9 +9,6 @@ use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\PhoneCall;
 use App\Models\PhoneNumber;
-use App\Models\Task;
-use App\Models\TaskBoard;
-use App\Models\TaskGroup;
 use App\Models\TrainingAssignment;
 use App\Models\User;
 use App\Models\Vehicle;
@@ -20,8 +17,6 @@ use App\Support\Fleet\VehicleStatus;
 use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Scoping\ViewScope;
-use App\Support\Tasks\TaskUpdateWriter;
-use App\Support\Tasks\TaskWriter;
 use App\Support\TimeClock\TimeClock;
 use App\Support\Training\AssignmentWriter;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -30,6 +25,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+use App\Models\PhoneMessage;
+use App\Support\Phone\SmsCompliance;
+use App\Support\Phone\TwilioGateway;
 
 /**
  * Performing one action from an automation (plan §5.5).
@@ -170,9 +168,9 @@ class ActionRunner
         private readonly AuditLogger $audit,
         private readonly NotificationDispatcher $notifications,
         private readonly RecordNumberGenerator $numbers,
-        private readonly TaskWriter $tasks,
-        private readonly TaskUpdateWriter $updates,
         private readonly TimeClock $timeClock,
+        private readonly SmsCompliance $smsCompliance,
+        private readonly TwilioGateway $twilio,
         private readonly AssignmentWriter $trainingAssignments,
     ) {}
 
@@ -215,13 +213,7 @@ class ActionRunner
             // phone.voicemail.mark_dealt arrives here as voicemail.mark_dealt.
             'voicemail.mark_dealt' => $this->markVoicemailDealt($event, $subject),
             'missed.create_job' => $this->createJobFromMissed($event, $subject),
-
-            'task.create' => $this->createTask($action, $event, $automation),
-            'task.assign_owner' => $this->updateTask($action, $event, $subject, $automation, 'owner_user_id'),
-            'task.set_status' => $this->updateTask($action, $event, $subject, $automation, 'status_option_id'),
-            'task.set_due_date' => $this->updateTask($action, $event, $subject, $automation, 'due_on'),
-            'task.move_group' => $this->moveTask($action, $event, $subject, $automation),
-            'task.add_update' => $this->addTaskUpdate($action, $event, $subject, $automation, $actionIndex),
+            'sms.send' => $this->sendSms($action, $event, $automation),
 
             'time_clock.clock_in' => $this->punch($event, $subject, in: true),
             'time_clock.clock_out' => $this->punch($event, $subject, in: false),
@@ -235,105 +227,16 @@ class ActionRunner
         };
     }
 
-    private function createTask(array $action, AutomationEvent $event, ?Automation $automation): array
-    {
-        [$actor, $scope] = $this->taskContext($automation);
-        $board = TaskBoard::query()->active()->find($action['board_id'] ?? null);
-        if ($board === null) {
-            return ['type' => 'task.create', 'ok' => false, 'detail' => 'The selected task board is unavailable.'];
-        }
-        $task = $this->tasks->create($actor, $board, $scope, [
-            'title' => $action['title'] ?? null,
-            'description' => $action['description'] ?? null,
-            'group_id' => $action['group_id'] ?? null,
-            'status_option_id' => $action['status_option_id'] ?? null,
-            'owner_user_id' => $action['owner_user_id'] ?? null,
-            'due_on' => $action['due_on'] ?? null,
-        ], $event);
-
-        return ['type' => 'task.create', 'ok' => true, 'detail' => "Created {$task->number}."];
-    }
-
-    private function updateTask(
-        array $action,
-        AutomationEvent $event,
-        ?Model $subject,
-        ?Automation $automation,
-        string $field,
-    ): array {
-        if (! $subject instanceof Task) {
-            return ['type' => $action['type'], 'ok' => false, 'detail' => 'This action requires a Task trigger.'];
-        }
-        [$actor, $scope] = $this->taskContext($automation);
-        $value = match ($field) {
-            'owner_user_id' => $action['owner_user_id'] ?? null,
-            'status_option_id' => $action['status_option_id'] ?? null,
-            'due_on' => $action['due_on'] ?? null,
-        };
-        $updated = $this->tasks->update(
-            $actor,
-            $subject,
-            $scope,
-            (int) $subject->fresh()->version,
-            [$field => $value],
-            causationId: $event->id,
-            causedBy: $event,
-        );
-
-        return ['type' => $action['type'], 'ok' => true, 'detail' => "Updated {$updated->number}."];
-    }
-
-    private function moveTask(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation): array
-    {
-        if (! $subject instanceof Task || $subject->parent_task_id !== null) {
-            return ['type' => 'task.move_group', 'ok' => false, 'detail' => 'Only a top-level Task can move between groups.'];
-        }
-        [$actor, $scope] = $this->taskContext($automation);
-        $fresh = $subject->fresh();
-        $source = TaskGroup::query()->active()->where('board_id', $fresh->board_id)->findOrFail($fresh->group_id);
-        $destination = TaskGroup::query()->active()->where('board_id', $fresh->board_id)
-            ->findOrFail($action['group_id'] ?? null);
-        $moved = $this->tasks->reorder($actor, $fresh->board, $scope, [
-            'task_id' => $fresh->id,
-            'destination_group_id' => $destination->id,
-            'expected_task_version' => (int) $fresh->version,
-            'expected_source_order_version' => (int) $source->order_version,
-            'expected_destination_order_version' => (int) $destination->order_version,
-            'before_task_id' => null,
-            'after_task_id' => null,
-        ], $event);
-
-        return ['type' => 'task.move_group', 'ok' => true, 'detail' => "Moved {$moved->number}."];
-    }
-
-    private function addTaskUpdate(
-        array $action,
-        AutomationEvent $event,
-        ?Model $subject,
-        ?Automation $automation,
-        int $actionIndex,
-    ): array {
-        if (! $subject instanceof Task) {
-            return ['type' => 'task.add_update', 'ok' => false, 'detail' => 'This action requires a Task trigger.'];
-        }
-        [$actor, $scope] = $this->taskContext($automation);
-        $update = $this->updates->create(
-            $actor,
-            $subject,
-            $scope,
-            (string) ($action['body'] ?? ''),
-            "auto:{$automation->id}:{$event->id}:{$actionIndex}",
-            $event,
-        );
-
-        return ['type' => 'task.add_update', 'ok' => true, 'detail' => "Added update {$update->id}."];
-    }
-
-    /** @return array{0:User,1:ViewScope} */
+    /**
+     * The actor and scope an automation action runs as — its own creator,
+     * standing exactly where they stood when they saved the rule.
+     *
+     * @return array{0:User,1:ViewScope}
+     */
     private function taskContext(?Automation $automation): array
     {
         if ($automation === null) {
-            throw new InvalidArgumentException('A task automation action requires its rule identity.');
+            throw new InvalidArgumentException('This automation action requires its rule identity.');
         }
         $actor = User::query()->where('is_active', true)->find($automation->created_by);
         if ($actor === null) {
@@ -410,6 +313,133 @@ class ActionRunner
     }
 
     /**
+     * Send a text from one of the company's lines.
+     *
+     * ── Why the line and the destination are both stated in the rule ──
+     *
+     * This is the one Phone action that is NOT about the record the event was
+     * about. It exists so a rule on something with no phone in it — an email
+     * arriving, a job changing status — can still send a text. There is
+     * therefore nothing to infer the numbers from, and inferring is how a
+     * customer's text ends up going to whoever happened to be in the payload.
+     *
+     * ── Three refusals, and each says which one it is ────────────────
+     *
+     * A rule that silently does nothing is worse than one that fails, because
+     * the run log is the only place anybody can see either. So a missing line,
+     * a line belonging to another company, and a line not cleared for
+     * messaging are three distinct answers rather than one shrug.
+     */
+    private function sendSms(array $action, AutomationEvent $event, ?Automation $automation): array
+    {
+        $type = 'sms.send';
+
+        $number = PhoneNumber::query()->find($action['number_id'] ?? null);
+        if ($number === null) {
+            return [
+                'type' => $type,
+                'ok' => false,
+                'detail' => 'No phone line was chosen to send from, so nothing was sent.',
+            ];
+        }
+
+        // A rule belonging to one company must not send from another's line.
+        // The rule's own scope is the boundary; without this, a company that
+        // can write rules can send as anybody in the organization.
+        if (! $this->numberIsInScope($number, $automation)) {
+            return [
+                'type' => $type,
+                'ok' => false,
+                'detail' => 'That phone line does not belong to the company this rule '
+                    .'belongs to, so nothing was sent.',
+            ];
+        }
+
+        $to = trim((string) ($action['to'] ?? ''));
+        $body = trim((string) ($action['body'] ?? ''));
+
+        if ($to === '' || $body === '') {
+            return [
+                'type' => $type,
+                'ok' => false,
+                'detail' => $to === ''
+                    ? 'No number to send to, so nothing was sent.'
+                    : 'The message was empty, so nothing was sent.',
+            ];
+        }
+
+        // The same gate the Messages screen uses, not a second copy of it. A
+        // line that is not cleared for messaging will be refused by the
+        // carrier anyway; refusing here says so in the run log instead.
+        if (! $this->smsCompliance->allowsOutbound($number)) {
+            return [
+                'type' => $type,
+                'ok' => false,
+                'detail' => SmsCompliance::REFUSAL,
+            ];
+        }
+
+        $connection = $number->connection;
+        if ($connection === null) {
+            return [
+                'type' => $type,
+                'ok' => false,
+                'detail' => 'That line has no phone account behind it, so nothing was sent.',
+            ];
+        }
+
+        try {
+            $sent = $this->twilio->sendMessage($connection, (string) $number->e164, $to, $body);
+        } catch (Throwable $e) {
+            // Twilio's own sentence, because a code we have never seen still
+            // explains itself and a rewrite of it does not.
+            return [
+                'type' => $type,
+                'ok' => false,
+                'detail' => $e->getMessage() !== ''
+                    ? 'Twilio refused it: '.$e->getMessage()
+                    : 'Twilio refused to send from this phone line.',
+            ];
+        }
+
+        $message = PhoneMessage::query()->create([
+            'connection_id' => $connection->id,
+            'number_id' => $number->id,
+            'twilio_sid' => $sent['sid'] ?? null,
+            'direction' => PhoneMessage::DIRECTION_OUTBOUND,
+            'from_e164' => (string) $number->e164,
+            'to_e164' => $to,
+            'body' => $body,
+        ]);
+
+        $this->audit->log(
+            action: 'phone.sms_sent_by_automation',
+            target: $message,
+            changes: ['after' => ['to' => $to, 'from' => (string) $number->e164]],
+            metadata: ['caused_by_event' => $event->getKey(), 'trigger' => $event->event_key],
+        );
+
+        return [
+            'type' => $type,
+            'ok' => true,
+            'detail' => 'Sent a message from '.$number->e164.' to '.$to.'.',
+        ];
+    }
+
+    /** Whether this line sits inside the company the rule belongs to. */
+    private function numberIsInScope(PhoneNumber $number, ?Automation $automation): bool
+    {
+        // An organization-wide rule reaches every line the organization holds;
+        // BelongsToTenant has already confined the query to one organization.
+        if ($automation === null || $automation->scope_type === null) {
+            return true;
+        }
+
+        return (string) $number->scope_type === (string) $automation->scope_type
+            && (string) $number->scope_id === (string) $automation->scope_id;
+    }
+
+    /**
      * Give a guide or a test to a person or a role, from a rule (training
      * task-9 brief).
      *
@@ -417,16 +447,14 @@ class ActionRunner
      * `AssignmentsController::store` calls — a rule and a person take the
      * identical write path, so reach-bounding (`AssignmentReach`) cannot be
      * bypassed by writing a rule instead of clicking a button. The ASSIGNER
-     * is the automation's own creator, resolved the same way
-     * [taskContext] already resolves it for every task action: a rule
+     * is the automation's own creator, resolved by [taskContext]: a rule
      * reaches no further than the person who saved it could reach by hand.
      *
      * The assignee comes from the action's own config when a rule author set
      * one (`assignee_type`/`assignee_id` — the picker offers a specific
-     * person or role, same as `owner_user_id` does for `task.assign_owner`),
-     * and falls back to the triggering event's subject when it is a User —
-     * the shape the trigger's own description names: "Paired with 'Account
-     * activated' this is how an induction arrives on its own"
+     * person or role), and falls back to the triggering event's subject when
+     * it is a User — the shape the trigger's own description names: "Paired
+     * with 'Account activated' this is how an induction arrives on its own"
      * (ModuleServiceProvider).
      *
      * Both of `AssignmentWriter::create`'s failure modes are caught here
@@ -903,11 +931,24 @@ class ActionRunner
         return [
             'type' => 'notify',
             'ok' => true,
+            // Zero is not a failure, but it stopped meaning one thing.
+            //
+            // It has always meant "nobody has reach over that record" — a rule
+            // scoped to a franchise nobody is assigned to. Since the in-app
+            // gate moved inside dispatch() it ALSO means "this company has
+            // automation notifications switched off", and those two send a
+            // person debugging a rule to opposite places: one is a scoping
+            // problem in the rule, the other is a settings screen the rule
+            // author may not even be able to open.
+            //
+            // allows() is public for this. Asking it costs one settings read on
+            // the zero path only, which is the path somebody is already staring
+            // at because their rule looks broken.
             'detail' => $sent === 0
-                // Not a failure. A rule scoped to a franchise nobody is assigned
-                // to has nobody to tell, and saying so is more useful than a
-                // success that quietly reached no one.
-                ? "Nobody has reach over that record, so there was no one to tell: {$title}"
+                ? ($this->notifications->allows('automation', $subject)
+                    ? "Nobody has reach over that record, so there was no one to tell: {$title}"
+                    : 'Automation notifications are switched off for this company, so nobody '
+                        ."was told: {$title}")
                 : "Told {$sent} ".($sent === 1 ? 'person' : 'people').": {$title}",
         ];
     }

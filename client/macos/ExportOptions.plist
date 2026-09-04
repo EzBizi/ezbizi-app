@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Mirrors ios/ExportOptions.plist. `xcodebuild -exportArchive` reads this
+	  after `flutter build macos` has produced the .app, re-signs the archive
+	  with the named certificate and profile, and — because
+	  installerSigningCertificate is set — wraps it into the signed .pkg that
+	  App Store Connect takes for macOS. Without that key the export is a bare
+	  .app and there is nothing to upload.
+
+	  Both identities and the profile were created 4 Sep 2026 and live in the
+	  relay's login keychain; see build-app.sh for how their presence is
+	  detected before this file is used.
+	-->
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>teamID</key>
+	<string>2CMZQR34RL</string>
+	<key>signingStyle</key>
+	<string>manual</string>
+	<key>signingCertificate</key>
+	<string>Apple Distribution</string>
+	<key>installerSigningCertificate</key>
+	<string>3rd Party Mac Developer Installer</string>
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>com.ezbizi.app</key>
+		<string>EzBizi Mac App Store</string>
+	</dict>
+	<key>uploadSymbols</key>
+	<true/>
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+	<key>destination</key>
+	<string>export</string>
+</dict>
+</plist>

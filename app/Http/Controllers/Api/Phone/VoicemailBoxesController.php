@@ -11,6 +11,10 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\Response;
+use App\Models\User;
+use App\Models\PhoneRingGroup;
+use App\Models\PhoneNumber;
+use App\Models\Company;
 
 /**
  * Voicemail boxes: the greeting a caller hears, and who is told about it.
@@ -139,6 +143,23 @@ class VoicemailBoxesController extends Controller
             ->all();
     }
 
+    /** The owner's name, or null where the box belongs to no one in particular. */
+    private function ownerName(PhoneVoicemailBox $box): ?string
+    {
+        $id = (string) $box->owner_id;
+        if ($id === '') {
+            return null;
+        }
+
+        return match ($box->owner_type) {
+            PhoneVoicemailBox::OWNER_USER => User::query()->find($id)?->name,
+            PhoneVoicemailBox::OWNER_RING_GROUP => PhoneRingGroup::query()->find($id)?->name,
+            PhoneVoicemailBox::OWNER_NUMBER => PhoneNumber::query()->find($id)?->e164,
+            PhoneVoicemailBox::OWNER_COMPANY => Company::query()->find($id)?->name,
+            default => null,
+        };
+    }
+
     /** @return array<string, mixed> */
     private function row(PhoneVoicemailBox $box): array
     {
@@ -148,6 +169,11 @@ class VoicemailBoxesController extends Controller
             'name' => $box->name,
             'owner_type' => $box->owner_type,
             'owner_id' => $box->owner_id,
+
+            // WHOSE box, in words. The id alone means a screen listing boxes
+            // has to look every owner up itself to draw a name, and a screen
+            // that cannot say "Ana's" is a list of boxes nobody can tell apart.
+            'owner_name' => $this->ownerName($box),
             'greeting_mode' => $box->greeting_mode,
             'greeting_text' => $box->greeting_text,
             'greeting_voice' => $box->greeting_voice,

@@ -9,9 +9,9 @@ import 'package:ezbizi_client/core/theme.dart';
 ///
 /// Both exist because a rule nothing checks is a preference. The no-pop-ups rule
 /// was stated in StartUp.md in as many words and five `AlertDialog`s shipped
-/// anyway, found weeks later by an audit; the Tasks module now asserts
-/// `findsNothing` for them per screen, which is the only reason that rule holds
-/// where it holds. These are the colour equivalents.
+/// anyway, found weeks later by an audit; screens now assert `findsNothing`
+/// for them one by one, which is the only reason that rule holds where it
+/// holds. These are the colour equivalents.
 
 /// WCAG relative luminance. sRGB channel -> linear, then the standard weights.
 double _luminance(Color c) {
@@ -74,6 +74,203 @@ void main() {
     }
   });
 
+  /// Every heading the app asks for is one somebody actually defined.
+  ///
+  /// `theme.dart` listed four text styles; the app asks for six. The three
+  /// missing ones did NOT fall back to Material — ThemeData does not merge its
+  /// typography in behind that map. They came through as a TextStyle carrying
+  /// a colour and nothing else, `fontSize: null, fontWeight: null`, so every
+  /// call site rendered at the ambient body size and weight. 109 of them, and
+  /// `titleSmall` was 93 on its own.
+  ///
+  /// The getter is never null, so absence cannot be read from it directly. The
+  /// WEIGHT is what gives it away: an unfilled slot has none, and every slot we
+  /// fill is 600 or heavier.
+  /// A selectable chip with an icon must not also draw a checkmark.
+  ///
+  /// Material does not put the tick BESIDE the avatar. It paints it ON the
+  /// avatar, and darkens the avatar first so the tick can be read against it —
+  /// `_kSelectScrimColor = Color(0x60191919)`, filled through `avatarBorder`,
+  /// which is a circle. So the selected chip's own icon disappears under a grey
+  /// disc.
+  ///
+  /// Reported from the module tab rows, and the way it was reported is the
+  /// clue: the disc appeared "regardless if I'm hovering over that tab or any
+  /// tab". It follows the SELECTION, not the pointer — it reads as a stuck
+  /// hover state and is not one.
+  ///
+  /// Enumerated rather than listed, because the two known cases are the two
+  /// somebody happened to find. This is the same reason `titleSmall` was missed
+  /// by a hand-written audit on the same day.
+  /// One tab strip, so two screens cannot look like two products.
+  ///
+  /// Sixteen screens use `TabBarLike` — a row of chips. Leads used Material's
+  /// `TabBar`: underlined, stretched across the full width, no icons. Side by
+  /// side with Services or Communication it read as a different application,
+  /// which is what got it reported.
+  ///
+  /// Enumerated rather than fixed where it was found. Leads was the only one
+  /// left, and the only way to keep that true is to check all of them.
+  group('every screen uses the same tab strip', () {
+    test('no screen falls back to a Material TabBar', () {
+      final banned = RegExp(r'\b(TabBar|TabBarView|DefaultTabController)\(');
+      var scanned = 0;
+      var usesShared = 0;
+      final offenders = <String>[];
+
+      for (final file in Directory('lib')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.dart'))) {
+        scanned++;
+        final rel = file.path.replaceAll(r'\', '/');
+        final source = file.readAsStringSync();
+
+        if (source.contains('TabBarLike(')) usesShared++;
+
+        // The shared widget is allowed to be called TabBarLike without this
+        // matching it, and it is the one place a raw strip could legitimately
+        // live if it ever needed one.
+        if (rel.endsWith('widgets/tab_bar_like.dart')) continue;
+
+        for (final match in banned.allMatches(source)) {
+          // `TabBarLike(` starts with TabBar but is the thing we want.
+          if (source.startsWith('TabBarLike(', match.start)) continue;
+          final line = '\n'.allMatches(source.substring(0, match.start)).length + 1;
+          offenders.add('$rel:$line  ${match.group(1)}');
+        }
+      }
+
+      // Floors before the rule, as everywhere else here.
+      expect(scanned, greaterThan(100),
+          reason: 'Only $scanned .dart files scanned under lib/.');
+      expect(usesShared, greaterThan(10),
+          reason: 'Found TabBarLike in only $usesShared files. It is in more '
+              'than ten; the scan is broken and this test is reporting '
+              'nothing rather than reporting clean.');
+
+      expect(
+        offenders,
+        isEmpty,
+        reason:
+            'These use Material\'s tab strip instead of the app\'s:\n  '
+            '${offenders.join('\n  ')}\n'
+            'TabBarLike is a row of chips with icons; TabBar is underlined and '
+            'full width. A screen with the wrong one looks like a different '
+            'product from the page next to it.',
+      );
+    });
+  });
+
+  group('a chip does not cover its own icon', () {
+    test('every selectable chip with an avatar sets showCheckmark', () {
+      var scanned = 0;
+      var withAvatar = 0;
+      final offenders = <String>[];
+
+      for (final file in Directory('lib')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.dart'))) {
+        scanned++;
+        final source = file.readAsStringSync();
+
+        for (final kind in const ['ChoiceChip(', 'FilterChip(']) {
+          var at = source.indexOf(kind);
+          while (at >= 0) {
+            final args = _argsOf(source, at + kind.length - 1);
+            if (args != null && args.contains('avatar:')) {
+              withAvatar++;
+              if (!args.contains('showCheckmark:')) {
+                final line = '\n'.allMatches(source.substring(0, at)).length + 1;
+                offenders.add('${file.path.replaceAll(r'\', '/')}:$line');
+              }
+            }
+            at = source.indexOf(kind, at + 1);
+          }
+        }
+      }
+
+      // Floors first. A paren matcher that returns null for everything finds no
+      // offenders and passes forever.
+      expect(scanned, greaterThan(100),
+          reason: 'Only $scanned .dart files scanned under lib/.');
+      expect(withAvatar, greaterThan(0),
+          reason: 'No selectable chip with an avatar was found anywhere. That '
+              'has never been true; the scan is broken and this test is '
+              'reporting nothing rather than reporting clean.');
+
+      expect(
+        offenders,
+        isEmpty,
+        reason:
+            'These draw a checkmark on top of their own icon:\n  '
+            '${offenders.join('\n  ')}\n'
+            'Material darkens the avatar with a 0x60191919 disc to make the '
+            'tick readable, so the icon that identifies the option vanishes at '
+            'the moment it is chosen. Pass showCheckmark: false — the filled '
+            'background already says which one is selected.',
+      );
+    });
+  });
+
+  group('no heading is left unstyled', () {
+    test('every heading style the app uses carries a weight of its own', () {
+      final pattern = RegExp(r'textTheme\.([a-zA-Z]+)');
+      final asked = <String>{};
+      var scanned = 0;
+
+      for (final file in Directory('lib')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.dart'))) {
+        scanned++;
+        for (final match in pattern.allMatches(file.readAsStringSync())) {
+          asked.add(match.group(1)!);
+        }
+      }
+
+      final headings = asked
+          .where((n) =>
+              n.startsWith('display') ||
+              n.startsWith('headline') ||
+              n.startsWith('title'))
+          .toList()
+        ..sort();
+
+      // The floors, before the rule — the same reason the colour ratchet has
+      // them. A regex that matches nothing passes silently.
+      expect(scanned, greaterThan(100),
+          reason: 'Only $scanned .dart files scanned under lib/. The scan is '
+              'broken and this test says nothing until it is fixed.');
+      expect(headings, isNotEmpty,
+          reason: 'No heading styles found anywhere in lib/. That has never '
+              'been true; the pattern is broken.');
+
+      for (final theme in {
+        'light': EzBiziTheme.light(),
+        'dark': EzBiziTheme.dark(),
+      }.entries) {
+        for (final name in headings) {
+          final style = _slot(theme.value.textTheme, name);
+          if (style == null) continue;
+
+          expect(
+            style.fontWeight?.value ?? 400,
+            greaterThanOrEqualTo(600),
+            reason:
+                'textTheme.$name is used in lib/ but ${theme.key} resolves it '
+                'to weight ${style.fontWeight?.value ?? 'none'}. Nothing in '
+                'this app is lighter than 600, and a slot with NO weight is '
+                'one theme.dart never filled in — every call site is rendering '
+                'at whatever size the surrounding text happens to be. Define '
+                'it there, or stop asking for it.',
+          );
+        }
+      }
+    });
+  });
+
   group('colour literals stay in theme.dart', () {
     // A ratchet, not a clean-room assertion. There are already literals in the
     // tree and fixing all of them is its own piece of work — but the count must
@@ -89,11 +286,15 @@ void main() {
     // two literals makes the two disagree. Trust this number; it is the one the
     // gate enforces.
     //
-    // Roughly 11 of these are benign (`Colors.transparent`) and 2 are the
-    // sanctioned exception in signature_field.dart, which names black ink and
-    // white paper because they are the pixels of a printed document. They are
-    // inside the count deliberately: excluding them needs a second pattern that
-    // itself drifts, and the ratchet only cares about direction.
+    // SUPERSEDED, and left here because the reasoning was wrong in a way worth
+    // seeing. This used to say sanctioned literals were "inside the count
+    // deliberately", on the grounds that excluding them needs a second pattern
+    // that itself drifts. That was true about the mechanism and wrong about the
+    // consequence: a count that mixes allowed colours with owed ones cannot be
+    // acted on, because nobody can tell which is which — and the only way to add
+    // an allowed one is to raise the ceiling, which is the exact move the ratchet
+    // exists to prevent. They are excluded now. See `sanctioned` below.
+    //
     // Corrected 79 -> 80 on 2026-08-31. NOT a new literal: the count is
     // IDENTICAL at d0ce75a (where 79 was written) and at main, so nothing was
     // added after the baseline was declared. 79 was measured in a worktree that
@@ -132,10 +333,60 @@ void main() {
     // The second was used to measure the damage done by the first, and produced
     // "24 files were invisible" when the true answer was one. Two wrong numbers
     // in opposite directions, from the same wrong assumption about one tool.
-    const baseline = 80;
+    // SANCTIONED EXCEPTIONS are excluded from the count rather than absorbed
+    // into the baseline. A literal inside the number is invisible: nobody can
+    // tell an allowed one from a debt, and the only way to add another is to
+    // raise the ceiling -- which is the move this ratchet exists to prevent.
+    //
+    // Excluding them instead makes the escape hatch an ARGUMENT rather than an
+    // arithmetic edit. To add a colour literal legitimately you add your file
+    // here with a reason somebody can disagree with, in a diff that shows what
+    // you are claiming. Raising `baseline` says nothing and cannot be refused.
+    const sanctioned = <String, String>{
+      // Black ink and white paper are the pixels of a printed document. Theme
+      // colours would rasterise a signature as near-white in dark mode, and it
+      // would be invisible on paper. The reason lives at the constant too.
+      'screens/inspection/signature_field.dart':
+          'a signature is printed, so its colours are ink and paper, not theme',
+
+      // The pre-login surface. auth_shell paints a fixed dark gradient
+      // (#071018 -> #0A2233 -> #06384E) and everything on it is white. It is
+      // deliberately OUTSIDE the theme: it is what you see before you are in
+      // the app, and it looks the same in light and dark by design.
+      //
+      // Converting these would be an active regression, not a cleanup —
+      // `Colors.white` here means "on my own dark background", so mapping it to
+      // `onSurface` renders the login screen dark-on-dark in light mode.
+      'widgets/auth_shell.dart':
+          'a fixed dark pre-login surface; white here means on-my-own-background',
+      'widgets/auth_preview.dart':
+          'drawn on auth_shell dark gradient, same fixed surface',
+
+      // A printed document and the desk it sits on. The file already documents
+      // this itself — "Ink, and the paper it sits on. DocumentRenderer's
+      // stylesheet, in Dart" — and says why they do not follow the theme.
+      'screens/hr/contract_document_page.dart':
+          'renders paper and ink for print; already reasoned about at the constants',
+    };
+
+    // MEASURED AFTER EXCLUDING THE ABOVE, and the drop is the finding rather
+    // than an adjustment. The count was never that much DEBT: roughly half of it
+    // was three surfaces that are deliberately outside the theme and say so in
+    // their own code. A ratchet that counts documented, correct decisions as
+    // debt reports a number nobody can act on, and manufactures pressure to
+    // "clean up" things whose conversion would be a regression.
+    //
+    // What remains is the honest figure, and it is small enough to finish.
+    const baseline = 31;
 
     test('no new hardcoded colours outside theme.dart', () {
-      final pattern = RegExp(r'Color\(0x|Colors\.[a-z]');
+      // `Colors.transparent` is excluded, and it is the one exception worth
+      // making: it is the ABSENCE of paint, not a colour anybody chose, so
+      // "read it from the theme instead" is advice with no answer. Counting it
+      // sent a merge red over six `Colors.transparent` in a timeline
+      // widget — a false positive that costs a real gate its credibility, which
+      // is how gates end up being raised past instead of fixed.
+      final pattern = RegExp(r'Color\(0x|Colors\.(?!transparent\b)[a-z]');
       var found = 0;
       var scanned = 0;
       final worst = <String, int>{};
@@ -145,9 +396,9 @@ void main() {
           .whereType<File>()
           .where((f) => f.path.endsWith('.dart'))) {
         scanned++;
-        if (file.path.replaceAll(r'\', '/').endsWith('core/theme.dart')) {
-          continue;
-        }
+        final rel = file.path.replaceAll(r'\', '/');
+        if (rel.endsWith('core/theme.dart')) continue;
+        if (sanctioned.keys.any(rel.endsWith)) continue;
         final hits = pattern.allMatches(file.readAsStringSync()).length;
         if (hits > 0) {
           found += hits;
@@ -188,4 +439,35 @@ void main() {
       );
     });
   });
+}
+
+
+/// One Material text slot by name, or null when the name is not a slot.
+TextStyle? _slot(TextTheme t, String name) => switch (name) {
+  'displayLarge' => t.displayLarge,
+  'displayMedium' => t.displayMedium,
+  'displaySmall' => t.displaySmall,
+  'headlineLarge' => t.headlineLarge,
+  'headlineMedium' => t.headlineMedium,
+  'headlineSmall' => t.headlineSmall,
+  'titleLarge' => t.titleLarge,
+  'titleMedium' => t.titleMedium,
+  'titleSmall' => t.titleSmall,
+  _ => null,
+};
+
+
+/// The argument text of a call whose opening paren is at [open], or null when
+/// the parens do not balance inside this file.
+String? _argsOf(String source, int open) {
+  var depth = 0;
+  for (var i = open; i < source.length; i++) {
+    final ch = source[i];
+    if (ch == '(') depth++;
+    if (ch == ')') {
+      depth--;
+      if (depth == 0) return source.substring(open + 1, i);
+    }
+  }
+  return null;
 }

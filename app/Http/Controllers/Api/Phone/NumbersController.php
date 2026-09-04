@@ -10,6 +10,7 @@ use App\Models\PhoneFlow;
 use App\Models\PhoneNumber;
 use App\Models\PhoneRingGroup;
 use App\Models\PhoneUsageDaily;
+use App\Models\PhoneExtension;
 use App\Models\PhoneNumberGrant;
 use App\Support\Scoping\ViewScope;
 use Illuminate\Support\Facades\DB;
@@ -1014,8 +1015,34 @@ class NumbersController extends Controller
     }
 
     /** @return array<string, mixed> */
+    /** Memoised: row() is called once per line and the answer is the same. */
+    private ?string $mineResolved = null;
+
+    private bool $mineLookedUp = false;
+
+    private function myAssignedNumberId(): ?string
+    {
+        if ($this->mineLookedUp) {
+            return $this->mineResolved;
+        }
+
+        $this->mineLookedUp = true;
+
+        $user = request()->user();
+        if ($user === null) {
+            return $this->mineResolved = null;
+        }
+
+        return $this->mineResolved = PhoneExtension::query()
+            ->where('user_id', $user->id)
+            ->whereNotNull('number_id')
+            ->value('number_id');
+    }
+
     private function row(PhoneNumber $number): array
     {
+        $steps = (new TwimlRenderer)->describe($number);
+
         return [
             'id' => $number->id,
             'organization_id' => $number->organization_id,
@@ -1063,8 +1090,23 @@ class NumbersController extends Controller
             // O(n) queries over the visible lines. Fine at five; if an
             // organization ever holds hundreds, eager-load the groups and
             // presences rather than reintroducing a separate rule here.
-            'answers' => collect((new TwimlRenderer)->describe($number))
-                ->firstWhere('step', 'answer')['usable'] ?? false,
+            'answers' => collect($steps)->firstWhere('step', 'answer')['usable'] ?? false,
+
+            // Whether THIS is the line the person reading calls out from.
+            //
+            // Sent with the numbers rather than fetched separately, because
+            // the Call tab already loads this list and the alternative is a
+            // second request whose answer has to agree with the first.
+            'assigned_to_me' => $number->id === $this->myAssignedNumberId(),
+
+            // The whole trace, not one boolean out of it.
+            //
+            // describe() was already being run for every row and all but one
+            // field of it thrown away, so General could not draw a step as
+            // skipped and Call flow needed a second request to say WHICH line
+            // reaches nobody. Widening costs no queries; it was only ever
+            // withheld by the App Store freeze, which has lifted.
+            'steps' => $steps,
         ];
     }
 }

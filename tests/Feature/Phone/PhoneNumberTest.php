@@ -135,7 +135,20 @@ class PhoneNumberTest extends TestCase
         $this->assertStringNotContainsString('ConnectionResolver', $message);
     }
 
-    public function test_a_technician_does_not_see_a_number_their_role_was_not_granted(): void
+    /**
+     * Both lines, not one.
+     *
+     * Until 2 Sep a role saw only the numbers ticked on for it, and this
+     * asserted that the untickeded one stayed hidden. Grants are no longer per
+     * number — the tab plus §4 reach is the whole rule — so a Technician with
+     * `phone.view` standing over this organisation sees both of its lines.
+     * The grant row below is left in place precisely to show it no longer
+     * decides anything.
+     *
+     * What still hides a line is scope and reach, which
+     * [test_a_number_outside_reach_is_not_listed] covers.
+     */
+    public function test_a_technician_sees_every_line_in_reach_grant_or_not(): void
     {
         $t = $this->provisionTenant();
         $viewer = $this->userWithRole($t, 'Technician', ['phone.view']);
@@ -175,10 +188,11 @@ class PhoneNumberTest extends TestCase
             ->assertOk()
             ->json('data');
 
-        $this->assertCount(1, $rows);
-        $this->assertSame($granted->id, $rows[0]['id']);
-        $this->assertSame('+12035550101', $rows[0]['e164']);
-        $this->assertNotContains($hidden->id, array_column($rows, 'id'));
+        $this->assertCount(2, $rows);
+        $this->assertEqualsCanonicalizing(
+            [$granted->id, $hidden->id],
+            array_column($rows, 'id'),
+        );
     }
 
     public function test_an_administrator_sees_every_number_in_reach_without_grants(): void

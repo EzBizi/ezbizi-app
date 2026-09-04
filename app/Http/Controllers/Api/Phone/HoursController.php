@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api\Phone;
 
 use App\Http\Controllers\Api\Controller;
+use Closure;
+use DateTimeZone;
 use App\Support\Phone\PhoneScope;
 use App\Http\Controllers\Api\Phone\Concerns\ResolvesPhoneConnections;
 use App\Models\Franchise;
@@ -57,8 +59,8 @@ class HoursController extends Controller
             'connection_id' => ['required', 'uuid', $this->existsInTenant('phone_connections')],
             'number_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('phone_numbers')],
             'name' => ['required', 'string', 'max:191'],
-            'timezone' => ['sometimes', 'nullable', 'string', 'timezone', 'max:64'],
-            'weeks' => ['required', 'array'],
+            'timezone' => ['sometimes', 'nullable', 'string', 'max:64', self::usableTimezone()],
+            'weeks' => ['required', 'array', self::weekOfTimes()],
             'exceptions' => ['sometimes', 'nullable', 'array'],
         ]);
 
@@ -127,8 +129,8 @@ class HoursController extends Controller
 
         $input = $request->validate([
             'name' => ['sometimes', 'string', 'max:191'],
-            'timezone' => ['sometimes', 'string', 'timezone', 'max:64'],
-            'weeks' => ['sometimes', 'array'],
+            'timezone' => ['sometimes', 'string', 'max:64', self::usableTimezone()],
+            'weeks' => ['sometimes', 'array', self::weekOfTimes()],
             'exceptions' => ['sometimes', 'nullable', 'array'],
         ]);
 
@@ -183,5 +185,83 @@ class HoursController extends Controller
             'weeks' => $schedule->weeks,
             'exceptions' => $schedule->exceptions,
         ];
+    }
+
+    /**
+     * A timezone PHP can actually use, which is not what Laravel's rule asks.
+     *
+     * The screen offers whole-hour offsets rather than a city list, so it
+     * sends `Etc/GMT+5` — a real zone, constructible, and the value the rest
+     * of the module already stores. Laravel's `timezone` rule refuses it:
+     * that rule checks the CANONICAL identifier group, and the Etc zones live
+     * in the backwards-compatible set. `timezone:all` refuses it too.
+     *
+     * So saving any hours at all failed with "The timezone field must be a
+     * valid timezone" against a timezone that was perfectly valid. The rule
+     * was asking a narrower question than the one that matters, which is
+     * simply: can this be used to tell the time.
+     */
+    private static function usableTimezone(): Closure
+    {
+        return static function (string $attribute, mixed $value, Closure $fail): void {
+            if (! is_string($value) || $value === '') {
+                return;
+            }
+
+            if (! in_array($value, DateTimeZone::listIdentifiers(DateTimeZone::ALL_WITH_BC), true)) {
+                $fail('That is not a clock EzBizi can read hours against.');
+            }
+        };
+    }
+
+    /**
+     * Every open period is a real HH:MM pair, in order.
+     *
+     * The times were free text and nothing checked them, so "08:00 sd asdasd"
+     * saved happily and then HoursClock compared it as a string — a schedule
+     * that looks set and answers wrongly for every call, which is worse than
+     * one that refuses to save.
+     */
+    private static function weekOfTimes(): Closure
+    {
+        return static function (string $attribute, mixed $value, Closure $fail): void {
+            if (! is_array($value)) {
+                return;
+            }
+
+            foreach ($value as $day => $periods) {
+                if (! is_array($periods)) {
+                    $fail('The hours for '.$day.' are not a list of times.');
+
+                    return;
+                }
+
+                foreach ($periods as $period) {
+                    if (! is_array($period) || count($period) !== 2) {
+                        $fail('Each period on '.$day.' needs an opening and a closing time.');
+
+                        return;
+                    }
+
+                    [$from, $to] = array_values($period);
+
+                    foreach ([$from, $to] as $time) {
+                        if (! is_string($time) || preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $time) !== 1) {
+                            $fail('"'.$time.'" on '.$day.' is not a time. Use 24-hour HH:MM, like 08:00.');
+
+                            return;
+                        }
+                    }
+
+                    // Equal is not a period either: it opens and shuts in the
+                    // same instant, which reads as open and behaves as closed.
+                    if (strcmp((string) $from, (string) $to) >= 0) {
+                        $fail('On '.$day.', '.$from.' is not before '.$to.'.');
+
+                        return;
+                    }
+                }
+            }
+        };
     }
 }

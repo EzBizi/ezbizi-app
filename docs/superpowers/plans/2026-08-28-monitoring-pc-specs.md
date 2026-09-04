@@ -551,8 +551,8 @@ Confirm `ModuleRegistry`'s accessor name first (`grep -n 'public function' app/S
 Run: `DB_DATABASE=ezbizi_testing_monitoring vendor/bin/phpunit tests/Feature/Monitoring/MonitoringModuleRegistrationTest.php`
 Expected: FAIL — no module `monitoring`.
 
-- [ ] **Step 3: Add the module** (inside `businessModules()`, mirroring the `tasks`
-  block in the same file)
+- [ ] **Step 3: Add the module** (inside `businessModules()`, mirroring any
+  existing module block in the same file)
 
 ```php
 new ModuleDefinition(
@@ -1070,8 +1070,8 @@ class DeviceOfflineTest extends TestCase
 
 - [ ] **Step 2: Run, verify failure.**
 
-- [ ] **Step 3: Write the worker** (pattern: `app/Support/Tasks/TaskDueWorker.php`
-  behind `DispatchTaskOverdue`). Iterate per-organization through `TenantContext` so
+- [ ] **Step 3: Write the worker** (an hourly command behind a scheduled
+  dispatcher). Iterate per-organization through `TenantContext` so
   `emit()` has a tenant; select devices `last_seen_at < now()-threshold` AND
   `offline_alerted_at IS NULL`, emit, then set `offline_alerted_at = now()`.
 

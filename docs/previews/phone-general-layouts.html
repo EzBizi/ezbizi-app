@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi — Phone › General layouts</title>
+<style>
+  :root {
+    --cyan:#00AEEF; --primary:#00708F; --cyan-deep:#00708F;
+    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+    --ok:#0B8F5B; --err:#E07070; --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1200px; margin:0 auto; padding:16px 16px 48px; }
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:18px; margin:0 0 4px; }
+  header.picker p { margin:0 0 12px; color:var(--muted); max-width:82ch; }
+  .locked, .ask { font-size:13px; border-radius:8px; padding:10px 12px;
+    margin-bottom:12px; max-width:94ch; }
+  .locked { background:var(--info-c); } .ask { background:var(--warn-c); }
+  .locked strong, .ask strong { display:block; margin-bottom:4px; }
+  .locked strong { color:var(--cyan-deep); } .ask strong { color:var(--warn); }
+  .ask b { display:block; margin-top:7px; }
+  .nums { display:flex; flex-wrap:wrap; gap:8px; }
+  .nums button { min-width:44px; min-height:44px; border-radius:8px;
+    border:1px solid var(--line); background:var(--page); color:var(--ink); }
+  .nums button[aria-pressed="true"] { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:92ch; }
+  .caption strong { display:block; margin-bottom:4px; }
+
+  .shell { display:grid; grid-template-columns:200px 1fr; min-height:700px;
+    background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px; }
+  nav.side .brand { font-weight:700; color:var(--cyan-deep); margin-bottom:16px; padding:0 8px; }
+  nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+    text-decoration:none; margin-bottom:2px; }
+  nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  .page { display:flex; flex-direction:column; min-width:0; }
+  .tabs { display:flex; gap:8px; padding:12px 16px; border-bottom:1px solid var(--line); }
+  .tabs span { padding:8px 14px; border-radius:999px; border:1px solid var(--line);
+    background:var(--page); color:var(--muted); }
+  .tabs span.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .settings { display:grid; grid-template-columns:200px 1fr; flex:1; min-height:0; }
+  .rail { border-right:1px solid var(--line); padding:10px 8px; overflow:auto; }
+  .rail a { display:block; padding:8px 11px; border-radius:8px; color:var(--ink);
+    text-decoration:none; font-size:13px; }
+  .rail a.on { background:var(--info-c); color:var(--cyan-deep); font-weight:600; }
+  .rail h4 { font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--muted); margin:12px 0 4px; padding:0 11px; font-weight:600; }
+  .rail h4:first-child { margin-top:0; }
+
+  .pane { display:flex; flex-direction:column; min-width:0; overflow:auto; }
+  .paneHead { padding:16px 20px 12px; border-bottom:1px solid var(--line);
+    display:flex; align-items:flex-start; gap:12px; }
+  .paneHead h2 { font-size:17px; margin:0 0 2px; }
+  .paneHead p { margin:0; color:var(--muted); font-size:13px; max-width:68ch; }
+  .paneBody { padding:16px 20px 24px; flex:1; }
+  .paneFoot { margin-top:auto; padding:12px 20px; border-top:1px solid var(--line);
+    background:var(--alt); display:flex; gap:8px; align-items:center; }
+  .paneFoot .state { color:var(--muted); font-size:12px; margin-right:auto; }
+
+  .sec { border:1px solid var(--line); border-radius:10px; margin-bottom:12px; overflow:hidden; }
+  .sec > h3 { font-size:13px; margin:0; padding:10px 14px; background:var(--alt);
+    border-bottom:1px solid var(--line); }
+  .sec .in { padding:12px 14px; }
+  .f { margin-bottom:12px; } .f:last-child { margin-bottom:0; }
+  .f label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .f .hint { font-size:12px; color:var(--muted); margin-top:5px; }
+  .ctl { display:flex; align-items:center; min-height:42px; border:1px solid var(--line);
+    border-radius:8px; padding:0 12px; background:var(--page); }
+  .ctl.sel::after { content:"⌄"; margin-left:auto; color:var(--muted); }
+  .row { display:flex; align-items:center; gap:11px; padding:9px 0; }
+  .row .grow { flex:1; }
+  .sw { width:38px; height:22px; border-radius:999px; background:var(--primary);
+    position:relative; flex:none; }
+  .sw::after { content:""; position:absolute; right:2px; top:2px; width:18px; height:18px;
+    border-radius:50%; background:#fff; }
+  .sw.off { background:#C9D3DB; } .sw.off::after { left:2px; right:auto; }
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:8px;
+    padding:9px 14px; min-height:40px; }
+  .btn.ghost { background:transparent; color:var(--primary); border:1px solid var(--line); }
+  .btn.sm { min-height:32px; padding:4px 10px; font-size:13px; }
+
+  /* THE CHAIN */
+  .chain { position:relative; padding-left:34px; }
+  .chain::before { content:""; position:absolute; left:12px; top:14px; bottom:26px;
+    width:2px; background:var(--line); }
+  .step { position:relative; margin-bottom:12px; }
+  .step::before { content:attr(data-n); position:absolute; left:-34px; top:8px;
+    width:24px; height:24px; border-radius:50%; background:var(--page);
+    border:2px solid var(--line); color:var(--muted); font-size:12px; font-weight:700;
+    display:grid; place-items:center; }
+  .step.live::before { background:var(--primary); border-color:var(--primary); color:#fff; }
+  .step.skip::before { border-style:dashed; }
+  .step .sk { font-size:12px; color:var(--muted); margin-top:5px; font-style:italic; }
+  .chain .ends { position:relative; color:var(--muted); font-size:12px; padding-top:4px; }
+  .chain .ends::before { content:"↓"; position:absolute; left:-28px; top:0; color:var(--muted); }
+
+  .preview { border:1px solid var(--line); border-radius:10px; background:var(--alt); padding:13px 15px; }
+  .preview h4 { margin:0 0 8px; font-size:12px; text-transform:uppercase;
+    letter-spacing:.05em; color:var(--muted); }
+  .hop { display:flex; gap:9px; align-items:flex-start; padding:6px 0; font-size:13px; }
+  .hop .n { width:20px; height:20px; border-radius:50%; background:var(--primary); color:#fff;
+    font-size:11px; display:grid; place-items:center; flex:none; font-weight:700; }
+  .hop .n.grey { background:#C9D3DB; }
+  .cols { display:grid; grid-template-columns:1fr 290px; gap:16px; align-items:start; }
+  .note { color:var(--muted); font-size:12px; margin-top:10px; }
+
+  .phone { width:375px; margin:0 auto; border:8px solid var(--ink); border-radius:28px;
+    overflow:hidden; background:#fff; min-height:700px; display:flex; flex-direction:column; }
+  .phone .bar375 { padding:11px 12px; border-bottom:1px solid var(--line); font-weight:600;
+    display:flex; gap:8px; align-items:center; font-size:14px; }
+  .phone .bar375 .back { color:var(--primary); font-weight:500; }
+  .phone .scroll { overflow:auto; flex:1; display:flex; flex-direction:column; }
+
+  @media (max-width:900px) {
+    .shell { grid-template-columns:1fr; } nav.side { display:none; }
+    .settings { grid-template-columns:1fr; } .cols { grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>Phone › General — layouts</h1>
+
+    <div class="locked">
+      <strong>Read from <code>general_pane.dart</code></strong>
+      General is <b>what answers a call, and what it does on the way</b>. Its own copy says the
+      settings are <b>“checked in this order — the first usable one wins”</b>: hours, then the IVR
+      menu, then the ring group, then a fallback number. Below that sit the voicemail greeting,
+      call recording and the consent announcement. General is deliberately the <b>form</b> and
+      Call flow is the <b>report of what that form did</b> — the code comment says so, and they
+      are adjacent in the rail for that reason. Pane pattern is layout 1, approved. Empty state
+      already exists and is kept: “No lines yet. Import or buy one on the Numbers screen.”
+    </div>
+
+    <div class="ask">
+      <strong>The finding: this pane describes a chain and draws a list</strong>
+      <b>“Checked in this order — the first usable one wins” is a caption above four unrelated
+      dropdowns.</b> Nothing on screen shows that the menu is tried only if hours say open, or
+      that the ring group is reached only if no menu key answers, or what happens when all of
+      them come up empty. The user assembles the pipeline in their head from four labels, and
+      the pane's own sentence is the only thing telling them there is a pipeline at all.
+      <b>Two of the steps can silently do nothing, and the copy already knows it:</b> “Skipped
+      automatically if the menu has no usable step”, and “Nobody — every call goes to voicemail”.
+      Those are the states worth drawing, because a menu that is configured but skipped is
+      exactly the “it saved, it displayed, it did nothing” shape this module has been fixing all
+      week. Layout 1 draws a skipped step as skipped.
+      <b>One thing I have deliberately NOT done: merge in Call flow.</b> It would be easy to show
+      the resulting path here and make Call flow redundant, and the code separates form from
+      report on purpose. Layout 3 shows a preview alongside instead, which is the honest middle —
+      judge whether that is useful or whether it just duplicates the neighbouring section.
+    </div>
+
+    <p>Pick a number. <strong>1 is my recommendation.</strong> 4 is it at 375px.</p>
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+  <div id="stage"></div>
+</div>
+
+<script>
+const CAPTIONS = {
+  1: ["1 · The chain drawn as a chain (recommended)",
+      "Four numbered steps down a rail, in the order the server actually checks them, with each step's control inside it. The pane stops needing a sentence to explain that it is a sequence, because it looks like one. A step that will be skipped is drawn skipped — dashed marker and a plain line saying why — so “the menu has no usable step” is visible while you are choosing rather than discovered from a call that behaved oddly. It is also the same ladder already approved for Trust, where the problem was identical: several settings that look independent and are not. Weakness: a chain implies every call walks the whole thing, and most calls stop at step two — the ‘first usable one wins’ rule is stated but not animated, and a static drawing cannot fully carry it."],
+  2: ["2 · Grouped form — the approved pane pattern, applied plainly",
+      "Three bordered sections: What answers a call, Voicemail greeting, Fallback and recording. Exactly the pattern approved for Voicemail, with no new ideas — which is its real argument: it is the least to build, the least to learn, and it is consistent with every other section by construction. Weakness: it keeps the ordering as a caption. Somebody reading this pane still cannot see that the ring group is only reached when no menu key answered, so the one genuinely confusing thing about the section stays confusing, tidily."],
+  3: ["3 · The chain, with a live preview beside it",
+      "Layout 1 plus a panel that resolves the current settings into the path a call would actually take — ‘Open → menu → Front desk’ — updating as the dropdowns change. Strongest for confidence: you see the consequence before saving, which is the thing people actually want from this screen. Weakness, and it is why it is not the recommendation: Call flow is a whole section that exists to show exactly this, one row above in the rail. Building a second, smaller version of it here means two things to keep in step and an obvious question about why both exist. Included because if Jose would rather General absorb Call flow entirely, this is what the first half of that looks like."],
+  4: ["4 · Layout 1 at 375px",
+      "The chain survives narrow better than a form does, because a vertical rail is already vertical — the numbers and the connector are the landmark that stops a long scroll of dropdowns reading as an undifferentiated column. The footer pins, so ‘Two changes not saved’ stays visible while you scroll the steps; on a phone a save at the end of a long form is below the fold on every single visit."]
+};
+
+const RAIL = `
+  <h4>Connect</h4><a class="on">General</a><a>Call flow</a><a>Connection</a><a>Numbers</a><a>Porting</a>
+  <h4>Answering</h4><a>IVR menus</a><a>Hours</a><a>Ring groups</a><a>Voicemail</a>
+  <h4>Identity</h4><a>Trust &amp; caller identity</a>
+  <h4>Running it</h4><a>Tags</a><a>Cost</a><a>Messaging</a>`;
+
+const shell = (body) => `
+  <div class="shell">
+    <nav class="side"><div class="brand">EzBizi</div>
+      <a>Dashboard</a><a>Customers</a><a>Jobs</a><a class="on">Phone</a><a>Fleet</a></nav>
+    <div class="page">
+      <div class="tabs"><span>Call</span><span>Records</span><span class="on">Settings</span></div>
+      <div class="settings"><div class="rail">${RAIL}</div>${body}</div>
+    </div>
+  </div>`;
+
+const head = `
+  <div class="paneHead">
+    <div style="flex:1"><h2>General</h2>
+      <p>What answers a call, and what it does on the way. Call flow shows the result.</p></div>
+    <button class="btn ghost sm" type="button">↻ Try again</button>
+  </div>`;
+
+const foot = `
+  <div class="paneFoot">
+    <span class="state"><b style="color:var(--warn)">Two changes not saved</b> — ring group, and the fallback number</span>
+    <button class="btn ghost sm" type="button">Discard</button>
+    <button class="btn sm" type="button">Save</button>
+  </div>`;
+
+const fld = (l, v, hint) => `
+  <div class="f"><label>${l}</label><div class="ctl sel">${v}</div>
+    ${hint ? `<div class="hint">${hint}</div>` : ''}</div>`;
+
+const CHAIN = `
+  <div class="chain">
+    <div class="step live" data-n="1">
+      ${fld('Hours', 'Always open', 'When it says CLOSED the call takes the out-of-hours route below.')}
+    </div>
+    <div class="step skip" data-n="2">
+      ${fld('IVR menu', 'No menu — go straight to whoever answers', '')}
+      <div class="sk">Skipped: this line has no menu, so callers are not asked to press anything.</div>
+    </div>
+    <div class="step live" data-n="3">
+      ${fld('Ring group', 'Front desk — 4 people', 'Who rings when no menu key answers the call first.')}
+    </div>
+    <div class="step" data-n="4">
+      ${fld('If nobody answers', 'Take a voicemail', 'Used by the CLOSED branch above, and when the steps above reach nobody.')}
+    </div>
+    <div class="ends">The first usable step wins. Most calls stop at step 3.</div>
+  </div>`;
+
+const REST = `
+  ${sec('Voicemail greeting', fld('Greeting', 'Built-in — “Please leave a message after the tone.”',
+    'What a caller hears when nobody answers.'))}
+  ${sec('Fallback and recording', `
+    ${fld('Fallback number', '(203) 555 0170', 'Dialled when the steps above reach nobody and the line would otherwise drop.')}
+    <div class="row"><div class="grow">Record calls on this line
+      <div class="hint">The announcement below is what gets the caller's consent, so it plays before recording starts.</div></div>
+      <span class="sw"></span></div>
+    ${fld('What callers are told', 'This call may be recorded for quality and training.')}`)}`;
+
+function sec(t, inner) { return `<div class="sec"><h3>${t}</h3><div class="in">${inner}</div></div>`; }
+
+const L1 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      <div class="sec"><h3>What answers a call — checked in this order</h3>
+        <div class="in">${CHAIN}</div></div>
+      ${REST}
+    </div>
+    ${foot}
+  </div>`);
+
+const L2 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      ${sec('What answers a call', `
+        <p class="note" style="margin:0 0 12px">Checked in this order — the first usable one wins.</p>
+        ${fld('Hours', 'Always open', 'When it says CLOSED the call takes the out-of-hours route below.')}
+        ${fld('IVR menu', 'No menu — go straight to whoever answers', 'Skipped automatically if the menu has no usable step.')}
+        ${fld('Ring group', 'Front desk — 4 people', 'Who rings when no menu key answers the call first.')}
+        ${fld('If nobody answers', 'Take a voicemail', 'Used by the CLOSED branch above.')}`)}
+      ${REST}
+    </div>
+    ${foot}
+  </div>`);
+
+const L3 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      <div class="cols">
+        <div>
+          <div class="sec"><h3>What answers a call — checked in this order</h3>
+            <div class="in">${CHAIN}</div></div>
+          ${REST}
+        </div>
+        <div class="preview">
+          <h4>What a call would do now</h4>
+          <div class="hop"><span class="n">1</span><div>It is <b>Tuesday 2:10pm</b> and the line is <b>open</b>.</div></div>
+          <div class="hop"><span class="n grey">2</span><div>No menu — the caller is not asked to press anything.</div></div>
+          <div class="hop"><span class="n">3</span><div>Rings <b>Front desk</b> — Maya, Luis, Sam, Priya.</div></div>
+          <div class="hop"><span class="n">4</span><div>If none picks up, <b>voicemail</b>.</div></div>
+          <p class="note">Call flow already shows this for real calls. This is the same
+            question asked of unsaved settings.</p>
+        </div>
+      </div>
+    </div>
+    ${foot}
+  </div>`);
+
+const L4 = () => `
+  <div class="phone">
+    <div class="bar375"><span class="back">‹ Settings</span> General</div>
+    <div class="scroll">
+      ${head}
+      <div class="paneBody">
+        <div class="sec"><h3>What answers a call — in this order</h3>
+          <div class="in">${CHAIN}</div></div>
+        ${REST}
+      </div>
+      ${foot}
+    </div>
+  </div>`;
+
+const LAYOUTS = { 1:L1, 2:L2, 3:L3, 4:L4 };
+const nums = document.getElementById('nums'), stage = document.getElementById('stage'),
+      caption = document.getElementById('caption');
+Object.keys(LAYOUTS).forEach(k => {
+  const b = document.createElement('button'); b.type='button'; b.textContent=k;
+  b.addEventListener('click', () => show(+k)); nums.appendChild(b);
+});
+function show(i) {
+  [...nums.children].forEach((b,x) => b.setAttribute('aria-pressed', x+1===i ? 'true':'false'));
+  const e = CAPTIONS[i];
+  caption.innerHTML = '<strong>'+e[0]+'</strong>'+e[1];
+  stage.innerHTML = LAYOUTS[i]();
+}
+show(1);
+</script>
+</body>
+</html>

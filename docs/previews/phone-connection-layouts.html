@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi — Phone › Connection layouts</title>
+<style>
+  :root {
+    --cyan:#00AEEF; --primary:#00708F; --cyan-deep:#00708F;
+    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+    --ok:#0B8F5B; --err:#E07070; --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1200px; margin:0 auto; padding:16px 16px 48px; }
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:18px; margin:0 0 4px; }
+  header.picker p { margin:0 0 12px; color:var(--muted); max-width:82ch; }
+  .locked, .ask, .found { font-size:13px; border-radius:8px; padding:10px 12px;
+    margin-bottom:12px; max-width:94ch; }
+  .locked { background:var(--info-c); } .ask { background:var(--warn-c); } .found { background:var(--err-c); }
+  .locked strong, .ask strong, .found strong { display:block; margin-bottom:4px; }
+  .locked strong { color:var(--cyan-deep); } .ask strong { color:var(--warn); } .found strong { color:#A33; }
+  .ask b, .found b { display:block; margin-top:7px; }
+  .found ul { margin:6px 0 0; padding-left:20px; } .found li { margin:2px 0; }
+  .nums { display:flex; flex-wrap:wrap; gap:8px; }
+  .nums button { min-width:44px; min-height:44px; border-radius:8px;
+    border:1px solid var(--line); background:var(--page); color:var(--ink); }
+  .nums button[aria-pressed="true"] { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:92ch; }
+  .caption strong { display:block; margin-bottom:4px; }
+
+  .shell { display:grid; grid-template-columns:200px 1fr; min-height:640px;
+    background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px; }
+  nav.side .brand { font-weight:700; color:var(--cyan-deep); margin-bottom:16px; padding:0 8px; }
+  nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+    text-decoration:none; margin-bottom:2px; }
+  nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  .page { display:flex; flex-direction:column; min-width:0; }
+  .tabs { display:flex; gap:8px; padding:12px 16px; border-bottom:1px solid var(--line); }
+  .tabs span { padding:8px 14px; border-radius:999px; border:1px solid var(--line);
+    background:var(--page); color:var(--muted); }
+  .tabs span.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .settings { display:grid; grid-template-columns:200px 1fr; flex:1; min-height:0; }
+  .rail { border-right:1px solid var(--line); padding:10px 8px; overflow:auto; }
+  .rail a { display:block; padding:8px 11px; border-radius:8px; color:var(--ink);
+    text-decoration:none; font-size:13px; }
+  .rail a.on { background:var(--info-c); color:var(--cyan-deep); font-weight:600; }
+  .rail h4 { font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--muted); margin:12px 0 4px; padding:0 11px; font-weight:600; }
+  .rail h4:first-child { margin-top:0; }
+
+  .pane { display:flex; flex-direction:column; min-width:0; overflow:auto; }
+  .paneHead { padding:16px 20px 12px; border-bottom:1px solid var(--line);
+    display:flex; align-items:flex-start; gap:12px; }
+  .paneHead h2 { font-size:17px; margin:0 0 2px; }
+  .paneHead p { margin:0; color:var(--muted); font-size:13px; max-width:70ch; }
+  .paneBody { padding:16px 20px 24px; flex:1; }
+
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:8px;
+    padding:9px 14px; min-height:40px; }
+  .btn.ghost { background:transparent; color:var(--primary); border:1px solid var(--line); }
+  .btn.sm { min-height:32px; padding:4px 10px; font-size:13px; }
+  .pill { font-size:11px; padding:2px 8px; border-radius:999px; background:var(--alt);
+    border:1px solid var(--line); color:var(--muted); font-weight:600; white-space:nowrap; }
+  .pill.ok { background:var(--ok-c); color:var(--ok); border-color:transparent; }
+  .pill.err { background:var(--err-c); color:#A33; border-color:transparent; }
+  .pill.inh { background:var(--info-c); color:var(--cyan-deep); border-color:transparent; }
+
+  /* the inheritance drawing */
+  .tree { border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  .node { padding:13px 15px; display:flex; gap:12px; align-items:flex-start; }
+  .node + .node { border-top:1px solid var(--line); }
+  .node.org { background:var(--alt); }
+  .node.child { padding-left:44px; position:relative; }
+  .node.child::before { content:""; position:absolute; left:24px; top:0; bottom:50%;
+    width:2px; background:var(--line); }
+  .node.child::after { content:""; position:absolute; left:24px; top:50%;
+    width:12px; height:2px; background:var(--line); }
+  .node .g { flex:1; min-width:0; }
+  .node .nm { font-weight:600; font-size:13px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .node .sub { color:var(--muted); font-size:12px; margin-top:3px; }
+  .node .uses { font-size:12px; margin-top:5px; }
+  .node .uses b { color:var(--cyan-deep); }
+
+  table.sc { width:100%; border-collapse:collapse; font-size:13px; }
+  table.sc th, table.sc td { border-bottom:1px solid var(--line); padding:9px 10px; text-align:left; }
+  table.sc th { background:var(--alt); color:var(--muted); font-size:12px; font-weight:600; }
+
+  .sec { border:1px solid var(--line); border-radius:10px; margin-bottom:12px; overflow:hidden; }
+  .sec > h3 { margin:0; padding:10px 14px; background:var(--alt); font-size:13px;
+    border-bottom:1px solid var(--line); display:flex; gap:8px; align-items:center; }
+  .sec .in { padding:12px 14px; }
+  .note { color:var(--muted); font-size:12px; margin-top:10px; }
+  .prose { background:var(--alt); border-radius:8px; padding:10px 12px; font-size:12px;
+    color:var(--muted); margin-top:10px; }
+
+  .phone { width:375px; margin:0 auto; border:8px solid var(--ink); border-radius:28px;
+    overflow:hidden; background:#fff; min-height:640px; display:flex; flex-direction:column; }
+  .phone .bar375 { padding:11px 12px; border-bottom:1px solid var(--line); font-weight:600;
+    display:flex; gap:8px; align-items:center; font-size:14px; }
+  .phone .bar375 .back { color:var(--primary); font-weight:500; }
+  .phone .scroll { overflow:auto; flex:1; }
+
+  @media (max-width:900px) {
+    .shell { grid-template-columns:1fr; } nav.side { display:none; }
+    .settings { grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>Phone › Connection — layouts</h1>
+
+    <div class="locked">
+      <strong>Read from <code>settings_tab.dart</code> — Connection is inline, not its own file</strong>
+      A connection is a Twilio account, held at the <b>organization</b> or at a <b>company</b>.
+      It shows connected or <em>“Not working”</em>, whether it is <em>“Your Twilio”</em> or an
+      <em>“EzBizi phone account”</em>, and the SID tail — <em>“Account SID ends …a91. The key is
+      never shown back.”</em> When there is none, the action is <em>“Activate phone service”</em>.
+      Read-only except for connecting and changing, so under the approved pane pattern the footer
+      is <b>null</b>. Retry belongs in the head here — this pane's error is a failed <b>load</b>,
+      not a refused save.
+    </div>
+
+    <div class="found">
+      <strong>The finding: one inheritance rule, explained by six different sentences</strong>
+      Company numbers fall back to the organization's connection unless that company has its own.
+      That single rule is currently delivered as six prose variants, chosen by which state you
+      happen to be in:
+      <ul>
+        <li>“Organization line. Switch to the group to connect or change it. Company numbers use this unless this company has its own.”</li>
+        <li>“Organization line. Switch to the group to change it. Company numbers use this unless this company has its own.”</li>
+        <li>“No connection. Company numbers use this unless that company has its own.”</li>
+        <li>“Numbers without their own company connection use this.”</li>
+        <li>“No connection. Numbers here use the organization until this exists.”</li>
+        <li>“This company has its own Twilio.”</li>
+      </ul>
+      <b>Each is accurate. Together they are six things to keep in step, and none of them shows
+      the shape.</b> Somebody reading any one of them still has to build the two-level picture in
+      their head — and the sentence they get depends on where they are standing, so the rule looks
+      different from the organization than from a company. A structure says it once.
+    </div>
+
+    <div class="ask">
+      <strong>One thing worth your ruling</strong>
+      <b>The prose is good and I am not proposing to delete it — I am proposing to demote it.</b>
+      Layouts 1 and 3 draw the inheritance and keep one short sentence underneath; layout 2 keeps
+      the sentences as the primary explanation and only tidies them. If you would rather this pane
+      stay text-led because connections are rare and read by owners rather than staff, layout 2 is
+      the honest version of that and I have not strawmanned it.
+    </div>
+
+    <p>Pick a number. <strong>1 is my recommendation.</strong> 4 is it at 375px.</p>
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+  <div id="stage"></div>
+</div>
+
+<script>
+const CAPTIONS = {
+  1: ["1 · Draw the inheritance (recommended)",
+      "The organization's connection at the top, each company indented beneath it, and every row saying in three words which connection its numbers actually use — its own, or the organization's. Six prose variants collapse into one picture plus one sentence. The thing this fixes is not verbosity: it is that the current explanation CHANGES DEPENDING ON WHERE YOU STAND, so the rule looks like a different rule from the organization than from a company. A structure looks the same from everywhere. Weakness: it spends vertical space on companies whose connection nobody is currently asking about, and at twenty companies the tree is a long list of rows that mostly say 'uses the organization'."],
+  2: ["2 · Keep the prose, tidy it, and say which sentence applies",
+      "Status card per scope with the existing sentences kept as the primary explanation — deduplicated where two of them differ only in wording, and each shown with the state it belongs to so nobody meets a sentence written for a different situation. Least change by a distance, and defensible on the grounds that connections are set up once, by an owner, and rarely revisited. Weakness: it keeps six things to maintain and still leaves the reader assembling the two-level model themselves. It makes the current answer tidier without making it easier."],
+  3: ["3 · A table of scopes",
+      "One row per scope — Organization, and each company — with columns for the connection, whose Twilio it is, and what its numbers use. Densest and best at twenty companies, where the tree becomes a long indent and the table stays a table. It is also the only layout where 'which companies have their own Twilio' is a glance rather than a scan. Weakness: a table flattens the parent-child relationship into a column, so the very thing the finding is about — that companies hang off the organization — is expressed as a repeated word rather than as structure."],
+  4: ["4 · Layout 1 at 375px",
+      "The tree survives narrow better than the table would, because indentation is vertical and columns are not. Each node keeps its 'uses' line, which is the part that must not be cut — it is the answer, and the SID tail and provider are the detail. The retry stays in the head: this pane loads, it does not save, so there is no typed work for a reload to discard."]
+};
+
+const RAIL = `
+  <h4>Connect</h4><a>General</a><a>Call flow</a><a class="on">Connection</a><a>Numbers</a><a>Porting</a>
+  <h4>Answering</h4><a>IVR menus</a><a>Hours</a><a>Ring groups</a><a>Voicemail</a>
+  <h4>Identity</h4><a>Trust &amp; caller identity</a>
+  <h4>Running it</h4><a>Tags</a><a>Cost</a><a>Messaging</a>`;
+
+const COMPANIES = [
+  ['A-1 Chimney CT', true,  'Your Twilio', 'AC44f1…c02'],
+  ['A-1 Chimney NJ', false, null, null],
+  ['A-1 Showroom',   false, null, null]
+];
+
+const shell = (body) => `
+  <div class="shell">
+    <nav class="side"><div class="brand">EzBizi</div>
+      <a>Dashboard</a><a>Customers</a><a>Jobs</a><a class="on">Phone</a><a>Fleet</a></nav>
+    <div class="page">
+      <div class="tabs"><span>Call</span><span>Records</span><span class="on">Settings</span></div>
+      <div class="settings"><div class="rail">${RAIL}</div>${body}</div>
+    </div>
+  </div>`;
+
+const head = `
+  <div class="paneHead">
+    <div style="flex:1"><h2>Connection</h2>
+      <p>The Twilio account this business's phone service runs on.</p></div>
+    <button class="btn ghost sm" type="button">↻ Try again</button>
+  </div>`;
+
+const L1 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      <div class="tree">
+        <div class="node org">
+          <div class="g">
+            <div class="nm">Organization — A-1 Group <span class="pill ok">Connected</span>
+              <span class="pill">EzBizi phone account</span></div>
+            <div class="sub">Account SID ends …a91. The key is never shown back.</div>
+            <div class="uses">Numbers held at the organization use <b>this</b>.</div>
+          </div>
+          <button class="btn ghost sm" type="button">Change</button>
+        </div>
+        ${COMPANIES.map(c => `
+          <div class="node child">
+            <div class="g">
+              <div class="nm">${c[0]}
+                ${c[1] ? '<span class="pill ok">Connected</span><span class="pill">'+c[2]+'</span>'
+                       : '<span class="pill inh">Uses the organization</span>'}</div>
+              ${c[1] ? `<div class="sub">Account SID ends …${c[3].slice(-3)}. The key is never shown back.</div>` : ''}
+              <div class="uses">${c[1]
+                ? 'This company&rsquo;s numbers use <b>its own Twilio</b>.'
+                : 'This company&rsquo;s numbers use <b>the organization&rsquo;s connection</b> above.'}</div>
+            </div>
+            <button class="btn ghost sm" type="button">${c[1] ? 'Change' : 'Give it its own'}</button>
+          </div>`).join('')}
+      </div>
+      <p class="note"><b>One rule, drawn once:</b> a company's numbers use the organization's
+        connection unless that company has its own. The six sentences that said this in six ways —
+        each correct, each different depending on where you were standing — collapse into the
+        indent and one line per row.</p>
+    </div>
+  </div>`);
+
+const L2 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      <div class="sec"><h3>Organization — A-1 Group <span class="pill ok">Connected</span></h3>
+        <div class="in">
+          <div style="font-size:13px">EzBizi phone account · SID ends …a91</div>
+          <div class="note">The key is never shown back.</div>
+          <div class="prose">Organization line. Company numbers use this unless that company has
+            its own.</div>
+          <div style="margin-top:10px"><button class="btn ghost sm" type="button">Change</button></div>
+        </div></div>
+      ${COMPANIES.map(c => `
+        <div class="sec"><h3>${c[0]}
+          ${c[1] ? '<span class="pill ok">Connected</span>' : '<span class="pill">No connection</span>'}</h3>
+          <div class="in">
+            ${c[1]
+              ? '<div style="font-size:13px">Your Twilio · SID ends …c02</div><div class="prose">This company has its own Twilio.</div>'
+              : '<div class="prose">No connection. Numbers here use the organization until this exists.</div>'}
+            <div style="margin-top:10px"><button class="btn ghost sm" type="button">${c[1]?'Change':'Activate phone service'}</button></div>
+          </div></div>`).join('')}
+      <p class="note">The existing sentences kept and deduplicated, each shown with the state it
+        belongs to. Tidier, and the reader still assembles the two-level model themselves.</p>
+    </div>
+  </div>`);
+
+const L3 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      <table class="sc">
+        <tr><th>Scope</th><th>Connection</th><th>Whose account</th><th>Its numbers use</th><th></th></tr>
+        <tr>
+          <td><b>Organization</b><div class="note" style="margin:0">A-1 Group</div></td>
+          <td><span class="pill ok">Connected</span><div class="note" style="margin:0">…a91</div></td>
+          <td>EzBizi phone account</td>
+          <td><b>This connection</b></td>
+          <td><button class="btn ghost sm" type="button">Change</button></td>
+        </tr>
+        ${COMPANIES.map(c => `
+          <tr>
+            <td>${c[0]}</td>
+            <td>${c[1] ? '<span class="pill ok">Connected</span><div class="note" style="margin:0">…c02</div>'
+                       : '<span class="pill">None</span>'}</td>
+            <td>${c[1] ? c[2] : '—'}</td>
+            <td>${c[1] ? '<b>Its own</b>' : 'The organization&rsquo;s'}</td>
+            <td><button class="btn ghost sm" type="button">${c[1]?'Change':'Activate'}</button></td>
+          </tr>`).join('')}
+      </table>
+      <p class="note">Densest, and the only layout where “which companies have their own Twilio”
+        is a glance. But it flattens the parent-child relationship into a column, so the thing the
+        finding is about is expressed as a repeated word rather than as structure.</p>
+    </div>
+  </div>`);
+
+const L4 = () => `
+  <div class="phone">
+    <div class="bar375"><span class="back">‹ Settings</span> Connection</div>
+    <div class="scroll">
+      ${head}
+      <div class="paneBody" style="padding:13px 12px">
+        <div class="tree">
+          <div class="node org"><div class="g">
+            <div class="nm">Organization <span class="pill ok">Connected</span></div>
+            <div class="sub">EzBizi phone account · SID ends …a91</div>
+            <div class="uses">Organization numbers use <b>this</b>.</div></div></div>
+          ${COMPANIES.map(c => `
+            <div class="node child" style="padding-left:34px"><div class="g">
+              <div class="nm">${c[0]}
+                ${c[1] ? '<span class="pill ok">Own</span>' : '<span class="pill inh">Inherits</span>'}</div>
+              <div class="uses">${c[1] ? 'Uses <b>its own Twilio</b>.' : 'Uses <b>the organization&rsquo;s</b>.'}</div>
+            </div></div>`).join('')}
+        </div>
+        <p class="note">Indentation is vertical, so the tree survives 375px where a four-column
+          table would not.</p>
+      </div>
+    </div>
+  </div>`;
+
+const LAYOUTS = { 1:L1, 2:L2, 3:L3, 4:L4 };
+const nums = document.getElementById('nums'), stage = document.getElementById('stage'),
+      caption = document.getElementById('caption');
+Object.keys(LAYOUTS).forEach(k => {
+  const b = document.createElement('button'); b.type='button'; b.textContent=k;
+  b.addEventListener('click', () => show(+k)); nums.appendChild(b);
+});
+function show(i) {
+  [...nums.children].forEach((b,x) => b.setAttribute('aria-pressed', x+1===i ? 'true':'false'));
+  const e = CAPTIONS[i];
+  caption.innerHTML = '<strong>'+e[0]+'</strong>'+e[1];
+  stage.innerHTML = LAYOUTS[i]();
+}
+show(1);
+</script>
+</body>
+</html>

@@ -1,0 +1,565 @@
+import 'dart:convert';
+
+import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/session.dart';
+import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/screens/monitoring/camera_monitoring_tab.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+
+/// Camera Monitoring — the tile grid over `GET/POST/PATCH/DELETE
+/// /monitoring/cameras`.
+///
+/// The load-bearing assertions are the honesty ones: a disabled camera must
+/// never render as though it were live (test "a disabled camera..."), and an
+/// `hls`/`rtsp` tile must never look like the inline `mjpeg`/`snapshot` view
+/// it is not (test "an mjpeg/snapshot tile renders..."). Both are proven
+/// non-vacuous the same way desktop_monitoring_tab_test does it: fixtures on
+/// both sides of the distinction, asserted separately.
+///
+/// `kIsWeb` is false under `flutter test` (it runs on the VM, not in a
+/// browser), so every tile here — including `mjpeg`/`snapshot` — renders its
+/// non-web "open in browser" card rather than the real inline `<img>`. That
+/// card is still visibly different from the `hls`/`rtsp` deep-link card (see
+/// camera_monitoring_tab.dart's `_InlineViewCard` vs `_DeepLinkCard`), which
+/// is what the distinguishing-tile test actually exercises.
+void main() {
+  testWidgets(
+    'without monitoring.cameras.view, the tab shows the no-permission note '
+    'and never fetches',
+    (tester) async {
+      var fetchAttempted = false;
+
+      await _pumpTab(
+        tester,
+        cameras: [_mjpegCamera],
+        grantView: false,
+        onCamerasFetch: () => fetchAttempted = true,
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(find.text(CameraMonitoringTab.noPermissionNote), findsOneWidget);
+      expect(find.byKey(const Key('camera-monitoring-grid')), findsNothing);
+      expect(
+        fetchAttempted,
+        isFalse,
+        reason: 'A caller who cannot view cameras at all should never need a '
+            'round trip to learn that — the tab already knows from its own '
+            'session.',
+      );
+    },
+  );
+
+  testWidgets(
+    'with .view only, the grid renders the cameras the server returned, and '
+    'carries no add or delete controls',
+    (tester) async {
+      await _pumpTab(
+        tester,
+        cameras: [_mjpegCamera, _hlsCamera],
+        grantManage: false,
+      );
+
+      expect(
+        find.byKey(ValueKey('camera-tile-${_mjpegCamera['id']}')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(ValueKey('camera-tile-${_hlsCamera['id']}')),
+        findsOneWidget,
+      );
+
+      expect(find.byKey(const Key('camera-monitoring-add-button')), findsNothing);
+      expect(
+        find.byKey(ValueKey('camera-tile-delete-${_mjpegCamera['id']}')),
+        findsNothing,
+        reason: 'A view-only caller must not see a delete affordance — the '
+            'server would 403 the DELETE anyway.',
+      );
+    },
+  );
+
+  testWidgets(
+    'with .manage, add and delete controls are present, and adding a camera '
+    'POSTs and refreshes the grid',
+    (tester) async {
+      final posted = <Map<String, dynamic>>[];
+      var camerasAfterAdd = [_mjpegCamera];
+
+      await _pumpTab(
+        tester,
+        cameras: [_mjpegCamera],
+        onRequest: (request) {
+          if (request.method == 'POST' &&
+              request.url.path.endsWith('/monitoring/cameras')) {
+            final body = jsonDecode(request.body) as Map<String, dynamic>;
+            posted.add(body);
+            camerasAfterAdd = [_mjpegCamera, _newCamera];
+            return _json({
+              'data': {..._newCamera},
+            }, 201);
+          }
+          return null;
+        },
+        camerasProvider: () => camerasAfterAdd,
+      );
+
+      expect(find.byKey(const Key('camera-monitoring-add-button')), findsOneWidget);
+      expect(
+        find.byKey(ValueKey('camera-tile-delete-${_mjpegCamera['id']}')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const Key('camera-monitoring-add-button')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('camera-add-label-field')),
+        _newCamera['label'] as String,
+      );
+      await tester.enterText(
+        find.byKey(const Key('camera-add-url-field')),
+        _newCamera['url'] as String,
+      );
+
+      await tester.tap(find.byKey(const Key('camera-add-submit-button')));
+      await tester.pumpAndSettle();
+
+      expect(
+        posted,
+        hasLength(1),
+        reason: 'Submitting the form should have POSTed exactly once.',
+      );
+      expect(posted.single['label'], _newCamera['label']);
+      expect(posted.single['url'], _newCamera['url']);
+
+      expect(
+        find.byKey(ValueKey('camera-tile-${_newCamera['id']}')),
+        findsOneWidget,
+        reason: 'The grid should refresh with the server\'s post-add list, '
+            'not just close the panel.',
+      );
+    },
+  );
+
+  testWidgets(
+    'with .manage, tapping delete and confirming DELETEs and refreshes the '
+    'grid',
+    (tester) async {
+      final deleted = <String>[];
+      var camerasNow = [_mjpegCamera];
+
+      await _pumpTab(
+        tester,
+        cameras: [_mjpegCamera],
+        onRequest: (request) {
+          if (request.method == 'DELETE' &&
+              request.url.path.contains('/monitoring/cameras/')) {
+            deleted.add(request.url.pathSegments.last);
+            camerasNow = [];
+            return http.Response('', 204);
+          }
+          return null;
+        },
+        camerasProvider: () => camerasNow,
+      );
+
+      expect(
+        find.byKey(ValueKey('camera-tile-${_mjpegCamera['id']}')),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(ValueKey('camera-tile-delete-${_mjpegCamera['id']}')),
+      );
+      await tester.pumpAndSettle();
+
+      // The confirm panel, not an immediate delete.
+      expect(find.text('Delete ${_mjpegCamera['label']}?'), findsOneWidget);
+      expect(
+        deleted,
+        isEmpty,
+        reason: 'Tapping the delete icon should ask first, not delete '
+            'immediately.',
+      );
+
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+
+      expect(deleted, [_mjpegCamera['id']]);
+      expect(
+        find.byKey(ValueKey('camera-tile-${_mjpegCamera['id']}')),
+        findsNothing,
+        reason: 'The grid should refresh once the delete succeeds.',
+      );
+      expect(find.text(CameraMonitoringTab.noCamerasNote), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'an mjpeg/snapshot tile renders as an inline-view host, an hls/rtsp tile '
+    'renders as a deep-link card, and the two are never the same widget',
+    (tester) async {
+      await _pumpTab(tester, cameras: [_mjpegCamera, _hlsCamera]);
+
+      final mjpegTile = find.byKey(ValueKey('camera-tile-${_mjpegCamera['id']}'));
+      final hlsTile = find.byKey(ValueKey('camera-tile-${_hlsCamera['id']}'));
+
+      expect(
+        find.descendant(
+          of: mjpegTile,
+          matching: find.byKey(ValueKey('camera-inline-${_mjpegCamera['id']}')),
+        ),
+        findsOneWidget,
+        reason: 'An mjpeg camera should render through the inline-view host.',
+      );
+      expect(
+        find.descendant(
+          of: mjpegTile,
+          matching: find.text('Open in browser'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: mjpegTile, matching: find.text('Copy URL')),
+        findsNothing,
+        reason: 'The inline-view card must not carry the deep-link card\'s '
+            'controls.',
+      );
+
+      expect(
+        find.descendant(
+          of: hlsTile,
+          matching: find.byKey(ValueKey('camera-deeplink-${_hlsCamera['id']}')),
+        ),
+        findsOneWidget,
+        reason: 'An hls camera should render through the deep-link card.',
+      );
+      expect(
+        find.descendant(of: hlsTile, matching: find.text('Copy URL')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: hlsTile,
+          matching: find.text('Open in browser'),
+        ),
+        findsNothing,
+        reason: 'The deep-link card must not carry the inline-view card\'s '
+            'wording — hls has no inline playback yet.',
+      );
+    },
+  );
+
+  testWidgets(
+    'a disabled camera shows its disabled state, never a live or deep-link '
+    'view',
+    (tester) async {
+      await _pumpTab(tester, cameras: [_disabledCamera]);
+
+      final tile = find.byKey(ValueKey('camera-tile-${_disabledCamera['id']}'));
+      expect(tile, findsOneWidget);
+
+      expect(
+        find.descendant(of: tile, matching: find.text('Disabled')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: tile,
+          matching: find.text('Disabled — no view shown.'),
+        ),
+        findsOneWidget,
+        reason: 'A disabled camera must say so on the tile itself, never '
+            'render its protocol view as though it were live.',
+      );
+      expect(
+        find.descendant(
+          of: tile,
+          matching: find.byKey(ValueKey('camera-inline-${_disabledCamera['id']}')),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: tile,
+          matching: find.byKey(ValueKey('camera-deeplink-${_disabledCamera['id']}')),
+        ),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'an empty camera list shows the no-cameras note, and the add hint only '
+    'when the viewer can manage',
+    (tester) async {
+      await _pumpTab(tester, cameras: const [], grantManage: false);
+
+      expect(find.text(CameraMonitoringTab.noCamerasNote), findsOneWidget);
+      expect(find.text(CameraMonitoringTab.noCamerasManageHint), findsNothing);
+      expect(find.byKey(const Key('camera-monitoring-add-button')), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'an empty camera list with .manage shows the add hint and the add '
+    'button',
+    (tester) async {
+      await _pumpTab(tester, cameras: const []);
+
+      expect(find.text(CameraMonitoringTab.noCamerasNote), findsOneWidget);
+      expect(find.text(CameraMonitoringTab.noCamerasManageHint), findsOneWidget);
+      expect(find.byKey(const Key('camera-monitoring-add-button')), findsOneWidget);
+    },
+  );
+
+  testWidgets('at 375px the grid renders with no overflow', (tester) async {
+    await _pumpTab(
+      tester,
+      cameras: [_mjpegCamera, _hlsCamera],
+      size: const Size(375, 800),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('camera-monitoring-grid')), findsOneWidget);
+    expect(
+      find.byKey(ValueKey('camera-tile-${_mjpegCamera['id']}')),
+      findsOneWidget,
+    );
+  });
+
+  // The routing decision itself, tested where a widget pump cannot reach it.
+  //
+  // Under `flutter test`, kIsWeb is a compile-time false, so no pump can ever
+  // send an `hls` tile down its web-only inline path — the tile always renders
+  // the deep-link card here (which is exactly what the "an mjpeg/snapshot
+  // tile..." widget test above still asserts). cameraBodyKind is the same
+  // decision the tile makes, extracted so it CAN be fed `isWeb: true`. These
+  // assert the selection, not playback — which is all a VM test can honestly
+  // check.
+  group('cameraBodyKind routes each protocol by platform capability', () {
+    test('hls on web with a player routes to the inline video host', () {
+      expect(
+        cameraBodyKind(
+          enabled: true,
+          protocol: 'hls',
+          isWeb: true,
+          hlsInlineSupported: true,
+        ),
+        CameraBodyKind.inlineHls,
+        reason: 'On web with hls.js or native HLS, an HLS camera must play '
+            'inline — not fall back to the copy-URL deep-link card.',
+      );
+    });
+
+    test('rtsp on web still routes to the deep-link card', () {
+      expect(
+        cameraBodyKind(
+          enabled: true,
+          protocol: 'rtsp',
+          isWeb: true,
+          hlsInlineSupported: true,
+        ),
+        CameraBodyKind.deepLink,
+        reason: 'No browser can play RTSP; it stays a deep link even on web, '
+            'even with a player available.',
+      );
+    });
+
+    test('hls off-web (desktop) routes to the deep-link card', () {
+      expect(
+        cameraBodyKind(
+          enabled: true,
+          protocol: 'hls',
+          isWeb: false,
+          hlsInlineSupported: true,
+        ),
+        CameraBodyKind.deepLink,
+        reason: 'There is no DOM <video> off-web; HLS stays a deep link there.',
+      );
+    });
+
+    test('hls on web without a player routes to the deep-link card', () {
+      expect(
+        cameraBodyKind(
+          enabled: true,
+          protocol: 'hls',
+          isWeb: true,
+          hlsInlineSupported: false,
+        ),
+        CameraBodyKind.deepLink,
+        reason: 'A browser with neither hls.js nor native HLS cannot play the '
+            'stream, so it must show the deep-link card, not an empty <video>.',
+      );
+    });
+
+    test('a disabled hls camera is disabled, never inline or deep-link', () {
+      expect(
+        cameraBodyKind(
+          enabled: false,
+          protocol: 'hls',
+          isWeb: true,
+          hlsInlineSupported: true,
+        ),
+        CameraBodyKind.disabled,
+        reason: 'Disabled wins over every protocol path — a disabled camera is '
+            'never shown as though it were live.',
+      );
+    });
+
+    test('mjpeg/snapshot always route to the inline image host', () {
+      expect(
+        cameraBodyKind(
+          enabled: true,
+          protocol: 'mjpeg',
+          isWeb: true,
+          hlsInlineSupported: false,
+        ),
+        CameraBodyKind.inlineImage,
+      );
+      expect(
+        cameraBodyKind(
+          enabled: true,
+          protocol: 'snapshot',
+          isWeb: false,
+          hlsInlineSupported: false,
+        ),
+        CameraBodyKind.inlineImage,
+      );
+    });
+  });
+}
+
+const _mjpegCamera = {
+  'id': 'cam-1',
+  'label': 'Shop floor',
+  'protocol': 'mjpeg',
+  'url': 'http://10.0.0.20/mjpeg',
+  'enabled': true,
+  'created_at': '2026-08-01T12:00:00Z',
+};
+
+const _hlsCamera = {
+  'id': 'cam-2',
+  'label': 'Back lot',
+  'protocol': 'hls',
+  'url': 'https://cam.example.com/stream.m3u8',
+  'enabled': true,
+  'created_at': '2026-08-01T12:00:00Z',
+};
+
+const _disabledCamera = {
+  'id': 'cam-3',
+  'label': 'Old bay',
+  'protocol': 'snapshot',
+  'url': 'http://10.0.0.21/snap.jpg',
+  'enabled': false,
+  'created_at': '2026-08-01T12:00:00Z',
+};
+
+const _newCamera = {
+  'id': 'cam-9',
+  'label': 'New dock cam',
+  'protocol': 'mjpeg',
+  'url': 'http://10.0.0.22/mjpeg',
+  'enabled': true,
+  'created_at': '2026-08-02T12:00:00Z',
+};
+
+Future<void> _pumpTab(
+  WidgetTester tester, {
+  required List<Map<String, dynamic>> cameras,
+  bool grantView = true,
+  bool grantManage = true,
+  VoidCallback? onCamerasFetch,
+  http.Response? Function(http.Request request)? onRequest,
+  List<Map<String, dynamic>> Function()? camerasProvider,
+  Size size = const Size(1280, 900),
+}) async {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+
+  final permissions = <String>[
+    'monitoring.view',
+    if (grantView) 'monitoring.cameras.view',
+    if (grantManage) 'monitoring.cameras.manage',
+  ];
+
+  final api = ApiClient(
+    client: MockClient((request) async {
+      final override = onRequest?.call(request);
+      if (override != null) return override;
+
+      final path = request.url.path;
+
+      if (path.endsWith('/me')) {
+        return _json({'data': {..._me, 'permissions': permissions}});
+      }
+
+      if (request.method == 'GET' && path.endsWith('/monitoring/cameras')) {
+        onCamerasFetch?.call();
+        return _json({'data': camerasProvider?.call() ?? cameras});
+      }
+
+      return _json({'message': 'Nothing stubbed for ${request.method} $path.'}, 500);
+    }),
+  );
+
+  final session = Session(api);
+  await tester.runAsync(() => session.adopt('tok'));
+  expect(session.signedIn, isTrue);
+
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: Scaffold(
+        body: CameraMonitoringTab(api: api, session: session),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+http.Response _json(Object body, [int status = 200]) => http.Response(
+  jsonEncode(body),
+  status,
+  headers: const {'content-type': 'application/json'},
+);
+
+const _me = {
+  'id': 'u-1',
+  'name': 'Jose',
+  'email': 'jose@example.com',
+  'role': {'name': 'Manager'},
+  'has_avatar': false,
+  'permissions': <String>['monitoring.view'],
+  'preferences': <String, dynamic>{},
+  'organization': {
+    'id': 'org-1',
+    'name': 'A-1 Chimney',
+    'franchise_label': 'Franchise',
+    'is_read_only': false,
+  },
+  'scope': {
+    'type': 'organization',
+    'id': 'org-1',
+    'label': 'A-1 Chimney',
+    'path': ['A-1 Chimney'],
+  },
+  'companies': [
+    {'id': 'co-1', 'name': 'A-1 Chimney', 'parent_company_id': null},
+  ],
+  'franchises': <Map<String, Object?>>[],
+  'modules': [
+    {
+      'key': 'monitoring',
+      'label': 'Monitoring',
+      'available': true,
+      'reachable': true,
+    },
+  ],
+};

@@ -8,6 +8,669 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0151',
+      date: '4 Sep 2026',
+      items: [
+        '"Text me my codes" is on the account screen at a desk, not only on a '
+            'phone. It was added to the phone layout alone, so the setting '
+            'existed on a handset and did not exist on a computer - which is '
+            'where most people would have gone looking for it. It now sits '
+            'under Two-factor in both.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0150',
+      date: '4 Sep 2026',
+      items: [
+        'A module no longer prints its own name twice. The page header added '
+            'in 0.0.0137 says which module you are in, and fifteen screens '
+            'were already saying it themselves - four the module name, eleven '
+            'their own tab label - so Customers sat under Customers and '
+            'Records under a highlighted Records tab. The sentence under each '
+            'heading stays: it carries the count.',
+        'The Mac build is now signed and packaged the way the Mac App Store '
+            'requires, and every release delivers it to App Store Connect the '
+            'same way the iPhone build reaches TestFlight. Nothing inside the '
+            'app changed in this version.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0149',
+      date: '4 Sep 2026',
+      items: [
+        'Marketing: a company can connect its own Mailchimp account and send '
+            'a newsletter to its own list, under its own name. EzBizi does not '
+            'send the mailing - Mailchimp does, on the company\'s reputation - '
+            'so one business can never affect another\'s deliverability.',
+        'An administrator can let a locked-out colleague back in. Somebody '
+            'who loses the phone holding their authenticator, or forgets their '
+            'password, no longer needs a developer: from their person record '
+            'you can clear the second factor or issue a reset link, and the '
+            'one thing you cannot do is either of those to yourself.',
+        'Leads matches every other screen. It was the one tab strip still '
+            'drawn Material\'s way - underlined, no icons, stretched full '
+            'width - so beside Services or Communication it read as a '
+            'different application.',
+        'Communication - Settings has a consent page you can photograph. A US '
+            'carrier will not carry a verification text unless the sender can '
+            'show where the person agreed to receive it, and Twilio names the '
+            'eight things that screenshot must show. This page is all eight.',
+        'The data inventory says when a count is only your own. Suggestions '
+            'are private to their author, so the organization-wide count '
+            'cannot include everybody\'s - and a compliance export that '
+            'quietly held a number back is a defect in its own right.',
+        'Your account now has a "Text me my codes" setting, next to '
+            'Two-factor. Give it your mobile number, tick the box, and EzBizi '
+            'texts you a code to confirm the number is yours. You can turn it '
+            'off at any time without a password, or by replying STOP to any '
+            'message. It stays switched off, and says so, until EzBizi has its '
+            'own number to send from - which is being registered with the '
+            'carriers now.',
+        'The number EzBizi texts you on is deliberately not one of your '
+            'business lines. A business phone number is registered with the '
+            'carriers for that business and its customers, and sending EzBizi '
+            'sign-in codes from it is the kind of mismatch that gets the whole '
+            'number blocked.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0148',
+      date: '3 Sep 2026',
+      items: [
+        'Leads now has the same tabs as every other module. It was the one '
+            'screen still using a full-width underlined strip, so it looked '
+            'like a different application from the page next to it.',
+        'Human Resources: an administrator can reset a colleague\'s '
+            'authenticator when the phone holding it is lost. It is on each '
+            'person\'s menu in Records. Their old authenticator stops working, '
+            'they are signed out on every device, and they set up a new one '
+            'themselves the next time they sign in - nobody, the administrator '
+            'included, is ever shown it. Until now the only way back in was a '
+            'developer working on the server.',
+        'Human Resources: an administrator can hand somebody a password reset '
+            'link. It is shown on screen to pass on directly rather than '
+            'emailed, because a person locked out of their mailbox is exactly '
+            'who needs one. Single use, and it expires in an hour. The '
+            'administrator never chooses or sees the password.',
+        'Both need their own permission - "security.reset" under Human '
+            'Resources - rather than coming with editing people. Taking the '
+            'second factor off a colleague is a bigger thing than changing '
+            'their role, and it should be given on purpose. Administrators '
+            'have it already.',
+        'Phone numbers already in the system are now stored the way new ones '
+            'are, so they read the same everywhere. Nineteen were written '
+            'another way; nine were real numbers and are corrected. The other '
+            'ten were never valid numbers to begin with and are left as they '
+            'were rather than guessed at.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0147',
+      date: '3 Sep 2026',
+      items: [
+        'Leads is its own module in the sidebar rather than a tab inside '
+            'Marketing, and Web Management moves in the other direction to sit '
+            'beside the other places a business says who it is. Where work '
+            'comes from was the wrong thing to keep buried.',
+        'Leads has a tab each for Google and Thumbtack. Google Ads enquiries '
+            'arrive, are stored and are worked here as before. Thumbtack can '
+            'be connected but does not deliver enquiries yet - what it does '
+            'today is keep your associate phone numbers in step, which is what '
+            'makes your caller ID right on their side.',
+        'Leads, Reviews and Business profile: rows belonging to the whole '
+            'organization were invisible to everyone below organization level. '
+            'A connection set up for the organization rather than one company '
+            'produced leads and reviews that nobody in a company or branch '
+            'could see in the list, while opening one directly still worked.',
+        'Reviews and Business profile: a sync that fails now says so instead '
+            'of reporting no reviews. "Nothing came back" and "we could not '
+            'ask" looked identical, and the reason was being sent somewhere '
+            'the screen never showed it.',
+        'Business profile: a business with more than a hundred locations now '
+            'sees reviews for all of them. Only the first hundred were ever '
+            'fetched, and the rest were silently absent.',
+        'Business profile: a revoked Google permission says it was revoked, '
+            'instead of telling you to wait for a quota approval that was '
+            'never coming.',
+        'Phone numbers read the same way everywhere - +1 (305) 724-2199 - on '
+            'every screen and in every module, instead of the stored form. '
+            'Typing ten digits into any phone field formats it as you go.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0146',
+      date: '3 Sep 2026',
+      items: [
+        'The desktop app can take and make calls. It has been saying the phone '
+            'desk was not connected since the phone arrived on Windows, and '
+            'the fault was one line inside the app: the page that carries the '
+            'call audio was listening for the app on the wrong channel, so the '
+            'sign-in it was sent never reached it and it never started. The '
+            'page loaded, reported itself loaded, and then sat there. Nothing '
+            'was ever wrong with the network, the connection or Twilio - the '
+            'message blaming your network was the app guessing, because it had '
+            'been given no reason to report.',
+        'Communication - Phone - Dial: the columns can be resized. Drag the '
+            'line between any two of them. Recent calls used to take every '
+            'pixel the keypad did not want, which on a wide screen was most of '
+            'the window for a list of phone numbers; it now opens narrow, and '
+            'where you drag it stays for as long as the app is open.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0145',
+      date: '3 Sep 2026',
+      items: [
+        'Communication - Phone - Dial: the column beside the keypad is your '
+            'recent calls now, not the list of colleagues. The number somebody '
+            'reaches for while standing at a keypad is nearly always one they '
+            'have just been speaking to - a customer who rang off, a missed '
+            'call to return - and that was two tabs away in Records. Tapping a '
+            'call puts the number in the field rather than dialling it, so you '
+            'can read it back before it rings.',
+        'Communication - Phone - Team is its own tab. It has not gone; it is '
+            'where you go when the person is who you want, and moving between '
+            'it and the keypad no longer takes the phone off the hook.',
+        'Communication - Phone - Dial: the customer panel stays out of the way '
+            'until there is somebody to show. It used to hold half the screen '
+            'saying nothing. There is a pin if you would rather it stayed.',
+        'Communication - Phone - Dial: the Calling as list has a search box. A '
+            'dispatcher covering a business with thirty numbers was scrolling '
+            'to find one, and a scrolling list is how you dial out under the '
+            'wrong number.',
+        'Communication - Phone - Voicemail is a tab, split into boxes. A flat '
+            'list answers "did anybody ring" and not "did anybody ring me", '
+            'which on a shared account is the question - so it is split by '
+            'whose box it is and opens on yours. Each message shows its '
+            'transcript under it rather than behind a button; the recording is '
+            'still there to play, and still the record when the transcript is '
+            'blank or wrong.',
+        'The phone desk stops claiming to be disconnected once it has '
+            'connected. It read the connection once, at startup, and never '
+            'looked again - so a desk that came up a second late kept the '
+            'warning until the screen was reloaded.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0144',
+      date: '3 Sep 2026',
+      items: [
+        'Tasks has been removed. It is being rebuilt from scratch, and rather '
+            'than leave a half-working version in the sidebar it is gone until '
+            'the new one is ready. Boards, tasks and their updates are deleted '
+            'with it; nothing is kept behind the scenes.',
+        'Leads: Local Services enquiries load instead of failing. EzBizi was '
+            'asking Google for something that is not a real part of its API, '
+            'so Google answered with a plain "not found" page and the screen '
+            'turned that into an error with no explanation. An account with no '
+            'enquiries now says so, which is the honest answer rather than a '
+            'symptom.',
+        'Leads: being asked to slow down for a minute no longer reads as '
+            'having no access at all. Those are different problems with '
+            'different answers, and reporting the first as the second sent '
+            'people to re-apply for access they already had.',
+        'Whether you are taking calls now sits at the top of every screen, '
+            'next to Clock In, as a handset with a green or red dot. It used '
+            'to live on the dial pad, so the only way to stop your phone '
+            'ringing was to go to the phone. Setting it covers every line you '
+            'are on at once, and it will not interrupt a call you are already '
+            'on.',
+        'Communication: the Team tab is now called Users - it is where '
+            'extensions and outbound lines are assigned to people.',
+        'The desktop app can take calls again. It has been saying the phone '
+            'desk was not connected on every launch, and the reason was inside '
+            'the app rather than on your network: the part of the window that '
+            'the microphone permission is handed to was not on screen yet when '
+            'the phone asked for it, so the request went unanswered and Twilio '
+            'refused the connection. The browser was never affected.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0143',
+      date: '3 Sep 2026',
+      items: [
+        'Roles no longer ask you to tick phone lines one at a time. A role '
+            'with Communication gets the company lines, and the list of '
+            'seven tickboxes - which had stopped changing anything - is gone. '
+            'A company with a hundred numbers would have had a hundred boxes '
+            'per role.',
+        'The desktop app says what actually went wrong when the phone will not '
+            'connect, instead of blaming your network every time. Twilio was '
+            'always telling us the reason and the app was dropping it, so an '
+            'expired sign-in and a missing microphone both read as a firewall '
+            'problem.',
+        'An update no longer stops to ask whether to install for everyone or '
+            'just you. It installs, for you, and comes back - which is what an '
+            'automatic update was supposed to be.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0142',
+      date: '3 Sep 2026',
+      items: [
+        'You can send a suggestion. Anything you think EzBizi should do '
+            'differently goes in from inside the app, and your own tab keeps '
+            'the ones you have sent with what came of each - waiting, being '
+            'read, taken up, or turned down with the reason.',
+        'A suggestion can be corrected or withdrawn while nobody has read it '
+            'yet. Once somebody has started reading it, it stays as you sent '
+            'it, because the person deciding should be answering what you '
+            'actually wrote.',
+        'Your suggestions are yours. Other people in your company cannot read '
+            'them, and the count on the data inventory is your own rather than '
+            'everybody\'s.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0141',
+      date: '2 Sep 2026',
+      items: [
+        'Communication: a role that can open Communication now gets the '
+            'company\'s phone lines. Each line used to be switched on for each '
+            'role one at a time, so a new dispatcher saw an empty Dial screen '
+            'and no reason for it - and a business with a hundred numbers '
+            'would have had to tick a hundred boxes per role. Who can see '
+            'which lines is still bounded by the company and branch a person '
+            'is assigned to.',
+        'Communication: an empty Dial screen says which of the two things is '
+            'wrong. It used to say "Connect Twilio in Settings" whether the '
+            'company had no phone system or you simply had no line - telling '
+            'people to fix something they could not reach and that was not '
+            'broken.',
+        'Communication: you start on your own line. The Calling as picker '
+            'opened on whichever line happened to be first, so calls went out '
+            'under a shared number unless you noticed and changed it.',
+        'The desktop app no longer says the phone desk is disconnected when '
+            'it is not. It checked whether the desk had come up before the '
+            'desk had finished answering, so the warning appeared on almost '
+            'every launch and stayed until the page was reloaded.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0140',
+      date: '2 Sep 2026',
+      items: [
+        'Communication - Settings - Numbers: the pane drew its own title one '
+            'letter per line down the page, on top of the rest of the screen. '
+            'It only did it for a business with more than one phone account, '
+            'because the account picker is the only thing drawn in that spot '
+            'and it was taking the whole width of the header. Every other '
+            'settings pane is now protected from the same thing.',
+        'Training: a test is marked, and says why. A learner sees a '
+            'score, which answers were wrong, and how many attempts are '
+            'left; a test whose guide has not been finished says that '
+            'rather than refusing without a reason.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0139',
+      date: '2 Sep 2026',
+      items: [
+        'Monitoring now shows one entry per person, led by the machine running '
+            'the desktop app, and names devices plainly ("Browser", "Desktop '
+            'app") instead of "web web" / "windows windows". You pick whose '
+            'screen to view from a searchable list of people, not a drop-down, '
+            'and only machines running the desktop app appear there.',
+        'Monitoring - Desktop Monitoring: a "Go live" button shows a machine\'s '
+            'screen updating every second or two, live, instead of only the '
+            'latest five-minute screenshot. The live view is never recorded, '
+            'and if the machine stops sending it says so rather than leaving a '
+            'stale picture up.',
+        'Monitoring - Desktop Monitoring: you can take control of a monitored '
+            'machine - your mouse and keyboard, including Ctrl and Alt '
+            'shortcuts, drive the remote screen while you watch it live. It '
+            'needs a separate control permission (viewing does not grant it). '
+            'An organisation can turn on a notice that shows on a machine while '
+            'it is being controlled; it is off, and silent, by default.',
+        'Monitoring - Camera Monitoring: HLS cameras now play inside the page '
+            'on the web, not only as an open-in-your-player link. RTSP still '
+            'opens in your own player.',
+        'Monitoring: devices not seen for 30 days are cleaned up on their own, '
+            'so old browser sessions and retired machines stop piling up.',
+        'Automations: a rule with a condition on it now runs. Conditions were '
+            'looking for the value one level deeper than the trigger actually '
+            'sends it, so on twenty-three of the triggers no condition ever '
+            'matched - the rule simply never fired, and nothing said why.',
+        'Business profile, Leads and Reviews each say which Google account '
+            'they are connected to, and let you disconnect it. The tab showed '
+            'that something was connected without naming it, and offered no '
+            'way to undo it.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0138',
+      date: '2 Sep 2026',
+      items: [
+        'Phone is now called Communication, and its first tab is Phone, '
+            'holding Dial, Messages and Voicemail. Nothing moved out of reach '
+            '- Messages and Voicemail are the Records views you already had, '
+            'now reachable in one tap.',
+        'Communication: you can choose which of the company lines you are '
+            'calling from, on the Dial screen. It used to be fixed to whichever '
+            'line was assigned to you, so covering a second business meant '
+            'ringing customers back as the wrong company. Your own line is '
+            'marked so switching away is deliberate.',
+        'On iPhone and iPad, taking a call in the app now asks for the '
+            'microphone the first time, and says what it is for. Apple requires '
+            'an app to explain itself before it may listen, and EzBizi did not '
+            'carry that sentence - so the App Store refused the build outright, '
+            'before anybody could install it.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0137',
+      date: '2 Sep 2026',
+      items: [
+        'Monitoring - PC Specs now leads with a person\'s active device, adds '
+            'a switcher when more than one is active, and folds older sessions '
+            'away behind a toggle. Before, somebody who had signed in from '
+            'several browsers filled the list with stale rows that all looked '
+            'the same.',
+        'Monitoring - a desktop machine is now recognised as the same device '
+            'each time the app starts, instead of registering as a brand-new '
+            'device on every launch and piling up duplicates.',
+        'Monitoring - Desktop Monitoring: with the right permission, a manager '
+            'can see periodic screenshots of a monitored Windows machine\'s '
+            'screen. Images are kept for 30 days and then deleted on their own. '
+            'Seeing them is a separate permission from seeing specs, so an '
+            'organisation can grant one without the other.',
+        'Monitoring - Camera Monitoring: connect an IP camera by its stream '
+            'address - HLS, MJPEG, snapshot or RTSP - and watch it inside '
+            'EzBizi. MJPEG and snapshot cameras play in the page; HLS and RTSP '
+            'open in your own video player for now.',
+        'Scheduling: you can add a service area. Settings listed your areas '
+            'and gave you no way to make one, so a business that had never '
+            'added any saw two empty boxes and nothing to click - and since '
+            'the hours grid and the zip codes both live inside an area, none '
+            'of it could be reached at all.',
+        'Scheduling: a service area takes its zip codes, and can be renamed '
+            'or deleted. A zip already covered by another area is refused and '
+            'says which area has it.',
+        'On a phone, a panel no longer opens underneath the clock and the '
+            'battery. Anything that slides in from the right - the version '
+            'list, a customer, a record - was drawing from the very top of the '
+            'screen, which put its close button under the status bar where it '
+            'cannot be tapped. There is no other way out of a panel on a '
+            'phone, so the app had to be force-quit to escape one. All '
+            'thirty-four of them are fixed together.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0136',
+      date: '2 Sep 2026',
+      items: [
+        'Adding a photo or a file works in the desktop app. The button was '
+            'there and pressing it did nothing at all - there was no file '
+            'dialog outside a browser, so nothing opened and nothing said so.',
+        'Email: signing in to a mail account from the desktop app opens your '
+            'own browser to do it, rather than having nowhere to go.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0135',
+      date: '2 Sep 2026',
+      items: [
+        'The desktop app keeps you signed in. Ticking "keep me signed in" had '
+            'never done anything outside a browser - the desktop app held your '
+            'session in memory only, so closing it, or updating it, signed you '
+            'out. The session is now kept in the Windows credential store, '
+            'encrypted to your Windows account, and only when you tick the '
+            'box. Leave it unticked and it still ends when you close the app.',
+        'Android now needs Android 8.0 or newer. Taking calls on the phone '
+            'uses Twilio, which does not support anything older, so this is '
+            'the floor for having calling at all rather than a preference.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0134',
+      date: '2 Sep 2026',
+      items: [
+        'Phone: calls work in the app on every platform that can carry audio, '
+            'not only in a browser tab.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0133',
+      date: '1 Sep 2026',
+      items: [
+        'Phone: you can take and make calls inside the app on Windows, '
+            'Android, iPhone and Mac, not only in a browser. On a phone an '
+            'incoming call rings like a phone call rather than a notification. '
+            'Incoming calls on phones need push credentials set up in Twilio '
+            'first; until then calls go out but do not come in.',
+        'Monitoring: a computer running the desktop app now reports what it '
+            'is - memory, free disk, Windows version, and which wifi network '
+            'it is on with how strong the signal is. Until now Monitoring '
+            'could say a machine was active and nothing about it, so "it is '
+            'slow" had no numbers next to it.',
+        'That only happens on the desktop app, and only on Windows so far. '
+            'Anywhere else the machine keeps reporting that it is active, '
+            'exactly as before, and simply sends no specs.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0132',
+      date: '1 Sep 2026',
+      items: [
+        'The desktop app updates itself without showing you an installer. It '
+            'used to put a setup window on screen while replacing itself, '
+            'which read as installing software rather than the app restarting.',
+        'The desktop app comes back on its own after updating. It was closing '
+            'itself so its files could be replaced and then staying closed - '
+            'the step that reopens it was being skipped on exactly the silent '
+            'installs the updater uses. If an update ever fails you will still '
+            'be told; only the success case is quiet.',
+        'The desktop app checks for an update when it starts and installs it '
+            'there and then, instead of waiting a minute first. That wait is '
+            'still there for an update found while you are working, where '
+            'closing the app under you is not the same thing at all.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0131',
+      date: '1 Sep 2026',
+      items: [
+        'This is the release that actually delivered everything listed under '
+            '0.0.0130. That version reached the web and then failed before any '
+            'app was published, so no desktop or phone ever ran it.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0130',
+      date: '1 Sep 2026',
+      items: [
+        'Phone: you can call from the desktop app, Android and iOS now. Those '
+            'builds cannot carry the audio themselves - the part that does is '
+            'a browser component - so EzBizi rings your own phone and joins '
+            'you to the person you are calling. They still see the company '
+            'number, never your mobile. Add your number to your profile first.',
+        'Every module now says its own name at the top of the page. Only one '
+            'of the sixteen did - the rest left you to work out where you were '
+            'from the sidebar, and on a phone the sidebar is behind a button, '
+            'so nothing on screen said it at all.',
+        'Headings across the app are one set of sizes now. Three of the six '
+            'heading styles had never been given a size or a weight, so a '
+            'hundred and nine places asking for a heading were quietly drawing '
+            'ordinary text. That is why titles looked unrelated from one '
+            'screen to the next.',
+        'The tab you are on no longer covers its own icon with a grey '
+            'circle. The circle followed the selected tab rather than the '
+            'mouse, so it looked like a hover effect stuck on the wrong tab. '
+            'It was the tick that gets drawn on top of the icon, which the '
+            'coloured background had already made unnecessary.',
+        'Social: Facebook, Threads and Instagram can post. Until now a post '
+            'could be written and scheduled for those three and nothing left '
+            'EzBizi. Instagram needs the picture handed over in a separate '
+            'step, which is why it took longer than the other two.',
+        'Social: when connecting a Google account fails, the message says '
+            'which of four things went wrong rather than giving one wording '
+            'for all of them - the API not switched on, no quota granted '
+            'yet, a developer token not approved for live accounts, or '
+            'EzBizi asking for a version of the API Google has retired. The '
+            'last one is why Google Ads had been failing.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0129',
+      date: '1 Sep 2026',
+      items: [
+        'Automations: a rule can now send a text. Pick which of the company '
+            'lines it goes out from, who it goes to, and what it says - and it '
+            'works on any trigger, including ones with nothing to do with the '
+            'phone, such as an email arriving.',
+        'Phone: calling out works. Numbers typed the ordinary way - 305 724 '
+            '2199 - were losing their country code and being dialled as '
+            '+3057242199, which is not a phone number, so no outgoing call '
+            'has ever connected. The same applied to text messages.',
+        'Phone: the Call tab is now called Dial, and you ring a colleague from '
+            'their own row in the Team list rather than from an Internal '
+            'button on the keypad that did nothing until you had picked them '
+            'somewhere else.',
+        'Phone: a call that fails now says why, on the Records list, instead '
+            'of only saying it failed. Twilio always told us the reason and '
+            'the app was discarding it, which is why outbound calling took '
+            'four rounds to diagnose.',
+        'Phone: the call desk gives each column a fair share of the window. '
+            'The two panes holding the most - the team list and the customer '
+            'thread - were fixed at their smallest, and every extra pixel went '
+            'to the dial pad, which is a fixed size anyway. On a wide screen '
+            'the middle column was more than half the window around a keypad. '
+            'A note in 0.0.0126 said this had been done; it had not been, and '
+            'this is it.',
+        'The sidebar has a box to find a module by name. Sixteen of them, and '
+            'the way to reach one was to read all sixteen - on a short screen, '
+            'after scrolling. The letters that matched are marked, so it is '
+            'clear why a module is still in the list. Collapsed there is no '
+            'box: at that width there are no names to search.',
+        'Your account is laid out again. The things an administrator assigns '
+            'you - your email, your role, and the places you can act on - sat '
+            'inside the form directly above its Save button, which suggested '
+            'Save applied to them. It never did. They are beside the form now, '
+            'or their own row on a phone.',
+        'Your account on a phone is a list of rows rather than one long form, '
+            'and each row shows what it currently says - so checking your own '
+            'number no longer means opening anything.',
+        'Two places with the same name now say which company each belongs to. '
+            'A list that reads Connecticut, Georgia, Connecticut looks like '
+            'the same place twice; they are two different ones, and it is the '
+            'answer to where you are allowed to work.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0128',
+      date: '1 Sep 2026',
+      items: [
+        'Phone: calling a customer no longer drops you into your own '
+            'voicemail. The first call went through; a second one to the same '
+            'person was treated as a call arriving at your line rather than '
+            'leaving it, so it was answered by your greeting instead of rung '
+            'out to them.',
+        'Phone: a call placed from a number the company does not own now says '
+            'so, instead of connecting to silence. The call appeared to be in '
+            'progress with nobody on either end - the number it claimed to be '
+            'calling from was rejected, and nothing said that out loud.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0127',
+      date: '31 Aug 2026',
+      items: [
+        'Phone: the desktop app now says that calls are made in the browser, '
+            'instead of reporting that the network is blocking the connection. '
+            'Calls have never been possible outside a browser - the part that '
+            'places them only exists there - so the old message sent people to '
+            'check a firewall for something that could not work.',
+        'Social: a post can be sent later. Pick the day and time, and it goes '
+            'out on your own clock - the one for the company or branch you are '
+            'looking at, not the server clock.',
+        'A picture or video you attach is shown before you send it, so you can '
+            'check it is the right one. Video plays in the composer.',
+        'A post sent to TikTok lands in the drafts of that TikTok account, '
+            'the profile - open TikTok to finish and post it. TikTok has not '
+            'audited the app yet. This replaces what the 0.0.0113 note said.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0126',
+      date: '31 Aug 2026',
+      items: [
+        'Phone: a new Team tab shows each person, their extension, and the '
+            'number they call out from. Numbers were being bought with nobody '
+            'assigned to them, so every outbound call went out under the same '
+            'line - four people ringing four customers all showed one number, '
+            'and every callback landed on whoever picked up.',
+        'The sidebar scrolls. On a shorter screen the module list used to run '
+            'off the bottom and draw over Settings and Development, and the '
+            'modules underneath could not be reached at all - there was '
+            'nothing to scroll with. Settings and Development stay pinned at '
+            'the foot where they always were.',
+        'The brand cyan was too pale to read. As text on white it sat at about '
+            'half the contrast needed to be legible, and white text on a cyan '
+            'button was the same - which mattered most where a filled colour '
+            'carries words, like a title on a coloured bar. Buttons, links '
+            'and the box outline you get when you click into a field are all a '
+            'deeper shade now. Dark mode is unchanged.',
+        'Four modules were drawing a generic chart icon on the dashboard '
+            'because nobody had chosen one for them: Reviews, Leads, '
+            'Business profile and Monitoring. They have their own now.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0125',
+      date: '31 Aug 2026',
+      items: [
+        'Phone: a ring group now shows who would actually be rung, not how many '
+            'people are in it. A group of four where everyone is on Do not '
+            'disturb rings nobody, and it used to look identical to a working '
+            'one.',
+        'Phone: a menu that no caller ever hears is now shown as skipped. A menu '
+            'can be built, named and attached to a line and still be stepped '
+            'past on every call, and nothing said so - the caller does not know '
+            'they missed it and you would never get a complaint about it.',
+        'Phone: each number lists its full routing, so you can see where a call '
+            'goes rather than inferring it.',
+        'Notifications: the bell now refreshes on its own and raises desktop and '
+            'phone notifications, instead of only checking once when you signed '
+            'in.',
+        'Notifications: turning notifications off now turns all of them off. The '
+            'setting was only being honoured in one of the four places that '
+            'send, so an organization that switched it off kept receiving most '
+            'of them.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0124',
+      date: '31 Aug 2026',
+      items: [
+        'Scheduling: set how many jobs you can take, per time slot, per day, '
+            'for each service area. Most businesses run the same hours '
+            'everywhere, so Settings shows your pattern first and lists the '
+            'areas that differ from it, rather than making you set the same '
+            'thing thirty times.',
+        'A service area holds its own zip codes, and a zip belongs to exactly '
+            'one of them - so searching a zip has one answer rather than two. '
+            'A zip another area already covers is refused, and says which area '
+            'has it.',
+        'Closing a day removes it rather than setting it to zero, because "we '
+            'do not work Sundays" and "Sunday is full" are different things '
+            'and should not look the same.',
+        'Availability: search a zip code or an area and see that week. The '
+            'numbers are what you are set up to take - booked jobs are not '
+            'counted yet, and the screen says so rather than implying the '
+            'week is empty.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0123',
+      date: '31 Aug 2026',
+      items: [
+        'Web Management: "Get the plugin" now fetches the current version from '
+            'wordpress.org. It used to hand you whatever copy this server was '
+            'built with, which could be older than the one the page was '
+            'describing.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0122',
       date: '31 Aug 2026',
       items: [
@@ -126,8 +789,11 @@ class VersionHistory {
       items: [
         'Social: write a post, choose the accounts, and send it. Publishing '
             'was a console command; it is a button now.',
-        'A post sent to TikTok lands on your profile privately, because TikTok '
-            'has not audited the app yet. Everywhere else posts publicly.',
+        'A post sent to TikTok lands in the drafts of that TikTok account - '
+            'TikTok to finish and post it. (Corrected 31 Aug 2026: this note '
+            'used to say the post landed on your profile privately. It did '
+            'not, and somebody checking their profile would have concluded '
+            'publishing was broken.)',
         'Inspections: take photographs while you walk the job, and download the '
             'finished report as a PDF.',
         'A customer found by search says which company owns the franchise — on '
@@ -144,19 +810,6 @@ class VersionHistory {
             'answers itself again next month.',
         'The phone account picker said "company" three times. It names the '
             'place now, and only shows the one you are looking at.',
-      ],
-    ),
-    VersionRelease(
-      version: '0.0.0111',
-      date: '28 Aug 2026',
-      items: [
-        'Tasks: make boards for the organization, company, or franchise you are '
-            'looking at, then group, assign, follow, and finish the work.',
-        'The dense desktop table becomes touch-friendly cards and full task '
-            'details on a phone. My Tasks, saved views, filters, and search keep '
-            'large boards manageable.',
-        'Updates, files, linked EzBizi records, notifications, automations, and '
-            'safe spreadsheet import and export stay with the task.',
       ],
     ),
     VersionRelease(

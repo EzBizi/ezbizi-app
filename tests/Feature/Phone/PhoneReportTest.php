@@ -191,8 +191,21 @@ class PhoneReportTest extends TestCase
     {
         [$t] = $this->lineWithCalls(['completed', 'completed', 'no-answer']);
 
-        // phone.view, but no grant on any line.
-        $stranger = $this->userWithRole($t, 'Phone viewer', ['phone.view']);
+        // phone.view, but standing somewhere the line is not.
+        //
+        // This used to be "phone.view, but no grant on any line", which stopped
+        // meaning anything on 2 Sep when grants stopped being per number. The
+        // assertion it protects is unchanged and still worth having — a total
+        // is an answer about rows, so it must not count rows this person could
+        // not open one at a time. The boundary is now §4 reach: the line is
+        // company-scoped, and pinning this viewer to a single franchise puts
+        // it outside what they can act on.
+        $stranger = $this->userWithRole(
+            $t,
+            'Phone viewer',
+            ['phone.view'],
+            onlyAt: $t['franchise'],
+        );
 
         $response = $this->signedInAs($stranger)
             ->getJson('/api/v1/phone/reports/run?period=last_7')

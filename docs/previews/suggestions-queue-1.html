@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi &mdash; Development &rsaquo; Suggestions, layout 1</title>
+<style>
+  :root {
+    /* PROVENANCE, because a mockup that says "the real palette" has to mean it.
+       Everything marked (theme) is measured from client/lib/core/theme.dart via
+       EzBiziTheme.light() -- not eyeballed, and nothing invented for this file.
+       What is NOT a theme token is listed at the bottom of this block, in full. */
+    --cyan:#00AEEF;     /* (theme) EzBiziTheme.accent -- brand fills carrying no text */
+    --primary:#00708F;  /* (theme) light colorScheme.primary (_cyanDeep), 5.7:1 on white */
+    --ink:#060808;      /* (theme) _ink */
+    --muted:#5B6672;    /* (theme) _muted */
+    --line:#E9EDF1;     /* (theme) EzBiziTheme.edge, light */
+    --alt:#F5F8FA;      /* (theme) _surfaceAlt */
+    --page:#fff;        /* (theme) light colorScheme.surface */
+    --ok:#0B8F5B;       /* (theme) EzBiziTheme.clockIn, light */
+    --err:#E07070;      /* (theme) EzBiziTheme.clockOut, light -- the punch-out coral.
+                           Used here only as a 4px edge and never as text: it is about
+                           3:1 on white and cannot carry a word. */
+    --deny:#BA1A1A;     /* (theme) light colorScheme.error. MEASURED, not guessed --
+                           EzBiziTheme.light().colorScheme.error prints #BA1A1A, and the
+                           same probe confirmed primary #00708F light / #00AEEF dark.
+                           6.5:1 on white and 5.7:1 on --err-c, so it is the one red here
+                           that may be text; it is also the token development_screen.dart
+                           already uses for the control-plane banner. */
+
+    /* NOT theme tokens, and this is the complete list of them.
+       The four container tints are the docs/previews house convention, carried from the
+       galleries already using them, standing in for Material's *Container roles, which a
+       flat mockup cannot compute. The app's real light errorContainer is #FFDAD6;
+       #FDECEC is the previews' lighter stand-in, kept so this gallery matches the twenty
+       beside it rather than being the one that looks different. --warn is convention too
+       -- theme.dart carries no amber -- and it is used only in this gallery's own header
+       blocks, never in the drawn app. Four greys are mockup furniture and never app
+       colour: #DDE3E8 the gallery page ground, #9AA5AF placeholder text inside a drawn
+       field, #C9D3DB the drawn keyboard slab and the dashed empty-state border, #3F4A55
+       the label printed on that keyboard. */
+    --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 Inter, system-ui, "Segoe UI", sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1280px; margin:0 auto; padding:16px 16px 48px; }
+
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:20px; margin:0 0 4px; letter-spacing:-.3px; }
+  .chooser { display:flex; flex-wrap:wrap; gap:6px; align-items:center;
+    padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--line);
+    font-size:12px; color:var(--muted); }
+  .chooser .cg { font-weight:700; text-transform:uppercase; letter-spacing:1.2px;
+    font-size:11px; margin-right:2px; }
+  .chooser a { min-width:30px; text-align:center; padding:4px 9px; border-radius:7px;
+    border:1px solid var(--line); color:var(--primary); text-decoration:none; font-weight:600; }
+  .chooser a.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .chooser .sep { width:18px; }
+
+
+  .viewlab { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--muted); margin:26px 0 8px; }
+  .note { color:var(--muted); font-size:12px; margin:10px 0 0; max-width:98ch; }
+  .note b { color:var(--ink); }
+
+  .shell { display:grid; grid-template-columns:220px 1fr;
+    background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px;
+    display:flex; flex-direction:column; }
+  nav.side .brand { font-weight:800; letter-spacing:-1px; font-size:20px;
+    margin-bottom:16px; padding:0 8px; }
+  nav.side .brand i { color:var(--cyan); font-style:normal; }
+  nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+    text-decoration:none; margin-bottom:2px; font-size:14px; }
+  nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  nav.side .tail { margin-top:auto; padding-top:10px; border-top:1px solid var(--line); }
+  nav.side .staff { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
+
+  .page { display:flex; flex-direction:column; min-width:0; }
+  .devbar { background:var(--err-c); color:var(--deny); font-size:12px; padding:8px 20px; }
+  .tabs { display:flex; flex-wrap:wrap; gap:8px; padding:10px 16px;
+    border-bottom:1px solid var(--line); }
+  .tabs span { padding:7px 13px; border-radius:999px; border:1px solid var(--line);
+    background:var(--page); color:var(--muted); font-size:13px; }
+  .tabs span.on { background:var(--primary); color:#fff; border-color:var(--primary);
+    font-weight:600; }
+  .body { padding:16px 20px 24px; }
+
+  .qhead { display:flex; align-items:baseline; gap:10px; margin-bottom:12px; }
+  .qhead h2 { font-size:18px; margin:0; font-weight:700; }
+  .qhead p { margin:0; color:var(--muted); font-size:13px; }
+
+  .band { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--muted); margin:20px 0 7px; display:flex; align-items:center; gap:8px; }
+  .band:first-of-type { margin-top:0; }
+  .band .ct { background:var(--alt); border:1px solid var(--line); border-radius:999px;
+    padding:1px 8px; letter-spacing:0; }
+
+  table.q { width:100%; border-collapse:collapse; border:1px solid var(--line);
+    border-radius:10px; overflow:hidden; }
+  table.q th { background:var(--alt); color:var(--muted); font-size:11px; font-weight:700;
+    letter-spacing:1.2px; text-transform:uppercase; text-align:left; padding:9px 12px;
+    border-bottom:1px solid var(--line); }
+  table.q td { padding:11px 12px; border-bottom:1px solid var(--line); vertical-align:top;
+    font-size:13px; }
+  table.q tr:last-child td { border-bottom:0; }
+  .who b { display:block; font-size:14px; font-weight:600; }
+  .who span { color:var(--muted); font-size:12px; }
+  .txt { line-height:1.5; }
+  .when { color:var(--muted); font-size:12px; white-space:nowrap; }
+  .rowact { text-align:right; white-space:nowrap; }
+  tr.open td { background:var(--info-c); }
+  tr.open td.exp { background:var(--page); }
+
+  .exp { padding:0 !important; }
+  .expin { border-top:1px solid var(--line); padding:16px 18px 18px;
+    box-shadow:inset 3px 0 0 var(--primary); }
+  .full { font-size:15px; line-height:1.6; max-width:82ch; margin-bottom:16px; }
+  .decide { border:1px solid var(--line); border-radius:10px; overflow:hidden; max-width:82ch; }
+  .decide .dh { background:var(--alt); border-bottom:1px solid var(--line); padding:9px 13px;
+    font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--muted); }
+  .decide .din { padding:13px; }
+  .decide label { display:block; font-size:14px; font-weight:600; margin-bottom:5px; }
+  .decide .hint { color:var(--muted); font-size:12px; margin:0 0 8px; }
+  .ta { border:1px solid var(--line); border-radius:9px; padding:11px 13px; min-height:78px;
+    color:#9AA5AF; font-size:14px; line-height:1.55; background:var(--page); }
+  .ta.filled { color:var(--ink); }
+  .ta.bad { border-color:var(--err); box-shadow:0 0 0 1px var(--err); }
+  .errline { color:var(--deny); font-size:13px; font-weight:600; margin-top:7px; }
+  .cnt { color:var(--muted); font-size:12px; margin-top:6px; }
+  .acts { display:flex; align-items:center; gap:8px; margin-top:13px; flex-wrap:wrap; }
+  .acts .sp { margin-left:auto; }
+
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:9px;
+    padding:9px 16px; min-height:40px; font-weight:600; }
+  .btn.ghost { background:var(--page); color:var(--primary); border:1px solid var(--line); }
+  .btn.sm { min-height:34px; padding:5px 12px; font-size:13px; }
+  .btn.ok { background:var(--ok); }
+  .btn.no { background:var(--page); color:var(--deny); border:1px solid var(--deny); }
+  .btn.plain { background:var(--page); color:var(--ink); border:1px solid var(--line); }
+
+  .pill { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    padding:3px 9px; border-radius:999px; background:var(--alt); border:1px solid var(--line);
+    color:var(--muted); white-space:nowrap; }
+  .pill.s-new { background:var(--page); border-color:var(--muted); color:var(--ink); }
+  .pill.s-rev { background:var(--info-c); border-color:transparent; color:var(--primary); }
+  .pill.s-app { background:var(--ok-c); border-color:transparent; color:var(--ok); }
+  .pill.s-den { background:var(--err-c); border-color:transparent; color:var(--deny); }
+  .ansline { margin-top:7px; font-size:12px; color:var(--muted); max-width:80ch; }
+  .ansline b { color:var(--ink); }
+
+  .stage { display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; }
+  .phone { width:375px; border:8px solid var(--ink); border-radius:30px; overflow:hidden;
+    background:var(--page); height:720px; display:flex; flex-direction:column; }
+  .phlab { font-size:11px; color:var(--muted); text-align:center; margin-top:7px; width:375px; }
+  .bar { padding:12px 14px; border-bottom:1px solid var(--line); display:flex;
+    align-items:center; gap:9px; font-weight:700; font-size:16px; flex:none; }
+  .bar .back { color:var(--primary); font-weight:500; font-size:14px; }
+  .scroll { overflow:auto; flex:1; min-height:0; }
+  .kb { flex:none; height:190px; background:#C9D3DB; border-top:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; color:#3F4A55; font-size:12px; }
+  .pfoot { flex:none; border-top:1px solid var(--line); background:var(--alt); padding:10px 12px;
+    display:flex; gap:8px; }
+  .wrapdemo span { display:inline-block; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <nav class="chooser">
+      <span class="cg">Your suggestions</span>
+      <a href="suggestions-1.html">1</a>
+      <a href="suggestions-2.html">2</a>
+      <a href="suggestions-3.html">3</a>
+      <span class="sep"></span>
+      <span class="cg">Development queue</span>
+      <a class="on" href="suggestions-queue-1.html">1</a>
+      <a href="suggestions-queue-2.html">2</a>
+      <a href="suggestions-queue-3.html">3</a>
+    </nav>
+    <h1>Development &rsaquo; Suggestions &mdash; 1 &middot; A worklist you go down</h1>
+  </header>
+
+  <h2 class="viewlab">Desktop &mdash; the queue, with one row open to be answered</h2>
+  <div id="main"></div>
+
+  <h2 class="viewlab">Desktop &mdash; Deny pressed with an empty note, and refused</h2>
+  <div id="refused"></div>
+
+  <h2 class="viewlab">375px &mdash; designed for the phone, not narrowed</h2>
+  <div class="stage" id="mobile"></div>
+</div>
+
+<script>
+const ROWS = [
+  { st:'new', org:'A-1 Chimney', who:'Marisol Ortega', sent:'Today, 9:12am',
+    body:"Techs get the address on the job card but not the gate code or the dog, so half of them ring the office from the driveway. The access notes are already on the customer -- could they ride along on the job card the way the phone number does?" },
+  { st:'new', org:'Bluepoint HVAC', who:'Ray Nakashima', sent:'Today, 7:40am',
+    body:"Our techs cover two counties and the day sorts by appointment time, so a van crosses the river twice before lunch. Could a day be ordered by drive time and still keep the windows we promised?" },
+  { st:'new', org:'Kearny Fireplace & Stove', who:'Karen Boyle', sent:'Yesterday, 4:55pm',
+    body:"The estimate PDF says Quote across the top and customers keep ringing to ask whether it is a bill. Could that word be ours to set?" },
+  { st:'reviewing', org:'A-1 Chimney', who:'Marisol Ortega', sent:'26 August',
+    body:"When the same customer rings twice in a day we get two entries in the call list and no way to tell it is one job. Could repeat calls from a number group together for the day?" },
+  { st:'reviewing', org:'Hearth & Home Services', who:'Priya Raghunathan', sent:'24 August',
+    body:"Inspection photos upload one at a time and the tech sits in the driveway waiting for a bar of signal. Could they queue and send themselves when there is service?" },
+  { st:'approved', org:'A-1 Chimney', who:'Marisol Ortega', sent:'28 August', ans:'1 September',
+    body:"Let a tech mark a van out of service from their phone. Right now they ring the office, the office means to write it down, and dispatch finds out by sending somebody to a van that is up on a lift.",
+    note:"Agreed, and it is going into Fleet next. A tech with fleet access will be able to put a vehicle out of service from the phone, with a reason, and dispatch will see it on the board before they assign anything to it." },
+  { st:'approved', org:'A-1 Chimney', who:'Tommy Delgado', sent:'20 August', ans:'22 August',
+    body:"Put the date of the last inspection on the customer card. We ask on the phone and then go and look it up anyway.",
+    note:"Done -- it lands with the next client build. The card shows the last completed inspection and its date, and the date links to the report." },
+  { st:'denied', org:'Summit Air Mechanical', who:'Angela Ruiz', sent:'12 August', ans:'19 August',
+    body:"Could we text every customer on a route at 7am with the tech's photo and an arrival window?",
+    note:"Not in that shape, and it is the 7am blast rather than the idea. Sending a whole route at once means one wrong route texts fifty people and there is no way to pull it back. We would rather build it as a message the tech sends when they leave the stop before yours -- same photo, same window, one customer at a time. Say if that would work and it goes on the list." },
+  { st:'approved', org:'Hearth & Home Services', who:'Somebody who has since left',
+    sent:'4 August', ans:'8 August',
+    body:"Let us print a route sheet for the day. Half our techs will not use a phone for the schedule and never will.",
+    note:"Approved. Jobs prints a day per tech with addresses, windows and access notes." },
+  { st:'approved', org:'Unknown', who:'Somebody who has since left',
+    sent:'22 July', ans:'24 July',
+    body:"Could the invoice list total the month at the bottom? We reconcile by hand every month and the number is sitting right there.",
+    note:"Approved -- the month total sits at the foot of the invoice list, and it follows whatever filter you have on rather than always totalling everything." }
+];
+
+const LABEL = { new:'New', reviewing:'In review', approved:'Approved', denied:'Denied' };
+const CLS   = { new:'s-new', reviewing:'s-rev', approved:'s-app', denied:'s-den' };
+const trim = (t, n) => t.length > n ? t.slice(0, n) + '&hellip;' : t;
+
+const SIDE = `
+  <nav class="side">
+    <div class="brand"><i>Ez</i>Bizi</div>
+    <a>Dashboard</a><a>Customers</a><a>Jobs</a><a>Scheduling</a><a>Phone</a><a>Fleet</a>
+    <a>Human Resources</a>
+    <div class="tail"><a>Suggestions</a><a>Settings</a></div>
+    <div class="staff"><a class="on">Development</a></div>
+  </nav>`;
+
+const TABS = `
+  <div class="tabs"><span>Organizations</span><span>Modules</span><span>Client versions</span>
+    <span>Client access</span><span>Health</span><span>Staff</span>
+    <span class="on">Suggestions</span></div>`;
+
+const CHROME = (body) => `
+  <div class="shell">${SIDE}<div class="page">
+    <div class="devbar">Platform control plane &mdash; every organization, not just this one.
+      Your ordinary activity here is not written to the business audit trail; sign-ins, staff
+      changes and client access always are.</div>
+    ${TABS}
+    <div class="body">
+      <div class="qhead"><h2>Suggestions</h2>
+        <p>Everything every customer has asked for. 10 of at most 200 loaded.</p></div>
+      ${body}
+    </div></div></div>`;
+
+const decideBox = (o) => `
+  <div class="decide">
+    <div class="dh">Answer ${o.who}</div>
+    <div class="din">
+      <label>Say why, in a sentence</label>
+      <p class="hint">${o.who} reads this word for word, and approving or denying sends it to
+        them. Nobody else at ${o.org} can see any of this.</p>
+      <div class="ta${o.noteText ? ' filled' : ''}${o.bad ? ' bad' : ''}">${o.noteText ||
+        'What you decided, and why.'}</div>
+      ${o.bad ? '<div class="errline">Say why, in a sentence. The person who sent it reads it.</div>' : ''}
+      <div class="cnt"><b style="color:var(--ink)">${o.noteText ? '214' : '0'}</b> / 2000</div>
+      <div class="acts">
+        <button class="btn ok" type="button">Approve</button>
+        <button class="btn no" type="button">Deny</button>
+        <span class="sp"></span>
+        ${o.st === 'new'
+          ? '<button class="btn plain" type="button">Mark in review</button>' : ''}
+      </div>
+      ${o.st === 'new' ? `<p class="hint" style="margin:10px 0 0">Marking it in review tells
+        ${o.who} nothing &mdash; it only stops them rewriting it while you read.</p>` : ''}
+    </div>
+  </div>`;
+
+const row = (r, i, open, bad) => {
+  const head = `
+    <tr class="${open ? 'open' : ''}">
+      <td style="width:104px"><span class="pill ${CLS[r.st]}">${LABEL[r.st]}</span></td>
+      <td class="who" style="width:230px"><b>${r.org}</b><span>${r.who}</span></td>
+      <td class="txt">${open ? '' : trim(r.body, 132)}
+        ${r.note && !open ? `<div class="ansline"><b>Answered ${r.ans}:</b>
+          ${trim(r.note, 96)}</div>` : ''}</td>
+      <td class="when" style="width:104px">${r.sent}</td>
+      <td class="rowact" style="width:150px">${open
+        ? '<button class="btn ghost sm" type="button">Close</button>'
+        : r.note
+          ? '<button class="btn ghost sm" type="button">Change the answer</button>'
+          : '<button class="btn sm" type="button">Read and answer</button>'}</td>
+    </tr>`;
+  if (!open) return head;
+  return head + `
+    <tr class="open"><td class="exp" colspan="5"><div class="expin">
+      <div class="full">${r.body}</div>
+      ${decideBox({ who:r.who.split(' ')[0], org:r.org, st:r.st,
+        noteText: bad ? '' : '', bad })}
+    </div></td></tr>`;
+};
+
+const band = (title, list, sel, bad) => `
+  <div class="band">${title}<span class="ct">${list.length}</span></div>
+  <table class="q">
+    <tr><th style="width:104px">State</th><th style="width:230px">Who asked</th>
+      <th>What they asked for</th><th style="width:104px">Sent</th><th></th></tr>
+    ${list.map((r, i) => row(r, i, sel === r, bad)).join('')}
+  </table>`;
+
+const NEW = ROWS.filter(r => r.st === 'new');
+const REV = ROWS.filter(r => r.st === 'reviewing');
+const DEC = ROWS.filter(r => r.st === 'approved' || r.st === 'denied');
+
+const table = (sel, bad) =>
+  band('Waiting &mdash; nobody has read these', NEW, sel, bad) +
+  band('Being read', REV, sel, bad) +
+  band('Answered', DEC, sel, bad);
+
+document.getElementById('main').innerHTML = CHROME(table(NEW[0], false));
+document.getElementById('refused').innerHTML = CHROME(table(NEW[1], true));
+
+const phone = (label, inner) =>
+  `<div><div class="phone">${inner}</div><div class="phlab">${label}</div></div>`;
+
+const pcard = (r) => `
+  <div style="padding:13px 16px;border-bottom:1px solid var(--line)">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+      <span class="pill ${CLS[r.st]}">${LABEL[r.st]}</span>
+      <span style="margin-left:auto;color:var(--muted);font-size:12px">${r.sent}</span></div>
+    <div style="font-size:14px;font-weight:600">${r.org}</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${r.who}</div>
+    <div style="font-size:14px;line-height:1.5">${trim(r.body, 104)}</div>
+  </div>`;
+
+document.getElementById('mobile').innerHTML =
+  phone('The queue &mdash; cards, in the server bands', `
+    <div class="bar"><span class="back">&lsaquo; Development</span> Suggestions</div>
+    <div class="scroll">
+      <div class="band" style="padding:12px 16px 4px;margin:0">Waiting<span class="ct">3</span></div>
+      ${NEW.map(pcard).join('')}
+      <div class="band" style="padding:12px 16px 4px;margin:0">Being read<span class="ct">2</span></div>
+      ${REV.map(pcard).join('')}
+      <div class="band" style="padding:12px 16px 4px;margin:0">Answered<span class="ct">5</span></div>
+      ${DEC.slice(0,2).map(pcard).join('')}
+    </div>`) +
+  phone('Answering one &mdash; actions above the keyboard', `
+    <div class="bar"><span class="back">&lsaquo; Queue</span> Answer</div>
+    <div class="scroll">
+      <div style="padding:14px 16px;border-bottom:1px solid var(--line)">
+        <span class="pill s-new">New</span>
+        <div style="margin-top:9px;font-size:14px;font-weight:600">Bluepoint HVAC</div>
+        <div style="font-size:12px;color:var(--muted)">Ray Nakashima &middot; today, 7:40am</div>
+        <div style="margin-top:9px;font-size:15px;line-height:1.55">${ROWS[1].body}</div>
+      </div>
+      <div style="padding:14px 16px">
+        <label style="display:block;font-size:14px;font-weight:600;margin-bottom:5px">Say why,
+          in a sentence</label>
+        <div class="ta filled">Yes -- drive order is coming, but it has to keep the promised
+          windows, so it will</div>
+      </div>
+    </div>
+    <div class="pfoot">
+      <button class="btn ok" style="flex:1" type="button">Approve</button>
+      <button class="btn no" style="flex:1" type="button">Deny</button></div>
+    <div class="kb">the keyboard &mdash; Approve and Deny sit above it</div>`);
+</script>
+</body>
+</html>

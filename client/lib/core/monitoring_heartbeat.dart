@@ -1,10 +1,12 @@
 import 'dart:async';
-import 'dart:math';
 
 import 'api_client.dart';
 import 'client_platform.dart';
-import 'token_store_io.dart' if (dart.library.js_interop) 'token_store_web.dart'
-    as store;
+import 'device_key.dart';
+import 'screenshot_capability.dart';
+import 'specs_reader.dart';
+
+typedef SpecsRead = Future<Map<String, dynamic>?> Function();
 
 /// A device reporting its own presence — POST /monitoring/heartbeat, the
 /// endpoint HeartbeatController::store() validates (2026-08-28-monitoring-pc-
@@ -42,33 +44,60 @@ import 'token_store_io.dart' if (dart.library.js_interop) 'token_store_web.dart'
 /// system clock adjustment (NTP sync, a manual change, a DST transition)
 /// producing a negative or wildly wrong dwell time mid-session.
 ///
-/// ── Why `device_key` is cached in memory rather than re-read per beat ─────
+/// ── Why `device_key` comes from [DeviceKey] rather than living here ───────
 ///
-/// It is read from local storage (or generated, on the very first run) once,
-/// the first time this instance ever needs it, and kept from then on. Storage
-/// on the web is sessionStorage/localStorage (see token_store_web.dart) —
-/// synchronous and cheap, but re-reading it before every one of a dozen beats
-/// an hour buys nothing a single cached value does not already give.
+/// [DeviceKey.value] reads it from local storage (or generates it, on the
+/// very first call anything in this process makes) and caches it — see that
+/// class for why the cache lives there, shared, rather than as a field on
+/// this class: [ScreenshotService] (2026-08-31-monitoring-screenshots, Task
+/// 6) posts to a DIFFERENT endpoint that must resolve to the exact same
+/// `monitored_devices` row this beat creates, which only holds if both read
+/// the identical cached value rather than each generating their own.
+///
+/// ── Why `'screenshot'` is declared conditionally ──────────────────
+///
+/// [screenshotCaptureSupported] is the same Windows-only, native-channel
+/// check [ScreenshotService] gates its own capture loop on (see that file).
+/// Declaring it here from anything else — a hardcoded platform list, a
+/// separate assumption about what this build can do — would let the two
+/// drift: a beat that claims `'screenshot'` while the service that would
+/// actually produce one never runs, or the reverse.
 class MonitoringHeartbeat {
-  MonitoringHeartbeat(this._api, {Duration interval = const Duration(seconds: 60)})
-      : _interval = interval {
+  MonitoringHeartbeat(
+    this._api, {
+    Duration interval = const Duration(seconds: 60),
+    SpecsRead? readSpecs,
+  }) : _interval = interval,
+       _readSpecs = readSpecs ?? const SpecsReader().read {
     // Started immediately, not on the first [enter]. A person who opens the
     // app and never touches the nav (the default screen is exactly where they
     // wanted to be) must still show up as present — the keep-alive is not
     // conditional on ever having changed modules.
     _timer = Timer.periodic(_interval, (_) => unawaited(_post()));
+    unawaited(refreshSpecs()); // first read, non-blocking
+    _specsTimer = Timer.periodic(
+      const Duration(minutes: 15),
+      (_) => unawaited(refreshSpecs()),
+    );
   }
 
   final ApiClient _api;
   final Duration _interval;
-
-  static const List<String> _capabilities = ['activity'];
-  static const String _deviceKeyStorageKey = 'ezbizi.monitoring_device_key';
+  final SpecsRead _readSpecs;
 
   Timer? _timer;
+  Timer? _specsTimer;
   String? _currentModule;
   final Stopwatch _dwell = Stopwatch();
-  String? _deviceKey;
+  Map<String, dynamic>? _lastSpecs;
+
+  /// Read specs now and hold the result. Keeps the previous value on a null
+  /// read (a transient failure should not blank a device that was reporting
+  /// specs).
+  Future<void> refreshSpecs() async {
+    final specs = await _readSpecs();
+    if (specs != null) _lastSpecs = specs;
+  }
 
   /// Somebody switched to [moduleKey]. Closes the previous module's segment
   /// (if there was one) and posts a beat naming the new module as
@@ -101,35 +130,24 @@ class MonitoringHeartbeat {
   }
 
   Future<void> _post({Map<String, Object?>? segment}) async {
+    final specs = _lastSpecs;
     final body = <String, Object?>{
-      'device_key': await _deviceKeyValue(),
+      'device_key': await DeviceKey.value(),
       'platform': ClientPlatform.name,
-      'capabilities': _capabilities,
+      // 'activity' always (any beating device reports activity); 'screenshot'
+      // only when this build can actually capture one (same check the capture
+      // service gates on); 'specs' only when a specs read has succeeded.
+      'capabilities': [
+        'activity',
+        if (screenshotCaptureSupported) 'screenshot',
+        if (specs != null) 'specs',
+      ],
       if (_currentModule != null) 'current_module': _currentModule,
       'segment': ?segment,
+      'specs': ?specs,
     };
 
     await _api.post('/monitoring/heartbeat', body);
-  }
-
-  /// Reads the persisted device key, or generates and persists one the first
-  /// time this device ever beats. `persist: true` — localStorage, not
-  /// sessionStorage — because a device key identifies the INSTALL, not the
-  /// browser tab: it has to be the same value the next time the browser opens,
-  /// not just the same value across a reload of this tab (see
-  /// token_store_web.dart for the two, and TokenStore for the tab-scoped
-  /// choice a signed-in session makes for the opposite reason).
-  Future<String> _deviceKeyValue() async {
-    final cached = _deviceKey;
-    if (cached != null) return cached;
-
-    final stored = store.readItem(_deviceKeyStorageKey);
-    final key = (stored == null || stored.isEmpty) ? _uuidV4() : stored;
-
-    _deviceKey = key;
-    store.writeItem(_deviceKeyStorageKey, key, persist: true);
-
-    return key;
   }
 
   /// Stops the keep-alive timer. Call this when whatever owns this instance
@@ -138,23 +156,7 @@ class MonitoringHeartbeat {
   void dispose() {
     _timer?.cancel();
     _timer = null;
+    _specsTimer?.cancel();
+    _specsTimer = null;
   }
-}
-
-/// A random (RFC 4122) v4 uuid. No `uuid` package for this: it is sixteen
-/// random bytes with two nibbles pinned to say "version 4, this variant" —
-/// small enough that a whole dependency for it would cost more than it saves.
-String _uuidV4() {
-  final random = Random.secure();
-  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
-
-  bytes[6] = (bytes[6] & 0x0F) | 0x40; // version 4
-  bytes[8] = (bytes[8] & 0x3F) | 0x80; // variant 10xx
-
-  String hex(int start, int end) => bytes
-      .sublist(start, end)
-      .map((b) => b.toRadixString(16).padLeft(2, '0'))
-      .join();
-
-  return '${hex(0, 4)}-${hex(4, 6)}-${hex(6, 8)}-${hex(8, 10)}-${hex(10, 16)}';
 }

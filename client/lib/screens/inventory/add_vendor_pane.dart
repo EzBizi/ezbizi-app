@@ -1,3 +1,4 @@
+import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -69,7 +70,7 @@ class _AddVendorPaneState extends State<AddVendorPane> {
       'company_id': ?_companyId,
       'franchise_id': ?_franchiseId,
       'name': _name.text.trim(),
-      if (_phone.text.trim().isNotEmpty) 'phone': _phone.text.trim(),
+      if (_phone.text.trim().isNotEmpty) 'phone': toE164(_phone.text),
       if (_email.text.trim().isNotEmpty) 'email': _email.text.trim(),
     });
 
@@ -143,6 +144,7 @@ class _AddVendorPaneState extends State<AddVendorPane> {
                   controller: _phone,
                   enabled: !_busy,
                   keyboardType: TextInputType.phone,
+                  inputFormatters: const [PhoneNumberInputFormatter()],
                   decoration: const InputDecoration(labelText: 'Phone'),
                 ),
                 const SizedBox(height: 12),

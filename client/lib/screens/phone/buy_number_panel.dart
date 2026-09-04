@@ -1,3 +1,4 @@
+import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -643,16 +644,11 @@ class _Available {
   final String addressRequirements;
 
   /// `+15615551234` reads as a number a person could dial.
-  String get pretty {
-    final digits = e164.replaceAll(RegExp(r'[^0-9]'), '');
-
-    if (e164.startsWith('+1') && digits.length == 11) {
-      return '(${digits.substring(1, 4)}) '
-          '${digits.substring(4, 7)}-${digits.substring(7)}';
-    }
-
-    return e164;
-  }
+  ///
+  /// This had its own copy of the formatting and produced a THIRD shape —
+  /// `(561) 555-1234`, no country code, no spaces — so a number for sale read
+  /// differently from the same number once bought. One function decides it now.
+  String get pretty => formatPhoneNumber(e164);
 
   String get where => [locality, region].where((p) => p.isNotEmpty).join(', ');
 

@@ -29,6 +29,69 @@ class TwimlRendererTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
+    /**
+     * Pressing Call and hearing your own voicemail.
+     *
+     * The outbound branch used to require a dial target and, when it was
+     * missing, fall through to ringOrVoicemail — so the caller heard the
+     * recording notice and then "please leave a message after the tone",
+     * which is their own line answering them. It reads exactly like a routing
+     * fault and leaves nothing behind saying otherwise.
+     *
+     * Nobody rings out in order to leave themselves a message, so a missing
+     * destination is a fault and must say so.
+     */
+    public function test_an_outbound_call_with_no_destination_says_so_rather_than_taking_a_message(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$broken, $working, $noCallerId] = $this->inTenant($t['org'], function () use ($t) {
+            [$number] = $this->lineWithAvailableDesk($t, record: true);
+            $renderer = new TwimlRenderer;
+
+            return [
+                // Outbound, but the destination never arrived.
+                $renderer->inbound($number->fresh(), ['outbound' => true]),
+
+                // A real outbound call carries BOTH a destination and a
+                // caller ID. Twilio refuses a <Dial> whose callerId is not a
+                // number the account holds, so a call without one never
+                // reaches anybody — which is why the renderer declines it
+                // rather than making the attempt.
+                $renderer->inbound($number->fresh(), [
+                    'outbound' => true,
+                    'dial_to' => '+13057242199',
+                    'caller_id' => $number->e164,
+                ]),
+
+                // Destination, but nothing usable to call out from.
+                $renderer->inbound($number->fresh(), [
+                    'outbound' => true,
+                    'dial_to' => '+13057242199',
+                ]),
+            ];
+        });
+
+        // The failure is spoken, and nothing is recorded.
+        $this->assertStringContainsString('could not be placed', $broken);
+        $this->assertStringContainsString('<Hangup', $broken);
+        $this->assertStringNotContainsString('<Record', $broken);
+        $this->assertStringNotContainsString('leave a message', $broken);
+
+        // And a real outbound call still dials.
+        $this->assertStringContainsString('<Dial', $working);
+        $this->assertStringContainsString('+13057242199', $working);
+        $this->assertStringNotContainsString('<Record', $working);
+
+        // A caller ID this account does not hold is refused BEFORE the dial.
+        // Twilio would reject it the moment the dial started, and that
+        // rejection reaches the caller as a call that connects to nothing and
+        // explains nothing — so it is declined here, where it can say why.
+        $this->assertStringNotContainsString('<Dial', $noCallerId);
+        $this->assertStringContainsString('not one this phone account holds', $noCallerId);
+        $this->assertStringNotContainsString('leave a message', $noCallerId);
+    }
+
     public function test_recording_notice_is_spoken_when_the_number_records(): void
     {
         $t = $this->provisionTenant();

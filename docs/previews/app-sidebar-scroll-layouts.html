@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi — App sidebar, scrolling</title>
+<style>
+  :root {
+    --cyan:#00AEEF; --primary:#00708F; --cyan-deep:#00708F;
+    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+    --ok:#0B8F5B; --err:#E07070; --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1180px; margin:0 auto; padding:16px 16px 48px; }
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:18px; margin:0 0 4px; }
+  header.picker p { margin:0 0 12px; color:var(--muted); max-width:82ch; }
+  .locked, .ask, .found { font-size:13px; border-radius:8px; padding:10px 12px;
+    margin-bottom:12px; max-width:94ch; }
+  .locked { background:var(--info-c); } .ask { background:var(--warn-c); } .found { background:var(--err-c); }
+  .locked strong, .ask strong, .found strong { display:block; margin-bottom:4px; }
+  .locked strong { color:var(--cyan-deep); } .ask strong { color:var(--warn); } .found strong { color:#A33; }
+  .ask b, .found b { display:block; margin-top:7px; }
+  .nums { display:flex; flex-wrap:wrap; gap:8px; }
+  .nums button { min-width:44px; min-height:44px; border-radius:8px;
+    border:1px solid var(--line); background:var(--page); color:var(--ink); }
+  .nums button[aria-pressed="true"] { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:92ch; }
+  .caption strong { display:block; margin-bottom:4px; }
+
+  .stage { display:flex; gap:20px; flex-wrap:wrap; }
+  .win { border:1px solid #C9D3DB; border-radius:10px; overflow:hidden; background:var(--page);
+    display:flex; flex-direction:column; }
+  .win .cap { font-size:11px; color:var(--muted); padding:6px 10px; background:var(--alt);
+    border-bottom:1px solid var(--line); display:flex; gap:8px; align-items:center; }
+  .win .cap b { color:var(--ink); }
+  .body { display:grid; grid-template-columns:196px 1fr; flex:1; min-height:0; }
+  .side { background:var(--page); border-right:1px solid var(--line);
+    display:flex; flex-direction:column; min-height:0; }
+  .navwrap { min-height:0; }
+  .navwrap.scrolls { overflow-y:auto; flex:1; }
+  .navwrap.clips { overflow:hidden; flex:1; }
+  .navwrap.all { overflow:visible; }
+  .sideAll { overflow-y:auto; }
+  a.nav { display:flex; align-items:center; gap:11px; padding:7px 12px; color:var(--ink);
+    text-decoration:none; font-size:13px; min-height:34px; }
+  a.nav .ic { width:17px; height:17px; border-radius:4px; background:#C9D3DB; flex:none; }
+  a.nav.on { background:var(--info-c); font-weight:600; }
+  a.nav.on .ic { background:var(--primary); }
+  .tail { border-top:1px solid var(--line); padding-top:6px; flex:none; }
+  .tail.inset { margin:0 14px; border-top:1px solid var(--line); }
+  .stamp { color:var(--muted); font-size:10px; padding:8px 14px 10px; }
+  .content { background:var(--alt); padding:14px; color:var(--muted); font-size:12px; }
+
+  /* the broken one */
+  .overlap { position:relative; }
+  .overlap a.ghost { position:absolute; left:0; right:0; opacity:.92; }
+  .bad { color:#A33; font-weight:700; }
+  .fade { position:sticky; bottom:0; height:22px; margin-top:-22px; pointer-events:none;
+    background:linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,.95)); }
+
+  .note { color:var(--muted); font-size:12px; margin-top:10px; }
+  table.m { border-collapse:collapse; font-size:12px; margin:8px 0 2px; }
+  table.m th, table.m td { border:1px solid rgba(0,0,0,.12); padding:4px 9px; text-align:right; }
+  table.m th { background:rgba(0,0,0,.05); text-align:left; }
+  table.m td.bad2 { background:var(--err-c); color:#A33; font-weight:700; }
+  table.m td.ok2 { color:var(--ok); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>App sidebar — it does not scroll</h1>
+
+    <div class="found">
+      <strong>The cause, from <code>main.dart:1695</code></strong>
+      <code>_rail()</code> returns a Flutter <b><code>NavigationRail</code></b>, and a
+      NavigationRail lays its destinations out in a Column — <b>it has no scrolling of its own</b>.
+      It is wrapped in an <code>Expanded</code>, so when there are more destinations than fit, the
+      column overflows its box and the items render over the Settings / Development tail below.
+      That is exactly the collision in your screenshots: <em>Inventory</em> through the divider,
+      <em>Services</em> on top of <em>Settings</em>, <em>Development</em> on top of
+      <em>Automations</em>.
+      <b>It is height, not width, and it has a threshold.</b> Sixteen destinations plus the tail
+      and the version stamp need roughly 780px of sidebar. Anything shorter overlaps, and nothing
+      warns:
+      <table class="m">
+        <tr><th>Window height</th><th>Sidebar height</th><th>Needs ~780</th></tr>
+        <tr><td>1080</td><td class="ok2">~955</td><td class="ok2">fits</td></tr>
+        <tr><td>900 (your screenshot)</td><td class="bad2">~775</td><td class="bad2">overlaps by a hair</td></tr>
+        <tr><td>800 laptop</td><td class="bad2">~675</td><td class="bad2">overlaps badly</td></tr>
+        <tr><td>768</td><td class="bad2">~643</td><td class="bad2">four items lost</td></tr>
+      </table>
+    </div>
+
+    <div class="locked">
+      <strong>Already decided, not in this gallery</strong>
+      The tail is <b>deliberately a different kind of thing</b> — the code says so: places you go
+      to change how the work behaves, rather than places you go to do it. Its divider is inset to
+      about 70% on purpose, so it reads as a break within one list rather than as the bottom of
+      the sidebar. The version stamp only appears when expanded, because half a build id is worse
+      than none. None of that changes here.
+    </div>
+
+    <div class="ask">
+      <strong>The real question is what is allowed to scroll away</strong>
+      <b>Settings and Development must stay reachable</b> — the code comment already says hiding
+      the tail would make them unreachable, and that reasoning holds. So the choice is between
+      scrolling the destinations under a pinned tail, or scrolling everything and accepting that
+      Settings can leave the screen.
+      <b>A NavigationRail cannot simply be made scrollable</b>, so whichever wins is a small
+      structural change: wrap it in a scroll view with a minimum height so it still fills the
+      column when there is room, or replace it with a list built from the same destination data.
+      Either is a Phone-module-sized change, not a rewrite.
+    </div>
+
+    <p>Pick a number. <strong>1 is my recommendation.</strong> Windows are drawn at
+      <b>800px tall</b> — a common laptop, and where this is worst.</p>
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+  <div class="stage" id="stage"></div>
+</div>
+
+<script>
+const CAPTIONS = {
+  1: ["1 · Destinations scroll, the tail stays pinned (recommended)",
+      "The sixteen destinations scroll inside their own region; Settings, Development and the version stamp are pinned to the foot and never move. Chosen because the tail is the part you need when you cannot find something — going to Settings is often the response to not finding what you wanted in the list — so it is the last thing that should require scrolling to reach. A soft fade at the scroll boundary shows there is more above or below without adding a scrollbar to a 196px column. When everything fits, which is most screens, this looks exactly like today."],
+  2: ["2 · The whole sidebar scrolls, tail included",
+      "One scroll region for everything: destinations, divider, tail, version. Simplest change by a distance and the least that can go wrong — no pinned region, no minimum height, no interaction between two scrollable areas. Weakness: Settings and Development scroll off the bottom, so on a short screen the fix for 'I cannot see all my modules' becomes 'I cannot see Settings either'. The code already reasoned that hiding the tail makes it unreachable, and this quietly reintroduces that."],
+  3: ["3 · Destinations scroll; the tail collapses to icons when space is short",
+      "Layout 1, except that below a height threshold the pinned tail drops its labels and becomes two icons in a row, buying back about 60px for the list. Densest, and it keeps everything reachable at heights where even layout 1 leaves only a few destinations visible. Weakness: it introduces a second thing that changes with height, so the sidebar has two different appearances for reasons a user cannot predict — and icon-only Settings and Development are exactly the two labels people are least likely to recognise from a glyph."],
+  4: ["4 · Today, at 800px — the defect",
+      "Not a proposal. The NavigationRail overflows its Expanded and the destinations draw over the tail: Services on top of Settings, Development on top of Automations. Nothing warns, nothing scrolls, and the items underneath are unreachable rather than merely hidden — you cannot scroll to them because there is no scrolling."]
+};
+
+const NAV = ['Dashboard','Human Resources','Customers','Jobs','Scheduling','Inspection',
+             'Marketing','Web Management','Phone','Fleet Management','Inventory','Services',
+             'Email','Automations','Monitoring'];
+
+const navItems = (on) => NAV.map(n =>
+  `<a class="nav ${n===on?'on':''}"><span class="ic"></span>${n}</a>`).join('');
+
+const tail = (icons) => icons
+  ? `<div class="tail inset" style="display:flex;gap:6px;padding:8px 14px">
+       <a class="nav" style="padding:7px;flex:1;justify-content:center"><span class="ic"></span></a>
+       <a class="nav" style="padding:7px;flex:1;justify-content:center"><span class="ic"></span></a>
+     </div>`
+  : `<div class="tail inset"></div>
+     <a class="nav"><span class="ic"></span>Settings</a>
+     <a class="nav"><span class="ic"></span>Development</a>
+     <div class="stamp">v0.0.0125 · ab17ac0</div>`;
+
+const win = (label, inner, h) => `
+  <div class="win" style="width:540px;height:${h||400}px">
+    <div class="cap"><b>${label}</b></div>
+    <div class="body">${inner}<div class="content">Your account</div></div>
+  </div>`;
+
+const L1 = () => win('Destinations scroll · tail pinned · 800px window',
+  `<div class="side">
+     <div class="navwrap scrolls">${navItems('Phone')}</div>
+     <div class="fade"></div>
+     ${tail(false)}
+   </div>`);
+
+const L2 = () => win('Everything scrolls · 800px window',
+  `<div class="side sideAll">
+     <div class="navwrap all">${navItems('Phone')}</div>
+     ${tail(false)}
+   </div>`);
+
+const L3 = () => win('Destinations scroll · tail becomes icons · 800px window',
+  `<div class="side">
+     <div class="navwrap scrolls">${navItems('Phone')}</div>
+     <div class="fade"></div>
+     ${tail(true)}
+   </div>`);
+
+const L4 = () => win('Today at 800px — the overflow',
+  `<div class="side">
+     <div class="navwrap clips overlap">
+       ${navItems('Phone')}
+       <a class="nav ghost" style="top:412px;background:var(--page)"><span class="ic"></span><span class="bad">Settings</span></a>
+       <a class="nav ghost" style="top:446px;background:var(--page)"><span class="ic"></span><span class="bad">Development</span></a>
+     </div>
+   </div>`);
+
+const LAYOUTS = { 1:L1, 2:L2, 3:L3, 4:L4 };
+const nums = document.getElementById('nums'), stage = document.getElementById('stage'),
+      caption = document.getElementById('caption');
+Object.keys(LAYOUTS).forEach(k => {
+  const b = document.createElement('button'); b.type='button'; b.textContent=k;
+  b.addEventListener('click', () => show(+k)); nums.appendChild(b);
+});
+function show(i) {
+  [...nums.children].forEach((b,x) => b.setAttribute('aria-pressed', x+1===i ? 'true':'false'));
+  const e = CAPTIONS[i];
+  caption.innerHTML = '<strong>'+e[0]+'</strong>'+e[1];
+  stage.innerHTML = LAYOUTS[i]();
+}
+show(1);
+</script>
+</body>
+</html>

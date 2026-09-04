@@ -12,8 +12,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * The scheduled scan behind `monitoring.device_offline` (task 6).
  *
- * Pattern: {@see \App\Support\Tasks\TaskDueWorker} behind DispatchTaskOverdue —
- * plucked organization ids, one `TenantContext::run()` per organization so
+ * Plucked organization ids, one `TenantContext::run()` per organization so
  * `EventEmitter::emit()` has a tenant, read-only organizations skipped because
  * this writes new data (a device's `offline_alerted_at`, an outbox row).
  *
@@ -24,10 +23,10 @@ use Illuminate\Support\Facades\DB;
  * again is what lets a LATER silence fire again.
  *
  * The emit and the guard-write happen inside one `DB::transaction()` per
- * device, same as `TaskDueWorker::observeOverdue()` — a crash between the
- * two, uncommitted, is exactly a crash before either happened, so the very
- * next sweep sees `offline_alerted_at` still null and selects the device
- * again. Without the transaction that same crash would leave the outbox row
+ * device — a crash between the two, uncommitted, is exactly a crash before
+ * either happened, so the very next sweep sees `offline_alerted_at` still
+ * null and selects the device again. Without the transaction that same
+ * crash would leave the outbox row
  * committed but the guard unset, and the next sweep would re-select the
  * device and emit a second event for the same episode.
  */

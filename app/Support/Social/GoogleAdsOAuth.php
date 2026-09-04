@@ -185,17 +185,17 @@ final class GoogleAdsOAuth implements SocialOAuth
                 ->timeout(self::TIMEOUT)
                 ->get(self::endpoint().'/customers:listAccessibleCustomers');
         } catch (ConnectionException) {
-            throw SocialOAuthRefused::unidentified('Google Ads');
+            throw GoogleApiRefusal::unreachable('Google Ads');
         }
 
         if ($response->failed()) {
-            throw SocialOAuthRefused::unidentified('Google Ads');
+            throw GoogleApiRefusal::from('Google Ads', $response);
         }
 
         $names = $response->json('resourceNames');
 
         if (! is_array($names) || $names === []) {
-            throw SocialOAuthRefused::unidentified('Google Ads');
+            throw SocialOAuthRefused::unidentified('Google Ads', self::ownsNothing());
         }
 
         $accounts = [];
@@ -211,10 +211,26 @@ final class GoogleAdsOAuth implements SocialOAuth
         }
 
         if ($accounts === []) {
-            throw SocialOAuthRefused::unidentified('Google Ads');
+            throw SocialOAuthRefused::unidentified('Google Ads', self::ownsNothing());
         }
 
         return $accounts;
+    }
+
+    /**
+     * The one refusal on this path that is not EzBizi's fault and not Google's.
+     *
+     * Consent succeeded, the token is good, and the answer is an empty list:
+     * this Google account simply does not own or manage an Ads account. It is
+     * the common way to get here — signing in with the address you read email
+     * on rather than the one the advertising sits under — and it is the only
+     * cause a customer can fix themselves, so the sentence says how.
+     */
+    private static function ownsNothing(): string
+    {
+        return 'The Google account you signed in with has no Google Ads account that EzBizi can '
+            .'reach, so there was nothing to connect. Sign in with the account that owns the '
+            .'advertising, or have it added to that manager account first.';
     }
 
     /** `1234567890` → `123-456-7890`, the form Google shows everywhere else. */
@@ -237,6 +253,6 @@ final class GoogleAdsOAuth implements SocialOAuth
     public static function endpoint(): string
     {
         return 'https://googleads.googleapis.com/'
-            .trim((string) config('services.google_ads.version', 'v21'), '/');
+            .trim((string) config('services.google_ads.version', 'v24'), '/');
     }
 }

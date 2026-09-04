@@ -54,6 +54,31 @@ final class GoogleToken
             );
         }
 
+        /*
+         * The key has to resolve BEFORE anything is sent, because the failure
+         * path below writes STATUS_BROKEN to the row.
+         *
+         * `$service` is a config key, not a label. Pass anything else and
+         * `config("services.{$service}.client_id")` is null, Google is handed an
+         * empty client, the refresh fails, and a healthy grant gets marked
+         * broken with a sentence telling the customer to reconnect an account
+         * that was never the problem. A typo should not be able to corrupt a
+         * production row — it happened to A-1 Chimney's live connection from one
+         * wrong argument in a one-off command.
+         *
+         * Named after the key the caller actually passed, so the fault is
+         * legible as ours rather than Google's.
+         */
+        $clientId = config("services.{$service}.client_id");
+
+        if (! is_string($clientId) || $clientId === '') {
+            throw new RuntimeException(
+                "EzBizi has no OAuth client configured under services.{$service}, so this "
+                .'connection cannot be renewed. That is a configuration fault at EzBizi\'s '
+                .'end and says nothing about the account.'
+            );
+        }
+
         try {
             $response = Http::asForm()->timeout(self::TIMEOUT)->post(
                 'https://oauth2.googleapis.com/token',

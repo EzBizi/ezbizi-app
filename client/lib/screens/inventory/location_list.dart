@@ -127,7 +127,6 @@ class _LocationListState extends State<LocationList> {
       error: _error,
       onRetry: _load,
       header: PanelHeader(
-        title: 'Locations',
         note: (_loading || _error != null)
             ? 'Where stock is kept.'
             : _locations.length < _total

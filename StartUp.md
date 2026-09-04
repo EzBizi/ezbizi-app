@@ -156,6 +156,120 @@ git reset -q HEAD -- <your paths>          # ← STEP 8. Not optional. See below
 scripts/index-landmines.sh                 # must read 0 stale, 0 live
 ```
 
+**THE INDEX RE-ACCUMULATES, SO CHECK IT IMMEDIATELY BEFORE EACH COMMIT — NOT
+AFTER THE LAST ONE.**
+
+A session disarmed six stale paths straight after committing and `index-landmines.sh`
+read `0 stale, 0 live`. **Minutes later the same six were staged again** — almost
+certainly another session's `git add -A` sweeping the whole tree. A second session
+hit it independently within the hour.
+
+So disarming after a commit is a courtesy to whoever commits next; it protects
+nothing of yours. **The index you cleaned ten minutes ago is not the index you are
+about to commit from**, because it is shared and anybody's `git add -A` refills it
+while you are typing.
+
+That makes the pre-commit check the only thing that actually works, and its result
+expires the moment you look away:
+
+```bash
+./scripts/index-landmines.sh     # immediately before EVERY commit, every time
+```
+
+It is also the same shape as the rest of this file one level down: every
+measurement here has turned out to be a claim about a MOMENT rather than a state
+— a worktree count, a golden image, a baseline taken before a merge. A clean
+index is one more of those, and it is the one that eats work rather than merely
+misleading somebody.
+
+**And clear other people's stale entries without asking.** From outside you cannot
+tell whether somebody is mid-edit, but the failure mode of clearing is one
+`git add` and the failure mode of waiting is somebody else's commit eating the
+work. Clearing is cheap and reversible; waiting is neither. `git reset` writes the
+index and never the working tree.
+
+**BEFORE ANY OF THAT: `git commit -- <paths>` is the safe everyday form, and it
+is one word different from the dangerous one.**
+
+```bash
+git add -- StartUp.md && git commit -m "..."     # ← commits the WHOLE INDEX
+git commit -m "..." -- StartUp.md                 # ← commits ONLY that path
+```
+
+`git add` stages one file. `git commit` then commits **everything staged**,
+including whatever fifteen other sessions left in the shared index. The pathspec
+form builds the commit from HEAD plus those paths only and ignores the rest of
+the index entirely.
+
+Proven, not assumed: with a staged deletion of `victim.txt` sitting in the index,
+`git commit -- keep.txt` produced a one-file commit and `victim.txt` survived in
+HEAD.
+
+**This is not hypothetical and it is not rare.** On 2026-08-31 a commit intended
+to add 25 lines to this file committed **16 files and 1190 deletions**, destroying
+two finished Phone features — two controllers, two models, both migrations, both
+test suites, and 122 lines of routing — because the shared index held stale
+deletion entries. It was written by the session that spends its day telling
+everyone else to run `index-landmines.sh` first, and that session did not run it.
+That is the point: a rule you have to remember fails exactly when you are busy,
+and the person most familiar with it is not exempt.
+
+The pathspec form removes the failure mode instead of asking you to notice it.
+
+It does **not** disarm landmines that are already there — those stale entries stay
+staged for whoever commits next without a pathspec. Clearing them is still
+`index-landmines.sh` plus `git reset -q HEAD -- <paths>`. But you can no longer
+fire somebody else's.
+
+**When you REPAIR one of these, rebuild a contended file as CURRENT HEAD plus
+your own lines — never as your old copy of it.**
+
+The obvious instinct is to restore your version of `routes/api.php` wholesale.
+That rolls back everyone who touched it since, which is a revert committed while
+repairing a revert, and it is the third one nobody notices. Restore deleted files
+from the ORIGINAL COMMIT'S BLOBS so what lands is byte-identical to what was
+tested, and rebuild shared files by re-applying only your own block on top of
+whatever HEAD says now. Then verify the other blocks survived: after one repair
+the check was web/sites 5 routes, inspections/codes 5, phone/trust 4,
+phone/ports 2, all intact alongside the restored ones.
+
+The trap is not obvious until you are standing in it, and you are standing in it
+while relieved that you spotted the first problem.
+
+**And check what you actually committed, every time:**
+
+```bash
+git show --stat HEAD
+```
+
+A stale blob does not change WHICH files appear in your commit — it changes how
+many lines. The commit above would have read *16 files, 1190 deletions* to an
+author who meant to change a word count. One line of output, read once, catches
+every instance of this.
+
+**AND IT ARMS EVERYBODY ELSE'S EARLIER RESETS, WHICH IS THE HALF THAT GETS
+MISSED.** Reproduced in a scratch repo on 2026-09-01:
+
+    session A:  commits by pathspec, then `git reset -q HEAD -- p.txt`
+                -> shared index clean, 0 staged
+    session B:  commits p.txt via a PRIVATE index + update-ref
+                -> shared index now shows 1 staged file, reverting B's change
+
+A pathspec commit UPDATES the shared index for its paths, so a prior reset stays
+harmless. A private-index commit deliberately does not touch the shared index at
+all — so HEAD advances while A's reset blob sits there, and that blob is now a
+staged revert of B's work.
+
+**Neither session did anything wrong on its own.** A followed the rule; B used the
+safest commit method in this file. It takes both, which is why one session hunting
+a "phantom index saboteur" found only their own resets and concluded it was
+self-inflicted — it was not, and there was no saboteur either.
+
+So step 8 is load-bearing in both directions: it disarms the revert your own
+commit created, AND it clears the older resets your commit just turned into
+reverts. A private-index commit that skips it leaves a landmine armed by somebody
+who was being careful.
+
 **Step 8 is not tidying — it disarms a revert your own commit just created.**
 The private index leaves the SHARED `.git/index` untouched, which is the whole
 point of it. So that index still holds every one of your paths at its
@@ -618,7 +732,7 @@ designed, with the design pointed the wrong way:
   that deleted it. It fails honest work, and — the dangerous direction — it
   would equally have PASSED a deletion that live code still referenced.
 - **The suite proved the first hop and said nothing about the feature.** Eight
-  green tests on a recurring-task worker, not one of which completed a
+  green tests on a recurrence worker, not one of which completed a
   second-generation instance. "Service the truck every 3 months" serviced it
   twice and never again.
 - **`/version.json` reports `1.0.0` build `1`.** It is pubspec's default, it has
@@ -668,7 +782,7 @@ look like.
 Two on 2026-08-31, both caught this way and neither by a better method:
 
 - A sweep reported TWELVE entries of `IMPLEMENTED_ACTIONS` as unreachable,
-  including `task.create` and `time_clock.clock_in`. Twelve dead constants in
+  including `time_clock.clock_in`. Twelve dead constants in
   shipped, working code is not a thing that quietly happens. The sweep had
   iterated `$m->actions`, which holds PERMISSION strings — view, create, edit —
   rather than `$m->automationActions`, which holds the ActionDefinition objects.
@@ -825,6 +939,103 @@ matters, because a test that misreads a line ending goes red and somebody
 investigates, whereas the WordPress plugin would quietly render the wrong thing
 on a customer's page forever.
 
+### A verification script must assert HOW MANY things it verified
+
+The floor rule above applies to gates. It applies just as hard to the throwaway
+script you write to convince yourself a refactor was safe — and there the stakes
+are higher, because nobody reviews it and it runs once.
+
+A session replacing 84 literals across 14 glances wrote a checker comparing each
+new constant against the method it replaced. First run: "0 identical, 84
+mismatched." That was the CHECKER being broken, not the refactor — Python's glob
+returns Windows backslash paths, and `git show HEAD:app\Support\...` reads as
+nothing, so every "old" value came back None.
+
+**The dangerous version is the one that failed the other way.** Had it been
+written to SKIP unreadable files instead of comparing them, it would have
+compared zero pairs and printed a clean pass. A refactor across 84 values would
+have been declared verified by a script that read nothing.
+
+So: assert the counts, not just the result.
+
+```python
+assert files_read == 14
+assert comparisons == 84
+```
+
+**A check that cannot distinguish "I compared them and they matched" from "I
+compared nothing" is not a check.** One line converts a silent pass into a loud
+failure.
+
+Two bugs of this shape were made by the same session two hours apart, and both
+were in the CHECKING code rather than the changed code, and both failed toward
+"looks fine". That is the direction to expect: verification code is written in a
+hurry by someone who already believes the answer.
+
+### `--filter=<Module>` is not "the module's tests"
+
+`--filter` matches test CLASS and METHOD names. It does not know about
+directories. Run it as `--filter=Phone` and you get every test anywhere in the
+suite with "Phone" in its name, and you silently lose the ones in
+`tests/Feature/Phone/` that do not have it — which on 2026-09-03 was eight
+classes including `TwimlRendererTest` and `VoiceWebhookTest`, the two files the
+change under test had actually altered. It reported 228 passed. The directory is
+212, and 8 classes of it never ran.
+
+It fails toward "looks fine" twice over: the count goes UP, so the run looks
+broader than a directory run rather than narrower.
+
+To run a module, name the path:
+
+```bash
+DB_DATABASE=ezbizi_testing_<yourmodule> php -d memory_limit=1G artisan test tests/Feature/<Module>
+```
+
+Keep `--filter` for what it is good at: one named test while you are working on
+it. It is the §8 shape again — a result derived from a NAME rather than from the
+thing you meant to check, reported as though it had checked the thing.
+
+### PHP's default 128M dies partway through a large filter
+
+`php -d memory_limit=1G vendor/bin/phpunit --filter=...` for anything broad. The
+default 128M runs a few hundred tests and then dies inside PHPUnit's result
+cache, which reads as the suite breaking rather than as running out of room.
+
+Combined with the schema rule, the full incantation is:
+
+```bash
+DB_DATABASE=ezbizi_testing_<yourmodule> php -d memory_limit=1G vendor/bin/phpunit
+```
+
+Also delete `.phpunit.result.cache` if a run dies oddly — it grows until it takes
+the process down with it, and the deploy gate removes it before every run for
+exactly that reason.
+
+### A count is not a set: two changes in opposite directions look like one
+
+The sharpest measurement failure of 2026-08-31 was the one where the NUMBER WAS
+CORRECT.
+
+A session merged main to pick up a fix, and their failing-test count went 17 to
+16. The merge had fixed one red and introduced another — a table arriving without
+its retention policy. Net movement: one, in the direction that looks like
+progress. Had they reported "16 red, all known" without reading the list, they
+would have handed the deploy desk a green-looking number concealing a fresh
+failure, and it would have been believed, because the desk had asked for exactly
+that number.
+
+Every other bad measurement that day was a wrong number, and a wrong number can
+be caught by re-measuring. This one cannot: re-running gives 16 again. **Only the
+LIST shows it**, because the count is a lossy projection and the loss is
+precisely the part that changed.
+
+So when you report a suite's state after ANY change to the tree, report what is
+in it, not how many. And when you receive a count that moved by one after a
+change that could plausibly move it in both directions, ask for the list before
+you believe the direction.
+
+Found by the session it happened to, who read the list anyway.
+
 ### An upper bound is not a gate: floor anything whose scope is DERIVED
 
 A ratchet asserting only `found <= baseline` passes when `found` is **0**. Break
@@ -873,7 +1084,7 @@ That distinguishes "the colour changed" from "something moved" WITHOUT being abl
 to read any of the text, which matters because these frames render text as
 featureless blocks in the first place.
 
-Used on 2026-08-31 for eleven Tasks goldens after a brand-colour fix: every
+Used on 2026-08-31 for eleven goldens in one module after a brand-colour fix: every
 changed region was an accent-coloured element in its original position, so
 regenerating was correct. Say in the commit message what you checked for, so the
 module's owner can review the reasoning rather than take the result on trust.
@@ -911,6 +1122,162 @@ how somebody talks themselves out of a correct diagnosis. Read it with
 ---
 
 ## 9 · Deploying
+
+### A stale OPEN item costs as much as a stale claim, and reads as diligence
+
+A resolved problem still written down as open sends the next person hunting
+something that is already fixed. It looks like conscientious tracking right up
+until somebody spends an evening on it.
+
+Two on one night, both mine, both from carrying forward a true-when-written note:
+
+- **"The Windows installer is many versions behind."** True at `0.0.0103` against
+  `0.0.0116`. Closed four times that day. One `curl` of `windows.json` answered it.
+- **"No compiler has seen the iOS AppDelegate changes."** I reasoned *there is no
+  Mac on this box, therefore nothing has compiled them* — a true premise, and the
+  Mac relay is exactly why the conclusion does not follow. `ls dist/` showed a
+  24 MB `.ipa` built four hours earlier from a commit containing them.
+
+I put both in front of other sessions, and one went to Apple as a live risk that
+had already been retired.
+
+**So: re-check an open item before you carry it forward, and cite the check.** An
+item that says *"still behind as of 22:14, manifest reads 0.0.0125"* is
+actionable. One that says *"still behind"* is a claim about an unspecified past.
+
+The related failure, from the same session: a verification **shaped like** a
+confirmation that measured something else entirely — comparing two commits' blobs
+to each other to prove something about the INDEX, which it never inspected. It
+returned a difference, the difference looked like the answer, and it settled a
+question it had not asked.
+
+### A comment claiming a guarantee the code does not provide
+
+The most expensive stale comment is not the one that is merely out of date. It is
+the one that ASSERTS A MECHANISM, because a reviewer reads the assertion instead
+of checking the mechanism, and the comment becomes the evidence.
+
+Measured 2026-08-31: a `ConstrainedBox` with a `minHeight`
+carried a comment saying it prevented silent row loss. It could not — its parent
+was an `Expanded`, which passes TIGHT constraints, so the floor can never bite.
+**Two separate reviews accepted it**, and three documents plus that comment all
+asserted the mitigation worked. The code said otherwise and nobody did the
+constraint math, because the comment had already answered the question.
+
+The same session then shipped a fix wave that left the identical trap in another
+file — a docblock repeating a claim they had just deleted from a status document
+as untrue.
+
+**A correction that reaches the document and not the code leaves the codebase
+asserting something everybody has already agreed is false — and the comment
+outlives the document.**
+
+So: when a comment states that something is prevented, guaranteed or impossible,
+that sentence is a CLAIM to verify, not context to absorb. The stronger the
+guarantee it asserts, the more it is worth ten seconds against the actual
+mechanism. A comment saying "this is why" is orientation. A comment saying "this
+prevents X" is a test that was never written.
+
+### The defect nobody will ever report: a healthy-looking row nobody checked
+
+Everything else in this section is about a measurement that MISLEADS. This is the
+other failure: a measurement taken correctly, then **discarded before it reached
+anyone who could act on it**.
+
+Two instances on 2026-08-31, an hour apart, both in Phone:
+
+- A ring group of four where all four are on Do Not Disturb rings **nobody**. The
+  pane said "4 people", because it counted MEMBERSHIP. The dialler already knew
+  who was reachable and the screen was never told.
+- A menu can be built, named, given options and attached to a line, and if it has
+  no `menu` node the renderer looks for, **every call goes straight past it**. The
+  pane listed it as healthy, because it counted EXISTENCE.
+
+**Neither will ever be reported.** The caller does not know they missed a menu.
+The owner does not know theirs is skipped. There is no complaint to investigate,
+so it sits until somebody happens to build a screen that needs the fact.
+
+In both cases the server ALREADY COMPUTED the truth and threw it away — one of
+them (`describe()`) was running for every row with all but one boolean discarded,
+so surfacing it cost nothing and no extra query.
+
+**The tell is a status derived from existence rather than from function.**
+"Attached", "configured", "4 members", "connected" — each answers a question
+nobody asked. The question is whether it WORKS, and something upstream usually
+knows. Ask what the renderer, the dialler or the dispatcher decided, and carry
+that to the screen instead of re-deriving a weaker version of it there.
+
+The second copy is its own hazard: deriving "who would actually ring" in the
+client would have been a second implementation of the dialling rule, free to
+drift from the first. The fix was one function both callers ask.
+
+### A sub-second failure is infrastructure — but only if something answered
+
+A suite that dies far faster than it could possibly run is an environmental
+answer wearing a domain-shaped error message. The clearest case: a MySQL that is
+still STARTING refuses with
+
+```
+SQLSTATE[HY000] [1698] Access denied for user 'root'@'localhost'
+```
+
+which reads as a credentials problem and will have you editing config. It is not
+— the grant tables are simply not loaded yet. 698ms against ~30s for a real run
+is the tell, not the message. Re-run before you change anything.
+
+**THE TELL HAS A FAILURE MODE, and it is the rule's own shape turned on the
+rule.** A session adopting it timed a liveness check at 77ms and read "still
+starting" — but `mysql` was not on PATH in that shell and they had timed
+`command not found`. The clock was honest; it was measuring a call that never
+reached a server.
+
+So the duration is only a valid signal **once you know the error came FROM the
+database**. `1698 Access denied` proves a server answered. `command not found`,
+a socket error, or a missing driver prove one did not. Both come back in
+milliseconds and both look like evidence.
+
+Confirm the error's ORIGIN first, then read the clock. And prefer a real
+operation over a liveness probe either way: on 2026-08-31 a `/dev/tcp` port check
+reported MySQL DOWN while an actual phpunit run passed against it in the same
+minute — `/dev/tcp` is unreliable under Git Bash on Windows. Never believe a
+negative probe.
+
+### The gate is bound on MIGRATIONS, not on tests
+
+Measured 2026-08-31: the test phase went from 1207s to 1474s — **22% longer for
+about 5% more tests**. phpunit was using **1m52s of CPU in 19 minutes of wall
+clock** — 2.7%, effectively idle — while MySQL was the real consumer, caught mid
+`alter table franchises add unique ...`.
+
+**The first version of this note said 60%, and that was wrong in the way this
+whole section is about.** I compared the remote script's total elapsed time,
+which includes an 18-minute `composer install`, against a previous run's TEST
+duration alone. Two different spans, reported as one trend. Check what a number
+covers before you put it in a document telling people to check what numbers
+cover.
+
+`RefreshDatabase` rebuilds the schema per test class. That day added roughly ten
+tables across Scheduling, phone trust, phone extensions, staff messages and
+Training, and every one of them made every rebuild more expensive. **The suite grew 5%
+and the test phase grew 22%.**
+
+So when the gate feels slow, do not go looking for a slow test. Check the CPU
+split first:
+
+```bash
+ssh app 'ps -eo etime,time,cmd | grep phpunit'
+```
+
+Low CPU against high elapsed means it is waiting on the database, and the fix is
+not in any test file. A long run with phpunit near 100% CPU is a different
+problem and worth chasing.
+
+**This compounds with every table anyone adds, and nothing surfaces it.** The
+gate is the bottleneck on the whole fleet's release cadence; the thing making it
+slower is schema, not code. The real fix is a migrated-once template rather than
+per-class rebuilds, which changes how every test in the codebase sets up — not
+something to attempt with five modules in flight.
+
 
 ```bash
 ./scripts/deploy.sh          # code + UI

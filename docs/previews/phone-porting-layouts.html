@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi — Phone › Porting layouts</title>
+<style>
+  :root {
+    --cyan:#00AEEF; --primary:#00708F; --cyan-deep:#00708F;
+    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+    --ok:#0B8F5B; --err:#E07070; --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1180px; margin:0 auto; padding:16px 16px 48px; }
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:18px; margin:0 0 4px; }
+  header.picker p { margin:0 0 12px; color:var(--muted); max-width:82ch; }
+  .locked, .ask, .found { font-size:13px; border-radius:8px; padding:10px 12px;
+    margin-bottom:12px; max-width:94ch; }
+  .locked { background:var(--info-c); } .ask { background:var(--warn-c); } .found { background:var(--err-c); }
+  .locked strong, .ask strong, .found strong { display:block; margin-bottom:4px; }
+  .locked strong { color:var(--cyan-deep); } .ask strong { color:var(--warn); } .found strong { color:#A33; }
+  .ask b, .found b { display:block; margin-top:7px; }
+  .nums { display:flex; flex-wrap:wrap; gap:8px; }
+  .nums button { min-width:44px; min-height:44px; border-radius:8px;
+    border:1px solid var(--line); background:var(--page); color:var(--ink); }
+  .nums button[aria-pressed="true"] { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:92ch; }
+  .caption strong { display:block; margin-bottom:4px; }
+
+  .shell { display:grid; grid-template-columns:200px 1fr; min-height:660px;
+    background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px; }
+  nav.side .brand { font-weight:700; color:var(--cyan-deep); margin-bottom:16px; padding:0 8px; }
+  nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+    text-decoration:none; margin-bottom:2px; }
+  nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  .page { display:flex; flex-direction:column; min-width:0; }
+  .tabs { display:flex; gap:8px; padding:12px 16px; border-bottom:1px solid var(--line); }
+  .tabs span { padding:8px 14px; border-radius:999px; border:1px solid var(--line);
+    background:var(--page); color:var(--muted); }
+  .tabs span.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .settings { display:grid; grid-template-columns:200px 1fr; flex:1; min-height:0; }
+  .rail { border-right:1px solid var(--line); padding:10px 8px; overflow:auto; }
+  .rail a { display:block; padding:8px 11px; border-radius:8px; color:var(--ink);
+    text-decoration:none; font-size:13px; }
+  .rail a.on { background:var(--info-c); color:var(--cyan-deep); font-weight:600; }
+  .rail h4 { font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--muted); margin:12px 0 4px; padding:0 11px; font-weight:600; }
+  .rail h4:first-child { margin-top:0; }
+
+  .pane { display:flex; flex-direction:column; min-width:0; overflow:auto; }
+  .paneHead { padding:16px 20px 12px; border-bottom:1px solid var(--line);
+    display:flex; align-items:flex-start; gap:12px; }
+  .paneHead h2 { font-size:17px; margin:0 0 2px; }
+  .paneHead p { margin:0; color:var(--muted); font-size:13px; max-width:70ch; }
+  .paneBody { padding:16px 20px 24px; flex:1; }
+
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:8px;
+    padding:9px 14px; min-height:40px; }
+  .btn.ghost { background:transparent; color:var(--primary); border:1px solid var(--line); }
+  .btn.sm { min-height:32px; padding:4px 10px; font-size:13px; }
+  .pill { font-size:11px; padding:2px 8px; border-radius:999px; background:var(--alt);
+    border:1px solid var(--line); color:var(--muted); font-weight:600; white-space:nowrap; }
+  .pill.warn { background:var(--warn-c); color:var(--warn); border-color:transparent; }
+  .pill.ok { background:var(--ok-c); color:var(--ok); border-color:transparent; }
+  .pill.err { background:var(--err-c); color:#A33; border-color:transparent; }
+
+  /* the warning that must not be a hint */
+  .danger { border:2px solid var(--warn); border-radius:10px; overflow:hidden; margin-bottom:14px; }
+  .danger > h3 { margin:0; padding:10px 14px; background:var(--warn-c); color:var(--warn);
+    font-size:13px; display:flex; gap:8px; align-items:center; }
+  .danger .in { padding:12px 14px; font-size:13px; }
+  .danger .in b { color:var(--ink); }
+
+  .sec { border:1px solid var(--line); border-radius:10px; margin-bottom:12px; overflow:hidden; }
+  .sec > h3 { margin:0; padding:10px 14px; background:var(--alt); font-size:13px;
+    border-bottom:1px solid var(--line); display:flex; gap:8px; align-items:center; }
+  .sec .in { padding:12px 14px; }
+  .f { margin-bottom:12px; }
+  .f label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .ctl { display:flex; align-items:center; min-height:40px; border:1px solid var(--line);
+    border-radius:8px; padding:0 12px; background:var(--page); }
+  .ctl.ta { min-height:66px; align-items:flex-start; padding-top:9px; color:#9AA5AF; }
+  .ctl.sel::after { content:"⌄"; margin-left:auto; color:var(--muted); }
+
+  /* port progress — no ETA is possible */
+  .port { border:1px solid var(--line); border-radius:10px; padding:13px 15px; margin-bottom:9px; }
+  .port .top { display:flex; gap:9px; align-items:center; flex-wrap:wrap; margin-bottom:9px; }
+  .port .nums2 { font-weight:600; }
+  .track { display:flex; align-items:center; gap:0; margin:10px 0 6px; }
+  .track .s { flex:1; height:5px; background:var(--line); position:relative; }
+  .track .s.done { background:var(--primary); }
+  .track .s.now { background:repeating-linear-gradient(90deg,var(--primary) 0 6px,#9ec9d8 6px 12px); }
+  .track .d { width:11px; height:11px; border-radius:50%; background:var(--line); flex:none;
+    border:2px solid var(--page); }
+  .track .d.done { background:var(--primary); } .track .d.now { background:var(--warn); }
+  .tracklabels { display:flex; font-size:11px; color:var(--muted); }
+  .tracklabels span { flex:1; }
+  .tracklabels span:last-child { flex:0 0 auto; }
+  .port .why { font-size:12px; color:var(--muted); margin-top:7px; }
+  .port .why b { color:var(--ink); }
+
+  .redirect { border:1px dashed #C9D3DB; border-radius:10px; padding:14px;
+    background:var(--alt); font-size:13px; color:var(--muted); }
+  .redirect b { display:block; color:var(--ink); font-size:13px; margin-bottom:3px; }
+  .note { color:var(--muted); font-size:12px; margin-top:10px; }
+  .void { border:1px dashed #C9D3DB; border-radius:10px; padding:15px;
+    background:var(--alt); color:var(--muted); font-size:13px; }
+  .void b { display:block; color:var(--ink); font-size:14px; margin-bottom:4px; }
+
+  .phone { width:375px; margin:0 auto; border:8px solid var(--ink); border-radius:28px;
+    overflow:hidden; background:#fff; min-height:660px; display:flex; flex-direction:column; }
+  .phone .bar375 { padding:11px 12px; border-bottom:1px solid var(--line); font-weight:600;
+    display:flex; gap:8px; align-items:center; font-size:14px; }
+  .phone .bar375 .back { color:var(--primary); font-weight:500; }
+  .phone .scroll { overflow:auto; flex:1; }
+
+  @media (max-width:900px) {
+    .shell { grid-template-columns:1fr; } nav.side { display:none; }
+    .settings { grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>Phone › Porting — layouts</h1>
+
+    <div class="locked">
+      <strong>Read from <code>porting_pane.dart</code></strong>
+      <b>“Move a number here from another carrier. Submitting and tracking happens here.”</b>
+      A port-in takes numbers — <em>“One per line. They must all be on the same losing carrier.”</em>
+      — and then has a status and sometimes a reason. Port-<b>out</b> is not done here at all:
+      <em>“Port-out is started by the carrier you are moving TO, not here.”</em> Empty state kept:
+      <em>“No ports yet. Numbers you already own elsewhere can be moved here.”</em>
+      This is one of the four panes with <b>no retry</b> today; under the corrected rule it gains
+      one in the head, because its error is a failed <b>load</b>.
+    </div>
+
+    <div class="found">
+      <strong>The finding: the most consequential sentence on the screen is a form hint</strong>
+      <em>“The losing carrier decides when this completes. <b>Do not cancel</b> [service with
+      them].”</em>
+      <b>Cancelling with the old carrier kills the port and can lose the number permanently.</b>
+      It is the one irreversible mistake available anywhere in this pane, and it is currently
+      delivered as grey helper text under a text field — the same weight as
+      <em>“one per line”</em>. Somebody who submits a port and then tidies up their old account is
+      doing the obvious thing, and nothing on this screen is shaped to stop them.
+      <b>Every layout promotes it to a bordered block that survives after submission</b>, because
+      the danger is not while you are filling the form — it is during the days afterwards, when
+      the form is gone and the port is just a row with a status.
+    </div>
+
+    <div class="ask">
+      <strong>Two things that are true and unusual, and the design leans into both</strong>
+      <b>1 · No completion date is knowable.</b> <em>“The losing carrier decides when this
+      completes.”</em> So the tracker deliberately has <b>no ETA and no percentage</b> — it names
+      the stage and says who is holding it. A progress bar implying a schedule would be the same
+      dishonesty as attestation drawing a 0% bar or Scheduling saying “remaining”, and this is the
+      third pane where the honest answer is to name the limit rather than estimate around it.
+      <b>2 · Port-out is a section whose entire content is “not here”.</b> That is worth keeping
+      and worth drawing as a redirection rather than as an empty feature — somebody looking for it
+      should find the answer, not an absence. All three layouts keep it; they differ in how much
+      room it gets.
+    </div>
+
+    <p>Pick a number. <strong>1 is my recommendation.</strong> 4 is it at 375px.</p>
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+  <div id="stage"></div>
+</div>
+
+<script>
+const CAPTIONS = {
+  1: ["1 · Ports in progress first, the warning above them, the form last (recommended)",
+      "Inverts today's order. What is already moving comes first, because after the day you submit that is the only reason to open this pane. The do-not-cancel warning sits above the list as a bordered block rather than under a field, so it is present on every visit for the whole ten-day wait — which is when the mistake is actually available. The form drops to the bottom, since starting a port is a rare act and tracking one is a repeated one. Weakness: on a first visit, with no ports, the pane opens on a warning about a thing you have not done yet — mitigated by the empty state taking that slot instead, but it is a real cost of ordering by frequency rather than by sequence."],
+  2: ["2 · Form first, tracker below — today's order, with the warning promoted",
+      "Keeps the existing sequence and changes only the warning's weight: it becomes a bordered block attached to the form rather than helper text under a field. Smallest change, and it reads correctly on the day you submit — form, warning, then the port you just created. Weakness: it is optimised for the one visit where you start a port, and every subsequent visit is about tracking. It also puts the warning where you meet it once, rather than where you need it on day six."],
+  3: ["3 · Two columns — in progress beside the form",
+      "Ports on the left, the form on the right, so tracking and starting never compete for the top of the pane and neither is scrolled past. Best when both are common. Weakness, and it is decisive here: they are not both common. A business ports numbers once, maybe twice ever, and then watches for a fortnight — so this spends half the pane permanently on an act that is almost never performed, and at 375px the columns stack back into an order I would have had to choose anyway."],
+  4: ["4 · Layout 1 at 375px",
+      "The warning keeps its border and stays above the ports, because at this width it is the first thing that would scroll away and it is the one thing that must not. The stage tracker becomes a labelled line rather than a bar with dots — a five-stage tracker at 375px is either illegible or horizontally scrolling, and this is chrome rather than data, so it wraps. The form collapses behind a single control until it is wanted."]
+};
+
+const RAIL = `
+  <h4>Connect</h4><a>General</a><a>Call flow</a><a>Connection</a><a>Numbers</a><a class="on">Porting</a>
+  <h4>Answering</h4><a>IVR menus</a><a>Hours</a><a>Ring groups</a><a>Voicemail</a>
+  <h4>Identity</h4><a>Trust &amp; caller identity</a>
+  <h4>Running it</h4><a>Tags</a><a>Cost</a><a>Messaging</a>`;
+
+const shell = (body) => `
+  <div class="shell">
+    <nav class="side"><div class="brand">EzBizi</div>
+      <a>Dashboard</a><a>Customers</a><a>Jobs</a><a class="on">Phone</a><a>Fleet</a></nav>
+    <div class="page">
+      <div class="tabs"><span>Call</span><span>Records</span><span class="on">Settings</span></div>
+      <div class="settings"><div class="rail">${RAIL}</div>${body}</div>
+    </div>
+  </div>`;
+
+const head = `
+  <div class="paneHead">
+    <div style="flex:1"><h2>Porting</h2>
+      <p>Move a number here from another carrier. Submitting and tracking happens here.</p></div>
+    <button class="btn ghost sm" type="button">↻ Try again</button>
+  </div>`;
+
+const danger = `
+  <div class="danger">
+    <h3>⚠ Do not cancel your service with the old carrier</h3>
+    <div class="in">
+      <b>Cancelling before the port completes ends it, and the number can be lost for good.</b>
+      Keep paying the old carrier until the port shows as completed here — even if the number has
+      already started ringing in EzBizi. <b>The losing carrier decides when this completes</b>,
+      so there is no date anybody can give you.
+    </div>
+  </div>`;
+
+const track = (stage) => {
+  const stages = ['Submitted','Carrier notified','Accepted','Scheduled','Completed'];
+  return `
+    <div class="track">
+      ${stages.map((s,i) => `
+        <span class="d ${i < stage ? 'done' : i === stage ? 'now' : ''}"></span>
+        ${i < stages.length-1 ? `<span class="s ${i < stage ? 'done' : i === stage ? 'now' : ''}"></span>` : ''}
+      `).join('')}
+    </div>
+    <div class="tracklabels">${stages.map(s => `<span>${s}</span>`).join('')}</div>`;
+};
+
+const ports = `
+  <div class="port">
+    <div class="top">
+      <span class="nums2">(203) 555 0199</span>
+      <span class="pill warn">With the losing carrier</span>
+      <span class="pill">Submitted 26 Aug</span>
+    </div>
+    ${track(2)}
+    <p class="why"><b>Waiting on Verizon.</b> They have accepted the request and have not yet
+      given a date. <b>No completion date is available</b> — the losing carrier sets it, and
+      EzBizi is told only when it changes.</p>
+  </div>
+  <div class="port">
+    <div class="top">
+      <span class="nums2">(203) 555 0201 · (203) 555 0202</span>
+      <span class="pill err">Rejected</span>
+      <span class="pill">Submitted 19 Aug</span>
+    </div>
+    ${track(1)}
+    <p class="why"><b>Verizon rejected it:</b> the account name on the bill did not match the
+      name given. Fix the name and submit again — the numbers are unaffected and still ring
+      at the old carrier.</p>
+  </div>`;
+
+const form = `
+  <div class="sec"><h3>Start a new port-in</h3>
+    <div class="in">
+      <div class="f"><label>Numbers to move</label>
+        <div class="ctl ta">(203) 555 0199</div>
+        <div class="note" style="margin-top:5px">One per line. They must all be on the same
+          losing carrier.</div></div>
+      <div class="f"><label>Which phone account they arrive on</label>
+        <div class="ctl sel">A-1 Group — EzBizi phone account</div></div>
+      <button class="btn" type="button">Submit port-in</button>
+    </div></div>`;
+
+const portOut = `
+  <div class="sec"><h3>Moving a number away</h3>
+    <div class="in">
+      <div class="redirect">
+        <b>Port-out is not started here.</b>
+        The carrier you are moving <em>to</em> starts it — they will ask you for account details
+        and then request the number from EzBizi. There is nothing to do on this screen.
+      </div>
+    </div></div>`;
+
+const L1 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      ${danger}
+      <div class="sec"><h3>Ports in progress <span class="pill">2</span></h3>
+        <div class="in">${ports}</div></div>
+      ${form}
+      ${portOut}
+    </div>
+  </div>`);
+
+const L2 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      ${form}
+      ${danger}
+      <div class="sec"><h3>Ports in progress <span class="pill">2</span></h3>
+        <div class="in">${ports}</div></div>
+      ${portOut}
+      <p class="note">Today's order kept. Reads correctly on the day you submit, and puts the
+        warning where you meet it once rather than where you need it on day six.</p>
+    </div>
+  </div>`);
+
+const L3 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      ${danger}
+      <div style="display:grid;grid-template-columns:1fr 340px;gap:14px;align-items:start">
+        <div>
+          <div class="sec"><h3>Ports in progress <span class="pill">2</span></h3>
+            <div class="in">${ports}</div></div>
+        </div>
+        <div>${form}${portOut}</div>
+      </div>
+      <p class="note">Neither competes for the top. But a business ports numbers once or twice
+        ever and then watches for a fortnight, so half the pane is permanently spent on an act
+        almost never performed.</p>
+    </div>
+  </div>`);
+
+const L4 = () => `
+  <div class="phone">
+    <div class="bar375"><span class="back">‹ Settings</span> Porting</div>
+    <div class="scroll">
+      ${head}
+      <div class="paneBody" style="padding:13px 12px">
+        ${danger}
+        <div class="sec"><h3>Ports in progress <span class="pill">2</span></h3>
+          <div class="in">
+            <div class="port">
+              <div class="top"><span class="nums2">(203) 555 0199</span>
+                <span class="pill warn">With the losing carrier</span></div>
+              <p class="why" style="margin-top:6px"><b>Stage 3 of 5 — accepted, awaiting a date.</b>
+                Waiting on Verizon. No completion date is available; the losing carrier sets it.</p>
+            </div>
+            <div class="port">
+              <div class="top"><span class="nums2">(203) 555 0201 · 0202</span>
+                <span class="pill err">Rejected</span></div>
+              <p class="why" style="margin-top:6px"><b>Verizon rejected it:</b> the account name
+                on the bill did not match. The numbers still ring at the old carrier.</p>
+            </div>
+          </div></div>
+        <button class="btn ghost" type="button" style="width:100%">Start a new port-in</button>
+        <div style="height:12px"></div>
+        ${portOut}
+        <p class="note">The five-stage tracker becomes a labelled line — chrome, not data, so it
+          wraps rather than scrolling sideways.</p>
+      </div>
+    </div>
+  </div>`;
+
+const LAYOUTS = { 1:L1, 2:L2, 3:L3, 4:L4 };
+const nums = document.getElementById('nums'), stage = document.getElementById('stage'),
+      caption = document.getElementById('caption');
+Object.keys(LAYOUTS).forEach(k => {
+  const b = document.createElement('button'); b.type='button'; b.textContent=k;
+  b.addEventListener('click', () => show(+k)); nums.appendChild(b);
+});
+function show(i) {
+  [...nums.children].forEach((b,x) => b.setAttribute('aria-pressed', x+1===i ? 'true':'false'));
+  const e = CAPTIONS[i];
+  caption.innerHTML = '<strong>'+e[0]+'</strong>'+e[1];
+  stage.innerHTML = LAYOUTS[i]();
+}
+show(1);
+</script>
+</body>
+</html>

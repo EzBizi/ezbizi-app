@@ -47,6 +47,34 @@ Schedule::command('ezbizi:dispatch-automation-events')->everyMinute()->withoutOv
 // first.
 Schedule::command('ezbizi:publish-due-social-posts')->everyMinute()->withoutOverlapping(5);
 
+// Scheduled newsletters. The composer writes a wall time and leaves the send
+// `queued`; this is the only thing that turns one into a job.
+//
+// Every minute, matching the resolution the composer offers. `withoutOverlapping`
+// and the claim inside the command are two lines of defence against the same
+// thing, and it is worth more here than anywhere else in the app: Mailchimp has
+// no idempotency key, so a double release is twelve hundred people receiving the
+// same mailing twice.
+Schedule::command('ezbizi:send-due-newsletters')->everyMinute()->withoutOverlapping(5);
+
+// The phone numbers Thumbtack matches calls against, kept level with the
+// people actually assigned to each connected business.
+//
+// Nightly, and a sweep rather than a hook on "user saved", because Thumbtack
+// holds its own copy: a hook keeps the two in step only while every write ever
+// made succeeded, and one dropped request diverges them silently until a pro
+// asks why their van phone shows as an unknown number. This reads their list
+// and sends the difference, so it repairs drift instead of adding to it.
+Schedule::command('ezbizi:sync-thumbtack-phone-numbers')->dailyAt('04:40')->withoutOverlapping(30);
+
+// Media handed to Instagram, Threads or Facebook to fetch, and not cleaned up
+// because the worker died between the fetch and the `finally` that deletes it.
+//
+// Hourly is deliberately slower than the hour a handoff is signed for: this
+// only ever finds files that already stopped working, so racing it against a
+// live post would be the only way to make it dangerous.
+Schedule::command('ezbizi:expire-social-handoffs')->hourly()->withoutOverlapping(10);
+
 // Watching the shared inboxes, so `email.received` can fire (§5.5).
 //
 // Every minute, and that is NOT the cadence. A mailbox is looked at every five
@@ -72,17 +100,28 @@ Schedule::command('ezbizi:publish-due-social-posts')->everyMinute()->withoutOver
 // above the sweep it feeds.
 Schedule::command('ezbizi:watch-mailboxes')->everyMinute()->withoutOverlapping(5);
 
-Schedule::command('ezbizi:dispatch-task-overdue')->hourly()->withoutOverlapping(10);
-Schedule::command('ezbizi:dispatch-task-due-reminders')->hourly()->withoutOverlapping(10);
-Schedule::command('ezbizi:dispatch-task-notification-intents')->everyMinute()->withoutOverlapping(5);
-Schedule::command('ezbizi:expire-task-update-attachment-candidates')->hourly()->withoutOverlapping(10);
-Schedule::command('ezbizi:expire-task-import-sessions')->hourly()->withoutOverlapping(10);
-
 // Monitoring (2026-08-28-monitoring-pc-specs, task 6). Every five minutes so a
 // device that stops reporting is caught soon after the default 180-second
 // (monitoring.offline_after_seconds) threshold passes, without scanning on
 // every request the way the heartbeat does.
 Schedule::command('ezbizi:dispatch-monitoring-device-offline')->everyFiveMinutes()->withoutOverlapping(10);
+
+// Screenshot retention (MonitoringScreenshot::RETENTION_DAYS). Its own
+// command rather than a `window()` policy read by ezbizi:expire-data above,
+// because that command deletes with a raw query that never fires the model
+// event a JPEG's removal depends on — see MonitoringScreenshot::retention()
+// and ScreenshotPruner. At 04:10: after ezbizi:expire-data (03:50) so the two
+// nightly jobs don't contend for the same monitoring tables' locks.
+Schedule::command('ezbizi:prune-screenshots')->dailyAt('04:10')->withoutOverlapping();
+
+// Stale-device retention (DevicePruner::RETENTION_DAYS). monitored_devices is
+// one-current-row-per-device, never a log, so nothing trims it on its own —
+// every retired machine and one-off browser session leaves a row forever. This
+// sweeps a device silent past the window, taking its screenshots (files THEN
+// rows), its live frame and its activity with it. At 04:30: after
+// ezbizi:prune-screenshots (04:10) and clear of ezbizi:phone-usage (04:20), so
+// the two monitoring prunes never contend for the same tables' locks.
+Schedule::command('ezbizi:prune-devices')->dailyAt('04:30')->withoutOverlapping();
 
 // Backup health (§18 Phase 0 item 5). At 05:00, well after the 03:17 timer, so a
 // slow night is not reported as a missing one.

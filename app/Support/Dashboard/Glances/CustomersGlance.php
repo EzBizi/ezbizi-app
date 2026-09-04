@@ -5,7 +5,7 @@ namespace App\Support\Dashboard\Glances;
 use App\Models\Customer;
 use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
-use App\Support\Dashboard\Glance;
+use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
@@ -19,37 +19,14 @@ use Illuminate\Support\Carbon;
  * is the whole tenant book — reach is accountability for the line, not a read
  * gate on customers.
  */
-final class CustomersGlance implements Glance
+final class CustomersGlance extends DescribedGlance
 {
-    public function key(): string
-    {
-        return 'customers';
-    }
-
-    public function label(): string
-    {
-        return 'Customers';
-    }
-
-    public function permission(): string
-    {
-        return 'customers.view';
-    }
-
-    public function allowedPresentations(): array
-    {
-        return ['line', 'bar', 'text'];
-    }
-
-    public function defaultPresentation(): string
-    {
-        return 'line';
-    }
-
-    public function snapshot(): bool
-    {
-        return false;
-    }
+    protected const KEY = 'customers';
+    protected const LABEL = 'Customers';
+    protected const PERMISSION = 'customers.view';
+    protected const PRESENTATIONS = ['line', 'bar', 'text'];
+    protected const DEFAULT_PRESENTATION = 'line';
+    protected const SNAPSHOT = false;
 
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {

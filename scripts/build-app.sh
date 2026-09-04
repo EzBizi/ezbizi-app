@@ -40,7 +40,11 @@ cd "$(dirname "$0")/.."
 MAC_REMOTE=mac
 MAC_PROJECT='~/ezbizi-build'
 MAC_FLUTTER=/opt/homebrew/bin/flutter
-DIST=dist
+# The main checkout's Distribution/, never the current directory — see the long
+# note in release.sh. A build run from a release worktree used to leave its .ipa
+# inside that worktree, which is both invisible and eventually deleted.
+DIST="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/Distribution"
+DIST_APPLE="$DIST/Apple"
 
 API_BASE="https://app.ezbizi.com"
 APP_FACE="customer"
@@ -91,7 +95,20 @@ COMMIT=$(git rev-parse --short HEAD)
 # review rejection weeks later. Neither store lets you quietly replace it.
 #
 # --allow-dirty still stamps the + so the artefact says so of itself.
-DIRTY=$(git status --porcelain --untracked-files=no)
+#
+# docs/ is excluded, and that is not a loosening — it closes a hole this guard
+# was opening. deploy.sh regenerates docs/EZBIZI-STATUS.md mid-release
+# (status-numbers.sh, deploy.sh:268) and does not commit it. So a full
+# release.sh run deployed web, dirtied its own tree doing so, and then this
+# guard refused windows, android AND ios — every time, from a tree that was
+# verifiably clean when the release started. That is what failed on 1 Sep
+# (v0.0.0128) and, with the same three targets, on the v0.0.0127 nightly.
+#
+# Nothing under docs/ can reach an .exe, an .aab or an .ipa, so excluding it
+# costs the reproducibility guarantee above nothing: the artefact is still
+# pinned to a commit that fully determines it. A change under client/, app/ or
+# any other shipping path still stops the build.
+DIRTY=$(git status --porcelain --untracked-files=no -- . ':(exclude)docs')
 
 if [ -n "$DIRTY" ]; then
   if [ "$ALLOW_DIRTY" -eq 1 ]; then
@@ -253,13 +270,78 @@ MAC_DEFINES="${MAC_DEFINES} --build-name=${VERSION} --build-number=${BUILD_NUMBE
   # produces a .app that cannot be installed on a phone at all — it is a
   # compile check, not a deliverable. Both are worth having now; neither is
   # worth mistaking for a release.
-  wants macos && ssh "$MAC_REMOTE" "
-    export PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH
-    set -e
-    cd ${MAC_PROJECT}
-    ${MAC_FLUTTER} pub get
-    ${MAC_FLUTTER} build macos --release ${MAC_DEFINES}
-  "
+  if wants macos; then
+    MAC_TEAM=2CMZQR34RL
+    mkdir -p "$DIST_APPLE"
+
+    # Same split as iOS below: a store-signed artefact when this Mac holds the
+    # identities, a compile-check .app when it does not, and never one
+    # mistaken for the other. macOS needs TWO identities where iOS needs one -
+    # Apple Distribution signs the .app, 3rd Party Mac Developer Installer
+    # signs the .pkg App Store Connect actually accepts - plus the Mac App
+    # Store profile. All three arrived 4 Sep 2026.
+    if ssh "$MAC_REMOTE" "security find-identity -v 2>/dev/null | grep -q 'Apple Distribution.*${MAC_TEAM}'" \
+       && ssh "$MAC_REMOTE" "security find-identity -v 2>/dev/null | grep -qi 'Mac Developer Installer.*${MAC_TEAM}'"; then
+      echo "→ building macos — signed for team ${MAC_TEAM}"
+      MAC_SIGNED=1
+      ssh "$MAC_REMOTE" "
+        export PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH
+        set -e
+        ~/ezbizi-signing/unlock-keychain.sh
+        cd ${MAC_PROJECT}
+        ${MAC_FLUTTER} pub get
+        # The .app, so Flutter's own build settings are what get archived.
+        ${MAC_FLUTTER} build macos --release ${MAC_DEFINES}
+        # Archive and export through Xcode, the way flutter build ipa does for
+        # iOS under the hood. The export re-signs with the plist's manual
+        # identities and, because installerSigningCertificate is set, emits
+        # the signed .pkg rather than a bare .app.
+        rm -rf build/macos.xcarchive build/macos-export
+        xcodebuild -workspace macos/Runner.xcworkspace -scheme Runner \
+          -configuration Release -destination 'generic/platform=macOS' \
+          -archivePath build/macos.xcarchive archive -quiet
+        xcodebuild -exportArchive -archivePath build/macos.xcarchive \
+          -exportOptionsPlist macos/ExportOptions.plist \
+          -exportPath build/macos-export -quiet
+      "
+      PKG_REMOTE=$(ssh "$MAC_REMOTE" "ls ${MAC_PROJECT}/build/macos-export/*.pkg 2>/dev/null | head -1")
+      if [ -z "$PKG_REMOTE" ]; then
+        echo "✗ xcodebuild -exportArchive reported success but left no .pkg on the Mac" >&2
+        exit 1
+      fi
+      scp -q "${MAC_REMOTE}:${PKG_REMOTE}" "${DIST_APPLE}/EzBizi-${VERSION}-${COMMIT}-macos.pkg"
+      echo "  → ${DIST_APPLE}/EzBizi-${VERSION}-${COMMIT}-macos.pkg"
+
+      # Every released build is uploaded (Jose's ruling for iOS, 1 Sep; the
+      # same reasoning). The Mac script validates first and treats altool's
+      # OUTPUT as the verdict, because altool exits 0 when it fails.
+      if [ "$UPLOAD" -eq 1 ]; then
+        echo "-> macos - validate and upload to App Store Connect"
+        ssh "$MAC_REMOTE" "~/ezbizi-signing/upload-testflight.sh ${PKG_REMOTE} macos"
+        echo "  -> uploaded. App Store Connect processes it for a few minutes."
+      fi
+    else
+      echo "→ building macos — UNSIGNED compile check (relay lacks a store identity for team ${MAC_TEAM})"
+      ssh "$MAC_REMOTE" "
+        export PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH
+        set -e
+        cd ${MAC_PROJECT}
+        ${MAC_FLUTTER} pub get
+        ${MAC_FLUTTER} build macos --release ${MAC_DEFINES}
+      "
+      # Bring the ad-hoc .app home zipped, so a compile check still leaves
+      # something runnable. ditto keeps the bundle intact where zip flattens
+      # it and Gatekeeper then calls it damaged.
+      APP_REMOTE=$(ssh "$MAC_REMOTE" "ls -d ${MAC_PROJECT}/build/macos/Build/Products/Release/*.app 2>/dev/null | head -1")
+      if [ -z "$APP_REMOTE" ]; then
+        echo "✗ flutter build macos reported success but left no .app on the Mac" >&2
+        exit 1
+      fi
+      ssh "$MAC_REMOTE" "cd '$(dirname "$APP_REMOTE")' && ditto -c -k --keepParent '$(basename "$APP_REMOTE")' /tmp/ezbizi-macos.zip"
+      scp -q "${MAC_REMOTE}:/tmp/ezbizi-macos.zip" "${DIST_APPLE}/EzBizi-${VERSION}-${COMMIT}-macos.zip"
+      echo "  → ${DIST_APPLE}/EzBizi-${VERSION}-${COMMIT}-macos.zip  (ad-hoc, not for the store)"
+    fi
+  fi
 
   # ── iOS ────────────────────────────────────────────────────────
   #
@@ -292,21 +374,26 @@ MAC_DEFINES="${MAC_DEFINES} --build-name=${VERSION} --build-number=${BUILD_NUMBE
       # Bring it home. An artefact that exists only on somebody else's Mac is one
       # power cut from not existing, and dist/ is where every other platform
       # leaves its release.
-      mkdir -p "$DIST"
+      mkdir -p "$DIST_APPLE"
       IPA_REMOTE=$(ssh "$MAC_REMOTE" "ls ${MAC_PROJECT}/build/ios/ipa/*.ipa 2>/dev/null | head -1")
       if [ -z "$IPA_REMOTE" ]; then
         echo "✗ flutter build ipa reported success but left no .ipa on the Mac" >&2
         exit 1
       fi
-      scp -q "${MAC_REMOTE}:${IPA_REMOTE}" "${DIST}/EzBizi-${VERSION}-${COMMIT}.ipa"
-      echo "  → ${DIST}/EzBizi-${VERSION}-${COMMIT}.ipa"
+      scp -q "${MAC_REMOTE}:${IPA_REMOTE}" "${DIST_APPLE}/EzBizi-${VERSION}-${COMMIT}.ipa"
+      echo "  → ${DIST_APPLE}/EzBizi-${VERSION}-${COMMIT}.ipa"
 
-      # TestFlight, only when asked.
+      # TestFlight, only when asked - but release.sh always asks.
       #
-      # Opt-in because a build that lands in TestFlight notifies testers and
-      # cannot be unsent - it should not happen because somebody rebuilt to
+      # Opt-in HERE because a build that lands in TestFlight notifies testers
+      # and cannot be unsent - it should not happen because somebody rebuilt to
       # check a compile error. The script on the Mac validates before it
       # uploads, so the cheap rejections are caught before ten minutes of wire.
+      #
+      # A release is not that case: every released iOS build goes to TestFlight
+      # (Jose's ruling, 1 Sep), so release.sh passes --upload unconditionally.
+      # This flag now separates a developer's scratch build from a release,
+      # not a released build from an uploaded one.
       if [ "$UPLOAD" -eq 1 ]; then
         echo "-> ios - validate and upload to TestFlight"
         ssh "$MAC_REMOTE" "~/ezbizi-signing/upload-testflight.sh ${IPA_REMOTE}"
@@ -328,10 +415,12 @@ MAC_DEFINES="${MAC_DEFINES} --build-name=${VERSION} --build-number=${BUILD_NUMBE
     fi
   fi
 
-  # Not "UNSIGNED" any more — iOS decides for itself above and says which it did.
-  # macOS is still genuinely unsigned: it needs a Developer ID certificate, which
-  # is a different certificate from the Apple Distribution one iOS uses.
-  wants macos && echo "→ the macOS .app is on the Mac under ${MAC_PROJECT}/build — UNSIGNED"
+  # Not "UNSIGNED" any more — each Apple target decides for itself above and
+  # says which it did. The signed macOS path leaves a store-ready .pkg in
+  # Distribution/Apple; only the fallback compile check is worth flagging.
+  if wants macos && [ "${MAC_SIGNED:-0}" -eq 0 ]; then
+    echo "→ the macOS .app is on the Mac under ${MAC_PROJECT}/build — UNSIGNED compile check, nothing to upload"
+  fi
 fi
 
 # ── put the tree back the way the guard above requires ──────────

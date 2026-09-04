@@ -2,9 +2,11 @@
 
 namespace App\Support\Phone;
 
+use App\Models\PhoneExtension;
 use App\Models\PhoneFlow;
 use App\Models\PhoneHoursSchedule;
 use App\Models\PhoneNumber;
+use App\Models\PhonePresence;
 use App\Models\PhoneRingGroup;
 use App\Models\PhoneVoicemailBox;
 use DateTimeImmutable;
@@ -79,7 +81,49 @@ final class TwimlRenderer
             return (string) $response;
         }
 
-        if ($outbound && is_string($context['dial_to'] ?? null) && $context['dial_to'] !== '') {
+        if ($outbound) {
+            // ── An outbound call must never become voicemail ─────────
+            //
+            // This used to fall through to ringOrVoicemail when the dial
+            // target was missing, so somebody pressing Call heard the
+            // recording notice and then "please leave a message after the
+            // tone" — their own line answering them. Indistinguishable from a
+            // routing fault, and it left no trace saying what was wrong.
+            //
+            // Nobody rings out in order to leave themselves a message. If the
+            // destination did not arrive, that is a fault and it says so.
+            if (! is_string($context['dial_to'] ?? null) || $context['dial_to'] === '') {
+                $response->say(
+                    'This call could not be placed, because the number to dial '
+                    .'did not reach the phone system. Nothing has been charged.',
+                    ['language' => $language],
+                );
+                $response->hangup();
+
+                return (string) $response;
+            }
+
+            // NO USABLE CALLER ID MEANS THE DIAL WOULD FAIL, so say that
+            // rather than make the attempt.
+            //
+            // Twilio requires the callerId on an outbound <Dial> to be a
+            // number the account owns or has verified, and refuses the moment
+            // the dial starts otherwise. That refusal reaches the caller as a
+            // call that connects to nothing and explains nothing. Declining
+            // here costs the same and can say why.
+            if (! is_string($context['caller_id'] ?? null) || $context['caller_id'] === '') {
+                $response->say(
+                    'This call cannot be placed, because the line it would go '
+                    .'out from is not one this phone account holds. Choose a '
+                    .'line on the Call screen, or set the number you call out '
+                    .'from on the Team screen.',
+                    ['language' => $language],
+                );
+                $response->hangup();
+
+                return (string) $response;
+            }
+
             $this->dialParty($response, $number, $context);
 
             return (string) $response;
@@ -95,6 +139,28 @@ final class TwimlRenderer
      *
      * @param  array<string, mixed>  $context
      */
+    /**
+     * What happens after a `<Dial>` ends without connecting.
+     *
+     * ── The outbound branch, and why its absence was the whole bug ───
+     *
+     * This used to call `ringOrVoicemail()` unconditionally. On an INBOUND
+     * call that is right: the group did not pick up, so take a message.
+     *
+     * On an OUTBOUND call it is the defect somebody reported twice. You press
+     * Call, hear "This call may be recorded" — which is correct, it is the
+     * outbound TwiML — the dial then fails or is not answered, Twilio requests
+     * the `action` URL, and this played the caller THEIR OWN LINE'S VOICEMAIL.
+     * So ringing a customer ended with "please leave a message after the tone"
+     * in your own voice.
+     *
+     * The first request was never the problem and a fix there could not help,
+     * which is why the symptom survived one.
+     *
+     * The status is named rather than generalised to "the call failed",
+     * because busy, no answer and rejected are three different things to do
+     * next and the caller already knows which one they heard.
+     */
     public function afterDial(PhoneNumber $number, array $context = []): string
     {
         $response = new VoiceResponse;
@@ -103,9 +169,31 @@ final class TwimlRenderer
             return (string) $response;
         }
 
+        if ((bool) ($context['outbound'] ?? false)) {
+            $response->say(
+                self::outboundEnding($status),
+                ['language' => $this->language($number)],
+            );
+            $response->hangup();
+
+            return (string) $response;
+        }
+
         $this->ringOrVoicemail($response, $number, $context);
 
         return (string) $response;
+    }
+
+    /** What to tell somebody whose own outgoing call did not connect. */
+    private static function outboundEnding(string $status): string
+    {
+        return match ($status) {
+            'busy' => 'That number is busy. Nothing has been recorded.',
+            'no-answer' => 'There was no answer. Nothing has been recorded.',
+            'canceled' => 'The call was cancelled.',
+            default => 'That call could not be connected. Check the number, and '
+                .'that the line you are calling from is set up to make calls.',
+        };
     }
 
     /**
@@ -143,6 +231,7 @@ final class TwimlRenderer
                 ? 'Twilio posts it to EzBizi and the steps below run in order.'
                 : 'Nothing below runs until the number is imported or bought here.',
             'usable' => $pointed,
+            'skipped' => false,
         ];
 
         $schedule = $number->hours_schedule_id === null
@@ -155,6 +244,7 @@ final class TwimlRenderer
                 'title' => 'Business hours: always open',
                 'detail' => 'No schedule is set, so the call is never treated as after hours.',
                 'usable' => true,
+                'skipped' => false,
             ];
         } else {
             $closed = $this->closed($number, $context);
@@ -171,6 +261,7 @@ final class TwimlRenderer
                     }
                     : 'Open, so the call carries on to the steps below.',
                 'usable' => true,
+                'skipped' => false,
             ];
         }
 
@@ -188,6 +279,20 @@ final class TwimlRenderer
                     : 'A menu is set but has no usable menu step, so it is skipped.')
                 : 'The caller hears it and presses a key: “'.$prompt.'”',
             'usable' => true,
+
+            // CONFIGURED AND NEVER PLAYED is the case this exists for.
+            //
+            // A flow can be built, named, given keys and options and attached
+            // to a line, and still contain no menu node — at which point the
+            // caller goes straight past it and hears nothing. Nobody
+            // complains: the caller does not know they missed a menu and the
+            // owner does not know theirs is skipped.
+            //
+            // Not folded into `usable`, which on this step means "does not
+            // break the call" and on the answer step means "reaches somebody".
+            // Two meanings behind one key is how a value stays plausible while
+            // its meaning moves.
+            'skipped' => $prompt === null && $number->flow_id !== null,
         ];
 
         $connection = $number->connection;
@@ -213,6 +318,7 @@ final class TwimlRenderer
                 default => 'Whoever is on duty in that group is dialled.',
             },
             'usable' => $reaches,
+            'skipped' => false,
         ];
 
         // Only worth a line when it changes the answer — a fallback on a line
@@ -230,6 +336,7 @@ final class TwimlRenderer
                     : 'Nobody above answers, so this number is dialled instead. '
                         .'Tried once, then voicemail.',
                 'usable' => true,
+                'skipped' => false,
             ];
         }
 
@@ -314,6 +421,83 @@ final class TwimlRenderer
         }
 
         $this->voicemail($response, $number, $language, $context);
+    }
+
+    /**
+     * Ring the person who holds this extension.
+     *
+     * ── Why an unavailable person is not the same as a wrong number ──
+     *
+     * Three things can go wrong and a caller deserves to be told which:
+     * nobody holds these digits, somebody does but is not at a desk, or the
+     * line has no phone account at all. Answering all three with the same
+     * silence is how a caller concludes the business is shut.
+     *
+     * Presence is checked the same way DialPlan does for a ring group, so
+     * "available" means the same thing whichever route reached the person.
+     *
+     * @param  array<string, mixed>  $context
+     */
+    private function dialExtension(
+        VoiceResponse $response,
+        PhoneNumber $number,
+        string $extension,
+        string $language,
+        array $context,
+    ): void {
+        $connection = $number->connection;
+        $digits = trim($extension);
+
+        if ($digits === '' || $connection === null) {
+            $this->voicemail($response, $number, $language, $context);
+
+            return;
+        }
+
+        $row = PhoneExtension::query()
+            ->where('connection_id', $connection->id)
+            ->where('extension', $digits)
+            ->first();
+
+        if ($row === null) {
+            $response->say(
+                'There is no extension '.implode(' ', str_split($digits)).'.',
+                ['language' => $language],
+            );
+            $this->voicemail($response, $number, $language, $context);
+
+            return;
+        }
+
+        $available = PhonePresence::query()
+            ->where('connection_id', $connection->id)
+            ->where('user_id', $row->user_id)
+            ->where('state', PhonePresence::STATE_REGISTERED)
+            ->exists();
+
+        if (! $available) {
+            // Named rather than anonymous: "Jose is not available" tells the
+            // caller they reached the right extension, which "sorry, nobody is
+            // here" does not.
+            $name = trim((string) $row->user?->name);
+
+            $response->say(
+                ($name === '' ? 'That extension' : $name).' is not available right now.',
+                ['language' => $language],
+            );
+            $this->voicemail($response, $number, $language, $context);
+
+            return;
+        }
+
+        $dial = $response->dial(null, $this->dialAttributes(
+            $number,
+            timeout: 30,
+            sequential: false,
+            context: $context,
+        ));
+
+        $dial->client(ClientIdentity::of($row->user));
     }
 
     /**
@@ -580,11 +764,11 @@ final class TwimlRenderer
         }
 
         $flow = PhoneFlow::query()->find($number->flow_id);
-        if ($flow === null || ! is_array($flow->nodes)) {
+        if ($flow === null) {
             return null;
         }
 
-        $menu = $this->findMenu($flow->nodes);
+        $menu = self::menuNodeOf($flow);
         if ($menu === null || ! is_array($menu['options'] ?? null)) {
             return null;
         }
@@ -649,6 +833,24 @@ final class TwimlRenderer
             return;
         }
 
+        // ── Dial one person by extension ────────────────────────────
+        //
+        // Twilio has no notion of an extension. To Twilio these are Client
+        // identities and the digits are ours to resolve, so this looks the
+        // number up on THIS connection — 101 means one person here and may
+        // mean somebody else on another account.
+        if ($action === 'extension') {
+            $this->dialExtension(
+                $response,
+                $number,
+                (string) ($option['extension'] ?? ''),
+                $language,
+                $context,
+            );
+
+            return;
+        }
+
         $groupId = (string) ($option['ring_group_id'] ?? '');
         $group = $groupId === '' ? null : PhoneRingGroup::query()->find($groupId);
 
@@ -668,11 +870,11 @@ final class TwimlRenderer
         }
 
         $flow = PhoneFlow::query()->find($number->flow_id);
-        if ($flow === null || ! is_array($flow->nodes)) {
+        if ($flow === null) {
             return null;
         }
 
-        $menu = $this->findMenu($flow->nodes);
+        $menu = self::menuNodeOf($flow);
         if ($menu === null) {
             return null;
         }
@@ -688,7 +890,29 @@ final class TwimlRenderer
      * @param  array<mixed>  $nodes
      * @return array<string, mixed>|null
      */
-    private function findMenu(array $nodes): ?array
+    /**
+     * The menu node this flow would actually play, or null if it has none.
+     *
+     * A flow can be built, named, given keys and options, and still contain no
+     * `menu` node — at which point the renderer skips it and the caller never
+     * hears it. Nothing failed while that was true: the menu saved, the pane
+     * listed it, and every call went straight past.
+     *
+     * Public and static because THREE readers need this same answer and a
+     * second derivation would go quietly out of step: the renderer deciding
+     * what to play, the IVR pane saying a menu never plays, and `describe()`
+     * marking the step skipped.
+     */
+    public static function menuNodeOf(PhoneFlow $flow): ?array
+    {
+        if (! is_array($flow->nodes)) {
+            return null;
+        }
+
+        return self::findMenu($flow->nodes);
+    }
+
+    private static function findMenu(array $nodes): ?array
     {
         if (($nodes['type'] ?? null) === 'menu') {
             return $nodes;

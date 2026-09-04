@@ -54,21 +54,37 @@ Future<String?> download(String url, String version) async {
      * Detached, because this process is about to be one of the things the
      * installer closes.
      *
-     * /SILENT shows a progress window but asks nothing — the person already
-     * agreed by pressing Update, and a wizard they must click through is how an
-     * "automatic" update becomes one nobody completes.
+     * /VERYSILENT shows nothing at all. /SILENT was the first attempt and it
+     * still put an installer progress window on screen, which is what Jose saw
+     * updating 0.0.0129 → 0.0.0131: the app is replacing itself, and a setup
+     * window appearing over your work makes that feel like installing software
+     * rather than an app restarting. The person already agreed by pressing
+     * Update; there is nothing left to tell them.
+     *
+     * What they do see is the spinner in the build stamp, then the app closing
+     * and coming back — which is the whole story.
+     *
+     * Deliberately NOT /SUPPRESSMSGBOXES. Inno still raises a message box if
+     * the install actually fails, and that is the one moment silence would be
+     * wrong: the app would close, reopen on the old version, and nothing would
+     * ever say why.
      *
      * /CLOSEAPPLICATIONS lets Inno shut this app down so its files can be
-     * replaced, and /RESTARTAPPLICATIONS starts it again afterwards, so the
-     * whole thing reads as the app restarting itself.
+     * replaced.
+     *
+     * /RESTARTAPPLICATIONS is deliberately NOT passed. It asks the Windows
+     * Restart Manager to relaunch what it closed, and on 1 Sep it did not —
+     * the update installed and the app stayed shut. The installer's [Run]
+     * entry starts the app instead. Passing this flag as well would override
+     * RestartApplications=no in the .iss and put both mechanisms back in play,
+     * which risks two copies of the app running.
      *
      * /NORESTART because nothing here justifies rebooting the machine, and an
      * installer that might is one nobody runs during a work day.
      */
     await Process.start(target.path, [
-      '/SILENT',
+      '/VERYSILENT',
       '/CLOSEAPPLICATIONS',
-      '/RESTARTAPPLICATIONS',
       '/NORESTART',
     ], mode: ProcessStartMode.detached);
   } catch (e) {

@@ -4,6 +4,7 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
+import 'device_display.dart';
 
 /// PC Specs — the device roster (people, each expandable inline to their
 /// devices — no modal) plus an at-a-glance panel.
@@ -223,6 +224,28 @@ String _moduleLabel(Session session, String key) {
       .join(' ');
 }
 
+/// This person's own most-recently-seen agent device, or `null` when they
+/// have none within [window]. Used to collapse the glance panel's "Desktop
+/// app" list to one line per person — their newest agent — while dropping
+/// anyone whose only agent device has gone quiet for longer than [window].
+Map<String, dynamic>? _mostRecentAgentWithin(_Person person, Duration window) {
+  final cutoff = DateTime.now().toUtc().subtract(window);
+  Map<String, dynamic>? best;
+  DateTime? bestSeen;
+
+  for (final device in person.devices) {
+    if (!isDesktopAgent(device)) continue;
+    final seen = DateTime.tryParse(device['last_seen_at'] as String? ?? '');
+    if (seen == null || seen.toUtc().isBefore(cutoff)) continue;
+    if (best == null || seen.isAfter(bestSeen!)) {
+      best = device;
+      bestSeen = seen;
+    }
+  }
+
+  return best;
+}
+
 num? _diskFreeGb(Map<String, dynamic> device) {
   final specs = device['specs'];
   if (specs is! Map<String, dynamic>) return null;
@@ -289,10 +312,36 @@ class _PersonTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final anyOnline = person.devices.any(isOnline);
+    // Agent devices (screenshot- or specs-capable) sort first, so a person
+    // signed in from both their desktop app and a browser tab defaults to
+    // the desktop app — not whichever session happened to arrive first from
+    // the server. Owner: the switcher should land on the machine, not the
+    // browser.
+    final active = person.devices.where(isOnline).toList()
+      ..sort(_byAgentThenRecency);
+    final anyOnline = active.isNotEmpty;
     final current = person.devices.isEmpty
         ? null
         : person.devices.first['current_module'] as String?;
+
+    // What actually gets a row: every active device, or — when nobody is
+    // online — the single most-recently-seen one, so the tile is never
+    // empty just because everyone signed out. Every device NOT shown here
+    // folds into the stale group below, collapsed behind a toggle rather
+    // than listed as an equal to the device someone is actually on right
+    // now — that equal-weight listing is the clutter this rewrite exists
+    // to remove (owner: "it should only show the active one").
+    final shown = active.isNotEmpty
+        ? active
+        : [_mostRecentlySeen(person.devices)];
+    final shownIds = shown.map((d) => d['id']).toSet();
+    final stale = [
+      for (final device in person.devices)
+        if (!shownIds.contains(device['id'])) device,
+    ];
+    final earlierSuffix = stale.isEmpty
+        ? ''
+        : ' · ${stale.length} earlier';
 
     return ExpansionTile(
       // Expanded on first render: the roster's own screen test asserts on a
@@ -328,21 +377,139 @@ class _PersonTile extends StatelessWidget {
         ],
       ),
       subtitle: Text(
-        person.devices.length == 1
-            ? '1 device'
-            : '${person.devices.length} devices',
+        anyOnline ? '${shown.length} active$earlierSuffix' : 'offline$earlierSuffix',
         style: theme.textTheme.bodyMedium,
       ),
       children: [
-        for (final device in person.devices)
+        if (shown.length > 1)
+          _ActiveDeviceSwitcher(devices: shown, isOnline: isOnline)
+        else
           _DeviceRow(
-            key: ValueKey('monitoring-device-${device['id']}'),
-            device: device,
-            online: isOnline(device),
+            key: ValueKey('monitoring-device-${shown.first['id']}'),
+            device: shown.first,
+            online: isOnline(shown.first),
+          ),
+        // Collapsed by default (ExpansionTile's own initiallyExpanded
+        // defaults to false) — a nested tile rather than a hand-rolled
+        // bool, since ExpansionTile already owns exactly the expand/collapse
+        // state this needs.
+        if (stale.isNotEmpty)
+          ExpansionTile(
+            tilePadding: const EdgeInsets.fromLTRB(24, 0, 16, 0),
+            title: Text(
+              'Show ${stale.length} earlier '
+              'session${stale.length == 1 ? '' : 's'}',
+              style: theme.textTheme.bodyMedium,
+            ),
+            children: [
+              for (final device in stale)
+                _DeviceRow(
+                  key: ValueKey('monitoring-device-${device['id']}'),
+                  device: device,
+                  online: isOnline(device),
+                ),
+            ],
           ),
       ],
     );
   }
+}
+
+/// The device to show for a person nobody is currently signed in as — max by
+/// `last_seen_at`, so the tile is never empty just because everyone is
+/// offline. A missing or unparseable stamp sorts as the oldest possible,
+/// the same treatment [_seenAgo] gives it ("never").
+Map<String, dynamic> _mostRecentlySeen(List<Map<String, dynamic>> devices) {
+  var best = devices.first;
+  var bestSeen = DateTime.tryParse(best['last_seen_at'] as String? ?? '') ??
+      DateTime.fromMillisecondsSinceEpoch(0);
+
+  for (final device in devices.skip(1)) {
+    final seen = DateTime.tryParse(device['last_seen_at'] as String? ?? '') ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+    if (seen.isAfter(bestSeen)) {
+      best = device;
+      bestSeen = seen;
+    }
+  }
+
+  return best;
+}
+
+/// Agent devices (see [isDesktopAgent]) sort before everything else; within
+/// the same tier, the most-recently-seen device sorts first. Used to order
+/// the "active" list a person's tile shows, so the default (index 0) is
+/// always the desktop app when one is active, never a browser tab that
+/// merely happened to arrive first from the server.
+int _byAgentThenRecency(Map<String, dynamic> a, Map<String, dynamic> b) {
+  final agentA = isDesktopAgent(a);
+  final agentB = isDesktopAgent(b);
+  if (agentA != agentB) return agentA ? -1 : 1;
+
+  final seenA = DateTime.tryParse(a['last_seen_at'] as String? ?? '') ??
+      DateTime.fromMillisecondsSinceEpoch(0);
+  final seenB = DateTime.tryParse(b['last_seen_at'] as String? ?? '') ??
+      DateTime.fromMillisecondsSinceEpoch(0);
+  return seenB.compareTo(seenA);
+}
+
+/// More than one device is active at once — a row of chips, one selected
+/// device's [_DeviceRow] shown below it, rather than every active session
+/// stacked as an equal row. The selected index is the only reason this
+/// needs to be a StatefulWidget instead of another loop in [_PersonTile].
+class _ActiveDeviceSwitcher extends StatefulWidget {
+  const _ActiveDeviceSwitcher({required this.devices, required this.isOnline});
+
+  final List<Map<String, dynamic>> devices;
+  final bool Function(Map<String, dynamic>) isOnline;
+
+  @override
+  State<_ActiveDeviceSwitcher> createState() => _ActiveDeviceSwitcherState();
+}
+
+class _ActiveDeviceSwitcherState extends State<_ActiveDeviceSwitcher> {
+  int _selected = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final index = _selected < widget.devices.length ? _selected : 0;
+    final device = widget.devices[index];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 16, 4),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              for (var i = 0; i < widget.devices.length; i++)
+                ChoiceChip(
+                  label: Text(_chipLabel(widget.devices[i])),
+                  selected: i == index,
+                  onSelected: (_) => setState(() => _selected = i),
+                ),
+            ],
+          ),
+        ),
+        _DeviceRow(
+          key: ValueKey('monitoring-device-${device['id']}'),
+          device: device,
+          online: widget.isOnline(device),
+        ),
+      ],
+    );
+  }
+}
+
+/// A switcher chip's label: platform badge + the row's own label, e.g.
+/// "WINDOWS Shop desktop" — same two facts [_DeviceRow] shows, just on one
+/// line, so the chip that swaps a device in is identifiable before you tap.
+String _chipLabel(Map<String, dynamic> device) {
+  final platform = (device['platform'] as String? ?? '').toUpperCase();
+  final label = friendlyDeviceName(device);
+  return platform.isEmpty ? label : '$platform $label';
 }
 
 class _StatusDot extends StatelessWidget {
@@ -384,8 +551,7 @@ class _DeviceRow extends StatelessWidget {
     // simply has not reported yet. `containsKey` is what tells them apart.
     final hasSpecsKey = device.containsKey('specs');
     final specs = device['specs'];
-    final label =
-        device['label'] as String? ?? device['platform'] as String? ?? 'Device';
+    final label = friendlyDeviceName(device);
     final platform = (device['platform'] as String? ?? '').toUpperCase();
     final seen = device['last_seen_at'] as String?;
 
@@ -521,6 +687,13 @@ class _GlancePanel extends StatelessWidget {
   /// sub-project; this is the glance panel noticing the same fact early.
   static const num lowDiskGb = 10;
 
+  /// An agent device silent longer than this drops out of the "Desktop app"
+  /// list entirely — a stale historical row from months ago is not "a
+  /// machine running the desktop app" in any useful sense, and showing it
+  /// forever is exactly the per-session-row noise this rewrite exists to
+  /// remove.
+  static const Duration recentAgentWindow = Duration(hours: 24);
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -536,6 +709,17 @@ class _GlancePanel extends StatelessWidget {
       for (final entry in agentDevices)
         if ((_diskFreeGb(entry.$2) ?? lowDiskGb) < lowDiskGb) entry,
     ];
+
+    // One line per PERSON, not one per device row — a person signed in
+    // from both their desktop and an old laptop used to draw two equal
+    // rows here. Each line is that person's own most-recently-seen agent
+    // device, and a device that has not reported in over a day drops out
+    // entirely rather than sitting here as permanent, meaningless noise.
+    final recentDesktopApps = <(_Person, Map<String, dynamic>)>[];
+    for (final person in people) {
+      final device = _mostRecentAgentWithin(person, recentAgentWindow);
+      if (device != null) recentDesktopApps.add((person, device));
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -573,7 +757,7 @@ class _GlancePanel extends StatelessWidget {
                           .map(
                             (e) =>
                                 '${e.$1.name}’s '
-                                '${e.$2['label'] ?? e.$2['platform']}',
+                                '${friendlyDeviceName(e.$2)}',
                           )
                           .join(', '),
                       style: theme.textTheme.bodyMedium,
@@ -590,23 +774,29 @@ class _GlancePanel extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Devices with agent', style: theme.textTheme.titleSmall),
+                Text('Desktop app', style: theme.textTheme.titleSmall),
+                const SizedBox(height: 2),
+                Text(
+                  'Machines running the EzBizi desktop app — they report '
+                  'hardware and can be screen-viewed.',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                ),
                 const SizedBox(height: 8),
-                if (agentDevices.isEmpty)
+                if (recentDesktopApps.isEmpty)
                   Text(
                     'No desktop agents have reported in yet.',
                     style: theme.textTheme.bodyMedium,
                   )
                 else
-                  for (final entry in agentDevices)
+                  for (final entry in recentDesktopApps)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       child: Row(
                         children: [
                           Expanded(
                             child: Text(
-                              (entry.$2['label'] as String?) ??
-                                  (entry.$2['platform'] as String? ?? 'Device'),
+                              '${entry.$1.name} · ${friendlyDeviceName(entry.$2)}',
                               style: theme.textTheme.bodyMedium,
                               overflow: TextOverflow.ellipsis,
                             ),

@@ -215,7 +215,7 @@ class PhoneSmsTest extends TestCase
         });
     }
 
-    public function test_messages_list_returns_granted_rows_and_filters_by_peer(): void
+    public function test_messages_list_covers_lines_in_reach_and_filters_by_peer(): void
     {
         $t = $this->provisionTenant();
         $desk = $this->userWithRole($t, 'Desk list', ['phone.view']);
@@ -272,8 +272,11 @@ class PhoneSmsTest extends TestCase
             ->assertOk()
             ->json('data');
 
-        $this->assertCount(2, $all);
-        $this->assertNotContains($hidden->id, array_column($all, 'id'));
+        // Three, not two. The third row is the one this list used to hide for
+        // want of a grant on its line; since 2 Sep the tab plus reach is the
+        // whole rule, and all three lines belong to this company.
+        $this->assertCount(3, $all);
+        $this->assertContains($hidden->id, array_column($all, 'id'));
         $this->assertSame('See you Thursday', collect($all)->firstWhere('id', $kept->id)['body']);
         $this->assertArrayHasKey('customer_id', $all[0]);
         $this->assertArrayNotHasKey('credentials', $all[0]);
@@ -294,7 +297,13 @@ class PhoneSmsTest extends TestCase
     public function test_messages_list_for_an_ungranted_number_is_forbidden(): void
     {
         $t = $this->provisionTenant();
-        $viewer = $this->userWithRole($t, 'No grant list', ['phone.view']);
+        // Out of reach, not merely ungranted.
+        //
+        // Grants stopped being per number on 2 Sep, so "no grant" no longer
+        // refuses anything. The refusal this test exists for is still real —
+        // it just belongs to §4 reach now, so the viewer is pinned to one
+        // franchise and the line is company-scoped.
+        $viewer = $this->userWithRole($t, 'No grant list', ['phone.view'], onlyAt: $t['franchise']);
 
         $number = $this->inTenant($t['org'], function () use ($t) {
             [, $number] = $this->openLine($t, e164: '+12035551013');
@@ -310,7 +319,13 @@ class PhoneSmsTest extends TestCase
     public function test_send_without_a_grant_on_the_line_is_forbidden(): void
     {
         $t = $this->provisionTenant();
-        $viewer = $this->userWithRole($t, 'No grant', ['phone.view']);
+        // Out of reach, not merely ungranted.
+        //
+        // Grants stopped being per number on 2 Sep, so "no grant" no longer
+        // refuses anything. The refusal this test exists for is still real —
+        // it just belongs to §4 reach now, so the viewer is pinned to one
+        // franchise and the line is company-scoped.
+        $viewer = $this->userWithRole($t, 'No grant', ['phone.view'], onlyAt: $t['franchise']);
 
         $number = $this->inTenant($t['org'], function () use ($t) {
             [, $number] = $this->openLine($t, e164: '+12035551005');

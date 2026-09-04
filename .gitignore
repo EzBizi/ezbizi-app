@@ -70,7 +70,7 @@ Thumbs.db
 # Release artefacts — installers and app bundles, produced by scripts/release.sh.
 # Derived from a commit, tens of MB each, and a fresh blob on every build. They
 # are uploaded to Play and handed to testers, not versioned here.
-/dist
+/Distribution
 
 # PHPUnit's test-result cache. Rewritten by every run, so tracking it made the
 # tree dirty after any test and blocked release.sh. Laravel gitignores it by
@@ -84,7 +84,12 @@ Thumbs.db
 # app on a simulator. Derived output: 2.7 MB of PNGs that this repo would push
 # to the production server on every deploy, and that any machine with the
 # simulator can regenerate.
-/store-screenshots/
+# Unanchored on purpose. This was `/store-screenshots/`, which only matches the
+# repository root - but `flutter drive` runs in client/, so the screenshots land
+# in client/store-screenshots/ and were never ignored at all. Two megabytes of
+# PNGs, one `git add -A` from being committed, behind a rule everyone believed
+# was covering them.
+store-screenshots/
 
 # Laravel's schema dump. NOT committed, deliberately.
 #

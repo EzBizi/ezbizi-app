@@ -17,7 +17,6 @@ import '../screens/marketing_screen.dart';
 import '../screens/phone_screen.dart';
 import '../screens/scheduling_screen.dart';
 import '../screens/services_screen.dart';
-import '../screens/tasks_screen.dart';
 import '../screens/web_screen.dart';
 import 'api_client.dart';
 import 'session.dart';
@@ -54,15 +53,6 @@ final Map<String, ModuleScreen> moduleScreens = {
   'dashboard': ModuleScreen(
     Icons.dashboard_outlined,
     (api, session) => DashboardScreen(api: api, session: session),
-  ),
-  'tasks': ModuleScreen(
-    Icons.checklist_outlined,
-    (api, session) => TasksScreen(
-      api: api,
-      session: session,
-      // HomeShell supplies real address navigation for the live destination.
-      onOpenRecordRoute: (_) {},
-    ),
   ),
   'customers': ModuleScreen(
     Icons.people_outline,
@@ -118,15 +108,20 @@ final Map<String, ModuleScreen> moduleScreens = {
     Icons.desktop_windows_outlined,
     (api, session) => MonitoringScreen(api: api, session: session),
   ),
-  // ── The three modules Marketing draws inside itself ────────────
+  // ── Where a module is drawn is not decided here ────────────────
   //
-  // Still here, and they have to be: an entry in this map answers "what do I
-  // render for this key", and that question is asked whether the answer is
-  // drawn in the sidebar or in another module's tab strip. What decides which
-  // is `parent` on the server's own declaration, read straight off /me — see
-  // `_hasDestination` in main.dart for the rail's half and MarketingScreen for
-  // the strip's. Nothing in this file lists them, which is the point: the day
-  // one moves back out, or a fourth moves in, no Dart changes.
+  // An entry in this map answers "what do I render for this key", and that
+  // question is asked whether the answer is drawn in the sidebar or in another
+  // module's tab strip. What decides which is `parent` on the server's own
+  // declaration, read straight off /me — see `_hasDestination` in main.dart for
+  // the rail's half and MarketingScreen for the strip's.
+  //
+  // That claim was tested on 2026-09-03 and held: Leads moved OUT of Marketing
+  // to a row of its own and Web Management moved IN, and this file did not
+  // change a line for it. The entries below are grouped by nothing but the
+  // order they were written in, and deliberately so — a comment here listing
+  // who is nested where is a second opinion that goes stale the next time the
+  // owner rearranges the sidebar.
   //
   // A call coming in, not a person or a chart. A lead is somebody who rang or
   // messaged the business about work; `person_add` would say "a new contact"

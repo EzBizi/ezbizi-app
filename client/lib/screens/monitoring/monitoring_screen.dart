@@ -3,25 +3,39 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/tag.dart';
+import 'camera_monitoring_tab.dart';
+import 'desktop_monitoring_tab.dart';
 import 'pc_specs_tab.dart';
 
 /// Monitoring — a sub-tab strip (spec §"Sub-project 1") holding PC Specs,
-/// with Camera Monitoring and Desktop Monitoring declared and not built.
+/// Desktop Monitoring, and Camera Monitoring.
 ///
-/// ── Why the other two are chips here rather than absent ────────────
+/// ── Why a locked chip rather than an absent one ──────────────────────
 ///
-/// The module design doc puts PC Specs first in the build order and sketches
-/// the other two for later (Sub-projects 2 and 3). A tab that silently does
-/// not exist reads as a permission somebody lost; this is the same "coming
-/// soon" answer ComingSoonScreen and Marketing's Newsletter chip already give
-/// at the size of a whole screen, applied here at the size of one chip inside
-/// a single-permission module — `monitoring.view` gates the tab, not which
-/// sub-tab inside it exists yet.
+/// A tab that silently does not exist reads as a permission somebody lost;
+/// this is the same "coming soon" answer ComingSoonScreen and Marketing's
+/// Newsletter chip already give at the size of a whole screen, applied here
+/// at the size of one chip inside a single-permission module —
+/// `monitoring.view` gates the tab, not which sub-tab inside it a given
+/// viewer may open.
 ///
-/// They carry no `onSelected` — there is no screen behind them to switch to,
-/// so an interactive-looking control that goes nowhere would be worse than a
-/// disabled one.
-class MonitoringScreen extends StatelessWidget {
+/// A locked chip carries no `onSelected` — there is no screen behind it this
+/// viewer may switch to, so an interactive-looking control that goes nowhere
+/// would be worse than a disabled one.
+///
+/// ── Desktop Monitoring's and Camera Monitoring's own gates ───────────
+///
+/// Their endpoints (`GET /monitoring/screenshots*`, `GET /monitoring/cameras`)
+/// are gated server-side by `monitoring.screenshots.view` and
+/// `monitoring.cameras.view` respectively — SEPARATE grants from `specs.view`,
+/// each added in the slice its tab belongs to. Rather than let a caller who
+/// lacks one click through to a tab that would just 403 on every fetch, the
+/// chip itself falls back to the locked "Soon" look — [DesktopMonitoringTab]
+/// and [CameraMonitoringTab] each carry their own copy of this same check too
+/// (`session.me.can(...)`, see their class doc comments), the same
+/// defence-in-depth every permission-gated screen in this app uses; this is
+/// only what decides whether the CHIP is worth making selectable at all.
+class MonitoringScreen extends StatefulWidget {
   const MonitoringScreen({
     super.key,
     required this.api,
@@ -32,7 +46,21 @@ class MonitoringScreen extends StatelessWidget {
   final Session session;
 
   @override
+  State<MonitoringScreen> createState() => _MonitoringScreenState();
+}
+
+enum _SubTab { pcSpecs, desktopMonitoring, cameraMonitoring }
+
+class _MonitoringScreenState extends State<MonitoringScreen> {
+  _SubTab _active = _SubTab.pcSpecs;
+
+  @override
   Widget build(BuildContext context) {
+    final canViewScreenshots =
+        widget.session.me?.can('monitoring.screenshots.view') ?? false;
+    final canViewCameras =
+        widget.session.me?.can('monitoring.cameras.view') ?? false;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -46,27 +74,55 @@ class MonitoringScreen extends StatelessWidget {
               children: [
                 ChoiceChip(
                   label: const Text('PC Specs'),
-                  selected: true,
-                  onSelected: (_) {},
+                  selected: _active == _SubTab.pcSpecs,
+                  onSelected: (_) => setState(() => _active = _SubTab.pcSpecs),
                 ),
-                const ChoiceChip(
-                  label: _SoonLabel('Camera Monitoring'),
-                  selected: false,
-                  onSelected: null,
-                ),
-                const ChoiceChip(
-                  label: _SoonLabel('Desktop Monitoring'),
-                  selected: false,
-                  onSelected: null,
-                ),
+                if (canViewCameras)
+                  ChoiceChip(
+                    label: const Text('Camera Monitoring'),
+                    selected: _active == _SubTab.cameraMonitoring,
+                    onSelected: (_) =>
+                        setState(() => _active = _SubTab.cameraMonitoring),
+                  )
+                else
+                  const ChoiceChip(
+                    label: _SoonLabel('Camera Monitoring'),
+                    selected: false,
+                    onSelected: null,
+                  ),
+                if (canViewScreenshots)
+                  ChoiceChip(
+                    label: const Text('Desktop Monitoring'),
+                    selected: _active == _SubTab.desktopMonitoring,
+                    onSelected: (_) =>
+                        setState(() => _active = _SubTab.desktopMonitoring),
+                  )
+                else
+                  const ChoiceChip(
+                    label: _SoonLabel('Desktop Monitoring'),
+                    selected: false,
+                    onSelected: null,
+                  ),
               ],
             ),
           ),
         ),
         const Divider(height: 1),
-        Expanded(child: PcSpecsTab(api: api, session: session)),
+        Expanded(child: _body(canViewScreenshots, canViewCameras)),
       ],
     );
+  }
+
+  Widget _body(bool canViewScreenshots, bool canViewCameras) {
+    if (_active == _SubTab.desktopMonitoring && canViewScreenshots) {
+      return DesktopMonitoringTab(api: widget.api, session: widget.session);
+    }
+
+    if (_active == _SubTab.cameraMonitoring && canViewCameras) {
+      return CameraMonitoringTab(api: widget.api, session: widget.session);
+    }
+
+    return PcSpecsTab(api: widget.api, session: widget.session);
   }
 }
 

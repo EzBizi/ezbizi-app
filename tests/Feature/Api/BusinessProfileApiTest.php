@@ -8,6 +8,7 @@ use App\Models\SocialConnection;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /**
@@ -41,6 +42,44 @@ class BusinessProfileApiTest extends TestCase
             'is_published'       => true,
             ...$attributes,
         ]));
+    }
+
+    public function test_one_failing_profile_does_not_turn_an_empty_result_into_an_error(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+
+        foreach (['acct-good', 'acct-bad'] as $account) {
+            $this->inTenant($t['org'], function () use ($t, $account) {
+                $c = new SocialConnection;
+                $c->forceFill([
+                    'organization_id' => $t['org']->id,
+                    'scope_type'      => SocialConnection::SCOPE_ORGANIZATION,
+                    'scope_id'        => $t['org']->id,
+                    'provider'        => SocialProvider::GoogleBusinessProfile->value,
+                    'remote_id'       => $account,
+                    'display_name'    => $account,
+                ]);
+                $c->connect(['refresh_token' => 'rt-'.$account]);
+                $c->save();
+            });
+        }
+
+        config([
+            'services.business_profile.client_id'     => 'client.apps.googleusercontent.com',
+            'services.business_profile.client_secret' => 'client-secret',
+        ]);
+
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'at-fresh', 'expires_in' => 3600], 200),
+            'mybusinessbusinessinformation.googleapis.com/v1/*acct-good/locations*' => Http::response(['locations' => []], 200),
+            'mybusinessbusinessinformation.googleapis.com/v1/*acct-bad/locations*'  => Http::response(['error' => ['status' => 'PERMISSION_DENIED']], 403),
+        ]);
+
+        $this->signedInAs($t['admin'])
+            ->postJson('/api/v1/business-profile/sync')
+            ->assertOk()
+            ->assertJsonPath('data.fetched', 0)
+            ->assertJsonCount(1, 'data.failures');
     }
 
     public function test_a_listing_is_shown_with_its_address_on_one_line(): void

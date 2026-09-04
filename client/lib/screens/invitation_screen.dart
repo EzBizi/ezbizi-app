@@ -1,3 +1,4 @@
+import '../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -187,7 +188,7 @@ class _InvitationScreenState extends State<InvitationScreen> {
       'password': _password.text,
       if (_firstName.text.trim().isNotEmpty) 'first_name': _firstName.text.trim(),
       if (_lastName.text.trim().isNotEmpty) 'last_name': _lastName.text.trim(),
-      if (_phone.text.trim().isNotEmpty) 'phone': _phone.text.trim(),
+      if (_phone.text.trim().isNotEmpty) 'phone': toE164(_phone.text),
       if (_dateOfBirth.text.trim().isNotEmpty)
         'date_of_birth': _dateOfBirth.text.trim(),
       if (_gender != null) 'gender': _gender,
@@ -356,6 +357,7 @@ class _InvitationScreenState extends State<InvitationScreen> {
           controller: _phone,
           enabled: !_busy && !_accepted,
           keyboardType: TextInputType.phone,
+          inputFormatters: const [PhoneNumberInputFormatter()],
           decoration: const InputDecoration(
             labelText: 'Phone',
             border: OutlineInputBorder(),

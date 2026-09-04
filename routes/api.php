@@ -45,8 +45,12 @@ use App\Http\Controllers\Api\MailboxMessagesController;
 use App\Http\Controllers\Api\MarketingController;
 use App\Http\Controllers\Api\MetaCallbacksController;
 use App\Http\Controllers\Api\MicrosoftMailAuthController;
+use App\Http\Controllers\Api\Monitoring\CamerasController as MonitoringCamerasController;
 use App\Http\Controllers\Api\Monitoring\DevicesController as MonitoringDevicesController;
 use App\Http\Controllers\Api\Monitoring\HeartbeatController as MonitoringHeartbeatController;
+use App\Http\Controllers\Api\Monitoring\LiveViewController as MonitoringLiveViewController;
+use App\Http\Controllers\Api\Monitoring\RemoteControlController as MonitoringRemoteControlController;
+use App\Http\Controllers\Api\Monitoring\ScreenshotsController as MonitoringScreenshotsController;
 use App\Http\Controllers\Api\NotificationsController;
 use App\Http\Controllers\Api\OrganizationCanvasController;
 use App\Http\Controllers\Api\OrganizationProfileController;
@@ -54,6 +58,8 @@ use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\Phone\CallsController as PhoneCallsController;
 use App\Http\Controllers\Api\Phone\CallTagsController as PhoneCallTagsController;
 use App\Http\Controllers\Api\Phone\ConnectionsController as PhoneConnectionsController;
+use App\Http\Controllers\Api\StaffMessagesController;
+use App\Http\Controllers\Api\Phone\ExtensionsController as PhoneExtensionsController;
 use App\Http\Controllers\Api\Phone\FlowsController as PhoneFlowsController;
 use App\Http\Controllers\Api\Phone\HoursController as PhoneHoursController;
 use App\Http\Controllers\Api\Phone\MessagesController as PhoneMessagesController;
@@ -78,6 +84,7 @@ use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ReviewsController;
 use App\Http\Controllers\Api\RolesController;
 use App\Http\Controllers\Api\SchedulingAreasController;
+use App\Http\Controllers\Api\SchedulingAvailabilityController;
 use App\Http\Controllers\Api\SchedulingPatternController;
 use App\Http\Controllers\Api\SendingIdentitiesController;
 use App\Http\Controllers\Api\ServiceGroupsController;
@@ -86,47 +93,28 @@ use App\Http\Controllers\Api\ServicesController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\SocialAuthController;
 use App\Http\Controllers\Api\SocialConnectionsController;
+use App\Http\Controllers\Api\SocialMediaHandoffController;
+use App\Http\Controllers\Api\MailchimpConnectController;
+use App\Http\Controllers\Api\NewsletterAudiencesController;
+use App\Http\Controllers\Api\NewslettersController;
+use App\Http\Controllers\Api\NewsletterUnsubscribeController;
 use App\Http\Controllers\Api\SocialPostsController;
 use App\Http\Controllers\Api\SocialProvidersController;
+use App\Http\Controllers\Api\ThumbtackWebhookController;
 use App\Http\Controllers\Api\StaffAccountsController;
 use App\Http\Controllers\Api\StaffAuthController;
 use App\Http\Controllers\Api\StaffClientVersionsController;
 use App\Http\Controllers\Api\StaffController;
 use App\Http\Controllers\Api\StaffPhoneRequestsController;
-use App\Http\Controllers\Api\Tasks\MyTasksController;
-use App\Http\Controllers\Api\Tasks\TaskBoardMembersController;
-use App\Http\Controllers\Api\Tasks\TaskBoardPreferencesController;
-use App\Http\Controllers\Api\Tasks\TaskBoardRecoveryController;
-use App\Http\Controllers\Api\Tasks\TaskBoardRowsController;
-use App\Http\Controllers\Api\Tasks\TaskBoardsController;
-use App\Http\Controllers\Api\Tasks\TaskBulkController;
-use App\Http\Controllers\Api\Tasks\TaskCollaboratorsController;
-use App\Http\Controllers\Api\Tasks\TaskColumnsController;
-use App\Http\Controllers\Api\Tasks\TaskColumnValuesController;
-use App\Http\Controllers\Api\Tasks\TaskDependenciesController;
-use App\Http\Controllers\Api\Tasks\TaskDetailsController;
-use App\Http\Controllers\Api\Tasks\TaskDuplicationController;
-use App\Http\Controllers\Api\Tasks\TaskExportsController;
-use App\Http\Controllers\Api\Tasks\TaskFoldersController;
-use App\Http\Controllers\Api\Tasks\TaskGroupsController;
-use App\Http\Controllers\Api\Tasks\TaskImportsController;
-use App\Http\Controllers\Api\Tasks\TaskOrderController;
-use App\Http\Controllers\Api\Tasks\TaskParticipantsController;
-use App\Http\Controllers\Api\Tasks\TaskPrioritiesController;
-use App\Http\Controllers\Api\Tasks\TaskQuickSearchController;
-use App\Http\Controllers\Api\Tasks\TaskRecordLinksController;
-use App\Http\Controllers\Api\Tasks\TasksController;
-use App\Http\Controllers\Api\Tasks\TaskStatusesController;
-use App\Http\Controllers\Api\Tasks\TaskUpdateAttachmentsController;
-use App\Http\Controllers\Api\Tasks\TaskUpdatesController;
-use App\Http\Controllers\Api\Tasks\TaskViewsController;
-use App\Http\Controllers\Api\Tasks\TaskWatchPreferencesController;
+use App\Http\Controllers\Api\StaffSuggestionsController;
+use App\Http\Controllers\Api\SuggestionsController;
 use App\Http\Controllers\Api\TimeClockController;
 use App\Http\Controllers\Api\Training\AssignmentsController as TrainingAssignmentsController;
 use App\Http\Controllers\Api\Training\GuidesController as TrainingGuidesController;
 use App\Http\Controllers\Api\Training\LearnController as TrainingLearnController;
 use App\Http\Controllers\Api\Training\ProgressController as TrainingProgressController;
 use App\Http\Controllers\Api\Training\TestsController as TrainingTestsController;
+use App\Http\Controllers\Api\SmsCodesController;
 use App\Http\Controllers\Api\TwoFactorController;
 use App\Http\Controllers\Api\UiStringsController;
 use App\Http\Controllers\Api\VehicleAssignmentsController;
@@ -140,7 +128,6 @@ use App\Http\Controllers\Api\Web\PublicValuesController as WebPublicValuesContro
 use App\Http\Controllers\Api\Web\SnippetController as WebSnippetController;
 use App\Http\Controllers\Api\Web\SitesController as WebSitesController;
 use App\Http\Controllers\Api\Web\ValuesController as WebValuesController;
-use App\Http\Middleware\EnsureTaskRouteAccess;
 use App\Models\PlatformStaffLink;
 use App\Support\Auth\PasswordPolicy;
 use App\Support\Auth\TwoFactorPolicy;
@@ -322,6 +309,52 @@ Route::post('v1/social/meta/data-deletion', [MetaCallbacksController::class, 'da
     ->middleware('throttle:60,1')
     ->name('social.meta.data-deletion');
 
+/*
+| The media handoff. Instagram will not take an upload - it fetches an
+| image_url or video_url with an anonymous crawler - so this serves one
+| tenant's file to one fetch, then publishing deletes it. `signed` is the
+| authentication and there is no other; MediaHandoff spells out what makes
+| that safe enough to have chosen.
+|
+| Throttled tight. A real post causes ONE fetch, occasionally a retry.
+*/
+Route::get('v1/social/media/{handle}', [SocialMediaHandoffController::class, 'show'])
+    ->middleware(['signed', 'throttle:30,1'])
+    ->where('handle', '[0-9A-Za-z]+(\.[0-9a-z]+)?')
+    ->name('social.media');
+
+/*
+| Thumbtack telling us a lead arrived.
+|
+| Unauthenticated in the session sense - Thumbtack calls it, so there is no
+| token and no user. A credential WE chose and gave them at registration comes
+| back in our own header, and that header is the whole authentication; the body
+| carries no proof of origin. See ThumbtackWebhookController.
+|
+| This is not a faster path to something we could poll for. Their API cannot
+| list negotiations at all, so an outage here loses enquiries permanently.
+| Throttled generously for that reason: refusing a real event costs a lead.
+*/
+Route::post('v1/social/thumbtack/webhook', ThumbtackWebhookController::class)
+    ->middleware('throttle:600,1')
+    ->name('social.thumbtack.webhook');
+
+/*
+ * Unsubscribe — PUBLIC and unauthenticated, and it has to be.
+ *
+ * The person clicking is a customer of a customer. They have no EzBizi account
+ * and never will, so any gate here would be a gate on the only lawful way out
+ * of a mailing list.
+ *
+ * GET renders a page with a button and changes NOTHING: mail clients and
+ * security scanners fetch every link in a message before a human sees it, and a
+ * GET that unsubscribed people would empty a list silently. POST is what
+ * records it. See the controller for what this does and does not defend against.
+ */
+Route::get('v1/newsletter/unsubscribe/{newsletter}', [NewsletterUnsubscribeController::class, 'show']);
+Route::post('v1/newsletter/unsubscribe/{newsletter}', [NewsletterUnsubscribeController::class, 'store'])
+    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class]);
+
 Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callback'])
     ->middleware('throttle:30,1')
     ->where('network', SocialProvider::oauthRoutePattern())
@@ -451,95 +484,18 @@ Route::prefix('v1')
 
         Route::post('auth/logout', [AuthController::class, 'logout']);
 
-        Route::middleware(EnsureTaskRouteAccess::class)->group(function () {
-            Route::get('tasks/folders', [TaskFoldersController::class, 'index']);
-            Route::post('tasks/folders', [TaskFoldersController::class, 'store']);
-            Route::patch('tasks/folders/{folder}', [TaskFoldersController::class, 'update']);
-            Route::post('tasks/folders/{folder}/archive', [TaskFoldersController::class, 'archive']);
-            Route::post('tasks/folders/{folder}/restore', [TaskFoldersController::class, 'restore']);
-
-            Route::get('tasks/boards', [TaskBoardsController::class, 'index']);
-            Route::post('tasks/boards', [TaskBoardsController::class, 'store']);
-            Route::get('tasks/my', [MyTasksController::class, 'index']);
-            Route::get('tasks/search', [TaskQuickSearchController::class, 'index']);
-            Route::get('tasks/boards/{board}', [TaskBoardsController::class, 'show']);
-            Route::patch('tasks/boards/{board}', [TaskBoardsController::class, 'update']);
-            Route::post('tasks/boards/{board}/archive', [TaskBoardsController::class, 'archive']);
-            Route::post('tasks/boards/{board}/restore', [TaskBoardsController::class, 'restore']);
-            Route::post('tasks/boards/{board}/duplicate', [TaskBoardsController::class, 'duplicate']);
-            Route::get('tasks/boards/{board}/duplicate-source', [TaskBoardsController::class, 'duplicateSource']);
-            Route::post('tasks/boards/{board}/imports/preview', [TaskImportsController::class, 'preview']);
-            Route::post('tasks/boards/{board}/imports/commit', [TaskImportsController::class, 'commit']);
-            Route::get('tasks/boards/{board}/exports/{format}', [TaskExportsController::class, 'show']);
-            Route::get('tasks/boards/{board}/rows', [TaskBoardRowsController::class, 'index']);
-            Route::get('tasks/boards/{board}/tasks/{taskId}', [TaskDetailsController::class, 'show']);
-            Route::get('tasks/boards/{board}/views', [TaskViewsController::class, 'index']);
-            Route::post('tasks/boards/{board}/views', [TaskViewsController::class, 'store']);
-            Route::post('tasks/boards/{board}/views/reorder', [TaskViewsController::class, 'reorder']);
-            Route::patch('tasks/boards/{board}/views/{viewId}', [TaskViewsController::class, 'update']);
-            Route::delete('tasks/boards/{board}/views/{viewId}', [TaskViewsController::class, 'destroy']);
-            Route::post('tasks/boards/{board}/views/{viewId}/duplicate', [TaskViewsController::class, 'duplicate']);
-            Route::put('tasks/boards/{board}/views/{viewId}/preference', [TaskViewsController::class, 'preference']);
-
-            Route::post('tasks/boards/{board}/tasks', [TasksController::class, 'store']);
-            Route::patch('tasks/{task}', [TasksController::class, 'update']);
-            Route::put('tasks/{task}/collaborators', [TaskCollaboratorsController::class, 'update']);
-            Route::put('tasks/{task}/watch', [TaskWatchPreferencesController::class, 'update']);
-            Route::post('tasks/{task}/update-attachments', [TaskUpdateAttachmentsController::class, 'store']);
-            Route::post('tasks/{task}/updates', [TaskUpdatesController::class, 'store']);
-            Route::patch('tasks/{task}/updates/{update}', [TaskUpdatesController::class, 'update']);
-            Route::post('tasks/{task}/updates/{update}/archive', [TaskUpdatesController::class, 'archive']);
-            Route::get('tasks/{task}/record-links/types', [TaskRecordLinksController::class, 'types']);
-            Route::get('tasks/{task}/record-links/search', [TaskRecordLinksController::class, 'search']);
-            Route::post('tasks/{task}/record-links', [TaskRecordLinksController::class, 'store']);
-            Route::delete('tasks/{task}/record-links/{link}', [TaskRecordLinksController::class, 'destroy']);
-            Route::post('tasks/{task}/dependencies', [TaskDependenciesController::class, 'store']);
-            Route::delete('tasks/dependencies/{dependency}', [TaskDependenciesController::class, 'destroy']);
-            Route::post('tasks/{task}/archive', [TasksController::class, 'archive']);
-            Route::post('tasks/{task}/restore', [TasksController::class, 'restore']);
-            Route::put('tasks/{task}/columns/{column}', [TaskColumnValuesController::class, 'update']);
-            Route::post('tasks/{task}/duplicate', [TaskDuplicationController::class, 'store']);
-            Route::post('tasks/boards/{board}/bulk', [TaskBulkController::class, 'store']);
-            Route::post('tasks/boards/{board}/order', [TaskOrderController::class, 'store']);
-
-            Route::get('tasks/boards/{board}/members', [TaskBoardMembersController::class, 'index']);
-            Route::post('tasks/boards/{board}/members', [TaskBoardMembersController::class, 'store']);
-            Route::patch('tasks/boards/{board}/members/{membership}', [TaskBoardMembersController::class, 'update']);
-            Route::delete('tasks/boards/{board}/members/{membership}', [TaskBoardMembersController::class, 'destroy']);
-            Route::post('tasks/boards/{board}/recovery', [TaskBoardRecoveryController::class, 'store']);
-            Route::put('tasks/boards/{board}/preference', [TaskBoardPreferencesController::class, 'update']);
-            Route::get('tasks/boards/{board}/participants', [TaskParticipantsController::class, 'index']);
-
-            Route::post('tasks/boards/{board}/groups', [TaskGroupsController::class, 'store']);
-            Route::post('tasks/boards/{board}/groups/reorder', [TaskGroupsController::class, 'reorder']);
-            Route::patch('tasks/boards/{board}/groups/{group}', [TaskGroupsController::class, 'update']);
-            Route::post('tasks/boards/{board}/groups/{group}/archive', [TaskGroupsController::class, 'archive']);
-            Route::post('tasks/boards/{board}/groups/{group}/restore', [TaskGroupsController::class, 'restore']);
-
-            Route::post('tasks/boards/{board}/statuses', [TaskStatusesController::class, 'store']);
-            Route::post('tasks/boards/{board}/statuses/reorder', [TaskStatusesController::class, 'reorder']);
-            Route::patch('tasks/boards/{board}/statuses/{status}', [TaskStatusesController::class, 'update']);
-            Route::post('tasks/boards/{board}/statuses/{status}/archive', [TaskStatusesController::class, 'archive']);
-            Route::post('tasks/boards/{board}/statuses/{status}/restore', [TaskStatusesController::class, 'restore']);
-
-            Route::post('tasks/boards/{board}/priorities', [TaskPrioritiesController::class, 'store']);
-            Route::post('tasks/boards/{board}/priorities/reorder', [TaskPrioritiesController::class, 'reorder']);
-            Route::patch('tasks/boards/{board}/priorities/{priority}', [TaskPrioritiesController::class, 'update']);
-            Route::post('tasks/boards/{board}/priorities/{priority}/archive', [TaskPrioritiesController::class, 'archive']);
-            Route::post('tasks/boards/{board}/priorities/{priority}/restore', [TaskPrioritiesController::class, 'restore']);
-
-            Route::post('tasks/boards/{board}/columns', [TaskColumnsController::class, 'store']);
-            Route::post('tasks/boards/{board}/columns/reorder', [TaskColumnsController::class, 'reorder']);
-            Route::patch('tasks/boards/{board}/columns/core/{coreKey}', [TaskColumnsController::class, 'updateCore']);
-            Route::post('tasks/boards/{board}/columns/{column}/options', [TaskColumnsController::class, 'storeOption']);
-            Route::post('tasks/boards/{board}/columns/{column}/options/reorder', [TaskColumnsController::class, 'reorderOptions']);
-            Route::patch('tasks/boards/{board}/columns/{column}/options/{option}', [TaskColumnsController::class, 'updateOption']);
-            Route::post('tasks/boards/{board}/columns/{column}/options/{option}/archive', [TaskColumnsController::class, 'archiveOption']);
-            Route::post('tasks/boards/{board}/columns/{column}/options/{option}/restore', [TaskColumnsController::class, 'restoreOption']);
-            Route::patch('tasks/boards/{board}/columns/{column}', [TaskColumnsController::class, 'update']);
-            Route::post('tasks/boards/{board}/columns/{column}/archive', [TaskColumnsController::class, 'archive']);
-            Route::post('tasks/boards/{board}/columns/{column}/restore', [TaskColumnsController::class, 'restore']);
-        });
+        /*
+         * Suggestions — the one module with no permission behind it.
+         *
+         * Deliberately absent from ModuleRegistry so that no organization can
+         * remove it (see App\Models\Suggestion), which means there is no key for
+         * EnsureModuleAvailable or a permission middleware to check. Reachable
+         * by anybody signed in, which is the requirement.
+         */
+        Route::get('suggestions', [SuggestionsController::class, 'index']);
+        Route::post('suggestions', [SuggestionsController::class, 'store']);
+        Route::patch('suggestions/{suggestion}', [SuggestionsController::class, 'update']);
+        Route::delete('suggestions/{suggestion}', [SuggestionsController::class, 'destroy']);
 
         // ── The vertical slice: Customer → Job (§18 Phase 2) ─────
         //
@@ -659,6 +615,7 @@ Route::prefix('v1')
          * under it that arrives first. Ordering here is load-bearing, not
          * tidiness.
          */
+        Route::get('scheduling/availability', [SchedulingAvailabilityController::class, 'show']);
         Route::put('scheduling/areas/{area}/slots', [SchedulingAreasController::class, 'slots']);
         Route::put('scheduling/areas/{area}/zips', [SchedulingAreasController::class, 'zips']);
         Route::post('scheduling/pattern/preview', [SchedulingPatternController::class, 'preview']);
@@ -821,6 +778,12 @@ Route::prefix('v1')
         Route::get('hr/people/{user}/consents', [HrPeopleController::class, 'consents']);
         Route::patch('hr/people/{user}', [HrPeopleController::class, 'update']);
 
+        // Sign-in recovery, gated by hr.security.reset rather than hr.edit — see
+        // UserPolicy::resetSecurity for why clearing somebody's second factor is
+        // not the same authority as editing their row.
+        Route::post('hr/people/{user}/totp/reset', [HrPeopleController::class, 'resetTotp']);
+        Route::post('hr/people/{user}/reset-link', [HrPeopleController::class, 'resetLink']);
+
         Route::get('hr/invitations', [HrInvitationsController::class, 'index']);
         Route::post('hr/invitations', [HrInvitationsController::class, 'store']);
         // Resend and revoke, one at a time. The owner was explicit that there is
@@ -957,6 +920,36 @@ Route::prefix('v1')
         //
         // The send itself is a job per account, so a 201 here means queued and
         // never means posted. The targets it answers say which.
+        // ── Newsletter ───────────────────────────────────────────
+        //
+        // Its own module (`newsletter.*`), drawn inside Marketing. Five
+        // permissions rather than two, because `send` has to be grantable on
+        // its own: writing a mailing and putting it in front of twelve hundred
+        // customers are different acts.
+        //
+        // Everything files on the VIEW and reads by the same rule connections
+        // use — an organization-level newsletter is visible down, a sibling
+        // company's never is. Out of view answers 404, not 403, because a
+        // sibling learning a mailing exists is itself the leak.
+        Route::get('newsletters', [NewslettersController::class, 'index']);
+        Route::post('newsletters', [NewslettersController::class, 'store']);
+        Route::put('newsletters/{newsletter}', [NewslettersController::class, 'update']);
+        Route::delete('newsletters/{newsletter}', [NewslettersController::class, 'destroy']);
+
+        // The preview is the SAME document the send carries, rendered by the
+        // same class — see BlockRenderer on why nothing renders twice.
+        Route::get('newsletters/{newsletter}/preview', [NewslettersController::class, 'preview']);
+        Route::post('newsletters/{newsletter}/send', [NewslettersController::class, 'send']);
+
+        Route::get('newsletter/audiences', [NewsletterAudiencesController::class, 'index']);
+        Route::post('newsletter/audiences', [NewsletterAudiencesController::class, 'store']);
+
+        // Mailchimp is connected here and from Settings > Integrations. It is
+        // NOT in the social catalogue: `SocialProvider::all()` filters to
+        // publishing networks, and "post to Mailchimp" is not an act.
+        Route::post('newsletter/mailchimp/connect', [MailchimpConnectController::class, 'store']);
+        Route::get('newsletter/mailchimp/lists', [MailchimpConnectController::class, 'lists']);
+
         Route::get('social/posts', [SocialPostsController::class, 'index']);
         Route::post('social/posts', [SocialPostsController::class, 'store']);
         Route::delete('social/connections/{connection}', [SocialConnectionsController::class, 'destroy']);
@@ -983,6 +976,18 @@ Route::prefix('v1')
         Route::delete('phone/connections/{connection}', [PhoneConnectionsController::class, 'destroy']);
         // Trust & caller identity. The attestation grade is captured on the
         // call rows; the observation log has no API behind it by necessity.
+        // Colleagues messaging each other. Not gated on a permission: both
+        // ends are staff of the same organization, and "a colleague you may
+        // not message" is not a concept this business has.
+        Route::get('staff-messages', [StaffMessagesController::class, 'index']);
+        Route::get('staff-messages/unread', [StaffMessagesController::class, 'unread']);
+        Route::post('staff-messages', [StaffMessagesController::class, 'store']);
+
+        // Short numbers that reach one person. Twilio has no concept of an
+        // extension; the digits are ours to resolve before we dial.
+        Route::get('phone/extensions', [PhoneExtensionsController::class, 'index']);
+        Route::put('phone/extensions', [PhoneExtensionsController::class, 'update']);
+
         Route::get('phone/trust/attestation', [PhoneTrustController::class, 'attestation']);
         Route::get('phone/trust/observations', [PhoneTrustController::class, 'observations']);
         Route::post('phone/trust/observations', [PhoneTrustController::class, 'storeObservation']);
@@ -1107,6 +1112,16 @@ Route::prefix('v1')
         Route::put('phone/presence', [PhonePresenceController::class, 'update']);
 
         // Records: calls on granted numbers. Playback streams Twilio media.
+        // Ring my own handset, then the customer. The only way to place a
+        // call from a platform with no Twilio Voice SDK, which is every one
+        // of them except a browser.
+        // Availability as a fact about the PERSON, so the app bar can show and
+        // change it without knowing which connections they are on.
+        Route::get('phone/presence/me', [PhonePresenceController::class, 'mine']);
+        Route::put('phone/presence/me', [PhonePresenceController::class, 'setMine']);
+
+        Route::post('phone/calls/bridge', [PhoneCallsController::class, 'bridge']);
+
         Route::get('phone/calls', [PhoneCallsController::class, 'index']);
         Route::get('phone/calls/{call}/recording', [PhoneCallsController::class, 'recording']);
 
@@ -1363,6 +1378,9 @@ Route::prefix('v1')
         // The catalogue route sits BEFORE the resource, or /automations/catalogue
         // binds as an automation id and 404s.
         Route::get('automations/catalogue', [AutomationsController::class, 'catalogue']);
+        // Before the resource for the same reason catalogue is — `trigger-fields`
+        // would otherwise bind as an automation id and 404.
+        Route::get('automations/trigger-fields', [AutomationsController::class, 'triggerFields']);
         Route::get('automations/{automation}/runs', [AutomationsController::class, 'runs']);
         Route::post('automations/{automation}/test', [AutomationsController::class, 'test']);
         Route::post('automations/{automation}/activate/{version}', [AutomationsController::class, 'activateVersion']);
@@ -1378,6 +1396,46 @@ Route::prefix('v1')
         // heartbeat is a background beat with no screen behind it, which is
         // the one case idle must NOT extend on.
         Route::get('monitoring/devices', [MonitoringDevicesController::class, 'index']);
+
+        // ── Monitoring: screenshots read side (2026-08-31-monitoring-screenshots, Task 4) ──
+        //
+        // Same idle reasoning as the devices roster just above: an admin
+        // reading captures IS navigation. The upload route
+        // (`POST monitoring/screenshots`) stays in the idle-less group with
+        // the heartbeat instead — see ScreenshotsController's docblock.
+        Route::get('monitoring/screenshots', [MonitoringScreenshotsController::class, 'index']);
+        Route::get('monitoring/screenshots/{id}', [MonitoringScreenshotsController::class, 'show']);
+
+        // ── Monitoring: Live View, the viewer's half (2026-09-02-monitoring-live-view) ──
+        //
+        // Same idle reasoning again: a manager opening a live view, and the
+        // re-POSTs that keep it open while they watch, ARE navigation. The
+        // agent's half — `live-wanted` and `live-frame` — is a background
+        // loop with no screen behind it, so it stays in the idle-less group
+        // below with the heartbeat instead. See LiveViewController's docblock.
+        Route::post('monitoring/devices/{id}/watch', [MonitoringLiveViewController::class, 'watch']);
+        Route::get('monitoring/devices/{id}/live-frame', [MonitoringLiveViewController::class, 'liveFrameShow']);
+
+        // ── Monitoring: Remote Control, the viewer's half (2026-09-02-monitoring-remote-control) ──
+        //
+        // Same idle reasoning as `watch` just above: a manager opening a
+        // control session, and the input they send while driving it, ARE
+        // navigation. The agent's poll — `input-pending` — is a background
+        // loop with no screen behind it, so it stays in the idle-less group
+        // below with the heartbeat instead. See RemoteControlController's
+        // docblock.
+        Route::post('monitoring/devices/{id}/control', [MonitoringRemoteControlController::class, 'control']);
+        Route::post('monitoring/devices/{id}/input', [MonitoringRemoteControlController::class, 'input']);
+
+        // ── Monitoring: cameras (2026-09-01-monitoring-cameras, generic-protocol v1) ──
+        //
+        // A normal admin action (register/edit/remove a camera config), not a
+        // background beat, so all four routes stay in THIS idle-bearing group —
+        // see CamerasController's docblock.
+        Route::get('monitoring/cameras', [MonitoringCamerasController::class, 'index']);
+        Route::post('monitoring/cameras', [MonitoringCamerasController::class, 'store']);
+        Route::patch('monitoring/cameras/{id}', [MonitoringCamerasController::class, 'update']);
+        Route::delete('monitoring/cameras/{id}', [MonitoringCamerasController::class, 'destroy']);
 
         // Changing it while signed in. Needs the current password: a session
         // proves somebody sat down at an unlocked laptop, not that they are the
@@ -1430,6 +1488,16 @@ Route::prefix('v1')
         Route::post('me/totp', [TwoFactorController::class, 'begin']);
         Route::post('me/totp/confirm', [TwoFactorController::class, 'confirm']);
         Route::delete('me/totp', [TwoFactorController::class, 'disable']);
+
+        // EzBizi texting the person, from EzBizi's own number - not any
+        // tenant's line. Beside the authenticator because it is the same
+        // question ("how do we know it is you"), and under /me for the same
+        // reason: RequireTwoFactorEnrolment exempts /me, so somebody who has
+        // not enrolled can still reach the thing that lets them.
+        Route::get('me/sms-codes', [SmsCodesController::class, 'show']);
+        Route::post('me/sms-codes', [SmsCodesController::class, 'begin']);
+        Route::post('me/sms-codes/confirm', [SmsCodesController::class, 'confirm']);
+        Route::delete('me/sms-codes', [SmsCodesController::class, 'disable']);
 
         // ── Notifications (§12) ──────────────────────────────────
         //
@@ -1557,7 +1625,7 @@ Route::prefix('v1')
                         return $staff === null ? null : [
                             'tier' => $staff->tier,
                             'staff_name' => $staff->name,
-                            'focused_at' => 'https://dev.ezbizi.com',
+                            'focused_at' => (string) config('ezbizi.hosts.staff'),
                         ];
                     })(),
                     // The organization requires a second factor and this account
@@ -1674,6 +1742,31 @@ Route::prefix('v1')
     ->group(function () {
         Route::post('monitoring/heartbeat', [MonitoringHeartbeatController::class, 'store'])
             ->middleware('throttle:120,1');
+
+        // A device's own periodic screen capture — same idle-less reasoning
+        // as the heartbeat above (see ScreenshotsController's docblock).
+        Route::post('monitoring/screenshots', [MonitoringScreenshotsController::class, 'store'])
+            ->middleware('throttle:60,1');
+
+        // Live View's agent half — "is anyone watching me" and "here is my
+        // latest frame", polled/sent every ~1-2s for as long as the agent
+        // runs. Same idle-less reasoning as the heartbeat and the screenshot
+        // upload just above: a background loop must never be what keeps a
+        // walked-away session's idle window open. See LiveViewController's
+        // docblock. Throttled generously above the ~1-2s send rate the
+        // controller already assumes, the same margin ScreenshotsController
+        // and HeartbeatController leave themselves.
+        Route::get('monitoring/live-wanted', [MonitoringLiveViewController::class, 'liveWanted'])
+            ->middleware('throttle:120,1');
+        Route::post('monitoring/live-frame', [MonitoringLiveViewController::class, 'liveFrame'])
+            ->middleware('throttle:120,1');
+
+        // Remote Control's agent half — "what should I apply, and is
+        // anyone still driving me" — same idle-less and throttle reasoning
+        // as `live-wanted` just above. See RemoteControlController's
+        // docblock.
+        Route::get('monitoring/input-pending', [MonitoringRemoteControlController::class, 'inputPending'])
+            ->middleware('throttle:120,1');
     });
 
 /*
@@ -1752,6 +1845,11 @@ Route::prefix('v1/staff')
         // control plane, behind the `staff` middleware, not `tenant`.
         Route::get('phone-requests', [StaffPhoneRequestsController::class, 'index']);
         Route::post('phone-requests/{request}/decide', [StaffPhoneRequestsController::class, 'decide']);
+
+        // The suggestion queue. Reads across every tenant on purpose — control
+        // plane, behind the `staff` middleware, not `tenant`.
+        Route::get('suggestions', [StaffSuggestionsController::class, 'index']);
+        Route::post('suggestions/{suggestion}/decide', [StaffSuggestionsController::class, 'decide']);
 
         Route::get('client-versions', [StaffClientVersionsController::class, 'index']);
         Route::put('client-versions/{platform}', [StaffClientVersionsController::class, 'update']);

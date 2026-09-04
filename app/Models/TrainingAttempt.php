@@ -44,7 +44,8 @@ class TrainingAttempt extends Model implements CarriesAutomationScope, HoldsPers
     {
         return [
             new PersonalDataEntry('user_id', PersonalDataEntry::IDENTITY,
-                'Which person sat this test.',
+                'Which person sat this test, so the result can be shown to them and to '
+                    .'whoever has to evidence that they were trained.',
                 Erasure::keep('A foreign key to the account, which the purge anonymises at '
                     .'its one home. Nulling it here would orphan a result from the person '
                     .'it is about without removing anything about them.')),

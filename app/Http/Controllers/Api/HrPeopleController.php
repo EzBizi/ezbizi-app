@@ -13,6 +13,7 @@ use App\Support\Modules\PermissionCatalogue;
 use App\Support\Privacy\ConsentLedger;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
+use App\Services\Auth\PasswordResets;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -176,6 +177,102 @@ class HrPeopleController extends Controller
      *   422  that role reaches further than yours                      (§4)
      *   422  that would leave the organization with no administrator   (§4)
      */
+    /**
+     * POST /api/v1/hr/people/{user}/totp/reset
+     *
+     * The lost-phone path, for an employer rather than for EzBizi staff.
+     *
+     * Somebody loses the device holding their authenticator and there is no way
+     * back in: the factor cannot be proven and the person who could clear it is
+     * the person locked out. Until this existed the only remedy was a shell on
+     * the production box, which is how Rodrigo was let back in on 3 Sep — an
+     * administrator asking a developer to run tinker is not a feature, it is the
+     * absence of one.
+     *
+     * ── What the employer does NOT get ───────────────────────────
+     *
+     * The staff-side twin (`StaffAccountsController::resetTotp`) begins a new
+     * enrolment and hands the secret back, so a Lead Developer can read the QR
+     * code out. This deliberately does not. An employer who knows an employee's
+     * TOTP secret can generate that employee's codes forever, which is not a
+     * second factor any more — it is a shared one. Here the factor is simply
+     * removed, and the employee enrols a fresh one themselves at next sign-in,
+     * from a secret nobody else has seen.
+     *
+     * ── Their sessions go too ────────────────────────────────────
+     *
+     * A factor is reset because it was lost or is suspected stolen. Either way
+     * the tokens minted while it was live are exactly as suspect as the factor,
+     * and leaving them alive would mean a thief keeps the access this call was
+     * made to take away.
+     */
+    public function resetTotp(Request $request, User $user): JsonResponse
+    {
+        $this->authorize('resetSecurity', $user);
+
+        $had = $user->hasTotp() || $user->hasPendingTotp();
+
+        DB::transaction(function () use ($user) {
+            $user->forceFill([
+                'totp_secret' => null,
+                'pending_totp_secret' => null,
+                'totp_confirmed_at' => null,
+                'recovery_codes' => null,
+                'last_totp_timestamp' => null,
+            ])->save();
+
+            $user->tokens()->delete();
+        });
+
+        // Recorded whether or not there was anything to clear. "An administrator
+        // reset this person's second factor" is the fact worth keeping, and a
+        // reset that found nothing still ended every session they had.
+        $this->audit->log('person.totp_reset', $user, ['had_factor' => $had]);
+
+        return response()->json(['data' => [
+            'had_factor' => $had,
+            'note' => $had
+                ? 'Their authenticator is removed and they have been signed out '
+                    .'everywhere. They will set up a new one the next time they sign in.'
+                : 'They had no authenticator set up. They have been signed out '
+                    .'everywhere all the same.',
+        ]]);
+    }
+
+    /**
+     * POST /api/v1/hr/people/{user}/reset-link
+     *
+     * A single-use password reset link, returned rather than emailed.
+     *
+     * Same shape and the same one-hour token the staff side issues, and for the
+     * same reason it is returned instead of sent: an employee who cannot receive
+     * their own email is exactly the case an employer needs to solve, and mail
+     * is not the channel to solve it on.
+     *
+     * The administrator never sets the password. They hand over a link, and the
+     * person chooses it themselves — so nobody ends up knowing a colleague's
+     * password, which is the thing "reset their password" usually means and
+     * should not.
+     */
+    public function resetLink(Request $request, User $user): JsonResponse
+    {
+        $this->authorize('resetSecurity', $user);
+
+        $issued = app(PasswordResets::class)->issue($user, $request->ip());
+
+        $this->audit->log('person.password_reset_link_issued', $user, [
+            'expires_at' => $issued['expires_at']->toIso8601String(),
+        ]);
+
+        return response()->json(['data' => [
+            'url' => rtrim(config('app.url'), '/').'/reset?token='.$issued['token'],
+            'expires_at' => $issued['expires_at']->toIso8601String(),
+            'note' => 'Single use, valid one hour. Hand it over directly — it is not '
+                .'emailed, because somebody locked out of their mailbox is the case '
+                .'this exists for.',
+        ]]);
+    }
+
     public function update(Request $request, User $user): JsonResponse
     {
         $this->authorize('update', $user);

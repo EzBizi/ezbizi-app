@@ -170,6 +170,14 @@ class User extends Authenticatable implements HoldsPersonalData
             'pending_totp_secret' => 'encrypted',
             'recovery_codes'      => 'encrypted:array',
             'last_totp_timestamp' => 'integer',
+
+            // Codes texted by EzBizi itself. `sms_code_hash` is a hash of a
+            // six-digit number that lives for ten minutes, hashed for the same
+            // reason a password is: a code readable in a backup is a code
+            // somebody can use.
+            'sms_code_consent_at'   => 'datetime',
+            'sms_code_confirmed_at' => 'datetime',
+            'sms_code_expires_at'   => 'datetime',
             // §2.1 category 6 — theirs, nobody else's.
             'preferences'         => 'array',
         ];
@@ -185,11 +193,6 @@ class User extends Authenticatable implements HoldsPersonalData
     public function assignments(): HasMany
     {
         return $this->hasMany(Assignment::class);
-    }
-
-    public function taskBoardMemberships(): HasMany
-    {
-        return $this->hasMany(TaskBoardMember::class);
     }
 
     // ── permissions (§4) ─────────────────────────────────────────

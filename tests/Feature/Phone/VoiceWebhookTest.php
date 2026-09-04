@@ -20,6 +20,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 use Twilio\Security\RequestValidator;
+use App\Models\PhoneExtension;
 
 /**
  * Public Voice / status webhooks write call rows and raise automations (Task 10).
@@ -31,6 +32,385 @@ class VoiceWebhookTest extends TestCase
 {
     use BuildsTenants;
     use RefreshDatabase;
+
+    /**
+     * A browser call that Twilio describes as inbound is still outbound.
+     *
+     * Direction arrives as "inbound" for a browser-originated call — from
+     * Twilio's side the client IS calling in — so detection rested entirely on
+     * From beginning with "client:". When that inference did not hold, an
+     * outbound call was treated as inbound and answered by the line's own
+     * voicemail: somebody pressed Call and was invited to leave themselves a
+     * message.
+     *
+     * The client now states the direction outright. This posts the payload
+     * shape that broke it — Direction inbound, From NOT a client: identity —
+     * and asserts the call dials rather than records.
+     */
+    public function test_the_client_saying_outbound_beats_what_twilio_calls_the_call(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$connection, $authToken] = $this->inTenant($t['org'], function () use ($t) {
+            [$connection, , $authToken] = $this->openLine($t, e164: '+12035551008');
+
+            return [$connection, $authToken];
+        });
+
+        $url = $this->voiceUrl($t['org']->id, $connection->id);
+
+        $xml = $this->signedPost($url, [
+            'CallSid' => 'CA33333333333333333333333333333333',
+            'AccountSid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+
+            // Exactly the shape the old inference got wrong.
+            'Direction' => 'inbound',
+            'From' => '+12035551008',
+            'To' => '+13057242199',
+            'CallerId' => '+12035551008',
+            'EzBiziDirection' => 'outbound',
+            'CallStatus' => 'ringing',
+        ], $authToken)->assertOk()->getContent();
+
+        $this->assertStringContainsString('<Dial', $xml);
+        $this->assertStringContainsString('+13057242199', $xml);
+
+        // The symptom that was reported: the caller's own line answering them.
+        $this->assertStringNotContainsString('<Record', $xml);
+        $this->assertStringNotContainsString('leave a message', $xml);
+    }
+
+    /**
+     * A person calls out from the number assigned to them on Team.
+     *
+     * Before this, the caller ID was whatever the Call tab had selected — and
+     * nobody ever changed it, so every outbound call in the business went out
+     * under the first line on the account. Four people ringing four customers
+     * all showed the same number, and every callback landed on whoever
+     * answered that one line.
+     *
+     * The client normally sends its selection and that is honoured. This
+     * covers the case that actually fails: a call arriving with NO usable
+     * caller ID. Without the assignment it goes out as `client:<identity>`,
+     * which is not a number the account owns, so the carrier rejects it — a
+     * call that never connects and never says why.
+     */
+    public function test_an_outbound_call_uses_the_number_assigned_to_the_caller(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$connection, $authToken, $identity] = $this->inTenant($t['org'], function () use ($t) {
+            // Two lines, so "the assigned one" is a real choice rather than
+            // the only thing it could have picked.
+            [$connection, , $authToken, $identity] = $this->openLine($t, e164: '+12035551020');
+
+            $mine = PhoneNumber::factory()->create([
+                'connection_id' => $connection->id,
+                'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'e164' => '+12035559999',
+            ]);
+
+            $caller = User::query()->get()->first(
+                fn (User $user) => ClientIdentity::of($user) === $identity,
+            );
+
+            PhoneExtension::query()->create([
+                'organization_id' => $t['org']->id,
+                'connection_id' => $connection->id,
+                'user_id' => $caller->id,
+                'number_id' => $mine->id,
+            ]);
+
+            return [$connection, $authToken, $identity];
+        });
+
+        $xml = $this->signedPost($this->voiceUrl($t['org']->id, $connection->id), [
+            'CallSid' => 'CA55555555555555555555555555555555',
+            'AccountSid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'Direction' => 'inbound',
+            'From' => 'client:'.$identity,
+            'To' => '+13057242199',
+            'EzBiziDirection' => 'outbound',
+            'CallStatus' => 'ringing',
+        ], $authToken)->assertOk()->getContent();
+
+        $this->assertStringContainsString('+13057242199', $xml);
+        $this->assertStringContainsString(
+            'callerId="+12035559999"',
+            $xml,
+            'the call went out under some other line than the one assigned',
+        );
+
+        // Not the account's first line, which is what it used to fall to.
+        $this->assertStringNotContainsString('callerId="+12035551020"', $xml);
+    }
+
+    /**
+     * Somebody with no assignment must not borrow a colleague's number.
+     *
+     * Picking "some line on the account" would put one person's calls out
+     * under another person's number, and the customer rings back the wrong
+     * colleague — worse than a call that does not connect, because it looks
+     * like it worked.
+     */
+    public function test_an_unassigned_caller_does_not_borrow_somebody_elses_number(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$connection, $authToken, $identities] = $this->inTenant($t['org'], function () use ($t) {
+            [$connection, , $authToken, , $identities] = $this->openLine(
+                $t, e164: '+12035551030', desks: 2,
+            );
+
+            $mine = PhoneNumber::factory()->create([
+                'connection_id' => $connection->id,
+                'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'e164' => '+12035558888',
+            ]);
+
+            // Assigned to the FIRST desk only.
+            $assigned = User::query()->get()->first(
+                fn (User $user) => ClientIdentity::of($user) === $identities[0],
+            );
+
+            PhoneExtension::query()->create([
+                'organization_id' => $t['org']->id,
+                'connection_id' => $connection->id,
+                'user_id' => $assigned->id,
+                'number_id' => $mine->id,
+            ]);
+
+            return [$connection, $authToken, $identities];
+        });
+
+        // The SECOND desk calls out, holding no assignment of their own.
+        $xml = $this->signedPost($this->voiceUrl($t['org']->id, $connection->id), [
+            'CallSid' => 'CA66666666666666666666666666666666',
+            'AccountSid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'Direction' => 'inbound',
+            'From' => 'client:'.$identities[1],
+            'To' => '+13057242199',
+            'EzBiziDirection' => 'outbound',
+            'CallStatus' => 'ringing',
+        ], $authToken)->assertOk()->getContent();
+
+        $this->assertStringNotContainsString(
+            'callerId="+12035558888"',
+            $xml,
+            "an unassigned caller went out under a colleague's number",
+        );
+    }
+
+    /**
+     * Ringing a customer must not end in your own voicemail.
+     *
+     * ── The bug Jose reported twice, reproduced end to end ───────────
+     *
+     * Press Call, hear "This call may be recorded" — correct, that is the
+     * outbound TwiML — then hear "please leave a message after the tone" in
+     * your own greeting. Both fixes before this one touched the FIRST request,
+     * which was already right, so the symptom survived them both.
+     *
+     * The second request is where it went wrong. Twilio does not resend custom
+     * parameters to a `<Dial>` action URL, so the `EzBiziDirection` the client
+     * sent is gone, and `afterDial()` called `ringOrVoicemail()` for every
+     * call regardless of direction — which on an outbound leg means the
+     * caller's OWN line answers them.
+     *
+     * This drives the real two-request exchange rather than asserting on
+     * afterDial() directly, because the thing that was broken is what Twilio
+     * is told to come back to, and a unit test on the renderer would have
+     * passed against the bug.
+     */
+    public function test_an_outbound_call_that_is_not_answered_does_not_reach_your_own_voicemail(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$connection, $authToken, $identity] = $this->inTenant($t['org'], function () use ($t) {
+            [$connection, , $authToken, $identity] = $this->openLine($t, e164: '+12035551040');
+
+            return [$connection, $authToken, $identity];
+        });
+
+        $first = $this->signedPost($this->voiceUrl($t['org']->id, $connection->id), [
+            'CallSid' => 'CA77777777777777777777777777777777',
+            'AccountSid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'Direction' => 'inbound',
+            'From' => 'client:'.$identity,
+            'To' => '+13057242199',
+            'CallerId' => '+12035551040',
+            'EzBiziDirection' => 'outbound',
+            'CallStatus' => 'ringing',
+        ], $authToken)->assertOk()->getContent();
+
+        // Twilio comes back to whatever WE put in the action attribute, so the
+        // test follows it rather than assuming the shape.
+        $this->assertMatchesRegularExpression('/action="([^"]+)"/', $first);
+        preg_match('/action="([^"]+)"/', $first, $matches);
+        $action = html_entity_decode($matches[1]);
+
+        $this->assertStringContainsString(
+            'direction=outbound',
+            $action,
+            'the action URL does not carry the direction, so the second '
+                .'request has no way to know this call was outbound',
+        );
+
+        // The second request, exactly as Twilio sends it: its own parameters
+        // only, and NO EzBiziDirection.
+        $second = $this->signedPost($action, [
+            'CallSid' => 'CA77777777777777777777777777777777',
+            'AccountSid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'From' => 'client:'.$identity,
+            'To' => '+13057242199',
+            'CallStatus' => 'in-progress',
+            'DialCallStatus' => 'no-answer',
+        ], $authToken)->assertOk()->getContent();
+
+        $this->assertStringNotContainsString('<Record', $second,
+            'the caller was put through to voicemail on their own outgoing call');
+        $this->assertStringNotContainsString('leave a message', $second);
+        $this->assertStringContainsString('There was no answer', $second);
+    }
+
+    /** An INBOUND call that nobody answers still takes a message, as before. */
+    public function test_an_inbound_call_that_is_not_answered_still_reaches_voicemail(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$connection, $authToken] = $this->inTenant($t['org'], function () use ($t) {
+            [$connection, , $authToken] = $this->openLine($t, e164: '+12035551050');
+
+            return [$connection, $authToken];
+        });
+
+        $url = $this->voiceUrl($t['org']->id, $connection->id).'?batch=1';
+
+        $xml = $this->signedPost($url, [
+            'CallSid' => 'CA88888888888888888888888888888888',
+            'AccountSid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'Direction' => 'inbound',
+            'From' => '+15551110000',
+            'To' => '+12035551050',
+            'CallStatus' => 'in-progress',
+            'DialCallStatus' => 'no-answer',
+        ], $authToken)->assertOk()->getContent();
+
+        $this->assertStringContainsString('<Record', $xml,
+            'a customer nobody answered was not offered voicemail');
+    }
+
+    /**
+     * A caller ID this account does not hold is refused before the dial.
+     *
+     * Twilio requires the `callerId` on an outbound `<Dial>` to be a number
+     * the account owns or has verified, and refuses the moment the dial
+     * starts otherwise. The refusal is not something we ever see: it reaches
+     * the caller as a call that connects to nothing and explains nothing, and
+     * then — before this — as their own voicemail.
+     *
+     * The browser's selection is checked rather than trusted for the same
+     * reason anything else from a client is: the pad's choice can be stale,
+     * and a line can move between accounts while somebody has the tab open.
+     *
+     * A-1 Tools, which has a working softphone across web, desktop and mobile,
+     * validates the same thing in the same place. This was the piece EzBizi
+     * did not have.
+     */
+    public function test_a_caller_id_this_account_does_not_hold_is_refused(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$connection, $authToken, $identity] = $this->inTenant($t['org'], function () use ($t) {
+            [$connection, , $authToken, $identity] = $this->openLine($t, e164: '+12035551060');
+
+            return [$connection, $authToken, $identity];
+        });
+
+        $xml = $this->signedPost($this->voiceUrl($t['org']->id, $connection->id), [
+            'CallSid' => 'CA99999999999999999999999999999999',
+            'AccountSid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'Direction' => 'inbound',
+            'From' => 'client:'.$identity,
+            'To' => '+13057242199',
+
+            // A perfectly well-formed number that this account does not hold.
+            'CallerId' => '+14045550000',
+            'EzBiziDirection' => 'outbound',
+            'CallStatus' => 'ringing',
+        ], $authToken)->assertOk()->getContent();
+
+        $this->assertStringNotContainsString('<Dial', $xml,
+            'dialled with a caller ID Twilio would have rejected');
+        $this->assertStringContainsString('not one this phone account holds', $xml);
+        $this->assertStringNotContainsString('leave a message', $xml);
+    }
+
+    /**
+     * A failed call records WHY, not just that it failed.
+     *
+     * Outbound calling was reported broken four times across two days and
+     * every round was a guess, because the system threw the evidence away.
+     * Twilio said why both times it could — `DialCallStatus` on the dial's
+     * action request and `ErrorCode` on the status callback — and the module
+     * read both and kept neither: the code only to decide whether the whole
+     * LINE was broken, which a caller-ID fault is not.
+     *
+     * So "failed" and "nobody picked up" left identical rows. On an outbound
+     * call that is the difference between "they were out" and "this could
+     * never have worked", which is the entire question being asked.
+     */
+    public function test_a_dial_that_fails_records_why(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$connection, $authToken, $identity] = $this->inTenant($t['org'], function () use ($t) {
+            [$connection, , $authToken, $identity] = $this->openLine($t, e164: '+12035551070');
+
+            return [$connection, $authToken, $identity];
+        });
+
+        $sid = 'CAbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+
+        $first = $this->signedPost($this->voiceUrl($t['org']->id, $connection->id), [
+            'CallSid' => $sid,
+            'AccountSid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'Direction' => 'inbound',
+            'From' => 'client:'.$identity,
+            'To' => '+13057242199',
+            'CallerId' => '+12035551070',
+            'EzBiziDirection' => 'outbound',
+            'CallStatus' => 'ringing',
+        ], $authToken)->assertOk()->getContent();
+
+        preg_match('/action="([^"]+)"/', $first, $matches);
+        $action = html_entity_decode($matches[1]);
+
+        $this->signedPost($action, [
+            'CallSid' => $sid,
+            'AccountSid' => 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'From' => 'client:'.$identity,
+            'To' => '+13057242199',
+            'CallStatus' => 'in-progress',
+
+            // Twilio refused it — the shape a bad caller ID takes.
+            'DialCallStatus' => 'failed',
+        ], $authToken)->assertOk();
+
+        $call = $this->inTenant(
+            $t['org'],
+            fn () => PhoneCall::query()->where('twilio_sid', $sid)->first(),
+        );
+
+        $this->assertNotNull($call, 'the outbound call was never recorded at all');
+        $this->assertSame(
+            'dial:failed',
+            $call->error_code,
+            'a refused call is indistinguishable from one nobody answered',
+        );
+    }
 
     public function test_inbound_creates_a_call_row_and_returns_twiml(): void
     {
@@ -394,7 +774,7 @@ class VoiceWebhookTest extends TestCase
         $this->assertSame('ringing', $call->status);
     }
 
-    public function test_calls_list_is_limited_to_granted_numbers(): void
+    public function test_calls_list_covers_every_line_in_reach(): void
     {
         $t = $this->provisionTenant();
         $viewer = $this->userWithRole($t, 'Desk records', ['phone.view']);
@@ -455,11 +835,15 @@ class VoiceWebhookTest extends TestCase
             ->assertOk()
             ->json('data');
 
-        $this->assertCount(1, $rows);
-        $this->assertSame($visible->id, $rows[0]['id']);
-        $this->assertSame('+15550006666', $rows[0]['from_e164']);
-        $this->assertSame('+12035551901', $rows[0]['to_e164']);
-        $this->assertNotContains($hidden->id, array_column($rows, 'id'));
+        // Both calls. The second sat on a line this role had no grant for,
+        // which is no longer a reason to hide anything — both lines are in
+        // this company and this person stands over it.
+        $this->assertCount(2, $rows);
+        $this->assertEqualsCanonicalizing(
+            [$visible->id, $hidden->id],
+            array_column($rows, 'id'),
+        );
+        $this->assertContains($hidden->id, array_column($rows, 'id'));
         $this->assertArrayHasKey('customer_id', $rows[0]);
         $this->assertArrayHasKey('voicemail', $rows[0]);
         $this->assertArrayNotHasKey('credentials', $rows[0]);

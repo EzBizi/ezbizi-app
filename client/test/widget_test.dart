@@ -513,6 +513,190 @@ void main() {
   //
   // Asserting on the painted width is the only check that distinguishes "faint"
   // from "not there", which is exactly the distinction that was missed.
+  testWidgets('a short window scrolls the destinations and keeps the tail', (
+    tester,
+  ) async {
+    // The defect this exists for: NavigationRail lays its destinations out in a
+    // Column and cannot scroll. In a bare Expanded, a sidebar shorter than its
+    // contents OVERFLOWED -- the destinations drew over Settings, and the ones
+    // underneath were unreachable rather than hidden, because there was nothing
+    // to scroll with. Reported from a 900px screen.
+    //
+    // 320px of height against fifteen destinations is well past the threshold.
+    tester.view.physicalSize = const Size(1200, 320);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: Row(
+            children: [
+              NavigationSidebar(
+                expanded: true,
+                width: 220,
+                destinations: [
+                  for (final name in const [
+                    'Dashboard', 'Human Resources', 'Customers',
+                    'Jobs', 'Scheduling', 'Inspection', 'Marketing',
+                    'Web Management', 'Phone', 'Fleet Management', 'Inventory',
+                    'Services', 'Email', 'Automations', 'Monitoring',
+                  ])
+                    Destination(name, Icons.circle_outlined, const SizedBox()),
+                ],
+                pinned: [
+                  Destination(
+                    'Settings',
+                    Icons.settings_outlined,
+                    const SizedBox(),
+                  ),
+                ],
+                staffOnly: const [],
+                selectedIndex: 0,
+                pinnedIndex: null,
+                staffIndex: null,
+                onSelected: (_) {},
+                onPinnedSelected: (_) {},
+                onStaffSelected: (_) {},
+              ),
+              const Expanded(child: SizedBox()),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // 1. It does not overflow. A RenderFlex overflow is an exception in a test,
+    //    so this is what actually fails if the scroll view is removed.
+    expect(
+      tester.takeException(),
+      isNull,
+      reason:
+          'The sidebar overflowed at 320px tall. The destinations need to '
+          'scroll -- a NavigationRail has no scrolling of its own.',
+    );
+
+    // 2. The destinations are genuinely scrollable rather than merely clipped.
+    //    Clipping would hide them with no way to reach them, which is the
+    //    defect wearing a tidier appearance.
+    final scroller = find.descendant(
+      of: find.byType(NavigationSidebar),
+      matching: find.byType(Scrollable),
+    );
+    expect(scroller, findsWidgets);
+
+    // 3. And the tail did NOT scroll away with them. Going to Settings is often
+    //    what somebody does because they could not find a module in the list.
+    expect(
+      find.text('Settings'),
+      findsOneWidget,
+      reason: 'Settings must stay pinned when the destinations scroll.',
+    );
+  });
+
+  /// The fifteen modules, in shell order.
+  List<Destination> modules() => [
+    for (final name in const [
+      'Dashboard', 'Human Resources', 'Customers',
+      'Jobs', 'Scheduling', 'Inspection', 'Marketing',
+      'Web Management', 'Phone', 'Fleet Management', 'Inventory',
+      'Services', 'Email', 'Automations', 'Monitoring',
+    ])
+      Destination(name, Icons.circle_outlined, const SizedBox()),
+  ];
+
+  Widget sidebar({
+    required bool expanded,
+    required ValueChanged<int> onSelected,
+  }) => MaterialApp(
+    theme: EzBiziTheme.light(),
+    home: Scaffold(
+      body: Row(
+        children: [
+          NavigationSidebar(
+            expanded: expanded,
+            width: 220,
+            destinations: modules(),
+            pinned: [
+              Destination('Settings', Icons.settings_outlined, const SizedBox()),
+            ],
+            staffOnly: const [],
+            selectedIndex: 0,
+            pinnedIndex: null,
+            staffIndex: null,
+            onSelected: onSelected,
+            onPinnedSelected: (_) {},
+            onStaffSelected: (_) {},
+          ),
+          const Expanded(child: SizedBox()),
+        ],
+      ),
+    ),
+  );
+
+  testWidgets('a filtered row opens the module it names, not the one at its '
+      'position', (tester) async {
+    // THE defect this feature can have, and it is silent.
+    //
+    // NavigationRail addresses destinations by POSITION. Hand it a filtered
+    // list and it reports the index within that list -- so the third visible
+    // row reports 1, which in the full list is Human Resources. Every row would
+    // open a plausible, wrong module, with no error anywhere. Nothing about the
+    // screen would look broken; you would just keep ending up somewhere else.
+    final opened = <int>[];
+    await tester.pumpWidget(sidebar(expanded: true, onSelected: opened.add));
+
+    // "man" keeps three of fifteen: Human Resources (1), Web Management (7),
+    // Fleet Management (9).
+    await tester.enterText(find.byType(TextField), 'man');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Scheduling'), findsNothing, reason: 'the filter is on');
+    expect(find.text('3 of 15 modules'), findsOneWidget);
+
+    await tester.tap(find.text('Fleet Management'));
+    await tester.pumpAndSettle();
+
+    expect(
+      opened,
+      [9],
+      reason:
+          'Fleet Management is destination 9. Reporting 2 means the rail was '
+          'handed a filtered list without mapping its indices back, and every '
+          'row below the first removed one opens the wrong module.',
+    );
+  });
+
+  testWidgets('the collapsed rail has no search, and a filter that matches '
+      'nothing explains itself', (tester) async {
+    await tester.pumpWidget(sidebar(expanded: false, onSelected: (_) {}));
+    expect(
+      find.byType(TextField),
+      findsNothing,
+      reason:
+          'At 80px there are no labels to search. An icon here would be a '
+          'control that only works by first undoing the state you chose.',
+    );
+
+    await tester.pumpWidget(sidebar(expanded: true, onSelected: (_) {}));
+    await tester.enterText(find.byType(TextField), 'invoic');
+    await tester.pumpAndSettle();
+
+    // An empty sidebar with no explanation is indistinguishable from a broken
+    // one, so it has to name what was typed and offer the way back.
+    expect(find.textContaining('invoic'), findsWidgets);
+    expect(find.textContaining('filtered, not empty'), findsOneWidget);
+    expect(
+      find.text('Settings'),
+      findsOneWidget,
+      reason: 'the tail never filters -- it is where you go when the list did '
+          'not have what you wanted',
+    );
+  });
+
   testWidgets('the sidebar rule is actually drawn, not zero-width', (
     tester,
   ) async {

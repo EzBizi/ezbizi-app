@@ -1,6 +1,6 @@
 # EzBizi — where things stand
 
-**2026-08-31.** One page. If something contradicts another document, this one is right —
+**2026-09-03.** One page. If something contradicts another document, this one is right —
 which only works if it is the newest, and on 6 August it was not: it claimed the off-site
 backup was still outstanding some three hours after `EZBIZI-TODO.md` recorded it closed.
 **Update this page in the same pass as the thing it describes, or delete the claim.** The four
@@ -17,10 +17,10 @@ rather than for trying harder.
 | Server panel | https://srv.ezbizi.com (Webmin) |
 | Stack | Laravel 13 · PHP 8.4 · MySQL 8 · Flutter web client |
 <!-- numbers:start -->
-| Tests | 2532 backend · 1122 client. Both gated on deploy: nothing ships if either is red. |
-| Client version | `v0.0.0121` — shown bottom-left in the app and on sign-in, so a stale cache is visible rather than guessed at. |
-| Production data | **2 organization(s) · 7 companies · 18 franchises · 13 users · 14 customers · 25 jobs.** Counted 2026-08-31 against the live database by `scripts/status-numbers.sh`, not typed. |
-| Permissions in production | **91 rows.** `ezbizi:sync-permissions` runs on every deploy, between the migration and the caches. |
+| Tests | ? backend · 10 client, from the last deploy that ran them. Gates are opt-in: `release.sh --gates`. |
+| Client version | `v0.0.0148` — shown bottom-left in the app and on sign-in, so a stale cache is visible rather than guessed at. |
+| Production data | **2 organization(s) · 7 companies · 18 franchises · 15 users · 14 customers · 25 jobs.** Counted 2026-09-03 against the live database by `scripts/status-numbers.sh`, not typed. |
+| Permissions in production | **97 rows.** `ezbizi:sync-permissions` runs on every deploy, between the migration and the caches. |
 <!-- numbers:end -->
 
 ## Build phases (§18 of the build plan)
@@ -32,79 +32,6 @@ rather than for trying harder.
 | 2 — foundation + vertical slice | Done. Organizations → Companies → Franchises → Users, Customers → Jobs. |
 | 3 — cross-cutting | **Done.** Automation engine, notifications, staff control plane, subscription enforcement, import/export. |
 | 4 — expansion | **Dashboards done** — the widget picker is replaced by module glances. One box per reachable sidebar tab, chart first, one period, cannot hide. Glances now include stock health, fleet due, customer book, jobs today/line, HR active/inactive, inspections by name. Spec `docs/superpowers/specs/2026-08-24-dashboard-module-boxes-design.md`. A1 Tools modules next, one at a time. **Inspection is live** as release `20260819130615` (2026-08-19). Builder publishes written-once versions; Generated Reports are frozen, searchable and archivable; New Inspection is a personal draft that submits to a report. Named inspections are granted per role the way inboxes are. Spec `docs/superpowers/specs/2026-08-18-inspection-design.md`, plan `docs/superpowers/plans/2026-08-18-inspection.md`. Five tables migrated, five `inspection.*` permissions synced (47 total), health-checked as `www-data` before the symlink swap. Administrator holds the tab implicitly. Other roles see it only after a grant on Roles, and only start a named inspection they have been offered. **Social Media Management** Posts layout is live. Monthly Calendar fills the pane width and height so the whole month is on screen (v0.0.0065). Catalogue rows use each network’s real brand mark (v0.0.0070). Connect for all nine networks: one `social_sign_ins` table, per-network OAuth start/callback/status (Facebook Pages, Instagram Login, Threads, LinkedIn, TikTok, Pinterest, YouTube, X). Bluesky is handle + app password. Catalogue is usable when the matching env is on the box; missing env is a sentence, not a 500. Live Connect still needs each console’s redirect URI and keys on `.env` — never in git. **Publish now is live** (2026-08-28): the composer takes words and one picture or video, a tickbox per account, and sends — one job per target, so one network refusing does not cost the others their post. Pinterest and TikTok send for real; the other seven are refused *before a row is written*, in a sentence saying the account is fine and posting will work without reconnecting (`GET /social/connections` carries `can_publish`, so the tickbox is greyed rather than the post queued and lost). A Sent list under the composer shows each target's outcome in the network's own words, and it now FOLLOWS a queued post until the queue answers — it read the list once and never again, so a target that failed two seconds later sat on screen saying "waiting to send", which is what a real publish on 2026-08-28 showed. **TikTok posts to the creator's drafts, not the profile**, and the account row says so before Publish is pressed: Direct Post requires TikTok's audit, and an unaudited app is refused with a sentence that blames the video. `TIKTOK_DIRECT_POST` flips it the day the audit clears — no code change. An attached file is DISPLAYED rather than named, because a filename is not confirmation when the post goes to a public account under the tenant's own name. `social.published` / `social.publish_failed` are declared raised and emitted per account. **Scheduling is live** (2026-08-28): a post can be sent later, at a wall-clock time in the VIEW's own timezone (TODO #20) — stored as typed with the clock beside it and resolved fresh each minute by `ezbizi:publish-due-social-posts`, so a corrected branch timezone moves the post to the right 9am rather than the wrong instant. A scheduled target reads `scheduled`, never `queued`, and the composer's button stops saying "Publish now" the moment it would be untrue. A time already past is refused, not sent immediately. **Attached video plays before it goes out** — `video_player` over an object URL on the bytes already in hand, so nothing is uploaded to review it; off the web the name and size stand instead of a broken player. **TikTok and Pinterest are live** (2026-08-25): keys on the box, redirect URIs registered, one real TikTok connection made end-to-end. Connections can be disconnected (`DELETE /social/connections/{id}`, `marketing.edit`, view-scoped, audited); the catalogue says Connected and the panel offers Reconnect. The OAuth callback popup is EzBizi-styled and personalised — a wired EzBizi tile and the network's own mark, read from `client/assets/social`, animated, red and broken when the sign-in refuses. **Place survives a reload** (v0.0.0064): the address bar holds the current destination, so refreshing Marketing does not dump you on Dashboard. **Inventory is live** (client `v0.0.0081`). Chips Stock · Items · Orders · Locations. Items and locations sit on organization / company / franchise; quantity is (item, location). Adjust, transfer, purchase/receive, and issue (job XOR note). Costs stay hidden without `inventory.financials`. Five `inventory.*` permissions, thirteen tables. Spec `docs/superpowers/specs/2026-08-24-inventory-design.md`. Filing follows the current view (v0.0.0082): looking at A-1 Chimney cannot file on Everdoors. Buying, issuing and transferring are on screen (v0.0.0084). Sales orders are on Orders (v0.0.0091): a Customer or a counter note; stock leaves on fulfill. **Services is live** (client `v0.0.0093`). Catalogue of work the company sells: name, square photo, price, description, one label, one group. Settings chip for labels and groups. Four `services.*` permissions. Spec `docs/superpowers/specs/2026-08-25-services-design.md`. **Fleet Management is live** as release `20260821204600` (client `v0.0.0066`; this build is `v0.0.0067`). Vehicles are a company register: owned and rented periods, insurance, service, who has the keys, photos. Payments stay hidden without financials. Six `fleet_management.*` permissions, six tables. Spec `docs/superpowers/specs/2026-08-21-fleet-management-design.md`. **HR contract catalog:** eleven role templates (A-1 wording, EzBizi grammar). One template per role — hourly or salary is a Pay basis question on onboarding (`shown_when`), not four named variants. Raise is optional. Home address is core; business address is `organization.address`. `php artisan hr:publish-onboarding-catalog "{organization name}" --replace` loads them; they are not auto-installed. An in-progress onboarding can be cancelled (v0.0.0075); the row stays and the invitation is free for a new start. A fully signed agreement cannot. **Email** inbox listing fetches conversation headers together, so opening the tab is one wait rather than one per row (v0.0.0076). **Settings** that are a choice from a known list — timezone, language, paper, fiscal year — are selectors (v0.0.0077). Timezone is hours from UTC, not a city list; every selector uses the same outlined menu (v0.0.0078). Inactivity is minutes/hours/days; job statuses have readable names and rename existing jobs; the business address is street/city/state/ZIP with a lookup (v0.0.0079). **Settings** is one sidebar destination: Organization, the cascade, and Roles live as chips inside it (v0.0.0080). **Phone is live** as release `20260825125038` (2026-08-25, client `v0.0.0086`). Twilio at organization or company; numbers at org/company/franchise; Call / Records / Settings. Spec `docs/superpowers/specs/2026-08-24-phone-design.md`. **Clock in is live** as release `20260825160446` (2026-08-25, client `v0.0.0094`). Organization setting, off by default; role grant for the top-bar button; Human Resources day list in the view timezone. Spec `docs/superpowers/specs/2026-08-25-clock-in-design.md`. **Web Management — SEO is built, not yet deployed** (2026-08-28). It is NOT the website editor the placeholder promised, and that was the wrong idea: EzBizi holds a company's business facts and the company's own WordPress renders them. A company registers each host it owns — `a-1chimney.com` and `nj.a-1chimney.com` are two sites with two tokens and two sets of values, which is how the New Jersey site answers a New Jersey number — sets name, phone, address, licence, hours and service area per site, and the bundled WordPress plugin turns each into a shortcode (`[ezbizi_phone]`). The shortcode list comes off the server, so adding a field is one line in `SeoFields` and needs no plugin release. Two tables, two `web_management.*` permissions (`view` and a new `edit`), and ONE PUBLIC UNAUTHENTICATED ROUTE — `GET /api/v1/web/plugin/values`, bearer-token, throttled per TOKEN rather than per IP because these callers sit on shared web hosts. The plugin never blanks a live page: it caches the last good read in an option that never expires, so an outage here shows yesterday's phone number rather than none. |
-
-## Tasks — Phase 1, 2026-08-28
-
-Tasks replaces ordinary Monday board use with the owner-selected **A — Dense Grid** on desktop
-and touch-first cards and full-screen detail on phones. Boards are filed only on the active
-organization, company, or franchise view; scope-visible boards still require assignment reach,
-and private boards narrow access to active members. Board ownership and `tasks.manage` govern
-administration and content-blind private-board recovery. The seven role grants are
-`tasks.view`, `create`, `edit`, `comment`, `delete`, `export`, and `manage`.
-
-Phase 1 includes folders and favorites; groups; tasks and one subtask level; accountable owner,
-collaborators, Watch/Mute, updates, mentions, activity and governed files; configurable statuses
-and priorities; Text, Number, Checkbox, Date, People, Label, HTTPS Link, and File custom columns;
-inline and atomic bulk edits; saved personal/shared views, filters, sorting, grouping, search,
-My Tasks, typed task links to authorized EzBizi records, dashboard glance, and responsive board
-administration. Every write is server-authorized and versioned; a lost permission, view, private
-membership, or linked-record grant evicts or redacts cached labels, filenames, notification
-content, and unread counts rather than leaving stale work visible.
-
-Nine triggers are live: created, owner changed, status changed, due date changed, completed,
-reopened, update added, archived, and overdue. Six actions are live: create a task, assign owner,
-set status, set/clear due date, move group, and add a system update. Notifications are durable
-and open typed in-app routes; email delivery remains a later notification-channel project, not a
-silent Phase 1 promise.
-
-CSV/XLSX import is bounded, previewed, mapped, one-use, formula-safe, and atomic. CSV/XLSX export
-and the owner-only versioned JSON archive manifest are available under `tasks.export`; the JSON
-manifest excludes attachment bytes and is **not restorable** because no archive importer exists.
-FileStore's production gate passed at `2026-08-27T23:08:53+00:00`: a fresh encrypted off-instance
-copy restored exactly (`ok=true`, manifest v1, 17 files / 735,248 bytes, no errors), so authorized
-attachment, File-column, and import-staging paths are open.
-
-Phase 2 remains Kanban, Calendar, Timeline/Gantt, Dependencies, Workload, richer recurrence, and
-optional server-push refresh. Phase 3 remains forms, reusable templates, chart/dashboard views,
-formula/roll-up/connected-board columns, external guests, direct monday.com migration and other
-integrations, advanced reporting, and any controlled public/embed surfaces. The accepted design,
-plan, review record, and approved 1440px/375px goldens live under `docs/superpowers/` and
-`client/test/goldens/tasks/`.
-
-**Release gates, 2026-08-28.** `git diff --check` clean, `composer audit` no advisories,
-`flutter analyze` no issues, `flutter test` 1023/1023, and the 72-commit Tasks diff plus the
-untracked file list read by hand for credential values and private keys — nothing found. The
-full local PHPUnit run is 2186 tests, and closing it needed two things that had been sitting
-red: `phpoffice/phpspreadsheet` was in `composer.json` and the lockfile but missing from this
-machine's `vendor/`, which errored six XLSX transfer tests, and `RetentionTest` asserted
-`FOREVER` for the two tables that are deliberately cleaned by the hourly workers. The remaining
-local reds are the documented Windows-only rows — stack-trace path separators, and the IMAP
-tests that cannot complete a trusted TLS handshake to `localhost`. The deploy gate on the box is
-the release verdict; a green local run is the weaker signal.
-
-**How it actually shipped, 2026-08-28.** Release `20260828151058`, client `v0.0.0112`, 91 commits,
-7 new permissions synced for 88 total. The sandbox gate did **not** run to completion — it was
-killed at about 16 minutes and the release went out without it, on the owner's instruction after
-two days stuck on `v0.0.0110`. That is recorded here rather than smoothed over, because the
-paragraph above calls the deploy gate the release verdict and this release did not have one.
-What blocked those two days was not slowness: the Tasks trigger migration cannot apply on a
-stock MySQL with binary logging on and no `SUPER`, and its half-applied wreckage made every
-retry fail somewhere else. The server setting is fixed and the migration is applied; the detail
-is in `docs/EZBIZI-DEV-ENVIRONMENT.md`. The local Tasks suite is 152 tests / 1,929 assertions
-green from a freshly created database.
-
-**The gate ran afterwards, and it is green.** Once `log_bin_trust_function_creators` let the
-trigger migration through, the full server-side gate completed for the first time in two days —
-2,193 tests, 15,880 assertions, zero failures, zero errors, 946s, against the code already live.
-So Tasks Phase 1 has a real verdict; it just arrived after the release rather than before it.
-Worth keeping the order straight when reading this later: the gate did not clear the deploy, the
-deploy went first and the gate confirmed it.
-
-**Owner-accepted exception.** The plan's Task 20 asks for one independent review of the whole
-implementation against the spec. The owner waived it on 2026-08-28: every task from 2 to 19
-already carried its own scoped independent review, each recorded on the `tasks-module` board
-card with the findings closed, and a second pass over the same 72 commits was judged to buy
-nothing. No Critical or Important finding is outstanding.
 
 ## EZ Leads — all three modules live, 2026-08-27
 

@@ -4,5 +4,14 @@
 <dict>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
+	<!-- The whole app is HTTP calls to app.ezbizi.com. A sandboxed build with no
+	     network.client entitlement launches, draws the sign-in screen, and every
+	     request fails - not a permission prompt, a silent refusal. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<!-- Communication takes calls in the app. Without audio-input the Twilio
+	     device registers and every call is one-way. -->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
 </dict>
 </plist>

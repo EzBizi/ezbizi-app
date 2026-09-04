@@ -9,6 +9,7 @@ use App\Models\SocialConnection;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /**
@@ -39,6 +40,94 @@ class ReviewsApiTest extends TestCase
             'reviewed_at'     => now()->subDay(),
             ...$attributes,
         ]));
+    }
+
+    public function test_an_organization_level_review_is_listed_and_counted_for_a_branch_user(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $this->review($t);   // company_id and franchise_id both null
+
+        $branch = $this->userWithRole($t, 'Branch', ['reviews.view'], onlyAt: $t['franchise']);
+
+        $this->signedInAs($branch)
+            ->getJson('/api/v1/reviews')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('meta.unanswered', 1);
+    }
+
+    /**
+     * One failing profile must not turn an honest empty result into an error.
+     *
+     * The same fetched===0 conflation LeadsController::sync was corrected for.
+     * Zero reviews is the right answer for a profile nobody has reviewed; only
+     * when EVERY connection failed is the sync a failure - and then the reason
+     * has to reach the screen as a top-level message.
+     */
+    public function test_one_failing_profile_does_not_turn_an_empty_result_into_an_error(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $this->connectedProfile($t, 'acct-good');
+        $this->connectedProfile($t, 'acct-bad');
+
+        $this->fakeGoogle([
+            'mybusiness.googleapis.com/v4/accounts/acct-good/locations*' => Http::response(['locations' => []], 200),
+            'mybusiness.googleapis.com/v4/accounts/acct-bad/locations*'  => Http::response(['error' => ['status' => 'PERMISSION_DENIED']], 403),
+        ]);
+
+        $this->signedInAs($t['admin'])
+            ->postJson('/api/v1/reviews/sync')
+            ->assertOk()
+            ->assertJsonPath('data.fetched', 0)
+            ->assertJsonCount(1, 'data.failures');
+    }
+
+    public function test_every_profile_failing_is_a_failure_with_its_reason_on_top(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $this->connectedProfile($t, 'acct-bad');
+
+        $this->fakeGoogle([
+            'mybusiness.googleapis.com/v4/*' => Http::response(['error' => ['status' => 'PERMISSION_DENIED']], 403),
+        ]);
+
+        $this->signedInAs($t['admin'])
+            ->postJson('/api/v1/reviews/sync')
+            ->assertStatus(502)
+            ->assertJsonPath('message', fn ($m) => is_string($m) && $m !== '');
+    }
+
+    private function connectedProfile(array $t, string $account): SocialConnection
+    {
+        return $this->inTenant($t['org'], function () use ($t, $account) {
+            $c = new SocialConnection;
+            $c->forceFill([
+                'organization_id' => $t['org']->id,
+                'scope_type'      => SocialConnection::SCOPE_ORGANIZATION,
+                'scope_id'        => $t['org']->id,
+                'provider'        => SocialProvider::GoogleBusinessProfile->value,
+                'remote_id'       => $account,
+                'display_name'    => $account,
+            ]);
+            $c->connect(['refresh_token' => 'rt-'.$account]);
+            $c->save();
+
+            return $c;
+        });
+    }
+
+    /** @param array<string, mixed> $routes */
+    private function fakeGoogle(array $routes): void
+    {
+        config([
+            'services.business_profile.client_id'     => 'client.apps.googleusercontent.com',
+            'services.business_profile.client_secret' => 'client-secret',
+        ]);
+
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'at-fresh', 'expires_in' => 3600], 200),
+            ...$routes,
+        ]);
     }
 
     public function test_a_review_is_listed_with_its_rating_and_words(): void

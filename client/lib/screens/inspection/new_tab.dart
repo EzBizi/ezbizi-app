@@ -1,3 +1,4 @@
+import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -705,6 +706,7 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
           key: widgetKey,
           controller: _fields[key],
           keyboardType: TextInputType.phone,
+          inputFormatters: const [PhoneNumberInputFormatter()],
           decoration: InputDecoration(labelText: label),
         );
 

@@ -8,6 +8,7 @@ use App\Models\SocialConnection;
 use App\Services\Leads\BusinessProfileLocations;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -29,6 +30,7 @@ class BusinessProfileController extends Controller
 {
     public function __construct(
         private readonly BusinessProfileLocations $locations,
+        private readonly SocialConnectionAccess $access,
         private readonly AuditLogger $audit,
         private readonly TenantContext $tenant,
         private readonly EventEmitter $events,
@@ -151,10 +153,23 @@ class BusinessProfileController extends Controller
     {
         $this->authorize('viewAny', BusinessLocation::class);
 
+        $user = $request->user();
+
         $connections = SocialConnection::query()
             ->where('provider', SocialProvider::GoogleBusinessProfile->value)
             ->where('status', SocialConnection::STATUS_CONNECTED)
-            ->get();
+            ->get()
+            /*
+             * The view, not just the organization.
+             *
+             * The tenant scope narrows this to the organization and nothing
+             * narrowed it to the company being looked at, so every company in an
+             * organization saw - and fetched through - every other company's
+             * connected Google account. Marketing's catalogue has always filtered
+             * this way; these three tabs never did.
+             */
+            ->filter(fn (SocialConnection $c) => $this->access->inView($user, $c))
+            ->values();
 
         if ($connections->isEmpty()) {
             return response()->json([
@@ -182,21 +197,45 @@ class BusinessProfileController extends Controller
 
         $this->audit->log('business_location.synced', $request->user()->organization, metadata: $totals);
 
-        return response()->json(
-            ['data' => [...$totals, 'failures' => $failures]],
-            $failures !== [] && $totals['fetched'] === 0
-                ? Response::HTTP_BAD_GATEWAY
-                : Response::HTTP_OK,
-        );
+        // Failed only when EVERY profile failed. Zero reviews is the honest
+        // answer for a profile with nothing Google will list, not a failure - the same
+        // conflation LeadsController::sync was corrected for. And the reason
+        // goes on top as `message`, which is the one key the client renders;
+        // buried in data.failures it never reached the screen.
+        $failedOut = $failures !== [] && count($failures) === $connections->count();
+
+        $payload = ['data' => [...$totals, 'failures' => $failures]];
+
+        if ($failedOut) {
+            $payload['message'] = (string) ($failures[0]['because'] ?? 'Google would not return listings.');
+        }
+
+        return response()->json($payload, $failedOut ? Response::HTTP_BAD_GATEWAY : Response::HTTP_OK);
     }
 
     /** @return array<int, array{provider: string, display_name: string, status: string}> */
     private function connectionState(): array
     {
+        $user = request()->user();
+
         return SocialConnection::query()
             ->where('provider', SocialProvider::GoogleBusinessProfile->value)
             ->get()
+            /*
+             * The view, not just the organization.
+             *
+             * The tenant scope narrows this to the organization and nothing
+             * narrowed it to the company being looked at, so every company in an
+             * organization saw - and fetched through - every other company's
+             * connected Google account. Marketing's catalogue has always filtered
+             * this way; these three tabs never did.
+             */
+            ->filter(fn (SocialConnection $c) => $user !== null && $this->access->inView($user, $c))
             ->map(fn (SocialConnection $c) => [
+                // The id is what lets the tab that owns this connection
+                // remove it. Without it the only disconnect was in
+                // Marketing, a module these providers are kept out of.
+                'id'           => $c->getKey(),
                 'provider'     => $c->provider,
                 'display_name' => $c->display_name,
                 'status'       => $c->status,

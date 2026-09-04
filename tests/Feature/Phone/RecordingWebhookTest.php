@@ -141,7 +141,13 @@ class RecordingWebhookTest extends TestCase
     public function test_play_is_forbidden_without_a_number_grant(): void
     {
         $t = $this->provisionTenant();
-        $viewer = $this->userWithRole($t, 'No grant play', ['phone.view']);
+        // Out of reach, not merely ungranted.
+        //
+        // Grants stopped being per number on 2 Sep, so "no grant" no longer
+        // refuses anything. The refusal this test exists for is still real —
+        // it just belongs to §4 reach now, so the viewer is pinned to one
+        // franchise and the line is company-scoped.
+        $viewer = $this->userWithRole($t, 'No grant play', ['phone.view'], onlyAt: $t['franchise']);
 
         $call = $this->inTenant($t['org'], function () use ($t) {
             $connection = PhoneConnection::factory()->create([

@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Notification;
-use App\Support\Tasks\TaskNotificationPresenter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -25,19 +24,16 @@ use Illuminate\Http\Request;
  */
 class NotificationsController extends Controller
 {
-    public function __construct(private readonly TaskNotificationPresenter $presenter) {}
-
     /** GET /api/v1/notifications */
     public function index(Request $request): JsonResponse
     {
-        $base = $this->presenter->constrain(Notification::query()
-            ->where('user_id', $request->user()->getKey()), $request->user());
+        $base = Notification::query()->where('user_id', $request->user()->getKey());
         $notifications = (clone $base)
             ->when($request->boolean('unread_only'), fn ($q) => $q->whereNull('read_at'))
             ->latest('created_at')
             ->limit(min((int) $request->query('limit', 50), 200))
             ->get()
-            ->map(fn (Notification $notification) => $this->presenter->present($notification));
+            ->map(fn (Notification $notification) => $this->present($notification));
 
         return response()->json([
             'data' => $notifications,
@@ -52,8 +48,7 @@ class NotificationsController extends Controller
     {
         // Not found rather than forbidden — 403 would confirm the id belongs to
         // a real notification of somebody else's.
-        abort_unless($notification->user_id === $request->user()->getKey()
-            && $this->presenter->visible($notification, $request->user()), 404);
+        abort_unless($notification->user_id === $request->user()->getKey(), 404);
 
         $notification->markRead();
 
@@ -63,11 +58,28 @@ class NotificationsController extends Controller
     /** POST /api/v1/notifications/read-all */
     public function markAllRead(Request $request): JsonResponse
     {
-        $marked = $this->presenter->constrain(Notification::query()
-            ->where('user_id', $request->user()->getKey()), $request->user())
+        $marked = Notification::query()->where('user_id', $request->user()->getKey())
             ->whereNull('read_at')
             ->update(['read_at' => now()]);
 
         return response()->json(['data' => ['marked' => $marked]]);
+    }
+
+    /** No module currently gives a notification a route of its own. */
+    private function present(Notification $notification): array
+    {
+        return [
+            'id' => $notification->id,
+            'source' => $notification->source,
+            'title' => $notification->title,
+            'body' => $notification->body,
+            'subject' => [
+                'type' => $notification->subject_type ? class_basename($notification->subject_type) : null,
+                'id' => $notification->subject_id,
+            ],
+            'meta' => ['route' => null],
+            'read_at' => $notification->read_at?->toIso8601String(),
+            'created_at' => $notification->created_at->toIso8601String(),
+        ];
     }
 }

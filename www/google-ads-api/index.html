@@ -76,8 +76,8 @@ Google Ads and Local Services data it reads, on whose behalf, and what it does n
 
 <h2>Business model</h2>
 <p>EzBizi is sold as a monthly software subscription to service businesses — home services,
-trades, and multi-location franchises. They use it to manage customers, jobs, scheduling,
-inspections, staff and billing in one system.</p>
+trades, and multi-location franchises. They use it to manage customers, jobs, inspections,
+inventory, vehicles and staff in one system.</p>
 <p>Revenue comes entirely from those subscriptions. EzBizi does not resell advertising, take a
 percentage of ad spend, manage campaigns as a service, or monetise data in any form. Google Ads
 API access exists for one purpose: to bring a customer's own advertising results into that
@@ -87,7 +87,7 @@ customer's own CRM record.</p>
 <p>The <span class="k">Leads</span> module inside EzBizi. Its purpose is to close the gap between
 an advertising enquiry and the work that results from it.</p>
 <p>A service business receives enquiries through Google Local Services Ads. Those enquiries live
-in Google's interface, while the resulting customer, job, invoice and technician assignment live
+in Google's interface, while the resulting customer, job and technician assignment live
 in the CRM. Nobody can answer <em>"what did this lead actually become?"</em> without cross-checking
 two systems by hand.</p>
 <p>The Leads module retrieves each customer's own Local Services lead and conversation data, plus
@@ -135,7 +135,7 @@ somebody is watching the screen.</p>
 <h3>Read and write</h3>
 <p>Usage is predominantly <strong>read</strong>. The single write path is lead status, and it is
 always the direct result of a person acting in the EzBizi interface — marking a lead as booked
-when they schedule the job, for example. Every such call is recorded in that organization's audit
+when they take the work on, for example. Every such call is recorded in that organization's audit
 log with the acting user, timestamp and target.</p>
 <p>EzBizi does <strong>not</strong> create, modify or pause campaigns; set or adjust bids or
 budgets; manage keywords, assets or creatives; or perform automated bulk mutation of any kind.</p>

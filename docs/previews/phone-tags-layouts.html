@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi — Phone › Tags layouts</title>
+<style>
+  :root {
+    --cyan:#00AEEF; --primary:#00708F; --cyan-deep:#00708F;
+    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+    --ok:#0B8F5B; --err:#E07070; --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1180px; margin:0 auto; padding:16px 16px 48px; }
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:18px; margin:0 0 4px; }
+  header.picker p { margin:0 0 12px; color:var(--muted); max-width:80ch; }
+  .locked, .ask { font-size:13px; border-radius:8px; padding:10px 12px;
+    margin-bottom:12px; max-width:92ch; }
+  .locked { background:var(--info-c); } .ask { background:var(--warn-c); }
+  .locked strong, .ask strong { display:block; margin-bottom:4px; }
+  .locked strong { color:var(--cyan-deep); } .ask strong { color:var(--warn); }
+  .ask b { display:block; margin-top:7px; }
+  .nums { display:flex; flex-wrap:wrap; gap:8px; }
+  .nums button { min-width:44px; min-height:44px; border-radius:8px;
+    border:1px solid var(--line); background:var(--page); color:var(--ink); }
+  .nums button[aria-pressed="true"] { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:90ch; }
+  .caption strong { display:block; margin-bottom:4px; }
+
+  .shell { display:grid; grid-template-columns:200px 1fr; min-height:620px;
+    background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px; }
+  nav.side .brand { font-weight:700; color:var(--cyan-deep); margin-bottom:16px; padding:0 8px; }
+  nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+    text-decoration:none; margin-bottom:2px; }
+  nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  .page { display:flex; flex-direction:column; min-width:0; }
+  .tabs { display:flex; gap:8px; padding:12px 16px; border-bottom:1px solid var(--line); }
+  .tabs span { padding:8px 14px; border-radius:999px; border:1px solid var(--line);
+    background:var(--page); color:var(--muted); }
+  .tabs span.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .settings { display:grid; grid-template-columns:200px 1fr; flex:1; min-height:0; }
+  .rail { border-right:1px solid var(--line); padding:10px 8px; overflow:auto; }
+  .rail a { display:block; padding:8px 11px; border-radius:8px; color:var(--ink);
+    text-decoration:none; font-size:13px; }
+  .rail a.on { background:var(--info-c); color:var(--cyan-deep); font-weight:600; }
+  .rail h4 { font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--muted); margin:12px 0 4px; padding:0 11px; font-weight:600; }
+  .rail h4:first-child { margin-top:0; }
+
+  .pane { display:flex; flex-direction:column; min-width:0; overflow:auto; }
+  .paneHead { padding:16px 20px 12px; border-bottom:1px solid var(--line);
+    display:flex; align-items:flex-start; gap:12px; }
+  .paneHead h2 { font-size:17px; margin:0 0 2px; }
+  .paneHead p { margin:0; color:var(--muted); font-size:13px; max-width:66ch; }
+  .paneBody { padding:16px 20px 24px; }
+
+  .addbar { display:flex; gap:8px; align-items:center; padding:11px 12px;
+    border:1px solid var(--line); border-radius:10px; background:var(--alt); margin-bottom:16px; }
+  .addbar .fld { flex:1; min-height:40px; border:1px solid var(--line); border-radius:8px;
+    background:var(--page); padding:0 12px; display:flex; align-items:center; color:#9AA5AF; }
+  .sw8 { display:flex; gap:5px; }
+  .sw8 i { width:20px; height:20px; border-radius:6px; display:block; border:1px solid rgba(0,0,0,.08); }
+  .sw8 i.sel { outline:2px solid var(--primary); outline-offset:1px; }
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:8px;
+    padding:9px 14px; min-height:40px; }
+  .btn.ghost { background:transparent; color:var(--primary); border:1px solid var(--line); }
+  .btn.sm { min-height:32px; padding:4px 10px; font-size:13px; }
+
+  h3.grp { font-size:12px; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--muted); margin:18px 0 8px; font-weight:600; display:flex; gap:8px; align-items:center; }
+  h3.grp:first-child { margin-top:0; }
+  .tagrow { display:grid; grid-template-columns:14px minmax(0,1fr) auto auto;
+    align-items:center; gap:11px; padding:11px 12px;
+    border:1px solid var(--line); border-radius:9px; margin-bottom:7px; background:var(--page); }
+  /* Bars and counts get their OWN tracks, so they start at the same x on every
+     row regardless of how long the tag name is. A bar that moves with the name
+     cannot be compared down the column, which is the entire point of drawing it. */
+  .tagrow.bars { grid-template-columns:14px minmax(0,1fr) 132px 96px auto; }
+  .tagrow .dot { width:14px; height:14px; border-radius:4px; flex:none; }
+  .tagrow .nm { font-weight:600; }
+  .tagrow .use { color:var(--muted); font-size:12px; white-space:nowrap; text-align:right; }
+  .tagrow .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tagrow.retired { background:var(--alt); }
+  .tagrow.retired .nm { color:var(--muted); font-weight:500; }
+  .tagrow.unused .use { color:var(--warn); }
+
+  table.t { width:100%; border-collapse:collapse; font-size:13px; }
+  table.t th, table.t td { border-bottom:1px solid var(--line); padding:9px 10px; text-align:left; }
+  table.t th { color:var(--muted); font-weight:600; font-size:12px; background:var(--alt); }
+  table.t td.num { text-align:right; white-space:nowrap; }
+  table.t tr.retired td { color:var(--muted); background:var(--alt); }
+  .bar { height:6px; border-radius:3px; background:var(--line); min-width:30px; position:relative; }
+  .bar i { position:absolute; left:0; top:0; bottom:0; border-radius:3px; background:var(--primary); }
+
+  .cols { display:grid; grid-template-columns:1fr 300px; gap:16px; }
+  .cols h4 { font-size:12px; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--muted); margin:0 0 8px; font-weight:600; }
+  .note { color:var(--muted); font-size:12px; margin-top:10px; }
+  .empty { border:1px dashed #C9D3DB; border-radius:10px; padding:14px;
+    background:var(--alt); color:var(--muted); font-size:13px; }
+  .empty b { display:block; color:var(--ink); margin-bottom:3px; }
+
+  .phone { width:375px; margin:0 auto; border:8px solid var(--ink); border-radius:28px;
+    overflow:hidden; background:#fff; min-height:660px; display:flex; flex-direction:column; }
+  .phone .bar375 { padding:11px 12px; border-bottom:1px solid var(--line); font-weight:600;
+    display:flex; gap:8px; align-items:center; font-size:14px; }
+  .phone .bar375 .back { color:var(--primary); font-weight:500; }
+  .phone .scroll { padding:14px 12px 24px; overflow:auto; }
+
+  @media (max-width:900px) {
+    .shell { grid-template-columns:1fr; } nav.side { display:none; }
+    .settings { grid-template-columns:1fr; } .cols { grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>Phone › Tags — layouts</h1>
+
+    <div class="locked">
+      <strong>Read from <code>tags_pane.dart</code>, not from a brief</strong>
+      A tag is <b>what a call was about</b> — whoever answers picks one when the call ends,
+      and reports count by them. A tag has a name, a colour from a <b>fixed set of eight</b>
+      (customer-chosen but validated, so it stays readable on both light and dark surfaces),
+      and a count of the calls it is on. Adding is a name field plus a button, wrapped in
+      <code>Refused</code> so a role without <code>phone.edit</code> gets the server's sentence
+      rather than a dead control. Pane pattern is <b>layout 1</b>, already approved. No modals,
+      colours from <code>theme.dart</code>, 375px is a floor.
+    </div>
+
+    <div class="ask">
+      <strong>The state that makes this pane interesting, and the one every layout has to protect</strong>
+      <b>Retired is not deleted, and the existing copy says so better than most of this app:</b>
+      <em>“Still naming the calls they were used on. Not offered any more.”</em> A retired tag
+      keeps its history and stops being offered at the end of a call — so a design that greys it
+      out like a disabled row, or hides it, breaks the one thing somebody needs to understand
+      before they retire anything. All three layouts keep retired tags <b>present, legible, and
+      counted</b>, with “Offer again” on each.
+      <b>The call count is the curation signal and today it is a caption.</b> “On 412 calls” and
+      “Not used yet” are the same size and weight, so the pane cannot answer the question people
+      actually open it with — <em>which of these are dead weight?</em> Layouts 2 and 3 promote
+      usage to something you can scan; layout 1 keeps it quiet on purpose. That is the real
+      choice here, not the arrangement.
+      <b>Tags also has no empty-state problem to solve</b> — its existing empty copy already
+      explains the consequence (“Until there is at least one, a call cannot be said to…”), which
+      is more than most panes do. All three keep it.
+    </div>
+
+    <p>Pick a number. <strong>2 is my recommendation.</strong> 4 is the recommendation at 375px.</p>
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+  <div id="stage"></div>
+</div>
+
+<script>
+const CAPTIONS = {
+  1: ["1 · List, grouped by offered and retired",
+      "Closest to today. One column, the add bar at the top, tags as rows with a colour chip and the count on the right — but grouped under 'Offered when a call ends' and 'Retired', which today are mixed into one list. Cheapest to build and the least to learn. Weakness: the count stays a caption, so the pane still cannot answer 'which of these are dead weight'. Fine for an org with six tags; A-1 has eleven and it already reads as a wall."],
+  2: ["2 · List with usage made scannable (recommended)",
+      "Same grouping, but each row carries a proportion bar next to its count, so relative use is visible without reading a single number. That turns the pane from a list you maintain into a list you can PRUNE — the two things people come here to do are add a tag and work out which ones nobody picks, and only the first is currently supported. Unused tags carry their count in the warning colour rather than a badge, because 'nobody has ever picked this' is worth noticing and not worth alarming about. Chosen because it costs one element per row over layout 1 and answers the question layout 1 cannot."],
+  3: ["3 · Table, sortable by use",
+      "Name, colour, calls, share, state, action — sortable. Strictly the best for curating a long list, and the only layout where 'show me everything nobody uses' is one click. Weakness, and it is why it is not the recommendation: a table is a heavy instrument for what is usually eight to fifteen short labels, it reads as a report rather than a setting, and at 375px it has to become a list anyway — so it buys a desktop-only advantage for a pane whose most common act is typing one word and pressing Add."],
+  4: ["4 · Layout 2 at 375px",
+      "The add bar stays pinned at the top because adding is the most common act and should not be scrolled to. The eight colour swatches wrap to a second row rather than scrolling sideways — chrome that is only as wide as its own content has no business forcing a horizontal drag. Proportion bars survive at this width; the numeric counts move under the name rather than to the right, since a right-aligned count and a long tag name cannot share 375px without one of them truncating."]
+};
+
+const C = ['#00708F','#0B8F5B','#B5730B','#A33','#5B6672','#6E4FA0','#0093CA','#8A6D3B'];
+const TAGS = [
+  ['Warranty', 0, 412, 34],
+  ['New install quote', 1, 388, 32],
+  ['Service call', 2, 201, 17],
+  ['Chimney sweep', 6, 96, 8],
+  ['Complaint', 3, 61, 5],
+  ['Supplier', 5, 22, 2],
+  ['Wrong number', 4, 14, 1],
+  ['Recruitment', 7, 0, 0]
+];
+const RETIRED = [['Spring promo', 2, 143], ['Storm damage 2025', 3, 77]];
+
+const RAIL = `
+  <h4>Connect</h4><a>General</a><a>Call flow</a><a>Connection</a><a>Numbers</a><a>Porting</a>
+  <h4>Answering</h4><a>IVR menus</a><a>Hours</a><a>Ring groups</a><a>Voicemail</a>
+  <h4>Identity</h4><a>Trust &amp; caller identity</a>
+  <h4>Running it</h4><a class="on">Tags</a><a>Cost</a><a>Messaging</a>`;
+
+const shell = (body) => `
+  <div class="shell">
+    <nav class="side"><div class="brand">EzBizi</div>
+      <a>Dashboard</a><a>Customers</a><a>Jobs</a><a class="on">Phone</a><a>Fleet</a></nav>
+    <div class="page">
+      <div class="tabs"><span>Call</span><span>Records</span><span class="on">Settings</span></div>
+      <div class="settings"><div class="rail">${RAIL}</div>${body}</div>
+    </div>
+  </div>`;
+
+const head = `
+  <div class="paneHead">
+    <div style="flex:1"><h2>Tags</h2>
+      <p>What a call was about. Whoever answers picks one when the call ends, and reports
+        count by them.</p></div>
+    <button class="btn ghost sm" type="button">↻ Try again</button>
+  </div>`;
+
+const addbar = `
+  <div class="addbar">
+    <span class="fld">A new tag — “Warranty”</span>
+    <span class="sw8">${C.map((c,i) => `<i style="background:${c}" class="${i===0?'sel':''}"></i>`).join('')}</span>
+    <button class="btn" type="button">Add</button>
+  </div>`;
+
+const row = (t, bar) => `
+  <div class="tagrow ${bar ? 'bars' : ''} ${t[2]===0 ? 'unused' : ''}">
+    <span class="dot" style="background:${C[t[1]]}"></span>
+    <span class="nm">${t[0]}</span>
+    ${bar ? `<span class="bar"><i style="width:${t[3]*2.7}%"></i></span>` : ''}
+    <span class="use">${t[2] === 0 ? 'Not used yet' : `On ${t[2]} calls`}</span>
+    <button class="btn ghost sm" type="button">Retire</button>
+  </div>`;
+
+const retiredRow = (t, bars) => `
+  <div class="tagrow retired ${bars ? 'bars' : ''}">
+    <span class="dot" style="background:${C[t[1]]};opacity:.55"></span>
+    <span class="nm">${t[0]}</span>
+    ${bars ? '<span></span>' : ''}
+    <span class="use">Still naming ${t[2]} calls</span>
+    <button class="btn ghost sm" type="button">Offer again</button>
+  </div>`;
+
+const retiredNote = `<p class="note"><b>Retired is not deleted.</b> These still name the calls
+  they were used on and still count in reports — they are simply not offered when a call ends.</p>`;
+
+const L1 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      ${addbar}
+      <h3 class="grp">Offered when a call ends <span class="use" style="color:var(--muted);font-size:11px">8</span></h3>
+      ${TAGS.map(t => row(t, false)).join('')}
+      <h3 class="grp">Retired <span class="use" style="color:var(--muted);font-size:11px">2</span></h3>
+      ${RETIRED.map(t => retiredRow(t, false)).join('')}
+      ${retiredNote}
+    </div>
+  </div>`);
+
+const L2 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      ${addbar}
+      <h3 class="grp">Offered when a call ends <span class="use" style="color:var(--muted);font-size:11px">8 · 1,194 calls tagged</span></h3>
+      ${TAGS.map(t => row(t, true)).join('')}
+      <p class="note">One tag has never been picked. Bars are share of tagged calls, so the
+        pane answers “which of these is anyone actually using” without reading eight numbers.</p>
+      <h3 class="grp">Retired <span class="use" style="color:var(--muted);font-size:11px">2</span></h3>
+      ${RETIRED.map(t => retiredRow(t, true)).join('')}
+      ${retiredNote}
+    </div>
+  </div>`);
+
+const L3 = () => shell(`
+  <div class="pane">${head}
+    <div class="paneBody">
+      ${addbar}
+      <table class="t">
+        <tr><th>Tag</th><th>Calls ⌄</th><th style="width:130px">Share</th><th>State</th><th></th></tr>
+        ${TAGS.map(t => `
+          <tr>
+            <td><span class="dot" style="display:inline-block;width:11px;height:11px;border-radius:3px;background:${C[t[1]]};margin-right:8px"></span>${t[0]}</td>
+            <td class="num">${t[2] === 0 ? '<span style="color:var(--warn)">0</span>' : t[2]}</td>
+            <td><span class="bar"><i style="width:${t[3]*2.7}%"></i></span></td>
+            <td>Offered</td>
+            <td><button class="btn ghost sm" type="button">Retire</button></td>
+          </tr>`).join('')}
+        ${RETIRED.map(t => `
+          <tr class="retired">
+            <td><span class="dot" style="display:inline-block;width:11px;height:11px;border-radius:3px;background:${C[t[1]]};opacity:.55;margin-right:8px"></span>${t[0]}</td>
+            <td class="num">${t[2]}</td><td></td>
+            <td>Retired — still naming them</td>
+            <td><button class="btn ghost sm" type="button">Offer again</button></td>
+          </tr>`).join('')}
+      </table>
+      ${retiredNote}
+      <p class="note">Sortable, and the only layout where “show me everything nobody uses” is
+        one click. Also the only one that reads as a report rather than a setting.</p>
+    </div>
+  </div>`);
+
+const L4 = () => `
+  <div class="phone">
+    <div class="bar375"><span class="back">‹ Settings</span> Tags</div>
+    <div class="scroll">
+      <div class="addbar" style="flex-wrap:wrap">
+        <span class="fld" style="flex:1 1 100%">A new tag — “Warranty”</span>
+        <span class="sw8" style="flex-wrap:wrap">${C.map((c,i) => `<i style="background:${c}" class="${i===0?'sel':''}"></i>`).join('')}</span>
+        <button class="btn" type="button" style="margin-left:auto">Add</button>
+      </div>
+      <h3 class="grp">Offered when a call ends</h3>
+      ${TAGS.slice(0,5).map(t => `
+        <div class="tagrow ${t[2]===0?'unused':''}" style="flex-wrap:wrap">
+          <span class="dot" style="background:${C[t[1]]}"></span>
+          <span class="nm" style="flex:1">${t[0]}</span>
+          <button class="btn ghost sm" type="button">Retire</button>
+          <span style="flex:1 1 100%;display:flex;gap:9px;align-items:center;margin-top:6px">
+            <span class="bar" style="flex:1"><i style="width:${t[3]*2.7}%"></i></span>
+            <span class="use">${t[2]===0 ? 'Not used yet' : `On ${t[2]} calls`}</span>
+          </span>
+        </div>`).join('')}
+      <h3 class="grp">Retired</h3>
+      ${RETIRED.map(t => `
+        <div class="tagrow retired" style="flex-wrap:wrap">
+          <span class="dot" style="background:${C[t[1]]};opacity:.55"></span>
+          <span class="nm" style="flex:1">${t[0]}</span>
+          <button class="btn ghost sm" type="button">Offer again</button>
+          <span class="use" style="flex:1 1 100%;margin-top:4px">Still naming ${t[2]} calls</span>
+        </div>`).join('')}
+      ${retiredNote}
+    </div>
+  </div>`;
+
+const LAYOUTS = { 1:L1, 2:L2, 3:L3, 4:L4 };
+const nums = document.getElementById('nums'), stage = document.getElementById('stage'),
+      caption = document.getElementById('caption');
+Object.keys(LAYOUTS).forEach(k => {
+  const b = document.createElement('button'); b.type='button'; b.textContent=k;
+  b.addEventListener('click', () => show(+k)); nums.appendChild(b);
+});
+function show(i) {
+  [...nums.children].forEach((b,x) => b.setAttribute('aria-pressed', x+1===i ? 'true':'false'));
+  const e = CAPTIONS[i];
+  caption.innerHTML = '<strong>'+e[0]+'</strong>'+e[1];
+  stage.innerHTML = LAYOUTS[i]();
+}
+show(2);
+</script>
+</body>
+</html>

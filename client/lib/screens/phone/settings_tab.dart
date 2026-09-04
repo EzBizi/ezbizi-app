@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
-import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/tag.dart';
@@ -11,7 +10,6 @@ import 'call_flow_pane.dart';
 import 'flows_pane.dart';
 import 'general_pane.dart';
 import 'hours_pane.dart';
-import 'number_quality_pane.dart';
 import 'numbers_pane.dart';
 import 'porting_pane.dart';
 import 'ring_groups_pane.dart';
@@ -20,6 +18,7 @@ import 'trust_pane.dart';
 import 'usage_pane.dart';
 import 'voicemail_pane.dart';
 import 'service_request_pane.dart';
+import 'settings_pane.dart';
 
 /// Phone › Settings — layout 6: a rail of sections, and the form beside it.
 ///
@@ -39,21 +38,114 @@ class PhoneSettingsTab extends StatefulWidget {
 }
 
 class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
-  static const _sections = <(String, IconData)>[
-    ('General', Icons.tune_outlined),
-    ('Call flow', Icons.account_tree_outlined),
-    ('Connection', Icons.link_outlined),
-    ('Numbers', Icons.dialpad_outlined),
-    ('Porting', Icons.swap_horiz_outlined),
-    ('IVR menus', Icons.touch_app_outlined),
-    ('Hours', Icons.schedule_outlined),
-    ('Ring groups', Icons.groups_outlined),
-    ('Voicemail', Icons.voicemail_outlined),
-    ('Tags', Icons.sell_outlined),
-    ('Trust', Icons.verified_outlined),
-    ('Number quality', Icons.fact_check_outlined),
-    ('Cost', Icons.receipt_long_outlined),
-    ('Messaging', Icons.sms_outlined),
+  /// The rail: order, grouping and identity, declared once.
+  ///
+  /// ── Why `id` exists ─────────────────────────────────────────────
+  ///
+  /// The body used to switch on the INDEX. That was fine while the rail was a
+  /// flat list nobody reordered, and it became a trap the moment grouping
+  /// arrived: moving Trust up one place repoints every section below it, and
+  /// nothing fails — you land on Tags and get Cost, which reads as a rendering
+  /// bug rather than an off-by-one. So the index is a position now, and the id
+  /// is what the body is keyed on.
+  ///
+  /// ── Why `group` is here and not in the rail widget ──────────────
+  ///
+  /// Because the order and the grouping have to agree, and two lists cannot be
+  /// made to. A section listed under Answering and rendered between two
+  /// Connect entries would be a heading that lies, which is worse than no
+  /// headings at all — the reason for grouping thirteen items is to let
+  /// somebody stop reading once they know which group they want.
+  static const _sections =
+      <({String id, String label, IconData icon, String group})>[
+    // Getting calls to arrive at all.
+    (
+      id: 'general',
+      label: 'General',
+      icon: Icons.tune_outlined,
+      group: 'Connect',
+    ),
+    (
+      id: 'call-flow',
+      label: 'Call flow',
+      icon: Icons.account_tree_outlined,
+      group: 'Connect',
+    ),
+    (
+      id: 'connection',
+      label: 'Connection',
+      icon: Icons.link_outlined,
+      group: 'Connect',
+    ),
+    (
+      id: 'numbers',
+      label: 'Numbers',
+      icon: Icons.dialpad_outlined,
+      group: 'Connect',
+    ),
+    (
+      id: 'porting',
+      label: 'Porting',
+      icon: Icons.swap_horiz_outlined,
+      group: 'Connect',
+    ),
+
+    // What happens once one has.
+    (
+      id: 'flows',
+      label: 'IVR menus',
+      icon: Icons.touch_app_outlined,
+      group: 'Answering',
+    ),
+    (
+      id: 'hours',
+      label: 'Hours',
+      icon: Icons.schedule_outlined,
+      group: 'Answering',
+    ),
+    (
+      id: 'ring-groups',
+      label: 'Ring groups',
+      icon: Icons.groups_outlined,
+      group: 'Answering',
+    ),
+    (
+      id: 'voicemail',
+      label: 'Voicemail',
+      icon: Icons.voicemail_outlined,
+      group: 'Answering',
+    ),
+
+    // How the business looks to a carrier, which is its own subject and the
+    // only member of its group. A group of one is still worth drawing: it is
+    // the answer to "why are my calls marked spam", and burying it among the
+    // housekeeping is how it went unfound.
+    (
+      id: 'trust',
+      label: 'Trust & caller identity',
+      icon: Icons.verified_outlined,
+      group: 'Identity',
+    ),
+
+    // Housekeeping, and the things you read rather than set.
+    (
+      id: 'tags',
+      label: 'Tags',
+      icon: Icons.sell_outlined,
+      group: 'Running it',
+    ),
+    (
+      id: 'cost',
+      label: 'Cost',
+      icon: Icons.receipt_long_outlined,
+      group: 'Running it',
+    ),
+    (
+      id: 'messaging',
+      label: 'Messaging',
+      icon: Icons.sms_outlined,
+      group: 'Running it',
+    ),
   ];
 
   /// Connection, not Call flow.
@@ -219,7 +311,21 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
       children: [
-        for (var i = 0; i < _sections.length; i++)
+        for (var i = 0; i < _sections.length; i++) ...[
+          // A heading wherever the group changes, which is derived from the
+          // order rather than listed separately — the two cannot disagree.
+          if (i == 0 || _sections[i].group != _sections[i - 1].group)
+            Padding(
+              padding: EdgeInsets.fromLTRB(12, i == 0 ? 4 : 16, 12, 6),
+              child: Text(
+                _sections[i].group.toUpperCase(),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  letterSpacing: 0.8,
+                ),
+              ),
+            ),
+
           Padding(
             padding: const EdgeInsets.only(bottom: 2),
             child: Material(
@@ -240,7 +346,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
                     child: Row(
                       children: [
                         Icon(
-                          _sections[i].$2,
+                          _sections[i].icon,
                           size: 18,
                           color: i == _section
                               ? theme.colorScheme.primary
@@ -249,7 +355,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            _sections[i].$1,
+                            _sections[i].label,
                             style: theme.textTheme.bodyMedium?.copyWith(
                               fontWeight: i == _section
                                   ? FontWeight.w600
@@ -267,6 +373,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
               ),
             ),
           ),
+        ],
       ],
     );
   }
@@ -287,7 +394,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
                 ),
                 Expanded(
                   child: Text(
-                    _sections[_section].$1,
+                    _sections[_section].label,
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
@@ -299,24 +406,40 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     );
   }
 
+  /// A switch, and NOT an IndexedStack — which is load-bearing, not incidental.
+  ///
+  /// Building one pane at a time means leaving a section disposes it and coming
+  /// back constructs it again, so every pane's `initState` reloads and shows
+  /// what the server holds NOW. Several panes edit the same line: General and
+  /// Numbers share five controls, and Ring groups writes `phone_numbers` too.
+  ///
+  /// An IndexedStack keeps every pane alive and would look like a straight
+  /// performance win. It would also mean a pane you visited an hour ago is
+  /// still showing what it fetched then — change the fallback number in
+  /// General, open Numbers, save, and General's stale copy silently reverts it.
+  ///
+  /// PhoneScreenTest has a test that a pane refetches when it is opened again,
+  /// so this is enforced rather than remembered.
   Widget _sectionBody() {
-    return switch (_section) {
+    // Keyed on the section's id, not its position. The rail is grouped and
+    // therefore reorderable, and an index would quietly repoint every section
+    // below a move.
+    return switch (_sections[_section].id) {
       // General leads and Call flow follows it. They answer the same question
       // — one as the form you fill in, one as the report of what that did —
       // and the form comes first because that is the order somebody works in.
-      0 => GeneralPane(api: widget.api, session: widget.session),
-      1 => CallFlowPane(api: widget.api),
-      2 => _connectionBody(),
-      3 => NumbersPane(api: widget.api, session: widget.session),
-      4 => PortingPane(api: widget.api, session: widget.session),
-      5 => FlowsPane(api: widget.api, session: widget.session),
-      6 => HoursPane(api: widget.api, session: widget.session),
-      7 => RingGroupsPane(api: widget.api, session: widget.session),
-      8 => VoicemailPane(api: widget.api, session: widget.session),
-      9 => TagsPane(api: widget.api, session: widget.session),
-      10 => TrustPane(api: widget.api, session: widget.session),
-      11 => NumberQualityPane(api: widget.api, session: widget.session),
-      12 => UsagePane(
+      'general' => GeneralPane(api: widget.api, session: widget.session),
+      'call-flow' => CallFlowPane(api: widget.api),
+      'connection' => _connectionBody(),
+      'numbers' => NumbersPane(api: widget.api, session: widget.session),
+      'porting' => PortingPane(api: widget.api, session: widget.session),
+      'flows' => FlowsPane(api: widget.api, session: widget.session),
+      'hours' => HoursPane(api: widget.api, session: widget.session),
+      'ring-groups' => RingGroupsPane(api: widget.api, session: widget.session),
+      'voicemail' => VoicemailPane(api: widget.api, session: widget.session),
+      'trust' => TrustPane(api: widget.api, session: widget.session),
+      'tags' => TagsPane(api: widget.api, session: widget.session),
+      'cost' => UsagePane(
         api: widget.api,
         session: widget.session,
         scopeType: _places.first.type,
@@ -336,7 +459,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
           spacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Text(_sections[_section].$1, style: theme.textTheme.titleMedium),
+            Text(_sections[_section].label, style: theme.textTheme.titleMedium),
             const Tag('Not built yet', warn: true),
           ],
         ),
@@ -347,12 +470,23 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
   }
 
   Widget _connectionBody() {
-    return AsyncBody(
-      loading: _loading,
+    if (_loading) return const Center(child: CircularProgressIndicator());
+
+    final companies = _places.where((p) => p.type == 'company').toList();
+    final organization = _places.firstWhere((p) => p.type == 'organization');
+
+    return SettingsPane(
+      title: 'Connection',
+      subtitle: "Which Twilio account each company's calls run on.",
       error: _error,
+
+      // Its error is a failed LOAD, so a reload discards nothing.
       onRetry: _load,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+
+      // No footer: nothing on this pane is saved. Connecting is one button on
+      // one row, and a Save here would claim the pane as a whole is a form.
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         children: [
           // Gate 2 first: until EzBizi has said yes to a company by name there
           // is nothing here to connect, and the only useful control is asking.
@@ -365,12 +499,45 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
             },
           ),
 
-          // Companies only. Phone service is bought and switched on per
-          // company — each gets its own Twilio subaccount, because A2P brand
-          // registration and caller-ID trust are per business, not per group.
-          for (final place in _places.where((p) => p.type == 'company')) ...[
-            _connectionCard(place),
-            const SizedBox(height: 12),
+          const SizedBox(height: 12),
+
+          // ── One rule, drawn once ────────────────────────────────
+          //
+          // A company's numbers use the organization's connection unless that
+          // company has its own. That was six sentences — each correct, each
+          // chosen by which state you happened to be standing in, so the rule
+          // read differently depending on where you were.
+          //
+          // Six because two different facts were braided into one sentence:
+          // WHERE CALLS GO, which never changes, and WHETHER YOU MAY CHANGE
+          // IT HERE, which depends on your view. Splitting them is what
+          // collapses the six — the indent carries the routing rule and the
+          // permission gets its own line only when it bites.
+          // THE ROOT IS DRAWN ONLY IF IT EXISTS.
+          //
+          // The design drew an organization node at the top of the tree, and
+          // it was drawn without knowing that phone service is sold per
+          // company — each gets its own subaccount, because A2P registration
+          // and caller-ID trust are per business. There is deliberately no
+          // organization card to activate, and a test guards that.
+          //
+          // But the INHERITANCE is real: ConnectionResolver still walks
+          // company → organization, so an organization-level connection can
+          // exist and a company's numbers really do fall back to it. Drawing
+          // the root when one exists keeps the rule honest; drawing it when
+          // none does would invent a parent for numbers to fall back to and
+          // point every company's sentence at nothing.
+          if (_connectionFor(organization) != null) ...[
+            _connectionCard(organization),
+            const SizedBox(height: 8),
+          ],
+
+          for (final place in companies) ...[
+            Padding(
+              padding: const EdgeInsets.only(left: 24),
+              child: _connectionCard(place),
+            ),
+            const SizedBox(height: 8),
           ],
         ],
       ),
@@ -395,12 +562,36 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
           children: [
             Text(place.name, style: theme.textTheme.titleMedium),
             const SizedBox(height: 4),
+
+            // Where this row's calls go. One sentence, same shape on every
+            // row, and true regardless of who is looking at it.
             Text(
-              _blurb(place, row),
+              _usesLine(place, row),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
+
+            // A company with no account of its own is not broken and must not
+            // read as an empty slot — it is inheriting, which is the ordinary
+            // case and the whole point of the tree.
+            if (place.type == 'company' && row == null) ...[
+              const SizedBox(height: 8),
+              const Tag('Uses the organization'),
+            ],
+
+            // The permission, said separately and only where it applies.
+            // Folding it into the sentence above is what produced two
+            // variants of the routing rule for every view somebody stood in.
+            if (!_canModifyPlace(place)) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Switch to the whole organization to change this.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
             if (row != null) ...[
               const SizedBox(height: 8),
               Wrap(
@@ -458,20 +649,32 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     );
   }
 
-  String _blurb(_Place place, _Connection? row) {
+  /// Where this row's calls go — the ONE rule, stated the same way everywhere.
+  ///
+  /// This was `_blurb()`: six returns across three branches, each correct and
+  /// each different, because it also tried to say whether the reader was
+  /// allowed to change what they were looking at. Two facts in one sentence
+  /// needs a sentence per combination, and the rule ends up sounding different
+  /// depending on where somebody happens to be standing.
+  ///
+  /// Permission is now its own line on the card. This says only where calls go.
+  String _usesLine(_Place place, _Connection? row) {
     if (place.type == 'organization') {
-      if (!_canModifyPlace(place)) {
-        return row == null
-            ? 'Organization line. Switch to the group to connect or change it. Company numbers use this unless this company has its own.'
-            : 'Organization line. Switch to the group to change it. Company numbers use this unless this company has its own.';
-      }
-      return row == null
-          ? 'No connection. Company numbers use this unless that company has its own.'
-          : 'Numbers without their own company connection use this.';
+      return 'Numbers held at the organization use this.';
     }
-    return row == null
-        ? 'No connection. Numbers here use the organization until this exists.'
-        : 'This company has its own Twilio.';
+
+    if (row != null) return "This company's numbers use its own Twilio.";
+
+    // Only claim inheritance when there is something to inherit FROM.
+    // "uses the organization's connection above" with no organization
+    // connection is a sentence pointing at nothing, and it would read as
+    // working to somebody whose calls reach no account at all.
+    return _connectionFor(
+              _places.firstWhere((p) => p.type == 'organization'),
+            ) ==
+            null
+        ? 'No phone account yet, so calls to this company reach nobody.'
+        : "This company's numbers use the organization's connection above.";
   }
 }
 

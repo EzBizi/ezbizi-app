@@ -29,9 +29,9 @@ use Illuminate\Validation\ValidationException;
  *
  * Review (task-9 round 2) found that `training.assign` was checked ONLY in
  * `AssignmentsController::store` — never in `ActionRunner::assignTraining`
- * or here. `assertTaskActionUsable` (`AutomationsController`) only runs its
- * per-type permission check for `TASK_ACTIONS`, and `training.assign` is not
- * one, so a rule using it saved and ran with no permission check at all: a
+ * or here. The controller's per-type action check only covered the action
+ * types it enumerated, and `training.assign` was not one of them, so a rule
+ * using it saved and ran with no permission check at all: a
  * person holding `training.view` and the automation permissions, but NOT
  * `training.assign`, was refused `403` on a direct `POST`
  * `/training/assignments` and then simply wrote a rule that did the

@@ -49,6 +49,14 @@ class _PhoneServiceRequestPaneState extends State<PhoneServiceRequestPane> {
 
   Map<String, dynamic>? _latest;
   bool _mayRequest = false;
+
+  /// Asking is an organization-level act.
+  ///
+  /// The request names WHICH companies want phone service, and a company view
+  /// can only see itself — so from inside Everdoors the form could only ever
+  /// ask for Everdoors, while the button said "ask for another company". The
+  /// control promised something the view could not deliver.
+  bool get _mayAskHere => _me.scope.type == 'organization';
   String? _cooldownEndsAt;
   Map<String, String> _volumes = const {};
   List<_CompanyOption> _companies = const [];
@@ -237,7 +245,17 @@ class _PhoneServiceRequestPaneState extends State<PhoneServiceRequestPane> {
               const SizedBox(height: 12),
             ],
 
-            if (_cooldownEndsAt != null)
+            if (!_mayAskHere)
+              Text(
+                // Deliberately does not name the group. A company view must
+                // not print names from outside itself — the switcher at the
+                // top is the only control that lists reach.
+                'Phone service is asked for from the group view, because the '
+                'request names which companies it is for. Switch views at the '
+                'top to ask for another company.',
+                style: theme.textTheme.bodySmall,
+              )
+            else if (_cooldownEndsAt != null)
               Text(
                 'You can ask again on ${_date(_cooldownEndsAt!)}.',
                 style: theme.textTheme.bodyMedium,
@@ -246,7 +264,7 @@ class _PhoneServiceRequestPaneState extends State<PhoneServiceRequestPane> {
               Refused(
                 reason: _canAsk ? null : _askRefusal,
                 child: FilledButton(
-                  onPressed: _canAsk && _mayRequest
+                  onPressed: _canAsk && _mayRequest && _mayAskHere
                       ? () => setState(() {
                           _formOpen = true;
                           _formError = null;

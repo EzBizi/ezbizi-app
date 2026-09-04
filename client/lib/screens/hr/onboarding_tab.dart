@@ -180,7 +180,6 @@ class _OnboardingTabState extends State<OnboardingTab> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PanelHeader(
-          title: 'Onboarding',
           // Never "$_total in flight". The Records tab reads the same endpoint
           // to show what was collected about somebody, so finished ones are on
           // it too, and a count that called them all in flight would be wrong
@@ -408,9 +407,9 @@ class _OnboardingTabState extends State<OnboardingTab> {
     if (!mounted) return;
 
     if (!response.ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(response.reason)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response.reason)));
       return;
     }
 
@@ -525,8 +524,7 @@ class _StartPanelState extends State<_StartPanel> {
   bool _already(String? invitationId) =>
       invitationId != null &&
       widget.inFlight.any(
-        (row) =>
-            row.invitationId == invitationId && row.status != 'cancelled',
+        (row) => row.invitationId == invitationId && row.status != 'cancelled',
       );
 
   bool get _complete => _invitationId != null && _contractId != null;
@@ -604,7 +602,9 @@ class _StartPanelState extends State<_StartPanel> {
                     'they arrive.',
               ),
               items: _subjects(),
-              onChanged: _busy ? null : (v) => setState(() => _invitationId = v),
+              onChanged: _busy
+                  ? null
+                  : (v) => setState(() => _invitationId = v),
             ),
             if (_subjects().isEmpty) ...[
               const SizedBox(height: 12),
@@ -647,7 +647,10 @@ class _StartPanelState extends State<_StartPanel> {
                 'the Contracts tab is where they are made.',
               ),
             ],
-            if (_error != null) ...[const SizedBox(height: 18), ErrorNote(_error!)],
+            if (_error != null) ...[
+              const SizedBox(height: 18),
+              ErrorNote(_error!),
+            ],
           ],
         ),
       ),
@@ -655,10 +658,10 @@ class _StartPanelState extends State<_StartPanel> {
   }
 
   List<DropdownMenuItem<String>> _subjects() {
-    String nameOf(Map<String, dynamic> row) => [row['first_name'], row['last_name']]
-        .whereType<String>()
-        .where((part) => part.trim().isNotEmpty)
-        .join(' ');
+    String nameOf(Map<String, dynamic> row) => [
+      row['first_name'],
+      row['last_name'],
+    ].whereType<String>().where((part) => part.trim().isNotEmpty).join(' ');
 
     return [
       for (final invitation in _invitations)

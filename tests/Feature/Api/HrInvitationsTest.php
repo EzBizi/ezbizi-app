@@ -88,6 +88,39 @@ class HrInvitationsTest extends TestCase
             ->assertJsonPath('data.organization.name', 'Alpha');
     }
 
+    public function test_the_response_says_whether_the_invitation_email_actually_went(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $role  = $this->roleIn($alpha, 'Dispatcher', ['customers.view']);
+
+        $body = [
+            'first_name' => 'Marta',
+            'last_name'  => 'Ruiz',
+            'role_id'    => $role->id,
+            'scope_type' => 'franchise',
+            'scope_id'   => $alpha['franchise']->id,
+        ];
+
+        // MAIL_MAILER is `array` under phpunit, so this one genuinely sends.
+        $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/hr/invitations', ['email' => 'first@example.test'] + $body)
+            ->assertCreated()
+            ->assertJsonPath('data.emailed', true);
+
+        // A transport that cannot be constructed at all, which is the cheapest
+        // honest failure: no network, no sleeping retry, and it exercises the
+        // same catch a 554 from a sandboxed SES arrives through.
+        config(['mail.default' => 'a-mailer-that-does-not-exist']);
+
+        // Still created. A mail failure must not roll back a perfectly good
+        // invitation whose link is about to be handed back.
+        $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/hr/invitations', ['email' => 'second@example.test'] + $body)
+            ->assertCreated()
+            ->assertJsonPath('data.emailed', false)
+            ->assertJsonPath('data.status', 'sent');
+    }
+
     public function test_lookup_carries_the_organization_date_format(): void
     {
         $alpha = $this->provisionTenant('Alpha');

@@ -6,6 +6,8 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/screens/phone_screen.dart';
 import 'package:ezbizi_client/widgets/coming_soon.dart';
+import 'package:ezbizi_client/widgets/tab_bar_like.dart';
+import 'package:ezbizi_client/screens/phone/records_tab.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -13,18 +15,18 @@ import 'package:http/testing.dart';
 
 /// Phone — Call, Records and Settings, not a coming-soon tab.
 void main() {
-  testWidgets('a granted Phone tab is Call Records Reports Settings, not Coming soon', (
+  testWidgets('a granted Communication tab is Phone Team Records Reports Settings, not Coming soon', (
     tester,
   ) async {
     await _pump(tester);
 
     expect(find.text('Coming soon'), findsNothing);
-    expect(_chips(tester), ['Call', 'Records', 'Reports', 'Settings']);
-    expect(find.widgetWithText(ChoiceChip, 'Call'), findsOneWidget);
+    expect(_chips(tester), ['Phone', 'Users', 'Records', 'Reports', 'Settings']);
+    expect(find.widgetWithText(ChoiceChip, 'Phone'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'Records'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'Settings'), findsOneWidget);
 
-    expect(find.text('Connect Twilio in Settings'), findsOneWidget);
+    expect(find.text('No phone lines yet. Add one in Settings.'), findsOneWidget);
   });
 
   testWidgets('a granted Phone sidebar tab opens the real screen', (
@@ -35,7 +37,7 @@ void main() {
     expect(find.byType(ComingSoonScreen), findsNothing);
     expect(find.text('Coming soon'), findsNothing);
     expect(find.byType(PhoneScreen), findsOneWidget);
-    expect(_chips(tester), ['Call', 'Records', 'Reports', 'Settings']);
+    expect(_chips(tester), ['Phone', 'Users', 'Records', 'Reports', 'Settings']);
   });
 
   testWidgets('Records is an empty list, not Coming soon', (tester) async {
@@ -187,7 +189,17 @@ void main() {
     expect(find.text('IVR menus'), findsOneWidget);
     expect(find.text('Hours'), findsOneWidget);
     expect(find.text('Ring groups'), findsOneWidget);
-    expect(find.text('Trust'), findsOneWidget);
+    expect(find.text('Trust & caller identity'), findsOneWidget);
+
+    // The rail is a lazy list and grew past one screen when it gained group
+    // headings and a fourteenth section, so the last entry is no longer built
+    // until it is scrolled to. Not being able to reach it WOULD be a defect,
+    // which is why this scrolls rather than dropping the assertion.
+    await _scrollTo(
+      tester,
+      find.text('Messaging'),
+      within: find.byType(ListView).first,
+    );
     expect(find.text('Messaging'), findsOneWidget);
     expect(find.text('Activate phone service'), findsNothing);
 
@@ -402,9 +414,12 @@ void main() {
       );
 
       await openNumbers(tester);
+      // Import moved behind its own segment: it is a job you do once, and
+      // it used to sit above the lines you open Numbers to look at.
+      await _tap(tester, find.textContaining('Import'));
 
-      expect(find.text('EZBZ · +15612323929'), findsOneWidget);
-      expect(find.text('Bar · +19737820956'), findsOneWidget);
+      expect(find.text('EZBZ · +1 (561) 232-3929'), findsOneWidget);
+      expect(find.text('Bar · +1 (973) 782-0956'), findsOneWidget);
 
       // The one that still answers somewhere else says so BEFORE importing.
       expect(
@@ -428,6 +443,9 @@ void main() {
       );
 
       await openNumbers(tester);
+      // Import moved behind its own segment: it is a job you do once, and
+      // it used to sit above the lines you open Numbers to look at.
+      await _tap(tester, find.textContaining('Import'));
 
       await tester.tap(find.byKey(const ValueKey('import:PN2')));
       await tester.pumpAndSettle();
@@ -438,6 +456,147 @@ void main() {
       expect(sent!['sids'], ['PN2']);
       expect(sent!['scope_type'], 'company');
       expect(sent!['scope_id'], 'co-1');
+    });
+
+    const twoLines = [
+      {
+        'id': 'n-1',
+        'e164': '+15612323929',
+        'label': 'EZBZ',
+        'record': true,
+        'transcribe': false,
+        'after_hours': 'voicemail',
+        'ring_group_id': null,
+      },
+      {
+        'id': 'n-2',
+        'e164': '+13057242199',
+        'label': 'Old fax',
+        'record': false,
+        'transcribe': false,
+        'after_hours': 'voicemail',
+        'ring_group_id': null,
+      },
+    ];
+
+    /// Opening a line used to REPLACE the pane.
+    ///
+    /// You lost the list while editing, could not see the line above the one
+    /// you were changing, and came back to the top of the list rather than to
+    /// where you had been. This asserts both halves: the list is still there
+    /// AND the form arrived. Checking only the form would pass on the old
+    /// behaviour, which is what it is here to catch.
+    testWidgets('opening a line keeps the list beside it', (tester) async {
+      await _pump(
+        tester,
+        size: const Size(1280, 900),
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        numbers: twoLines,
+      );
+
+      await openNumbers(tester);
+      await _tap(tester, find.text('Edit').first);
+
+      expect(
+        find.widgetWithText(TextField, 'What this line is called'),
+        findsOneWidget,
+        reason: 'the form did not open',
+      );
+
+      expect(
+        find.textContaining('Old fax'),
+        findsWidgets,
+        reason: 'the other line vanished, so the form replaced the list again',
+      );
+    });
+
+    /// Below 600 there is not room for two columns, so the form pushes over
+    /// the list and has to carry a way back. A split that quietly kept half a
+    /// list on a phone would be worse than the stacking it replaced.
+    testWidgets('on a narrow pane the form takes over and offers Back', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        size: const Size(560, 900),
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        numbers: twoLines,
+      );
+
+      await openNumbers(tester);
+      await _tap(tester, find.text('Edit').first);
+
+      expect(
+        find.widgetWithText(TextField, 'What this line is called'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Old fax'),
+        findsNothing,
+        reason: 'both columns were drawn in a width that cannot hold them',
+      );
+      expect(find.byTooltip('Back to the lines'), findsOneWidget);
+    });
+
+    /// Five controls exist in both Numbers and General. Jose chose to keep
+    /// both editors, so they cannot be allowed to look like the only place a
+    /// value lives — somebody who changes one, then finds the old value in the
+    /// other, concludes the save failed.
+    testWidgets('a field that also exists in General says so in place', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        size: const Size(1280, 900),
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        numbers: twoLines,
+      );
+
+      await openNumbers(tester);
+      await _tap(tester, find.text('Edit').first);
+
+      expect(find.textContaining('Also on General'), findsWidgets);
+    });
+
+    /// Leaving a section and coming back must REFETCH.
+    ///
+    /// Several panes edit the same line — General and Numbers share five
+    /// controls, and Ring groups writes phone_numbers too — so a pane showing
+    /// what it fetched an hour ago is a pane that will silently revert somebody
+    /// else's save. Today that is guaranteed by the rail being a switch, which
+    /// disposes the pane you leave.
+    ///
+    /// This exists because that is a correctness property held up by something
+    /// that looks like an implementation detail. Swapping the switch for an
+    /// IndexedStack reads as a straight performance win and would reintroduce
+    /// the bug in silence. It would fail here instead.
+    testWidgets('a pane refetches when it is opened again', (tester) async {
+      final log = <String>[];
+
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        requestLog: log,
+      );
+
+      await openNumbers(tester);
+      final first = log.where((r) => r.endsWith('/phone/numbers')).length;
+      expect(first, greaterThan(0), reason: 'Numbers never loaded at all');
+
+      // Away, then back.
+      await _tap(tester, find.text('Hours'));
+      await _tap(tester, find.text('Numbers'));
+
+      expect(
+        log.where((r) => r.endsWith('/phone/numbers')).length,
+        greaterThan(first),
+        reason: 'reopening Numbers served a cached pane, so another screen '
+            'saving the same line would be reverted by this one',
+      );
     });
 
     testWidgets('a line with no ring group says calls go to voicemail', (tester) async {
@@ -787,12 +946,16 @@ void main() {
       );
 
       await _tap(tester, find.text('Settings'));
-      await _tap(tester, find.text('Trust'));
+      await _tap(tester, find.text('Trust & caller identity'));
 
-      expect(find.text('With the carriers'), findsOneWidget);
-      expect(find.text('Approved'), findsOneWidget);
-      expect(find.text('Turned down'), findsOneWidget);
-      expect(find.textContaining('nobody at EzBizi can hurry it'), findsOneWidget);
+      // The sentence that matters on this screen: a carrier review is
+      // somebody else's queue, and a customer who thinks EzBizi is sitting on
+      // it will ring EzBizi.
+      expect(
+        find.textContaining('nobody at EzBizi can hurry it'),
+        findsWidgets,
+      );
+      expect(find.text('Pending review'), findsWidgets);
     });
   });
 
@@ -805,6 +968,67 @@ void main() {
       'kind': 'subaccount',
       'status': 'connected',
     };
+
+    /// A menu that is configured and never heard.
+    ///
+    /// Every other field on the row reads as healthy — it has keys, it is on a
+    /// line — while no caller has ever reached it. Nobody reports it either:
+    /// the caller does not know they missed a menu, and the owner does not
+    /// know theirs is skipped.
+    testWidgets('a menu that never plays says so on its row', (tester) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        flows: const [
+          {
+            'id': 'fl-1',
+            'connection_id': 'cx-1',
+            'name': 'Never heard',
+            'prompt': 'Press one for sales.',
+            'options': [
+              {'digit': '1', 'action': 'ring_group', 'ring_group_id': 'rg-1'},
+            ],
+            'number_ids': ['n-1'],
+            'plays': false,
+          },
+        ],
+      );
+
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('IVR menus'));
+
+      expect(find.textContaining('No caller ever hears this'), findsOneWidget);
+    });
+
+    /// The claim is serious, so an older server that does not send the field
+    /// must not put the warning on every healthy menu.
+    testWidgets('a menu says nothing when the server does not report it', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        flows: const [
+          {
+            'id': 'fl-1',
+            'connection_id': 'cx-1',
+            'name': 'Main menu',
+            'prompt': 'Press one for sales.',
+            'options': [
+              {'digit': '1', 'action': 'ring_group', 'ring_group_id': 'rg-1'},
+            ],
+            'number_ids': ['n-1'],
+          },
+        ],
+      );
+
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('IVR menus'));
+
+      expect(find.textContaining('No caller ever hears this'), findsNothing);
+    });
 
     testWidgets('a menu posts the digit, action and group the renderer reads', (tester) async {
       Map<String, dynamic>? sent;
@@ -920,11 +1144,739 @@ void main() {
       );
     });
   });
+
+  group('Settings › Voicemail', () {
+    const conn = {
+      'id': 'cx-1',
+      'scope_type': 'company',
+      'scope_id': 'co-1',
+      'scope_name': 'A-1 Chimney',
+      'kind': 'subaccount',
+      'status': 'connected',
+    };
+
+    const box = {
+      'id': 'vb-1',
+      'connection_id': 'cx-1',
+      'name': 'Main mailbox',
+      'greeting_text': 'You have reached us.',
+      'spoken_greeting': 'You have reached us.',
+      'max_seconds': 300,
+      'transcribe': false,
+      'notify_emails': <String>[],
+    };
+
+    /// The footer's PRESENCE is what says a pane is editable.
+    ///
+    /// It is the whole reason the skeleton has one: read-only panes have no
+    /// footer, so a Save appearing on a list would be a claim that the list is
+    /// something you change. This is the assertion that keeps that true, and it
+    /// has to check both halves — a pane that never shows Save passes half of
+    /// it while being useless.
+    testWidgets('the mailbox list has no Save, and opening one produces it', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        voicemailBoxes: const [box],
+      );
+
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('Voicemail'));
+
+      expect(
+        find.widgetWithText(FilledButton, 'Save'),
+        findsNothing,
+        reason: 'the list offered a Save, which says the list is editable',
+      );
+
+      await _tap(tester, find.text('Edit'));
+
+      expect(find.widgetWithText(FilledButton, 'Save'), findsOneWidget);
+    });
+
+    /// A count tells you that you have unsaved work and never tells you what.
+    ///
+    /// On a form with four sections that is most of the question, and the
+    /// answer is above the fold in the footer rather than found by scrolling.
+    testWidgets('the footer names what changed rather than only counting it', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        voicemailBoxes: const [box],
+      );
+
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('Voicemail'));
+      await _tap(tester, find.text('Edit'));
+
+      expect(find.textContaining('Everything saved'), findsOneWidget);
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Greeting'),
+        'You have reached the office. Leave a number.',
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('One change not saved'), findsOneWidget);
+      expect(find.textContaining('the greeting'), findsOneWidget);
+    });
+
+    /// Voicemail was one of four panes that showed a failure and offered
+    /// nothing to do about it, so the only way out was to leave Settings and
+    /// come back. It inherits the control from the skeleton now rather than
+    /// from somebody remembering to add one.
+    testWidgets('a load that fails offers a way to try it again', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        voicemailFails: true,
+      );
+
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('Voicemail'));
+
+      expect(find.text('Try again'), findsOneWidget);
+    });
+  });
+
+  group('Settings › the rail', () {
+    const conn = {
+      'id': 'cx-1',
+      'scope_type': 'company',
+      'scope_id': 'co-1',
+      'scope_name': 'A-1 Chimney',
+      'kind': 'subaccount',
+      'status': 'connected',
+    };
+
+    /// Thirteen sections in four groups, so somebody can stop reading once
+    /// they know which group they want.
+    testWidgets('sections are grouped under headings', (tester) async {
+      await _pump(tester);
+
+      await _tap(tester, find.text('Settings'));
+
+      for (final heading in ['CONNECT', 'ANSWERING', 'IDENTITY', 'RUNNING IT']) {
+        expect(find.text(heading), findsOneWidget, reason: heading);
+      }
+    });
+
+    /// Grouping REORDERED the rail: Trust moved above Tags. The body used to
+    /// be keyed on the index, so that move repointed every section below it —
+    /// you would tap Trust and get Tags, with nothing failing anywhere.
+    ///
+    /// These two are the pair the move actually swapped, which is why they are
+    /// the pair worth asserting rather than a section in the middle of a group
+    /// that could not have shifted.
+    testWidgets("each rail entry opens its own pane, not its neighbour's", (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        trust: const {
+          'customer_profile': 'pending',
+          'shaken_stir': 'twilio-approved',
+          'cnam': 'noop',
+          'voice_integrity': 'twilio-rejected',
+        },
+      );
+
+      await _tap(tester, find.text('Settings'));
+
+      await _tap(tester, find.text('Trust & caller identity'));
+      expect(
+        find.textContaining('Twilio Business Profile'),
+        findsOneWidget,
+        reason: 'Trust opened something else',
+      );
+
+      await _tap(tester, find.text('Tags'));
+      expect(
+        find.textContaining('Twilio Business Profile'),
+        findsNothing,
+        reason: 'Tags opened Trust, which is the index-repointing bug',
+      );
+    });
+  });
+
+  group('Call › messaging a colleague', () {
+    const conn = {
+      'id': 'cx-1',
+      'scope_type': 'company',
+      'scope_id': 'co-1',
+      'scope_name': 'A-1 Chimney',
+      'kind': 'subaccount',
+      'status': 'connected',
+    };
+
+    const line = {
+      'id': 'n-1',
+      'e164': '+15612323929',
+      'label': 'EZBZ',
+      'record': false,
+      'transcribe': false,
+      'after_hours': 'voicemail',
+      'ring_group_id': null,
+    };
+
+    const team = [
+      {'user_id': 'u-ana', 'name': 'Ana', 'state': 'available'},
+      {'user_id': 'u-bar', 'name': 'Bar', 'state': 'dnd'},
+    ];
+
+    /// The constraint the whole feature rests on.
+    ///
+    /// Somebody messaging a colleague from the Call tab is on a call or about
+    /// to be — "can you take this", "is the van back". A thread that evicted
+    /// the dial pad or the customer would take away the thing the message is
+    /// about, which is why the ROSTER becomes the thread and the other two
+    /// columns are untouched.
+    ///
+    /// Asserting the thread opened is only half. The half that matters is the
+    /// pad still being there.
+    testWidgets('the thread takes the Team column and nothing else', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        numbers: const [line],
+        presence: team,
+      );
+
+      // The roster is its own sub-tab now, so the thread takes THAT and the
+      // sub-tabs stay put. What must not happen is the same as before: the
+      // thread taking over the whole screen, so somebody messaging a colleague
+      // about a call loses the call.
+      await _tap(tester, find.widgetWithText(ChoiceChip, 'Team'));
+      await _tap(tester, find.byTooltip('Message Ana'));
+
+      expect(find.byTooltip('Back to the team'), findsOneWidget);
+
+      for (final section in ['Dial', 'Team', 'Messages', 'Voicemail']) {
+        expect(
+          find.widgetWithText(ChoiceChip, section),
+          findsOneWidget,
+          reason: 'the thread swallowed the $section tab',
+        );
+      }
+
+      // And the desk is still there behind it, not torn down — the softphone
+      // lives in it, and one that deregisters when you open a thread is one
+      // that misses the call you were about to talk about.
+      await _tap(tester, find.widgetWithText(ChoiceChip, 'Dial'));
+      expect(find.byKey(const Key('phone-call-pad')), findsOneWidget);
+    });
+
+    /// One total says you have messages without saying whose, and the roster
+    /// is where you act on it.
+    testWidgets('what is waiting is counted against the person', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        numbers: const [line],
+        presence: team,
+        unread: const {'u-ana': 2},
+      );
+
+      // Against Ana, and not against Bar, who has sent nothing.
+      // The roster lives on the Team sub-tab now.
+      await _tap(tester, find.widgetWithText(ChoiceChip, 'Team'));
+
+      final ana = find.ancestor(
+        of: find.text('Ana'),
+        matching: find.byType(Row),
+      );
+
+      expect(
+        find.descendant(of: ana.first, matching: find.text('2')),
+        findsOneWidget,
+        reason: 'the count was not shown against the person who is waiting',
+      );
+    });
+
+    /// Sent and seen, and nothing else — no delivered, no typing indicator.
+    /// Those are claims this system cannot honestly make. "Seen" is the one
+    /// thing the server knows, because opening the thread records it.
+    testWidgets('seen is shown on a read message and not on an unread one', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        numbers: const [line],
+        presence: team,
+        staffMessages: const [
+          {'id': 'm-1', 'body': 'Is the van back?', 'mine': true,
+            'read_at': '2026-08-31T10:00:00+00:00'},
+        ],
+      );
+
+      await _tap(tester, find.widgetWithText(ChoiceChip, 'Team'));
+      await _tap(tester, find.byTooltip('Message Ana'));
+
+      expect(find.text('Is the van back?'), findsOneWidget);
+      expect(find.text('Seen'), findsOneWidget);
+      expect(
+        find.text('Delivered'),
+        findsNothing,
+        reason: 'delivered is a claim the phone system cannot make',
+      );
+    });
+
+    testWidgets('sending posts the body and who it is for', (tester) async {
+      Map<String, dynamic>? sent;
+
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        numbers: const [line],
+        presence: team,
+        onStaffMessage: (body) => sent = body,
+      );
+
+      await _tap(tester, find.widgetWithText(ChoiceChip, 'Team'));
+      await _tap(tester, find.byTooltip('Message Ana'));
+
+      await tester.enterText(
+        find.byKey(const Key('staff-message-composer')),
+        'Ten minutes.',
+      );
+      await _tap(tester, find.byTooltip('Send'));
+
+      expect(sent, isNotNull);
+      expect(sent!['to'], 'u-ana');
+      expect(sent!['body'], 'Ten minutes.');
+    });
+  });
+
+  group('Team', () {
+    const conn = {
+      'id': 'cx-1',
+      'scope_type': 'company',
+      'scope_id': 'co-1',
+      'scope_name': 'A-1 Chimney',
+      'kind': 'subaccount',
+      'status': 'connected',
+    };
+
+    const roster = [
+      {'user_id': 'u-ana', 'name': 'Analorena', 'extension': '101'},
+      {'user_id': 'u-bar', 'name': 'Bar', 'extension': null},
+    ];
+
+    Future<void> openExtensions(WidgetTester tester) async {
+      await _tap(tester, _tab('Users'));
+    }
+
+    /// Somebody opens this asking "what is Bar's number", and the answer is
+    /// often "she has not got one". A list of only the assigned cannot say
+    /// that — an absent name reads as a loading problem, so everybody is
+    /// listed and a blank field is the answer.
+    testWidgets('a person with no extension is listed with an empty field', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        extensions: roster,
+      );
+
+      await openExtensions(tester);
+
+      expect(find.text('Analorena'), findsOneWidget);
+      expect(
+        find.text('Bar'),
+        findsOneWidget,
+        reason: 'somebody without an extension was left out of the list',
+      );
+
+      final bar = tester.widget<TextField>(
+        find.byKey(const Key('extension:u-bar')),
+      );
+      expect(bar.controller!.text, isEmpty);
+    });
+
+    /// The server refuses a clash by NAMING who already holds the number,
+    /// because "already taken" leaves somebody hunting through the roster for
+    /// the one field that matches. That sentence has to reach the screen
+    /// rather than being replaced by a generic failure.
+    testWidgets('a clash says who already holds the number', (tester) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        extensions: roster,
+        extensionRefusal: 'Analorena already has extension 101.',
+      );
+
+      await openExtensions(tester);
+
+      await tester.enterText(
+        find.byKey(const Key('extension:u-bar')),
+        '101',
+      );
+      await tester.pumpAndSettle();
+
+      await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+
+      expect(
+        find.textContaining('Analorena already has extension 101'),
+        findsOneWidget,
+      );
+    });
+
+    /// Clearing is a real edit, not an absence of one. The endpoint takes a
+    /// present-but-null extension, so a blanked field has to post null rather
+    /// than be skipped as "nothing typed".
+    testWidgets('clearing a number posts null rather than being skipped', (
+      tester,
+    ) async {
+      final sent = <Map<String, dynamic>>[];
+
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        extensions: roster,
+        onExtension: sent.add,
+      );
+
+      await openExtensions(tester);
+
+      await tester.enterText(find.byKey(const Key('extension:u-ana')), '');
+      await tester.pumpAndSettle();
+
+      await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+
+      expect(sent, hasLength(1));
+      expect(sent.single['user_id'], 'u-ana');
+      expect(sent.single['extension'], isNull);
+    });
+  });
+
+  group('Settings › Ring groups', () {
+    const conn = {
+      'id': 'cx-1',
+      'scope_type': 'company',
+      'scope_id': 'co-1',
+      'scope_name': 'A-1 Chimney',
+      'kind': 'subaccount',
+      'status': 'connected',
+    };
+
+    Map<String, Object?> groupOf(List<Map<String, Object?>> members) => {
+      'id': 'rg-1',
+      'connection_id': 'cx-1',
+      'name': 'Front desk',
+      'mode': 'simultaneous',
+      'timeout_seconds': 30,
+      'member_user_ids': [for (final m in members) m['user_id']],
+      'member_role_ids': <String>[],
+      'overflow': 'voicemail',
+      'members': members,
+      'members_measured_at': '2026-08-31T12:00:00+00:00',
+    };
+
+    /// The defect this pane was redrawn for.
+    ///
+    /// It stated the rule once as prose — somebody only rings if signed in
+    /// with Phone open and not on Do not disturb — and then said "4 people".
+    /// A group where all four are at Do not disturb rings NOBODY and looked
+    /// exactly like a working one. The rule was stated and never applied to
+    /// the thing it was about.
+    testWidgets('a group that can ring nobody says so instead of its headcount', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        ringGroups: [
+          groupOf(const [
+            {'user_id': 'u-1', 'name': 'Ana', 'reachable': false, 'state': 'dnd'},
+            {'user_id': 'u-2', 'name': 'Bar', 'reachable': false, 'state': 'on_call'},
+          ]),
+        ],
+      );
+
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('Ring groups'));
+
+      expect(find.textContaining('none of 2'), findsOneWidget);
+      expect(
+        find.textContaining('2 people'),
+        findsNothing,
+        reason: 'the headcount was shown as though it were the answer',
+      );
+    });
+
+    /// A count with no time against it reads as live, and there is no live
+    /// channel — somebody's phone can register a second after this was read.
+    testWidgets('the reachability count says how old it is', (tester) async {
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        ringGroups: [
+          groupOf(const [
+            {'user_id': 'u-1', 'name': 'Ana', 'reachable': true, 'state': 'registered'},
+          ]),
+        ],
+      );
+
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('Ring groups'));
+
+      expect(find.textContaining('1 of 1 can be rung'), findsOneWidget);
+      expect(find.textContaining('It is not live'), findsOneWidget);
+    });
+  });
+
+  group('Settings › Connection', () {
+    /// The inheritance rule, drawn once.
+    ///
+    /// It used to be six sentences across three branches — each correct, each
+    /// chosen by which state you stood in — because one sentence tried to say
+    /// two things: where calls go, which never changes, and whether you may
+    /// change it here, which depends on your view. Splitting them is what
+    /// collapses the six.
+    testWidgets('a company with no account of its own says what it inherits', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        approvedCompanyIds: const ['co-a1'],
+        connections: const [
+          {
+            'id': 'cx-org',
+            'scope_type': 'organization',
+            'scope_id': 'org-1',
+            'scope_name': 'A-1 Group',
+            'kind': 'subaccount',
+            'status': 'connected',
+          },
+        ],
+        companies: const [
+          {'id': 'co-a1', 'name': 'A-1 Chimney', 'parent_company_id': null},
+        ],
+      );
+
+      await _tap(tester, _tab('Settings'));
+
+      expect(find.text('Uses the organization'), findsOneWidget);
+      expect(
+        find.textContaining("use the organization's connection above"),
+        findsOneWidget,
+      );
+    });
+
+    /// The sentence above must not be said when there is nothing to inherit.
+    ///
+    /// "uses the organization's connection" with no organization connection
+    /// points at nothing, and it reads as working to somebody whose calls
+    /// actually reach no account at all.
+    testWidgets('a company with nothing above it says calls reach nobody', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        approvedCompanyIds: const ['co-a1'],
+        companies: const [
+          {'id': 'co-a1', 'name': 'A-1 Chimney', 'parent_company_id': null},
+        ],
+      );
+
+      await _tap(tester, _tab('Settings'));
+
+      expect(
+        find.textContaining('reach nobody'),
+        findsOneWidget,
+        reason: 'a company with no account anywhere read as inheriting one',
+      );
+      expect(
+        find.textContaining("use the organization's connection above"),
+        findsNothing,
+      );
+    });
+  });
+
+  /// Phone holds three things, and the sub-tab IS the filter.
+  ///
+  /// Messages and Voicemail are the Records views with their filter fixed,
+  /// rather than two more screens reading the same rows a second way. So the
+  /// filter chips must NOT appear inside them: a tab labelled Messages that
+  /// also offers a Calls chip is two controls for one fact, and a heading that
+  /// stops being true the moment somebody presses the chip.
+  testWidgets('Phone holds Dial, Messages and Voicemail', (tester) async {
+    // The Records view needs a connected line before it draws anything at
+    // all — without one it shows an empty state with no chips, and "no SMS
+    // chip" would be true for the wrong reason. Found by sabotage: the first
+    // version of this test passed with the filters deliberately left on.
+    await _pump(
+      tester,
+      approvedCompanyIds: const ['co-1'],
+      connections: const [
+        {
+          'id': 'cx-1',
+          'scope_type': 'company',
+          'scope_id': 'co-1',
+          'scope_name': 'A-1 Chimney',
+          'kind': 'subaccount',
+          'status': 'connected',
+        },
+      ],
+      numbers: const [
+        {
+          'id': 'n-1',
+          'connection_id': 'cx-1',
+          'e164': '+12035550142',
+          'label': 'CT main',
+        },
+      ],
+
+      // With no rows Records draws "there are no calls or messages yet" and
+      // never reaches its filter row — so the assertion below would have been
+      // true of an empty screen. Found by sabotage: leaving the filters on
+      // deliberately did not fail the first two versions of this test.
+      calls: const [
+        {
+          'id': 'c-1',
+          'number_id': 'n-1',
+          'direction': 'inbound',
+          'from_e164': '+13055550100',
+          'to_e164': '+12035550142',
+          'voicemail': false,
+          'created_at': '2026-09-02T10:00:00+00:00',
+        },
+      ],
+      messages: const [
+        {
+          'id': 'm-1',
+          'number_id': 'n-1',
+          'direction': 'inbound',
+          'from_e164': '+13055550100',
+          'to_e164': '+12035550142',
+          'body': 'On my way',
+          'created_at': '2026-09-02T10:01:00+00:00',
+        },
+      ],
+    );
+
+    await _tap(tester, _tab('Phone'));
+
+    for (final section in ['Dial', 'Team', 'Messages', 'Voicemail']) {
+      expect(
+        find.widgetWithText(ChoiceChip, section),
+        findsOneWidget,
+        reason: '$section is not offered under Phone',
+      );
+    }
+
+    await _tap(tester, find.widgetWithText(ChoiceChip, 'Messages'));
+    await tester.pumpAndSettle();
+
+    // The view really is rendered — otherwise the assertion below is true of
+    // an empty screen rather than of a filtered one.
+    expect(find.byType(RecordsTab), findsOneWidget);
+
+
+    expect(
+      find.widgetWithText(ChoiceChip, 'SMS'),
+      findsNothing,
+      reason: 'the Messages tab also offered the filter it already is',
+    );
+  });
+
+  /// Voicemail is BOXES, and a box says whose it is.
+  ///
+  /// A flat list answers "did anybody ring" and not "did anybody ring ME",
+  /// which on a shared account is the question — so it is split the way
+  /// responsibility already is, and the transcript is shown rather than hidden
+  /// behind a control nobody presses.
+  testWidgets('Voicemail shows the boxes, whose they are, and transcripts', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      approvedCompanyIds: const ['co-1'],
+      connections: const [
+        {
+          'id': 'cx-1',
+          'scope_type': 'company',
+          'scope_id': 'co-1',
+          'scope_name': 'A-1 Chimney',
+          'kind': 'subaccount',
+          'status': 'connected',
+        },
+      ],
+      voicemailBoxes: const [
+        {
+          'id': 'vb-1',
+          'connection_id': 'cx-1',
+          'name': 'Front desk',
+          'owner_type': 'user',
+          'owner_id': 'u-ana',
+          'owner_name': 'Ana',
+        },
+      ],
+      calls: const [
+        {
+          'id': 'c-9',
+          'number_id': 'n-1',
+          'direction': 'inbound',
+          'from_e164': '+13055550100',
+          'to_e164': '+12035550142',
+          'voicemail': true,
+          'transcript': 'Can somebody call me back about the chimney',
+          'created_at': '2026-09-03T10:00:00+00:00',
+        },
+      ],
+    );
+
+    await _tap(tester, _tab('Phone'));
+    await _tap(tester, find.widgetWithText(ChoiceChip, 'Voicemail'));
+
+    expect(find.text("Ana's"), findsOneWidget);
+    expect(
+      find.textContaining('call me back about the chimney'),
+      findsOneWidget,
+      reason: 'the transcript was not shown on the voicemail',
+    );
+  });
 }
 Finder _tab(String label) => find.widgetWithText(ChoiceChip, label);
 
+/// The TOP-LEVEL tabs only.
+///
+/// Scoped to the tab bar because Phone now draws its own Dial / Messages /
+/// Voicemail chips inside itself — an unscoped search collects both levels and
+/// this list silently grew to eight.
 List<String> _chips(WidgetTester tester) => tester
-    .widgetList<ChoiceChip>(find.byType(ChoiceChip))
+    .widgetList<ChoiceChip>(
+      find.descendant(
+        of: find.byType(TabBarLike),
+        matching: find.byType(ChoiceChip),
+      ),
+    )
     .map((chip) => (chip.label as Text).data!)
     .toList();
 
@@ -997,6 +1949,19 @@ Future<void> _pump(
   void Function(Map<String, dynamic> body)? onRingGroup,
   void Function(Map<String, dynamic> body)? onNumberPatch,
   void Function()? onDelete,
+  List<String>? requestLog,
+  List<Map<String, Object?>> calls = const [],
+  List<Map<String, Object?>> messages = const [],
+  List<Map<String, Object?>> extensions = const [],
+  String? extensionRefusal,
+  void Function(Map<String, dynamic> body)? onExtension,
+  List<Map<String, Object?>> presence = const [],
+  List<Map<String, Object?>> staffMessages = const [],
+  Map<String, Object?> unread = const {},
+  void Function(Map<String, dynamic> body)? onStaffMessage,
+  List<Map<String, Object?>> voicemailBoxes = const [],
+  bool voicemailFails = false,
+  void Function(Map<String, dynamic> body)? onVoicemailSave,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -1023,6 +1988,19 @@ Future<void> _pump(
         onRingGroup: onRingGroup,
         onNumberPatch: onNumberPatch,
         onDelete: onDelete,
+        requestLog: requestLog,
+        calls: calls,
+        messages: messages,
+        extensions: extensions,
+        extensionRefusal: extensionRefusal,
+        onExtension: onExtension,
+        presence: presence,
+        staffMessages: staffMessages,
+        unread: unread,
+        onStaffMessage: onStaffMessage,
+        voicemailBoxes: voicemailBoxes,
+        voicemailFails: voicemailFails,
+        onVoicemailSave: onVoicemailSave,
         importable: importable,
     callFlow: callFlow,
         schedules: schedules,
@@ -1107,9 +2085,23 @@ MockClientHandler _handler({
   void Function(Map<String, dynamic> body)? onRingGroup,
   void Function(Map<String, dynamic> body)? onNumberPatch,
   void Function()? onDelete,
+  List<String>? requestLog,
+  List<Map<String, Object?>> calls = const [],
+  List<Map<String, Object?>> messages = const [],
+  List<Map<String, Object?>> extensions = const [],
+  String? extensionRefusal,
+  void Function(Map<String, dynamic> body)? onExtension,
+  List<Map<String, Object?>> presence = const [],
+  List<Map<String, Object?>> staffMessages = const [],
+  Map<String, Object?> unread = const {},
+  void Function(Map<String, dynamic> body)? onStaffMessage,
+  List<Map<String, Object?>> voicemailBoxes = const [],
+  bool voicemailFails = false,
+  void Function(Map<String, dynamic> body)? onVoicemailSave,
 }) {
   return (request) async {
     final path = request.url.path;
+    requestLog?.add('${request.method} $path');
 
     if (path.endsWith('/me')) {
       return _json({
@@ -1233,15 +2225,32 @@ MockClientHandler _handler({
     }
 
     if (path.endsWith('/phone/calls') && request.method == 'GET') {
-      return _json({'data': <Map<String, Object?>>[]});
+      return _json({'data': calls});
     }
 
     if (path.endsWith('/phone/messages') && request.method == 'GET') {
-      return _json({'data': <Map<String, Object?>>[]});
+      return _json({'data': messages});
     }
 
     if (path.endsWith('/phone/presence')) {
-      return _json({'data': <Map<String, Object?>>[]});
+      return _json({'data': presence});
+    }
+
+    if (path.endsWith('/staff-messages/unread') && request.method == 'GET') {
+      var total = 0;
+      for (final value in unread.values) {
+        total += int.tryParse(value.toString()) ?? 0;
+      }
+      return _json({'data': unread, 'total': total});
+    }
+
+    if (path.endsWith('/staff-messages') && request.method == 'GET') {
+      return _json({'data': staffMessages});
+    }
+
+    if (path.endsWith('/staff-messages') && request.method == 'POST') {
+      onStaffMessage?.call(jsonDecode(request.body) as Map<String, dynamic>);
+      return _json({'data': {'id': 'sm-new'}}, 201);
     }
 
     if (path.endsWith('/phone/tokens') && request.method == 'POST') {
@@ -1287,6 +2296,30 @@ MockClientHandler _handler({
           'status_reason': null,
         },
       }, createStatus);
+    }
+
+    if (path.endsWith('/phone/voicemail-boxes') && request.method == 'GET') {
+      if (voicemailFails) {
+        return _json({'message': 'The phone service did not answer.'}, 503);
+      }
+      return _json({'data': voicemailBoxes});
+    }
+
+    if (path.contains('/phone/voicemail-boxes/') && request.method == 'PATCH') {
+      onVoicemailSave?.call(jsonDecode(request.body) as Map<String, dynamic>);
+      return _json({'data': voicemailBoxes.isEmpty ? {} : voicemailBoxes.first});
+    }
+
+    if (path.endsWith('/phone/extensions') && request.method == 'GET') {
+      return _json({'data': extensions, 'connection_id': 'cx-1'});
+    }
+
+    if (path.endsWith('/phone/extensions') && request.method == 'PUT') {
+      onExtension?.call(jsonDecode(request.body) as Map<String, dynamic>);
+      if (extensionRefusal != null) {
+        return _json({'message': extensionRefusal}, 422);
+      }
+      return _json({'data': <String, Object?>{}});
     }
 
     return _json({'message': 'Unexpected ${request.method} $path'}, 500);

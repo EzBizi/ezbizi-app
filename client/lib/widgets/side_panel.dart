@@ -164,71 +164,89 @@ class _SidePanelState extends State<SidePanel> {
                 ? MediaQuery.sizeOf(context).width
                 : widget.width,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 20, 12, 16),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.title,
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                          if (widget.subtitle != null) ...[
-                            const SizedBox(height: 6),
-                            Text(
-                              widget.subtitle!,
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      // Named, because "Close" alone does not say close what when a
-                      // panel sits over a page that also has controls.
-                      tooltip: 'Close ${widget.title}',
-                      onPressed: () => Navigator.of(context).maybePop(),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: widget.scrollable
-                    ? SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-                        child: widget.child,
-                      )
-                    : Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-                        child: widget.child,
-                      ),
-              ),
-              if (widget.actions.isNotEmpty) ...[
-                const Divider(height: 1),
+          // INSIDE the Material, not around it.
+          //
+          // `showGeneralDialog` covers the whole screen, status bar and home
+          // indicator included, and nothing here inset for them. On a desktop
+          // there is no status bar so it never showed; on an iPhone the header
+          // row drew UNDER the notch, which put the close button beneath the
+          // clock where it cannot be tapped. The panel has no other way out on
+          // a phone -- Escape needs a keyboard and the scrim is off the side --
+          // so the app had to be force-quit. Reported from an iPhone on
+          // 0.0.0129, and it applies to all 34 screens that open a panel.
+          //
+          // Wrapping the Material itself would inset the SURFACE, leaving a
+          // floating rounded card with a gap above and below it -- the modal
+          // look this panel exists to avoid. Padding the content instead keeps
+          // the surface bleeding to every edge and moves only the parts you
+          // touch.
+          child: SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
-                  // Wraps rather than overflows. Three buttons is about 344px,
-                  // which fits the panel until the window is narrow enough that
-                  // the panel becomes the window — and that is exactly where a
-                  // Row would have thrown.
-                  child: Wrap(
-                    alignment: WrapAlignment.end,
-                    spacing: 10,
-                    runSpacing: 8,
-                    children: widget.actions,
+                  padding: const EdgeInsets.fromLTRB(24, 20, 12, 16),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.title,
+                              style: Theme.of(context).textTheme.titleLarge,
+                            ),
+                            if (widget.subtitle != null) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                widget.subtitle!,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        // Named, because "Close" alone does not say close what when a
+                        // panel sits over a page that also has controls.
+                        tooltip: 'Close ${widget.title}',
+                        onPressed: () => Navigator.of(context).maybePop(),
+                      ),
+                    ],
                   ),
                 ),
+                const Divider(height: 1),
+                Expanded(
+                  child: widget.scrollable
+                      ? SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+                          child: widget.child,
+                        )
+                      : Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+                          child: widget.child,
+                        ),
+                ),
+                if (widget.actions.isNotEmpty) ...[
+                  const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
+                    // Wraps rather than overflows. Three buttons is about 344px,
+                    // which fits the panel until the window is narrow enough that
+                    // the panel becomes the window — and that is exactly where a
+                    // Row would have thrown.
+                    child: Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: 10,
+                      runSpacing: 8,
+                      children: widget.actions,
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

@@ -1480,6 +1480,13 @@ class _ContractDesignerState extends State<ContractDesigner> {
                 label: Text(option.label),
                 avatar: Icon(_sideIcon(option.key), size: 16),
                 selected: chosen == option.key,
+                // The other chip in this app with an avatar AND a selected
+                // state, and the same defect — see TabBarLike for the whole
+                // reason. Material paints the tick on top of the avatar and
+                // darkens the avatar to make it readable, so the icon that
+                // identifies the option vanishes under a grey disc at the exact
+                // moment you pick it.
+                showCheckmark: false,
                 onSelected: enabled
                     ? (_) => setState(() => question.filledBy = option.key)
                     : null,

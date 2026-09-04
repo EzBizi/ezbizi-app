@@ -1,3 +1,4 @@
+import '../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/automation_catalogue.dart';
@@ -153,7 +154,15 @@ class _ActionRow {
   /// is forty lines down behind a docblock neither scrolled to. One of them
   /// then told the other to hold a finished, correct commit.
   Map<String, dynamic> toJson(CatalogueActionType? definition) {
-    if (type?.startsWith('task.') == true && definition != null) {
+    // Any action that DECLARES parameters is built from them, rather than
+    // any action whose key happens to start with a particular prefix.
+    //
+    // The prefix was accurate while one module was the only one with
+    // configurable actions, and it silently stopped being a description of
+    // anything the moment Phone added one: "Send a message" was selectable,
+    // drew no fields, and fell to the throw below — a StateError on a rule
+    // somebody had just built.
+    if (definition != null && definition.parameters.isNotEmpty) {
       final payload = <String, dynamic>{'type': type};
       for (final field in definition.parameters) {
         final value = parameter(field.key).text.trim();
@@ -194,12 +203,6 @@ class _ActionRow {
     'notify',
     'voicemail.mark_dealt',
     'missed.create_job',
-    'task.create',
-    'task.assign_owner',
-    'task.set_status',
-    'task.set_due_date',
-    'task.move_group',
-    'task.add_update',
   };
 
   void dispose() {
@@ -264,12 +267,87 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   bool get _isEdit => widget.editing != null;
   String? get _id => widget.editing?['id'] as String?;
 
+  /// The phone lines this company holds, for the "Send from" picker.
+  ///
+  /// Fetched rather than declared in the catalogue because it is tenant data,
+  /// not a description of what the module can do — the catalogue says a
+  /// parameter is a phone line, and which lines exist is a different question
+  /// with a different answer per company.
+  List<(String, String)> _lines = const [];
+
+  Future<void> _loadPhoneLines() async {
+    final response = await widget.api.get('/phone/numbers');
+    if (!mounted || !response.ok) return;
+
+    setState(() {
+      _lines = [
+        for (final row in (response.data as List? ?? const []))
+          if (row is Map<String, dynamic>)
+            (
+              (row['id'] ?? '').toString(),
+              [
+                (row['label'] ?? '').toString(),
+                formatPhoneNumber((row['e164'] ?? '').toString()),
+              ].where((part) => part.isNotEmpty).join(' · '),
+            ),
+      ];
+    });
+  }
+
+  /// The field names a condition on [_trigger] can actually read.
+  ///
+  /// Fetched, not declared, and for the same reason as [_lines]: this is what
+  /// events of this kind have actually carried in THIS organization, which the
+  /// catalogue cannot know. The server reads them the way the evaluator
+  /// resolves them, so anything offered here is something a condition can read.
+  ///
+  /// Empty means one of two things and [_fieldsSampled] tells them apart: the
+  /// trigger has never fired here, or it is still loading. Neither is "this
+  /// event has no fields", and the form must not say so.
+  List<String> _triggerFields = const [];
+  int? _fieldsSampled;
+
+  Future<void> _loadTriggerFields() async {
+    final key = _trigger;
+
+    if (key == null) {
+      setState(() {
+        _triggerFields = const [];
+        _fieldsSampled = null;
+      });
+
+      return;
+    }
+
+    final response = await widget.api.get(
+      '/automations/trigger-fields?trigger=${Uri.encodeQueryComponent(key)}',
+    );
+
+    // A trigger whose tab this person cannot open answers 403, and a rule they
+    // are editing may well be on one. Leaving the last trigger's fields on
+    // screen would offer fields that belong to a different event, so they go.
+    if (!mounted || _trigger != key) return;
+
+    setState(() {
+      _triggerFields = response.ok
+          ? [
+              for (final field in (response.data?['fields'] as List? ?? const []))
+                field.toString(),
+            ]
+          : const [];
+      _fieldsSampled = response.ok
+          ? (response.data?['sampled'] as num?)?.toInt() ?? 0
+          : null;
+    });
+  }
+
   @override
   void initState() {
     super.initState();
 
     _name.addListener(_changed);
     _description.addListener(_changed);
+    _loadPhoneLines();
 
     final editing = widget.editing;
 
@@ -279,6 +357,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       _trigger = editing['trigger_key'] as String?;
       _adoptActions(editing['actions']);
       _adoptConditions(editing['conditions']);
+      _loadTriggerFields();
     }
   }
 
@@ -728,7 +807,14 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     setState(() {
       _trigger = key;
       _triggerNotice = _dropWhatNoLongerApplies(previous);
+      // Cleared before the fetch, not after: the previous trigger's fields are
+      // wrong the instant the trigger changes, and offering them for the moment
+      // the request is in flight is offering fields that cannot be read.
+      _triggerFields = const [];
+      _fieldsSampled = null;
     });
+
+    _loadTriggerFields();
   }
 
   /// Clear the steps the new subject makes impossible, and say which.
@@ -867,10 +953,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           'The webhook step needs an address to call.',
         'notify' when action.message.text.trim().isEmpty =>
           'The notification step needs a message.',
-        String type when type.startsWith('task.') => _missingTaskParameter(
-          action,
-          type,
-        ),
+        'sms.send' => _missingParameter(action, 'sms.send'),
         _ => null,
       };
 
@@ -1198,24 +1281,89 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     );
   }
 
+  /// Choosing a field, rather than guessing one.
+  ///
+  /// ── What this replaced, and what it cost ─────────────────────
+  ///
+  /// A free `TextField` with the hint "status". The vocabulary is fixed and the
+  /// form published none of it, so a customer building "tell me about missed
+  /// calls" wrote `from` and `Status` for an email whose payload carries
+  /// `from_address` and `subject`. Both clauses read null, the rule skipped
+  /// every run for a fortnight, and the trace said "the value at the time was
+  /// nothing" each time — which reads as missing data, not as a wrong name. No
+  /// error, nothing red; the rule simply never fired.
+  ///
+  /// A typo cannot be typed into a list. Search comes free with DropdownMenu
+  /// and matters at the wide end: a Task event carries a couple of dozen
+  /// fields, and scrolling a menu to find `due_on` is the same problem in a
+  /// shorter costume.
+  ///
+  /// ── Why it still accepts free text ───────────────────────────
+  ///
+  /// The list is what recent events CARRIED, so a real field that has not
+  /// appeared lately is absent. Refusing anything off-list would make a
+  /// correct rule unsaveable because the office was quiet, so typing still
+  /// works and an off-list value is kept and marked rather than dropped —
+  /// the same idiom the settings selectors use for a stored value that is no
+  /// longer offered.
+  Widget _fieldChooser(BuildContext context, _ConditionRow row) {
+    final typed = row.field.text.trim();
+    final known = _triggerFields.contains(typed);
+
+    // Nothing to offer yet. Say WHICH kind of nothing: a trigger that has not
+    // fired here cannot be answered by waiting, and telling somebody to wait
+    // for a list that will never arrive is worse than the text box was.
+    if (_triggerFields.isEmpty) {
+      return TextField(
+        controller: row.field,
+        enabled: !_busy,
+        decoration: InputDecoration(
+          labelText: 'Field',
+          isDense: true,
+          hintText: 'status',
+          helperMaxLines: 3,
+          helperText: _trigger == null
+              ? 'Choose what this reacts to first, and the fields it carries '
+                    'will be offered here.'
+              : _fieldsSampled == 0
+              ? 'This has not happened here yet, so there is nothing to list. '
+                    'Type the field name if you know it.'
+              : null,
+        ),
+      );
+    }
+
+    return DropdownMenu<String>(
+      controller: row.field,
+      enabled: !_busy,
+      enableFilter: true,
+      requestFocusOnTap: true,
+      expandedInsets: EdgeInsets.zero,
+      label: const Text('Field'),
+      helperText: known || typed.isEmpty ? null : 'Not seen on this event lately',
+      inputDecorationTheme: const InputDecorationTheme(isDense: true),
+      dropdownMenuEntries: [
+        // The stored value first when it is not one of the offered ones, so
+        // opening an existing rule shows what it actually says instead of an
+        // empty box that looks like the rule lost its field.
+        if (typed.isNotEmpty && !known)
+          DropdownMenuEntry(value: typed, label: '$typed — not seen lately'),
+        for (final field in _triggerFields)
+          DropdownMenuEntry(value: field, label: field),
+      ],
+      onSelected: (picked) {
+        if (picked != null) _changed();
+      },
+    );
+  }
+
   Widget _conditionRow(BuildContext context, _ConditionRow row) {
     final arity = arityOf(row.op);
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          flex: 3,
-          child: TextField(
-            controller: row.field,
-            enabled: !_busy,
-            decoration: const InputDecoration(
-              labelText: 'Field',
-              isDense: true,
-              hintText: 'status',
-            ),
-          ),
-        ),
+        Expanded(flex: 3, child: _fieldChooser(context, row)),
         const SizedBox(width: 8),
         Expanded(
           flex: 3,
@@ -1486,10 +1634,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       'voicemail.mark_dealt' || 'missed.create_job' => _note(
         'Uses the call that triggered the rule. Nothing else to fill in.',
       ),
-      String type when type.startsWith('task.') => _taskActionForm(
-        row,
-        widget.catalogue.actionType(type),
-      ),
+      'sms.send' => _parameterForm(row, widget.catalogue.actionType('sms.send')),
       _ => TextField(
         controller: row.message,
         enabled: !_busy,
@@ -1502,10 +1647,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     };
   }
 
-  String? _missingTaskParameter(_ActionRow row, String type) {
+  String? _missingParameter(_ActionRow row, String type) {
     final definition = widget.catalogue.actionType(type);
     if (definition == null) {
-      return 'This task action needs a newer version of the app.';
+      return 'This step needs a newer version of the app.';
     }
 
     for (final field in definition.parameters) {
@@ -1518,32 +1663,64 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     return null;
   }
 
-  Widget _taskActionForm(_ActionRow row, CatalogueActionType? definition) {
+  Widget _parameterForm(_ActionRow row, CatalogueActionType? definition) {
     if (definition == null) {
-      return _note('This task action needs a newer version of the app.');
+      return _note('This step needs a newer version of the app.');
     }
 
     return Column(
       children: [
         for (var i = 0; i < definition.parameters.length; i++) ...[
-          TextField(
-            controller: row.parameter(definition.parameters[i].key),
-            enabled: !_busy,
-            keyboardType: definition.parameters[i].kind == 'date'
-                ? TextInputType.datetime
-                : TextInputType.text,
-            maxLines: definition.parameters[i].kind == 'rich_text' ? 3 : 1,
-            decoration: InputDecoration(
-              labelText: definition.parameters[i].label,
-              isDense: true,
-              hintText: definition.parameters[i].kind == 'date'
-                  ? 'YYYY-MM-DD'
-                  : null,
-              helperText: definition.parameters[i].nullable
-                  ? 'Leave blank to clear it.'
-                  : null,
+          if (definition.parameters[i].kind == 'phone_number')
+            // A line is picked from the ones this company holds. The value
+            // stored is an id, and asking somebody to type one is asking them
+            // to fail — which is what a plain text field here would do.
+            DropdownButtonFormField<String>(
+              initialValue:
+                  row.parameter(definition.parameters[i].key).text.isEmpty
+                  ? null
+                  : row.parameter(definition.parameters[i].key).text,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: definition.parameters[i].label,
+                isDense: true,
+                helperText: _lines.isEmpty
+                    ? 'No phone lines on this company yet.'
+                    : 'Only lines approved for messaging can send.',
+              ),
+              items: [
+                for (final line in _lines)
+                  DropdownMenuItem(
+                    value: line.$1,
+                    child: Text(line.$2, overflow: TextOverflow.ellipsis),
+                  ),
+              ],
+              onChanged: _busy
+                  ? null
+                  : (id) => setState(
+                      () => row.parameter(definition.parameters[i].key).text =
+                          id ?? '',
+                    ),
+            )
+          else
+            TextField(
+              controller: row.parameter(definition.parameters[i].key),
+              enabled: !_busy,
+              keyboardType: definition.parameters[i].kind == 'date'
+                  ? TextInputType.datetime
+                  : TextInputType.text,
+              maxLines: definition.parameters[i].kind == 'rich_text' ? 3 : 1,
+              decoration: InputDecoration(
+                labelText: definition.parameters[i].label,
+                isDense: true,
+                hintText: definition.parameters[i].kind == 'date'
+                    ? 'YYYY-MM-DD'
+                    : null,
+                helperText: definition.parameters[i].nullable
+                    ? 'Leave blank to clear it.'
+                    : null,
+              ),
             ),
-          ),
           if (i < definition.parameters.length - 1) const SizedBox(height: 10),
         ],
       ],

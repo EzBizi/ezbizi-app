@@ -211,10 +211,10 @@ class HrInvitationsController extends Controller
             return [$invitation, $issued['token']];
         });
 
-        $this->deliver($invitation, $token);
+        $emailed = $this->deliver($invitation, $token);
 
         return response()->json([
-            'data' => $this->present($invitation, $token),
+            'data' => $this->present($invitation, $token, $emailed),
         ], Response::HTTP_CREATED);
     }
 
@@ -279,9 +279,9 @@ class HrInvitationsController extends Controller
             return $token;
         });
 
-        $this->deliver($invitation, $token);
+        $emailed = $this->deliver($invitation, $token);
 
-        return response()->json(['data' => $this->present($invitation->fresh(), $token)]);
+        return response()->json(['data' => $this->present($invitation->fresh(), $token, $emailed)]);
     }
 
     /**
@@ -408,12 +408,21 @@ class HrInvitationsController extends Controller
      * shown. Logged and swallowed instead: MailStatus and the Development health
      * screen are where a broken transport is meant to be noticed, and they
      * already look.
+     *
+     * Swallowed is not the same as unreported. It returns whether the message
+     * actually left, because the ONE person who needs to know is the inviter
+     * standing in front of the dialog: they either hand the link over themselves
+     * or they do not, and that is a different action depending on the answer.
+     * The panel used to assert "nothing has been emailed" unconditionally, which
+     * was true while nothing could send and became a lie the day something could.
      */
-    private function deliver(Invitation $invitation, string $token): void
+    private function deliver(Invitation $invitation, string $token): bool
     {
         try {
             Notification::route('mail', $invitation->email)
                 ->notify(new InvitationLink($invitation, $this->invitations->acceptUrl($token)));
+
+            return true;
         } catch (Throwable $e) {
             // The invitation id, never the address and never the link. This line
             // exists to say the transport is broken, and a log is not a place to
@@ -422,6 +431,8 @@ class HrInvitationsController extends Controller
                 'invitation_id' => $invitation->getKey(),
                 'reason'        => $e->getMessage(),
             ]);
+
+            return false;
         }
     }
 
@@ -431,7 +442,7 @@ class HrInvitationsController extends Controller
      *                              token does not exist any more — it was never
      *                              stored — so there is nothing to leave out.
      */
-    private function present(Invitation $invitation, ?string $token = null): array
+    private function present(Invitation $invitation, ?string $token = null, ?bool $emailed = null): array
     {
         $body = [
             'id'         => $invitation->id,
@@ -463,8 +474,14 @@ class HrInvitationsController extends Controller
             'revoked_at'  => $invitation->revoked_at?->toIso8601String(),
         ];
 
+        // Beside the link and never without it. `emailed` answers a question
+        // only the two endpoints that just tried can answer, and a listing has
+        // no business guessing: an invitation row from last week does not know
+        // whether its email arrived, and a stale false is what sends somebody
+        // chasing a colleague who has had the message all along.
         if ($token !== null) {
             $body['accept_url'] = $this->invitations->acceptUrl($token);
+            $body['emailed']    = $emailed;
         }
 
         return $body;

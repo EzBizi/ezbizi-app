@@ -81,10 +81,14 @@ class InboxOption {
 /// key onto the module tree). Adding a kind means adding it in both places —
 /// there is no discovery here, and there should not be: a client that grants
 /// whatever key it is handed would grant one added by mistake.
+// 'phone_numbers' was here until 3 Sep. A role with Communication now gets its
+// company's lines by reach, not one tick at a time, so the server stopped
+// composing the key (PhoneNumberAccess::compose) and this stopped asking for
+// it. Both ends, as the note above requires — a client that kept asking would
+// keep drawing an empty section.
 const List<String> grantKinds = <String>[
   'inboxes',
   'inspections',
-  'phone_numbers',
 ];
 
 /// Which modules take inboxes, and which inboxes this organization has.

@@ -155,50 +155,6 @@ void main() {
     expect(_saveButton(tester).onPressed, isNull);
   });
 
-  testWidgets('task actions appear once under Tasks and serialize their schema', (
-    tester,
-  ) async {
-    Map<String, dynamic>? sent;
-    await _pump(
-      tester,
-      _handler(
-        catalogue: _catalogueWithTasks(),
-        onCreate: (body) => sent = body,
-      ),
-    );
-    await _tap(tester, find.text('Build'));
-    await _type(tester, 'Name', 'Open a follow-up');
-    await _tap(tester, find.text('Tasks'));
-    await _tap(tester, find.text('Created'));
-    await _tap(tester, find.text('Add a step'));
-
-    expect(
-      _inStep(find.text('Create a task')),
-      findsNothing,
-      reason:
-          'Module-only task actions must not be duplicated in the generic group.',
-    );
-    await _tap(tester, _inStep(find.text('Tasks')));
-    expect(_inStep(find.text('Create a task')), findsOneWidget);
-    await _tap(tester, _inStep(find.text('Create a task')));
-
-    await _type(tester, 'Board', '11111111-1111-4111-8111-111111111111');
-    await _type(tester, 'Group', '22222222-2222-4222-8222-222222222222');
-    await _type(tester, 'Status', '33333333-3333-4333-8333-333333333333');
-    await _type(tester, 'Task title', 'Call the customer');
-    await _tap(tester, find.text('Create automation'));
-
-    expect(sent?['actions'], [
-      {
-        'type': 'task.create',
-        'board_id': '11111111-1111-4111-8111-111111111111',
-        'group_id': '22222222-2222-4222-8222-222222222222',
-        'status_option_id': '33333333-3333-4333-8333-333333333333',
-        'title': 'Call the customer',
-      },
-    ]);
-  });
-
   /// ── The field, and the record it belongs to ──────────────────────
   ///
   /// It was a free-text box, and the server took whatever was in it:
@@ -586,6 +542,74 @@ void main() {
     expect(_saveButton(tester).onPressed, isNull);
   });
 
+  testWidgets('the field box offers what the event carries, and keeps what it '
+      'does not', (tester) async {
+    // The customer's rule: an email whose payload carries `from_address` and
+    // `subject`, and a condition somebody wrote as `Status` before there was a
+    // list to read.
+    await _pump(
+      tester,
+      _handler(triggerFields: const ['from_address', 'received_at', 'subject']),
+    );
+    await _tap(tester, find.text('Build'));
+    // The fields belong to the EVENT, so there is nothing to offer until one is
+    // chosen — which is also why the box explains itself rather than sitting
+    // empty before that.
+    await _tap(tester, find.text('Created'));
+    await _tap(tester, find.text('Add a condition'));
+
+    // A chooser, not a text box. The free box is what let `Status` be typed at
+    // all, and the rule then skipped every run saying only "the value at the
+    // time was nothing".
+    expect(find.byType(DropdownMenu<String>), findsOneWidget);
+
+    await _tap(tester, find.widgetWithText(DropdownMenu<String>, 'Field'));
+
+    for (final field in ['from_address', 'received_at', 'subject']) {
+      expect(find.text(field), findsWidgets, reason: '$field should be offered');
+    }
+
+    await _tap(tester, find.text('subject').last);
+
+    expect(
+      tester
+          .widget<DropdownMenu<String>>(find.byType(DropdownMenu<String>))
+          .controller
+          ?.text,
+      'subject',
+    );
+  });
+
+  testWidgets('a field the list does not offer is kept, not dropped', (
+    tester,
+  ) async {
+    // The list is what recent events CARRIED, so a real field can be missing
+    // because the office was quiet. Silently emptying the box would turn a
+    // correct rule into one with no field the next time somebody saved it.
+    await _pump(tester, _handler(triggerFields: const ['subject']));
+    await _tap(tester, find.text('Build'));
+    await _tap(tester, find.text('Created'));
+    await _tap(tester, find.text('Add a condition'));
+
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(DropdownMenu<String>),
+        matching: find.byType(TextField),
+      ),
+      'from_address',
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<DropdownMenu<String>>(find.byType(DropdownMenu<String>))
+          .controller
+          ?.text,
+      'from_address',
+    );
+    expect(find.text('Not seen on this event lately'), findsOneWidget);
+  });
+
   testWidgets('deleting a condition takes its text with it', (tester) async {
     await _pump(tester, _handler());
     await _tap(tester, find.text('Build'));
@@ -793,6 +817,53 @@ void main() {
     );
     expect(find.textContaining('a user'), findsWidgets);
   });
+
+  /// A declared action the builder cannot render is a dead menu entry.
+  ///
+  /// "Send a message" is the first Phone action that is NOT about the record
+  /// the event was about, so it is the first with parameters of its own — and
+  /// the parameter form was gated to task actions. Choosing it would have
+  /// drawn nothing, saved with no line and no destination, and failed on every
+  /// run with the rule looking perfectly configured.
+  ///
+  /// The line is a PICKER, not a text field. Its value is an id, and a text
+  /// field there asks somebody to type a uuid, which is a way of asking them
+  /// to fail.
+  testWidgets('Send a message offers the company lines rather than a blank box', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+    await _pump(
+      tester,
+      _handler(catalogue: _catalogueWithSms(), onCreate: (body) => sent = body),
+    );
+
+    await _tap(tester, find.text('Build'));
+    await _type(tester, 'Name', 'Text me when mail lands');
+    await _tap(tester, find.text('Email'));
+    await _tap(tester, find.text('An email arrived'));
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, _inStep(find.text('Phone')));
+    await _tap(tester, _inStep(find.text('Send a message')));
+
+    // The line is chosen from what the company holds.
+    await _tap(tester, find.byType(DropdownButtonFormField<String>).last);
+    await tester.pumpAndSettle();
+    await _tap(tester, find.text('Marketing · +1 (239) 456-0829').last);
+
+    await _type(tester, 'Send to', '+13057242199');
+    await _type(tester, 'Message', 'An email just arrived.');
+    await _tap(tester, find.text('Create automation'));
+
+    expect(sent?['actions'], [
+      {
+        'type': 'sms.send',
+        'number_id': 'num-1',
+        'to': '+13057242199',
+        'body': 'An email just arrived.',
+      },
+    ]);
+  });
 }
 
 // ── driving the screen ─────────────────────────────────────────────
@@ -949,29 +1020,39 @@ Map<String, Object?> _leadsModule(String? parent) => {
   'declared_actions': [],
 };
 
-Map<String, Object?> _catalogueWithTasks() => {
+/// A catalogue carrying the Phone module's "Send a message", which is the
+/// first action with parameters that is NOT bound to the record the event was
+/// about — the trigger here is an email arriving.
+Map<String, Object?> _catalogueWithSms() => {
   ..._catalogue,
   'modules': [
     ...(_catalogue['modules'] as List),
     {
-      'key': 'tasks',
-      'label': 'Tasks',
+      'key': 'email',
+      'label': 'Email',
       'parent': null,
-      'subject': {'key': 'task', 'label': 'Task', 'writable_fields': []},
+      'subject': null,
       'triggers': [
         {
-          'key': 'task.created',
-          'label': 'Created',
-          'description': 'A task was created.',
+          'key': 'email.received',
+          'label': 'An email arrived',
+          'description': 'A new message reached one of the shared inboxes.',
         },
       ],
+      'declared_actions': [],
+    },
+    {
+      'key': 'phone',
+      'label': 'Phone',
+      'parent': null,
+      'subject': null,
+      'triggers': [],
       'declared_actions': [
         {
-          'key': 'task.create',
-          'label': 'Create a task',
-          'description': 'Creates follow-up work.',
-          'type': 'task.create',
-          'subject_bound': false,
+          'key': 'phone.sms.send',
+          'label': 'Send a message',
+          'description': 'Sends a text from one of the company phone lines.',
+          'type': 'sms.send',
           'implemented': true,
         },
       ],
@@ -980,34 +1061,27 @@ Map<String, Object?> _catalogueWithTasks() => {
   'action_types': [
     ...(_catalogue['action_types'] as List),
     {
-      'key': 'task.create',
-      'label': 'Create a task',
+      'key': 'sms.send',
+      'label': 'Send a message',
       'module_only': true,
       'parameters': [
         {
-          'key': 'board_id',
-          'label': 'Board',
-          'kind': 'uuid',
+          'key': 'number_id',
+          'label': 'Send from',
+          'kind': 'phone_number',
           'required': true,
           'nullable': false,
         },
         {
-          'key': 'group_id',
-          'label': 'Group',
-          'kind': 'uuid',
+          'key': 'to',
+          'label': 'Send to',
+          'kind': 'text',
           'required': true,
           'nullable': false,
         },
         {
-          'key': 'status_option_id',
-          'label': 'Status',
-          'kind': 'uuid',
-          'required': true,
-          'nullable': false,
-        },
-        {
-          'key': 'title',
-          'label': 'Task title',
+          'key': 'body',
+          'label': 'Message',
           'kind': 'text',
           'required': true,
           'nullable': false,
@@ -1023,6 +1097,9 @@ MockClientHandler _handler({
   void Function(String path)? onActivate,
   Map<String, dynamic> detail = _detail,
   Object catalogue = _catalogue,
+  // Null leaves the endpoint unanswered, which is what every test written
+  // before the field picker expects: the form falls back to a text box.
+  List<String>? triggerFields,
   int deleteStatus = 200,
   // What the signed-in role holds. The screen consults this now, so a test that
   // does not say produces an administrator — which is what every one of these
@@ -1045,6 +1122,18 @@ MockClientHandler _handler({
 
     if (path.endsWith('/automations/catalogue')) {
       return _json({'data': catalogue});
+    }
+
+    if (path.endsWith('/automations/trigger-fields')) {
+      if (triggerFields == null) return _json({'message': 'no'}, 404);
+
+      return _json({
+        'data': {
+          'trigger': request.url.queryParameters['trigger'],
+          'fields': triggerFields,
+          'sampled': triggerFields.isEmpty ? 0 : 1,
+        },
+      });
     }
 
     if (path.endsWith('/runs')) return _json({'data': _runs});
@@ -1079,6 +1168,18 @@ MockClientHandler _handler({
       }
 
       return _json({'data': _list});
+    }
+
+    if (path.endsWith('/phone/numbers') && request.method == 'GET') {
+      return _json({
+        'data': [
+          {
+            'id': 'num-1',
+            'e164': '+12394560829',
+            'label': 'Marketing',
+          },
+        ],
+      });
     }
 
     return _json({'message': 'Unexpected ${request.method} $path'}, 500);

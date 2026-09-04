@@ -15,6 +15,14 @@ class TwilioVoiceDevice implements VoiceDevice {
   void Function(VoiceIncoming incoming)? onIncoming;
 
   @override
+  void Function()? onRegistrationChanged;
+
+  // The browser grants the microphone against the page itself, so there is
+  // no widget that a permission has to reach.
+  @override
+  Future<void> prepare() async {}
+
+  @override
   Future<void> setup(String token) async {
     if (_twilio == null) return;
 
@@ -46,11 +54,13 @@ class TwilioVoiceDevice implements VoiceDevice {
       // state the rest of the code already understands.
       await device.register().toDart.timeout(const Duration(seconds: 10));
       _registered = true;
+      onRegistrationChanged?.call();
     } catch (_) {
       // No SDK, a token Twilio refused, or signalling that never came up.
       // The desk still draws; `registered` is how Call knows not to pretend
       // it can take a call.
       _registered = false;
+      onRegistrationChanged?.call();
     }
   }
 
@@ -61,7 +71,18 @@ class TwilioVoiceDevice implements VoiceDevice {
   bool _registered = false;
 
   @override
+  Object? get platformView => null;
+
+  @override
+  bool get supported => true;
+
+  @override
   bool get registered => _registered;
+
+  // The browser device awaits register() directly, so a failure is a thrown
+  // error rather than a message carrying a reason.
+  @override
+  String? get registrationError => null;
 
   @override
   Future<void> connect({required String to, String? callerId}) async {
@@ -70,6 +91,19 @@ class TwilioVoiceDevice implements VoiceDevice {
 
     final params = JSObject();
     params.setProperty('To'.toJS, to.toJS);
+
+    // Say it outright rather than let the server infer it.
+    //
+    // Outbound was being detected from Twilio's own Direction and From —
+    // Direction arrives as "inbound" for a browser-originated call, because
+    // from Twilio's side the client IS calling in, so detection rested
+    // entirely on From starting with "client:". When that inference failed the
+    // call was treated as INBOUND and answered by the line's own voicemail:
+    // somebody pressed Call and heard "please leave a message".
+    //
+    // A namespaced parameter cannot collide with a Twilio field and does not
+    // depend on how Twilio chooses to describe the call.
+    params.setProperty('EzBiziDirection'.toJS, 'outbound'.toJS);
     if (callerId != null && callerId.isNotEmpty) {
       params.setProperty('CallerId'.toJS, callerId.toJS);
     }

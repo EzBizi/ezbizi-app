@@ -87,8 +87,8 @@ abstract class TestCase extends BaseTestCase
      * moment it mattered.
      *
      * THE COLLISION DOES NOT LOOK LIKE A COLLISION, which is what makes it expensive.
-     * It surfaces as 150 errors spread across TenantIsolation, TimeClock, Tasks and
-     * Web Management — indistinguishable from having broken the tenant boundary, so
+     * It surfaces as 150 errors spread across TenantIsolation, TimeClock, Inspection
+     * and Web Management — indistinguishable from having broken the tenant boundary, so
      * the natural response is to go debugging the security model. One session went
      * 153 red to 17 on the prefix alone; another went 107 to 112/112.
      *

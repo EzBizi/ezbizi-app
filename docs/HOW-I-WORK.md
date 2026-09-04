@@ -137,7 +137,7 @@ For a new tab or a major screen: build **several HTML alternatives** in
 `docs/previews/`, in the app's own chrome, with the real palette and real-shaped
 data, **numbered** so the owner can answer with a number. Then build the one they
 pick. Going straight to Flutter and guessing wrong costs far more than the mockup
-does. See `docs/previews/phone-layouts.html` and `tasks-layouts.html`.
+does. See `docs/previews/phone-layouts.html` and `training-layouts.html`.
 
 Then, in Flutter:
 

@@ -25,6 +25,14 @@ import 'token_store_io.dart' if (dart.library.js_interop) 'token_store_web.dart'
 /// tab; the token is verified against /me before it is trusted; and it is
 /// cleared the moment a session turns out to be invalid or somebody signs out.
 class TokenStore {
+  /// Load any persisted session into memory.
+  ///
+  /// Must be awaited before the first [tenantToken] read, because off the web
+  /// the backing store is a keychain and the getters below are synchronous.
+  /// Skip it and the desktop app reads an empty cache and shows the sign-in
+  /// screen to somebody who is already signed in.
+  static Future<void> init() => store.init();
+
   static const _tenantKey = 'ezbizi.token';
   static const _staffKey = 'ezbizi.staff_token';
 

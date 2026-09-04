@@ -101,7 +101,7 @@ void main() {
         tester,
         timeClock: _clock(),
         onRequest: (request) async {
-          if (request.url.path.endsWith('/me')) {
+          if (request.url.path == '/api/v1/me') {
             meCalls++;
             if (meCalls > 1) {
               fail('A successful punch must not refetch /me.');
@@ -400,7 +400,7 @@ Future<void> _pumpShell(
         if (handled != null) return handled;
       }
 
-      if (request.url.path.endsWith('/me')) {
+      if (request.url.path == '/api/v1/me') {
         meCalls++;
         if (meCalls > 1) {
           fail('Unexpected extra /me after the session was adopted.');

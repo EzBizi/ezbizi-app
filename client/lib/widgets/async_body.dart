@@ -53,7 +53,10 @@ class AsyncBody extends StatelessWidget {
             children: [
               ErrorNote(error!),
               const SizedBox(height: 12),
-              OutlinedButton(onPressed: onRetry, child: const Text('Try again')),
+              OutlinedButton(
+                onPressed: onRetry,
+                child: const Text('Try again'),
+              ),
             ],
           ),
         ),
@@ -79,9 +82,17 @@ class AsyncBody extends StatelessWidget {
 /// instead. That is a real breakpoint rather than a guess: it is roughly where
 /// the note stops having room for a readable line beside a button.
 class PanelHeader extends StatelessWidget {
-  const PanelHeader({super.key, required this.title, required this.note, this.action});
+  const PanelHeader({super.key, this.title, required this.note, this.action});
 
-  final String title;
+  /// The heading, or null when something above has already said it.
+  ///
+  /// Optional since the shell began drawing every module's name at the top of
+  /// the page. Fifteen call sites were repeating what was already on screen —
+  /// four the module's own name ("Customers" under "Customers"), eleven their
+  /// own tab's label ("Records" under a highlighted Records chip). The NOTE is
+  /// what those headers were really carrying: it holds the live count and the
+  /// sentence explaining the list, and it is never redundant.
+  final String? title;
   final String note;
   final Widget? action;
 
@@ -93,8 +104,10 @@ class PanelHeader extends StatelessWidget {
     final text = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: Theme.of(context).textTheme.headlineMedium),
-        const SizedBox(height: 4),
+        if (title != null) ...[
+          Text(title!, style: Theme.of(context).textTheme.headlineMedium),
+          const SizedBox(height: 4),
+        ],
         Text(note, style: Theme.of(context).textTheme.bodyMedium),
       ],
     );
@@ -146,7 +159,9 @@ class PanelHeader extends StatelessWidget {
               // line is the failure being fixed, so the tie goes to the text
               // only after the action has what it needs.
               ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: constraints.maxWidth * 0.55),
+                constraints: BoxConstraints(
+                  maxWidth: constraints.maxWidth * 0.55,
+                ),
                 child: action!,
               ),
             ],

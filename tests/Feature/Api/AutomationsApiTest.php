@@ -200,51 +200,6 @@ class AutomationsApiTest extends TestCase
         $this->assertContains('customer.update_field', $implemented);
     }
 
-    public function test_task_actions_publish_explicit_execution_identity_and_applicability(): void
-    {
-        $modules = collect($this->as()->getJson('/api/v1/automations/catalogue')
-            ->assertOk()->json('data.modules'))->keyBy('key');
-
-        $tasks = collect($modules['tasks']['declared_actions'])->keyBy('key');
-        $this->assertSame('task.create', $tasks['task.create']['type']);
-        $this->assertFalse($tasks['task.create']['subject_bound']);
-        $this->assertTrue($tasks['task.create']['implemented']);
-        $this->assertSame('task.assign_owner', $tasks['task.assign_owner']['type']);
-        $this->assertTrue($tasks['task.assign_owner']['subject_bound']);
-
-        foreach ($tasks as $action) {
-            $this->assertTrue($action['implemented'], $action['key']);
-        }
-
-        $types = collect($this->as()->getJson('/api/v1/automations/catalogue')
-            ->assertOk()->json('data.action_types'))->keyBy('key');
-        foreach ($tasks->pluck('type') as $type) {
-            $this->assertTrue($types[$type]['module_only']);
-            $this->assertNotEmpty($types[$type]['parameters']);
-        }
-
-        $jobs = collect($modules['jobs']['declared_actions'])->keyBy('key');
-        $customers = collect($modules['customers']['declared_actions'])->keyBy('key');
-        $this->assertSame('create', $jobs['job.create']['type']);
-        $this->assertFalse($jobs['job.create']['implemented']);
-        $this->assertSame('update_field', $customers['customer.update_field']['type']);
-    }
-
-    public function test_task_action_schema_and_subject_are_refused_at_save_time(): void
-    {
-        $this->as()->postJson('/api/v1/automations', [
-            'name' => 'Incomplete follow-up',
-            'trigger_key' => 'task.created',
-            'actions' => [['type' => 'task.create', 'title' => 'Follow up']],
-        ])->assertUnprocessable()->assertJsonValidationErrors('actions.0.board_id');
-
-        $this->as()->postJson('/api/v1/automations', [
-            'name' => 'Wrong subject',
-            'trigger_key' => 'job.created',
-            'actions' => [['type' => 'task.assign_owner', 'owner_user_id' => null]],
-        ])->assertUnprocessable()->assertJsonValidationErrors('actions.0.type');
-    }
-
     /**
      * A trigger nothing emits is listed, and says so.
      *

@@ -101,7 +101,10 @@ class SocialPostsApiTest extends TestCase
     public function test_a_connected_network_with_no_publisher_says_so_and_says_the_account_is_fine(): void
     {
         $t   = $this->provisionTenant('A1-Group');
-        $row = $this->connection($t, 'company', $t['company']->id, provider: 'facebook_page');
+        // LinkedIn, and it has to be a network EzBizi genuinely cannot post
+        // to. This said facebook_page until 2026-09-01, when Facebook got a
+        // publisher and the test started asserting the opposite of the truth.
+        $row = $this->connection($t, 'company', $t['company']->id, provider: 'linkedin');
 
         $this->signedInAs($t['admin'])
             ->post(self::ENDPOINT, ['connections' => [$row->getKey()], 'body' => 'Hello'])
@@ -467,7 +470,7 @@ class SocialPostsApiTest extends TestCase
     {
         $t = $this->provisionTenant('A1-Group');
         $this->connection($t, 'company', $t['company']->id, 'A-1 Chimney', 'pin-a');
-        $this->connection($t, 'company', $t['company']->id, 'A-1 on Facebook', 'fb-a', 'facebook_page');
+        $this->connection($t, 'company', $t['company']->id, 'A-1 on LinkedIn', 'li-a', 'linkedin');
 
         $rows = collect($this->signedInAs($t['admin'])
             ->getJson('/api/v1/social/connections')
@@ -478,10 +481,10 @@ class SocialPostsApiTest extends TestCase
         $this->assertTrue($rows['pinterest']['can_publish']);
         $this->assertNull($rows['pinterest']['cannot_publish_because']);
 
-        $this->assertFalse($rows['facebook_page']['can_publish']);
+        $this->assertFalse($rows['linkedin']['can_publish']);
         $this->assertStringContainsString(
             'not built yet',
-            (string) $rows['facebook_page']['cannot_publish_because'],
+            (string) $rows['linkedin']['cannot_publish_because'],
         );
     }
 

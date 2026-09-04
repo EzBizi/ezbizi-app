@@ -1,3 +1,4 @@
+import '../core/phone_numbers.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -36,7 +37,6 @@ class _IdentityCardState extends State<IdentityCard> {
   final _gender = TextEditingController();
   final _dob = TextEditingController();
 
-  String _email = '';
   bool _hasAvatar = false;
   Uint8List? _avatarPreview;
 
@@ -83,10 +83,9 @@ class _IdentityCardState extends State<IdentityCard> {
       _first.text = b['first_name'] as String? ?? '';
       _middle.text = b['middle_name'] as String? ?? '';
       _last.text = b['last_name'] as String? ?? '';
-      _phone.text = b['phone'] as String? ?? '';
+      _phone.text = formatPhoneNumber(b['phone'] as String?);
       _address.text = b['address'] as String? ?? '';
       _gender.text = b['gender'] as String? ?? '';
-      _email = b['email'] as String? ?? '';
       _hasAvatar = b['has_avatar'] == true;
       _dob.text = b['date_of_birth'] as String? ?? '';
     });
@@ -105,7 +104,8 @@ class _IdentityCardState extends State<IdentityCard> {
       // it. An omitted key means "leave it alone", which would make these
       // impossible to empty once filled.
       'middle_name': _middle.text.trim().isEmpty ? null : _middle.text.trim(),
-      'phone': _phone.text.trim().isEmpty ? null : _phone.text.trim(),
+      // Stored as E.164, never as the pretty form the field is showing.
+      'phone': toE164(_phone.text),
       'address': _address.text.trim().isEmpty ? null : _address.text.trim(),
       'gender': _gender.text.trim().isEmpty ? null : _gender.text.trim(),
       'date_of_birth': _dob.text.trim().isEmpty ? null : _dob.text.trim(),
@@ -272,7 +272,9 @@ class _IdentityCardState extends State<IdentityCard> {
                         children: [
                           Expanded(child: _field(_last, 'Last name')),
                           const SizedBox(width: 12),
-                          Expanded(child: _field(_phone, 'Phone number')),
+                          Expanded(
+                            child: _field(_phone, 'Phone number', phone: true),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 12),
@@ -310,24 +312,10 @@ class _IdentityCardState extends State<IdentityCard> {
               },
             ),
 
-            const SizedBox(height: 16),
-            _readOnly(
-              context,
-              'Email',
-              _email,
-              'Your sign-in address and where a password reset goes. Changing '
-                  'it needs a confirmation email, which is not wired up yet.',
-            ),
-            if (me.roleName != null)
-              _readOnly(context, 'Role', me.roleName!, null),
-            _readOnly(context, 'Organization', me.organization.name, null),
-            if (me.franchises.isNotEmpty)
-              _readOnly(
-                context,
-                'You can act on',
-                me.franchises.map((f) => f.name).join(', '),
-                'Permissions decide WHAT you may do; this decides WHERE.',
-              ),
+            // Email, role, organization and the places this person can act on
+            // used to sit here, immediately above Save -- which said Save
+            // applied to them. It never did. They are AccountFactsCard now,
+            // which has no footer at all.
 
             if (_error != null) ...[
               const SizedBox(height: 12),
@@ -381,10 +369,16 @@ class _IdentityCardState extends State<IdentityCard> {
     );
   }
 
-  Widget _field(TextEditingController c, String label, {int maxLines = 1}) =>
-      TextField(
+  Widget _field(
+    TextEditingController c,
+    String label, {
+    int maxLines = 1,
+    bool phone = false,
+  }) => TextField(
         controller: c,
         maxLines: maxLines,
+        keyboardType: phone ? TextInputType.phone : null,
+        inputFormatters: phone ? const [PhoneNumberInputFormatter()] : null,
         decoration: InputDecoration(
           labelText: label,
           isDense: true,
@@ -407,10 +401,17 @@ class _IdentityCardState extends State<IdentityCard> {
         Wrap(
           spacing: 6,
           children: [
+            // Selected-looking when it matches, because otherwise a filled
+            // box reading "Male" above four identical chips looks like two
+            // controls for one value. It is one: the chips write the field.
+            // They stay chips rather than becoming a closed list -- a closed
+            // list makes somebody pick the nearest wrong answer about
+            // themselves, and anything not offered is still typed.
             for (final g in _genders)
-              ActionChip(
+              ChoiceChip(
                 label: Text(g, style: const TextStyle(fontSize: 11)),
-                onPressed: () => setState(() => _gender.text = g),
+                selected: _gender.text.trim().toLowerCase() == g.toLowerCase(),
+                onSelected: (_) => setState(() => _gender.text = g),
               ),
           ],
         ),
@@ -429,37 +430,4 @@ class _IdentityCardState extends State<IdentityCard> {
     );
   }
 
-  Widget _readOnly(
-    BuildContext context,
-    String label,
-    String value,
-    String? note,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: 130,
-                child: Text(
-                  label,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-              Expanded(child: Text(value)),
-            ],
-          ),
-          if (note != null)
-            Padding(
-              padding: const EdgeInsets.only(left: 130, top: 2),
-              child: Text(note, style: Theme.of(context).textTheme.bodySmall),
-            ),
-        ],
-      ),
-    );
-  }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
 import '../../core/contracts.dart';
@@ -205,7 +206,6 @@ class _RecordsTabState extends State<RecordsTab> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PanelHeader(
-          title: 'Records',
           note: _loading || _error != null
               ? 'Everybody with an account here, including the ones switched '
                     'off.'
@@ -267,6 +267,20 @@ class _RecordsTabState extends State<RecordsTab> {
       'hr.edit',
       'change somebody’s account',
     );
+
+    // Its own key, deliberately not hr.edit — see UserPolicy::resetSecurity.
+    // Clearing a colleague's second factor is a bigger authority than keeping
+    // their row, and the server refuses it under hr.edit alone; offering the
+    // item to someone it would refuse is the failure refusedMenuItem exists
+    // to stop.
+    final noReset = widget.session.me?.refusal(
+      'hr.security.reset',
+      'reset somebody’s sign-in security',
+    );
+    // Never on yourself, for the reason the server gives: this endpoint is
+    // what a stolen session would reach for. Your own is changed from Your
+    // account.
+    final self = person['id'] == widget.session.me?.id;
 
     return Card(
       child: ListTile(
@@ -333,10 +347,29 @@ class _RecordsTabState extends State<RecordsTab> {
                     label: active ? 'Deactivate' : 'Reactivate',
                     reason: noEdit,
                   ),
+                  const PopupMenuDivider(),
+                  refusedMenuItem(
+                    context,
+                    value: 'totp',
+                    label: 'Reset their authenticator',
+                    reason: self
+                        ? 'This is for somebody else. Change your own from Your account.'
+                        : noReset,
+                  ),
+                  refusedMenuItem(
+                    context,
+                    value: 'link',
+                    label: 'Password reset link',
+                    reason: self
+                        ? 'This is for somebody else. Change your own from Your account.'
+                        : noReset,
+                  ),
                 ],
                 onSelected: (action) => switch (action) {
                   'record' => _openRecord(person),
                   'role' => _changeRole(person),
+                  'totp' => _resetTotp(person),
+                  'link' => _resetLink(person),
                   _ => _setActive(person, !active),
                 },
               ),
@@ -484,7 +517,8 @@ class _RecordsTabState extends State<RecordsTab> {
   // ── the two things this tab can change ───────────────────────────
 
   Future<void> _changeRole(Map<String, dynamic> person) async {
-    final current = (person['role'] as Map<String, dynamic>?)?['id']?.toString();
+    final current = (person['role'] as Map<String, dynamic>?)?['id']
+        ?.toString();
 
     final chosen = await showSidePanel<String>(
       context,
@@ -535,6 +569,105 @@ class _RecordsTabState extends State<RecordsTab> {
     if (confirmed != true || !mounted) return;
 
     await _patch(person, {'is_active': false});
+  }
+
+  /// The lost-phone path. Confirmed first, because it signs them out of
+  /// everything — a person mid-call on the desktop loses that session too.
+  Future<void> _resetTotp(Map<String, dynamic> person) async {
+    final name = person['name'] as String? ?? 'this person';
+
+    final confirmed = await showSidePanel<bool>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Reset $name’s authenticator?',
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Reset it'),
+          ),
+        ],
+        child: const Text(
+          'Their authenticator app stops working for EzBizi and they are '
+          'signed out on every device. The next time they sign in they set '
+          'up a new one themselves — you are never shown it, and neither is '
+          'anybody else. Do this when the phone is lost or you think it is '
+          'in the wrong hands.',
+        ),
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _opening = person['id']?.toString());
+    final response = await widget.api.post(
+      '/hr/people/${person['id']}/totp/reset',
+      const {},
+    );
+    if (!mounted) return;
+    setState(() => _opening = null);
+
+    if (!response.ok) {
+      _snack(response.reason, isError: true);
+      return;
+    }
+
+    _snack((response.body['data'] as Map?)?['note']?.toString() ?? 'Done.');
+  }
+
+  /// A single-use link the administrator hands over themselves. Returned on
+  /// screen rather than emailed, because somebody locked out of their mailbox
+  /// is the case this exists for.
+  Future<void> _resetLink(Map<String, dynamic> person) async {
+    setState(() => _opening = person['id']?.toString());
+    final response = await widget.api.post(
+      '/hr/people/${person['id']}/reset-link',
+      const {},
+    );
+    if (!mounted) return;
+    setState(() => _opening = null);
+
+    if (!response.ok) {
+      _snack(response.reason, isError: true);
+      return;
+    }
+
+    final data = (response.body['data'] as Map?) ?? const {};
+    final url = data['url']?.toString() ?? '';
+
+    await showSidePanel<void>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Password reset link for ${person['name'] ?? 'this person'}',
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: url));
+              if (context.mounted) Navigator.of(context).pop();
+            },
+            child: const Text('Copy and close'),
+          ),
+        ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SelectableText(url),
+            const SizedBox(height: 12),
+            Text(
+              data['note']?.toString() ??
+                  'Single use, valid one hour. Hand it over directly.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _patch(

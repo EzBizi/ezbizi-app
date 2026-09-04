@@ -1,3 +1,4 @@
+import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -491,8 +492,9 @@ class _Line {
   final String? fallbackNumber;
   final String? recordingNotice;
 
-  String get heading =>
-      label.trim().isEmpty || label == e164 ? e164 : '$label · $e164';
+  String get heading => label.trim().isEmpty || label == e164
+      ? formatPhoneNumber(e164)
+      : '$label · ${formatPhoneNumber(e164)}';
 
   static List<_Line> listFrom(Map<String, dynamic> body) {
     final rows = body['data'];

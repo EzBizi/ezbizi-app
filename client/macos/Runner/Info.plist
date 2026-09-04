@@ -20,10 +20,32 @@
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- Export compliance, answered once here instead of once per upload.
+	     Without this key App Store Connect marks every build Missing
+	     Compliance and asks the same question by hand before the build can
+	     go anywhere, including TestFlight.
+
+	     false means "uses no NON-EXEMPT encryption", not "uses none". EzBizi
+	     talks HTTPS to its own API and Twilio's calling SDK negotiates TLS
+	     and SRTP - all of it standard, published algorithms through the
+	     platform's own stack, which is exactly what the exemption covers.
+
+	     This stops being true the day EzBizi ships its OWN cryptography:
+	     a bundled cipher, a proprietary key exchange, end-to-end encrypted
+	     messaging with keys the server never sees. Any of those and this key
+	     has to become true and the annual self-classification report starts
+	     applying. Using a library that speaks TLS is not that.
+	-->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.business</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>$(PRODUCT_COPYRIGHT)</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>EzBizi needs the microphone so you can speak during phone calls made and received in the app, such as calling a customer back about a job. It is used only while you are on a call.</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>

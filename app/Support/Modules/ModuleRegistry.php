@@ -135,6 +135,27 @@ class ModuleRegistry
         return null;
     }
 
+    /**
+     * Which module raises this trigger, or null when nothing declares it.
+     *
+     * Asked so a caller can check reach — "may this person build rules on this
+     * event" is "may they open the tab it comes from" (§4), and the answer is
+     * the module key. Here rather than in the controller for the reason
+     * findTrigger records: a second walk over the same list eventually
+     * disagrees by one condition, and the one that differs is the one that
+     * leaks.
+     */
+    public function moduleKeyOfTrigger(string $key): ?string
+    {
+        foreach ($this->modules as $moduleKey => $module) {
+            if ($module->trigger($key) !== null) {
+                return $moduleKey;
+            }
+        }
+
+        return null;
+    }
+
     /** Every permission key across every module — what the sync command writes. */
     public function allPermissionKeys(): array
     {

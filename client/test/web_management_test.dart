@@ -160,6 +160,18 @@ void main() {
     expect(find.textContaining('[ezbizi_phone]'), findsOneWidget);
   });
 
+  /// The plugin download must point at the directory, not at our own box.
+  ///
+  /// `/web/plugin` builds a zip from whatever release is deployed, so it lags
+  /// every plugin release: Jose downloaded 1.0.0 from a button sitting beside a
+  /// panel that described 1.0.2. wordpress.org serves the stable tag and is
+  /// current the moment an SVN release lands.
+  test('the plugin comes from wordpress.org, not from us', () {
+    expect(pluginDownloadUrl.host, 'downloads.wordpress.org');
+    expect(pluginDownloadUrl.scheme, 'https');
+    expect(pluginDownloadUrl.path, contains('ezbizi'));
+  });
+
   /// The pasted snippet must carry an ABSOLUTE url.
   ///
   /// It shipped relative — `src="/api/v1/web/ezbizi.js"` — because the
@@ -215,6 +227,14 @@ void main() {
       tester,
       permissions: ['web_management.view', 'web_management.edit'],
     );
+
+    // Scrolled to first. The module page header costs about 72px at the top of
+    // every module now, and this button sat close enough to the bottom edge at
+    // 1280x900 that it went under it -- at which point `tap` hit-tests empty
+    // space and does nothing, silently, and the failure looks like the confirm
+    // never rendering rather than like the button never being pressed.
+    await tester.ensureVisible(find.text('New key'));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('New key'));
     await tester.pumpAndSettle();

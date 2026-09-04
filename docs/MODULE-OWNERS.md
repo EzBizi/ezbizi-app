@@ -1,5 +1,9 @@
 # Who owns what
 
+**To reach a role, use `docs/SESSIONS.md`.** It carries the desktop session id
+per role — the only identifier that cannot land on the wrong session — and the
+registration each session does at start. This file stays about what is owned.
+
 This exists because the roster kept living in one session's context, and a session
 is the one place in this project that provably does not survive. A coordinating
 session restarted three times in one afternoon and lost it each time; one of those
@@ -29,6 +33,73 @@ watching, which is not. The integrations row is blank on purpose: two distinct
 message pipes are both presenting as `ezbizi-3d`, and the real owner is not yet
 known.
 
+**ONE SESSION CAN APPEAR AS TWO SENDERS, AND THE RECIPIENT CANNOT TELL.**
+
+There are two ways to message a session on this machine and they show different
+identities for the same sender:
+
+    SendMessage                      shows a ROTATING pipe name (ezbizi-5b,
+                                     ezbizi-28, ezbizi-a1 — same session, hours apart)
+    ccd_session_mgmt send_message    shows the STABLE session title
+
+On 2026-08-31 the deploy desk swept every session using both, within minutes. A
+session that received both concluded **two deploy desks were running**, warned
+that they would either collide or each assume the other had deployed, and could
+not reach the "other" one to check. It was one session. `get_session("self")`
+settled it in one call.
+
+The warning was reasonable and nothing the recipient could have checked would
+have shown otherwise. **Neither message carried anything identifying it as the
+same sender.**
+
+So: the SESSION ID is the only durable identity. Pipe names are per-hour handles;
+titles are stable but not unique across transports; and "who is this" is
+answerable only by asking, or by a session id. **Sign messages with a session id
+when it matters, and use one transport per correspondent per conversation.**
+
+**BUT A SESSION ID IS NOT A ROLE ADDRESS, AND THREE SESSIONS HAVE NOW LOST TIME
+TO THAT.** It is durable in exactly one sense — it can never be reassigned, so a
+message sent to one either reaches that session or reaches nobody, and it can
+never reach the wrong session the way a recycled name can. That is a real
+guarantee and it is the reason to prefer it.
+
+What it does NOT survive is the session ending. On 2026-08-31 the deploy desk
+gave out its session id as "the only handle of mine that does not rotate", it
+was passed on in good faith as the way to reach *deploys*, and within the hour it
+resolved to nothing — because the session behind it had ended. The handle was
+still correct; the role behind it was gone.
+
+So the honest sentence is **"this is how you reach that SESSION while it lives"**,
+never "this is the deploy desk". There is no role address on this machine. When
+the session behind a role dies, the role has no address at all, and the only
+things that still work are the durable artefacts: what is on `main`, what is in
+this file, and what is written in a doc somebody will read.
+
+That is also why a handoff should name a FILE rather than a correspondent. A
+session id tells you who to ask until they exit; a path in this file tells you
+who owns something after they do.
+
+**SESSION NAMES ARE RECYCLED, NOT JUST RETIRED — and that is why this file
+records SHAs.**
+
+Measured 2026-08-31: one session was renamed three times in a day
+(`ezbizi-c8` → `ezbizi-bc` → `ezbizi-17`), and by the afternoon **a different
+session held `ezbizi-c8`**, started an hour later.
+
+So the failure mode is not "a stale name reaches nobody", which is loud and
+recoverable. It is **"a stale name reaches somebody else"** — silent, and it
+looks like it worked. A competent session asked about a module it has never
+touched will try to help, and you get a plausible answer to a question it was
+never in a position to answer.
+
+That is the whole argument for the two rules below. A SHA cannot be reassigned.
+A blank routes to nobody. **A wrong name now routes to somebody who will
+answer.**
+
+When you must reach a session: ask it to identify itself and wait, rather than
+inferring from a roster. `ListAgents` shows a `[ref]` beside each name — that ref
+is stable for the life of a session where the name is not.
+
 **Do not reconstruct this file from `git log --name-only`.** Web Management's
 history contains Phone and Services files — `AddressesController`,
 `NumbersController`, `TwilioGateway`, `ServicesController`,
@@ -42,25 +113,25 @@ sessions either. The SHA is the only handle that survives a rename.
 
 | Module | Files | Session, when last seen |
 |---|---|---|
-| **Customers** | `Api/CustomersController.php` · `Models/Customer.php` · `Policies/CustomerPolicy.php` · `Services/Customers/DuplicateCustomerFinder.php` · `Dashboard/Glances/CustomersGlance.php` · `Dashboard/Widgets/CustomersAdded.php` · `Tasks/RecordLinks/CustomerTaskLink.php` · `Middleware/RefuseStaffAuthOnCustomerHost.php` · `screens/customers_screen.dart` · `screens/customers/` · `test/customers_screen_test.dart` · `factories/CustomerFactory.php` | `ezbizi-0a` |
+| **Customers** | `Api/CustomersController.php` · `Models/Customer.php` · `Policies/CustomerPolicy.php` · `Services/Customers/DuplicateCustomerFinder.php` · `Dashboard/Glances/CustomersGlance.php` · `Dashboard/Widgets/CustomersAdded.php` · `Middleware/RefuseStaffAuthOnCustomerHost.php` · `screens/customers_screen.dart` · `screens/customers/` · `test/customers_screen_test.dart` · `factories/CustomerFactory.php` | `ezbizi-0a` |
 | **Jobs** | `Models/Job.php` · `Api/JobsController.php` · `Policies/JobPolicy.php` · `factories/JobFactory.php` · `Dashboard/Glances/JobsGlance.php` · `Dashboard/Widgets/Revenue.php` · `screens/jobs_screen.dart` · `screens/jobs/` · `core/job_status.dart` | `ezbizi-85` |
 | **Phone** | `Api/Phone/` · `Support/Phone/` (incl. `PhoneLineHealth`, `TwimlRenderer`) · `Models/PhoneNumber.php` · `screens/phone/` · `test/phone_*.dart` · `tests/Feature/Phone/` | `ezbizi-0b` |
 | **Web Management** | `Api/Web/` · `Models/WebSite.php` · `Models/WebValue.php` · `Support/Web/` · `Policies/WebSitePolicy.php` · `Dashboard/Glances/WebManagementGlance.php` · `screens/web/` · `wordpress-plugin/ezbizi/` · `tests/Feature/Web/` | `358b3db` `e1f4d9a` `4b1a087` `5ce9285` |
 | **Third-party integrations** — OAuth drivers, Meta, `config/services.php` provider blocks, the 2026-10-26 Meta cutoff | — | **deliberately blank, see below** |
-| **Tasks** | `screens/tasks/` · `screens/tasks_screen.dart` · `Models/Task*.php` · `Policies/Task*.php` · `Support/Tasks/` · `Providers/TaskServiceProvider.php` · `Jobs/DeliverTaskNotificationIntent.php` · `Middleware/EnsureTaskRouteAccess.php` · `tests/Feature/Tasks/` | `ezbizi-13` |
 | **Android · Play** | `client/android/` · the android path of `scripts/build-app.sh` · `build-web.sh` · `release.sh` · `windows-installer.iss` · `assets/logo` · `assets/installer` · `client/integration_test/store_screenshots_test.dart` · `client/test_driver/screenshots.dart` · the **Play** Console | `ezbizi-16` |
-| **iOS · Apple** | `client/ios/` · the ios path of `scripts/build-app.sh` · the Mac relay · App Store Connect, TestFlight, the Apple Developer consoles | **blank — and it is mid-review** |
+| **iOS · Apple** | `client/ios/` · the ios path of `scripts/build-app.sh` · the Mac relay · App Store Connect, TestFlight, the Apple Developer consoles | **blank — review CLEARED 2026-08-31 and there is new Apple work waiting** |
 | **Website** | `www/` — **every page under it**, plus `robots.txt`, `sitemap.xml`, `check-site.py`, and the `www/favicon.ico` size list in `scripts/make-brand-assets.py`. Public copy, page structure, meta and structured data. *Not* `scripts/deploy-www.sh` or `/var/www/www` — publishing is the deploy session's. | `3b5b79f` `57b4502` `436fd6f` |
 
-> **iOS is unowned and it is not idle — it is mid-App-Store-review.** The session
-> that held it is gone. What the next owner inherits: App Store Connect status
-> *Waiting for Review* on build `0.0.0112`; `./scripts/build-app.sh ios --upload`
-> ships a new one, signing and validation already wired; signing material lives on
-> the Mac relay and in `H:/Development/Credentials/` (see below — it has no backup);
-> and **EU trader status needs the Account Holder and blocks submission outright**.
-> Fuller detail is on the board under `ios-build-and-testflight`.
-> **Do not delete `docs/ACTIVE-CONSTRAINTS.md` while that review is open** — it is
-> the only durable record of the freeze.
+> **iOS is unowned, and as of 2026-08-31 there is new Apple work waiting for an
+> owner.** Review **cleared** — the row said *mid-review* until then, and that is
+> the ordinary way an annotation goes stale: the fact moved and the file did not.
+> What the next owner inherits: `./scripts/build-app.sh ios --upload` ships a
+> build, signing and validation already wired; signing material lives on the Mac
+> relay and in `H:/Development/Credentials/`, which is **not** in git and must never
+> be (the owner holds a physical USB backup, confirmed 2026-08-31); the App Store
+> Connect `.p8` **downloads exactly once from Apple**; and **EU trader status needs
+> the Account Holder and blocks submission outright** — that one is unchanged by the
+> review clearing. Fuller detail is on the board under `ios-build-and-testflight`.
 >
 > **These two were split from one session and neither could see the other.** Each
 > reported the other's half as orphaned within minutes — and at that moment both
@@ -103,15 +174,16 @@ sessions either. The SHA is the only handle that survives a rename.
 > the gate red — Training hit this and had to add a `COMING_SOON` entry it had not
 > planned. And `ui_strings.dart` has two migrations behind it, so some strings are
 > tenant data and a copy change is not a one-line edit.
-| **Fleet** | `Support/Fleet/` · `Api/Vehicle*Controller.php` · `Models/Vehicle*.php` · `Policies/VehiclePolicy.php` · `Dashboard/Glances/FleetGlance.php` · `Tasks/RecordLinks/VehicleTaskLink.php` · `Console/Commands/ImportA1ToolsVehicles.php` · `migrations/2026_08_28_170000_add_fleet_fields_carried_from_a1_tools.php` · `screens/fleet/` · `test/fleet_screen_test.dart` · `tests/Feature/Fleet/` | `ezbizi-e9` |
+| **Fleet** | `Support/Fleet/` · `Api/Vehicle*Controller.php` · `Models/Vehicle*.php` · `Policies/VehiclePolicy.php` · `Dashboard/Glances/FleetGlance.php` · `Console/Commands/ImportA1ToolsVehicles.php` · `migrations/2026_08_28_170000_add_fleet_fields_carried_from_a1_tools.php` · `screens/fleet/` · `test/fleet_screen_test.dart` · `tests/Feature/Fleet/` | `ezbizi-e9` |
 | **Inventory** | `Models/Inventory*.php` · `Policies/Inventory*Policy.php` · `Api/Inventory*Controller.php` · `Support/Inventory/` · `Console/Commands/InventorySeedDemo.php` · `screens/inventory_screen.dart` · `screens/inventory/` · `test/inventory_screen_test.dart` · `tests/Feature/Inventory/` · `migrations/2026_08_2{4_160000_create_inventory_tables,5_120000_create_inventory_sales_tables}.php` · `factories/Inventory{Item,Location,Vendor}Factory.php`. **Not Inventory despite the name:** `Support/Privacy/DataInventory.php` and `tests/Feature/Api/DataInventoryTest.php` are the §9 personal-data map — this has misled once already | `ezbizi-8f` |
 | **Services** | `Models/{Service,ServiceGroup,ServiceLabel}.php` · `Api/{Services,ServiceTaxonomy,ServiceGroups,ServiceLabels}Controller.php` · `Policies/Service{,Group,Label}Policy.php` · `Support/Services/ServiceVisibility.php` · `Dashboard/Glances/ServicesGlance.php` · `screens/services/` · `test/services_screen_test.dart` · `tests/Feature/Services/` | `ezbizi-d0` |
 | **Inspection** | `Api/Inspection*Controller.php` · `Models/Inspection*.php` · `Policies/Inspection*.php` · `Support/Inspection/` · `Support/Files/HardenedPdf.php` · `screens/inspection/` | — |
 | **Marketing** | `Api/Social*Controller.php` · `Models/Social*.php` · `Jobs/PublishSocialTarget.php` · `Support/Social/` · `screens/marketing/` · `tests/Feature/Social/` | — |
 | **EZ Leads** — `leads`, `reviews`, `business_profile` | `Models/{Lead,Review,ReviewReply,BusinessLocation}.php` · their policies and controllers · `Services/{Leads,Reviews,BusinessProfile}/` · `widgets/connect_account.dart` | — |
 | **Email — inbound** | Shared mailboxes, IMAP, tenant OAuth. `Support/Email/` · `Api/Mailbox*Controller.php` · `Api/{GoogleMail,MicrosoftMail,GoogleWorkspace}AuthController.php` · `Models/{Mailbox*,MessageSeen,GoogleMailSignIn,MicrosoftMailSignIn}.php` · `screens/email/` · `test/email_*.dart` · `tests/Feature/{Email*,Imap*,MailboxWatch,GmailMailboxWatch,HtmlEmailSanitiser}Test.php` · `tests/Feature/Api/Mailbox*Test.php` | `ezbizi-22` |
-| **Platform outbound mail (SES)** | **Not the same module as Email — this is the platform's own outgoing transport.** `Support/Mail/` · `resources/views/vendor/mail/` · `Notifications/{PasswordResetLink,InvitationLink}.php` · `Console/Commands/SendTestEmail.php` · the mail block of `config/mail.php`. Off-repo and also theirs: the `MAIL_*` and `EZBIZI_BACKUP_ALERT_TO` keys in the server `.env` (a release rollback does **not** revert these), `/usr/local/bin/ezbizi-mail-warmup.sh` and its root cron, the `_dmarc` record in the BIND zone, and the AWS SES/SNS/IAM consoles | `ezbizi-77` |
+| **Platform outbound mail (SES)** | **Not the same module as Email — this is the platform's own outgoing transport.** `Support/Mail/` · `resources/views/vendor/mail/` · `Notifications/{PasswordResetLink,InvitationLink}.php` · `Console/Commands/SendTestEmail.php` · the mail block of `config/mail.php`. Off-repo and also theirs: the `MAIL_*` and `EZBIZI_BACKUP_ALERT_TO` keys in the server `.env` (a release rollback does **not** revert these), `/usr/local/bin/ezbizi-mail-warmup.sh` and its root cron, the `_dmarc` record in the BIND zone, and the AWS SES/SNS/IAM consoles | **name dead — `ezbizi-77` did not survive the 2026-08-31 restart. The FILE LIST is the handle; whoever picks these up owns SES.** |
 | **Automations** | `Support/Automations/` · `Api/AutomationsController.php` · `Jobs/DeliverAutomationEvent.php` · `Models/Automation{,Version,Event,Run}.php` · `Policies/AutomationPolicy.php` · `Console/Commands/DispatchAutomationEvents.php` · `Support/Modules/{Trigger,Action}Definition.php` · `Support/Modules/{AutomationDeclaration,AutomationSubject}.php` · `screens/{automations_screen,automation_builder}.dart` · `tests/Feature/ModuleRegistryTest.php` · `tests/Feature/Api/Automation*Test.php`. **Not theirs:** `Providers/ModuleServiceProvider.php` — every module writes its own block; shared, announce before editing | `ezbizi-b0` |
+| **Suggestions** | `Models/Suggestion.php` · `Api/SuggestionsController.php` · `Api/StaffSuggestionsController.php` · `migrations/2026_09_02_160000_create_suggestions_table.php` · `screens/suggestions_screen.dart` · `screens/staff/suggestions_queue_screen.dart` · `tests/Feature/SuggestionsTest.php` · `tests/Feature/Api/StaffSuggestionsTest.php`. **Deliberately not in `ModuleRegistry`** — see `docs/EZBIZI-BUILD-LOG.md` 2026-09-02 before "fixing" that | `f13dd81`..`b54b667` on branch `session/suggestions`, not yet on `main` |
 
 ## Files nobody owns
 

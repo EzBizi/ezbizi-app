@@ -347,6 +347,36 @@ class SettingRegistry
             ),
 
             /*
+             * Whether a monitored machine shows a notice while somebody is
+             * REMOTELY CONTROLLING it — not while it is merely being watched.
+             *
+             * Off by default, and silent when off: with this false nothing
+             * changes on the machine at all, which is the product's T&C default
+             * (viewing is silent). An organization that wants transparency for
+             * its people turns it on, and then RemoteControlController rides the
+             * resolved value out on the agent's `input-pending` poll as
+             * `indicator`; the agent shows a tray notice only while it is BOTH
+             * wanted and actually being driven (control_wanted && indicator).
+             *
+             * ORGANIZATION-ONLY, and resolved at the org scope in
+             * RemoteControlController::inputPending. A franchise override would
+             * be resolved-away silently there — the exact "looks like it's
+             * working" bug SettingsResolver's docblock warns about — so the one
+             * scope that sets it is the one scope that reads it. In `operations`
+             * for the same reason `monitoring.offline_after_seconds` is: a group
+             * of one is a heading the grouping test gains nothing from.
+             */
+            new SettingDefinition(
+                key: 'monitoring.control_indicator',
+                label: 'Show a notice on a machine while it is being remotely controlled',
+                type: SettingDefinition::TYPE_BOOL, default: false,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'When on, a monitored Windows machine shows a system-tray notice while '
+                    .'someone is remotely controlling it. Watching a live view stays silent — '
+                    .'only taking control shows this. Off by default, and fully silent when off.',
+            ),
+
+            /*
              * Where the boxes sit on the Organization tab's structure canvas.
              *
              * ── Why it is a setting at all ───────────────────────
@@ -467,10 +497,6 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'numbering.vehicle_prefix', label: 'Vehicle number prefix',
                 type: SettingDefinition::TYPE_STRING, default: 'V-',
-            ),
-            new SettingDefinition(
-                key: 'numbering.task_prefix', label: 'Task number prefix',
-                type: SettingDefinition::TYPE_STRING, default: 'T-',
             ),
             new SettingDefinition(
                 key: 'numbering.item_prefix', label: 'Item number prefix',
@@ -601,13 +627,43 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'notifications.in_app_enabled', label: 'Show in-app notifications',
                 type: SettingDefinition::TYPE_BOOL, default: true,
+                help: 'The master switch. Off silences every notification below, including '
+                    .'the ones a company cannot otherwise turn off.',
+            ),
+
+            /*
+             * Per-SOURCE, which is the axis a company actually complains along.
+             *
+             * Nobody asks to be told less in general; they ask to stop hearing
+             * about one KIND of thing — "the automation alerts are noisy, HR's
+             * are not". `source` is already the column that separates those, so
+             * it is what these key on rather than a second taxonomy invented to
+             * sit beside it.
+             *
+             * Finer control than this already exists and is owned elsewhere: a
+             * single noisy automation is switched off by its own `is_active`
+             * (Automation::86). A per-rule toggle here would be a third place to
+             * look when somebody asks why they stopped hearing about something.
+             *
+             * There is deliberately no `system` toggle. That source carries
+             * "your trial ends tomorrow" and the things a business is worse off
+             * for having silenced — the master switch above can still do it, but
+             * it cannot be done by accident while tidying up noise from one
+             * source.
+             */
+            new SettingDefinition(
+                key: 'notifications.automation_enabled', label: 'Notifications from automations',
+                type: SettingDefinition::TYPE_BOOL, default: true,
+                help: 'The notify action on automation rules. Off leaves the rules running '
+                    .'and their other actions working — it silences only the telling.',
             ),
             new SettingDefinition(
-                key: 'tasks.due_reminders_enabled', label: 'Send task due reminders',
+                key: 'notifications.hr_enabled', label: 'Notifications from HR',
                 type: SettingDefinition::TYPE_BOOL, default: true,
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
-                help: 'Send each task owner one reminder before their task is due.',
+                help: 'Contract amendments and onboarding. These are addressed to one named '
+                    .'person rather than broadcast, so they are quiet by nature.',
             ),
+
             new SettingDefinition(
                 key: 'notifications.quiet_hours', label: 'Quiet hours',
                 type: SettingDefinition::TYPE_TIME_RANGE,

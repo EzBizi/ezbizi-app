@@ -493,6 +493,22 @@ final class HttpTwilioGateway implements TwilioGateway
         return $token->toJWT();
     }
 
+    public function createCall(
+        PhoneConnection $connection,
+        string $from,
+        string $to,
+        string $twiml,
+    ): array {
+        $call = $this->connectionClient($connection)->calls->create($to, $from, [
+            'twiml' => $twiml,
+        ]);
+
+        return [
+            'sid' => $call->sid,
+            'status' => (string) $call->status,
+        ];
+    }
+
     public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body): array
     {
         $message = $this->connectionClient($connection)->messages->create($to, [
