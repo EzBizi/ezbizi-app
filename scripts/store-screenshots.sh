@@ -39,11 +39,16 @@ if [ "${1:-}" = "--remote" ]; then
   rm -rf "$OUT"
   pkill -x EzBizi 2>/dev/null || true
   LOG=/tmp/store-screenshots.log
+  # APP_VERSION and BUILD_ID come from the local half. Without them the
+  # footer of every frame reads "vdev · local", which is what a flutter-drive
+  # build says about itself and not what a store page should.
   EZBIZI_WINDOW=1440x900 flutter drive -d macos \
     --driver=test_driver/screenshots.dart \
     --target=integration_test/store_screenshots_test.dart \
     --dart-define=API_BASE=https://app.ezbizi.com \
     --dart-define=APP_FACE=customer \
+    --dart-define=APP_VERSION="${APP_VERSION:-dev}" \
+    --dart-define=BUILD_ID="${BUILD_ID:-local}" \
     --dart-define=SHOT_EMAIL="$SHOT_EMAIL" \
     --dart-define=SHOT_PASSWORD="$SHOT_PASSWORD" > "$LOG" 2>&1 || true
   pkill -x EzBizi 2>/dev/null || true
@@ -65,14 +70,16 @@ MAC=mac
 PROBE=0; [ "${1:-}" = "--probe" ] && PROBE=1
 DIST="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/Distribution/Apple/screenshots/macos"
 mkdir -p "$DIST"
+APP_VERSION=$(tr -d '[:space:]' < client/VERSION)
+BUILD_ID=$(git rev-parse --short HEAD)
 
 # The release sync in build-app.sh carries lib/, ios/ and macos/ — not the two
 # test halves — so send what this run needs on top of whatever it last synced.
 scp -q -r client/integration_test client/test_driver "$MAC:ezbizi-build/"
 scp -q client/macos/Runner/MainFlutterWindow.swift client/macos/Runner/DebugProfile.entitlements "$MAC:ezbizi-build/macos/Runner/"
 
-echo "→ macos — capturing on the Mac relay$([ "$PROBE" -eq 1 ] && echo ' (probe: placeholder password)')"
-ssh "$MAC" "PROBE=$PROBE bash -s -- --remote" < "$0"
+echo "→ macos — capturing on the Mac relay as v${APP_VERSION} · ${BUILD_ID}$([ "$PROBE" -eq 1 ] && echo ' (probe: placeholder password)')"
+ssh "$MAC" "PROBE=$PROBE APP_VERSION=$APP_VERSION BUILD_ID=$BUILD_ID bash -s -- --remote" < "$0"
 
 scp -q "$MAC:Library/Containers/com.ezbizi.app/Data/store-screenshots/macos/*.png" "$DIST/"
 echo "✓ $(ls "$DIST"/*.png | wc -l | tr -d ' ') screenshot(s) → $DIST"
