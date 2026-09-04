@@ -48,7 +48,7 @@ Ordered by what it would buy on a store page.
 |---|---|---|
 | **Scheduling** | `ServiceArea`, `ServiceAreaZip` | "Search a zip code or an area name to see its week" — nothing else on screen |
 | **Inspection** | `InspectionReport`, `InspectionRun` | New Inspection is a search box over nothing; Generated Reports correctly shows none. The definition exists, so only filed work is missing |
-| **HR** | `Contract`, `ContractSignature`, `Onboarding`, `TimeClockShift`, `TrainingGuide`, `Invitation` | Eight people on the books and every other line reads 0 |
+| **HR** | ~~`Contract`~~ (done, see below), `ContractSignature`, `Onboarding`, `TimeClockShift`, `TrainingGuide`, `Invitation` | Eight people on the books and every other line reads 0 |
 | **Fleet** | `VehicleAssignment`, `VehicleServiceVisit` | Five real vehicles, all five captioned "Nobody has the keys" |
 | **Phone** | `PhoneNumber` and everything below it | "No phone lines yet. Add one in Settings." |
 | **Marketing** | `Newsletter`, `NewsletterAudience`, `SocialPost` | Newsletter still carries a "Not built yet" badge, which is a build gap, not a data one |
@@ -79,3 +79,22 @@ tenant's own invented business and touch nothing outside it.
 reports — `InspectionReport` appears nowhere in it. So even where that command
 runs, it does not fix the Inspection screen. Verified by grep, with the pattern
 shown to match three other files.
+
+## Done since this was measured
+
+**Contracts, 2026-09-04.** Eleven templates with eleven versions, in the demo
+tenant, live. Not written by hand and not by a new command: `hr:publish-
+onboarding-catalog "EzBizi Demo"` already existed, is intended to run against a
+real organization, is audit-logged, and was already deployed. Reaching for it
+beat inventing `contract_versions.fields`, which is the json shape this file
+originally said not to guess at.
+
+Verified where it landed rather than assumed: A1-Group's newest contract is
+dated 2026-08-21 with **zero** created that day, and all eleven of the demo
+tenant's are from that day. A count alone could not have told those apart —
+there was no before-reading of A1-Group to compare against.
+
+Still open in HR: `Onboarding` and `TrainingGuide`. Onboarding is a workflow
+somebody walks through rather than a row to plant, and `training_guides.screens`
+is still an unread json shape. `demo:fill` (committed, not yet deployed) covers
+Scheduling, Fleet assignments and the time clock.
