@@ -110,6 +110,7 @@ use App\Http\Controllers\Api\StaffSuggestionsController;
 use App\Http\Controllers\Api\SuggestionsController;
 use App\Http\Controllers\Api\TimeClockController;
 use App\Http\Controllers\Api\Training\AssignmentsController as TrainingAssignmentsController;
+use App\Http\Controllers\Api\Training\DashboardController as TrainingDashboardController;
 use App\Http\Controllers\Api\Training\GuidesController as TrainingGuidesController;
 use App\Http\Controllers\Api\Training\LearnController as TrainingLearnController;
 use App\Http\Controllers\Api\Training\ProgressController as TrainingProgressController;
@@ -649,6 +650,17 @@ Route::prefix('v1')
         // `training.assign`, bounded by §4 reach; see AssignmentsController
         // and AssignmentReach.
         Route::post('training/assignments', [TrainingAssignmentsController::class, 'store']);
+        // How an organization watches training (task 11) — `training.monitor`,
+        // never `.manage` or `.view`. `{id}/people` is declared AFTER the
+        // bare dashboard route; the order would only matter if one route
+        // were a prefix of the other's own children, which they are not —
+        // it stays grouped here so both dashboard routes read together. See
+        // DashboardController.
+        Route::get('training/dashboard', [TrainingDashboardController::class, 'index']);
+        Route::get('training/dashboard/{id}/people', [TrainingDashboardController::class, 'people']);
+        // The read HR's screen renders from — same `training.monitor` gate.
+        // Training writes nothing into HR's own tables (spec decision 7).
+        Route::get('training/records', [TrainingDashboardController::class, 'records']);
 
         // ── The shape of the business (§3) ───────────────────────
         //

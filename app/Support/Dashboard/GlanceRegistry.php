@@ -74,7 +74,7 @@ class GlanceRegistry
          */
         'training' => [
             'label' => 'Training',
-            'sentence' => 'Training is where guides are read and tests are taken. Open the Training tab to see who has been assigned what.',
+            'sentence' => 'Training will show who has been assigned a guide, and who is due to retake a test.',
         ],
         'monitoring' => [
             'label' => 'Monitoring',
