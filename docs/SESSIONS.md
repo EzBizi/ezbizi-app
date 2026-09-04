@@ -89,9 +89,18 @@ they come back; the date says how stale.
 
 **Website daily catalog** is not a role: a new session is started for it each
 day, so it has had three ids (`local_cc91ca9e…`, `local_4a12ba2c…`,
-`local_e5b5855a…`). It finds the deploy desk here; nobody needs to find it.
+`local_e5b5855a…`). **Scheduled-task runs cannot receive `send_message` at
+all** — measured 2026-09-04, all three refused as "unattended". The only
+channel to one is what it reads at start: `CLAUDE.md`, then this file. It
+finds the deploy desk here; nobody needs to find it.
 
-The Tasks-removal worktree session (`local_57b53ebf…`, branch
-`claude/peaceful-bassi-75307d`) finished on 2026-09-03 and is not a role.
+The Tasks-removal worktree session (`local_57b53ebf…`) finished on
+2026-09-03 and its id returned "not found" on 2026-09-04: gone, not idle.
+
+**Every role row above was told on 2026-09-04 by `send_message` to its id**:
+21 delivered, the Marketing one queued behind its running turn. A row whose
+session then updates its title or id is confirming it; a row that never
+changes after a restart is stale, and the next person to reach it by id
+will learn that from the error, not from this file.
 
 A1 Tools sessions live in `H:\A1Chimney\a1_tools` and are outside this file.
