@@ -265,7 +265,26 @@ class MailboxesController extends Controller
         $input = $request->validate([
             'display_name' => ['sometimes', 'string', 'max:255'],
             'mail_server'  => ['sometimes', 'array'],
+            'mark_read_at_source' => ['sometimes', 'boolean'],
         ]);
+
+        /*
+         * Refused rather than silently stored on a provider that cannot do it.
+         *
+         * Saving true against an Outlook mailbox would produce a switch that
+         * is on and does nothing — the failure shape this module has now found
+         * three times. The refusal names the provider so the answer is
+         * actionable rather than a shrug.
+         */
+        if (($input['mark_read_at_source'] ?? false) === true
+            && ! $this->readers->for($mailbox)->canMarkReadAtSource($mailbox)) {
+            return response()->json([
+                'message' => 'This inbox cannot mark mail as read at the mail service. EzBizi '
+                    .'only does that for Google inboxes: Outlook would need a permission that '
+                    .'also allows changing and deleting mail, and a mail server connected by '
+                    .'password is opened read-only on purpose.',
+            ], 422);
+        }
 
         if (array_key_exists('mail_server', $input)) {
             $input['mail_server'] = $this->mailServerFor(
@@ -493,6 +512,17 @@ class MailboxesController extends Controller
             'label'        => $mailbox->display_name,
             'provider'     => $mailbox->provider,
             'provider_label' => $mailbox->providerEnum()?->label(),
+
+            /*
+             * Two fields, and they answer different questions. The first is
+             * what this mailbox is set to; the second is whether the switch
+             * can be offered at all, which is the PROVIDER'S answer and not
+             * the client's to work out. A screen holding its own table of
+             * which provider can mark mail read is a second dictionary that
+             * will one day disagree with the one that decides.
+             */
+            'mark_read_at_source'     => (bool) $mailbox->mark_read_at_source,
+            'can_mark_read_at_source' => $this->readers->for($mailbox)->canMarkReadAtSource($mailbox),
 
             /*
              * The scope as a LEVEL and an ID, and deliberately without a name.

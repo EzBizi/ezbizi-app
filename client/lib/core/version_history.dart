@@ -11,11 +11,35 @@ class VersionHistory {
       version: '0.0.0151',
       date: '4 Sep 2026',
       items: [
+        'Newsletter: write a mailing in blocks or as HTML, with the real email '
+            'shown beside the editor as you type. It sends through the mailing '
+            'account your company connects - Mailchimp - so it goes out on your '
+            'own list and your own sending reputation, not EzBizi\'s.',
+        'Newsletter opens on a dashboard: what has gone out, what is waiting, and '
+            'a month calendar of everything scheduled. Tap a scheduled mailing to '
+            'open and edit it until it goes.',
+        'Settings has an Integrations tab listing every account this view is '
+            'connected to - social, mailing, advertising - and where each is '
+            'managed.',
+        'Suggestions: the tab where you write one has the layout you chose - your '
+            'suggestions listed on the left, the one you are reading beside them. '
+            'And a suggestion marked as in review can no longer carry a note, '
+            'because in review tells the author nothing and the note would never '
+            'have been seen.',
+        'The desktop app opens once. Launching it while it is already open brings '
+            'the running window forward instead of starting a second copy.',
+        'An inspection event says which branch it happened at, so an automation '
+            'rule scoped to one location fires for that location\'s inspections '
+            'and not for everybody\'s.',
         '"Text me my codes" is on the account screen at a desk, not only on a '
             'phone. It was added to the phone layout alone, so the setting '
             'existed on a handset and did not exist on a computer - which is '
             'where most people would have gone looking for it. It now sits '
             'under Two-factor in both.',
+        'Email: an inbox can now mark mail as read in the mail service itself, so '
+            'a message you open here stops being bold in Gmail too. Off unless you '
+            'turn it on, per inbox, on Email > Settings - because on an inbox your '
+            'team shares it would hide mail from a colleague who has not read it.',
       ],
     ),
     VersionRelease(

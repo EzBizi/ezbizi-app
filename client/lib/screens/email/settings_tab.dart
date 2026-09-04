@@ -218,6 +218,29 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
     await _load();
   }
 
+  /// Turn "also mark it read in the mail service" on or off for one inbox.
+  ///
+  /// Per mailbox, because shared-versus-personal is a property of the mailbox
+  /// and not of the company: one organization holds `info@`, which three
+  /// people share, and `jose@`, which one person reads.
+  Future<void> _setMarkReadAtSource(MailboxConnection mailbox, bool on) async {
+    final response = await widget.api.patch(
+      '/email/mailboxes/${mailbox.id}',
+      {'mark_read_at_source': on},
+    );
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      // The server's sentence — it is the one that knows WHY a provider
+      // cannot do this, and the answer differs between Outlook and IMAP.
+      setState(() => _notice = response.reason);
+      return;
+    }
+
+    await _load();
+  }
+
   Future<void> _disconnect(MailboxConnection mailbox) async {
     final message = await showSidePanel<String>(
       context,
@@ -370,6 +393,7 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
               disconnectRefusal: _manageRefusal(mailbox, 'disconnect this inbox'),
               onConnect: () => _connect(mailbox),
               onDisconnect: () => _disconnect(mailbox),
+              onMarkReadAtSource: (on) => _setMarkReadAtSource(mailbox, on),
             ),
       ],
     );
@@ -653,6 +677,7 @@ class _MailboxCard extends StatelessWidget {
     required this.disconnectRefusal,
     required this.onConnect,
     required this.onDisconnect,
+    this.onMarkReadAtSource,
   });
 
   final MailboxConnection mailbox;
@@ -662,6 +687,9 @@ class _MailboxCard extends StatelessWidget {
   final String? disconnectRefusal;
   final VoidCallback onConnect;
   final VoidCallback onDisconnect;
+
+  /// Null on the cards that are not a real mailbox row (the Workspace ones).
+  final void Function(bool on)? onMarkReadAtSource;
 
   @override
   Widget build(BuildContext context) {
@@ -724,6 +752,33 @@ class _MailboxCard extends StatelessWidget {
             if (state.sentence != null) ...[
               const SizedBox(height: 12),
               _StateSentence(sentence: state.sentence!, trouble: state.trouble),
+            ],
+            // Drawn only where the server said this connection can do it, and
+            // only for somebody who may change the inbox. A switch the server
+            // would refuse is the shape the house rule forbids — and here the
+            // refusal would arrive AFTER a message had already been marked
+            // read for everybody, which is not a refusal anyone can act on.
+            if (mailbox.canMarkReadAtSource && mailbox.mayManage && onMarkReadAtSource != null) ...[
+              const SizedBox(height: 6),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: mailbox.markReadAtSource,
+                onChanged: onMarkReadAtSource,
+                title: const Text('Also mark mail read in the mail service'),
+                // The whole decision, in the words of the thing that goes
+                // wrong. Somebody turning this on for a shared inbox should
+                // read what it costs before the first customer is missed, not
+                // after.
+                subtitle: Text(
+                  mailbox.markReadAtSource
+                      ? 'Opening a message here marks it read in the mail service too, for '
+                            'everyone. Best for an inbox one person reads.'
+                      : 'Opening a message here marks it read only in EzBizi, so a colleague '
+                            'looking at the mail service still sees it as unread. Turn this on '
+                            'for an inbox only you read.',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
             ],
             if (reached != null) ...[
               const SizedBox(height: 10),
