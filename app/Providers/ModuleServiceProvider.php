@@ -2208,7 +2208,19 @@ class ModuleServiceProvider extends ServiceProvider
                  * CarriesAutomationScope, declared in the same commit that flipped
                  * `training.completed` to raised.
                  */
-                emits: [\App\Models\TrainingProgress::class],
+                /*
+                 * Three, because Training's five triggers carry three different
+                 * records: a guide finished is progress, a test passed or failed
+                 * is an attempt, and training given out is an assignment. That is
+                 * the same multiplicity that makes `subject` null here — but where
+                 * `subject` had to pick one and so picks none, `emits` can name all
+                 * three, which is the whole reason it exists.
+                 */
+                emits: [
+                    \App\Models\TrainingProgress::class,
+                    \App\Models\TrainingAttempt::class,
+                    \App\Models\TrainingAssignment::class,
+                ],
                 actions: ['view', 'monitor', 'manage', 'assign'],
                 triggers: [
                     new TriggerDefinition(
