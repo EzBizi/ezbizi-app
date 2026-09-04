@@ -110,7 +110,21 @@ database with an audit row and is never written back to Google.
 
 ## 7 · Outstanding
 
-- `bbfeb42d` — the `googleAds:search` fix — **is committed but not deployed.**
-  Production still calls the dead URL.
-- `7945fb0` — connections now respect the company view — also undeployed.
-- Connect should let the user choose the account rather than storing all 22.
+Everything below the line is shipped. **`0.0.0150` (`3f7f222b`) is live**, and
+carries `bbfeb42d`, `7945fb0`, `2531b601` and `517ef1bf`. Verified 2026-09-04
+three ways rather than from the release note: all four are ancestors of the cut;
+the deployed source at `/var/www/ezbizi-current` has `googleAds:search` and the
+only remaining mention of the retired method is the comment explaining it; and
+the live manifest reads `{"version":"0.0.0150","built":"3f7f222b"}`.
+
+So production no longer calls the dead URL, connections respect the company
+view, and organisation-level leads are visible below organisation level.
+
+Still open:
+
+- Connect stores a row for every account the user can reach (§5). It should let
+  the person choose.
+- **Re-measure before repeating any of this.** An earlier revision of this
+  section said production was still calling the dead URL; it was true when
+  written and false by the time it was read, because a release had landed in
+  between. A deployment fact has a shelf life.
