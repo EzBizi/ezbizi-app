@@ -953,10 +953,18 @@ String leadHeaderLine(Map<String, dynamic> lead) {
 
   return [
     ?service,
-    'Google Ads',
+    sourceWord(lead['source'] as String?),
     if (place != null && place.isNotEmpty) place,
   ].join(' · ');
 }
+
+/// Where the enquiry came from, in words. `local_services` is Google Ads;
+/// Web Management's website chat and forms are their own sources.
+String sourceWord(String? source) => switch (source) {
+  'website_chat' => 'Website chat',
+  'website_form' => 'Website form',
+  _ => 'Google Ads',
+};
 
 /// fireplace_chimney → "Fireplace chimney". Null in, null out.
 ///
@@ -977,8 +985,12 @@ String? humaniseService(String? id) {
 /// else Google records on a lead (MESSAGE, SMS, WHATSAPP, EMAIL, BOOKING) is
 /// something somebody typed. None of the wire values go on screen, and not
 /// a1leads' "LS Ads" / "LS Text" either — that is Rodrigo's shorthand.
-String channelWord(String? channel) =>
-    channel == 'PHONE_CALL' ? 'Call' : 'Text';
+String channelWord(String? channel) => switch (channel) {
+  'PHONE_CALL' => 'Call',
+  'LIVECHAT' => 'Chat',
+  'FORM' => 'Form',
+  _ => 'Text',
+};
 
 /// 125000 → "2:05".
 String formatDuration(num? ms) {

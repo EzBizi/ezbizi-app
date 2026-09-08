@@ -11,6 +11,7 @@ use App\Models\SocialConnection;
 use App\Services\Leads\LocalServicesLeads;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Leads\LeadReplies;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Social\GoogleToken;
 use App\Support\Social\SocialConnectionAccess;
@@ -45,6 +46,7 @@ class LeadsController extends Controller
         private readonly TenantContext $tenant,
         private readonly EventEmitter $events,
         private readonly RecordNumberGenerator $numbers,
+        private readonly LeadReplies $replies,
     ) {}
 
     /** GET /api/v1/leads */
@@ -167,7 +169,7 @@ class LeadsController extends Controller
 
         // Whether a reply can go anywhere: Google accepts them for text
         // enquiries only, and only while the account is connected.
-        $data['can_reply'] = $lead->lead_type === 'MESSAGE' && $lead->connection_id !== null;
+        $data['can_reply'] = $this->replies->canReply($lead);
 
         // Customers this number already belongs to, so booking can attach to
         // one instead of making a second Jane Doe. Same digits-only match the
@@ -417,17 +419,27 @@ class LeadsController extends Controller
 
         abort_if($text === '', Response::HTTP_UNPROCESSABLE_ENTITY, 'Write something to send.');
 
-        try {
-            $row = $this->localServices->reply($lead, $text);
-        } catch (RuntimeException $e) {
-            // Google's refusal and "this is a call" both arrive here with a
-            // sentence written for the screen. 422 for the ones the person can
-            // act on, 502 for the ones only Google can.
-            $status = $lead->lead_type !== 'MESSAGE' || $lead->connection === null
-                ? Response::HTTP_UNPROCESSABLE_ENTITY
-                : Response::HTTP_BAD_GATEWAY;
+        // Which door the text goes through is the source's business, not this
+        // controller's: Google's Local Services, a website chat, and a form
+        // that has no way back each answer for themselves.
+        $channel = $this->replies->for($lead);
 
-            abort($status, $e->getMessage());
+        abort_if(
+            $channel === null || ! $channel->canReply($lead),
+            Response::HTTP_UNPROCESSABLE_ENTITY,
+            $channel === null
+                ? 'Replies cannot be sent to enquiries from this source.'
+                : ($lead->lead_type !== 'MESSAGE' && $lead->source === Lead::SOURCE_LOCAL_SERVICES
+                    ? 'Google only accepts replies to text enquiries. This one came in as a call.'
+                    : 'This enquiry cannot be replied to right now.'),
+        );
+
+        try {
+            $row = $channel->send($lead, $text);
+        } catch (RuntimeException $e) {
+            // The provider refused, with a sentence written for the screen.
+            // Only the provider can act on it, so 502.
+            abort(Response::HTTP_BAD_GATEWAY, $e->getMessage());
         }
 
         $this->audit->log('lead.replied', $lead, [

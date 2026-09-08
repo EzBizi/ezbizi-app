@@ -6,6 +6,7 @@ use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\SocialConnection;
 use App\Support\Automations\EventEmitter;
+use App\Support\Leads\LeadReplyChannel;
 use App\Support\Leads\LeadThread;
 use App\Support\Social\GoogleAdsOAuth;
 use App\Support\Social\GoogleToken;
@@ -38,7 +39,7 @@ use RuntimeException;
  * touched here; a sweep that reconciled the two would silently revert every
  * manual decision the next time it ran.
  */
-class LocalServicesLeads
+class LocalServicesLeads implements LeadReplyChannel
 {
     private const TIMEOUT = 20;
 
@@ -300,6 +301,22 @@ class LocalServicesLeads
      *
      * @throws RuntimeException with a sentence for the screen
      */
+    public function source(): string
+    {
+        return Lead::SOURCE_LOCAL_SERVICES;
+    }
+
+    /** Google accepts replies for text enquiries only, while the account is connected. */
+    public function canReply(Lead $lead): bool
+    {
+        return $lead->lead_type === 'MESSAGE' && $lead->connection_id !== null;
+    }
+
+    public function send(Lead $lead, string $text): LeadConversation
+    {
+        return $this->reply($lead, $text);
+    }
+
     public function reply(Lead $lead, string $text): LeadConversation
     {
         $connection = $lead->connection;

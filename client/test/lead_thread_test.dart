@@ -20,6 +20,8 @@ import 'package:http/testing.dart';
 /// seconds on a twelve-minute call reads as broken, and the longest recordings
 /// are the ones people most want to hear. The fetching state is not decoration.
 void main() {
+  _wordTests();
+
   testWidgets('play says it is fetching until the bytes arrive, then hands '
       'them to the player', (tester) async {
     final gate = Completer<void>();
@@ -87,19 +89,14 @@ void main() {
       'own words', (tester) async {
     await _pump(
       tester,
-      player: FakeRecordingPlayer(
-        refuses: 'This recording would not play.',
-      ),
+      player: FakeRecordingPlayer(refuses: 'This recording would not play.'),
       recordingGate: Completer()..complete(),
     );
 
     await tester.tap(find.byKey(const ValueKey('play-c-call')));
     await tester.pumpAndSettle();
 
-    expect(
-      find.text('This recording would not play.'),
-      findsOneWidget,
-    );
+    expect(find.text('This recording would not play.'), findsOneWidget);
   });
 
   testWidgets('a reply goes out on Send and appears in the thread as ours', (
@@ -362,4 +359,17 @@ Future<void> _pump(
     ),
   );
   await tester.pumpAndSettle();
+}
+
+void _wordTests() {
+  test('channels and sources read as words, never as wire values', () {
+    expect(channelWord('PHONE_CALL'), 'Call');
+    expect(channelWord('MESSAGE'), 'Text');
+    expect(channelWord('SMS'), 'Text');
+    expect(channelWord('LIVECHAT'), 'Chat');
+    expect(channelWord('FORM'), 'Form');
+    expect(sourceWord('local_services'), 'Google Ads');
+    expect(sourceWord('website_chat'), 'Website chat');
+    expect(sourceWord('website_form'), 'Website form');
+  });
 }
