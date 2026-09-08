@@ -580,6 +580,26 @@ happen by accident here; they have to be written on purpose.
 > browser key already reissues inline and never in a dialog, which is the right shape;
 > the rule is written down so the next screen does not have to rediscover why.
 
+**Refinement, from Web Management the same evening — and the sharper rule.** Not all keys
+are one animal. `pk_` is public by design and printed in page source; `ezb_` is a secret
+that reads a company's unpublished details. One leaking is an annoyance, the other is an
+incident, so **two credentials of different consequence must never be presented alike.**
+
+They had already built this, and their reason is better than the rule I first wrote:
+
+> *"The public key shipped in the API and had nowhere to appear, so the only credential
+> this screen showed was the SECRET token. Asked for the browser key, the honest answer
+> from anybody looking at this panel was to hand over the `ezb_` one, because it was the
+> only key on screen. **That is not a user error; a screen that shows one credential and
+> needs another is the error.**"*
+
+The fix was to show both together, named for what each is, with the distinction stated in
+place — `seo_tab.dart:1436`. **Generalises past credentials:** whenever a screen shows one
+member of a set whose members look interchangeable, it is not neutral about the others —
+it nominates the one it shows. Distinguishing prefixes (`pk_` / `ezb_`) do the same job
+for a value pasted into a support ticket, but a prefix cannot fix a screen that offers
+only one of them.
+
 **An advisory must not wear the failure component.** Web Management, 2026-09-08, asking
 that this be made a rule after the widget contrast work: *"dressing an advisory as a
 failure teaches people to ignore the component that also carries real failures."* The

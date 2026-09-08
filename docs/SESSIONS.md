@@ -187,3 +187,11 @@ a hand-over that states them saves a round trip:
 
 A hand-over that cannot answer one goes back to its session with the question,
 never to Jose. Sessions decide as they believe and report; nobody waits for him.
+
+**A change to `app/Providers/ModuleServiceProvider.php` runs `tests/Feature/Automations`
+as part of its gate**, whatever module it is for. Learned 2026-09-08 22:06 UTC: three
+sessions changed the registry in one evening and gated their own suites; a new
+module trigger without an `emits:` declaration passed all of them and failed the
+box gate on `AutomationSubjectScopeTest`, which is the test that stops a notify
+rule reaching every active user. The registry is shared; its suite is part of any
+hand-over that touches it.
