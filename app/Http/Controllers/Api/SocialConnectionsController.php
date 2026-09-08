@@ -10,6 +10,7 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Social\Publishing\Publishers;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
+use App\Support\Social\ThumbtackAccount;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -317,14 +318,53 @@ class SocialConnectionsController extends Controller
             Refusal::permission('disconnect a social account')->message(),
         );
 
+        /*
+         * Thumbtack is told, before the row goes.
+         *
+         * Deleting our own row is the easy half. Until 2026-09-08 it was the
+         * only half: the webhook stayed registered and firing at an endpoint
+         * that no longer recognised it, the associate phone numbers stayed on
+         * Thumbtack still claiming that a departed company's handsets answer
+         * for that business, and the grant stayed listed on the Pro's Thumbtack
+         * account as an app with access.
+         *
+         * The Help Center article Thumbtack published for EzBizi states plainly
+         * that disconnecting does all three. `ThumbtackAccount::tidyUp()` was
+         * written to do it and nothing called it — it had tests, and tests on a
+         * method say nothing about whether anything reaches it.
+         *
+         * INLINE, and it has to be: queued, this would run after the row is
+         * deleted, and the tokens it needs go with the row. The alternative is
+         * copying credentials into a job payload, which is worse.
+         *
+         * Never fatal. tidyUp() reports rather than throws, because the account
+         * most likely to fail here — an expired token, a business removed on
+         * Thumbtack's side — is exactly the one somebody is trying to be rid
+         * of. Refusing to let go because the far end will not answer would trap
+         * them in a broken connection with no way out but the database.
+         */
+        $problems = $provider === SocialProvider::Thumbtack
+            ? ThumbtackAccount::tidyUp($row)
+            : [];
+
         $this->audit->log('social.disconnected', $row, [
             'provider'     => $row->provider,
             'display_name' => $row->display_name,
             'scope_type'   => $row->scope_type,
+            // What could NOT be undone, on the record. A tidy-up that half
+            // worked is otherwise invisible, and the half that failed is the
+            // half somebody has to finish by hand on Thumbtack.
+            'not_tidied'   => $problems === [] ? null : $problems,
         ], actor: $user);
 
         $row->delete();
 
-        return response()->json(['data' => ['id' => $connection]]);
+        return response()->json(['data' => [
+            'id' => $connection,
+            // Additive. The disconnection succeeded either way; this says
+            // whether anything is left behind on Thumbtack for a person to
+            // remove there.
+            'problems' => $problems,
+        ]]);
     }
 }

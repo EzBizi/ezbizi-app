@@ -115,6 +115,98 @@ class ThumbtackConnectTest extends TestCase
         Bus::assertNotDispatched(RegisterThumbtackWebhook::class);
     }
 
+    /**
+     * Disconnecting has to tell Thumbtack, and for a while it did not.
+     *
+     * Deleting our own row leaves the webhook still firing at an endpoint that
+     * no longer knows it, the associate phone numbers still claiming a departed
+     * company's handsets answer for that business, and the grant still listed
+     * on the Pro's Thumbtack account.
+     *
+     * The Help Center article Thumbtack PUBLISHED for EzBizi states that
+     * disconnecting does all three. ThumbtackAccount::tidyUp() was written to
+     * do it, had its own passing tests, and nothing called it — which is what a
+     * unit test on a method cannot tell you.
+     */
+    public function test_disconnecting_removes_the_numbers_webhook_and_grant_from_thumbtack(): void
+    {
+        $t          = $this->provisionTenant('A1-Group');
+        $connection = $this->storedConnection($t);
+
+        Http::fake([
+            '*/associate-phone-numbers/*' => Http::response([]),
+            '*/associate-phone-numbers'   => Http::response(['phoneNumbers' => [
+                ['phoneNumberID' => 'pn-1', 'businessID' => 'biz-1',
+                    'phoneNumber' => '+15552345678', 'createdTime' => 'then'],
+            ]]),
+            '*/webhooks/wh-1' => Http::response([]),
+            '*/webhooks'      => Http::response(['data' => [
+                ['webhookID' => 'wh-1', 'webhookURL' => 'https://app.ezbizi.test/hook'],
+            ]]),
+            '*/users/disconnect' => Http::response([]),
+        ]);
+
+        $this->signedInAs($t['admin'])
+            ->deleteJson('/api/v1/social/connections/'.$connection->getKey())
+            ->assertOk()
+            ->assertJsonPath('data.problems', []);
+
+        // All three, in the order that matters: revoking first would make the
+        // other two impossible.
+        Http::assertSent(fn ($r) => $r->method() === 'DELETE'
+            && str_contains($r->url(), '/associate-phone-numbers/pn-1'));
+        Http::assertSent(fn ($r) => $r->method() === 'DELETE'
+            && str_ends_with($r->url(), '/webhooks/wh-1'));
+        Http::assertSent(fn ($r) => str_ends_with($r->url(), '/users/disconnect'));
+    }
+
+    /**
+     * The far end being unreachable must not trap somebody in the connection.
+     *
+     * The account most likely to fail here — an expired token, a business
+     * removed on Thumbtack's side — is exactly the one being disconnected.
+     */
+    public function test_a_thumbtack_that_will_not_answer_still_lets_the_account_go(): void
+    {
+        $t          = $this->provisionTenant('A1-Group');
+        $connection = $this->storedConnection($t);
+
+        Http::fake(['*' => Http::response(['message' => 'Token expired.'], 401)]);
+
+        $response = $this->signedInAs($t['admin'])
+            ->deleteJson('/api/v1/social/connections/'.$connection->getKey())
+            ->assertOk();
+
+        // Gone locally, and honest about what is left behind on Thumbtack for
+        // a person to remove there.
+        $this->assertNotEmpty($response->json('data.problems'));
+
+        $this->inTenant($t['org'], function () {
+            $this->assertSame(0, SocialConnection::query()
+                ->where('provider', SocialProvider::Thumbtack->value)
+                ->count());
+        });
+    }
+
+    private function storedConnection(array $t): SocialConnection
+    {
+        return $this->inTenant($t['org'], function () use ($t) {
+            $row = new SocialConnection;
+            $row->forceFill([
+                'organization_id' => $t['org']->getKey(),
+                'scope_type'      => SocialConnection::SCOPE_COMPANY,
+                'scope_id'        => $t['company']->getKey(),
+                'provider'        => SocialProvider::Thumbtack->value,
+                'remote_id'       => 'biz-1',
+                'display_name'    => 'A-1 Chimney on Thumbtack',
+            ]);
+            $row->connect(['access_token' => 'a-token', 'refresh_token' => 'r-token']);
+            $row->save();
+
+            return $row;
+        });
+    }
+
     private function beginSignIn(array $t): string
     {
         $url = $this->signedInAs($t['admin'])
