@@ -146,6 +146,52 @@ class LeadPlacementAndScheduledSyncTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_name_accounts_replaces_digits_with_googles_name_and_leaves_named_rows_alone(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+
+        // Connected before names existed: stored under its digits.
+        $unnamed = $this->connection($t, '4941850746');
+
+        // Already named - by an earlier run, or by Google at connect time.
+        $named = $this->connection($t, '2976318162');
+        $this->inTenant($t['org'], fn () => $named->forceFill(['display_name' => 'A1 Chimney - Akron'])->save());
+
+        config([
+            'services.google_ads.client_id'       => 'client.apps.googleusercontent.com',
+            'services.google_ads.client_secret'   => 'client-secret',
+            'services.google_ads.developer_token' => 'dev-token',
+            'services.google_ads.version'         => 'v24',
+        ]);
+
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'at-fresh', 'expires_in' => 3600], 200),
+            'googleads.googleapis.com/v24/customers/4941850746/googleAds:search' => Http::response(
+                ['results' => [['customer' => ['id' => '4941850746', 'descriptiveName' => 'A1 Chimney - Cleveland']]]],
+                200,
+            ),
+            'googleads.googleapis.com/v24/customers/2976318162/googleAds:search' => Http::response(
+                ['results' => [['customer' => ['id' => '2976318162', 'descriptiveName' => 'SHOULD NOT BE ASKED']]]],
+                200,
+            ),
+        ]);
+
+        $this->artisan('leads:name-accounts')->assertSuccessful();
+
+        $this->assertSame(
+            'A1 Chimney - Cleveland',
+            $this->inTenant($t['org'], fn () => $unnamed->fresh()->display_name),
+        );
+        $this->assertSame(
+            'A1 Chimney - Akron',
+            $this->inTenant($t['org'], fn () => $named->fresh()->display_name),
+            'A row that already has a real name must not be re-asked or overwritten.',
+        );
+
+        // Idempotent and quota-cheap: the named row was never asked.
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '2976318162'));
+    }
+
     public function test_the_connections_payload_carries_placement_and_a_lead_count(): void
     {
         $t = $this->provisionTenant('A1-Chimney');
