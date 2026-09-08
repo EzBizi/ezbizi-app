@@ -12,7 +12,7 @@ class VersionHistory {
       date: '8 Sep 2026',
       items: [
         'Leads is one list across Google Ads, Thumbtack and your website. Each row shows where it came from, a Source chip narrows the list, and Connected sources at the top opens every provider\'s accounts in one place.',
-        'Automations: a trigger that nothing raises yet is marked as such in the picker, and a saved rule built on one says so on its row instead of sitting enabled and never running.',
+        'Automations: an event nothing reports yet is now marked in the picker, and a rule already built on one says on its row that nothing will set it off - instead of sitting switched on, looking finished, and never running.',
         'Website enquiries: a chat bubble and a contact form for the customer\'s own website. Both arrive in Leads beside the Google and Thumbtack ones, so a reply typed in the thread reaches the visitor on their page.',
         'Thumbtack enquiries reach the right company when two companies use the same Thumbtack business.',
         'Hours of operation reads as one table: every day the same height, ruled between, and the times sit tight instead of drifting.',
