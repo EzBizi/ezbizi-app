@@ -218,6 +218,45 @@ void main() {
     expect(find.textContaining('not missing'), findsOneWidget);
   });
 
+  testWidgets('every connected Thumbtack business is reachable, not just the '
+      'first', (tester) async {
+    // The defect, exactly as it happened on 2026-09-08: one connect made TWELVE
+    // businesses and the tab drew one. Eleven were invisible, and disconnecting
+    // the visible one redrew the next, so the button read as broken. It was not.
+    await _pump(
+      tester,
+      leads: const [],
+      connections: [
+        for (var i = 0; i < 12; i++)
+          {
+            'id': 'c\$i',
+            'provider': 'thumbtack',
+            // All twelve carry the SAME name, which is what Thumbtack really
+            // returned. A list alone would not have been enough.
+            'display_name': 'A1 Chimney',
+            'remote_id': '58126687849144320\$i',
+            'status': 'connected',
+          },
+      ],
+    );
+
+    await tester.tap(find.text('Thumbtack Leads'));
+    await tester.pumpAndSettle();
+
+    // The count is the whole point: one row on the way to the leads that admits
+    // how many there are, rather than a single row pretending to be all of it.
+    // Asserted on the tile's own wording because the default test surface is
+    // narrow - the band and the tile say the same thing in different words, and
+    // pinning the wrong one makes this pass or fail on the viewport.
+    expect(find.text('Thumbtack'), findsOneWidget);
+    expect(find.textContaining('12 accounts'), findsOneWidget);
+
+    // And the row it replaced is gone. This is the assertion that would have
+    // caught the original defect: ConnectedAccount drew exactly one business
+    // and named it, which is why removing one looked like nothing happening.
+    expect(find.text('Thumbtack · A1 Chimney'), findsNothing);
+  });
+
   testWidgets('without leads.edit the Thumbtack tab names who can connect '
       'instead of offering a button that would be refused', (tester) async {
     await _pump(

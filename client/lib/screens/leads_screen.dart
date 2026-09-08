@@ -5,7 +5,6 @@ import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
-import '../widgets/connected_account.dart';
 import '../widgets/lead_thread.dart';
 import '../widgets/leads_accounts.dart';
 import '../widgets/side_panel.dart';
@@ -202,11 +201,15 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// every list-you-occasionally-edit, so Escape, the scrim and focus handling
   /// come with it. A pushed screen on a phone, because a panel that is the
   /// whole window is a screen wearing a costume.
-  Future<void> _openAccounts({required bool pushed}) async {
+  Future<void> _openAccounts({
+    required bool pushed,
+    List<Map<String, dynamic>>? connections,
+    String noun = 'Google Ads',
+  }) async {
     final list = LeadsAccountsList(
       api: widget.api,
       session: widget.session,
-      connections: _googleAdsAccounts,
+      connections: connections ?? _googleAdsAccounts,
       onChanged: _load,
     );
 
@@ -214,7 +217,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => Scaffold(
-            appBar: AppBar(title: const Text('Google Ads accounts')),
+            appBar: AppBar(title: Text('$noun accounts')),
             body: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: list,
@@ -228,7 +231,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     await showSidePanel<void>(
       context,
       builder: (_) => SidePanel(
-        title: 'Google Ads accounts',
+        title: '$noun accounts',
         subtitle:
             "Where each account's leads go. Changing it moves the leads that "
             'account has already produced.',
@@ -242,23 +245,29 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   /// EVERY Google Ads account, not the first one the query happened to return.
   ///
-  /// `_connectionFor` answers with the first match, which was right when a
-  /// connect made one row and wrong the moment it made twenty-two in the same
-  /// second: twenty-one were invisible and the one shown was arbitrary.
+  /// The helper this replaced answered with the first match, which was right
+  /// when a connect made one row and wrong the moment it made twenty-two in the
+  /// same second: twenty-one were invisible and the one shown was arbitrary.
+  /// It is gone now — Thumbtack was its last caller, for the same reason.
   List<Map<String, dynamic>> get _googleAdsAccounts => [
     for (final c in _connections)
       if (c['provider'] == 'google_ads') c,
   ];
 
-  Map<String, dynamic>? get _thumbtack => _connectionFor('thumbtack');
-
-  Map<String, dynamic>? _connectionFor(String provider) {
-    for (final c in _connections) {
-      if (c['provider'] == provider) return c;
-    }
-
-    return null;
-  }
+  /// Every connected Thumbtack business, for the same reason as Google's.
+  ///
+  /// This was `_connectionFor('thumbtack')` — one row — until 2026-09-08, when
+  /// one connect produced TWELVE businesses in the same second. Eleven were
+  /// invisible, and the failure was worse than hiding them: disconnecting the
+  /// one on screen reloaded and drew the next, so Jose reported the button as
+  /// broken. It was working. He had removed eight before we understood why.
+  ///
+  /// Twelve is not the ceiling and the ceiling is not knowable — it is however
+  /// many Thumbtack businesses the login administers.
+  List<Map<String, dynamic>> get _thumbtackAccounts => [
+    for (final c in _connections)
+      if (c['provider'] == 'thumbtack') c,
+  ];
 
   bool get _canConnect => widget.session.me?.can('leads.edit') ?? false;
 
@@ -676,7 +685,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// enquiries are not being fetched yet. When ingestion lands this becomes the
   /// same list as Google's and this paragraph goes with it.
   Widget _thumbtackTab(ThemeData theme) {
-    final connection = _thumbtack;
+    final accounts = _thumbtackAccounts;
+    final connection = accounts.isEmpty ? null : accounts.first;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
@@ -688,10 +698,32 @@ class _LeadsScreenState extends State<LeadsScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (connection != null) ...[
-                ConnectedAccount(
-                  api: widget.api,
-                  connection: connection,
-                  onDisconnected: _load,
+                // The same door Google's half uses, and for the same reason:
+                // one row on the way to the leads whether the login carries one
+                // business or twelve. ConnectedAccount was here and showed
+                // exactly one, which is what made disconnecting look inert.
+                LayoutBuilder(
+                  builder: (context, constraints) => constraints.maxWidth < 600
+                      ? LeadsAccountsTile(
+                          connections: accounts,
+                          network: 'thumbtack',
+                          noun: 'Thumbtack',
+                          onOpen: () => _openAccounts(
+                            pushed: true,
+                            connections: accounts,
+                            noun: 'Thumbtack',
+                          ),
+                        )
+                      : LeadsAccountsBand(
+                          connections: accounts,
+                          network: 'thumbtack',
+                          noun: 'Thumbtack',
+                          onManage: () => _openAccounts(
+                            pushed: false,
+                            connections: accounts,
+                            noun: 'Thumbtack',
+                          ),
+                        ),
                 ),
                 const SizedBox(height: 20),
                 Icon(
