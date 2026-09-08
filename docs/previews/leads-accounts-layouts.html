@@ -139,20 +139,19 @@
       provider match, so one of twenty-two shows and which one is an accident of row order.
     </div>
 
-    <div class="found">
-      <strong>Two gaps in the payload, both found by reading it</strong>
-      <span class="brk">1 · No <code>leads_franchise_id</code> on the connections rows.</span>
-      <code>connectionState()</code> maps <code>id, provider, display_name, status</code> and nothing
-      else. So the column this design exists to show <b>cannot be drawn on load</b> — placement would
-      be known only for the one row somebody just changed. Asked for; every layout below assumes it
-      lands.
-      <span class="brk">2 · No lead count per account, anywhere.</span>
-      <code>present(Lead)</code> carries <code>company</code> and <code>franchise</code> but nothing
-      naming the connection that produced it, so it cannot be counted client-side either.
-      <b>This one decides the layout rather than decorating it.</b> Twenty-two rows that look alike
-      is an unreadable list, and the only thing that tells them apart is which ones actually produce
-      leads. Layouts marked <span class="cond">needs the count</span> are the ones that stop working
-      without it.
+    <div class="locked">
+      <strong>Both gaps closed, and verified here rather than taken on report</strong>
+      <code>a83b53d5</code> is an ancestor of HEAD. <code>connectionState()</code> now returns
+      <code>leads_franchise_id</code>, <code>leads_franchise_name</code> and
+      <code>leads_count</code> — the count from <b>one grouped query</b>, not twenty-two. The PATCH
+      returns <code>leads_moved</code>, and the null-versus-zero distinction is real in the code:
+      an unchanged placement returns early, before any counting.
+      <span class="brk">So the count-bearing layouts are simply the layouts. Nothing below is conditional.</span>
+      <span class="brk">And it produced a state that must be drawn: placed somewhere you cannot see.</span>
+      The name resolves only against the reader's own reachable franchises, so an account placed
+      outside their reach comes back with a real id and a <b>null name</b>. That is an answer, not
+      missing data — the row has to say a placement exists without naming it, because naming it
+      would leak the shape of the organization one row at a time. Drawn in layout 1's panel.
     </div>
 
     <div class="ask">
@@ -186,8 +185,8 @@ const CAPTIONS = {
     "In the header, a single row: \"Google Ads · 22 accounts · 2 placed\", with a chevron. It opens a full screen listing them, each with its placement, and tapping one opens that account. Recommended because it is the same shape as Your account on a phone, which is already built and approved — a row that states its value, so most visits end without opening anything. The row carries \"2 placed\" rather than just the count because that is the number that changes, and somebody checking whether their assignment took can see it without opening anything at all."],
  5:["5 · Mobile — the accounts as a third tab",
     "Google Leads · Thumbtack Leads · Accounts. Reachable in one tap from anywhere in the module and it needs no new screen. Weakness: it makes a settings surface a peer of the two content lists, so the tab row stops meaning \"which leads\" and starts meaning \"which leads, or not leads\". It also puts Accounts one tap from a mis-tap on the busiest control on the screen, and there is no reason to visit it monthly, let alone daily."],
- 6:["6 · Mobile — grouped by placement, quiet accounts folded away",
-    "The account screen from layout 4, but sorted and grouped: the accounts that have produced leads first, then a folded \"18 that have never sent a lead\" the rest live behind. With twenty-two rows this is the difference between a list and a wall — and it degrades honestly, because without a count it simply renders as one flat alphabetical group. Drawn as a variant of 4 rather than a rival: if the count lands, 4 SHOULD look like this, and if it does not, 4 is what you get."]
+ 6:["6 · Mobile — grouped by count, quiet accounts folded away, and what a change says back",
+    "The account screen from layout 4, but sorted and grouped: the accounts that have produced leads first, then a folded \"18 that have never sent a lead\" the rest live behind. With twenty-two rows this is the difference between a list and a wall. Drawn as a variant of 4 rather than a rival: 4 should look like this. Beside it is the other half — what the app says after a placement changes. The API keeps leads_moved null (nothing changed) and 0 (changed, nothing to carry) apart, so the screen says three different things rather than one hedge covering all of them."]
 };
 
 const NAV=['Dashboard','Customers','Jobs','Scheduling','Marketing','Communication','Leads','Email'];
@@ -226,7 +225,12 @@ const panel=(showCount)=>`<div class="panelwrap"><div class="panel">
     ${ACCTS.slice(0,3).map(a=>acct(a,showCount)).join('')}
     ${showCount?'<div class="ghead">No leads yet · 19</div>':''}
     ${ACCTS.slice(3).map(a=>acct(a,showCount)).join('')}
-    <div style="padding:12px;color:var(--muted);font-size:12px">…16 more</div></div></div></div>`;
+    <div class="acct"><div class="g"><div class="num">660-118-9043</div>
+      <div class="where" style="font-style:italic">Placed somewhere you cannot see</div></div>
+      ${showCount?'<div class="cnt zero">no leads</div>':''}
+      <button class="btn ghost sm" disabled style="opacity:.45">Change</button>
+      <button class="btn ghost sm danger">Disconnect</button></div>
+    <div style="padding:12px;color:var(--muted);font-size:12px">…15 more</div></div></div></div>`;
 
 const win=(cap,inner,m)=>`<div class="win"><div class="cap">${cap}</div>${inner}
   ${m?`<div class="measure">${m}</div>`:''}</div>`;
@@ -235,7 +239,7 @@ const D1=()=>win('<b>Layout 1</b> &middot; summary line, full list in a side pan
  `<div class="shell" style="border:0;border-radius:0">${topbar()}${side()}
    <div class="page">${head()}${band('<button class="btn">Manage</button>')}${toolbar()}${leads()}
    ${panel(true)}</div></div>`,
- 'Costs <b>one row</b> on the way to the leads, at twenty-two accounts or two hundred. The panel is the app\'s existing surface, so the two-tap disconnect, Escape and focus come free. <span class="cond">grouping needs the count</span> — without it the panel is one flat list and still works.');
+ 'Costs <b>one row</b> on the way to the leads, at twenty-two accounts or two hundred. The panel is the app\'s existing surface, so the two-tap disconnect, Escape and focus come free.');
 
 const D2=()=>win('<b>Layout 2</b> &middot; expanded in place, above the leads',
  `<div class="shell" style="border:0;border-radius:0">${topbar()}${side()}
@@ -296,7 +300,7 @@ const M5=()=>`<div class="phones">
   the tab row stops meaning <em>which leads</em> and starts meaning <em>which leads, or not leads</em>.</p>`;
 
 const M6=()=>`<div class="phones">
-  ${P('<b>Layout 6</b> &middot; grouped, quiet accounts folded away <span class="cond">needs the count</span>',`
+  ${P('<b>Layout 6</b> &middot; grouped, quiet accounts folded away',`
     <div class="bar"><span class="back">&#8249; Leads</span> Google Ads accounts</div>
     <div class="sc"><div class="ghead">Producing leads · 4</div>
       ${ACCTS.slice(0,3).map(a=>`<div class="row"><div class="g"><b>${a[0]}</b>
@@ -304,15 +308,32 @@ const M6=()=>`<div class="phones">
         <span class="v">${a[2]} leads</span><span class="chev">&#8250;</span></div>`).join('')}
       <div class="row" style="background:var(--alt)"><div class="g"><b>18 that have never sent a lead</b></div>
         <span class="chev">&#8250;</span></div></div>`)}
-  ${P('<b>Without the count, the same screen</b>',`
-    <div class="bar"><span class="back">&#8249; Leads</span> Google Ads accounts</div>
-    <div class="sc">${ACCTS.map(a=>`<div class="row"><div class="g"><b>${a[0]}</b>
-      <span style="color:var(--muted);font-size:12px">${a[1]}</span></div><span class="chev">&#8250;</span></div>`).join('')}
-      <div style="padding:12px 16px;color:var(--muted);font-size:12px">…16 more, alphabetical</div></div>`)}
+  ${P('<b>After changing one</b> &middot; three different answers',`
+    <div class="bar"><span class="back">&#8249; Accounts</span> 118-904-2210</div>
+    <div class="sc">
+      <div style="padding:14px 16px;background:var(--ok-c);color:var(--ok);font-size:13px;font-weight:600">
+        14 leads moved to Connecticut</div>
+      <div style="padding:12px 16px;font-size:12.5px;color:var(--muted)">
+        <b style="color:var(--ink)">leads_moved: 14</b> — the number somebody looks for to believe
+        it worked. Placement is retroactive, so this is the whole confirmation.</div>
+      <div style="padding:14px 16px;background:var(--alt);font-size:13px;border-top:1px solid var(--line)">
+        Moved to Connecticut. No leads to move yet.</div>
+      <div style="padding:12px 16px;font-size:12.5px;color:var(--muted)">
+        <b style="color:var(--ink)">leads_moved: 0</b> — the placement took and there was nothing to
+        carry. Silence here would read as failure.</div>
+      <div style="padding:14px 16px;background:var(--alt);font-size:13px;border-top:1px solid var(--line);color:var(--muted)">
+        <i>nothing said</i></div>
+      <div style="padding:12px 16px;font-size:12.5px;color:var(--muted)">
+        <b style="color:var(--ink)">leads_moved: null</b> — the same franchise re-submitted. Nothing
+        happened, so nothing is announced. Saying &ldquo;0 moved&rdquo; here would report a
+        non-event as an outcome.</div>
+    </div>`)}
 </div>
-<p class="note" style="text-align:center;margin-top:12px">A variant of 4 rather than a rival: if the
-  count lands, <b>4 should look like this</b>. If it does not, 4 is what you get — the right-hand
-  phone. Both are drawn so the gap is a visible cost rather than an argument.</p>`;
+<p class="note" style="text-align:center;margin-top:12px">A variant of 4 rather than a rival —
+  <b>4 should look like this</b>. Beside it, what the change itself says: the API keeps
+  <code>leads_moved</code> null and 0 apart, so the screen can too. <b>Null and 0 are different
+  facts</b> and collapsing them would either announce a non-event or make a real one look like a
+  failure.</p>`;
 
 const L={1:D1,2:D2,3:D3,4:M4,5:M5,6:M6};
 const nums=document.getElementById('nums'),stage=document.getElementById('stage'),
