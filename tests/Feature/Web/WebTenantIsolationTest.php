@@ -28,11 +28,18 @@ use Tests\TestCase;
  *   EnquiriesController   WebSite by public_key      (the widget's key)
  *   EnquiriesController   WebChat by id + token_hash (the visitor's token)
  *
- * So the isolation that `BelongsToTenant` normally guarantees is, on these
- * four paths, guaranteed by nothing but the unguessability of a key and the
- * correctness of the `run($organization)` that follows. That is a reasonable
- * design and it is also the whole of the protection, which is why it is worth
- * a file of its own rather than a line in a larger one.
+ * An earlier draft of this comment said the isolation on those paths is
+ * "guaranteed by nothing but the unguessability of a key". That understated
+ * it, and the UI/UX session caught it while verifying this file. `TenantScope`
+ * does not silently pass when no tenant is bound — it THROWS, naming
+ * `runWithoutTenant()` and `withoutGlobalScopes()` as the ways to say you meant
+ * it. So an unscoped read here cannot happen by accident: it has to be written
+ * on purpose, and it leaves a greppable word behind when it is.
+ *
+ * What remains true, and is why this file exists: on those six lookups the key
+ * IS the boundary, and after it the `run($organization)` has to name the right
+ * organization. Neither of those is enforced by the scope, because by
+ * construction the scope has been stood down. The cases below hold them.
  *
  * ── Why it is worth writing even though nothing is known to be wrong ──
  *
