@@ -32,6 +32,16 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
     public const SOURCE_LOCAL_SERVICES = 'local_services';
 
     /**
+     * Thumbtack, since 2026-09-08.
+     *
+     * A second source, and the column was always a string rather than an
+     * enum so this needs no migration. The unique key is
+     * (organization_id, source, remote_id), so a Thumbtack negotiation id
+     * can never collide with a Google lead id that happens to match.
+     */
+    public const SOURCE_THUMBTACK = 'thumbtack';
+
+    /**
      * Ours, not the source's.
      *
      * `NEW` is the absence of a decision rather than a decision, which is why a
@@ -125,7 +135,7 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
     }
 
     protected $fillable = [
-        'organization_id', 'company_id', 'franchise_id', 'connection_id',
+        'organization_id', 'company_id', 'franchise_id', 'connection_id', 'job_id',
         'source', 'remote_id', 'contact_name', 'phone', 'email', 'phone_digits',
         'lead_type', 'category', 'service', 'locale', 'summary', 'note',
         'status', 'starred_at', 'source_status', 'charge_status', 'received_at', 'synced_at',
@@ -160,6 +170,12 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
     public function connection(): BelongsTo
     {
         return $this->belongsTo(SocialConnection::class, 'connection_id');
+    }
+
+    /** The job this enquiry became, once somebody booked it. */
+    public function job(): BelongsTo
+    {
+        return $this->belongsTo(Job::class);
     }
 
     /** Every call and message on this enquiry, oldest first. */
