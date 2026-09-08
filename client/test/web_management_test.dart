@@ -105,6 +105,11 @@ void main() {
       permissions: ['web_management.view', 'web_management.edit'],
     );
 
+    await tester.ensureVisible(find.text('Browser snippet'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Browser snippet'));
+    await tester.pumpAndSettle();
+
     expect(find.textContaining('pk_fixture_browser_key'), findsWidgets);
 
     // The snippet points at the route that is actually served — public/ is not
@@ -158,6 +163,37 @@ void main() {
     // The first site is selected for you rather than leaving an empty pane.
     expect(find.text('Phone number'), findsOneWidget);
     expect(find.textContaining('[ezbizi_phone]'), findsOneWidget);
+  });
+
+  /// A section shows its own fields and nobody else's.
+  ///
+  /// The sections come from the server so that adding one costs a line in
+  /// SeoFields and nothing in Dart. That only holds if the client filters on
+  /// what the server sent rather than on a list of its own, which is what this
+  /// pins: a field the fixture puts in `social` must be absent from General and
+  /// present in Social links.
+  testWidgets('a section shows only its own fields', (
+    tester,
+  ) async {
+    await _pumpDestination(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+    );
+
+    expect(find.text('Phone number'), findsOneWidget);
+    expect(find.text('Facebook'), findsNothing);
+
+    await tester.tap(find.text('Social links'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Facebook'), findsOneWidget);
+    expect(find.textContaining('[ezbizi_facebook]'), findsOneWidget);
+
+    // General's fields are gone, and so is the address block that belongs to
+    // them — a section that leaked its neighbour's fields would still pass the
+    // line above.
+    expect(find.text('Phone number'), findsNothing);
+    expect(find.text('Address'), findsNothing);
   });
 
   /// SEO has sections now, and General is the one that exists.
@@ -281,17 +317,17 @@ void main() {
       permissions: ['web_management.view', 'web_management.edit'],
     );
 
-    // Scrolled to first. The module page header costs about 72px at the top of
-    // every module now, and this button sat close enough to the bottom edge at
-    // 1280x900 that it went under it -- at which point `tap` hit-tests empty
-    // space and does nothing, silently, and the failure looks like the confirm
-    // never rendering rather than like the button never being pressed.
-    await tester.ensureVisible(find.text('New key'));
+    await tester.ensureVisible(find.text('Browser snippet'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Browser snippet'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('New key'));
+    await tester.tap(find.text('Issue a new browser key'));
     await tester.pumpAndSettle();
 
+    // The panel closed on the way out: the confirmation is drawn on the page
+    // behind it, and leaving the panel up would hide the question being asked.
+    expect(find.text('Browser snippet'), findsOneWidget);
     expect(find.byType(Dialog), findsNothing);
     expect(find.byType(AlertDialog), findsNothing);
     expect(find.textContaining('Issue a new browser key?'), findsOneWidget);
@@ -301,7 +337,38 @@ void main() {
   testWidgets('view alone cannot reissue a browser key', (tester) async {
     await _pumpDestination(tester, permissions: ['web_management.view']);
 
-    expect(find.text('New key'), findsNothing);
+    await tester.ensureVisible(find.text('Browser snippet'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Browser snippet'));
+    await tester.pumpAndSettle();
+
+    // The key itself is readable — proving the panel opened, so the absence
+    // below is the button missing rather than the panel never appearing.
+    expect(find.textContaining('pk_fixture_browser_key'), findsWidgets);
+    expect(find.text('Issue a new browser key'), findsNothing);
+  });
+
+  /// The reference material is behind a button, not on the page.
+  ///
+  /// Five numbered steps and a script tag used to sit open above and below the
+  /// fields somebody came here to edit. They are read once per website and
+  /// never again.
+  testWidgets('the guide and the snippet are behind buttons', (tester) async {
+    await _pumpDestination(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+    );
+
+    expect(find.text('Connection guide'), findsOneWidget);
+    expect(find.textContaining('Get the EzBizi plugin'), findsNothing);
+    expect(find.textContaining('/api/v1/web/ezbizi.js'), findsNothing);
+
+    await tester.ensureVisible(find.text('Connection guide'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Connection guide'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Get the EzBizi plugin'), findsOneWidget);
   });
 
   // §6 — no pop-ups, ever. Adding is a form in place, not a dialog.
@@ -459,11 +526,24 @@ Future<http.Response> Function(http.Request) _respond(
     if (path == '/api/v1/me') {
       body = {'data': _me(permissions, scopedToCompany)};
     } else if (path == '/api/v1/web/sites') {
-      body = {'data': _sites};
+      body = {
+        'data': _sites,
+        'sections': const [
+          {'key': 'general', 'label': 'General'},
+          {'key': 'social', 'label': 'Social links'},
+        ],
+      };
     } else if (RegExp(r'^/api/v1/web/sites/[^/]+/values$').hasMatch(path)) {
       body = {
         'data': {
           'fields': [
+            {
+              'key': 'facebook',
+              'label': 'Facebook',
+              'hint': 'The full link to the company page on Facebook.',
+              'shortcode': '[ezbizi_facebook]',
+              'section': 'social',
+            },
             {
               'key': 'phone',
               'label': 'Phone number',

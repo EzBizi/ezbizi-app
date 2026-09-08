@@ -47,6 +47,27 @@ class SeoFields
 
     public const OPTIONAL = 'optional';
 
+    public const GENERAL = 'general';
+
+    public const SOCIAL = 'social';
+
+    /**
+     * The sections, in the order the screen shows them.
+     *
+     * Sent to the client rather than mirrored there, so adding a section is
+     * still one line in this file and nothing else — the same bargain the
+     * catalogue itself makes.
+     *
+     * @return array<int, array{key: string, label: string}>
+     */
+    public static function sections(): array
+    {
+        return [
+            ['key' => self::GENERAL, 'label' => 'General'],
+            ['key' => self::SOCIAL, 'label' => 'Social links'],
+        ];
+    }
+
     /**
      * Key => [label, hint, requirement].
      *
@@ -54,7 +75,15 @@ class SeoFields
      */
     public static function all(): array
     {
-        return [
+        return array_merge(self::general(), self::social());
+    }
+
+    /**
+     * @return array<string, array{label: string, hint: string, requirement: string, section: string}>
+     */
+    private static function general(): array
+    {
+        return self::sectioned(self::GENERAL, [
             'company_name' => [
                 'label' => 'Company name',
                 'hint' => 'The trading name this site answers under.',
@@ -141,7 +170,72 @@ class SeoFields
                 // Most companies take no online bookings at all.
                 'requirement' => self::OPTIONAL,
             ],
+        ]);
+    }
+
+    /**
+     * Where the business already exists, so a site can link to it.
+     *
+     * ── Why these are values and not a new table ──
+     *
+     * A social link is a business fact with a shortcode, which is what this
+     * catalogue already is. Storing them as `web_values` rows means the primary
+     * site answers for a branch that has not set its own, the shortcode is
+     * derived, and the editor draws them — none of which is code anybody writes
+     * again. A `web_social_links` table would have bought a per-network column
+     * and re-implemented all three.
+     *
+     * Every one is OPTIONAL. A trade business with no TikTok is not an
+     * unfinished site, and a required badge on fifteen networks would make the
+     * badge mean nothing on the fields where it does.
+     *
+     * @return array<string, array{label: string, hint: string, requirement: string, section: string}>
+     */
+    private static function social(): array
+    {
+        $networks = [
+            'facebook' => 'Facebook',
+            'instagram' => 'Instagram',
+            'youtube' => 'YouTube',
+            'twitter' => 'Twitter / X',
+            'linkedin' => 'LinkedIn',
+            'tiktok' => 'TikTok',
+            'yelp' => 'Yelp',
+            'google_business' => 'Google Business',
+            'pinterest' => 'Pinterest',
+            'bbb' => 'BBB',
+            'nextdoor' => 'Nextdoor',
+            'houzz' => 'Houzz',
+            'angi' => 'Angi',
+            'thumbtack' => 'Thumbtack',
+            'homeadvisor' => 'HomeAdvisor',
         ];
+
+        $fields = [];
+
+        foreach ($networks as $key => $label) {
+            $fields[$key] = [
+                'label' => $label,
+                'hint' => 'The full link to the company page on '.$label.'.',
+                'requirement' => self::OPTIONAL,
+            ];
+        }
+
+        return self::sectioned(self::SOCIAL, $fields);
+    }
+
+    /**
+     * Stamp a section onto a block of fields.
+     *
+     * @param  array<string, array{label: string, hint: string, requirement: string}>  $fields
+     * @return array<string, array{label: string, hint: string, requirement: string, section: string}>
+     */
+    private static function sectioned(string $section, array $fields): array
+    {
+        return array_map(
+            fn (array $field) => $field + ['section' => $section],
+            $fields,
+        );
     }
 
     /** @return string[] */
@@ -171,6 +265,7 @@ class SeoFields
                 'label' => $field['label'],
                 'hint' => $field['hint'],
                 'requirement' => $field['requirement'],
+                'section' => $field['section'],
                 'shortcode' => '[ezbizi_'.$key.']',
             ],
             self::keys(),

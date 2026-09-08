@@ -865,6 +865,84 @@ class WebManagementTest extends TestCase
         );
     }
 
+    /**
+     * Every field belongs to a section the editor knows how to show.
+     *
+     * The screen draws one section at a time and filters on this attribute, so
+     * a field with a section nothing lists is a field nobody can reach — a
+     * phone number that silently stops being editable is precisely the failure
+     * this module exists to prevent.
+     */
+    public function test_every_field_belongs_to_a_listed_section(): void
+    {
+        $sections = array_column(SeoFields::sections(), 'key');
+
+        $this->assertNotEmpty($sections);
+
+        foreach (SeoFields::catalogue() as $field) {
+            $this->assertContains(
+                $field['section'],
+                $sections,
+                "{$field['key']} is in a section the editor does not list.",
+            );
+        }
+    }
+
+    /**
+     * The sections travel with the sites, so the client never keeps its own copy.
+     */
+    public function test_the_site_list_carries_the_sections(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $body = $this->signedInAs($editor)->getJson('/api/v1/web/sites')->assertOk();
+
+        $this->assertSame(
+            ['general', 'social'],
+            array_column($body->json('sections'), 'key'),
+        );
+    }
+
+    /**
+     * A social link is a value like any other, which is the whole point of
+     * putting it in the catalogue instead of a table of its own: it inherits
+     * from the primary site, and overriding one overrides only that one.
+     */
+    public function test_a_branch_site_inherits_social_links_and_can_override_one(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $primary = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+        $branch = $this->registerSite($editor, $tenant, 'branch.a-1chimney.com');
+
+        $this->signedInAs($editor)
+            ->postJson("/api/v1/web/sites/{$primary['data']['id']}/primary")
+            ->assertOk();
+
+        $this->setValues($editor, $primary['data']['id'], [
+            'facebook' => 'https://facebook.com/a1chimney',
+            'yelp' => 'https://yelp.com/biz/a1chimney',
+        ]);
+
+        $this->setValues($editor, $branch['data']['id'], [
+            'yelp' => 'https://yelp.com/biz/a1chimney-branch',
+        ]);
+
+        $read = $this->pluginRead($branch['token'], 'branch.a-1chimney.com')->assertOk();
+
+        // Facebook falls through from the primary; Yelp is this site's own.
+        $this->assertSame(
+            'https://facebook.com/a1chimney',
+            $read->json('values.facebook'),
+        );
+        $this->assertSame(
+            'https://yelp.com/biz/a1chimney-branch',
+            $read->json('values.yelp'),
+        );
+    }
+
     // ── 7. a primary site, and what the others inherit ──────────────
 
     /**
