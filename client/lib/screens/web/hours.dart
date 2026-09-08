@@ -412,6 +412,23 @@ class _HoursFieldState extends State<HoursField> {
                                     color: theme.colorScheme.onSurfaceVariant,
                                   ),
                                 )
+                              /*
+                               * A Wrap, and it is load-bearing - do not make
+                               * this a Row.
+                               *
+                               * Measured 2026-09-08: swapping it for a Row
+                               * while fixing the row heights put the times
+                               * 78px past the right edge at 375 wide, into
+                               * space nobody can see or tap. A Row cannot
+                               * wrap, so at phone width the second time and
+                               * the word between them simply leave the
+                               * screen; the day still looks fine at desk
+                               * width, which is what makes it easy to ship.
+                               *
+                               * This is why the height above is a MINIMUM and
+                               * not a fixed height: the row has to be free to
+                               * grow when the Wrap takes a second line.
+                               */
                               : Wrap(
                                   crossAxisAlignment:
                                       WrapCrossAlignment.center,
