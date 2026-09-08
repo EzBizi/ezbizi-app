@@ -558,10 +558,12 @@ Route::prefix('v1')
         Route::get('business-profile/locations/{location}', [BusinessProfileController::class, 'show']);
         Route::patch('business-profile/locations/{location}', [BusinessProfileController::class, 'update']);
         Route::post('leads/sync', [LeadsController::class, 'sync']);
+        Route::post('leads/read-all', [LeadsController::class, 'readAll']);
         Route::get('leads', [LeadsController::class, 'index']);
         Route::get('leads/{lead}', [LeadsController::class, 'show']);
         Route::get('leads/{lead}/conversations/{conversation}/recording', [LeadsController::class, 'recording']);
         Route::post('leads/{lead}/messages', [LeadsController::class, 'reply']);
+        Route::post('leads/{lead}/read', [LeadsController::class, 'read']);
         Route::patch('leads/{lead}', [LeadsController::class, 'update']);
         Route::apiResource('vehicles', VehiclesController::class);
         Route::apiResource('inventory/items', InventoryItemsController::class);

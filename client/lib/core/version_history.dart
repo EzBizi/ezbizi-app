@@ -14,6 +14,10 @@ class VersionHistory {
         'You can reply to a text enquiry from the lead\'s conversation. The message goes to the person through Google, in the account\'s own name, and appears in the thread at once. Calls cannot be replied to this way and the screen says so.',
         'Email: the line down the side of a quoted message is gone. The quoted text is greyed instead, so it still reads as somebody else\'s words rather than as part of the reply.',
         'Suggestions: the coloured stripe down the side of each row is gone. Whether a suggestion was approved or rejected is still said by the row\'s colour and its heading, which is where it was already being said.',
+        'Web Management: the connection steps and the browser snippet are behind two buttons now, in a panel, instead of sitting open above and below the fields you came to edit.',
+        'Web Management: the grey panels are gone from the SEO screen. They were on four blocks and not on the rest of the same screen, which read as a mistake rather than a style.',
+        'Web Management: SEO has a Social links section - Facebook, Instagram, YouTube, Twitter / X, LinkedIn, TikTok, Yelp, Google Business, Pinterest, BBB, Nextdoor, Houzz, Angi, Thumbtack and HomeAdvisor, each with its own shortcode.',
+        'Web Management: a social link follows the primary website like every other detail, and setting one on a branch site overrides just that one link.',
       ],
     ),
     VersionRelease(

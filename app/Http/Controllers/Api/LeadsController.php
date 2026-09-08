@@ -48,10 +48,21 @@ class LeadsController extends Controller
 
         $user = $request->user();
 
+        /*
+         * The reader's own mark rides along on a left join, so "unread" costs
+         * no query per row. Unread means no mark, or a mark older than the
+         * newest thing on the lead - a message after you read it makes it
+         * unread again, which is what a1tools does and what a person expects.
+         */
         $query = Lead::query()
+            ->select('leads.*', 'lead_reads.read_at as read_by_me_at')
+            ->leftJoin('lead_reads', function ($join) use ($user) {
+                $join->on('lead_reads.lead_id', '=', 'leads.id')
+                    ->where('lead_reads.user_id', '=', $user->getKey());
+            })
             ->with(['company:id,name', 'franchise:id,name'])
-            ->orderByDesc('received_at')
-            ->orderByDesc('created_at');
+            ->orderByDesc('leads.received_at')
+            ->orderByDesc('leads.created_at');
 
         // Reach, not just tenancy. BelongsToTenant already filters to the
         // organization; this narrows to the places this person can act on, so
@@ -61,8 +72,8 @@ class LeadsController extends Controller
 
         if (! $user->canActOnOrganization($user->organization)) {
             $query->where(function ($q) use ($companyIds, $franchiseIds) {
-                $q->whereIn('company_id', $companyIds)
-                    ->orWhereIn('franchise_id', $franchiseIds)
+                $q->whereIn('leads.company_id', $companyIds)
+                    ->orWhereIn('leads.franchise_id', $franchiseIds)
                     // A row filed at organization level - both columns null,
                     // which is every row from an organization-scoped
                     // connection - belongs to everybody who can see this tab.
@@ -70,18 +81,29 @@ class LeadsController extends Controller
                     // every user below organization level, while the policy
                     // still allowed each one by id. Business Profile carried
                     // this clause from the start; Leads and Reviews did not.
-                    ->orWhere(fn ($w) => $w->whereNull('company_id')->whereNull('franchise_id'));
+                    ->orWhere(fn ($w) => $w->whereNull('leads.company_id')->whereNull('leads.franchise_id'));
             });
         }
 
         if (is_string($status = $request->query('status')) && $status !== '') {
-            $query->where('status', $status);
+            $query->where('leads.status', $status);
         }
 
         // "Who is waiting on me": the enquirer spoke last. The one filter with
         // data behind it; Unread and Starred are not drawn until they have some.
         if ($request->boolean('unreplied')) {
-            $query->where('last_contact_from', LeadConversation::FROM_CONSUMER);
+            $query->where('leads.last_contact_from', LeadConversation::FROM_CONSUMER);
+        }
+
+        if ($request->boolean('unread')) {
+            $query->where(function ($q) {
+                $q->whereNull('lead_reads.read_at')
+                    ->orWhereRaw('COALESCE(leads.last_contact_at, leads.received_at) > lead_reads.read_at');
+            });
+        }
+
+        if ($request->boolean('starred')) {
+            $query->whereNotNull('leads.starred_at');
         }
 
         // One box, two meanings. Somebody looking for a lead has either a name
@@ -93,10 +115,10 @@ class LeadsController extends Controller
             $digits = Lead::digits($search);
 
             $query->where(function ($q) use ($search, $digits) {
-                $q->where('contact_name', 'like', '%'.$search.'%');
+                $q->where('leads.contact_name', 'like', '%'.$search.'%');
 
                 if ($digits !== null && strlen($digits) >= 4) {
-                    $q->orWhere('phone_digits', 'like', '%'.$digits.'%');
+                    $q->orWhere('leads.phone_digits', 'like', '%'.$digits.'%');
                 }
             });
         }
@@ -259,29 +281,105 @@ class LeadsController extends Controller
         $this->authorize('update', $lead);
 
         $input = $request->validate([
-            'status' => ['required', 'string', Rule::in(Lead::STATUSES)],
+            'status'  => ['sometimes', 'string', Rule::in(Lead::STATUSES)],
+            'starred' => ['sometimes', 'boolean'],
+            'note'    => ['sometimes', 'nullable', 'string', 'max:4000'],
         ]);
 
-        $before = $lead->status;
+        // Star and note are marks, not decisions: no event, one audit row
+        // each, and blank clears rather than storing an empty string.
+        if (array_key_exists('starred', $input)) {
+            $lead->starred_at = $input['starred'] ? now() : null;
+        }
 
-        if ($before === $input['status']) {
+        if (array_key_exists('note', $input)) {
+            $lead->note = trim((string) $input['note']) ?: null;
+        }
+
+        $statusChanges = array_key_exists('status', $input) && $input['status'] !== $lead->status;
+        $before        = $lead->status;
+
+        if (! $statusChanges && ! $lead->isDirty()) {
             return response()->json(['data' => $this->present($lead)]);
         }
 
-        DB::transaction(function () use ($lead, $input, $before) {
-            $lead->status = $input['status'];
-
-            $this->audit->logChange('lead.status_changed', $lead);
+        DB::transaction(function () use ($lead, $input, $before, $statusChanges) {
+            if ($statusChanges) {
+                $lead->status = $input['status'];
+                $this->audit->logChange('lead.status_changed', $lead);
+            } else {
+                $this->audit->logChange('lead.marked', $lead);
+            }
 
             $lead->save();
 
-            $this->events->emit('lead.status_changed', $lead, [
-                'before' => ['status' => $before],
-                'after'  => ['status' => $lead->status],
-            ]);
+            if ($statusChanges) {
+                $this->events->emit('lead.status_changed', $lead, [
+                    'before' => ['status' => $before],
+                    'after'  => ['status' => $lead->status],
+                ]);
+            }
         });
 
         return response()->json(['data' => $this->present($lead->fresh())]);
+    }
+
+    /**
+     * POST /api/v1/leads/{lead}/read
+     *
+     * This person has seen this lead as it stands now. A later message makes
+     * it unread again for them; nobody else's mark moves.
+     */
+    public function read(Request $request, Lead $lead): JsonResponse
+    {
+        $this->authorize('view', $lead);
+
+        DB::table('lead_reads')->upsert(
+            [['lead_id' => $lead->getKey(), 'user_id' => $request->user()->getKey(), 'read_at' => now()]],
+            ['lead_id', 'user_id'],
+            ['read_at'],
+        );
+
+        return response()->json(['data' => ['id' => $lead->getKey(), 'is_unread' => false]]);
+    }
+
+    /**
+     * POST /api/v1/leads/read-all
+     *
+     * Every lead this person can see, marked read for them, now. Chunked
+     * because "every lead" is twenty-four thousand rows on the first tenant.
+     */
+    public function readAll(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', Lead::class);
+
+        $user  = $request->user();
+        $now   = now();
+        $count = 0;
+
+        $ids = Lead::query()->select('id');
+
+        $franchiseIds = $user->reachableFranchises()->pluck('id')->all();
+        $companyIds   = $user->reachableCompanies()->pluck('id')->all();
+
+        if (! $user->canActOnOrganization($user->organization)) {
+            $ids->where(function ($q) use ($companyIds, $franchiseIds) {
+                $q->whereIn('company_id', $companyIds)
+                    ->orWhereIn('franchise_id', $franchiseIds)
+                    ->orWhere(fn ($w) => $w->whereNull('company_id')->whereNull('franchise_id'));
+            });
+        }
+
+        $ids->chunkById(1000, function ($chunk) use ($user, $now, &$count) {
+            $rows = $chunk->map(fn ($l) => [
+                'lead_id' => $l->id, 'user_id' => $user->getKey(), 'read_at' => $now,
+            ])->all();
+
+            DB::table('lead_reads')->upsert($rows, ['lead_id', 'user_id'], ['read_at']);
+            $count += count($rows);
+        });
+
+        return response()->json(['data' => ['marked' => $count]]);
     }
 
     /**
@@ -481,6 +579,15 @@ class LeadsController extends Controller
             'locale'        => $lead->locale,
             'summary'       => $lead->summary,
             'status'        => $lead->status,
+            'starred'       => $lead->starred_at !== null,
+            'note'          => $lead->note,
+
+            // Only known on the list, where the reader's mark was joined in.
+            // Null on a single-lead read means "not asked", not "read".
+            'is_unread'     => ! array_key_exists('read_by_me_at', $lead->getAttributes())
+                ? null
+                : ($lead->read_by_me_at === null
+                    || ($lead->last_contact_at ?? $lead->received_at) > \Illuminate\Support\Carbon::parse($lead->read_by_me_at)),
             'source_status' => $lead->source_status,
             'charge_status' => $lead->charge_status,
             'received_at'   => $lead->received_at?->toIso8601String(),
