@@ -197,7 +197,13 @@ class GuidesController extends Controller
                         return;
                     }
 
-                    $scheme = parse_url($value, PHP_URL_SCHEME);
+                    // PHP's parse_url() does not lowercase the scheme it
+                    // returns, so an otherwise-legitimate `HTTPS://…` URL was
+                    // refused here while Dart's `Uri` (which DOES lowercase)
+                    // accepted the identical string client-side — task-13
+                    // review's carry. `strtolower` closes that gap; see
+                    // `test_an_uppercase_https_media_url_is_accepted_on_create`.
+                    $scheme = strtolower((string) parse_url($value, PHP_URL_SCHEME));
 
                     if (! in_array($scheme, ['http', 'https'], true)) {
                         $fail('The media link must be a plain http or https URL.');

@@ -101,20 +101,28 @@ void main() {
     expect(find.text('Try again'), findsOneWidget);
   });
 
-  testWidgets('Dashboard and Settings say what they are, not TODO', (
-    tester,
-  ) async {
+  testWidgets('Settings says what it is, not TODO', (tester) async {
     await _pumpScreen(tester);
-
-    await tester.tap(find.text('Dashboard'));
-    await tester.pumpAndSettle();
-    expect(find.text('TODO'), findsNothing);
-    expect(find.textContaining('Coming'), findsWidgets);
 
     await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
     expect(find.text('TODO'), findsNothing);
     expect(find.textContaining('Coming'), findsWidgets);
+  });
+
+  // Dashboard (task 14) is no longer a placeholder — its own tab, its own
+  // permission gate (`training.monitor`), and its own list/pane behaviour
+  // are covered in `training_dashboard_tab_test.dart`, not here. The
+  // default fixture below only grants `training.view`, so the Dashboard
+  // chip must never appear at all — see that gate proven directly.
+  testWidgets('a viewer without training.monitor sees Learn and Settings, never Dashboard', (
+    tester,
+  ) async {
+    await _pumpScreen(tester);
+
+    expect(find.text('Learn'), findsOneWidget);
+    expect(find.text('Settings'), findsOneWidget);
+    expect(find.text('Dashboard'), findsNothing);
   });
 
   // ── 375px: the convention every other screen's tests already follow ──

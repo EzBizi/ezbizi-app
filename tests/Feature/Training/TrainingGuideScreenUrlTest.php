@@ -109,6 +109,37 @@ class TrainingGuideScreenUrlTest extends TestCase
             ->assertJsonPath('data.screens.0.media_url', 'https://www.youtube.com/watch?v=x');
     }
 
+    /**
+     * Task-13 review carry: `parse_url(..., PHP_URL_SCHEME)` does not
+     * lowercase, so `HTTPS://…` used to fail this rule (422) while Dart's
+     * `Uri` — which DOES lowercase — accepted the identical string
+     * client-side. `GuidesController::rules` now runs the scheme through
+     * `strtolower` before comparing.
+     */
+    public function test_an_uppercase_https_media_url_is_accepted_on_create(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $author = $this->userWithRole($tenant, 'Author', ['training.manage'], onlyAt: $tenant['franchise']);
+
+        $this->signedInAs($author)
+            ->postJson('/api/v1/training/guides', [
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'title' => 'Ladder Safety',
+                'status' => TrainingGuide::DRAFT,
+                'screens' => [
+                    [
+                        'title' => 'The four-to-one rule',
+                        'body' => 'body',
+                        'media_kind' => 'video',
+                        'media_url' => 'HTTPS://www.youtube.com/watch?v=x',
+                    ],
+                ],
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.screens.0.media_url', 'HTTPS://www.youtube.com/watch?v=x');
+    }
+
     public function test_a_null_media_url_is_accepted_when_media_kind_is_none(): void
     {
         $tenant = $this->provisionTenant('Alpha');
