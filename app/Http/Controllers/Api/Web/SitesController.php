@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\WebSite;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Web\SeoFields;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -65,6 +66,9 @@ class SitesController extends Controller
 
         return response()->json([
             'data' => $sites->map(fn (WebSite $site) => $this->present($site))->values(),
+            // The editor's sections, so adding one stays a line in SeoFields
+            // rather than a line there and a matching line in Dart.
+            'sections' => SeoFields::sections(),
         ]);
     }
 

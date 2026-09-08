@@ -143,6 +143,9 @@ class _SeoTabState extends State<SeoTab> {
       if (response.ok) {
         _sites = (response.body['data'] as List<dynamic>)
             .cast<Map<String, dynamic>>();
+        _sections = ((response.body['sections'] as List<dynamic>?) ?? [])
+            .cast<Map<String, dynamic>>();
+        if (_section >= _sections.length) _section = 0;
       } else {
         _error = response.message;
       }
@@ -166,38 +169,43 @@ class _SeoTabState extends State<SeoTab> {
     return _sites.first;
   }
 
-  /// The sections inside SEO. General is the first and, today, the only one.
+  /// The sections inside SEO, as the server names them.
   ///
-  /// A strip of one looks odd until you know more are coming, and Jose has said
-  /// they are. It is a real tab rather than a heading so the second entry costs
-  /// a list item instead of a refactor — and the module strip above it is a
-  /// single chip too, so one-of-one is already the shape at this level.
-  static const List<String> _sections = ['General'];
+  /// Sent with the sites rather than mirrored here: a section is a property of
+  /// the field catalogue, and a copy in Dart is a second place to edit and a
+  /// second place to be wrong. Empty until the first load, which is why the
+  /// strip is hidden rather than empty below.
+  List<Map<String, dynamic>> _sections = [];
 
   int _section = 0;
+
+  String get _sectionKey => _section < _sections.length
+      ? _sections[_section]['key'] as String
+      : 'general';
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-          child: Row(
-            children: [
-              for (var i = 0; i < _sections.length; i++)
-                Padding(
-                  padding: const EdgeInsets.only(right: 4),
-                  child: _SectionTab(
-                    label: _sections[i],
+        if (_sections.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            child: Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: [
+                for (var i = 0; i < _sections.length; i++)
+                  _SectionTab(
+                    label: _sections[i]['label'] as String,
                     selected: i == _section,
                     onTap: () => setState(() => _section = i),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
-        ),
-        const Divider(height: 1),
+          const Divider(height: 1),
+        ],
         Expanded(
           child: AsyncBody(
             loading: _loading,
@@ -354,6 +362,7 @@ class _SeoTabState extends State<SeoTab> {
         api: widget.api,
         site: site,
         canEdit: _canEdit,
+        section: _sectionKey,
         primaryHost: _primaryHostFor(site),
         freshToken: _freshTokens[site['id'] as String],
         onForgetToken: () =>
@@ -656,6 +665,7 @@ class _SiteDetail extends StatefulWidget {
     required this.api,
     required this.site,
     required this.canEdit,
+    required this.section,
     required this.freshToken,
     required this.onForgetToken,
     required this.onToken,
@@ -665,6 +675,10 @@ class _SiteDetail extends StatefulWidget {
   final ApiClient api;
   final Map<String, dynamic> site;
   final bool canEdit;
+
+  /// Which section of the catalogue to draw. The site's values are loaded
+  /// whole and filtered here, so switching sections costs no request.
+  final String section;
 
   /// The host values fall back to, for the label on an inherited field. Null
   /// when this company has no primary, or when this site IS the primary.
@@ -1061,15 +1075,25 @@ class _SiteDetailState extends State<_SiteDetail> {
 
   /// Everything that is a plain box — not the address parts, not the composed
   /// line, not hours, each of which has its own treatment.
-  List<Map<String, dynamic>> get _plainFields => _fields
+  List<Map<String, dynamic>> get _plainFields => _sectionFields
       .where((f) =>
           !_addressParts.contains(f['key']) &&
           f['key'] != 'address' &&
           f['key'] != 'hours')
       .toList(growable: false);
 
+  /// The catalogue narrowed to the section on screen.
+  ///
+  /// A field the server has not put in a section still draws, under General —
+  /// a client one release behind a new section shows the field in the wrong
+  /// place, which is recoverable, rather than hiding a phone number, which is
+  /// the failure this module exists to prevent.
+  List<Map<String, dynamic>> get _sectionFields => _fields
+      .where((f) => (f['section'] as String? ?? 'general') == widget.section)
+      .toList(growable: false);
+
   Map<String, dynamic>? get _hoursField {
-    for (final f in _fields) {
+    for (final f in _sectionFields) {
       if (f['key'] == 'hours') return f;
     }
     return null;
@@ -1204,11 +1228,12 @@ class _SiteDetailState extends State<_SiteDetail> {
 
   /// The address: its parts, then the line they build.
   Widget _addressBlock(ThemeData theme) {
-    final parts = _fields
+    final parts = _sectionFields
         .where((f) => _addressParts.contains(f['key']))
         .toList(growable: false);
 
-    final composed = _fields.where((f) => f['key'] == 'address').toList();
+    final composed =
+        _sectionFields.where((f) => f['key'] == 'address').toList();
 
     if (parts.isEmpty) return const SizedBox.shrink();
 

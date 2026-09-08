@@ -165,6 +165,37 @@ void main() {
     expect(find.textContaining('[ezbizi_phone]'), findsOneWidget);
   });
 
+  /// A section shows its own fields and nobody else's.
+  ///
+  /// The sections come from the server so that adding one costs a line in
+  /// SeoFields and nothing in Dart. That only holds if the client filters on
+  /// what the server sent rather than on a list of its own, which is what this
+  /// pins: a field the fixture puts in `social` must be absent from General and
+  /// present in Social links.
+  testWidgets('a section shows only its own fields', (
+    tester,
+  ) async {
+    await _pumpDestination(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+    );
+
+    expect(find.text('Phone number'), findsOneWidget);
+    expect(find.text('Facebook'), findsNothing);
+
+    await tester.tap(find.text('Social links'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Facebook'), findsOneWidget);
+    expect(find.textContaining('[ezbizi_facebook]'), findsOneWidget);
+
+    // General's fields are gone, and so is the address block that belongs to
+    // them — a section that leaked its neighbour's fields would still pass the
+    // line above.
+    expect(find.text('Phone number'), findsNothing);
+    expect(find.text('Address'), findsNothing);
+  });
+
   /// SEO has sections now, and General is the one that exists.
   testWidgets('SEO opens on its General section', (tester) async {
     await _pumpDestination(tester, permissions: ['web_management.view']);
@@ -495,11 +526,24 @@ Future<http.Response> Function(http.Request) _respond(
     if (path == '/api/v1/me') {
       body = {'data': _me(permissions, scopedToCompany)};
     } else if (path == '/api/v1/web/sites') {
-      body = {'data': _sites};
+      body = {
+        'data': _sites,
+        'sections': const [
+          {'key': 'general', 'label': 'General'},
+          {'key': 'social', 'label': 'Social links'},
+        ],
+      };
     } else if (RegExp(r'^/api/v1/web/sites/[^/]+/values$').hasMatch(path)) {
       body = {
         'data': {
           'fields': [
+            {
+              'key': 'facebook',
+              'label': 'Facebook',
+              'hint': 'The full link to the company page on Facebook.',
+              'shortcode': '[ezbizi_facebook]',
+              'section': 'social',
+            },
             {
               'key': 'phone',
               'label': 'Phone number',
