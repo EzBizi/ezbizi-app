@@ -146,11 +146,14 @@ class LocalServicesLeads
      * 4941850746 ("A1 Chimney - Cleveland"): eleven rows for three days, with
      * durations and recording URLs.
      *
-     * Only for accounts that have produced a lead. Twenty of A-1 Chimney's
-     * twenty-two accounts run no Local Services ads at all, and at one search
-     * per account per five-minute tick this second read would have spent
-     * 5,760 of the day's 15,000 operations asking them about conversations on
-     * leads they do not have.
+     * Only for accounts that have produced a lead. Measured on 2026-09-08
+     * across A-1 Chimney's twenty-two accounts: thirteen hold leads (23,875
+     * lifetime between them) and nine hold none, and at one search per
+     * account per five-minute tick this second read would have spent 2,592
+     * of the day's 15,000 operations asking those nine about conversations
+     * on leads they do not have. With it, a tick is 22 lead reads plus 13
+     * conversation reads: 10,080 operations a day, under the quota, with the
+     * remainder left for manual Fetch clicks and connects.
      *
      * The window is on the conversation's own time, not the lead's. A message
      * this week on a lead from two months ago is inside it while the lead is

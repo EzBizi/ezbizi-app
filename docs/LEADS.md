@@ -107,10 +107,18 @@ sentence for a screen.
   cascades with its lead. The lead carries four `last_contact_*` columns as a
   cache of its newest row so the list shows a preview line without a query per
   row; `last_contact_from = CONSUMER` is what "unreplied" means.
-- **Only accounts that have produced a lead are asked.** Twenty of A-1
-  Chimney's twenty-two accounts run no Local Services ads; at one search per
-  account per five-minute tick the second read would have spent 5,760 of the
-  day's 15,000 operations on them.
+- **Only accounts that have produced a lead are asked.** Measured 2026-09-08
+  across all twenty-two A-1 Chimney accounts, lifetime, no date filter:
+  **thirteen hold leads, 23,875 between them** (the largest 5,043), nine hold
+  none. A tick is therefore 22 lead reads + 13 conversation reads = 35 calls;
+  **10,080 operations a day against the 15,000 quota**, the rest for manual
+  Fetch and connects. The same probe found one account answering 403 (an
+  account the grant does not reach; it fails alone, the others sync) and only
+  one `service` value on the whole tenant, `fireplace_chimney`.
+- **The 30-day first-run window holds ~400 of those 23,875.** Whether the
+  history behind it should be pulled is Jose's call; it is one flag away
+  (`FIRST_RUN_DAYS`) and a one-off cost of a few pages per account, not a
+  standing one.
 - **The window is on the conversation's time, not the lead's.** A message this
   week on a lead from two months ago is inside it; that lead is then fetched by
   id (`WHERE local_services_lead.id IN (…)`) so a live enquiry is never dropped

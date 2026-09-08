@@ -260,10 +260,10 @@ class LeadConversationsTest extends TestCase
     }
 
     /**
-     * Twenty of A-1 Chimney's twenty-two accounts run no Local Services ads.
-     * At one search per account per five-minute tick, asking each of them for
-     * conversations would spend 5,760 of the day's 15,000 operations on
-     * accounts with nothing to say.
+     * Nine of A-1 Chimney's twenty-two accounts have never produced a lead
+     * (measured 2026-09-08). At one search per account per five-minute tick,
+     * asking each of them for conversations would spend 2,592 of the day's
+     * 15,000 operations on accounts with nothing to say.
      */
     public function test_an_account_that_has_never_produced_a_lead_is_not_asked_for_conversations(): void
     {
