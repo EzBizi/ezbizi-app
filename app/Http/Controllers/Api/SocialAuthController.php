@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Exceptions\SubscriptionLapsedException;
+use App\Jobs\RegisterThumbtackWebhook;
 use App\Models\SocialConnection;
 use App\Models\SocialSignIn;
 use App\Models\User;
@@ -254,6 +255,26 @@ class SocialAuthController extends Controller
 
                     $connection->connect($tokens);
                     $connection->save();
+
+                    /*
+                     * Thumbtack has to be told where to send enquiries, and
+                     * connecting does not tell it.
+                     *
+                     * Their supply API cannot list negotiations, so a connected
+                     * account with no registered webhook receives nothing, for
+                     * ever, with no way to go back for what it missed. On
+                     * 2026-09-08 twelve businesses connected and the screen said
+                     * Connected while nothing was ever going to arrive.
+                     *
+                     * Queued rather than done here: one registration is three
+                     * round trips and that first connect returned twelve
+                     * accounts. Inline, this screen would have waited on about
+                     * thirty-six sequential calls, and one failing business
+                     * would have taken the other eleven with it.
+                     */
+                    if ($provider === SocialProvider::Thumbtack) {
+                        RegisterThumbtackWebhook::dispatch((string) $connection->getKey());
+                    }
 
                     $this->audit->log('social.connected', $connection, [
                         'provider'     => $provider->value,
