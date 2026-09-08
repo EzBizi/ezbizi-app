@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0154',
+      date: '8 Sep 2026',
+      items: [
+        'Web Management: pick a primary website and the others follow it. Set your company name once and every site publishes it, until a site sets its own — which overrides just that one thing, for just that site.',
+        'Web Management: the address is separate boxes now — street, suite, city, state, ZIP — and the single line your website shows is built from them.',
+        'Web Management: hours of operation is a day-by-day grid with a clock and a closed switch, instead of a line of text you had to type in the right shape.',
+        'Web Management: SEO has sections, starting with General, and the fields are smaller so more of them fit on screen at once.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0153',
       date: '8 Sep 2026',
       items: [
