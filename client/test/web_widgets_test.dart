@@ -20,6 +20,8 @@ void main() {
     WidgetTester tester, {
     required List<String> permissions,
     bool own = false,
+    String accent = '#aa0000',
+    String onAccent = '#ffffff',
   }) async {
     final client = MockClient((request) async {
       // Matched on the WHOLE path. ApiClient prefixes /api/v1, and a suffix
@@ -91,8 +93,8 @@ void main() {
               ],
             },
             'style': {
-              'accent': '#aa0000',
-              'on_accent': '#ffffff',
+              'accent': accent,
+              'on_accent': onAccent,
               'text': '#111111',
               'background': '#ffffff',
               'font': 'inherit',
@@ -171,6 +173,37 @@ void main() {
     expect(find.textContaining('Following the primary website'), findsNothing);
 
     expect(find.text('Follow the primary again'), findsOneWidget);
+  });
+
+  /// The two colours exist to be legible against each other and nothing else
+  /// checked that they were. It warns; it must never block, because the site
+  /// belongs to the customer and their brand may genuinely be low contrast.
+  testWidgets('an unreadable colour pair is called out, not refused', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      accent: '#ffff00',
+      onAccent: '#ffffff',
+    );
+
+    // 1.07:1 — the number is in the sentence, so it says what is wrong.
+    expect(find.textContaining('1.1:1'), findsOneWidget);
+
+    // And Save is still there. A warning, not a gate.
+    expect(find.text('Save'), findsOneWidget);
+  });
+
+  testWidgets('a legible pair says nothing at all', (tester) async {
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      accent: '#0b5cad',
+      onAccent: '#ffffff',
+    );
+
+    expect(find.textContaining(':1 against each other'), findsNothing);
   });
 
   testWidgets('view alone can look and cannot change', (tester) async {
