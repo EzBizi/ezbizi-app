@@ -11,6 +11,9 @@ class VersionHistory {
       version: '0.0.0167',
       date: '8 Sep 2026',
       items: [
+        'On a call you make from EzBizi, the person you called now hears that the call is recorded. Until now that announcement was played to whoever placed the call and never to the person on the other end - so the one party who needed telling was the one party who was not told. Calls you receive were always correct.',
+        'You are no longer read your own recording warning before an outgoing call connects.',
+        'Nothing is announced when the line is not recording, or on an internal call between two colleagues.',
         'Business hours can be opened and edited again. If the hours were created from a line belonging to a branch, the screen took the branch\'s own clock - and that clock was not among the ones the screen offered, so the editor came up blank. Nothing was lost; it could not be opened.',
         'The clock list is places now, not offsets: Eastern - New York rather than UTC-5. Offsets ignore daylight saving, so hours set that way answered an hour early for half the year. Existing hours keep whatever they were set to and are still shown, so nothing changes underneath you - but hours on a fixed offset are worth setting to a place.',
         'The week no longer steps up and down as days are opened and closed, and the form fits a phone. "24-hour" is said once above the week instead of twice on every open day.',
