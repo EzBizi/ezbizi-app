@@ -8,8 +8,8 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
-      version: '0.0.0153',
-      date: '04 Sep 2026',
+      version: '0.0.0154',
+      date: '8 Sep 2026',
       items: [
         'Web Management: pick a primary website and the others follow it. Set '
             'your company name once and every site publishes it, until a site '
@@ -26,7 +26,7 @@ class VersionHistory {
       ],
     ),
     VersionRelease(
-      version: '0.0.0152',
+      version: '0.0.0153',
       date: '8 Sep 2026',
       items: [
         'Leads: every connected Google Ads account is visible, and each one '
@@ -41,6 +41,12 @@ class VersionHistory {
             'has already produced, and the screen says how many moved. If '
             'there were none to move it says that too, rather than going '
             'quiet and looking like it failed.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0152',
+      date: '8 Sep 2026',
+      items: [
         'Your selected company or franchise stays with your requests, even '
             'when another device changes its view. Shared records remain '
             'readable, with changes limited to the places you manage.',
