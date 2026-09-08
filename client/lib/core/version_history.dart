@@ -11,6 +11,10 @@ class VersionHistory {
       version: '0.0.0168',
       date: '8 Sep 2026',
       items: [
+        'Work schedule per person: Human Resources - Records sets it; Your account shows it, and edits it when the organization allows.',
+        'Five minutes before a scheduled shift ends (organization setting), a countdown offers Extend or Clock Out; when it reaches zero the shift is closed on the server.',
+        'Lock screen: when the organization turns it on and a role includes Lock screen, the app shows only Clock In while the person is not clocked in on a working day. Windows and macOS cover the desktop; Records can exempt a person.',
+        'The Clock in-out list marks shifts closed automatically, started outside schedule, or extended.',
         'New business hours now start on a real place rather than a fixed offset, so they keep working when the clocks change. Hours created before this keep whatever they were set to and are still shown - they are worth changing to a place.',
       ],
     ),
