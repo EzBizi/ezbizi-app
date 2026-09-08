@@ -10,47 +10,79 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'support/fake_recording_player.dart';
+
 /// Pressing Play, and what happens when it cannot.
 ///
-/// ── The bug these exist for ──────────────────────────────────────
+/// ── The two bugs these exist for ─────────────────────────────────
 ///
-/// On Windows the recording player was a stub whose `play()` was an empty
-/// method, and this pane caught every exception and threw it away. So the
-/// button was drawn, enabled, pressed, and silent — while the server returned
-/// the audio perfectly well the whole time. The only description the app made
-/// possible was "recordings are not playing", which is what got reported.
+/// First: on Windows the recording player was a stub whose `play()` was an
+/// empty method, and this pane threw every exception away. The button was
+/// drawn, enabled, pressed, and silent while the server returned the audio
+/// perfectly well. The only description the app made possible was "recordings
+/// are not playing", which is what got reported.
 ///
-/// A player that cannot play must SAY so, and a player that plays somewhere
-/// else must say where. Neither is about audio; both are about a control not
-/// claiming more than it does.
+/// Then the fix was worse than the bug: it wrote the voicemail into %TEMP% and
+/// handed it to whatever opens an MP3, and the button read "Play in your audio
+/// player". An app that carries live call audio does not need another
+/// application to play a recording, and a customer's voicemail does not belong
+/// loose in a temp directory.
+///
+/// So these assert the transport IN the app: play, pause, scrub, and say so
+/// out loud when it cannot.
 void main() {
   testWidgets('a recording that will not play says why', (tester) async {
-    await _pump(tester, player: _RefusingPlayer());
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(refuses: 'This recording would not play.'),
+    );
 
-    await _tap(tester, find.textContaining('Play'));
+    await _tap(tester, find.byKey(const Key('recording-play')));
 
     expect(
-      find.textContaining('nothing set up to play'),
+      find.textContaining('would not play'),
       findsOneWidget,
       reason: 'the failure was swallowed, exactly as it used to be',
     );
   });
 
-  /// Where the sound will come from, before somebody presses it twice.
-  testWidgets('a player that plays elsewhere says so on the button', (
+  /// Nothing on this screen sends anybody to another application.
+  testWidgets('the audio plays here, and nothing offers to open it elsewhere', (
     tester,
   ) async {
-    await _pump(tester, player: _RefusingPlayer());
+    await _pump(tester, player: FakeRecordingPlayer());
 
-    expect(find.text('Play in your audio player'), findsOneWidget);
-    expect(find.text('Play'), findsNothing);
+    expect(find.textContaining('audio player'), findsNothing);
+    expect(find.textContaining('opens in'), findsNothing);
+    expect(find.byKey(const Key('recording-play')), findsWidgets);
   });
 
-  /// And in the browser, where it really does play in the page, it is Play.
-  testWidgets('an in-app player keeps the plain label', (tester) async {
-    await _pump(tester, player: _SilentButHonestPlayer());
+  /// A transport, not a Play button.
+  ///
+  /// The job is listening to a voicemail, and what people do is go back four
+  /// seconds because somebody said a number too fast.
+  testWidgets('playing gives a real transport: pause and a scrubber', (
+    tester,
+  ) async {
+    final player = FakeRecordingPlayer();
+    await _pump(tester, player: player);
 
-    expect(find.text('Play'), findsOneWidget);
+    await _tap(tester, find.byKey(const Key('recording-play')).first);
+
+    expect(player.played, hasLength(1), reason: 'nothing was handed to the player');
+    expect(find.byTooltip('Pause'), findsOneWidget);
+
+    final scrub = tester.widget<Slider>(
+      find.byKey(const Key('recording-scrub')).first,
+    );
+    expect(
+      scrub.onChanged,
+      isNotNull,
+      reason: 'the scrubber is dead, so there is no way back four seconds',
+    );
+
+    await _tap(tester, find.byTooltip('Pause'));
+    expect(player.pauses, 1);
   });
 
   /// A recording the server will not hand over is not a silent button either.
@@ -59,11 +91,11 @@ void main() {
   ) async {
     await _pump(
       tester,
-      player: _SilentButHonestPlayer(),
+      player: FakeRecordingPlayer(),
       recordingStatus: 502,
     );
 
-    await _tap(tester, find.textContaining('Play'));
+    await _tap(tester, find.byKey(const Key('recording-play')).first);
 
     expect(find.textContaining('could not be fetched'), findsOneWidget);
   });
@@ -137,41 +169,6 @@ http.Response _json(Object body) => http.Response(
   200,
   headers: {'content-type': 'application/json'},
 );
-
-/// Refuses, loudly — the shape the desktop player has when the machine has no
-/// MP3 handler, and the shape the old stub should have had.
-class _RefusingPlayer implements RecordingPlayer {
-  @override
-  bool get playsInApp => false;
-
-  @override
-  Future<void> play(List<int> bytes) async {
-    throw const RecordingPlaybackFailure(
-      'This computer has nothing set up to play an MP3.',
-    );
-  }
-
-  @override
-  void stop() {}
-
-  @override
-  void dispose() {}
-}
-
-/// Plays nothing, but does not claim to be somewhere else.
-class _SilentButHonestPlayer implements RecordingPlayer {
-  @override
-  bool get playsInApp => true;
-
-  @override
-  Future<void> play(List<int> bytes) async {}
-
-  @override
-  void stop() {}
-
-  @override
-  void dispose() {}
-}
 
 const _me = {
   'id': 'u-1',

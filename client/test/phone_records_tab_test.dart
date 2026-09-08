@@ -8,6 +8,8 @@ import 'package:ezbizi_client/screens/phone/records_tab.dart';
 import 'package:ezbizi_client/widgets/coming_soon.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'support/fake_recording_player.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
@@ -52,35 +54,35 @@ void main() {
     expect(find.byKey(const Key('phone-records-pane')), findsOneWidget);
     expect(find.byKey(const Key('phone-records-list')), findsNothing);
     expect(find.byTooltip('Back to the list'), findsOneWidget);
-    expect(find.text('Play recording'), findsOneWidget);
+    expect(find.byKey(const Key('recording-play')), findsOneWidget);
 
     await _tap(tester, find.byTooltip('Back to the list'));
 
     expect(find.byKey(const Key('phone-records-list')), findsOneWidget);
     expect(find.byKey(const Key('phone-records-pane')), findsNothing);
-    expect(find.text('Play recording'), findsNothing);
+    expect(find.byKey(const Key('recording-play')), findsNothing);
   });
 
-  testWidgets('Play recording is on a recorded call and not on SMS', (
+  testWidgets('the player is on a recorded call and not on SMS', (
     tester,
   ) async {
     await _pump(tester, size: const Size(900, 800));
 
     await _tap(tester, find.byKey(const Key('phone-record-ca-1')));
-    expect(find.text('Play recording'), findsOneWidget);
+    expect(find.byKey(const Key('recording-play')), findsOneWidget);
 
     await _tap(tester, find.widgetWithText(ChoiceChip, 'SMS'));
     expect(find.textContaining('Thursday morning still good?'), findsOneWidget);
 
     await _tap(tester, find.byKey(const Key('phone-thread-+12035550199')));
-    expect(find.text('Play recording'), findsNothing);
+    expect(find.byKey(const Key('recording-play')), findsNothing);
     expect(find.textContaining('Thursday morning still good?'), findsWidgets);
   });
 
   testWidgets('Play fetches the recording and asks the player to play', (
     tester,
   ) async {
-    final player = _FakePlayer();
+    final player = FakeRecordingPlayer();
     final seen = <http.Request>[];
     addTearDown(player.dispose);
 
@@ -93,7 +95,7 @@ void main() {
 
     await _tap(tester, find.byKey(const Key('phone-record-ca-1')));
 
-    expect(find.text('Play recording'), findsOneWidget);
+    expect(find.byKey(const Key('recording-play')), findsOneWidget);
     expect(find.text('The recording is playing.'), findsNothing);
     expect(player.played, isEmpty);
     expect(
@@ -101,7 +103,7 @@ void main() {
       isEmpty,
     );
 
-    await _tap(tester, find.widgetWithText(FilledButton, 'Play recording'));
+    await _tap(tester, find.byKey(const Key('recording-play')));
 
     expect(
       seen.any(
@@ -112,7 +114,11 @@ void main() {
       isTrue,
     );
     expect(player.played, isNotEmpty);
-    expect(find.text('The recording is playing.'), findsOneWidget);
+
+    // The transport says it, rather than a line of prose underneath. Pause is
+    // only offered while something is playing, so its presence IS the claim —
+    // and unlike the old sentence it is a control that can be acted on.
+    expect(find.byTooltip('Pause'), findsOneWidget);
   });
 
   /// Two texts from one person are one conversation, not two strangers.
@@ -200,23 +206,6 @@ void main() {
   });
 }
 
-class _FakePlayer implements RecordingPlayer {
-  @override
-  bool get playsInApp => true;
-
-  final played = <List<int>>[];
-
-  @override
-  Future<void> play(List<int> bytes) async {
-    played.add(bytes);
-  }
-
-  @override
-  void stop() {}
-
-  @override
-  void dispose() {}
-}
 
 Future<void> _tap(WidgetTester tester, Finder finder) async {
   final scrollable = find.ancestor(

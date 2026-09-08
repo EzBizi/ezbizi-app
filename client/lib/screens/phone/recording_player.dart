@@ -1,33 +1,85 @@
-import 'recording_player_io.dart'
-    if (dart.library.js_interop) 'recording_player_web.dart' as impl;
+import 'dart:async';
+import 'dart:typed_data';
 
-/// Plays a call recording fetched through EzBizi (design §9).
+import 'package:audioplayers/audioplayers.dart';
+
+/// Where a recording has got to. One value, so a screen cannot draw a
+/// transport out of step with the sound.
+class RecordingPlayback {
+  const RecordingPlayback({
+    this.playing = false,
+    this.position = Duration.zero,
+    this.duration = Duration.zero,
+  });
+
+  final bool playing;
+  final Duration position;
+
+  /// Zero until the platform has decoded enough to know. A slider reads this
+  /// and stays disabled while it is zero rather than drawing a scrubber over
+  /// an unknown length.
+  final Duration duration;
+
+  bool get loaded => duration > Duration.zero;
+
+  RecordingPlayback copyWith({
+    bool? playing,
+    Duration? position,
+    Duration? duration,
+  }) => RecordingPlayback(
+    playing: playing ?? this.playing,
+    position: position ?? this.position,
+    duration: duration ?? this.duration,
+  );
+}
+
+/// Plays a call recording or voicemail INSIDE the app, on every platform.
 ///
-/// Tests inject a fake. The browser uses a blob URL and an audio element; the
-/// VM stub is silent so `flutter test` still compiles.
+/// ── What this replaced, and why it was wrong ─────────────────────
+///
+/// Windows used to write the audio into the system temp directory and hand the
+/// file to whatever the machine opens an MP3 with. The button read "Play in
+/// your audio player". Two things were wrong and only one was about taste:
+///
+///   1. EzBizi carries LIVE CALL AUDIO on that same machine. An app that can
+///      hold a phone call and cannot play a recording is not missing a
+///      capability, it is missing the code below.
+///   2. It left a customer's voicemail unencrypted in %TEMP% after playback,
+///      outside the app, where nothing in §9 retention reaches it. That is a
+///      privacy leak the interface complaint was hiding.
+///
+/// There is no conditional import and no platform file any more — one
+/// implementation for android, ios, macos, linux, windows and web, because
+/// `audioplayers` ships a platform implementation for each of them.
+///
+/// ── Played from memory, never from a file ────────────────────────
+///
+/// [BytesSource] hands the bytes to the platform directly: `SHCreateMemStream`
+/// on Windows, a blob on the web, an in-memory source elsewhere. Nothing
+/// touches disk, so there is no file to leak, none to clean up, and no temp
+/// directory to depend on.
 abstract class RecordingPlayer {
-  /// Whether the audio plays INSIDE the app.
-  ///
-  /// False on desktop, where the file is handed to whatever the machine uses
-  /// for an MP3. A screen reads this to say where the sound is about to come
-  /// from, and to leave out a stop control it could not honour — a transport
-  /// that cannot drive the thing it points at is the same lie as a Play button
-  /// that plays nothing.
-  bool get playsInApp => true;
+  RecordingPlayback get state;
 
-  /// Decode [bytes] and start playback. Must not claim success without this.
-  ///
-  /// Throws [RecordingPlaybackFailure] when it cannot. Returning quietly is
-  /// what let a silent stub stand in production for weeks.
+  /// Every change, including the track ending on its own — which is a change
+  /// no caller asked for and every transport has to hear about.
+  Stream<RecordingPlayback> get changes;
+
+  /// Decode [bytes] and start. Throws [RecordingPlaybackFailure] when it
+  /// cannot, and never returns quietly on failure: a `play()` that could do
+  /// nothing and say nothing is exactly what shipped last time.
   Future<void> play(List<int> bytes);
 
-  /// Stop current playback, if any.
-  void stop();
+  Future<void> pause();
+
+  Future<void> resume();
+
+  Future<void> stop();
+
+  Future<void> seek(Duration to);
 
   void dispose();
 }
-
-RecordingPlayer createRecordingPlayer() => impl.create();
 
 /// Playback could not start, and the reason is worth showing somebody.
 class RecordingPlaybackFailure implements Exception {
@@ -37,4 +89,98 @@ class RecordingPlaybackFailure implements Exception {
 
   @override
   String toString() => message;
+}
+
+RecordingPlayer createRecordingPlayer() => AudioplayersRecordingPlayer();
+
+/// The real one.
+class AudioplayersRecordingPlayer implements RecordingPlayer {
+  AudioplayersRecordingPlayer() {
+    _subscriptions = [
+      _player.onPositionChanged.listen(
+        (position) => _set(_state.copyWith(position: position)),
+      ),
+      _player.onDurationChanged.listen(
+        (duration) => _set(_state.copyWith(duration: duration)),
+      ),
+
+      // The end of the track. Without this the button stays on Pause forever
+      // after the recording finishes, which is a transport describing a state
+      // the sound left a minute ago.
+      _player.onPlayerComplete.listen(
+        (_) => _set(
+          _state.copyWith(playing: false, position: Duration.zero),
+        ),
+      ),
+    ];
+  }
+
+  final AudioPlayer _player = AudioPlayer();
+  final _changes = StreamController<RecordingPlayback>.broadcast();
+  late final List<StreamSubscription<Object?>> _subscriptions;
+
+  RecordingPlayback _state = const RecordingPlayback();
+
+  @override
+  RecordingPlayback get state => _state;
+
+  @override
+  Stream<RecordingPlayback> get changes => _changes.stream;
+
+  @override
+  Future<void> play(List<int> bytes) async {
+    if (bytes.isEmpty) {
+      throw const RecordingPlaybackFailure('That recording is empty.');
+    }
+
+    try {
+      await _player.stop();
+      _set(const RecordingPlayback(playing: true));
+      await _player.play(BytesSource(Uint8List.fromList(bytes)));
+    } catch (error) {
+      _set(const RecordingPlayback());
+
+      // The platform's own words, kept. "Playback failed" sends somebody to
+      // check their speakers for what is usually a codec or a permission.
+      throw RecordingPlaybackFailure('This recording would not play. $error');
+    }
+  }
+
+  @override
+  Future<void> pause() async {
+    await _player.pause();
+    _set(_state.copyWith(playing: false));
+  }
+
+  @override
+  Future<void> resume() async {
+    await _player.resume();
+    _set(_state.copyWith(playing: true));
+  }
+
+  @override
+  Future<void> stop() async {
+    await _player.stop();
+    _set(const RecordingPlayback());
+  }
+
+  @override
+  Future<void> seek(Duration to) async {
+    await _player.seek(to);
+    _set(_state.copyWith(position: to));
+  }
+
+  void _set(RecordingPlayback next) {
+    _state = next;
+    if (!_changes.isClosed) _changes.add(next);
+  }
+
+  @override
+  void dispose() {
+    for (final subscription in _subscriptions) {
+      subscription.cancel();
+    }
+    _changes.close();
+    _player.dispose();
+  }
 }

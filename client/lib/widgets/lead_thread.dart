@@ -338,9 +338,10 @@ class _LeadThreadState extends State<LeadThread> {
     setState(() {
       _fetchingId = null;
       // On a desktop the audio is somebody else's window now (see
-      // RecordingPlayer.playsInApp): nothing here is playing, so nothing here
-      // can be stopped, and saying "Playing" would be the stub's lie again.
-      _playingId = _player.playsInApp ? id : null;
+      // Playing in the app now, on every platform, so this is simply which
+      // bubble is making the sound. It used to be null on desktop, where
+      // playback left the app and there was nothing here to stop.
+      _playingId = id;
     });
   }
 
@@ -875,20 +876,12 @@ class _LeadThreadState extends State<LeadThread> {
                       clipBehavior: Clip.antiAlias,
                       child: IconButton(
                         key: ValueKey('play-$id'),
-                        tooltip: playing
-                            ? 'Stop'
-                            : _player.playsInApp
-                            ? 'Play'
-                            : 'Play in your audio player',
+                        tooltip: playing ? 'Stop' : 'Play',
                         padding: EdgeInsets.zero,
                         iconSize: 20,
                         onPressed: () => _play(c),
                         icon: Icon(
-                          playing
-                              ? Icons.stop
-                              : _player.playsInApp
-                              ? Icons.play_arrow
-                              : Icons.open_in_new,
+                          playing ? Icons.stop : Icons.play_arrow,
                           color: playing
                               ? theme.colorScheme.onPrimary
                               : theme.colorScheme.onPrimaryContainer,
@@ -914,9 +907,7 @@ class _LeadThreadState extends State<LeadThread> {
                       : playing
                       ? 'Playing'
                       : hasRecording
-                      ? (_player.playsInApp
-                            ? '$who called · $when'
-                            : '$who called · $when · opens in your audio player')
+                      ? '$who called · $when'
                       : '$who called · $when · no recording',
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,

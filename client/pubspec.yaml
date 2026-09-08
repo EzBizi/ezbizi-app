@@ -68,6 +68,7 @@ dependencies:
   # or three FFI bindings — file_selector is flutter/packages' own, federated
   # across windows/macos/linux/android/ios, and needs no runtime permission.
   file_selector: ^1.0.3
+  audioplayers: ^6.7.1
 
 dev_dependencies:
   flutter_test:

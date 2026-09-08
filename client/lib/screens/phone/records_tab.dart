@@ -6,6 +6,7 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
+import 'recording_playback_bar.dart';
 import 'recording_player.dart';
 
 /// Calls, voicemail and texts — layout 4: 25/75 list and detail.
@@ -70,8 +71,6 @@ class _RecordsTabState extends State<RecordsTab> {
   /// reference to the old one would leave the pane showing a conversation that
   /// no longer gains messages.
   String? _openThread;
-  String? _playError;
-  bool _playing = false;
 
   late final RecordingPlayer _player;
   late final bool _ownsPlayer;
@@ -200,8 +199,6 @@ class _RecordsTabState extends State<RecordsTab> {
     setState(() {
       _openCall = call;
       _openThread = null;
-      _playError = null;
-      _playing = false;
     });
   }
 
@@ -210,8 +207,6 @@ class _RecordsTabState extends State<RecordsTab> {
     setState(() {
       _openThread = thread.peer;
       _openCall = null;
-      _playError = null;
-      _playing = false;
     });
   }
 
@@ -220,8 +215,6 @@ class _RecordsTabState extends State<RecordsTab> {
     setState(() {
       _openCall = null;
       _openThread = null;
-      _playError = null;
-      _playing = false;
     });
   }
 
@@ -231,38 +224,7 @@ class _RecordsTabState extends State<RecordsTab> {
       _filter = filter;
       _openCall = null;
       _openThread = null;
-      _playError = null;
-      _playing = false;
     });
-  }
-
-  Future<void> _play(_Call call) async {
-    if (call.recordingSid == null || call.recordingSid!.isEmpty) return;
-
-    setState(() {
-      _playError = null;
-      _playing = false;
-    });
-
-    final bytes = await widget.api.getBytes(
-      '/phone/calls/${call.id}/recording',
-    );
-    if (!mounted) return;
-
-    if (bytes == null) {
-      setState(() => _playError = 'The recording could not be played.');
-      return;
-    }
-
-    try {
-      await _player.play(bytes);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _playError = 'The recording could not be played.');
-      return;
-    }
-    if (!mounted) return;
-    setState(() => _playing = true);
   }
 
   @override
@@ -624,27 +586,12 @@ class _RecordsTabState extends State<RecordsTab> {
           ),
         ),
         if (canPlay) ...[
-          const SizedBox(height: 16),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: FilledButton(
-              onPressed: () => _play(call),
-              child: const Text('Play recording'),
-            ),
+          const SizedBox(height: 12),
+          RecordingPlaybackBar(
+            key: Key('call-audio-${call.id}'),
+            player: _player,
+            load: () => widget.api.getBytes('/phone/calls/${call.id}/recording'),
           ),
-          if (_playing) ...[
-            const SizedBox(height: 8),
-            Text('The recording is playing.', style: theme.textTheme.bodySmall),
-          ],
-          if (_playError != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              _playError!,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.error,
-              ),
-            ),
-          ],
         ],
         if (call.transcript != null && call.transcript!.isNotEmpty) ...[
           const SizedBox(height: 16),

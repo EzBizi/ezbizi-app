@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
+import 'recording_playback_bar.dart';
 import 'recording_player.dart';
 
 /// Communication › Phone › Voicemail — the boxes, and what is waiting in them.
@@ -283,42 +284,6 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
   late final RecordingPlayer _player = widget.player ?? createRecordingPlayer();
   late final bool _ownsPlayer = widget.player == null;
 
-  Future<void> _play(_Voicemail message) async {
-    // Fetched through EzBizi with the connection's credentials, never a bare
-    // Twilio URL — a recording link that works without signing in is a
-    // customer's voicemail anybody can replay.
-    setState(() => _playError = null);
-
-    final bytes = await widget.api.getBytes(
-      '/phone/calls/${message.id}/recording',
-    );
-    if (!mounted) return;
-
-    if (bytes == null) {
-      setState(
-        () => _playError = 'That recording could not be fetched from Twilio.',
-      );
-
-      return;
-    }
-
-    try {
-      await _player.play(bytes);
-    } on RecordingPlaybackFailure catch (failure) {
-      // SAID, not swallowed. The old catch here was silent, so the desktop
-      // stub that played nothing at all reported success for weeks — a Play
-      // button that is drawn, enabled, pressed, and does nothing.
-      if (mounted) setState(() => _playError = failure.message);
-    } catch (error) {
-      if (mounted) {
-        setState(() => _playError = 'That recording would not play. $error');
-      }
-    }
-  }
-
-  /// Why the last Play did not play. Null when it did.
-  String? _playError;
-
   Widget _row(_Voicemail message, ThemeData theme) {
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -347,30 +312,23 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
 
             if (message.recordingSid != null) ...[
               const SizedBox(height: 4),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  icon: const Icon(Icons.play_arrow, size: 18),
-                  // Says where the sound is about to come from. On desktop the
-                  // file is handed to whatever the machine plays MP3s with, and
-                  // a button that says only "Play" there is a button somebody
-                  // presses twice wondering why the app is silent.
-                  label: Text(
-                    _player.playsInApp ? 'Play' : 'Play in your audio player',
-                  ),
-                  onPressed: () => _play(message),
+
+              // The shared transport, not a Play button. Listening to a
+              // voicemail means going back four seconds because somebody said
+              // a number too fast, and a bare Play makes that mean starting
+              // the whole message again.
+              RecordingPlaybackBar(
+                key: Key('voicemail-audio-${message.id}'),
+                player: _player,
+                dense: true,
+                // Fetched through EzBizi with the connection's credentials,
+                // never a bare Twilio URL — a recording link that works
+                // without signing in is a customer's voicemail anybody can
+                // replay.
+                load: () => widget.api.getBytes(
+                  '/phone/calls/${message.id}/recording',
                 ),
               ),
-              if (_playError != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    _playError!,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.error,
-                    ),
-                  ),
-                ),
             ],
 
             const SizedBox(height: 8),

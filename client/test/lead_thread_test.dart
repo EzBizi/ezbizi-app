@@ -7,6 +7,8 @@ import 'package:ezbizi_client/screens/phone/recording_player.dart';
 import 'package:ezbizi_client/widgets/lead_thread.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'support/fake_recording_player.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
@@ -21,7 +23,7 @@ void main() {
   testWidgets('play says it is fetching until the bytes arrive, then hands '
       'them to the player', (tester) async {
     final gate = Completer<void>();
-    final player = _FakePlayer();
+    final player = FakeRecordingPlayer();
 
     await _pump(tester, player: player, recordingGate: gate);
 
@@ -48,33 +50,45 @@ void main() {
     expect(utf8.decode(player.played.single), 'ID3-fake-audio-bytes');
   });
 
-  /// Desktop: the file is handed to the machine's own player (Phone's
-  /// a7214518), so the app is not playing anything and must not say it is.
-  /// This is the shape Jose hit on 0.0.0159, where the button was a stub.
-  testWidgets('on a desktop the control says the audio opens elsewhere and '
-      'never claims to be playing', (tester) async {
-    final player = _FakePlayer(playsInApp: false);
+  /// Every platform plays it HERE.
+  ///
+  /// This test used to assert the opposite — that on desktop the control said
+  /// the audio opened elsewhere and never claimed to be playing. That was a
+  /// faithful test of a wrong design: Windows wrote the recording into %TEMP%
+  /// and handed it to whatever opens an MP3, so the app that was carrying live
+  /// call audio could not play a voicemail. Jose put it plainly, and he was
+  /// right, so the test now says what the app does instead of defending what
+  /// it did.
+  testWidgets('playing happens in the app, and the control says so', (
+    tester,
+  ) async {
+    final player = FakeRecordingPlayer();
 
     await _pump(tester, player: player, recordingGate: Completer()..complete());
 
-    expect(find.textContaining('opens in your audio player'), findsOneWidget);
-    expect(find.byTooltip('Play in your audio player'), findsOneWidget);
+    expect(find.textContaining('opens in your audio player'), findsNothing);
+    expect(find.byTooltip('Play in your audio player'), findsNothing);
+    expect(find.byTooltip('Play'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('play-c-call')));
     await tester.pumpAndSettle();
 
     expect(player.played, hasLength(1));
-    expect(find.text('Playing'), findsNothing);
-    expect(find.byTooltip('Stop'), findsNothing);
+    expect(find.text('Playing'), findsOneWidget);
+    expect(
+      find.byTooltip('Stop'),
+      findsOneWidget,
+      reason: 'the app is making the sound, so it must be able to stop it',
+    );
   });
 
-  testWidgets('a machine with nothing that plays an MP3 is told so, in the '
-      "player's own words", (tester) async {
+  /// A refusal is shown, in the player's own words rather than ours.
+  testWidgets("a recording that will not play says why, in the player's "
+      'own words', (tester) async {
     await _pump(
       tester,
-      player: _FakePlayer(
-        playsInApp: false,
-        refuses: 'This computer has nothing set up to play an MP3.',
+      player: FakeRecordingPlayer(
+        refuses: 'This recording would not play.',
       ),
       recordingGate: Completer()..complete(),
     );
@@ -83,7 +97,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text('This computer has nothing set up to play an MP3.'),
+      find.text('This recording would not play.'),
       findsOneWidget,
     );
   });
@@ -93,7 +107,7 @@ void main() {
   ) async {
     await _pump(
       tester,
-      player: _FakePlayer(),
+      player: FakeRecordingPlayer(),
       recordingGate: Completer()..complete(),
     );
 
@@ -121,7 +135,7 @@ void main() {
   testWidgets('a call lead has no reply box and says why', (tester) async {
     await _pump(
       tester,
-      player: _FakePlayer(),
+      player: FakeRecordingPlayer(),
       recordingGate: Completer()..complete(),
       canReply: false,
     );
@@ -135,7 +149,7 @@ void main() {
   ) async {
     await _pump(
       tester,
-      player: _FakePlayer(),
+      player: FakeRecordingPlayer(),
       recordingGate: Completer()..complete(),
       refuseSend: 'Google refused the reply (HTTP 400). It was not sent.',
     );
@@ -164,7 +178,7 @@ void main() {
 
     await _pump(
       tester,
-      player: _FakePlayer(),
+      player: FakeRecordingPlayer(),
       recordingGate: Completer()..complete(),
       onRead: () async => reads++,
       onNote: (text) async {
@@ -204,7 +218,7 @@ void main() {
       'and when', (tester) async {
     await _pump(
       tester,
-      player: _FakePlayer(),
+      player: FakeRecordingPlayer(),
       recordingGate: Completer()..complete(),
     );
 
@@ -215,31 +229,6 @@ void main() {
     expect(find.textContaining('CONSUMER'), findsNothing);
     expect(find.textContaining('ADVERTISER'), findsNothing);
   });
-}
-
-class _FakePlayer implements RecordingPlayer {
-  _FakePlayer({this.playsInApp = true, this.refuses});
-
-  @override
-  final bool playsInApp;
-
-  /// When set, play() throws this the way the desktop player does when the
-  /// machine has nothing that opens an MP3.
-  final String? refuses;
-
-  final played = <List<int>>[];
-
-  @override
-  Future<void> play(List<int> bytes) async {
-    if (refuses != null) throw RecordingPlaybackFailure(refuses!);
-    played.add(bytes);
-  }
-
-  @override
-  void stop() {}
-
-  @override
-  void dispose() {}
 }
 
 final _sent = <String>[];
