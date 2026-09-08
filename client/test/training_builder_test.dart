@@ -64,6 +64,61 @@ void main() {
     expect(sentBody!['valid_for_days'], 365);
   });
 
+  // ── The "Which guide" picker at 375px, with a real guide in it ────────
+  //
+  // Review finding: `_pumpTestBuilder` used to hardcode a 900-wide surface
+  // AND an always-empty guides list, which is two independent reasons a
+  // narrow-width overflow in the picker could never show up here — 900px
+  // has room to spare regardless, and an empty list means the dropdown's
+  // widest item is "None". This test picks neither default: 375 wide (the
+  // module's own narrow-layout floor, same as the strip test above) with
+  // one real, long-titled guide in the picker.
+
+  testWidgets(
+    'at 375px, the "Which guide" picker does not overflow its row',
+    (tester) async {
+      await _pumpTestBuilder(
+        tester,
+        test: _test(id: 't1', title: 'Ladder Safety Quiz'),
+        viewSize: const Size(375, 2200),
+        guides: [
+          _guide(id: 'g1', title: 'Confined Space Entry and Rescue Procedures Certification'),
+        ],
+      );
+
+      expect(find.text('Which guide'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'the same long guide title does not regress the wide "Which guide" layout',
+    (tester) async {
+      await _pumpTestBuilder(
+        tester,
+        test: _test(id: 't1', title: 'Ladder Safety Quiz'),
+        viewSize: const Size(900, 2200),
+        guides: [
+          _guide(id: 'g1', title: 'Confined Space Entry and Rescue Procedures Certification'),
+        ],
+      );
+
+      expect(find.text('Which guide'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      // Still the wide, side-by-side layout — the picker is still pinned to
+      // its 200px `trailingWidth`, not stretched to fill the row the way
+      // the narrow layout above lets it.
+      final dropdownBox = tester.widget<SizedBox>(
+        find.ancestor(
+          of: find.byKey(const Key('training.option-guide-id')),
+          matching: find.byType(SizedBox),
+        ).first,
+      );
+      expect(dropdownBox.width, 200);
+    },
+  );
+
   // ── No modals, anywhere ───────────────────────────────────────────────
 
   testWidgets('adding a screen adds a card to the strip and never opens a dialog', (tester) async {
@@ -247,17 +302,24 @@ void main() {
     expect(find.text('Tests'), findsOneWidget);
   });
 
-  // ── Through the real route, never constructed directly ────────────────
+  // ── Through the real interaction, never constructed directly ──────────
   //
   // Task 13's postmortem: a test that constructs the destination widget
   // straight inside its own borrowed `Scaffold` can pass while the app's
-  // REAL route to that widget is broken, because the harness's own wrapper
-  // supplies whatever ancestor (`Material`, in that case) the real route
+  // REAL path to that widget is broken, because the harness's own wrapper
+  // supplies whatever ancestor (`Material`, in that case) the real path
   // forgot. These two reach both builders the way `TrainingSettingsTab`
-  // itself does — a tap, then a real `Navigator.push` — so a future regression
-  // in that wiring shows up here rather than only in the field.
+  // itself does — a tap, then an in-body `setState` swap (`build()` returns
+  // [GuideBuilder]/[TestBuilder] in place of the list; no `Navigator.push`
+  // anywhere under `lib/screens/training/` any more) — so a future
+  // regression in that wiring shows up here rather than only in the field.
+  // The direct proof that no route is pushed lives in the
+  // `navigator.canPop()` assertions below ("Bug 2: the builder stays inside
+  // the app — no route, chrome intact"); these two exist to prove the other
+  // half of the guarantee — that tapping a row is what reaches the builder,
+  // never a direct construction of it.
 
-  testWidgets('tapping a guide in Settings opens its real builder, through the real route', (
+  testWidgets('tapping a guide in Settings opens its real builder, through the real interaction', (
     tester,
   ) async {
     await _pumpScreen(
@@ -278,7 +340,7 @@ void main() {
     expect(find.byType(Dialog), findsNothing);
   });
 
-  testWidgets('tapping a test in Settings opens its real builder, through the real route', (
+  testWidgets('tapping a test in Settings opens its real builder, through the real interaction', (
     tester,
   ) async {
     await _pumpScreen(
@@ -560,6 +622,7 @@ void main() {
 
   testWidgets('tapping "New guide" creates one and opens its real builder', (tester) async {
     var created = false;
+    Map<String, dynamic>? sentBody;
 
     await _pumpScreen(
       tester,
@@ -567,6 +630,7 @@ void main() {
       onRequest: (request) {
         if (request.method == 'POST' && request.url.path.endsWith('/training/guides')) {
           created = true;
+          sentBody = jsonDecode(request.body) as Map<String, dynamic>;
           return _json({'data': _guide(id: 'new-g1', title: 'Untitled guide')});
         }
         if (request.method == 'GET' && request.url.path.endsWith('/training/guides/new-g1')) {
@@ -583,14 +647,23 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(created, isTrue);
-    // Reached GuideBuilder for real, through the same push Settings' own
-    // rows use — never a dialog.
+    // Reached GuideBuilder for real, through the same in-body swap
+    // Settings' own rows use — never a dialog.
     expect(find.byKey(const Key('training.screen-editor')), findsOneWidget);
     expect(find.byType(Dialog), findsNothing);
+
+    // The default fixture's `me` stands at the ORGANIZATION view, so this
+    // create must carry neither place key — sending `company_id` here
+    // (e.g. a `companies.first` fallback) would silently reintroduce bug 1
+    // while every screen-level assertion above still passes.
+    expect(sentBody, isNotNull);
+    expect(sentBody!.containsKey('company_id'), isFalse);
+    expect(sentBody!.containsKey('franchise_id'), isFalse);
   });
 
   testWidgets('tapping "New test" creates one and opens its real builder', (tester) async {
     var created = false;
+    Map<String, dynamic>? sentBody;
 
     await _pumpScreen(
       tester,
@@ -598,6 +671,7 @@ void main() {
       onRequest: (request) {
         if (request.method == 'POST' && request.url.path.endsWith('/training/tests')) {
           created = true;
+          sentBody = jsonDecode(request.body) as Map<String, dynamic>;
           return _json({'data': _test(id: 'new-t1', title: 'Untitled test')});
         }
         if (request.method == 'GET' && request.url.path.endsWith('/training/tests/new-t1')) {
@@ -616,7 +690,62 @@ void main() {
     expect(created, isTrue);
     expect(find.text('Must finish the guide before the test'), findsOneWidget);
     expect(find.byType(Dialog), findsNothing);
+
+    // Same organization-view guard as "New guide" above.
+    expect(sentBody, isNotNull);
+    expect(sentBody!.containsKey('company_id'), isFalse);
+    expect(sentBody!.containsKey('franchise_id'), isFalse);
   });
+
+  testWidgets(
+    'at a franchise view, "New guide" files it on the franchise AND its parent company',
+    (tester) async {
+      Map<String, dynamic>? sentBody;
+
+      await _pumpScreen(
+        tester,
+        permissions: const ['training.view', 'training.manage'],
+        me: _franchiseScope,
+        onRequest: (request) {
+          if (request.method == 'POST' && request.url.path.endsWith('/training/guides')) {
+            sentBody = jsonDecode(request.body) as Map<String, dynamic>;
+            return _json({
+              'data': _guide(
+                id: 'new-g1',
+                title: 'Untitled guide',
+                companyId: 'co-a1',
+                franchiseId: 'fr-a1',
+              ),
+            });
+          }
+          if (request.method == 'GET' && request.url.path.endsWith('/training/guides/new-g1')) {
+            return _json({
+              'data': _guide(
+                id: 'new-g1',
+                title: 'Untitled guide',
+                companyId: 'co-a1',
+                franchiseId: 'fr-a1',
+              ),
+            });
+          }
+          return null;
+        },
+      );
+
+      await tester.tap(find.text('Settings'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('New guide'));
+      await tester.pumpAndSettle();
+
+      expect(sentBody, isNotNull);
+      // The only view that sends two fields that must agree:
+      // `franchise_id` names the franchise itself, and `company_id` must be
+      // that franchise's PARENT company — never the franchise id repeated,
+      // never a different company.
+      expect(sentBody!['franchise_id'], 'fr-a1');
+      expect(sentBody!['company_id'], 'co-a1');
+    },
+  );
 
   // ── Bug 1: create files on the current VIEW, never the organization ───
   //
@@ -660,6 +789,10 @@ void main() {
       // reads `null`, same as filing on the group, which is exactly the
       // organization-level POST the server correctly refused for Jose.
       expect(sentBody!['company_id'], 'co-a1');
+      // A company view never has a franchise in view — a stray
+      // `franchise_id` here would 422 in the field even though this
+      // assertion alone would not have caught it.
+      expect(sentBody!.containsKey('franchise_id'), isFalse);
     },
   );
 
@@ -691,6 +824,7 @@ void main() {
 
       expect(sentBody, isNotNull);
       expect(sentBody!['company_id'], 'co-a1');
+      expect(sentBody!.containsKey('franchise_id'), isFalse);
     },
   );
 
@@ -776,9 +910,12 @@ void main() {
       await tester.tap(find.text('New guide'));
       await tester.pumpAndSettle();
 
-      // Bug 1: filed on the view actually standing on it.
+      // Bug 1: filed on the view actually standing on it — company_id
+      // present, franchise_id absent (this is a company view, not a
+      // franchise one).
       expect(sentBody, isNotNull);
       expect(sentBody!['company_id'], 'co-a1');
+      expect(sentBody!.containsKey('franchise_id'), isFalse);
 
       // Bug 2: still inside the app.
       expect(navigator.canPop(), isFalse);
@@ -957,13 +1094,22 @@ Future<void> _pumpTestBuilder(
   WidgetTester tester, {
   required Map<String, dynamic> test,
   http.Response? Function(http.Request request)? onRequest,
+  // Tall enough (2200) that every option and the Save button sit within the
+  // test surface without needing a scroll gesture first — the panel's body
+  // is a `SingleChildScrollView` (test_builder.dart), and the default
+  // 800×600 test window clips well above the questions/options/Save on a
+  // test with even one question. 900 wide is deliberately roomy — most
+  // callers are exercising something other than layout at narrow widths;
+  // pass a narrower `viewSize` (e.g. `Size(375, 2200)`) to exercise that.
+  Size viewSize = const Size(900, 2200),
+  // Empty by default so most callers never see the "Which guide" picker's
+  // real content. A caller exercising that picker's layout — where a long
+  // guide title is exactly what can overflow it — must pass real guides in;
+  // an always-empty default here is what let the picker's 375px overflow
+  // (test-builder.dart) go uncaught for as long as it did.
+  List<Map<String, dynamic>> guides = const [],
 }) async {
-  // Tall enough that every option and the Save button sit within the test
-  // surface without needing a scroll gesture first — the panel's body is a
-  // `SingleChildScrollView` (test_builder.dart), and the default 800×600
-  // test window clips well above the questions/options/Save on a test with
-  // even one question.
-  tester.view.physicalSize = const Size(900, 2200);
+  tester.view.physicalSize = viewSize;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
@@ -976,8 +1122,8 @@ Future<void> _pumpTestBuilder(
       if (path.endsWith('/training/tests/${test['id']}')) return _json({'data': test});
       if (path.endsWith('/training/guides')) {
         return _json({
-          'data': const [],
-          'meta': {'total': 0},
+          'data': guides,
+          'meta': {'total': guides.length},
         });
       }
       return _json({'message': 'Nothing stubbed for $path.'}, 500);
@@ -1153,6 +1299,36 @@ const _companyScope = {
     'id': 'co-a1',
     'label': 'A-1 Chimney',
     'path': ['A-1 Chimney'],
+  },
+  'companies': [
+    {'id': 'co-a1', 'name': 'A-1 Chimney', 'parent_company_id': null},
+    {'id': 'co-ever', 'name': 'Everdoors', 'parent_company_id': null},
+  ],
+  'franchises': [
+    {'id': 'fr-a1', 'name': 'Connecticut', 'company_id': 'co-a1'},
+    {'id': 'fr-ever', 'name': 'Ohio', 'company_id': 'co-ever'},
+  ],
+};
+
+/// `me` override for a session standing at a FRANCHISE view (A-1 Chimney's
+/// Connecticut franchise). `scope.type` is `'franchise'`, so
+/// `Me.filingFranchiseId` (session.dart) resolves to `fr-a1` and
+/// `Me.filingCompanyId` resolves by looking `fr-a1` up in `franchises` and
+/// taking ITS `company_id` — `co-a1`, the franchise's own parent, never a
+/// different or unrelated company. This is the only view that sends both
+/// fields, and the only one where they must agree with each other.
+const _franchiseScope = {
+  'organization': {
+    'id': 'org-1',
+    'name': 'EzBizi Group',
+    'franchise_label': 'Franchise',
+    'is_read_only': false,
+  },
+  'scope': {
+    'type': 'franchise',
+    'id': 'fr-a1',
+    'label': 'Connecticut',
+    'path': ['A-1 Chimney', 'Connecticut'],
   },
   'companies': [
     {'id': 'co-a1', 'name': 'A-1 Chimney', 'parent_company_id': null},
