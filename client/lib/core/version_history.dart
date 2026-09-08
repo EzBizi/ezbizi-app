@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0162',
+      date: '8 Sep 2026',
+      items: [
+        'You can reply to a text enquiry from the lead\'s conversation. The message goes to the person through Google, in the account\'s own name, and appears in the thread at once. Calls cannot be replied to this way and the screen says so.',
+        'The coloured stripe down the side of quoted text in Email and of rows in Suggestions is gone. Quoted text is now set in the muted colour the app uses for context, so it still reads as somebody else\'s words.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0161',
       date: '8 Sep 2026',
       items: [
