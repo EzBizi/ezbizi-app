@@ -15,6 +15,9 @@ class VersionHistory {
         'Thumbtack enquiries reach the right company when two companies use the same Thumbtack business.',
         'Hours of operation reads as one table: every day the same height, ruled between, and the times sit tight instead of drifting.',
         'On a phone the opening and closing times wrap instead of running off the edge.',
+        'Changing how a company answers its phone now needs permission to change phone settings. The screen was only reachable by people who had it, but the underlying request was not checked, so somebody with read-only access to Phone could have altered call routing and switched off call recording.',
+        'A branch can no longer change the parent company\'s call handling by reaching up to it. Which settings you can change is bounded by where you work, the same way everything else is.',
+        'Automations can now act on what a call was about. Tagging a call raises "A call was tagged", carrying the tag name - so a rule can watch for complaints without watching for bookings. Tagging was already compulsory before hanging up; until now it fed reports and nothing else.',
       ],
     ),
     VersionRelease(
