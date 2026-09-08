@@ -6,6 +6,7 @@ use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\WebChat;
 use App\Models\WebSite;
+use App\Support\Automations\EventEmitter;
 use App\Support\Leads\LeadThread;
 use Illuminate\Support\Str;
 
@@ -33,7 +34,10 @@ use Illuminate\Support\Str;
  */
 final class WebsiteEnquiries
 {
-    public function __construct(private readonly LeadThread $thread) {}
+    public function __construct(
+        private readonly LeadThread $thread,
+        private readonly EventEmitter $events,
+    ) {}
 
     /** Live chat from the widget on a customer's site. */
     public const CHANNEL_LIVECHAT = 'LIVECHAT';
@@ -66,6 +70,21 @@ final class WebsiteEnquiries
         $chat->forceFill(['token_hash' => $hash, 'last_seen_at' => now()])->save();
 
         $this->say($chat, $message, LeadConversation::FROM_CONSUMER);
+
+        /*
+         * The SITE is the subject, not the lead. Leads raises
+         * `lead.contact_received` for every source it holds; what a rule cannot
+         * get from that is which website the person was standing on, which is
+         * the whole reason a company with branch sites would write one.
+         */
+        $this->events->emitAfterCommit('website.chat_started', $site, [
+            'after' => [
+                'host' => $site->host,
+                'page_url' => $visitor['page_url'] ?? null,
+                'contact_name' => $visitor['name'] ?? null,
+                'preview' => mb_substr($message, 0, 255),
+            ],
+        ]);
 
         return [$chat, $plain];
     }
@@ -130,6 +149,15 @@ final class WebsiteEnquiries
 
         $this->thread->refresh($lead);
 
+        $this->events->emitAfterCommit('website.form_submitted', $site, [
+            'after' => [
+                'host' => $site->host,
+                'page_url' => $visitor['page_url'] ?? null,
+                'contact_name' => $visitor['name'] ?? null,
+                'preview' => mb_substr(implode(' · ', $lines), 0, 255),
+            ],
+        ]);
+
         return $lead;
     }
 
@@ -150,13 +178,16 @@ final class WebsiteEnquiries
             'company_id' => $site->company_id,
 
             /*
-             * No franchise. A company HAS franchises beneath it rather than
-             * belonging to one, so a site registered to a company cannot name a
-             * franchise without guessing which — and a lead placed under the
-             * wrong branch is worse than one placed under none, because the
-             * branch it belongs to never sees it.
+             * The branch this website answers for, when it answers for one.
+             *
+             * A company HAS franchises rather than belonging to one, so this
+             * cannot be derived — the site has to be pointed at a branch, and
+             * most never are. Null places the enquiry at company level, which
+             * is right for a single-site business and honest for everyone else:
+             * a lead under the wrong branch is worse than one under none,
+             * because the branch it belongs to never sees it.
              */
-            'franchise_id' => null,
+            'franchise_id' => $site->franchise_id,
             'source' => $source,
             'remote_id' => $remoteId,
             'contact_name' => $visitor['name'] ?? null,

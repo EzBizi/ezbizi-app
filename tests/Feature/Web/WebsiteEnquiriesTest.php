@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Web;
 
+use App\Models\AutomationEvent;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\WebChat;
@@ -107,6 +108,11 @@ class WebsiteEnquiriesTest extends TestCase
         $chatId = $started->json('chat');
         $token = $started->json('token');
 
+        // A second later, as a human reply is. Without this both messages carry
+        // the same second-precision stamp and the assertion below would be
+        // about the tiebreak rather than about the reply arriving.
+        $this->travel(1)->seconds();
+
         $this->inTenant($tenant['org'], function () use ($chatId) {
             app(WebsiteEnquiries::class)->say(
                 WebChat::findOrFail($chatId),
@@ -211,6 +217,83 @@ class WebsiteEnquiriesTest extends TestCase
 
         $this->assertSame(1, $this->inTenant($alpha['org'], fn () => Lead::query()->count()));
         $this->assertSame(0, $this->inTenant($beta['org'], fn () => Lead::query()->count()));
+    }
+
+    /**
+     * A site can answer for a branch, and its enquiries land there.
+     *
+     * This is the Organization → Company → Franchise shape doing its job. A
+     * company HAS franchises rather than belonging to one, so nothing can
+     * derive the branch from the company — the site has to name it, and until
+     * it could, every website enquiry arrived at company level even for a firm
+     * whose whole point is branches.
+     */
+    public function test_an_enquiry_lands_on_the_branch_its_website_answers_for(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->userWithRole(
+            $tenant,
+            'Web Editor',
+            ['web_management.view', 'web_management.edit'],
+        );
+
+        $created = $this->signedInAs($editor)->postJson('/api/v1/web/sites', [
+            'company_id' => $tenant['company']->getKey(),
+            'franchise_id' => $tenant['franchise']->getKey(),
+            'host' => 'nj.a-1chimney.com',
+        ])->assertCreated();
+
+        $this->assertSame(
+            $tenant['franchise']->getKey(),
+            $created->json('data.franchise.id'),
+            'The screen has to be able to show which branch it answers for.',
+        );
+
+        $site = $this->inTenant(
+            $tenant['org'],
+            fn () => WebSite::findOrFail($created->json('data.id')),
+        );
+
+        $this->startChat($site->public_key, 'Booking for the Newark house.')->assertCreated();
+
+        $lead = $this->inTenant($tenant['org'], fn () => Lead::query()->firstOrFail());
+
+        $this->assertSame($tenant['franchise']->getKey(), $lead->franchise_id);
+        $this->assertSame($tenant['company']->getKey(), $lead->company_id);
+    }
+
+    /** A site that names no branch places its enquiries at company level. */
+    public function test_a_site_with_no_branch_places_its_enquiries_on_the_company(): void
+    {
+        ['site' => $site, 'tenant' => $tenant] = $this->siteWithKey();
+
+        $this->startChat($site->public_key, 'Anywhere will do.')->assertCreated();
+
+        $lead = $this->inTenant($tenant['org'], fn () => Lead::query()->firstOrFail());
+
+        $this->assertNull($lead->franchise_id);
+        $this->assertSame($site->company_id, $lead->company_id);
+    }
+
+    /**
+     * Automations must be able to name WHICH website.
+     *
+     * Leads raises `lead.contact_received` for every source it holds, which
+     * cannot say that. A company with branch sites writing "send Newark's
+     * enquiries to the Newark manager" needs the site as the subject.
+     */
+    public function test_an_enquiry_raises_an_event_about_the_website(): void
+    {
+        ['site' => $site, 'tenant' => $tenant] = $this->siteWithKey();
+
+        $this->startChat($site->public_key, 'Is anyone there?')->assertCreated();
+
+        $events = $this->inTenant(
+            $tenant['org'],
+            fn () => AutomationEvent::query()->pluck('event_key')->all(),
+        );
+
+        $this->assertContains('website.chat_started', $events);
     }
 
     // ── helpers ──────────────────────────────────────────────────────

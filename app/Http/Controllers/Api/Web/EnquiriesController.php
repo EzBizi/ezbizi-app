@@ -245,9 +245,20 @@ class EnquiriesController extends Controller
      */
     private function messagesFor(WebChat $chat): array
     {
+        /*
+         * occurred_at is a second-precision timestamp, so two messages sent
+         * inside the same second do not order themselves. created_at and then
+         * the id break the tie so the thread at least never REORDERS between
+         * two polls, which is the failure a visitor would actually notice.
+         *
+         * ponytail: the real fix is fractional seconds on lead_conversations,
+         * which is the Leads module's column; asked for, not assumed.
+         */
         return LeadConversation::query()
             ->where('lead_id', $chat->lead_id)
             ->orderBy('occurred_at')
+            ->orderBy('created_at')
+            ->orderBy('id')
             ->get(['participant', 'text', 'occurred_at'])
             ->map(fn (LeadConversation $row) => [
                 'from' => $row->participant === LeadConversation::FROM_CONSUMER ? 'you' : 'them',

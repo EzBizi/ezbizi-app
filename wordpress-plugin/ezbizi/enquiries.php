@@ -2,27 +2,32 @@
 /**
  * The two things a visitor can start on a customer's website: a chat and a form.
  *
+ * ── The shortcodes take no arguments, and that is the point ──
+ *
+ * Everything a visitor sees — the colours, the typeface, the wording, which
+ * questions the form asks, whether either widget is on at all — is set in
+ * EzBizi under Web Management → Widgets and arrives here with the values. So
+ * `[ezbizi_chat]` is the whole shortcode, and changing the accent colour or
+ * adding a question is a change somebody makes in EzBizi once, for every site
+ * that follows the primary, without editing a WordPress page or updating this
+ * plugin.
+ *
+ * A site owner who could also set these in the shortcode would be a site owner
+ * with two places to set them and no way to tell which won.
+ *
  * ── Why these post to EzBizi and not to WordPress ──
  *
  * An enquiry is a Lead, and Leads live in EzBizi beside the ones from Google
- * and Thumbtack. Storing them in WordPress first would put half a company's
- * enquiries on a server we do not run, in a table nobody reads, waiting for a
- * sync to go wrong. The visitor's browser talks to EzBizi directly.
- *
- * ── Why the browser and not this plugin ──
- *
- * A form that posted to PHP here would need this plugin to hold the site's
- * credential and forward it, and every submission would be a request the
- * customer's server makes and can fail at. The browser posts with the PUBLIC
- * key — the same `pk_` that is already in page source for the values snippet —
- * so the plugin is only ever rendering markup.
+ * and Thumbtack. Storing them here first would put half a company's enquiries
+ * on a server we do not run, in a table nobody reads, waiting for a sync to go
+ * wrong. The visitor's browser talks to EzBizi directly, with the PUBLIC key
+ * that is already in page source for the values snippet.
  *
  * ── What the public key can and cannot do ──
  *
- * It can start an enquiry on this site, and that is all. It cannot read
- * anybody's conversation: EzBizi mints a per-conversation token when a chat
- * begins, and only that token reads that chat back. The token lives in this
- * browser's sessionStorage and nowhere else.
+ * It can start an enquiry on this site, and that is all. Reading a conversation
+ * back needs the per-conversation token EzBizi mints when a chat begins, which
+ * lives in this browser's sessionStorage and nowhere else.
  */
 
 if (! defined('ABSPATH')) {
@@ -46,67 +51,157 @@ function ezbizi_api_base() {
 }
 
 /**
- * [ezbizi_form] — a contact form that lands in EzBizi as a Lead.
+ * The widget settings EzBizi sent, or an empty shape.
  *
- * Fields are named in the shortcode so a site owner can ask for what they
- * actually need without a form designer:
- *
- *   [ezbizi_form fields="Name,Email,Phone,What do you need?"]
- *
- * Name, Email and Phone are recognised and sent as the enquirer's details;
- * everything else is a question, and its answer becomes a line of the message.
+ * Never invents defaults of its own. The server sanitises and completes the
+ * config before sending it, so a missing key here means this site has never had
+ * a successful read — in which case the widgets render nothing rather than
+ * guessing at somebody's colours.
  */
-function ezbizi_form_shortcode($atts) {
-    $atts = shortcode_atts(array(
-        'fields' => 'Name,Email,Phone,How can we help?',
-        'button' => 'Send',
-        'thanks' => 'Thank you — we will be in touch shortly.',
-    ), $atts, 'ezbizi_form');
+function ezbizi_widget_config($kind) {
+    $payload = ezbizi_payload();
 
+    if (! isset($payload['widgets']) || ! is_array($payload['widgets'])) {
+        return array();
+    }
+
+    $widgets = $payload['widgets'];
+
+    if (! isset($widgets[$kind]) || ! is_array($widgets[$kind])) {
+        return array();
+    }
+
+    $config = $widgets[$kind];
+    $config['style'] = isset($widgets['style']) && is_array($widgets['style'])
+        ? $widgets['style']
+        : array();
+
+    return $config;
+}
+
+/** One config value as a string, or '' — never a warning on somebody's page. */
+function ezbizi_widget_text($config, $key, $fallback = '') {
+    return isset($config[$key]) && is_scalar($config[$key])
+        ? (string) $config[$key]
+        : $fallback;
+}
+
+/**
+ * The shared look, as a scoped stylesheet.
+ *
+ * Every value is interpolated into CSS on a page we do not serve, so every one
+ * of them is escaped here as well as validated on the server. Two gates for the
+ * same value is deliberate: this one is the last thing before a stranger's
+ * browser, and it cannot see what the other one allowed.
+ */
+function ezbizi_widget_style($id, $style) {
+    $accent = esc_attr(ezbizi_widget_text($style, 'accent', '#0b5cad'));
+    $on_accent = esc_attr(ezbizi_widget_text($style, 'on_accent', '#ffffff'));
+    $text = esc_attr(ezbizi_widget_text($style, 'text', '#1b1b1b'));
+    $background = esc_attr(ezbizi_widget_text($style, 'background', '#ffffff'));
+    $font = esc_attr(ezbizi_widget_text($style, 'font', 'inherit'));
+    $radius = (int) ezbizi_widget_text($style, 'radius', '12');
+
+    return '<style>#' . esc_attr($id) . '{'
+        . '--ezbizi-accent:' . $accent . ';'
+        . '--ezbizi-on-accent:' . $on_accent . ';'
+        . '--ezbizi-text:' . $text . ';'
+        . '--ezbizi-bg:' . $background . ';'
+        . 'font-family:' . $font . ';'
+        . 'color:var(--ezbizi-text);'
+        . '}'
+        . '#' . esc_attr($id) . ' button{background:var(--ezbizi-accent);color:var(--ezbizi-on-accent);'
+        . 'border:0;border-radius:' . $radius . 'px;padding:10px 16px;cursor:pointer;font:inherit}'
+        . '#' . esc_attr($id) . ' input,#' . esc_attr($id) . ' textarea,#' . esc_attr($id) . ' select{'
+        . 'width:100%;padding:8px;border:1px solid #ccc;border-radius:' . max(0, $radius - 6) . 'px;font:inherit}'
+        . '</style>';
+}
+
+/** Nothing on a visitor's page; a sentence for somebody who can fix it. */
+function ezbizi_widget_silent($why) {
+    return current_user_can('manage_options') ? '<p>' . esc_html($why) . '</p>' : '';
+}
+
+/** [ezbizi_form] — the contact form EzBizi describes, landing as a Lead. */
+function ezbizi_form_shortcode($atts) {
     $key = ezbizi_public_key();
 
     if ($key === '') {
-        // Never a raw error on somebody's public page.
-        return current_user_can('manage_options')
-            ? '<p>' . esc_html__('EzBizi: this site has no browser key yet. Open Settings › EzBizi.', 'ezbizi') . '</p>'
-            : '';
+        return ezbizi_widget_silent(
+            __('EzBizi: this site has no browser key yet. Open Settings › EzBizi.', 'ezbizi')
+        );
     }
 
-    $labels = array_filter(array_map('trim', explode(',', $atts['fields'])));
+    $config = ezbizi_widget_config('form');
 
-    if (empty($labels)) {
+    if (empty($config)) {
+        return ezbizi_widget_silent(
+            __('EzBizi: no widget settings have arrived yet. They come with the next refresh.', 'ezbizi')
+        );
+    }
+
+    if (empty($config['enabled'])) {
+        return ezbizi_widget_silent(
+            __('EzBizi: the contact form is switched off in Web Management › Widgets.', 'ezbizi')
+        );
+    }
+
+    $fields = isset($config['fields']) && is_array($config['fields']) ? $config['fields'] : array();
+
+    if (empty($fields)) {
         return '';
     }
 
     $id = 'ezbizi-form-' . wp_rand(1000, 9999);
-    $out = '<form class="ezbizi-form" id="' . esc_attr($id) . '" novalidate>';
+    $out = ezbizi_widget_style($id, $config['style']);
+    $out .= '<form class="ezbizi-form" id="' . esc_attr($id) . '" novalidate>';
 
-    foreach ($labels as $label) {
-        $slug = sanitize_title($label);
-        $type = 'text';
-        $lower = strtolower($label);
-
-        if ($lower === 'email') {
-            $type = 'email';
-        } elseif ($lower === 'phone') {
-            $type = 'tel';
+    foreach ($fields as $index => $field) {
+        if (! is_array($field)) {
+            continue;
         }
 
-        $out .= '<p><label for="' . esc_attr($id . '-' . $slug) . '">' . esc_html($label) . '</label><br />';
+        $label = ezbizi_widget_text($field, 'label');
 
-        // A long question gets a box to answer it in.
-        if (strlen($label) > 20) {
-            $out .= '<textarea id="' . esc_attr($id . '-' . $slug) . '" name="' . esc_attr($label)
-                . '" rows="4" style="width:100%"></textarea>';
+        if ($label === '') {
+            continue;
+        }
+
+        $type = ezbizi_widget_text($field, 'type', 'text');
+        $required = ! empty($field['required']);
+        $field_id = $id . '-' . $index;
+
+        $out .= '<p><label for="' . esc_attr($field_id) . '">' . esc_html($label);
+
+        if ($required) {
+            $out .= ' <span aria-hidden="true">*</span>';
+        }
+
+        $out .= '</label><br />';
+
+        $common = 'id="' . esc_attr($field_id) . '" name="' . esc_attr($label) . '"'
+            . ($required ? ' required' : '');
+
+        if ($type === 'textarea') {
+            $out .= '<textarea ' . $common . ' rows="4"></textarea>';
+        } elseif ($type === 'select') {
+            $out .= '<select ' . $common . '><option value=""></option>';
+
+            foreach (isset($field['options']) && is_array($field['options']) ? $field['options'] : array() as $option) {
+                $option = (string) $option;
+                $out .= '<option value="' . esc_attr($option) . '">' . esc_html($option) . '</option>';
+            }
+
+            $out .= '</select>';
         } else {
-            $out .= '<input type="' . esc_attr($type) . '" id="' . esc_attr($id . '-' . $slug) . '" name="'
-                . esc_attr($label) . '" style="width:100%" />';
+            $html_type = in_array($type, array('email', 'tel'), true) ? $type : 'text';
+            $out .= '<input type="' . esc_attr($html_type) . '" ' . $common . ' />';
         }
 
         $out .= '</p>';
     }
 
-    $out .= '<p><button type="submit">' . esc_html($atts['button']) . '</button></p>';
+    $out .= '<p><button type="submit">' . esc_html(ezbizi_widget_text($config, 'button', 'Send')) . '</button></p>';
     $out .= '<p class="ezbizi-form-note" role="status" aria-live="polite"></p>';
     $out .= '</form>';
 
@@ -118,13 +213,12 @@ f.addEventListener('submit',function(e){
   e.preventDefault();
   var b=f.querySelector('button');b.disabled=true;
   var fields={},v={};
-  Array.prototype.forEach.call(f.querySelectorAll('input,textarea'),function(i){
+  Array.prototype.forEach.call(f.querySelectorAll('input,textarea,select'),function(i){
     var n=i.name,low=n.toLowerCase();
     if(low==='name'){v.name=i.value;}
     else if(low==='email'){v.email=i.value;}
     else if(low==='phone'){v.phone=i.value;}
-    else {fields[n]=i.value;}
-    if(low==='name'||low==='email'||low==='phone'){fields[n]=i.value;}
+    fields[n]=i.value;
   });
   v.key=" . wp_json_encode($key) . ";v.fields=fields;v.page_url=location.href;
   fetch(" . wp_json_encode(ezbizi_api_base() . '/api/v1/web/form') . ",{
@@ -132,9 +226,9 @@ f.addEventListener('submit',function(e){
     body:JSON.stringify(v)
   }).then(function(r){
     if(!r.ok)throw new Error(r.status);
-    f.reset();note.textContent=" . wp_json_encode($atts['thanks']) . ";
+    f.reset();note.textContent=" . wp_json_encode(ezbizi_widget_text($config, 'thanks', 'Thank you.')) . ";
   }).catch(function(){
-    note.textContent='Sorry — that did not send. Please try again.';
+    note.textContent=" . wp_json_encode(ezbizi_widget_text($config, 'error', 'That did not send.')) . ";
   }).then(function(){b.disabled=false;});
 });
 })();</script>";
@@ -143,7 +237,7 @@ f.addEventListener('submit',function(e){
 }
 
 /**
- * [ezbizi_chat] — a chat bubble that opens a conversation in EzBizi.
+ * [ezbizi_chat] — the chat bubble EzBizi describes.
  *
  * ── Why it polls ──
  *
@@ -152,33 +246,54 @@ f.addEventListener('submit',function(e){
  * port, and a scaling story, for a feature nobody is using yet.
  */
 function ezbizi_chat_shortcode($atts) {
-    $atts = shortcode_atts(array(
-        'title'  => 'Chat with us',
-        'intro'  => 'Ask us anything — we will reply here.',
-        'button' => 'Chat',
-    ), $atts, 'ezbizi_chat');
-
     $key = ezbizi_public_key();
 
     if ($key === '') {
-        return current_user_can('manage_options')
-            ? '<p>' . esc_html__('EzBizi: this site has no browser key yet. Open Settings › EzBizi.', 'ezbizi') . '</p>'
-            : '';
+        return ezbizi_widget_silent(
+            __('EzBizi: this site has no browser key yet. Open Settings › EzBizi.', 'ezbizi')
+        );
+    }
+
+    $config = ezbizi_widget_config('chat');
+
+    if (empty($config)) {
+        return ezbizi_widget_silent(
+            __('EzBizi: no widget settings have arrived yet. They come with the next refresh.', 'ezbizi')
+        );
+    }
+
+    if (empty($config['enabled'])) {
+        return ezbizi_widget_silent(
+            __('EzBizi: live chat is switched off in Web Management › Widgets.', 'ezbizi')
+        );
     }
 
     $id = 'ezbizi-chat-' . wp_rand(1000, 9999);
+    $position = ezbizi_widget_text($config, 'position', 'bottom-right');
 
-    $out = '<div class="ezbizi-chat" id="' . esc_attr($id) . '">'
-        . '<button type="button" class="ezbizi-chat-open">' . esc_html($atts['button']) . '</button>'
-        . '<div class="ezbizi-chat-panel" hidden>'
-        . '<strong>' . esc_html($atts['title']) . '</strong>'
-        . '<p class="ezbizi-chat-intro">' . esc_html($atts['intro']) . '</p>'
-        . '<div class="ezbizi-chat-log" role="log" aria-live="polite"></div>'
+    $anchor = '';
+
+    if ($position === 'bottom-right') {
+        $anchor = 'position:fixed;right:20px;bottom:20px;z-index:9999';
+    } elseif ($position === 'bottom-left') {
+        $anchor = 'position:fixed;left:20px;bottom:20px;z-index:9999';
+    }
+
+    $out = ezbizi_widget_style($id, $config['style']);
+    $out .= '<div class="ezbizi-chat" id="' . esc_attr($id) . '" style="' . esc_attr($anchor) . '">'
+        . '<button type="button" class="ezbizi-chat-open">'
+        . esc_html(ezbizi_widget_text($config, 'button', 'Chat')) . '</button>'
+        . '<div class="ezbizi-chat-panel" hidden style="background:var(--ezbizi-bg);'
+        . 'border:1px solid #ddd;border-radius:12px;padding:14px;width:320px;max-width:90vw;margin-top:8px">'
+        . '<strong>' . esc_html(ezbizi_widget_text($config, 'title', 'Chat with us')) . '</strong>'
+        . '<p class="ezbizi-chat-intro">' . esc_html(ezbizi_widget_text($config, 'intro')) . '</p>'
+        . '<div class="ezbizi-chat-log" role="log" aria-live="polite" '
+        . 'style="max-height:260px;overflow:auto;margin:8px 0"></div>'
         . '<form class="ezbizi-chat-form">'
-        . '<input type="text" class="ezbizi-chat-text" placeholder="Type a message" style="width:100%" />'
-        . '<button type="submit">Send</button>'
-        . '</form>'
-        . '</div></div>';
+        . '<input type="text" class="ezbizi-chat-text" placeholder="'
+        . esc_attr(ezbizi_widget_text($config, 'placeholder', 'Type a message')) . '" />'
+        . '<p><button type="submit">' . esc_html(ezbizi_widget_text($config, 'send', 'Send')) . '</button></p>'
+        . '</form></div></div>';
 
     $out .= "<script>(function(){
 var root=document.getElementById(" . wp_json_encode($id) . ");
@@ -192,7 +307,9 @@ function draw(ms){
   log.innerHTML='';
   ms.forEach(function(m){
     var p=document.createElement('p');
-    p.className='ezbizi-chat-'+(m.from==='you'?'you':'them');
+    p.style.margin='4px 0';
+    p.style.textAlign=(m.from==='you')?'right':'left';
+    // textContent, never innerHTML: this is a stranger's typing coming back.
     p.textContent=m.text||'';
     log.appendChild(p);
   });
@@ -209,8 +326,8 @@ root.querySelector('.ezbizi-chat-open').addEventListener('click',function(){
   if(!panel.hidden){
     poll();
     // Only while the panel is open. A closed widget polling on every page of
-    // every visitor's session is a request per visitor per few seconds, for
-    // nothing anybody is looking at.
+    // every visitor's session is a request per visitor every few seconds, for
+    // something nobody is looking at.
     if(!timer)timer=setInterval(poll,5000);
   } else if(timer){clearInterval(timer);timer=null;}
 });
