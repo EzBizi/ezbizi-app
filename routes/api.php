@@ -42,6 +42,7 @@ use App\Http\Controllers\Api\JobsController;
 use App\Http\Controllers\Api\LeadsController;
 use App\Http\Controllers\Api\MailboxesController;
 use App\Http\Controllers\Api\MailboxMessagesController;
+use App\Http\Controllers\Api\MailchimpConnectController;
 use App\Http\Controllers\Api\MarketingController;
 use App\Http\Controllers\Api\MetaCallbacksController;
 use App\Http\Controllers\Api\MicrosoftMailAuthController;
@@ -51,19 +52,21 @@ use App\Http\Controllers\Api\Monitoring\HeartbeatController as MonitoringHeartbe
 use App\Http\Controllers\Api\Monitoring\LiveViewController as MonitoringLiveViewController;
 use App\Http\Controllers\Api\Monitoring\RemoteControlController as MonitoringRemoteControlController;
 use App\Http\Controllers\Api\Monitoring\ScreenshotsController as MonitoringScreenshotsController;
+use App\Http\Controllers\Api\NewsletterAudiencesController;
+use App\Http\Controllers\Api\NewslettersController;
+use App\Http\Controllers\Api\NewsletterUnsubscribeController;
 use App\Http\Controllers\Api\NotificationsController;
 use App\Http\Controllers\Api\OrganizationCanvasController;
 use App\Http\Controllers\Api\OrganizationProfileController;
 use App\Http\Controllers\Api\PasswordController;
+use App\Http\Controllers\Api\Phone\AddressesController as PhoneAddressesController;
 use App\Http\Controllers\Api\Phone\CallsController as PhoneCallsController;
 use App\Http\Controllers\Api\Phone\CallTagsController as PhoneCallTagsController;
 use App\Http\Controllers\Api\Phone\ConnectionsController as PhoneConnectionsController;
-use App\Http\Controllers\Api\StaffMessagesController;
 use App\Http\Controllers\Api\Phone\ExtensionsController as PhoneExtensionsController;
 use App\Http\Controllers\Api\Phone\FlowsController as PhoneFlowsController;
 use App\Http\Controllers\Api\Phone\HoursController as PhoneHoursController;
 use App\Http\Controllers\Api\Phone\MessagesController as PhoneMessagesController;
-use App\Http\Controllers\Api\Phone\AddressesController as PhoneAddressesController;
 use App\Http\Controllers\Api\Phone\NumbersController as PhoneNumbersController;
 use App\Http\Controllers\Api\Phone\PortsController as PhonePortsController;
 use App\Http\Controllers\Api\Phone\PortWebhookController as PhonePortWebhookController;
@@ -75,9 +78,9 @@ use App\Http\Controllers\Api\Phone\ServiceRequestsController as PhoneServiceRequ
 use App\Http\Controllers\Api\Phone\SmsWebhookController as PhoneSmsWebhookController;
 use App\Http\Controllers\Api\Phone\StatusWebhookController as PhoneStatusWebhookController;
 use App\Http\Controllers\Api\Phone\TokensController as PhoneTokensController;
+use App\Http\Controllers\Api\Phone\TranscriptionWebhookController as PhoneTranscriptionWebhookController;
 use App\Http\Controllers\Api\Phone\TrustController as PhoneTrustController;
 use App\Http\Controllers\Api\Phone\VoicemailBoxesController as PhoneVoicemailBoxesController;
-use App\Http\Controllers\Api\Phone\TranscriptionWebhookController as PhoneTranscriptionWebhookController;
 use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookController;
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
@@ -91,23 +94,21 @@ use App\Http\Controllers\Api\ServiceGroupsController;
 use App\Http\Controllers\Api\ServiceLabelsController;
 use App\Http\Controllers\Api\ServicesController;
 use App\Http\Controllers\Api\SettingsController;
+use App\Http\Controllers\Api\SmsCodesController;
 use App\Http\Controllers\Api\SocialAuthController;
 use App\Http\Controllers\Api\SocialConnectionsController;
 use App\Http\Controllers\Api\SocialMediaHandoffController;
-use App\Http\Controllers\Api\MailchimpConnectController;
-use App\Http\Controllers\Api\NewsletterAudiencesController;
-use App\Http\Controllers\Api\NewslettersController;
-use App\Http\Controllers\Api\NewsletterUnsubscribeController;
 use App\Http\Controllers\Api\SocialPostsController;
 use App\Http\Controllers\Api\SocialProvidersController;
-use App\Http\Controllers\Api\ThumbtackWebhookController;
 use App\Http\Controllers\Api\StaffAccountsController;
 use App\Http\Controllers\Api\StaffAuthController;
 use App\Http\Controllers\Api\StaffClientVersionsController;
 use App\Http\Controllers\Api\StaffController;
+use App\Http\Controllers\Api\StaffMessagesController;
 use App\Http\Controllers\Api\StaffPhoneRequestsController;
 use App\Http\Controllers\Api\StaffSuggestionsController;
 use App\Http\Controllers\Api\SuggestionsController;
+use App\Http\Controllers\Api\ThumbtackWebhookController;
 use App\Http\Controllers\Api\TimeClockController;
 use App\Http\Controllers\Api\Training\AssignmentsController as TrainingAssignmentsController;
 use App\Http\Controllers\Api\Training\DashboardController as TrainingDashboardController;
@@ -115,7 +116,6 @@ use App\Http\Controllers\Api\Training\GuidesController as TrainingGuidesControll
 use App\Http\Controllers\Api\Training\LearnController as TrainingLearnController;
 use App\Http\Controllers\Api\Training\ProgressController as TrainingProgressController;
 use App\Http\Controllers\Api\Training\TestsController as TrainingTestsController;
-use App\Http\Controllers\Api\SmsCodesController;
 use App\Http\Controllers\Api\TwoFactorController;
 use App\Http\Controllers\Api\UiStringsController;
 use App\Http\Controllers\Api\VehicleAssignmentsController;
@@ -126,8 +126,8 @@ use App\Http\Controllers\Api\VehiclesController;
 use App\Http\Controllers\Api\VehicleServiceController;
 use App\Http\Controllers\Api\Web\PluginController as WebPluginController;
 use App\Http\Controllers\Api\Web\PublicValuesController as WebPublicValuesController;
-use App\Http\Controllers\Api\Web\SnippetController as WebSnippetController;
 use App\Http\Controllers\Api\Web\SitesController as WebSitesController;
+use App\Http\Controllers\Api\Web\SnippetController as WebSnippetController;
 use App\Http\Controllers\Api\Web\ValuesController as WebValuesController;
 use App\Models\PlatformStaffLink;
 use App\Support\Auth\PasswordPolicy;
@@ -139,6 +139,7 @@ use App\Support\Scoping\ViewScope;
 use App\Support\Settings\DisplaySettings;
 use App\Support\Social\SocialProvider;
 use App\Support\TimeClock\TimeClock;
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -355,7 +356,7 @@ Route::post('v1/social/thumbtack/webhook', ThumbtackWebhookController::class)
 Route::get('v1/newsletter/unsubscribe/{newsletter}', [NewsletterUnsubscribeController::class, 'show'])->middleware('throttle:30,1');
 Route::post('v1/newsletter/unsubscribe/{newsletter}', [NewsletterUnsubscribeController::class, 'store'])
     ->middleware('throttle:30,1')
-    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class]);
+    ->withoutMiddleware([VerifyCsrfToken::class]);
 
 Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callback'])
     ->middleware('throttle:30,1')
@@ -382,6 +383,10 @@ Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callba
 Route::get('v1/web/plugin/values', [WebPluginController::class, 'values'])
     ->middleware('throttle:web-plugin')
     ->name('web.plugin.values');
+
+Route::post('v1/web/plugin/service-account', [WebPluginController::class, 'serviceAccount'])
+    ->middleware('throttle:web-plugin')
+    ->name('web.plugin.service-account');
 
 /*
 |--------------------------------------------------------------------------
