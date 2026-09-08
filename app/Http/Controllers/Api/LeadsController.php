@@ -78,6 +78,12 @@ class LeadsController extends Controller
             $query->where('status', $status);
         }
 
+        // "Who is waiting on me": the enquirer spoke last. The one filter with
+        // data behind it; Unread and Starred are not drawn until they have some.
+        if ($request->boolean('unreplied')) {
+            $query->where('last_contact_from', LeadConversation::FROM_CONSUMER);
+        }
+
         // One box, two meanings. Somebody looking for a lead has either a name
         // or a phone number in front of them, and asking which they typed is a
         // question the screen should answer for itself. Digits are matched

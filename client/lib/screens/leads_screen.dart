@@ -6,6 +6,7 @@ import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
 import '../widgets/connected_account.dart';
+import '../widgets/lead_thread.dart';
 import '../widgets/leads_accounts.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/tab_bar_like.dart';
@@ -62,6 +63,22 @@ class _LeadsScreenState extends State<LeadsScreen> {
   String _status = '';
   int _request = 0;
 
+  /// "Who is waiting on me": the enquirer spoke last. The one filter with
+  /// data behind it. Unread and Starred are not drawn: a filter that is
+  /// present and always empty teaches people the list is broken.
+  bool _unreplied = false;
+
+  /// Desktop layout 1: the lead whose thread is open beside the list. Null
+  /// means the first one, so the pane is never blank while there are leads.
+  String? _selectedId;
+
+  Map<String, dynamic>? get _selected {
+    for (final l in _leads) {
+      if (l['id'] == _selectedId) return l;
+    }
+    return _leads.isEmpty ? null : _leads.first;
+  }
+
   /// Ours, not the source's. The wire values, and what a person calls them.
   static const _statuses = <String, String>{
     '': 'All',
@@ -95,6 +112,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
     final response = await widget.api.get('/leads', {
       if (_status.isNotEmpty) 'status': _status,
+      if (_unreplied) 'unreplied': '1',
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
     });
 
@@ -295,46 +313,50 @@ class _LeadsScreenState extends State<LeadsScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _search,
-                  onSubmitted: (_) => _load(),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    prefixIcon: const Icon(Icons.search, size: 20),
-                    // Both, because somebody has one or the other in front of
-                    // them and should not have to know which the box wants.
-                    hintText: 'Search a name or phone number',
-                    border: const OutlineInputBorder(),
-                    suffixIcon: _search.text.isEmpty
-                        ? null
-                        : IconButton(
-                            icon: const Icon(Icons.close, size: 18),
-                            onPressed: () {
-                              _search.clear();
-                              _load();
-                            },
-                          ),
-                  ),
+          // One row on a desktop; on a phone the search takes the width and
+          // the two controls sit under it. Side by side they overflowed 375
+          // by 76 pixels, which the phone-width test found the day it existed.
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final search = TextField(
+                controller: _search,
+                onSubmitted: (_) => _load(),
+                decoration: InputDecoration(
+                  isDense: true,
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  // Both, because somebody has one or the other in front of
+                  // them and should not have to know which the box wants.
+                  hintText: 'Search a name or phone number',
+                  border: const OutlineInputBorder(),
+                  suffixIcon: _search.text.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.close, size: 18),
+                          onPressed: () {
+                            _search.clear();
+                            _load();
+                          },
+                        ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              DropdownButton<String>(
-                value: _status,
-                underline: const SizedBox.shrink(),
-                items: [
-                  for (final entry in _statuses.entries)
-                    DropdownMenuItem(value: entry.key, child: Text(entry.value)),
-                ],
-                onChanged: (value) {
-                  setState(() => _status = value ?? '');
-                  _load();
-                },
-              ),
-              const SizedBox(width: 12),
-              FilledButton.tonalIcon(
+              );
+              DropdownButton<String> status({required bool expanded}) =>
+                  DropdownButton<String>(
+                    value: _status,
+                    isExpanded: expanded,
+                    underline: const SizedBox.shrink(),
+                    items: [
+                      for (final entry in _statuses.entries)
+                        DropdownMenuItem(
+                          value: entry.key,
+                          child: Text(entry.value),
+                        ),
+                    ],
+                    onChanged: (value) {
+                      setState(() => _status = value ?? '');
+                      _load();
+                    },
+                  );
+              final fetch = FilledButton.tonalIcon(
                 onPressed: _syncing ? null : _sync,
                 icon: _syncing
                     ? const SizedBox(
@@ -344,8 +366,35 @@ class _LeadsScreenState extends State<LeadsScreen> {
                       )
                     : const Icon(Icons.sync, size: 18),
                 label: Text(_syncing ? 'Fetching…' : 'Fetch new'),
-              ),
-            ],
+              );
+
+              if (constraints.maxWidth < 600) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    search,
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(child: status(expanded: true)),
+                        const SizedBox(width: 12),
+                        fetch,
+                      ],
+                    ),
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(child: search),
+                  const SizedBox(width: 12),
+                  status(expanded: false),
+                  const SizedBox(width: 12),
+                  fetch,
+                ],
+              );
+            },
           ),
         ),
         // Desktop layout 1 / mobile layout 4: one row on the way to the leads,
@@ -378,16 +427,103 @@ class _LeadsScreenState extends State<LeadsScreen> {
               ],
             ),
           ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Wrap(
+            spacing: 8,
+            children: [
+              ChoiceChip(
+                label: const Text('All'),
+                selected: !_unreplied,
+                onSelected: (_) => _filterUnreplied(false),
+              ),
+              ChoiceChip(
+                label: const Text('Unreplied'),
+                selected: _unreplied,
+                onSelected: (_) => _filterUnreplied(true),
+              ),
+            ],
+          ),
+        ),
         const Divider(height: 1),
         Expanded(
           child: AsyncBody(
             loading: _loading,
             error: _error,
             onRetry: _load,
-            child: _leads.isEmpty ? _empty(theme) : _list(theme),
+            // Desktop layout 1 above 900: the list left, the whole thread
+            // beside it, so reading a conversation never costs anybody their
+            // place in the list. Mobile layout 4 below: the row states its
+            // value and tapping opens the thread full screen with a back bar.
+            child: _leads.isEmpty
+                ? _empty(theme)
+                : LayoutBuilder(
+                    builder: (context, constraints) =>
+                        constraints.maxWidth >= 900
+                        ? _twoPane(theme)
+                        : _list(theme, onTap: _openThread),
+                  ),
           ),
         ),
       ],
+    );
+  }
+
+  void _filterUnreplied(bool on) {
+    if (on == _unreplied) return;
+    setState(() => _unreplied = on);
+    _load();
+  }
+
+  Widget _twoPane(ThemeData theme) {
+    final selected = _selected;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: _list(
+            theme,
+            selectedId: selected?['id'] as String?,
+            onTap: (lead) =>
+                setState(() => _selectedId = lead['id'] as String?),
+          ),
+        ),
+        const VerticalDivider(width: 1),
+        Expanded(
+          child: selected == null
+              ? const SizedBox.shrink()
+              : LeadThread(
+                  // Keyed on the lead so picking another one fetches its
+                  // thread rather than keeping the last one's State.
+                  key: ValueKey('thread-${selected['id']}'),
+                  api: widget.api,
+                  lead: selected,
+                  onStatusChanged: (status) => _setStatus(selected, status),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _openThread(Map<String, dynamic> lead) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (routeContext) => Scaffold(
+          appBar: AppBar(title: Text(leadTitle(lead))),
+          body: LeadThread(
+            api: widget.api,
+            lead: lead,
+            // Deciding what a lead is ends the visit: back to the list, which
+            // reloads with the new status, rather than a stale dropdown on a
+            // screen holding the row as it was.
+            onStatusChanged: (status) async {
+              await _setStatus(lead, status);
+              if (routeContext.mounted) Navigator.of(routeContext).pop();
+            },
+          ),
+        ),
+      ),
     );
   }
 
@@ -511,7 +647,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              connected ? 'No enquiries yet' : 'No advertising account connected',
+              connected
+                  ? 'No enquiries yet'
+                  : 'No advertising account connected',
               style: theme.textTheme.titleMedium,
               textAlign: TextAlign.center,
             ),
@@ -560,7 +698,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
     );
   }
 
-  Widget _list(ThemeData theme) {
+  Widget _list(
+    ThemeData theme, {
+    String? selectedId,
+    required void Function(Map<String, dynamic> lead) onTap,
+  }) {
     return ListView.separated(
       itemCount: _leads.length + 1,
       separatorBuilder: (_, _) => const Divider(height: 1),
@@ -578,62 +720,168 @@ class _LeadsScreenState extends State<LeadsScreen> {
         }
 
         final lead = _leads[index];
-        final status = lead['status'] as String? ?? 'new';
 
-        return ListTile(
-          title: Text(
-            (lead['contact_name'] as String?)?.trim().isNotEmpty == true
-                ? lead['contact_name'] as String
-                // A lead with no name is still a lead; the number is what
-                // somebody would call back, so it takes the title.
-                : (lead['phone'] != null
-                      ? formatPhoneNumber(lead['phone'] as String?)
-                      : 'Unnamed enquiry'),
-          ),
-          subtitle: Text(
-            [
-              if ((lead['phone'] as String?)?.isNotEmpty == true)
-                formatPhoneNumber(lead['phone'] as String?),
-              if ((lead['category'] as String?)?.isNotEmpty == true)
-                (lead['category'] as String).replaceAll('_', ' '),
-              if (lead['received_at'] != null)
-                _when(lead['received_at'] as String),
-            ].join('  ·  '),
-            style: theme.textTheme.bodySmall,
-          ),
-          trailing: DropdownButton<String>(
-            value: status,
-            underline: const SizedBox.shrink(),
-            items: [
-              for (final entry in _statuses.entries)
-                if (entry.key.isNotEmpty)
-                  DropdownMenuItem(
-                    value: entry.key,
-                    child: Text(entry.value),
-                  ),
-            ],
-            onChanged: (value) {
-              if (value != null && value != status) _setStatus(lead, value);
-            },
-          ),
+        return _row(
+          theme,
+          lead,
+          selected: selectedId != null && lead['id'] == selectedId,
+          onTap: () => onTap(lead),
         );
       },
     );
   }
 
-  /// Relative for anything recent, absolute once it stops being "today".
-  String _when(String iso) {
-    final at = DateTime.tryParse(iso)?.toLocal();
-    if (at == null) return '';
+  /// Name · Call/Text badge · the last line said · a dot when they spoke last.
+  ///
+  /// The dot is on the LEFT, where an eye or a thumb scanning a column passes
+  /// first, not on the right with the timestamp. When the business sent last
+  /// the preview is prefixed "You:". Before anything has been said the second
+  /// line is the number and the service, never the category (see
+  /// [leadHeaderLine] for why).
+  Widget _row(
+    ThemeData theme,
+    Map<String, dynamic> lead, {
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final id = lead['id'];
+    final from = lead['last_contact_from'] as String?;
+    final unreplied = from == 'CONSUMER';
+    final mine = from == 'ADVERTISER';
+    final channel = lead['last_contact_channel'] as String?;
+    final preview = lead['last_contact_preview'] as String?;
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
 
-    final ago = DateTime.now().difference(at);
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        color: selected
+            ? theme.colorScheme.primary.withValues(alpha: 0.08)
+            : null,
+        padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: SizedBox(
+                width: 8,
+                height: 8,
+                child: unreplied
+                    ? DecoratedBox(
+                        key: ValueKey('unreplied-$id'),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary,
+                          shape: BoxShape.circle,
+                        ),
+                      )
+                    : null,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          leadTitle(lead),
+                          style: theme.textTheme.titleSmall,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (channel != null) ...[
+                        const SizedBox(width: 8),
+                        _Badge(
+                          channelWord(channel),
+                          call: channel == 'PHONE_CALL',
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  if (preview != null && preview.isNotEmpty)
+                    Text.rich(
+                      TextSpan(
+                        children: [
+                          if (mine)
+                            TextSpan(
+                              text: 'You: ',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: theme.colorScheme.onSurface,
+                              ),
+                            ),
+                          TextSpan(text: preview),
+                        ],
+                      ),
+                      style: muted,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    )
+                  else
+                    Text(
+                      [
+                        if ((lead['phone'] as String?)?.isNotEmpty == true &&
+                            (lead['contact_name'] as String?)
+                                    ?.trim()
+                                    .isNotEmpty ==
+                                true)
+                          formatPhoneNumber(lead['phone'] as String?),
+                        ?humaniseService(lead['service'] as String?),
+                      ].join(' · '),
+                      style: muted,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              leadWhen(
+                (lead['last_contact_at'] ?? lead['received_at']) as String?,
+              ),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
-    if (ago.inMinutes < 1) return 'just now';
-    if (ago.inMinutes < 60) return '${ago.inMinutes}m ago';
-    if (ago.inHours < 24) return '${ago.inHours}h ago';
-    if (ago.inDays < 7) return '${ago.inDays}d ago';
+/// "Call" or "Text". Never PHONE_CALL, never "LS Ads".
+class _Badge extends StatelessWidget {
+  const _Badge(this.text, {required this.call});
 
-    return '${at.year}-${at.month.toString().padLeft(2, '0')}-'
-        '${at.day.toString().padLeft(2, '0')}';
+  final String text;
+  final bool call;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: call ? scheme.primaryContainer : scheme.tertiaryContainer,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        text,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: call ? scheme.onPrimaryContainer : scheme.onTertiaryContainer,
+        ),
+      ),
+    );
   }
 }

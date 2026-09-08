@@ -75,7 +75,7 @@ class LeadConversationsTest extends TestCase
 
         return [
             $lead + ['localServicesLeadConversation' => [
-                'id'                  => 'c-call',
+                'id'                  => "c-call-{$leadId}",
                 'lead'                => $on,
                 'conversationChannel' => 'PHONE_CALL',
                 'participantType'     => 'CONSUMER',
@@ -83,7 +83,7 @@ class LeadConversationsTest extends TestCase
                 'phoneCallDetails'    => ['callDurationMillis' => '125000', 'callRecordingUrl' => self::RECORDING],
             ]],
             $lead + ['localServicesLeadConversation' => [
-                'id'                  => 'c-msg-in',
+                'id'                  => "c-msg-in-{$leadId}",
                 'lead'                => $on,
                 'conversationChannel' => 'MESSAGE',
                 'participantType'     => 'CONSUMER',
@@ -94,7 +94,7 @@ class LeadConversationsTest extends TestCase
                 ],
             ]],
             $lead + ['localServicesLeadConversation' => [
-                'id'                  => 'c-msg-out',
+                'id'                  => "c-msg-out-{$leadId}",
                 'lead'                => $on,
                 'conversationChannel' => 'MESSAGE',
                 'participantType'     => 'ADVERTISER',
@@ -175,13 +175,13 @@ class LeadConversationsTest extends TestCase
         $thread = $this->inTenant($t['org'], fn () => $lead->conversations()->get());
         $this->assertCount(3, $thread);
 
-        $call = $thread->firstWhere('remote_id', 'c-call');
+        $call = $thread->firstWhere('remote_id', 'c-call-111');
         $this->assertSame('PHONE_CALL', $call->channel);
         $this->assertSame('CONSUMER', $call->participant);
         $this->assertSame(125000, $call->duration_ms);
         $this->assertSame(self::RECORDING, $call->recording_url);
 
-        $in = $thread->firstWhere('remote_id', 'c-msg-in');
+        $in = $thread->firstWhere('remote_id', 'c-msg-in-111');
         $this->assertSame("Is Saturday ok?\nHere is the chimney.", $in->text);
         $this->assertSame(['https://lh3.google.example/photo1.jpg'], $in->attachments);
 
@@ -325,5 +325,31 @@ class LeadConversationsTest extends TestCase
         $this->signedInAs($t['admin'])
             ->get("/api/v1/leads/{$lead->id}/conversations/{$message['id']}/recording")
             ->assertNotFound();
+    }
+
+    /** "Who is waiting on me": the enquirer spoke last. The one filter drawn. */
+    public function test_unreplied_lists_only_leads_where_the_enquirer_spoke_last(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $connection = $this->connected($t);
+
+        $answered = $this->threadRows('111');                 // ends with ADVERTISER
+        $waiting  = array_slice($this->threadRows('222'), 0, 2); // ends with CONSUMER
+
+        $this->fakeGoogle(
+            [$this->leadRow('111', 'Answered'), $this->leadRow('222', 'Waiting')],
+            [...$answered, ...$waiting],
+        );
+        $this->sync($t, $connection);
+
+        $names = $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/leads?unreplied=1')
+            ->assertOk()
+            ->json('data.*.contact_name');
+
+        $this->assertSame(['Waiting'], $names);
+
+        $all = $this->signedInAs($t['admin'])->getJson('/api/v1/leads')->assertOk()->json('data');
+        $this->assertCount(2, $all);
     }
 }
