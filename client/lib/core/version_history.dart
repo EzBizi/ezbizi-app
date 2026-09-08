@@ -19,6 +19,7 @@ class VersionHistory {
         'Web Management: SEO has a Social links section - Facebook, Instagram, YouTube, Twitter / X, LinkedIn, TikTok, Yelp, Google Business, Pinterest, BBB, Nextdoor, Houzz, Angi, Thumbtack and HomeAdvisor, each with its own shortcode.',
         'Web Management: a social link follows the primary website like every other detail, and setting one on a branch site overrides just that one link.',
         'Web Management: the address has a Full address box now. Start typing, pick the match, and the street, city, state and ZIP fill themselves - the same lookup Settings has had, on the screen that was still typing all five by hand.',
+        'Leads: a Thumbtack enquiry now arrives as a lead, with the customer and the conversation on it. Until now a connected Thumbtack account received the enquiries and the Thumbtack tab stayed empty.',
       ],
     ),
     VersionRelease(
