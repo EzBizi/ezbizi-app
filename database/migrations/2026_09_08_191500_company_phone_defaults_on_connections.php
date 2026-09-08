@@ -32,13 +32,21 @@ use Illuminate\Support\Facades\Schema;
  * number and not another. What changes is that an unset column now inherits
  * instead of meaning "nothing".
  *
- * ── The wipe ─────────────────────────────────────────────────────
+ * ── Seed, then clear ─────────────────────────────────────────────
  *
- * Every per-number value except `ring_group_id` is cleared, so the company
- * default is what answers from here. Jose's call, and there are no customers
- * on this system: preserving seven rows nobody has looked at, as explicit
- * overrides of a default they predate, would leave every line quietly
- * exempted from the screen meant to govern it.
+ * The per-number values are lifted into the company default first, and only
+ * then cleared — so nothing a company had set stops working the moment this
+ * runs. Where the lines DISAGREE the default is left unset, because picking
+ * one of two answers somebody chose on purpose would route calls somewhere
+ * nobody decided; an unset default is visible on the General screen, a wrong
+ * one is not.
+ *
+ * The first draft cleared without seeding. That read as harmless while the
+ * columns looked mostly empty, and was not: on this account all seven lines
+ * have `record` on and one carries the only IVR menu in the business, so it
+ * would have switched off call recording everywhere and dropped the menu,
+ * with a caller the first to know. The suite was 221/221 either way — the
+ * code was never the problem.
  */
 return new class extends Migration
 {
@@ -73,9 +81,70 @@ return new class extends Migration
             return;
         }
 
-        // Clear the per-line copies so the company default is what answers.
-        // ring_group_id is deliberately left alone: a group claims a specific
-        // line, and wiping that would silently unassign every ring group.
+        // SEED FIRST, then clear.
+        //
+        // The first draft of this nulled the per-number settings and copied
+        // nothing, which reads as harmless when the columns are mostly empty
+        // and is not. Measured on production before cutting: all seven lines
+        // have `record` on, and one carries the only IVR menu in the business.
+        // Nulling without seeding would have switched off call recording
+        // everywhere — a consent setting, not a convenience — and dropped the
+        // menu, and a caller would have been the first to know.
+        //
+        // Caught by the deploy desk reading the migration against real rows
+        // rather than against the test schema. The suite was 221/221 either
+        // way: the code was never the problem, the data was.
+        foreach (DB::table('phone_connections')->pluck('id') as $connectionId) {
+            $lines = DB::table('phone_numbers')
+                ->where('connection_id', $connectionId)
+                ->get();
+
+            if ($lines->isEmpty()) {
+                continue;
+            }
+
+            $defaults = [];
+
+            foreach (self::DEFAULTS as $default => $own) {
+                // Only where every line that has an opinion agrees.
+                //
+                // Two lines answering differently is a decision somebody made,
+                // and picking one of them to become the company's would route
+                // calls somewhere nobody chose. Those stay unset and General
+                // says so — an unset default is visible; a wrong one is not.
+                $values = $lines->pluck($own)
+                    ->reject(fn ($value) => $value === null || $value === ''
+                        || $value === 'voicemail')
+                    ->unique()
+                    ->values();
+
+                if ($values->count() === 1) {
+                    $defaults[$default] = $values->first();
+                }
+            }
+
+            // Booleans the same way, and deliberately NOT "any line had it on".
+            // Turning recording on for a line somebody had switched it off for
+            // is the one direction that cannot be undone after the fact.
+            foreach (['record', 'transcribe'] as $flag) {
+                $values = $lines->pluck($flag)->map(fn ($v) => (bool) $v)->unique();
+
+                if ($values->count() === 1) {
+                    $defaults['default_'.$flag] = $values->first();
+                }
+            }
+
+            if ($defaults !== []) {
+                DB::table('phone_connections')
+                    ->where('id', $connectionId)
+                    ->update($defaults);
+            }
+        }
+
+        // Now clear the per-line copies, so the company default is what
+        // answers. ring_group_id is deliberately untouched: a group claims a
+        // specific line through "Lines it answers", and wiping that would
+        // silently unassign every ring group.
         DB::table('phone_numbers')->update([
             'flow_id' => null,
             'hours_schedule_id' => null,
