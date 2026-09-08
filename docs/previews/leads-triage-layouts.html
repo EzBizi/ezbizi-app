@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi — Leads › read, star, note</title>
+<style>
+  :root{--primary:#00708f;--onPrimary:#fff;--primaryC:#c6e7ff;--onPrimaryC:#004c6b;
+    --secondaryC:#d2e5f4;--onSecondaryC:#004c6b;--surface:#fff;--low:#f0f4f8;--high:#dfe3e7;
+    --outline:#c1c7ce;--ink:#060808;--muted:#5B6672;--warn:#B5730B;--warnC:#FFF4D6;--errC:#FDECEC;
+    --okC:#E5F6EE;--ok:#0B8F5B;--infoC:#E6F7FD;}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#DDE3E8;color:var(--ink);font:14px/1.45 system-ui,"Segoe UI",sans-serif}
+  button{font:inherit;cursor:pointer}
+  .app{max-width:1320px;margin:0 auto;padding:16px 16px 64px}
+  header.picker{background:#fff;border:1px solid #E9EDF1;border-radius:12px;padding:16px 20px;margin-bottom:16px}
+  header.picker h1{font-size:18px;margin:0 0 4px}
+  header.picker>p{margin:0 0 12px;color:var(--muted);max-width:88ch}
+  .locked,.ask,.found{font-size:13px;border-radius:8px;padding:10px 12px;margin-bottom:12px;max-width:96ch}
+  .locked{background:var(--infoC)}.ask{background:var(--warnC)}.found{background:var(--errC)}
+  .locked strong,.ask strong,.found strong{display:block;margin-bottom:5px}
+  .locked strong{color:var(--primary)}.ask strong{color:var(--warn)}.found strong{color:#A33}
+  .brk{display:block;margin-top:8px;font-weight:700}
+  code{background:rgba(0,0,0,.06);padding:1px 5px;border-radius:4px;font-size:12px}
+  table.m{border-collapse:collapse;font-size:12px;margin:9px 0 2px}
+  table.m th,table.m td{border:1px solid rgba(0,0,0,.13);padding:4px 9px;text-align:left}
+  table.m th{background:rgba(0,0,0,.05)}
+  .nums{display:flex;flex-wrap:wrap;gap:8px}
+  .nums button{min-width:44px;min-height:44px;border-radius:8px;padding:0 12px;
+    border:1px solid #E9EDF1;background:#fff;color:var(--ink)}
+  .nums button[aria-pressed="true"]{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .nums .sep{width:1px;background:#E9EDF1;margin:2px 4px}
+  .caption{margin-top:12px;padding-top:12px;border-top:1px solid #E9EDF1;max-width:94ch}
+  .caption strong{display:block;margin-bottom:4px}
+  .win{border:1px solid #E9EDF1;border-radius:12px;overflow:hidden;background:#fff;margin-bottom:14px}
+  .cap{font-size:12px;color:var(--muted);padding:7px 12px;background:#F5F8FA;
+    border-bottom:1px solid #E9EDF1;font-weight:600}
+  .measure{font-size:12px;color:var(--muted);padding:9px 14px 14px}
+  .measure b{color:var(--ink)}
+
+  .two{display:grid;grid-template-columns:340px 1fr;min-height:430px}
+  .lcol{border-right:1px solid var(--outline);display:flex;flex-direction:column;min-width:0}
+  .lhead{display:flex;gap:8px;padding:9px 12px;border-bottom:1px solid var(--outline);
+    align-items:center;flex-wrap:wrap}
+  .chip{padding:4px 11px;border-radius:999px;border:1px solid var(--outline);font-size:12px;color:var(--muted)}
+  .chip.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .markall{margin-left:auto;font-size:12px;color:var(--primary);font-weight:600}
+
+  .lead{display:flex;gap:9px;padding:10px 12px;border-bottom:1px solid var(--outline);align-items:flex-start}
+  .lead.sel{background:var(--primaryC);color:var(--onPrimaryC)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--primary);flex:none;margin-top:6px}
+  .dot.off{background:transparent}
+  .lead .g{flex:1;min-width:0}
+  .nm{font-size:13px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-weight:500}
+  .nm.unread{font-weight:800}
+  .prev{font-size:11.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .prev.unread{color:var(--ink);font-weight:600}
+  .badge{font-size:9.5px;font-weight:700;border-radius:4px;padding:1px 5px}
+  .b-call{background:var(--primaryC);color:var(--onPrimaryC)}
+  .b-text{background:var(--secondaryC);color:var(--onSecondaryC)}
+  .star{flex:none;font-size:14px;color:var(--outline);margin-top:3px}
+  .star.on{color:var(--warn)}
+  .tint{background:var(--low)}
+  .pill{font-size:9.5px;font-weight:700;border-radius:999px;padding:1px 7px;
+    background:var(--primary);color:#fff}
+
+  .thread{display:flex;flex-direction:column;min-width:0}
+  .thead{padding:11px 14px;border-bottom:1px solid var(--outline)}
+  .thead .r1{display:flex;gap:10px;align-items:center}
+  .thead h3{margin:0;font-size:15px;flex:1}
+  .thead p{margin:2px 0 0;color:var(--muted);font-size:12px}
+  .note{margin-top:9px;background:var(--warnC);border-radius:8px;padding:7px 10px;font-size:12.5px;
+    display:flex;gap:8px;align-items:flex-start}
+  .note .k{font-weight:700;color:var(--warn);flex:none}
+  .note .v{flex:1}
+  .note .e{color:var(--primary);font-weight:600;font-size:11.5px;flex:none}
+  .noteEmpty{margin-top:9px;font-size:12px;color:var(--muted)}
+  .tbody{padding:12px;background:var(--low);flex:1}
+  .msg{max-width:80%;padding:7px 10px;border-radius:12px;font-size:12.5px;margin-bottom:7px}
+  .them{background:var(--surface);border:1px solid var(--outline)}
+  .ours{background:var(--primary);color:var(--onPrimary);margin-left:auto}
+
+  .phones{display:flex;gap:18px;flex-wrap:wrap;justify-content:center}
+  .phone{width:352px;border:7px solid var(--ink);border-radius:24px;overflow:hidden;height:500px;
+    display:flex;flex-direction:column;background:#fff}
+  .pbar{padding:0 12px;height:42px;display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;
+    border-bottom:1px solid var(--outline)}
+  .sc{overflow:auto;flex:1}
+  .nt{color:var(--muted);font-size:12.5px;margin:8px 0 0;max-width:94ch}
+  .nt b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>Leads &rsaquo; read marks, star, note</h1>
+    <p>Six numbered layouts: <b>1&ndash;3 desktop, 4&ndash;6 mobile</b>. Drawn on the approved
+      layouts (desktop 1 / mobile 4) in the approved colour direction (3 / 6).</p>
+
+    <div class="found">
+      <strong>The whole problem in one sentence: three marks, and the dot is taken</strong>
+      A row now has to say <b>three independent things</b> at once, and any of the eight combinations
+      can occur:
+      <table class="m">
+        <tr><th>Mark</th><th>Whose</th><th>Means</th></tr>
+        <tr><td><b>unread</b></td><td>yours alone</td><td>you have not opened it since the last message</td></tr>
+        <tr><td><b>unreplied</b></td><td>everyone's</td><td>they spoke last — <b>already the dot</b></td></tr>
+        <tr><td><b>starred</b></td><td>everyone's</td><td>somebody marked it</td></tr>
+      </table>
+      A second dot is not available, and neither is a coloured bar down the leading edge.
+      <span class="brk">So the answer is to use a different CHANNEL, not a second badge.</span>
+      Unread becomes <b>weight</b> — the name and the preview go bold. It is the convention every
+      mail client has taught for thirty years, it costs no width at all, it cannot be mistaken for
+      the dot, and it composes: a row can be bold AND dotted AND starred and still read as three
+      separate facts rather than as clutter. Layouts 2 and 3 spend a badge and a tint on it instead
+      so the comparison is visible rather than asserted.
+    </div>
+
+    <div class="locked">
+      <strong>Verified on main before drawing — all of it is already there</strong>
+      <code>2026_09_08_233000_add_triage_marks_to_leads.php</code> adds <code>starred_at</code>,
+      <code>note</code> and the <code>lead_reads</code> table. The list joins
+      <code>lead_reads.read_at</code> and computes <code>is_unread</code> as <em>no mark, or a
+      message newer than the mark</em>. Routes exist for <code>POST leads/{id}/read</code>,
+      <code>POST leads/read-all</code> and <code>PATCH leads/{id}</code>.
+      <span class="brk">Unread and Starred come off the struck-through list.</span>
+      All three filters have data behind them now, so all three are drawn. They are independent
+      toggles that <b>narrow together</b>: Unread + Starred means both, not either. That is the only
+      reading that makes "starred things I have not read" expressible, which is the one combination
+      somebody actually wants.
+    </div>
+
+    <div class="ask">
+      <strong>A gap in the note, and it is worth deciding before it ships</strong>
+      The migration says star and note are <em>&ldquo;facts about the lead, shared by everybody who
+      can see it&rdquo;</em>, and <code>note</code> is a single <code>text</code> column with
+      <b>no author and no timestamp</b>.
+      <span class="brk">So a note reads &ldquo;Called back, no answer&rdquo; and cannot say who or
+      when.</span>
+      Two people can also overwrite each other silently — last write wins, with nothing on screen to
+      show it happened. At one user that is invisible; A-1 Chimney has several.
+      <b>Every layout below therefore shows the note as ONE shared line, not as a conversation</b>,
+      and none of them pretends to attribute it. If Jose wants "Maya, 2h ago" the field needs an
+      author and an edited-at, which is a small change to the Leads module — I have not asked for it
+      because a shared scratchpad may be exactly what he means. Worth one sentence from him.
+    </div>
+
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+  <div id="stage"></div>
+</div>
+
+<script>
+// [name, badge, unreplied, unread, starred, preview]
+const LEADS=[
+ ['Marcus Bell','Call',1,1,1,'Call · 4:32'],
+ ['Dana Whitfield','Text',1,1,0,'Can you come out Thursday morning?'],
+ ['R. Okonkwo','Text',0,0,1,'You: Booked for the 14th.'],
+ ['Priya Raman','Call',0,0,0,'Call · 1:08'],
+ ['+1 (513) 226-7716','Text',1,0,0,'Do you do chimney liners?']];
+
+const star=(on)=>`<span class="star ${on?'on':''}">${on?'&#9733;':'&#9734;'}</span>`;
+
+// v1 weight · v2 a NEW pill · v3 a tint
+const row=(l,v,sel)=>{
+  const unread=l[3];
+  const tint = v===3&&unread ? ' tint' : '';
+  return `<div class="lead${sel?' sel':''}${tint}">
+    <span class="dot ${l[2]?'':'off'}"></span>
+    <div class="g">
+      <div class="nm${v===1&&unread?' unread':''}">${l[0]}
+        <span class="badge ${l[1]==='Call'?'b-call':'b-text'}">${l[1]}</span>
+        ${v===2&&unread?'<span class="pill">NEW</span>':''}</div>
+      <div class="prev${v===1&&unread?' unread':''}">${l[5]}</div></div>
+    ${star(l[4])}</div>`;
+};
+
+const head=(v)=>`<div class="lhead">
+  <span class="chip on">All</span><span class="chip">Unread</span>
+  <span class="chip">Unreplied</span><span class="chip">Starred</span>
+  <span class="markall">Mark all read</span></div>`;
+
+const noteBlock=(empty)=>empty
+  ? `<div class="noteEmpty">&#9998; Add a note</div>`
+  : `<div class="note"><span class="k">Note</span>
+      <span class="v">Wants a quote before Friday. Called back once, no answer.</span>
+      <span class="e">Edit</span></div>`;
+
+const thread=(empty)=>`<div class="thread">
+  <div class="thead"><div class="r1">
+      <h3>Marcus Bell</h3>${star(1)}</div>
+    <p>Fireplace chimney · Google Ads · Connecticut</p>
+    ${noteBlock(empty)}</div>
+  <div class="tbody">
+    <div class="msg them">Is the fireplace inspection something you do?</div>
+    <div class="msg ours">We do. What is the address?</div>
+    <div class="msg them">14 Ash Lane.</div></div></div>`;
+
+const D=(n,v,measure,empty)=>`<div class="win"><div class="cap">Layout ${n}</div>
+  <div class="two"><div class="lcol">${head(v)}${LEADS.map((l,i)=>row(l,v,i===0)).join('')}</div>
+  ${thread(empty)}</div></div><div class="measure">${measure}</div>`;
+
+const P=(v,inner)=>`<div class="phone">${inner}</div>`;
+const M=(n,v,measure)=>`<div class="phones">
+  ${P(v,`<div class="pbar">&#9776; Leads</div>${head(v)}<div class="sc">${LEADS.map(l=>row(l,v,false)).join('')}</div>`)}
+  ${P(v,`<div class="pbar">&#8249; Marcus Bell <span style="flex:1"></span>&#9733;</div>
+    <div class="sc">${thread(false).replace('<div class="thread">','<div>')}</div>`)}
+</div><p class="nt" style="text-align:center">${measure}</p>`;
+
+const CAPTIONS={
+ 1:["1 · Desktop — unread is WEIGHT, star on the right (recommended)",
+    "The name and the preview go bold when you have not seen it; the dot stays exactly what it was; the star sits at the row's right, hollow until set. Three marks in three different channels, so all eight combinations read cleanly and none of them competes for the same spot. Recommended because bold-means-unread is the one convention in this whole screen that nobody has to be taught, it costs no width on a list that is already 340px, and it survives the selected row — a bold name on a primaryContainer fill is still bold, where a tint under a fill is nothing. The note sits in the thread header as one shared line with Edit in place, and Mark all read is at the top of the list where a1tools puts it."],
+ 2:["2 · Desktop — unread is a NEW pill beside the name",
+    "Explicit, and impossible to misread: a small filled pill saying NEW. It is also the most honest about being a second badge — the row now carries a dot, a channel badge, a NEW pill and a star, four marks in a 340px column, and the two that matter most are the two that look most alike. Weakness beyond crowding: a pill is the same visual family as the Call/Text badge sitting next to it, so the eye has to read them to tell them apart, which is exactly what a mark is supposed to save you."],
+ 3:["3 · Desktop — unread is a tinted row",
+    "The whole row takes a pale fill when unread, which is the quietest of the three and reads well down a long list. Weakness, and it is decisive: the SELECTED row is already a primaryContainer fill, and the approved colour direction spends fills on meaning elsewhere — so an unread row that is also selected has two fills fighting, and the one that wins is the one drawn last rather than the one that matters. Drawn so the collision is visible in the top row rather than argued."],
+ 4:["4 · Mobile — unread is weight (recommended)",
+    "The same three channels at 352px, and weight earns its place harder here than on a desktop: a phone row has no spare width for a fourth mark, and bold costs none. The star is still tappable at the row's right — 44px of target even though the glyph is 14 — and the thread header carries the star and the note above the messages."],
+ 5:["5 · Mobile — the NEW pill at 352px",
+    "The same explicitness, and the same crowding one size worse. On a phone the preview line is already truncating; a pill takes width from the one part of the row carrying actual information about what was said."],
+ 6:["6 · Mobile — the tinted unread row at 352px",
+    "Quiet and scannable on a phone, where you see fewer rows at once so a tint is easier to read as a group. The same collision with the selected fill, though a phone list has no persistent selection — so this is the layout whose weakness is smallest on mobile and largest on desktop, which is a reason to be suspicious of picking it for one and not the other."]
+};
+
+const L={
+ 1:()=>D(1,1,'Bold name and bold preview. The top row is <b>unread, unreplied and starred at once</b> — all three readable without any of them being explained. That combination is the test: it is the one a1tools cannot draw, because it puts pin and star in the same right-hand slot.'),
+ 2:()=>D(2,2,'Count the marks on the top row: dot, Call badge, NEW pill, star. <b>Four</b>, in 340px, and the NEW pill sits directly beside the Call badge it most resembles.'),
+ 3:()=>D(3,3,'The top row is selected AND unread, so the primaryContainer fill and the unread tint are both asking for the same background. Whichever wins, one of the two facts stops being visible.'),
+ 4:()=>M(4,1,'No width spent, and the star keeps a 44px target at a 14px glyph.'),
+ 5:()=>M(5,2,'The pill takes its width from the preview, which is the only part of the row saying what was actually said.'),
+ 6:()=>M(6,3,'Easiest to read on a phone and hardest to justify on a desktop — a reason not to split the answer.')
+};
+
+const nums=document.getElementById('nums'),stage=document.getElementById('stage'),
+      caption=document.getElementById('caption');
+Object.keys(L).forEach((k,i)=>{
+  if(i===3){const s=document.createElement('div');s.className='sep';nums.appendChild(s);}
+  const b=document.createElement('button');
+  b.textContent=(i<3?'Desktop ':'Mobile ')+k;b.dataset.k=k;b.onclick=()=>show(k);nums.appendChild(b);});
+function show(k){
+  [...nums.querySelectorAll('button')].forEach(b=>b.setAttribute('aria-pressed',b.dataset.k===String(k)));
+  caption.innerHTML='<strong>'+CAPTIONS[k][0]+'</strong>'+CAPTIONS[k][1];
+  stage.innerHTML=L[k]();
+  window.scrollTo({top:0,behavior:'smooth'});}
+show(1);
+</script>
+</body>
+</html>
