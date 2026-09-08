@@ -73,6 +73,66 @@ class SocialConnectionsController extends Controller
     }
 
     /**
+     * PATCH /api/v1/social/connections/{connection}/label
+     *
+     * Name an account, because nobody remembers what the numbers mean.
+     *
+     * `display_name` is Google's — `405-172-9356` — and stays untouched: it is
+     * how somebody cross-checks a row against the advertising account behind
+     * it. This is the name a person chose, stored beside it. Twenty-two
+     * numbered rows is the actual complaint the Leads accounts list exists to
+     * answer, and a count tells them apart only while their counts differ.
+     *
+     * Blank input clears the name rather than storing an empty string, so
+     * "unnamed" has exactly one representation and the screen never has to
+     * decide whether '' means anything.
+     */
+    public function rename(Request $request, string $connection): JsonResponse
+    {
+        $user = $request->user();
+
+        $row = SocialConnection::query()->find($connection);
+
+        abort_if(
+            $row === null || ! $this->access->inView($user, $row),
+            Status::HTTP_NOT_FOUND,
+        );
+
+        // The same gate as connecting, disconnecting and placing: the module
+        // that reads the account decides what it is called.
+        $provider = SocialProvider::tryFrom($row->provider);
+
+        abort_unless(
+            $user->hasPermission($provider?->connectPermission() ?? 'marketing.edit'),
+            Status::HTTP_FORBIDDEN,
+            Refusal::permission('rename a connected account')->message(),
+        );
+
+        $input = $request->validate([
+            'label' => ['present', 'nullable', 'string', 'max:80'],
+        ]);
+
+        $label  = trim((string) ($input['label'] ?? '')) ?: null;
+        $before = $row->label;
+
+        if ($before === $label) {
+            return response()->json(['data' => $this->placement($row)]);
+        }
+
+        DB::transaction(function () use ($row, $label, $before) {
+            $row->forceFill(['label' => $label])->save();
+
+            $this->audit->log('social.renamed', $row, [
+                'provider' => $row->provider,
+                'before'   => $before,
+                'after'    => $label,
+            ]);
+        });
+
+        return response()->json(['data' => $this->placement($row->fresh())]);
+    }
+
+    /**
      * PATCH /api/v1/social/connections/{connection}/leads-franchise
      *
      * Which franchise owns the enquiries this account produces.
@@ -191,6 +251,11 @@ class SocialConnectionsController extends Controller
             'id'                 => $row->getKey(),
             'provider'           => $row->provider,
             'display_name'       => $row->display_name,
+
+            // The chosen name, null when nobody has set one. Kept separate
+            // from display_name so the screen can show one and cross-check
+            // against the other.
+            'label'              => $row->label,
             'leads_franchise_id' => $row->leads_franchise_id,
 
             // Null when nothing changed, 0 when a placement moved no leads.

@@ -77,6 +77,75 @@ class LeadPlacementAndScheduledSyncTest extends TestCase
         );
     }
 
+    private function rename(array $t, SocialConnection $c, ?string $label)
+    {
+        return $this->signedInAs($t['admin'])->patchJson(
+            "/api/v1/social/connections/{$c->getKey()}/label",
+            ['label' => $label],
+        );
+    }
+
+    public function test_an_account_can_be_named_and_the_name_reaches_the_leads_screen(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $c = $this->connection($t);
+
+        $this->rename($t, $c, 'Connecticut')->assertOk()->assertJsonPath('data.label', 'Connecticut');
+
+        $row = $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/leads')
+            ->assertOk()
+            ->json('meta.connections.0');
+
+        // The name a person chose, beside the number Google gave. Both, because
+        // the label is how you find the row and display_name is how you check
+        // it against the account in Google Ads.
+        $this->assertSame('Connecticut', $row['label']);
+        $this->assertSame('4051729356', $row['display_name']);
+    }
+
+    public function test_an_unnamed_account_reports_null_rather_than_an_empty_string(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $this->connection($t);
+
+        $row = $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/leads')
+            ->assertOk()
+            ->json('meta.connections.0');
+
+        $this->assertNull($row['label']);
+    }
+
+    public function test_a_blank_name_clears_it_instead_of_storing_an_empty_string(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $c = $this->connection($t);
+
+        $this->rename($t, $c, 'Connecticut')->assertOk();
+
+        // "Unnamed" must have exactly one representation, or the screen has to
+        // decide what '' means every time it draws a row.
+        $this->rename($t, $c, '   ')->assertOk()->assertJsonPath('data.label', null);
+
+        $this->assertNull($this->inTenant($t['org'], fn () => $c->fresh()->label));
+        $this->assertDatabaseHas('audit_events', ['action' => 'social.renamed']);
+    }
+
+    public function test_naming_answers_to_the_module_that_reads_the_account(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $c = $this->connection($t);
+
+        // Same gate as connecting, disconnecting and placing. Marketing alone
+        // must not rename an account it is deliberately kept away from.
+        $poster = $this->userWithRole($t, 'Poster', ['marketing.view', 'marketing.edit']);
+
+        $this->signedInAs($poster)
+            ->patchJson("/api/v1/social/connections/{$c->getKey()}/label", ['label' => 'Mine now'])
+            ->assertForbidden();
+    }
+
     public function test_the_connections_payload_carries_placement_and_a_lead_count(): void
     {
         $t = $this->provisionTenant('A1-Chimney');

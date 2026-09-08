@@ -46,7 +46,7 @@ class SocialConnection extends Model implements HoldsSensitiveValues, StatesRete
 
     protected $fillable = [
         'organization_id', 'scope_type', 'scope_id',
-        'provider', 'remote_id', 'display_name', 'handle',
+        'provider', 'remote_id', 'display_name', 'handle', 'label',
         'leads_franchise_id',
     ];
 

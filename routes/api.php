@@ -966,6 +966,7 @@ Route::prefix('v1')
         Route::get('social/posts', [SocialPostsController::class, 'index']);
         Route::post('social/posts', [SocialPostsController::class, 'store']);
         Route::patch('social/connections/{connection}/leads-franchise', [SocialConnectionsController::class, 'placeLeads']);
+        Route::patch('social/connections/{connection}/label', [SocialConnectionsController::class, 'rename']);
         Route::delete('social/connections/{connection}', [SocialConnectionsController::class, 'destroy']);
         Route::post('social/bluesky/connect', [BlueskyConnectController::class, 'store']);
         Route::post('social/{network}/start', [SocialAuthController::class, 'start'])

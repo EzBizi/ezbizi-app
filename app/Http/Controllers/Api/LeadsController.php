@@ -311,6 +311,11 @@ class LeadsController extends Controller
                 'id'                   => $c->getKey(),
                 'provider'             => $c->provider,
                 'display_name'         => $c->display_name,
+
+                // What a person called it, or null. The screen shows this when
+                // set and display_name when not — twenty-two numbers are not
+                // something anybody remembers the meaning of.
+                'label'                => $c->label,
                 'status'               => $c->status,
                 'leads_franchise_id'   => $c->leads_franchise_id,
                 'leads_franchise_name' => $c->leads_franchise_id === null
