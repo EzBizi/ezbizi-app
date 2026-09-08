@@ -12,6 +12,7 @@ class VersionHistory {
       date: '8 Sep 2026',
       items: [
         'Thumbtack: a connected account now receives its enquiries. Connecting used to succeed without telling Thumbtack where to send them, so nothing ever arrived. An account connected before this update needs disconnecting and connecting again once.',
+        'Disconnecting a Thumbtack account now clears up properly on Thumbtack too: it removes the phone numbers EzBizi registered, deletes the webhook and revokes EzBizi\'s access. Before, it only forgot the account at this end.',
       ],
     ),
     VersionRelease(
