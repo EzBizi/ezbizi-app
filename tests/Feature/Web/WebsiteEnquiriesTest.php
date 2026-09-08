@@ -7,8 +7,10 @@ use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\WebChat;
 use App\Models\WebSite;
+use App\Support\Leads\LeadReplies;
 use App\Support\Web\WebsiteEnquiries;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -296,6 +298,85 @@ class WebsiteEnquiriesTest extends TestCase
         $this->assertContains('website.chat_started', $events);
     }
 
+    // ── replying from the Leads thread ──────────────────────────────
+
+    /**
+     * The composer in the Leads thread reaches the visitor's page.
+     *
+     * Resolved by container tag rather than by source name, so this asserts the
+     * wiring as well as the delivery: an untagged channel would leave the
+     * composer permanently greyed out with nothing to say why.
+     */
+    public function test_a_reply_typed_in_leads_reaches_the_widget(): void
+    {
+        ['site' => $site, 'tenant' => $tenant] = $this->siteWithKey();
+
+        $started = $this->startChat($site->public_key, 'Are you open Saturday?')->assertCreated();
+
+        $this->travel(1)->seconds();
+
+        $this->inTenant($tenant['org'], function () {
+            $lead = Lead::query()->firstOrFail();
+            $replies = app(LeadReplies::class);
+
+            $this->assertTrue($replies->canReply($lead), 'The composer has to be offered.');
+
+            $replies->for($lead)->send($lead, 'We are, 8 until 1.');
+        });
+
+        $messages = $this->withToken($started->json('token'))
+            ->getJson('/api/v1/web/chat/'.$started->json('chat').'/messages')
+            ->assertOk()
+            ->json('messages');
+
+        $this->assertCount(2, $messages);
+        $this->assertSame('them', $messages[1]['from']);
+        $this->assertSame('We are, 8 until 1.', $messages[1]['text']);
+    }
+
+    /**
+     * A submitted form has no page left to answer into.
+     *
+     * Refused rather than quietly sent by email: that would be a second send
+     * path with its own consent and audit questions, wearing this one's name.
+     */
+    public function test_a_form_submission_offers_no_reply_channel(): void
+    {
+        ['site' => $site, 'tenant' => $tenant] = $this->siteWithKey();
+
+        $this->postJson('/api/v1/web/form', [
+            'key' => $site->public_key,
+            'fields' => ['Service' => 'Sweep'],
+        ])->assertCreated();
+
+        $this->inTenant($tenant['org'], function () {
+            $lead = Lead::query()->firstOrFail();
+            $replies = app(LeadReplies::class);
+
+            $this->assertFalse($replies->canReply($lead));
+            $this->assertNull($replies->for($lead));
+        });
+    }
+
+    /** A chat whose row is gone says so, rather than reporting a sent reply. */
+    public function test_a_reply_to_a_vanished_chat_refuses_out_loud(): void
+    {
+        ['site' => $site, 'tenant' => $tenant] = $this->siteWithKey();
+
+        $this->startChat($site->public_key, 'Hello?')->assertCreated();
+
+        $this->inTenant($tenant['org'], function () {
+            $lead = Lead::query()->firstOrFail();
+            WebChat::query()->where('lead_id', $lead->getKey())->delete();
+
+            $this->expectException(\RuntimeException::class);
+
+            app(LeadReplies::class)
+                ->for($lead)
+                ->send($lead, 'Anyone there?');
+        });
+    }
+
     // ── helpers ──────────────────────────────────────────────────────
 
     /** @return array{site: WebSite, tenant: array<string, mixed>} */
@@ -341,7 +422,7 @@ class WebsiteEnquiriesTest extends TestCase
 
         $this->startChat($site->public_key, 'Do you service gas inserts?')->assertCreated();
 
-        $raised = $this->inTenant($tenant['org'], fn () => \Illuminate\Support\Facades\DB::table('automation_events')
+        $raised = $this->inTenant($tenant['org'], fn () => DB::table('automation_events')
             ->where('event_key', 'lead.received')
             ->count());
 

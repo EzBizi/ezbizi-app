@@ -1,0 +1,74 @@
+<?php
+
+namespace App\Support\Web;
+
+use App\Models\Lead;
+use App\Models\LeadConversation;
+use App\Models\WebChat;
+use App\Support\Leads\LeadReplyChannel;
+use RuntimeException;
+
+/**
+ * Replying to somebody who is standing on the customer's website.
+ *
+ * ── Why this is the easiest channel in the application ──
+ *
+ * There is no provider to call and nothing to deliver. The visitor's widget is
+ * already asking every few seconds whether anything has been said, so a reply
+ * is a row written to the thread — the same row the screen shows — and the
+ * next poll picks it up. Nothing here can half-succeed the way an SMS or an
+ * email can, which is why it throws on exactly one condition and no others.
+ *
+ * ── What "can reply" means, and what it deliberately does not ──
+ *
+ * It means the chat row still exists. It does NOT mean the visitor is still
+ * there: nobody can know that, the widget stops polling the moment the tab
+ * closes, and a screen that greyed out the composer on a guess would stop
+ * people answering questions asked ten minutes ago. An unread reply is
+ * waiting, not lost — the visitor sees it whenever they come back inside the
+ * session, and the enquiry keeps their details either way.
+ *
+ * Forms have no channel and no implementation here, on purpose. A submitted
+ * form has no page left to answer into, and quietly falling through to email
+ * would be a second send path with its own consent and audit questions,
+ * wearing this one's name.
+ */
+final class WebsiteChatReplies implements LeadReplyChannel
+{
+    public function __construct(private readonly WebsiteEnquiries $enquiries) {}
+
+    public function source(): string
+    {
+        return Lead::SOURCE_WEBSITE_CHAT;
+    }
+
+    public function canReply(Lead $lead): bool
+    {
+        return $this->chatFor($lead) !== null;
+    }
+
+    public function send(Lead $lead, string $text): LeadConversation
+    {
+        $chat = $this->chatFor($lead);
+
+        if ($chat === null) {
+            /*
+             * The only way to get here: the lead says website_chat but its
+             * web_chats row is gone. The sentence names the consequence rather
+             * than the cause, because the person reading it is mid-reply and
+             * cannot do anything about a missing row.
+             */
+            throw new RuntimeException(
+                'This conversation is no longer open on the website, so there is '
+                .'nowhere to send that. The enquirer’s details are still here.'
+            );
+        }
+
+        return $this->enquiries->say($chat, $text, LeadConversation::FROM_ADVERTISER);
+    }
+
+    private function chatFor(Lead $lead): ?WebChat
+    {
+        return WebChat::query()->where('lead_id', $lead->getKey())->first();
+    }
+}
