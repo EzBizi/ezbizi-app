@@ -665,6 +665,15 @@ Route::prefix('v1')
         // `training.assign`, bounded by §4 reach; see AssignmentsController
         // and AssignmentReach.
         Route::post('training/assignments', [TrainingAssignmentsController::class, 'store']);
+        // Who the Dashboard's "Assign to more people" control may offer
+        // (audit-fixes-report.md, closing the missing-control finding) —
+        // gated on the same `training.assign` permission as the write
+        // above, and never on `hr.view`/`roles.view`: a supervisor holding
+        // only `training.assign` still needs somewhere to find a person or
+        // role to name, and every other people/role listing endpoint on
+        // the platform is gated on an HR or Roles permission this holder
+        // may not have. See AssignmentsController::assignees.
+        Route::get('training/assignees', [TrainingAssignmentsController::class, 'assignees']);
         // How an organization watches training (task 11) — `training.monitor`,
         // never `.manage` or `.view`. `{id}/people` is declared AFTER the
         // bare dashboard route; the order would only matter if one route

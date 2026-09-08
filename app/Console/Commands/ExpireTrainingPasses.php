@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Organization;
 use App\Models\TrainingAttempt;
+use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Training\LapsedPasses;
@@ -154,7 +155,36 @@ final class ExpireTrainingPasses extends Command
 
     protected $description = 'Raise training.expired for training passes that have lapsed, once each';
 
-    public function handle(TenantContext $tenants, EventEmitter $events): int
+    /**
+     * ── One summary audit row per run, not one per lapsed pass ────────
+     *
+     * §2.2 asks for a row for every action, but the actor here is the
+     * scheduler, not a person, and this sweep is exactly the shape
+     * `ExpireAuditEvents` already settled the question for: an unattended
+     * nightly job mutating rows at scale across every tenant at once,
+     * inside `runWithoutTenant`. That command writes ONE `audit.expired`
+     * row summarizing the whole run, not one per row it removed — see its
+     * own docblock ("No tenant and no actor: this is the scheduler, and
+     * `system` is what that is called here").
+     *
+     * A row per lapsed pass was the other option, and it is not free of
+     * cost: this candidate set already spans every organization on the
+     * platform in one query (`runWithoutTenant`), so a per-pass row would
+     * be an unscoped write into a tenant's own history table from outside
+     * any tenant context, for an event that already has its own dedicated
+     * record — `EventEmitter::emit('training.expired', ...)`, a few lines
+     * below, IS the per-pass record: who lapsed, which test, when. Audit
+     * is a second ledger for the same fact, and the two would drift the
+     * instant one of them changed its payload and the other didn't.
+     *
+     * A summary row still answers §2.2's actual question for this actor —
+     * "did the sweep run, and what did it do" — without turning a nightly
+     * job into thousands of per-pass entries next to entries that record a
+     * human's own actions. Written after the sweep, with no tenant and no
+     * actor (both null, same as `audit.expired`), and only when something
+     * was actually announced.
+     */
+    public function handle(TenantContext $tenants, EventEmitter $events, AuditLogger $audit): int
     {
         $announced = 0;
 
@@ -171,6 +201,10 @@ final class ExpireTrainingPasses extends Command
                     $announced += $this->announce($tenants, $events, $attempt);
                 });
         });
+
+        if ($announced > 0) {
+            $audit->log('training.passes_expired', metadata: ['announced' => $announced]);
+        }
 
         $this->info($announced === 0
             ? 'No lapsed training passes to announce.'

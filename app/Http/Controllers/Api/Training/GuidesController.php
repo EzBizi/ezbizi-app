@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\TrainingGuide;
 use App\Models\TrainingTest;
+use App\Support\Audit\AuditLogger;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\PlaceInView;
 use App\Support\Scoping\ViewScope;
@@ -14,6 +15,7 @@ use App\Support\Tenancy\TenantContext;
 use App\Support\Training\GuidePlaceReach;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
@@ -24,10 +26,19 @@ use Symfony\Component\HttpFoundation\Response;
  * Screens are one JSON array on the guide row (see the migration and the
  * model's `screenCount()`); there is no separate screen endpoint. List
  * always applies the shared place-scope engine — see the comment in [index].
+ *
+ * create/update/delete each write an `audit_events` row (§2.2) — the shape
+ * copied from CompaniesController/JobsController (`logChange`, called
+ * before `save()` so the dirty diff is still there to capture) and
+ * InspectionDefinitionsController (`log` on create, and on delete before
+ * the row is gone so `target_label` can still read the title).
  */
 class GuidesController extends Controller
 {
-    public function __construct(private readonly TenantContext $tenant) {}
+    public function __construct(
+        private readonly TenantContext $tenant,
+        private readonly AuditLogger $audit,
+    ) {}
 
     /**
      * An `exists` rule scoped to this organization.
@@ -103,14 +114,20 @@ class GuidesController extends Controller
             $this->authorize('create', [TrainingGuide::class, $company, $franchise]);
         }
 
-        $guide = TrainingGuide::create([
-            'company_id' => $company?->getKey(),
-            'franchise_id' => $franchise?->getKey(),
-            'title' => $input['title'],
-            'summary' => $input['summary'] ?? null,
-            'status' => $input['status'] ?? TrainingGuide::DRAFT,
-            'screens' => $input['screens'] ?? [],
-        ]);
+        $guide = DB::transaction(function () use ($input, $company, $franchise) {
+            $guide = TrainingGuide::create([
+                'company_id' => $company?->getKey(),
+                'franchise_id' => $franchise?->getKey(),
+                'title' => $input['title'],
+                'summary' => $input['summary'] ?? null,
+                'status' => $input['status'] ?? TrainingGuide::DRAFT,
+                'screens' => $input['screens'] ?? [],
+            ]);
+
+            $this->audit->log('guide.created', $guide);
+
+            return $guide;
+        });
 
         return response()->json(
             ['data' => $this->present($guide->fresh())],
@@ -160,8 +177,20 @@ class GuidesController extends Controller
             }
         }
 
-        $guide->fill($input);
-        $guide->save();
+        DB::transaction(function () use ($guide, $input) {
+            $guide->fill($input);
+
+            // No dirty attributes means nothing actually changed (e.g. a PATCH
+            // re-sending the same title) — same as CompaniesController::update:
+            // skip both the write and the audit row rather than bumping
+            // `updated_at` and logging a change that never happened.
+            if (! $guide->isDirty()) {
+                return;
+            }
+
+            $this->audit->logChange('guide.updated', $guide);
+            $guide->save();
+        });
 
         return response()->json(['data' => $this->present($guide->fresh())]);
     }
@@ -221,7 +250,19 @@ class GuidesController extends Controller
     {
         $this->authorize('delete', $guide);
 
-        $guide->delete();
+        DB::transaction(function () use ($guide) {
+            // Logged before the delete, same as
+            // InspectionDefinitionsController::destroy — target_label reads
+            // `title` off the model, which is gone once `delete()` runs, and
+            // `training_progress`/`training_assignments` cascade with this row
+            // (migration `create_training_tables`), so this is the only record
+            // that a guide with completions behind it ever existed.
+            $this->audit->log('guide.deleted', $guide, metadata: [
+                'title' => $guide->title,
+            ]);
+
+            $guide->delete();
+        });
 
         return response()->noContent();
     }

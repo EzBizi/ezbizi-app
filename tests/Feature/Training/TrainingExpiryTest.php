@@ -349,6 +349,43 @@ class TrainingExpiryTest extends TestCase
         });
     }
 
+    /**
+     * The sweep writes ONE summary `audit_events` row per run, not one per
+     * lapsed pass — see `ExpireTrainingPasses`'s own docblock on `handle()`
+     * for the reasoning (it mirrors `ExpireAuditEvents`: an unattended,
+     * cross-tenant nightly job gets a summary row, with the per-lapse
+     * record already carried by the `training.expired` outbox event
+     * asserted elsewhere in this file).
+     */
+    public function test_the_sweep_writes_one_summary_audit_row_naming_the_count(): void
+    {
+        [, , $tenant] = $this->aPassedAttemptExpiring(daysAgo: 1);
+
+        $this->artisan('ezbizi:expire-training-passes')->assertSuccessful();
+
+        $this->assertSame(
+            1,
+            \App\Models\AuditEvent::query()->where('action', 'training.passes_expired')->count(),
+        );
+
+        $row = \App\Models\AuditEvent::query()->where('action', 'training.passes_expired')->firstOrFail();
+        $this->assertSame(1, $row->metadata['announced'] ?? null);
+        $this->assertNull($row->actor_id, 'The scheduler is not a person.');
+    }
+
+    /** A run that announces nothing writes no summary row — nothing happened worth a line. */
+    public function test_a_sweep_that_announces_nothing_writes_no_summary_audit_row(): void
+    {
+        [, , $tenant] = $this->aPassedAttemptExpiring(daysAgo: -5);
+
+        $this->artisan('ezbizi:expire-training-passes')->assertSuccessful();
+
+        $this->assertSame(
+            0,
+            \App\Models\AuditEvent::query()->where('action', 'training.passes_expired')->count(),
+        );
+    }
+
     // ── Fixtures ────────────────────────────────────────────────────
 
     /** @return array<int, array<string, mixed>> */
