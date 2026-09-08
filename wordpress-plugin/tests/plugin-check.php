@@ -120,7 +120,7 @@ function get_current_screen() { return $GLOBALS['screen'] ?? null; }
 function __($t, $d = null) { return $t; }
 function esc_html__($t, $d = null) { return htmlspecialchars($t, ENT_QUOTES, 'UTF-8'); }
 function add_options_page() {}
-function current_user_can() { return true; }
+function current_user_can() { return $GLOBALS['is_admin'] ?? true; }
 function settings_fields() {}
 function submit_button() {}
 function wp_nonce_field() {}
@@ -129,6 +129,9 @@ function check_admin_referer() { return true; }
 // ── Enough WordPress for the service account ────────────────────
 
 function register_deactivation_hook($f, $cb) { $GLOBALS['deactivate'][] = $cb; }
+function wp_rand($a = 0, $b = 0) { return 1234; }
+function sanitize_title($t) { return strtolower(preg_replace('/[^a-z0-9]+/i', '-', $t)); }
+function wp_json_encode($v) { return json_encode($v); }
 function get_rest_url() { return 'https://a-1chimney.com/wp-json/'; }
 function wp_generate_password($len = 12, $special = true, $extra = false) {
     return substr(str_repeat('x7Kq', 32), 0, $len);
@@ -498,6 +501,45 @@ $GLOBALS['http_next'] = ['code' => 200, 'body' => json_encode($body)];
 $GLOBALS['tr'] = [];
 ezbizi_fetch();
 check('the credential survives', count($GLOBALS['app_passwords']), 1);
+
+echo PHP_EOL . "The form and chat shortcodes render, or say nothing at all" . PHP_EOL;
+reset_site();
+ok_response(['phone' => '555-0100']);
+$GLOBALS['http_next'] = ['code' => 200, 'body' => json_encode(array_merge(
+    json_decode(payload_json(['phone' => '555-0100']), true),
+    ['public_key' => 'pk_testkey']
+))];
+$GLOBALS['tr'] = [];
+ezbizi_fetch();
+do_action('init');
+check('[ezbizi_form] registered', isset($GLOBALS['sc']['ezbizi_form']), true);
+check('[ezbizi_chat] registered', isset($GLOBALS['sc']['ezbizi_chat']), true);
+
+$form = $GLOBALS['sc']['ezbizi_form'](['fields' => 'Name,Email,Tell us what needs doing and when']);
+check('the form posts to the form endpoint', str_contains($form, 'web\/form'), true);
+check('and carries this site key', str_contains($form, 'pk_testkey'), true);
+check('a long question gets a textarea', str_contains($form, '<textarea'), true);
+check('a short one gets an input', str_contains($form, '<input type="text"'), true);
+check('email is typed as email', str_contains($form, 'type="email"'), true);
+
+$chat = $GLOBALS['sc']['ezbizi_chat']([]);
+// Built by plain concatenation in the widget's JS, so the slashes are real
+// here where the form's -- passed through wp_json_encode -- are escaped.
+check('the chat posts to the chat endpoint', str_contains($chat, '/api/v1/web/chat'), true);
+check('and polls with a bearer token', str_contains($chat, 'Bearer '), true);
+check(
+    'the visitor token is never written into the page',
+    str_contains($chat, 'ezb_') || str_contains($form, 'ezb_'),
+    false
+);
+
+echo PHP_EOL . "A site with no browser key shows a visitor nothing" . PHP_EOL;
+reset_site();
+ok_response(['phone' => '555-0100']);
+ezbizi_fetch();
+$GLOBALS['is_admin'] = false;
+check('the form renders empty', $GLOBALS['sc']['ezbizi_form']([]), '');
+check('and so does the chat', $GLOBALS['sc']['ezbizi_chat']([]), '');
 
 
 echo "\n".($failures === 0
