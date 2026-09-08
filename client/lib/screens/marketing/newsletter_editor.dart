@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'clock_label.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/calendar_day_field.dart';
@@ -26,6 +27,7 @@ class NewsletterEditor extends StatefulWidget {
     required this.audienceId,
     required this.when,
     required this.viewName,
+    required this.scheduledTimezone,
     required this.session,
     required this.sendingRefusedBecause,
     required this.saveError,
@@ -41,6 +43,11 @@ class NewsletterEditor extends StatefulWidget {
   final String? audienceId;
   final TextEditingController when;
   final String viewName;
+
+  /// The clock this mailing is already filed against, when it is already
+  /// scheduled. Null on a draft, where nothing has picked a clock yet.
+  final String? scheduledTimezone;
+
   final Session session;
   final String? sendingRefusedBecause;
   final String? saveError;
@@ -559,9 +566,33 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
               onChanged: (_) => widget.onChanged(),
             ),
             const SizedBox(height: 6),
+            /*
+             * What this note may and may not promise.
+             *
+             * It used to say the time you pick "is the time it goes out
+             * there", naming the PLACE. That holds at franchise scope, where
+             * the branch carries its own zone. Above it the cascade falls back
+             * to the platform default `Etc/GMT+5` — a FIXED offset, which
+             * stands still while the place it is standing in moves an hour in
+             * March. Same wall time, an hour late until November, and nothing
+             * on screen admitting the clock had a say.
+             *
+             * So the promise is now made about the clock the server actually
+             * used, and the clock is named as soon as there is one to name.
+             * Choosing between real zones and fixed offsets is a platform
+             * decision (Jose's list); saying WHICH ONE YOU GOT is not, and it
+             * costs nothing — the server has been sending
+             * `scheduled_timezone` on every mailing all along and this client
+             * simply never read it.
+             */
             DashboardNote(
-              'This view’s clock — ${widget.viewName}. The time you pick is the '
-              'time it goes out there.',
+              widget.scheduledTimezone == null
+                  ? 'This view’s clock — ${widget.viewName}. The time you pick is '
+                        'filed against this view’s own clock, and the schedule '
+                        'names which one once it is saved.'
+                  : 'This view’s clock — ${widget.viewName}, '
+                        '${clockLabel(widget.scheduledTimezone)}. The time you pick '
+                        'is a wall time on that clock.',
             ),
           ],
           const SizedBox(height: 12),

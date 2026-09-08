@@ -157,4 +157,52 @@ class TimeClockAutomationsTest extends TestCase
             app(SettingsResolver::class)->set('time_clock.enabled', $org, true);
         });
     }
+
+    /**
+     * What a rule can read off the events (design 2026-09-08 §10 follow-up,
+     * asked by the deploy desk): a clocked_in carries outside_schedule, a
+     * clocked_out carries ended_by, and Extend raises its own trigger.
+     */
+    public function test_the_events_carry_the_schedule_facts_and_extend_raises_its_own(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->enableClockIn($t['org']);
+        $puncher = $this->userWithRole($t, 'Tech', ['time_clock.view']);
+        $this->inTenant($t['org'], fn () => $puncher->forceFill(['work_schedule' => [
+            'timezone' => 'Etc/GMT+5',
+            'days' => ['monday' => ['start' => '08:00', 'end' => '17:00'], 'tuesday' => ['start' => '08:00', 'end' => '17:00'],
+                'wednesday' => ['start' => '08:00', 'end' => '17:00'], 'thursday' => ['start' => '08:00', 'end' => '17:00'],
+                'friday' => ['start' => '08:00', 'end' => '17:00'], 'saturday' => null, 'sunday' => null],
+        ]])->save());
+        \Illuminate\Support\Carbon::setTestNow(\Illuminate\Support\Carbon::parse('2026-09-12 15:00:00', 'UTC')); // Saturday: outside
+
+        $this->signedInAs($puncher)->postJson('/api/v1/time-clock/clock-in')->assertOk();
+
+        $in = AutomationEvent::query()->withoutGlobalScopes()->where('event_key', 'time_clock.clocked_in')->firstOrFail();
+        $this->assertTrue($in->payload['outside_schedule']);
+        $this->assertSame(0, $in->payload['extensions']);
+        $this->assertNull($in->payload['ended_by']);
+
+        // Not on a scheduled shift (Saturday): extend refuses and raises nothing.
+        $this->signedInAs($puncher)->postJson('/api/v1/time-clock/extend')->assertStatus(422);
+        $this->signedInAs($puncher)->postJson('/api/v1/time-clock/clock-out')->assertOk();
+
+        \Illuminate\Support\Carbon::setTestNow(\Illuminate\Support\Carbon::parse('2026-09-08 14:00:00', 'UTC')); // Tuesday 09:00 local
+        $this->signedInAs($puncher)->postJson('/api/v1/time-clock/clock-in')->assertOk();
+        $this->signedInAs($puncher)->postJson('/api/v1/time-clock/extend')->assertOk();
+
+        $extended = AutomationEvent::query()->withoutGlobalScopes()->where('event_key', 'time_clock.extended')->get();
+        $this->assertCount(1, $extended);
+        $this->assertSame(1, $extended->first()->payload['extensions']);
+        $this->assertSame('2026-09-08T22:30:00Z', $extended->first()->payload['scheduled_end_at']);
+
+        $this->signedInAs($puncher)->postJson('/api/v1/time-clock/clock-out')->assertOk();
+        $out = AutomationEvent::query()->withoutGlobalScopes()->where('event_key', 'time_clock.clocked_out')->orderByDesc('occurred_at')->first();
+        $this->assertSame('person', $out->payload['ended_by']);
+
+        $keys = array_map(fn ($d) => $d->key, app(\App\Support\Modules\ModuleRegistry::class)->get('time_clock')->triggers);
+        $this->assertContains('time_clock.extended', $keys);
+
+        \Illuminate\Support\Carbon::setTestNow();
+    }
 }

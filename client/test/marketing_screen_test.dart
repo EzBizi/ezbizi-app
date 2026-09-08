@@ -963,6 +963,52 @@ void main() {
       await _tick(tester, times: 3);
       expect(reads, after, reason: 'A scheduled post should not be polled.');
     });
+
+    /// A wall time is only half a promise: the other half is which clock.
+    ///
+    /// The server has always sent `scheduled_timezone` and this client never
+    /// read it, so "Goes out 09:00" was the same sentence whether the post was
+    /// filed against the branch's own zone or the platform default fixed
+    /// offset — which is an hour off that branch from March to November.
+    ///
+    /// `Etc/GMT+5` is UTC MINUS 5. If this ever reads "UTC+5" the label is
+    /// printing POSIX's inverted sign straight through and naming a clock ten
+    /// hours from the real one.
+    testWidgets('the scheduled post names the clock it was filed against', (
+      tester,
+    ) async {
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [_pinterestBoard],
+          postsFor: () => [
+            {
+              'id': 'post-1',
+              'body': 'Autumn sweeps.',
+              'has_media': true,
+              'scheduled_for': '2099-03-04 09:00',
+              'scheduled_timezone': 'Etc/GMT+5',
+              'targets': [
+                {
+                  'account': 'Everdoors Boards',
+                  'provider_label': 'Pinterest',
+                  'status': 'scheduled',
+                  'failure': null,
+                },
+              ],
+            },
+          ],
+        ),
+      );
+
+      expect(
+        find.textContaining(
+          'Goes out 2099-03-04 09:00 (UTC−5, no daylight saving)',
+        ),
+        findsOneWidget,
+      );
+    });
   });
 
 
@@ -1190,6 +1236,106 @@ void main() {
         tester.widget<TextField>(find.widgetWithText(TextField, 'Subject')).controller?.text,
         'Autumn sweeps',
       );
+    });
+
+    /// The composer used to promise the PLACE's clock and deliver whichever
+    /// clock the cascade resolved.
+    ///
+    /// "The time you pick is the time it goes out there" is true at franchise
+    /// scope, where the branch carries its own zone. Above it the default is
+    /// `Etc/GMT+5` — a fixed offset that stands still while the place moves an
+    /// hour in March, so the mailing goes out an hour late until November with
+    /// the screen still saying it went out at nine.
+    ///
+    /// The fix is not to pick a zone here — that is a platform decision. It is
+    /// to stop hiding which one you got.
+    testWidgets('the composer names the clock a scheduled mailing is on', (
+      tester,
+    ) async {
+      final now = DateTime.now();
+      final day = DateTime(now.year, now.month, 15);
+      final wall = '${day.year}-${_two(day.month)}-${_two(day.day)} 09:00';
+
+      await _pumpNewsletter(
+        tester,
+        _handler(
+          canEdit: true,
+          newsletters: [
+            {
+              'id': 'n-9',
+              'subject': 'Autumn sweeps',
+              'status': 'scheduled',
+              'scheduled_for': wall,
+              'scheduled_timezone': 'Etc/GMT+5',
+              'audience': {'id': 'a-1', 'name': 'Customers', 'kind': 'customers'},
+              'blocks': const [
+                {'type': 'text', 'text': 'Words.', 'align': 'left'},
+              ],
+            },
+          ],
+        ),
+      );
+
+      // The calendar carries it too, so the clock is readable without
+      // opening the mailing at all. It lives in the cell's tooltip, which is
+      // the only place a month grid has room for a time.
+      expect(
+        find.byWidgetPredicate(
+          (w) =>
+              w is Tooltip &&
+              (w.message ?? '').contains('(UTC−5, no daylight saving)'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('Autumn sweeps'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining(
+          'This view’s clock — Everdoors, UTC−5, no daylight saving',
+        ),
+        findsOneWidget,
+      );
+
+      // And the promise it can no longer make.
+      expect(find.textContaining('the time it goes out there'), findsNothing);
+    });
+
+    /// A draft has no clock yet, so the note may not name one — but it also may
+    /// not go back to promising the place's time. It says where the answer will
+    /// appear instead.
+    testWidgets('a mailing with no clock yet promises no clock', (
+      tester,
+    ) async {
+      await _pumpNewsletter(
+        tester,
+        _handler(
+          canEdit: true,
+          newsletters: [
+            {
+              'id': 'n-1',
+              'subject': 'A draft',
+              'status': 'draft',
+              'audience': {'id': 'a-1', 'name': 'Customers', 'kind': 'customers'},
+              'blocks': const [
+                {'type': 'text', 'text': 'Words.', 'align': 'left'},
+              ],
+            },
+          ],
+        ),
+      );
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Composer'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Send it later'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('names which one once it is saved'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('the time it goes out there'), findsNothing);
     });
 
     testWidgets('an empty month says so instead of drawing blank squares', (

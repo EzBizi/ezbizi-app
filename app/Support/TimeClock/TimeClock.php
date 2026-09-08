@@ -234,6 +234,7 @@ final class TimeClock
             $open->save();
 
             $this->audit->log('time_clock.extended', $open, metadata: ['minutes' => $minutes]);
+            $this->events->emit('time_clock.extended', $user, $this->eventPayload($open));
 
             return $this->payload($user);
         });
@@ -305,6 +306,10 @@ final class TimeClock
             'clocked_out_at' => $this->instant($shift->clocked_out_at),
             'scheduled_end_at' => $this->instant($shift->scheduled_end_at),
             'ended_by' => $shift->ended_by,
+            // What a rule can filter on: "text me when somebody starts outside
+            // schedule" is a condition on clocked_in, not a trigger of its own.
+            'outside_schedule' => (bool) $shift->outside_schedule,
+            'extensions' => (int) $shift->extensions,
         ];
     }
 

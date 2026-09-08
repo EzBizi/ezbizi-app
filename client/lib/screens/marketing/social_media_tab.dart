@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
+import 'clock_label.dart';
 import '../../core/api_client.dart';
 import '../../core/files.dart';
 import '../../core/session.dart';
@@ -570,9 +571,15 @@ class _ComposeColumnState extends State<_ComposeColumn> {
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 6),
+          // Same correction as the newsletter composer, and for the same
+          // reason: "the time it goes out there" names the PLACE, and above
+          // franchise scope the clock is the platform default fixed offset,
+          // which is an hour off that place from March to November. The
+          // scheduled post names the clock it actually got.
           DashboardNote(
-            'This view’s clock — ${widget.viewName}. No timezone is sent; '
-            'the time you pick is the time it goes out there.',
+            'This view’s clock — ${widget.viewName}. No timezone is sent: the '
+            'server files the time against this view’s own clock, and the '
+            'scheduled post names which one.',
           ),
         ],
       ],
@@ -985,7 +992,8 @@ class _RecentPosts extends StatelessWidget {
                 if (post.scheduledFor != null) ...[
                   const SizedBox(height: 2),
                   Text(
-                    'Goes out ${post.scheduledFor}',
+                    'Goes out ${post.scheduledFor}'
+                    '${clockSuffix(post.scheduledTimezone)}',
                     style: theme.textTheme.bodySmall,
                   ),
                 ],
@@ -1637,6 +1645,7 @@ class _SentPost {
     required this.targets,
     this.author,
     this.scheduledFor,
+    this.scheduledTimezone,
   });
 
   final String id;
@@ -1648,6 +1657,11 @@ class _SentPost {
   /// a post that went out immediately.
   final String? scheduledFor;
 
+  /// WHICH view timezone, as the server resolved it. Worth showing beside the
+  /// wall time: above franchise scope the platform default is a fixed offset,
+  /// so the promised 9am and the branch's 9am are an hour apart in summer.
+  final String? scheduledTimezone;
+
   final List<_SentTarget> targets;
 
   factory _SentPost.fromJson(Map<String, dynamic> json) {
@@ -1657,6 +1671,7 @@ class _SentPost {
       hasMedia: json['has_media'] as bool? ?? false,
       author: json['author'] as String?,
       scheduledFor: json['scheduled_for'] as String?,
+      scheduledTimezone: json['scheduled_timezone'] as String?,
       targets: ((json['targets'] as List<dynamic>?) ?? const [])
           .whereType<Map<String, dynamic>>()
           .map(_SentTarget.fromJson)
