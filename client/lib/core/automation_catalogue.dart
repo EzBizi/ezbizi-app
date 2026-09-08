@@ -98,6 +98,7 @@ class CatalogueTrigger {
     required this.key,
     required this.label,
     this.description,
+    this.isRaised = true,
   });
 
   /// What gets stored on the automation — `customer.owner_reassigned`.
@@ -108,6 +109,20 @@ class CatalogueTrigger {
 
   /// One sentence saying when this fires. Null when the server sent none.
   final String? description;
+
+  /// Does anything actually emit this yet?
+  ///
+  /// False means a rule built on it saves, switches on, and never runs. The
+  /// description already says so in words; this is the same fact as a flag, so
+  /// the row can be marked rather than only explained.
+  ///
+  /// **Defaults to TRUE, and that direction is deliberate.** A server older
+  /// than this build sends no `is_raised`, and the honest reading of silence is
+  /// "this trigger is fine" — the same answer that server's own description
+  /// gives, since it appends the warning sentence itself when it is not. The
+  /// opposite default would badge every trigger in the catalogue as broken for
+  /// the minutes of a deploy.
+  final bool isRaised;
 
   /// [json] is an object per the catalogue contract.
   ///
@@ -130,6 +145,10 @@ class CatalogueTrigger {
       key: key,
       label: json['label'] as String? ?? key,
       description: json['description'] as String?,
+      // `!= false` rather than `== true`: absent and null both mean an older
+      // server, which is not the same claim as `false`. Only an explicit false
+      // marks the row.
+      isRaised: json['is_raised'] != false,
     );
   }
 }
