@@ -8,6 +8,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0161',
+      date: '8 Sep 2026',
+      items: [
+        'Communication - Settings - General now sets how calls are answered for the whole company, not one number at a time. It used to open with a line picker, so what happens when somebody rings had to be set once per number - and the next number bought answered differently from all the others, with nothing saying it would. A line can still be given its own answer, but it starts from the company\'s rather than from nothing.',
+        'Because of that, what each line had been set to has been lifted into the company default and the lines cleared, so calls are answered - and recorded - exactly as before. Where two lines had been set differently, that setting is left blank under General for somebody to choose, rather than one line\'s answer quietly becoming everyone\'s. Ring group assignments are untouched.',
+        'A voicemail box set for the company now catches voicemail from every line, so a box is no longer empty until somebody points each number at it by hand.',
+        'On a desktop, playing a lead\'s call recording opens it in your audio player, and the thread says so instead of showing a stop control it cannot honour.',
+        'Lead conversations are easier to read: your messages are filled in the app\'s colour, the enquirer\'s are outlined, and the open lead is highlighted in the list.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0160',
       date: '8 Sep 2026',
       items: [

@@ -53,6 +53,14 @@ class _LeadThreadState extends State<LeadThread> {
   String? _error;
   List<Map<String, dynamic>> _conversations = const [];
 
+  /// Whether Google will take a reply: text enquiries only, account still
+  /// connected. The server says; the screen never guesses from lead_type.
+  bool _canReply = false;
+
+  final _compose = TextEditingController();
+  bool _sending = false;
+  String? _sendError;
+
   String? _fetchingId;
   String? _playingId;
   String? _playError;
@@ -72,9 +80,46 @@ class _LeadThreadState extends State<LeadThread> {
 
   @override
   void dispose() {
+    _compose.dispose();
     _player.stop();
     if (_ownsPlayer) _player.dispose();
     super.dispose();
+  }
+
+  /// A sentence to a stranger in the customer's name: it goes because a
+  /// person pressed Send. Appended to the thread as ours the moment Google
+  /// takes it; on refusal the text stays in the box and the reason is shown.
+  Future<void> _send() async {
+    final text = _compose.text.trim();
+    if (text.isEmpty || _sending) return;
+
+    setState(() {
+      _sending = true;
+      _sendError = null;
+    });
+
+    final response = await widget.api.post(
+      '/leads/${widget.lead['id']}/messages',
+      {'text': text},
+    );
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() {
+        _sending = false;
+        _sendError = response.message;
+      });
+      return;
+    }
+
+    setState(() {
+      _sending = false;
+      _conversations = [
+        ..._conversations,
+        (response.data as Map<String, dynamic>? ?? const {}),
+      ];
+      _compose.clear();
+    });
   }
 
   Future<void> _load() async {
@@ -97,6 +142,7 @@ class _LeadThreadState extends State<LeadThread> {
         (data['conversations'] as List? ?? const [])
             .cast<Map<String, dynamic>>(),
       );
+      _canReply = data['can_reply'] == true;
     });
   }
 
@@ -234,9 +280,81 @@ class _LeadThreadState extends State<LeadThread> {
             ),
           ),
         ),
+        // Only somebody who may change the lead may speak for the business,
+        // and only where Google will take it. A call lead says why there is
+        // no box rather than drawing one that would be refused.
+        if (widget.onStatusChanged != null && !_loading) ...[
+          const Divider(height: 1),
+          if (_canReply)
+            _composer(theme)
+          else
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+              child: Text(
+                'Google only accepts replies to text enquiries. This one came '
+                'in as a call, so it is answered by calling back.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+        ],
       ],
     );
   }
+
+  Widget _composer(ThemeData theme) => Padding(
+    padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_sendError != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              _sendError!,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.error,
+              ),
+            ),
+          ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: TextField(
+                key: const ValueKey('reply-box'),
+                controller: _compose,
+                minLines: 1,
+                maxLines: 4,
+                textInputAction: TextInputAction.newline,
+                enabled: !_sending,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  hintText: 'Reply to them',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              key: const ValueKey('reply-send'),
+              onPressed: _sending ? null : _send,
+              icon: _sending
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.send, size: 18),
+              label: Text(_sending ? 'Sending…' : 'Send'),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
 
   Widget _nothing(ThemeData theme) => Center(
     child: Padding(
@@ -290,15 +408,20 @@ class _LeadThreadState extends State<LeadThread> {
   }) {
     final attachments = (c['attachments'] as List? ?? const []).cast<String>();
 
+    // Approved colour layout 3 / 6 (c31b50ad): ours is `primary` with
+    // `onPrimary` text, the loudest this palette allows without red; theirs
+    // stays `surface` with an outline all round. No leading-edge accent bar
+    // anywhere, on Jose's ruling of 2026-09-08. `primary` inverts between the
+    // themes (dark teal / white in light, bright cyan / near-black in dark),
+    // so both are pinned in lead_thread_colour_test.dart.
+    final scheme = theme.colorScheme;
+    final ink = mine ? scheme.onPrimary : scheme.onSurface;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(11, 8, 11, 6),
       decoration: BoxDecoration(
-        color: mine
-            ? theme.colorScheme.primaryContainer
-            : theme.colorScheme.surface,
-        border: mine
-            ? null
-            : Border.all(color: theme.colorScheme.outlineVariant),
+        color: mine ? scheme.primary : scheme.surface,
+        border: mine ? null : Border.all(color: scheme.outlineVariant),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -306,7 +429,10 @@ class _LeadThreadState extends State<LeadThread> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if ((c['text'] as String?)?.isNotEmpty == true)
-            Text(c['text'] as String, style: theme.textTheme.bodyMedium),
+            Text(
+              c['text'] as String,
+              style: theme.textTheme.bodyMedium?.copyWith(color: ink),
+            ),
           if (attachments.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 6),
@@ -324,7 +450,9 @@ class _LeadThreadState extends State<LeadThread> {
             child: Text(
               '$who · $when',
               style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+                color: mine
+                    ? scheme.onPrimary.withValues(alpha: 0.8)
+                    : scheme.onSurfaceVariant,
               ),
             ),
           ),
@@ -387,22 +515,34 @@ class _LeadThreadState extends State<LeadThread> {
                       padding: EdgeInsets.all(8),
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : IconButton(
-                      key: ValueKey('play-$id'),
-                      tooltip: playing
-                          ? 'Stop'
-                          : _player.playsInApp
-                          ? 'Play'
-                          : 'Play in your audio player',
-                      padding: EdgeInsets.zero,
-                      onPressed: () => _play(c),
-                      icon: Icon(
-                        playing
-                            ? Icons.stop_circle_outlined
+                  // A filled disc: primaryContainer at rest, primary while
+                  // playing, per the approved colour layout.
+                  : Material(
+                      color: playing
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.primaryContainer,
+                      shape: const CircleBorder(),
+                      clipBehavior: Clip.antiAlias,
+                      child: IconButton(
+                        key: ValueKey('play-$id'),
+                        tooltip: playing
+                            ? 'Stop'
                             : _player.playsInApp
-                            ? Icons.play_circle_outline
-                            : Icons.open_in_new,
-                        color: theme.colorScheme.primary,
+                            ? 'Play'
+                            : 'Play in your audio player',
+                        padding: EdgeInsets.zero,
+                        iconSize: 20,
+                        onPressed: () => _play(c),
+                        icon: Icon(
+                          playing
+                              ? Icons.stop
+                              : _player.playsInApp
+                              ? Icons.play_arrow
+                              : Icons.open_in_new,
+                          color: playing
+                              ? theme.colorScheme.onPrimary
+                              : theme.colorScheme.onPrimaryContainer,
+                        ),
                       ),
                     ),
             ),

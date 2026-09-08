@@ -32,11 +32,11 @@ final class TwimlRenderer
         $language = $this->language($number);
         $outbound = (bool) ($context['outbound'] ?? false);
 
-        if ($number->transcribe) {
+        if ($number->resolvedFlag('transcribe')) {
             $this->startTranscription($response, $context);
         }
 
-        if ($number->record) {
+        if ($number->resolvedFlag('record')) {
             $response->say(RecordingNotice::forNumber($number), ['language' => $language]);
         }
 
@@ -234,9 +234,9 @@ final class TwimlRenderer
             'skipped' => false,
         ];
 
-        $schedule = $number->hours_schedule_id === null
+        $schedule = $number->resolved('hours_schedule_id') === null
             ? null
-            : PhoneHoursSchedule::query()->find($number->hours_schedule_id);
+            : PhoneHoursSchedule::query()->find($number->resolved('hours_schedule_id'));
 
         if ($schedule === null) {
             $steps[] = [
@@ -253,9 +253,9 @@ final class TwimlRenderer
                 'title' => 'Business hours: '.$schedule->name.' — '
                     .($closed ? 'CLOSED right now' : 'OPEN right now'),
                 'detail' => $closed
-                    ? match ($number->after_hours) {
+                    ? match ($number->resolved('after_hours')) {
                         'forward' => 'Closed, so the call is forwarded to '
-                            .($number->after_hours_number ?: 'nowhere — no number is set').'.',
+                            .($number->resolved('after_hours_number') ?: 'nowhere — no number is set').'.',
                         'closed' => 'Closed, so the caller is told so and the call ends here.',
                         default => 'Closed, so the caller goes straight to voicemail. Nothing below runs.',
                     }
@@ -274,7 +274,7 @@ final class TwimlRenderer
                 ? 'IVR menu: none'
                 : 'IVR menu plays',
             'detail' => $prompt === null
-                ? ($number->flow_id === null
+                ? ($number->resolved('flow_id') === null
                     ? 'No menu is set on this line, so the call goes straight to whoever answers.'
                     : 'A menu is set but has no usable menu step, so it is skipped.')
                 : 'The caller hears it and presses a key: “'.$prompt.'”',
@@ -292,13 +292,13 @@ final class TwimlRenderer
             // break the call" and on the answer step means "reaches somebody".
             // Two meanings behind one key is how a value stays plausible while
             // its meaning moves.
-            'skipped' => $prompt === null && $number->flow_id !== null,
+            'skipped' => $prompt === null && $number->resolved('flow_id') !== null,
         ];
 
         $connection = $number->connection;
-        $group = $number->ring_group_id === null
+        $group = $number->resolved('ring_group_id') === null
             ? null
-            : PhoneRingGroup::query()->find($number->ring_group_id);
+            : PhoneRingGroup::query()->find($number->resolved('ring_group_id'));
 
         // The same three conditions ringOrVoicemail() checks before it can
         // emit a Dial. Any one of them missing means every call is voicemail.
@@ -324,7 +324,7 @@ final class TwimlRenderer
         // Only worth a line when it changes the answer — a fallback on a line
         // that already reaches somebody is never heard, and saying so would
         // suggest it is doing something.
-        $fallback = trim((string) $number->fallback_number);
+        $fallback = trim((string) $number->resolved('fallback_number'));
         if ($fallback !== '') {
             $steps[] = [
                 'step' => 'fallback',
@@ -371,11 +371,11 @@ final class TwimlRenderer
      */
     private function closed(PhoneNumber $number, array $context): bool
     {
-        if ($number->hours_schedule_id === null) {
+        if ($number->resolved('hours_schedule_id') === null) {
             return false;
         }
 
-        $schedule = PhoneHoursSchedule::query()->find($number->hours_schedule_id);
+        $schedule = PhoneHoursSchedule::query()->find($number->resolved('hours_schedule_id'));
         if ($schedule === null) {
             return false;
         }
@@ -406,14 +406,14 @@ final class TwimlRenderer
      */
     private function afterHours(VoiceResponse $response, PhoneNumber $number, string $language, array $context): void
     {
-        if ($number->after_hours === 'forward' && is_string($number->after_hours_number)
-            && $number->after_hours_number !== '') {
+        if ($number->resolved('after_hours') === 'forward' && is_string($number->resolved('after_hours_number'))
+            && $number->resolved('after_hours_number') !== '') {
             $this->forward($response, $number, $context);
 
             return;
         }
 
-        if ($number->after_hours === 'closed') {
+        if ($number->resolved('after_hours') === 'closed') {
             $response->say('This line is closed.', ['language' => $language]);
             $response->hangup();
 
@@ -526,7 +526,7 @@ final class TwimlRenderer
         string $language,
         array $context,
     ): void {
-        $fallback = trim((string) $number->fallback_number);
+        $fallback = trim((string) $number->resolved('fallback_number'));
         $firstPass = (int) ($context['batch'] ?? 0) === 0;
 
         if ($fallback === '' || ! $firstPass) {
@@ -550,7 +550,7 @@ final class TwimlRenderer
     private function forward(VoiceResponse $response, PhoneNumber $number, array $context): void
     {
         $dial = $response->dial(null, $this->dialAttributes($number, timeout: null, sequential: false, context: $context));
-        $dial->number((string) $number->after_hours_number);
+        $dial->number((string) $number->resolved('after_hours_number'));
     }
 
     /**
@@ -562,9 +562,9 @@ final class TwimlRenderer
         $connection = $number->connection;
         $group = ($context['overflow_group'] ?? null) instanceof PhoneRingGroup
             ? $context['overflow_group']
-            : ($number->ring_group_id === null
+            : ($number->resolved('ring_group_id') === null
                 ? null
-                : PhoneRingGroup::query()->find($number->ring_group_id));
+                : PhoneRingGroup::query()->find($number->resolved('ring_group_id')));
 
         if ($group === null || $connection === null) {
             $this->noneUsable($response, $number, $language, $context);
@@ -675,7 +675,7 @@ final class TwimlRenderer
             $attributes['timeout'] = $timeout;
         }
 
-        if ($number->record) {
+        if ($number->resolvedFlag('record')) {
             $attributes['record'] = 'record-from-answer-dual';
             if (is_string($context['recording_status_callback'] ?? null)
                 && $context['recording_status_callback'] !== '') {
@@ -707,9 +707,9 @@ final class TwimlRenderer
         // caller hears before deciding whether to ring a competitor, so a
         // business that has written one must actually get it — this used to
         // be the same sentence for every line in every organization.
-        $box = $number->voicemail_box_id === null
+        $box = $number->resolved('voicemail_box_id') === null
             ? null
-            : PhoneVoicemailBox::query()->find($number->voicemail_box_id);
+            : PhoneVoicemailBox::query()->find($number->resolved('voicemail_box_id'));
 
         $greeting = $box?->spokenGreeting();
 
@@ -759,11 +759,11 @@ final class TwimlRenderer
      */
     private function menuOption(PhoneNumber $number, string $digits): ?array
     {
-        if ($number->flow_id === null) {
+        if ($number->resolved('flow_id') === null) {
             return null;
         }
 
-        $flow = PhoneFlow::query()->find($number->flow_id);
+        $flow = PhoneFlow::query()->find($number->resolved('flow_id'));
         if ($flow === null) {
             return null;
         }
@@ -865,11 +865,11 @@ final class TwimlRenderer
 
     private function menuPrompt(PhoneNumber $number): ?string
     {
-        if ($number->flow_id === null) {
+        if ($number->resolved('flow_id') === null) {
             return null;
         }
 
-        $flow = PhoneFlow::query()->find($number->flow_id);
+        $flow = PhoneFlow::query()->find($number->resolved('flow_id'));
         if ($flow === null) {
             return null;
         }

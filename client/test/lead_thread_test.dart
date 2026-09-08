@@ -88,6 +88,75 @@ void main() {
     );
   });
 
+  testWidgets('a reply goes out on Send and appears in the thread as ours', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: _FakePlayer(),
+      recordingGate: Completer()..complete(),
+    );
+
+    expect(find.byKey(const ValueKey('reply-box')), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('reply-box')),
+      'See you Saturday.',
+    );
+    await tester.tap(find.byKey(const ValueKey('reply-send')));
+    await tester.pumpAndSettle();
+
+    expect(_sent, ['See you Saturday.']);
+    expect(find.text('See you Saturday.'), findsOneWidget);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('reply-box')))
+          .controller!
+          .text,
+      isEmpty,
+      reason: 'the box clears once Google has taken it',
+    );
+  });
+
+  testWidgets('a call lead has no reply box and says why', (tester) async {
+    await _pump(
+      tester,
+      player: _FakePlayer(),
+      recordingGate: Completer()..complete(),
+      canReply: false,
+    );
+
+    expect(find.byKey(const ValueKey('reply-box')), findsNothing);
+    expect(find.textContaining('only accepts replies to text'), findsOneWidget);
+  });
+
+  testWidgets('a refused reply stays in the box with the reason', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: _FakePlayer(),
+      recordingGate: Completer()..complete(),
+      refuseSend: 'Google refused the reply (HTTP 400). It was not sent.',
+    );
+
+    await tester.enterText(find.byKey(const ValueKey('reply-box')), 'Hello?');
+    await tester.tap(find.byKey(const ValueKey('reply-send')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Google refused the reply (HTTP 400). It was not sent.'),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('reply-box')))
+          .controller!
+          .text,
+      'Hello?',
+    );
+  });
+
   testWidgets('messages read as a thread: theirs left, yours right, with who '
       'and when', (tester) async {
     await _pump(
@@ -130,17 +199,50 @@ class _FakePlayer implements RecordingPlayer {
   void dispose() {}
 }
 
+final _sent = <String>[];
+
 Future<void> _pump(
   WidgetTester tester, {
   required RecordingPlayer player,
   required Completer<void> recordingGate,
+  bool canReply = true,
+  String? refuseSend,
 }) async {
+  _sent.clear();
   tester.view.physicalSize = const Size(600, 900);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
   final api = ApiClient(
     client: MockClient((request) async {
+      if (request.method == 'POST' && request.url.path.endsWith('/messages')) {
+        final text = (jsonDecode(request.body) as Map)['text'] as String;
+        if (refuseSend != null) {
+          return http.Response(
+            jsonEncode({'message': refuseSend}),
+            502,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        _sent.add(text);
+        return http.Response(
+          jsonEncode({
+            'data': {
+              'id': 'c-sent',
+              'channel': 'MESSAGE',
+              'from': 'ADVERTISER',
+              'occurred_at': '2026-09-08T18:00:00Z',
+              'duration_ms': null,
+              'text': text,
+              'attachments': <String>[],
+              'has_recording': false,
+            },
+          }),
+          201,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
       if (request.url.path.endsWith('/recording')) {
         await recordingGate.future;
         return http.Response.bytes(
@@ -155,6 +257,7 @@ Future<void> _pump(
           jsonEncode({
             'data': {
               'id': 'lead-1',
+              'can_reply': canReply,
               'conversations': [
                 {
                   'id': 'c-call',

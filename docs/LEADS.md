@@ -10,7 +10,7 @@
 | Host | `googleads.googleapis.com` |
 | Access | **Basic Access — APPROVED 3 September 2026** |
 | Quota | 15,000 operations/day |
-| Permissible use | Reporting (read-only) |
+| Permissible use | Reporting; one write, a person's reply to a text enquiry (see §7) |
 | Manager account | 706-109-4046 |
 | Cloud project | `ezbizi-506117` (247590132639) |
 | Last verified | 3 September 2026, live call against production |
@@ -176,8 +176,17 @@ this file. The rule enforced by `deploy-www.sh`: **the site may not claim EzBizi
 handles billing or invoicing.** It does not.
 
 The application declared **Reporting** permissible use and **no write path**.
-That remains true: `LeadsController::update` writes lead status to EzBizi's own
-database with an audit row and is never written back to Google.
+Since 2026-09-08 there is exactly one write, on Jose's decision: **a reply to a
+text enquiry**, sent through `localServices:appendLeadConversation` into the
+Google chat the person wrote in, from the customer's own account. It goes only
+because a person pressed Send - nothing composes or sends automatically - and
+every send is an audit row (`lead.replied`). It is never retried: an ambiguous
+answer after Google has accepted the message must not become the same sentence
+arriving twice at a stranger's phone. Google accepts it for MESSAGE leads only;
+a call lead is refused before anything is sent. The public page says the same.
+
+`LeadsController::update` still writes lead status to EzBizi's own database and
+is never written back to Google.
 
 ## 8 · Outstanding
 

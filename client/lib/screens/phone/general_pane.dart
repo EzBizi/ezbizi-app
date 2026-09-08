@@ -1,4 +1,3 @@
-import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -41,16 +40,16 @@ class _GeneralPaneState extends State<GeneralPane> {
   String? _error;
   String? _saved;
 
-  List<_Line> _lines = const [];
+  List<_Company> _companies = const [];
   List<_Named> _groups = const [];
   List<_Named> _schedules = const [];
   List<_Named> _menus = const [];
   List<_Named> _boxes = const [];
 
-  String? _lineId;
+  String? _companyId;
 
-  // The line being edited, held as fields so a half-made change is not lost
-  // when the list refreshes underneath it.
+  // The company being edited, held as fields so a half-made change is not
+  // lost when the list refreshes underneath it.
   String? _scheduleId;
   String? _menuId;
   String? _groupId;
@@ -80,12 +79,12 @@ class _GeneralPaneState extends State<GeneralPane> {
 
   Future<void> _load() async {
     setState(() {
-      _loading = _lines.isEmpty;
+      _loading = _companies.isEmpty;
       _error = null;
     });
 
     final results = await Future.wait([
-      widget.api.get('/phone/numbers'),
+      widget.api.get('/phone/connections'),
       widget.api.get('/phone/ring-groups'),
       widget.api.get('/phone/hours'),
       widget.api.get('/phone/flows'),
@@ -104,43 +103,43 @@ class _GeneralPaneState extends State<GeneralPane> {
       return;
     }
 
-    final lines = _Line.listFrom(results[0].body);
+    final companies = _Company.listFrom(results[0].body);
 
     setState(() {
       _loading = false;
-      _lines = lines;
+      _companies = companies;
       _groups = _Named.listFrom(results[1].body);
       _schedules = _Named.listFrom(results[2].body);
       _menus = _Named.listFrom(results[3].body);
       _boxes = _Named.listFrom(results[4].body);
-      _lineId ??= lines.isEmpty ? null : lines.first.id;
+      _companyId ??= companies.isEmpty ? null : companies.first.id;
     });
 
     _adopt();
   }
 
-  /// Load the chosen line's settings into the fields.
+  /// Load the chosen company's settings into the fields.
   void _adopt() {
-    final line = _lines.where((l) => l.id == _lineId).firstOrNull;
-    if (line == null) return;
+    final company = _companies.where((c) => c.id == _companyId).firstOrNull;
+    if (company == null) return;
 
     setState(() {
-      _scheduleId = line.hoursScheduleId;
-      _menuId = line.flowId;
-      _groupId = line.ringGroupId;
-      _boxId = line.voicemailBoxId;
-      _afterHours = line.afterHours;
-      _record = line.record;
-      _transcribe = line.transcribe;
-      _forwardTo.text = line.afterHoursNumber ?? '';
-      _fallback.text = line.fallbackNumber ?? '';
-      _notice.text = line.recordingNotice ?? '';
+      _scheduleId = company.hoursScheduleId;
+      _menuId = company.flowId;
+      _groupId = company.ringGroupId;
+      _boxId = company.voicemailBoxId;
+      _afterHours = company.afterHours;
+      _record = company.record;
+      _transcribe = company.transcribe;
+      _forwardTo.text = company.afterHoursNumber ?? '';
+      _fallback.text = company.fallbackNumber ?? '';
+      _notice.text = company.recordingNotice ?? '';
       _saved = null;
     });
   }
 
   Future<void> _save() async {
-    final id = _lineId;
+    final id = _companyId;
     if (id == null) return;
 
     setState(() {
@@ -149,17 +148,19 @@ class _GeneralPaneState extends State<GeneralPane> {
       _saved = null;
     });
 
-    final response = await widget.api.patch('/phone/numbers/$id', {
-      'hours_schedule_id': _scheduleId,
-      'flow_id': _menuId,
-      'ring_group_id': _groupId,
-      'voicemail_box_id': _boxId,
-      'after_hours': _afterHours,
-      'after_hours_number': _afterHours == 'forward' ? _forwardTo.text.trim() : null,
-      'fallback_number': _fallback.text.trim(),
-      'record': _record,
-      'recording_notice': _notice.text.trim(),
-      'transcribe': _transcribe,
+    final response = await widget.api.patch('/phone/connections/$id', {
+      'default_hours_schedule_id': _scheduleId,
+      'default_flow_id': _menuId,
+      'default_ring_group_id': _groupId,
+      'default_voicemail_box_id': _boxId,
+      'default_after_hours': _afterHours,
+      'default_after_hours_number': _afterHours == 'forward'
+          ? _forwardTo.text.trim()
+          : null,
+      'default_fallback_number': _fallback.text.trim(),
+      'default_record': _record,
+      'default_recording_notice': _notice.text.trim(),
+      'default_transcribe': _transcribe,
     });
 
     if (!mounted) return;
@@ -174,7 +175,8 @@ class _GeneralPaneState extends State<GeneralPane> {
 
     setState(() {
       _saving = false;
-      _saved = 'Saved. Call flow will show the new order.';
+      _saved = 'Saved. Every line on this company answers this way unless it '
+          'says otherwise. Call flow shows the result.';
     });
 
     await _load();
@@ -186,7 +188,7 @@ class _GeneralPaneState extends State<GeneralPane> {
 
     if (_loading) return const Center(child: CircularProgressIndicator());
 
-    if (_error != null && _lines.isEmpty) {
+    if (_error != null && _companies.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -201,11 +203,11 @@ class _GeneralPaneState extends State<GeneralPane> {
       );
     }
 
-    if (_lines.isEmpty) {
+    if (_companies.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(24),
         child: Text(
-          'No lines yet. Import or buy one on the Numbers screen, and what it '
+          'No phone account yet. Connect one under Connection, and what it '
           'does with a call is set here.',
           style: theme.textTheme.bodyMedium,
         ),
@@ -218,28 +220,48 @@ class _GeneralPaneState extends State<GeneralPane> {
         Text('General', style: theme.textTheme.titleMedium),
         const SizedBox(height: 4),
         Text(
-          'What answers a call, and what it does on the way. Call flow shows '
-          'the result of these settings.',
+          'What answers a call, and what it does on the way — for every line '
+          'this company has. A line can still be given its own answer, but it '
+          'starts from here rather than from nothing. Call flow shows the '
+          'result.',
           style: theme.textTheme.bodySmall,
         ),
 
         const SizedBox(height: 16),
-        DropdownButtonFormField<String>(
-          initialValue: _lineId,
-          isExpanded: true,
-          decoration: const InputDecoration(
-            labelText: 'Line',
-            border: OutlineInputBorder(),
+
+        // A company picker, and only when there is more than one.
+        //
+        // This used to be a LINE picker, which is what made General read as a
+        // per-number editor: everything under it belonged to whichever number
+        // was chosen, so "what happens when somebody rings us" had to be set
+        // once per line and the next number bought answered differently from
+        // all of them. Under a single company there is nothing to choose, so
+        // the company is stated rather than offered — a dropdown with one
+        // entry is a decision nobody is making.
+        if (_companies.length > 1)
+          DropdownButtonFormField<String>(
+            initialValue: _companyId,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Company',
+              border: OutlineInputBorder(),
+              helperText: 'These settings apply to every line this company '
+                  'has.',
+            ),
+            items: [
+              for (final company in _companies)
+                DropdownMenuItem(value: company.id, child: Text(company.name)),
+            ],
+            onChanged: (id) {
+              setState(() => _companyId = id);
+              _adopt();
+            },
+          )
+        else if (_companies.isNotEmpty)
+          Text(
+            'These settings apply to every line ${_companies.first.name} has.',
+            style: theme.textTheme.bodySmall,
           ),
-          items: [
-            for (final line in _lines)
-              DropdownMenuItem(value: line.id, child: Text(line.heading)),
-          ],
-          onChanged: (id) {
-            setState(() => _lineId = id);
-            _adopt();
-          },
-        ),
 
         const Divider(height: 32),
         Text('What answers a call', style: theme.textTheme.labelLarge),
@@ -461,11 +483,16 @@ class _Named {
   }
 }
 
-class _Line {
-  const _Line({
+/// One company's phone account, and how it answers a call.
+///
+/// Reads the `default_*` fields off the connection. There is exactly one
+/// connection per company — the table is unique on (organization, scope_type,
+/// scope_id) — which is what makes this the company row rather than a table of
+/// its own.
+class _Company {
+  const _Company({
     required this.id,
-    required this.e164,
-    required this.label,
+    required this.name,
     required this.afterHours,
     required this.record,
     required this.transcribe,
@@ -479,8 +506,7 @@ class _Line {
   });
 
   final String id;
-  final String e164;
-  final String label;
+  final String name;
   final String afterHours;
   final bool record;
   final bool transcribe;
@@ -492,30 +518,29 @@ class _Line {
   final String? fallbackNumber;
   final String? recordingNotice;
 
-  String get heading => label.trim().isEmpty || label == e164
-      ? formatPhoneNumber(e164)
-      : '$label · ${formatPhoneNumber(e164)}';
-
-  static List<_Line> listFrom(Map<String, dynamic> body) {
+  static List<_Company> listFrom(Map<String, dynamic> body) {
     final rows = body['data'];
     if (rows is! List) return const [];
 
     return [
       for (final row in rows.whereType<Map<String, dynamic>>())
-        _Line(
+        _Company(
           id: row['id'].toString(),
-          e164: (row['e164'] ?? '').toString(),
-          label: (row['label'] ?? '').toString(),
-          afterHours: (row['after_hours'] ?? 'voicemail').toString(),
-          record: row['record'] == true,
-          transcribe: row['transcribe'] == true,
-          ringGroupId: row['ring_group_id'] as String?,
-          hoursScheduleId: row['hours_schedule_id'] as String?,
-          flowId: row['flow_id'] as String?,
-          voicemailBoxId: row['voicemail_box_id'] as String?,
-          afterHoursNumber: row['after_hours_number'] as String?,
-          fallbackNumber: row['fallback_number'] as String?,
-          recordingNotice: row['recording_notice'] as String?,
+          // scope_name is what the place is CALLED. Without it three
+          // connections all read "company" and there is no way to tell which
+          // is which — which is exactly the bug that put this field on the
+          // row in the first place.
+          name: (row['scope_name'] ?? 'This company').toString(),
+          afterHours: (row['default_after_hours'] ?? 'voicemail').toString(),
+          record: row['default_record'] == true,
+          transcribe: row['default_transcribe'] == true,
+          ringGroupId: row['default_ring_group_id'] as String?,
+          hoursScheduleId: row['default_hours_schedule_id'] as String?,
+          flowId: row['default_flow_id'] as String?,
+          voicemailBoxId: row['default_voicemail_box_id'] as String?,
+          afterHoursNumber: row['default_after_hours_number'] as String?,
+          fallbackNumber: row['default_fallback_number'] as String?,
+          recordingNotice: row['default_recording_notice'] as String?,
         ),
     ];
   }
