@@ -37,6 +37,76 @@ void main() {
     );
   });
 
+  /// One Thumbtack connect made twelve businesses all called "A1 Chimney"
+  /// (API Integrations, 2026-09-08). Google never produced twins, so the row
+  /// had nothing to tell them apart with until somebody named them - and a
+  /// person cannot tell which one they are naming until they have.
+  testWidgets('twins with the same display name show the provider id until '
+      'named', (tester) async {
+    await _pump(
+      tester,
+      connections: [
+        {
+          ..._account('A1 Chimney', leads: 3, label: ''),
+          'id': 'conn-a',
+          'remote_id': '3910921',
+        },
+        {
+          ..._account('A1 Chimney', leads: 2, label: ''),
+          'id': 'conn-b',
+          'remote_id': '3910944',
+        },
+        {
+          ..._account('Only one', leads: 1, label: ''),
+          'id': 'conn-c',
+          'remote_id': '3910999',
+        },
+      ],
+    );
+
+    expect(find.byKey(const ValueKey('twin-conn-a')), findsOneWidget);
+    expect(find.byKey(const ValueKey('twin-conn-b')), findsOneWidget);
+    expect(find.text('3910921'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('twin-conn-c')),
+      findsNothing,
+      reason: 'a name nobody else wears needs no id beside it',
+    );
+  });
+
+  testWidgets('the band and the tile say the provider they were given', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: Column(
+            children: [
+              LeadsAccountsBand(
+                connections: _many(2),
+                onManage: () {},
+                network: 'thumbtack',
+                noun: 'Thumbtack',
+              ),
+              LeadsAccountsTile(
+                connections: _many(2),
+                onOpen: () {},
+                network: 'thumbtack',
+                noun: 'Thumbtack',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('2 Thumbtack accounts'), findsOneWidget);
+    expect(find.text('Thumbtack'), findsOneWidget);
+    expect(find.textContaining('Google Ads'), findsNothing);
+  });
+
   testWidgets('search reaches through the fold', (tester) async {
     await _pump(tester, connections: _many(22));
 
@@ -238,7 +308,10 @@ Future<void> _pump(
     client: MockClient((request) async {
       if (request.url.path.endsWith('/me')) {
         return _json({
-          'data': {..._me, 'permissions': const ['leads.view', 'leads.edit']},
+          'data': {
+            ..._me,
+            'permissions': const ['leads.view', 'leads.edit'],
+          },
         });
       }
       if (request.url.path.contains('leads-franchise')) {
@@ -252,7 +325,9 @@ Future<void> _pump(
           },
         });
       }
-      return _json({'message': 'Nothing stubbed for ${request.url.path}.'}, 500);
+      return _json({
+        'message': 'Nothing stubbed for ${request.url.path}.',
+      }, 500);
     }),
   );
 

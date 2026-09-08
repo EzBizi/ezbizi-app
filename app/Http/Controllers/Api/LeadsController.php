@@ -780,6 +780,11 @@ class LeadsController extends Controller
                 'id'                   => $c->getKey(),
                 'provider'             => $c->provider,
                 'display_name'         => $c->display_name,
+                // The provider's own id, for the one case display_name cannot
+                // settle: twelve Thumbtack businesses all called "A1 Chimney"
+                // (API Integrations, 2026-09-08). Google's digits are unique,
+                // its names are unique; Thumbtack's names are not.
+                'remote_id'            => $c->remote_id,
 
                 // What a person called it, or null. The screen shows this when
                 // set and display_name when not — twenty-two numbers are not

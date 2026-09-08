@@ -228,7 +228,21 @@ class _LeadsAccountsListState extends State<LeadsAccountsList> {
     child: Text(text, style: theme.textTheme.titleSmall),
   );
 
+  /// display_names that more than one connection in this list wears.
+  Set<String> get _twins {
+    final seen = <String, int>{};
+    for (final c in widget.connections) {
+      final name = '${c['display_name'] ?? ''}';
+      seen[name] = (seen[name] ?? 0) + 1;
+    }
+    return {
+      for (final e in seen.entries)
+        if (e.value > 1) e.key,
+    };
+  }
+
   Widget _row(Map<String, dynamic> c) => LeadsAccountRow(
+    ambiguous: _twins.contains('${c['display_name'] ?? ''}'),
     key: ValueKey('leads-account-${c['id']}'),
     api: widget.api,
     session: widget.session,
@@ -251,12 +265,21 @@ class LeadsAccountRow extends StatefulWidget {
     required this.session,
     required this.connection,
     required this.onChanged,
+    this.ambiguous = false,
   });
 
   final ApiClient api;
   final Session session;
   final Map<String, dynamic> connection;
   final Future<void> Function() onChanged;
+
+  /// Another connection in the same list wears the same display_name. Google
+  /// never produced this - its digits and its names are both unique - but one
+  /// Thumbtack connect made twelve businesses all called "A1 Chimney", and a
+  /// person cannot tell which one they are naming until they have named it.
+  /// When true and the row has no label yet, the provider's own id is shown
+  /// beside the name so the twins can be told apart.
+  final bool ambiguous;
 
   @override
   State<LeadsAccountRow> createState() => _LeadsAccountRowState();
@@ -389,7 +412,8 @@ class _LeadsAccountRowState extends State<LeadsAccountRow> {
   }
 
   String _franchiseName(String id) {
-    for (final f in widget.session.me?.franchises ?? const <FranchiseSummary>[]) {
+    for (final f
+        in widget.session.me?.franchises ?? const <FranchiseSummary>[]) {
       if (f.id == id) return f.name;
     }
     return 'that place';
@@ -433,9 +457,21 @@ class _LeadsAccountRowState extends State<LeadsAccountRow> {
                           const SizedBox(width: 8),
                           // The number stays even when named: the name is how
                           // you find it, the number is how you check it against
-                          // Google Ads.
+                          // the provider.
                           Text(
                             '${c['display_name'] ?? ''}',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ] else if (widget.ambiguous &&
+                            '${c['remote_id'] ?? ''}'.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          // Twins: the provider's id is the only thing that
+                          // tells them apart until somebody names them.
+                          Text(
+                            '${c['remote_id']}',
+                            key: ValueKey('twin-${c['id']}'),
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant,
                             ),
@@ -458,7 +494,9 @@ class _LeadsAccountRowState extends State<LeadsAccountRow> {
               SizedBox(
                 width: 84,
                 child: Text(
-                  leads == 0 ? 'no leads' : '$leads ${leads == 1 ? 'lead' : 'leads'}',
+                  leads == 0
+                      ? 'no leads'
+                      : '$leads ${leads == 1 ? 'lead' : 'leads'}',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -546,8 +584,9 @@ class _LeadsAccountRowState extends State<LeadsAccountRow> {
                     showCheckmark: false,
                     onSelected: (_) => _place(null),
                   ),
-                  for (final f in widget.session.me?.franchises ??
-                      const <FranchiseSummary>[])
+                  for (final f
+                      in widget.session.me?.franchises ??
+                          const <FranchiseSummary>[])
                     ChoiceChip(
                       label: Text(f.name),
                       selected: c['leads_franchise_id'] == f.id,
@@ -607,10 +646,18 @@ class LeadsAccountsBand extends StatelessWidget {
     super.key,
     required this.connections,
     required this.onManage,
+    this.network = 'google_ads',
+    this.noun = 'Google Ads',
   });
 
   final List<Map<String, dynamic>> connections;
   final VoidCallback onManage;
+
+  /// The SocialNetworkMark key and the words on the band. Google Ads by
+  /// default; Thumbtack passes its own. Every endpoint the list calls is
+  /// provider-neutral, so this is the whole difference.
+  final String network;
+  final String noun;
 
   @override
   Widget build(BuildContext context) {
@@ -622,7 +669,7 @@ class LeadsAccountsBand extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       child: Row(
         children: [
-          const SocialNetworkMark(network: 'google_ads', size: 20),
+          SocialNetworkMark(network: network, size: 20),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -631,8 +678,8 @@ class LeadsAccountsBand extends StatelessWidget {
               children: [
                 Text(
                   connections.length == 1
-                      ? '1 Google Ads account'
-                      : '${connections.length} Google Ads accounts',
+                      ? '1 $noun account'
+                      : '${connections.length} $noun accounts',
                   style: theme.textTheme.bodyMedium,
                 ),
                 Text(
@@ -665,10 +712,14 @@ class LeadsAccountsTile extends StatelessWidget {
     super.key,
     required this.connections,
     required this.onOpen,
+    this.network = 'google_ads',
+    this.noun = 'Google Ads',
   });
 
   final List<Map<String, dynamic>> connections;
   final VoidCallback onOpen;
+  final String network;
+  final String noun;
 
   @override
   Widget build(BuildContext context) {
@@ -676,8 +727,8 @@ class LeadsAccountsTile extends StatelessWidget {
     final placed = placedCount(connections);
 
     return ListTile(
-      leading: const SocialNetworkMark(network: 'google_ads', size: 20),
-      title: Text('Google Ads', style: theme.textTheme.bodyMedium),
+      leading: SocialNetworkMark(network: network, size: 20),
+      title: Text(noun, style: theme.textTheme.bodyMedium),
       subtitle: Text(
         '${connections.length} '
         '${connections.length == 1 ? 'account' : 'accounts'} · '
