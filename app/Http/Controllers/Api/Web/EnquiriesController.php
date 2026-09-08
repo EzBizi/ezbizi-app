@@ -248,6 +248,11 @@ class EnquiriesController extends Controller
         return LeadConversation::query()
             ->where('lead_id', $chat->lead_id)
             ->orderBy('occurred_at')
+            // Two messages in the same second tie on occurred_at, and a tie's
+            // order is whatever the engine feels like: the visitor's question
+            // came back after the business's answer once the row count around
+            // it changed. The id is a UUID v7, time-ordered to the millisecond.
+            ->orderBy('id')
             ->get(['participant', 'text', 'occurred_at'])
             ->map(fn (LeadConversation $row) => [
                 'from' => $row->participant === LeadConversation::FROM_CONSUMER ? 'you' : 'them',

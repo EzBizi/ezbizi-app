@@ -246,4 +246,22 @@ class WebsiteEnquiriesTest extends TestCase
             'message' => $message,
         ]);
     }
+
+    /**
+     * A website enquiry ARRIVES the way a Google or Thumbtack one does: it
+     * raises lead.received. Without this, an automation on "Lead received"
+     * fired for two sources and silently skipped the other two.
+     */
+    public function test_a_website_enquiry_raises_lead_received_like_every_other_source(): void
+    {
+        ['site' => $site, 'tenant' => $tenant] = $this->siteWithKey();
+
+        $this->startChat($site->public_key, 'Do you service gas inserts?')->assertCreated();
+
+        $raised = $this->inTenant($tenant['org'], fn () => \Illuminate\Support\Facades\DB::table('automation_events')
+            ->where('event_key', 'lead.received')
+            ->count());
+
+        $this->assertSame(1, $raised, 'the arrival of a website lead is an event, not only its words');
+    }
 }

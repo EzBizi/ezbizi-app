@@ -6,6 +6,7 @@ use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\WebChat;
 use App\Models\WebSite;
+use App\Support\Automations\EventEmitter;
 use App\Support\Leads\LeadThread;
 use Illuminate\Support\Str;
 
@@ -33,7 +34,10 @@ use Illuminate\Support\Str;
  */
 final class WebsiteEnquiries
 {
-    public function __construct(private readonly LeadThread $thread) {}
+    public function __construct(
+        private readonly LeadThread $thread,
+        private readonly EventEmitter $events,
+    ) {}
 
     /** Live chat from the widget on a customer's site. */
     public const CHANNEL_LIVECHAT = 'LIVECHAT';
@@ -146,7 +150,7 @@ final class WebsiteEnquiries
     {
         $phone = isset($visitor['phone']) ? trim((string) $visitor['phone']) : null;
 
-        return Lead::create([
+        $lead = Lead::create([
             'company_id' => $site->company_id,
 
             /*
@@ -167,5 +171,21 @@ final class WebsiteEnquiries
             'status' => Lead::STATUS_NEW,
             'received_at' => now(),
         ]);
+
+        /*
+         * The lead's ARRIVAL, the same trigger Google and Thumbtack raise on
+         * create. Without it an automation on "Lead received" fired for two
+         * sources and silently skipped every website chat and form - the
+         * rule enabled, no error, three sources out of four (UI/UX,
+         * 2026-09-08). lead.contact_received for the words themselves comes
+         * from LeadThread; this is the header.
+         */
+        $this->events->emitAfterCommit('lead.received', $lead, [
+            'after' => $lead->only([
+                'source', 'contact_name', 'phone', 'category', 'received_at',
+            ]),
+        ]);
+
+        return $lead;
     }
 }
