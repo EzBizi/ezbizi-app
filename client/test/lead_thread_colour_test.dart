@@ -16,6 +16,12 @@ import 'package:http/testing.dart';
 /// dark teal carrying white text, dark is a bright cyan carrying near-black
 /// text. A bubble that looks right in one screenshot is no evidence about the
 /// other, so this reads the tokens the widget actually painted with.
+///
+/// Scope of the "no leading-edge bar" check, stated so it is not trusted for
+/// more than it holds: it compares the LEFT and RIGHT edges only - a leading
+/// edge is one of those two by definition - and pins the left to
+/// `outlineVariant` so two symmetric saturated bars could not pass. Top and
+/// bottom are not compared.
 void main() {
   for (final (name, theme) in [
     ('light', EzBiziTheme.light()),
