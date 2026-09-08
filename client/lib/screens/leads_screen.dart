@@ -973,6 +973,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     final unreplied = from == 'CONSUMER';
     final mine = from == 'ADVERTISER';
     final channel = lead['last_contact_channel'] as String?;
+    final source = lead['source'] as String?;
     final preview = lead['last_contact_preview'] as String?;
     // Approved triage layout 1 / 4 (18012c74): unread is WEIGHT, not a badge
     // and not a tint. The name and the preview go bold; the dot stays
@@ -1032,7 +1033,14 @@ class _LeadsScreenState extends State<LeadsScreen> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      if (channel != null) ...[
+                      // The channel badge is drawn only when it says something
+                      // the source badge does not. "Call · Google" is two
+                      // facts; a chat row read "Chat · Chat" and a form row
+                      // "Form · Form", one fact twice (UI/UX, 2026-09-08). The
+                      // rule needs no list of sources: a fifth source with
+                      // one channel gets the right answer for free.
+                      if (channel != null &&
+                          channelWord(channel) != sourceBadgeWord(source)) ...[
                         const SizedBox(width: 8),
                         _Badge(
                           channelWord(channel),
@@ -1043,7 +1051,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                       // container so it never competes with Call and Text.
                       const SizedBox(width: 6),
                       _SourceBadge(
-                        sourceBadgeWord(lead['source'] as String?),
+                        sourceBadgeWord(source),
                         key: ValueKey('source-badge-$id'),
                       ),
                     ],

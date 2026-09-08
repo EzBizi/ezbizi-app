@@ -231,6 +231,42 @@ void main() {
     );
   });
 
+  /// "Chat · Chat" was one fact twice. The channel badge is drawn only when
+  /// it says a word the source badge does not; Google rows keep both.
+  testWidgets('a website row does not say its source twice; a Google row '
+      'keeps channel and source', (tester) async {
+    await _pump(
+      tester,
+      leads: [
+        _lead(
+          'lead-1',
+          'Marcus Bell',
+          from: 'CONSUMER',
+          channel: 'PHONE_CALL',
+          preview: 'Call · 4:32',
+        ),
+        {
+          ..._lead(
+            'lead-2',
+            'Visitor 4471',
+            from: 'CONSUMER',
+            channel: 'LIVECHAT',
+            preview: 'Do you service gas inserts?',
+          ),
+          'source': 'website_chat',
+        },
+      ],
+      connections: _connected,
+    );
+
+    expect(find.text('Call'), findsOneWidget);
+    expect(
+      find.text('Chat'),
+      findsNWidgets(2),
+      reason: 'the chip and one badge, not a second badge',
+    );
+  });
+
   testWidgets('an unconnected Thumbtack offers to connect from the sources '
       'panel and says what connecting is for', (tester) async {
     await _pump(tester, leads: const [], connections: const []);
