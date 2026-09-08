@@ -634,7 +634,18 @@ class ModuleServiceProvider extends ServiceProvider
                     new TriggerDefinition(
                         key: 'time_clock.clocked_out',
                         label: 'Person clocked out',
-                        description: 'Somebody ended a shift. It carries who, when they punched in, and when they punched out.',
+                        description: 'Somebody ended a shift. It carries who, when they punched in, and when they punched out, '
+                            .'and ended_by: person, schedule (the server closed it at the scheduled end) or automation.',
+                        isRaised: true,
+                    ),
+                    // No separate "overdue" trigger: the server closes an overdue
+                    // shift within a minute, so overdue is never a state a rule
+                    // could observe. ended_by on clocked_out is the fact.
+                    new TriggerDefinition(
+                        key: 'time_clock.extended',
+                        label: 'Shift extended',
+                        description: 'Somebody pushed their scheduled end out. It carries who, the new scheduled end, '
+                            .'and how many times this shift has been extended.',
                         isRaised: true,
                     ),
                 ],
