@@ -54,7 +54,7 @@ class LeadConversationsTest extends TestCase
     /** @return array<string, mixed> */
     private function leadRow(string $id, string $name = 'Jane Doe'): array
     {
-        return ['localServicesLead' => [
+        return ['customer' => ['timeZone' => 'America/New_York'], 'localServicesLead' => [
             'id'               => $id,
             'leadType'         => 'MESSAGE',
             'categoryId'       => 'xcat:service_area_business_chimney_sweep',
@@ -70,7 +70,10 @@ class LeadConversationsTest extends TestCase
     /** @return array<int, array<string, mixed>> */
     private function threadRows(string $leadId): array
     {
-        $lead = ['localServicesLead' => ['id' => $leadId]];
+        $lead = [
+            'customer'          => ['timeZone' => 'America/New_York'],
+            'localServicesLead' => ['id' => $leadId],
+        ];
         $on   = "customers/4941850746/localServicesLeads/{$leadId}";
 
         return [
@@ -189,7 +192,9 @@ class LeadConversationsTest extends TestCase
         $this->assertSame('MESSAGE', $lead->last_contact_channel);
         $this->assertSame('ADVERTISER', $lead->last_contact_from);
         $this->assertSame('Yes, 10am works.', $lead->last_contact_preview);
-        $this->assertSame('2026-09-07 09:30:00', $lead->last_contact_at->format('Y-m-d H:i:s'));
+        // Google said "2026-09-07 09:30:00" in America/New_York. Stored as UTC.
+        $this->assertSame('2026-09-07 13:30:00', $lead->last_contact_at->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-09-05 12:00:00', $lead->received_at->format('Y-m-d H:i:s'));
 
         // The conversation read is scoped to the account and windowed on the
         // conversation's own time, not the lead's.
@@ -351,5 +356,43 @@ class LeadConversationsTest extends TestCase
 
         $all = $this->signedInAs($t['admin'])->getJson('/api/v1/leads')->assertOk()->json('data');
         $this->assertCount(2, $all);
+    }
+
+    /**
+     * Every stored time was four hours old, and a migration cannot know by
+     * how much: the offset is the account's, not the platform's. Re-reading
+     * a window refreshes every row in it from Google, clock included.
+     */
+    public function test_days_rereads_the_window_and_corrects_times_already_held(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $connection = $this->connected($t);
+
+        // Held as it was stored before the fix: New York time read as UTC.
+        $this->inTenant($t['org'], fn () => Lead::create([
+            'organization_id' => $t['org']->id,
+            'company_id'      => $t['company']->id,
+            'connection_id'   => $connection->getKey(),
+            'source'          => Lead::SOURCE_LOCAL_SERVICES,
+            'remote_id'       => '111',
+            'status'          => Lead::STATUS_NEW,
+            'received_at'     => '2026-09-05 08:00:00',
+        ]));
+
+        $this->fakeGoogle([$this->leadRow('111')], $this->threadRows('111'));
+
+        $this->artisan('ezbizi:sync-leads', ['--days' => 30])->assertSuccessful();
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->where('remote_id', '111')->first());
+        $this->assertSame('2026-09-05 12:00:00', $lead->received_at->format('Y-m-d H:i:s'));
+        $this->assertSame(Lead::STATUS_NEW, $lead->status, 'A re-read refreshes the source fields, never ours.');
+
+        Http::assertSent(function (Request $request) {
+            $query = (string) (((array) $request->data())['query'] ?? '');
+            $floor = now()->subDays(30)->utc()->format('Y-m-d');
+
+            return str_contains($query, 'FROM local_services_lead ')
+                && str_contains($query, "creation_date_time >= '{$floor}");
+        });
     }
 }

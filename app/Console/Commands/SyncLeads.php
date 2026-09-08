@@ -44,7 +44,8 @@ use Throwable;
  */
 class SyncLeads extends Command
 {
-    protected $signature = 'ezbizi:sync-leads';
+    protected $signature = 'ezbizi:sync-leads
+        {--days= : Re-read this many days back on every account, refreshing what is already held}';
 
     protected $description = 'Fetch Local Services enquiries for every connected Google Ads account';
 
@@ -101,7 +102,10 @@ class SyncLeads extends Command
             try {
                 $result = $this->tenant->run(
                     $organization,
-                    fn () => $this->localServices->sync($connection),
+                    fn () => $this->localServices->sync(
+                        $connection,
+                        is_numeric($this->option('days')) ? (int) $this->option('days') : null,
+                    ),
                 );
 
                 $fetched  += $result['fetched'];

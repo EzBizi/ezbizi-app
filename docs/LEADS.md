@@ -129,6 +129,15 @@ sentence for a screen.
   writes an audit row (`lead.recording_played`).
 - **Trigger `lead.contact_received`** fires for a consumer's call or message,
   never for the business's own reply.
+- **Google's timestamps are in the account's time zone, with no offset.**
+  `creation_date_time` and `event_date_time` are bare strings meaning local
+  time in `customer.time_zone` (America/New_York for A-1 Chimney). Read as
+  UTC, every lead and message was four hours old - Jose saw "4h ago" beside
+  a1leads showing the same person at "45m ago" on 2026-09-08, and "Nothing
+  new" read as a fetch that had stopped. Both SELECTs now carry
+  `customer.time_zone` and `LocalServicesLeads::whenGoogleSaid` parses with
+  it. `ezbizi:sync-leads --days=N` re-reads a window and refreshes the rows
+  already held, which is how the stored times were corrected after deploy.
 
 Livechat and Form in a1leads are website sources, not Google ones — a later
 piece, not this read.

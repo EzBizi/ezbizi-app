@@ -69,10 +69,17 @@ class LocalServicesLeads
      *
      * @return array{fetched: int, created: int, updated: int}
      */
-    public function sync(SocialConnection $connection): array
+    /**
+     * @param  int|null  $days  Re-read this many days back instead of the
+     *                          incremental window. Existing rows are refreshed,
+     *                          which is how a stored value that was wrong for
+     *                          every row - the clock, 2026-09-08 - gets put
+     *                          right without a migration guessing at it.
+     */
+    public function sync(SocialConnection $connection, ?int $days = null): array
     {
         $token = GoogleToken::forConnection($connection, 'google_ads');
-        $since = $this->since($connection);
+        $since = $days !== null ? now()->subDays($days) : $this->since($connection);
 
         $fetched = 0;
         $created = 0;
@@ -96,7 +103,7 @@ class LocalServicesLeads
             $pageToken = $page['next'];
         } while ($pageToken !== null && ++$pages < self::MAX_PAGES);
 
-        $conversations = $this->syncConversations($connection, $token);
+        $conversations = $this->syncConversations($connection, $token, $days);
 
         $connection->forceFill(['last_reached_at' => now()])->save();
 
@@ -162,7 +169,7 @@ class LocalServicesLeads
      *
      * @return array{fetched: int, created: int, leads_recovered: int}
      */
-    private function syncConversations(SocialConnection $connection, string $token): array
+    private function syncConversations(SocialConnection $connection, string $token, ?int $days = null): array
     {
         $none = ['fetched' => 0, 'created' => 0, 'leads_recovered' => 0];
 
@@ -170,7 +177,7 @@ class LocalServicesLeads
             return $none;
         }
 
-        $since   = $this->conversationsSince($connection);
+        $since   = $days !== null ? now()->subDays($days) : $this->conversationsSince($connection);
         $fetched = 0;
         $created = 0;
         $pending = [];   // remote lead id => conversations whose lead we do not hold yet
@@ -187,7 +194,8 @@ class LocalServicesLeads
             .'local_services_lead_conversation.phone_call_details.call_duration_millis, '
             .'local_services_lead_conversation.phone_call_details.call_recording_url, '
             .'local_services_lead_conversation.message_details.text, '
-            .'local_services_lead_conversation.message_details.attachment_urls '
+            .'local_services_lead_conversation.message_details.attachment_urls, '
+            .'customer.time_zone '
             .'FROM local_services_lead_conversation '
             ."WHERE local_services_lead_conversation.event_date_time >= '%s'",
             $since->utc()->format('Y-m-d H:i:s'),
@@ -322,6 +330,7 @@ class LocalServicesLeads
         return [
             'id'           => $id,
             'leadId'       => $leadId,
+            'timeZone'     => ((array) ($row['customer'] ?? []))['timeZone'] ?? null,
             'channel'      => trim((string) ($c['conversationChannel'] ?? '')) ?: 'UNKNOWN',
             'participant'  => trim((string) ($c['participantType'] ?? '')) ?: 'UNKNOWN',
             'occurredAt'   => $c['eventDateTime'] ?? null,
@@ -347,7 +356,9 @@ class LocalServicesLeads
         $fields = [
             'channel'       => $raw['channel'],
             'participant'   => $raw['participant'],
-            'occurred_at'   => $raw['occurredAt'] !== null ? Carbon::parse((string) $raw['occurredAt']) : now(),
+            'occurred_at'   => $raw['occurredAt'] !== null
+                ? self::whenGoogleSaid((string) $raw['occurredAt'], $raw['timeZone'] ?? null)
+                : now(),
             'duration_ms'   => $raw['durationMs'],
             'recording_url' => $raw['recordingUrl'],
             'text'          => $raw['text'],
@@ -435,6 +446,27 @@ class LocalServicesLeads
      * when it does the disagreement is silent. The rows cannot lie about what
      * they contain.
      */
+    /**
+     * Google's timestamps are in the ACCOUNT's time zone, with no offset.
+     *
+     * `creation_date_time` and `event_date_time` come back as
+     * "2026-09-08 13:43:01.118153" and mean 13:43 in `customer.time_zone` -
+     * America/New_York for every A-1 Chimney account. Read as UTC, which is
+     * what Carbon::parse does with a bare string, every lead and every
+     * message was stamped four hours too old. Jose saw it on 2026-09-08: the
+     * newest lead showed "4h ago" beside a1leads showing the same person at
+     * "45m ago", and "Nothing new" looked like a fetch that had stopped.
+     *
+     * The zone rides on every row - `customer.time_zone` is attributable
+     * from both resources, verified live - so the parse needs no stored
+     * setting. A row without one is read as UTC and is wrong the old way,
+     * which is the least surprising fallback.
+     */
+    public static function whenGoogleSaid(string $stamp, ?string $timeZone): Carbon
+    {
+        return Carbon::parse($stamp, $timeZone ?: 'UTC')->utc();
+    }
+
     private function since(SocialConnection $connection): Carbon
     {
         $newest = Lead::query()
@@ -517,7 +549,8 @@ class LocalServicesLeads
         .'local_services_lead.category_id, local_services_lead.service_id, '
         .'local_services_lead.contact_details, local_services_lead.lead_status, '
         .'local_services_lead.lead_charged, local_services_lead.credit_details.credit_state, '
-        .'local_services_lead.creation_date_time, local_services_lead.locale '
+        .'local_services_lead.creation_date_time, local_services_lead.locale, '
+        .'customer.time_zone '
         .'FROM local_services_lead';
 
     /**
@@ -622,6 +655,7 @@ class LocalServicesLeads
 
         return [
             'leadId'          => $id,
+            'timeZone'        => ((array) ($row['customer'] ?? []))['timeZone'] ?? null,
             'leadType'        => $lead['leadType'] ?? null,
             'leadCategory'    => $lead['categoryId'] ?? null,
             'leadStatus'      => $lead['leadStatus'] ?? null,
@@ -687,7 +721,7 @@ class LocalServicesLeads
                 'source_status' => trim((string) ($raw['leadStatus'] ?? '')) ?: null,
                 'charge_status' => trim((string) ($raw['chargeStatus'] ?? '')) ?: null,
                 'received_at'   => isset($raw['creationDateTime'])
-                    ? Carbon::parse((string) $raw['creationDateTime'])
+                    ? self::whenGoogleSaid((string) $raw['creationDateTime'], $raw['timeZone'] ?? null)
                     : now(),
                 'synced_at'     => now(),
             ];
