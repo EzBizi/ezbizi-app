@@ -42,7 +42,7 @@ submission, a filing — never for permission.
 |---|---|
 | **Quotes, billing, invoicing, estimates, payments** | Does not exist. 151 production tables searched for `quote` / `invoic` / `bill` / `estimate` return nothing, and no such module is registered among 26. The only `payment` match is `vehicle_payments` — Fleet recording what it paid for a van. Removed in `6c67efb`. |
 | **Scheduling a job onto a calendar** | Not built, and **test the relation, not a column.** The obvious check — "`jobs` has no scheduled-date column" — is already false: `jobs.scheduled_for` (datetime) and `jobs.assigned_role_id` exist on production, and **0 of 25 jobs have either set**. The durable test is structural: **no table carries both a job reference and a date-or-slot reference.** `service_area_slots` is `(service_area_id, weekday, start_time, end_time, max_jobs)` — a recurring weekly capacity *template* with no `job_id`, no date and no per-occurrence row, so it cannot express "this job, this day, this slot" even in principle. That stays true until the module is actually built, which is exactly when the claim should change. |
-| **Training** | **Corrected 2026-09-02 — the old reason was false.** Its five tables *are* on production (`training_assignments`, `training_attempts`, `training_guides`, `training_progress`, `training_tests`); the row used to say they were not. The verdict does not change, but the reason does: **all five are empty**, so nothing has ever been assigned, attempted or completed. The checkable test is a row count in those tables, not their existence — the old test would now pass and the claim would still be false. |
+| **Training** | **Corrected 2026-09-02 — the old reason was false.** Its five tables *are* on production (`training_assignments`, `training_attempts`, `training_guides`, `training_progress`, `training_tests`); the row used to say they were not. The verdict does not change, but the reason does: **all five are empty**, so nothing has ever been assigned, attempted or completed. The checkable test is a row count in those tables, not their existence — the old test would now pass and the claim would still be false. **Corrected again 2026-09-08: it now has screens.** `0.0.0151` shipped the server side with no sidebar entry, and the deploy desk said in `0035` "do not describe Training as available" — then `0.0.0159` shipped *"Training is now something you can actually use — read a guide, sit its test, and see who owes what"*, and production is `0.0.0168`. **So the reason has moved twice and the verdict has not.** It is no longer unbuilt and no longer invisible; it is built-and-unused, which the Inspections precedent says is sellable as a capability. **It is still held, deliberately, because the row count is the test this row names and this run could not take one** — a scheduled run cannot reach the desk to ask, and the five tables are not readable from here. **Do not resolve this by reasoning; resolve it by asking.** The next run that reaches the desk should ask for the row count in `training_attempts` and `training_progress`, and if nothing has ever been attempted, a capability card is allowed by the same precedent that allows Coverage & capacity — with the tense rule that comes with it: never "teams train on it". |
 | **Phone / Communication** | **PUBLISHED 2026-09-04 as a card reading "Your business numbers in one place — dial, texts and voicemail…" — the row now governs only what may NOT be added to it.** **Jose approved it for the site on 2026-09-03** (relayed by the deploy session, which put the 2-of-7 fraction to him explicitly). **The approval covers the capability, not any particular sentence, and the fraction has not moved.** Draft copy is below, unpublished, awaiting his sight of the actual words. Everything following is the measurement that shapes them.<br><br>**The old blocker has partly lifted; the answer is still no to the strong claim, for a smaller reason.** The row used to say no production line had a ring group and every inbound call reached voicemail. As of 2026-09-02 `phone_ring_groups` has **2 rows**, and **2 of 7** `phone_numbers` carry a non-null `ring_group_id`. So calls to those two reach a person. **Five of seven still dead-end at voicemail**, which is why "phone system" remains an overstatement rather than a promise kept — and the module was renamed **Communication** in `0.0.0141`, so any future copy names that, not "Phone". The checkable test: `phone_numbers` with a non-null `ring_group_id`, as a fraction of all of them. Do not write the claim off a lifted gate; write it off the fraction. |
 | **Local Services enquiries arriving as leads** | **Contradicted, not merely unverified — and the evidence is a decoy.** Querying production returns `source = local_services` on 8 leads, which reads exactly like the confirmation this row has been waiting for. All 8 were created in the *same second* and none carries a provider id: they are `leads:seed-demo`, run on production by the deploy session on 2026-08-31. The `source` string was written by the seeder, not by Google. **True count of real Local Services enquiries: 0**, re-confirmed 2026-09-02. **The test this row used to name does not work, and saying so is the point.** It told you to look for a provider `external_id`; there is no `external_id` column on `leads` and none anywhere in `database/migrations/`, so the check silently has nothing to compare and a careful session runs it, finds nothing, and cannot tell "no real leads" from "no such column". **The first replacement written for this row was also wrong, and it is left here as the warning.** It said a genuine enquiry has a `connection_id` and a non-null `synced_at` while a seeded one has neither — reasoned from the real sync path (`LocalServicesLeads.php:216,228`) without ever opening the seeder. **`LeadsSeedDemo.php:132,143` writes both**, pointing `connection_id` at a genuine `social_connections` row it creates. The seeded rows are indistinguishable from real ones on every field that describes *how a lead arrives*, because the seeder's whole job is to look real. **The test that works is the one the seeder deliberately leaves behind:** `LeadsSeedDemo.php:45` stamps `private const PREFIX = 'DEMO-'` onto `remote_id` on every row it plants (`:128`). So — **a real enquiry's `remote_id` is Google's own id and never begins `DEMO-`:**
 
@@ -230,6 +230,33 @@ EzBizi LLC. The `/download/` card already reads *"On the App Store"* and links
 file was the stale one, not the site. Nothing to publish; only this row needed
 correcting.
 
+**And that conclusion was half right, which is the lesson. Re-measured
+2026-09-08 by the daily run: the `/download/` page was correct and the
+HOMEPAGE was not.** `91fef0e6` ("The download page says the iPhone app is on
+the App Store, because it is") did exactly what its message says — it fixed the
+download page. The homepage kept the old sentence in **two** places, published
+and live for four days:
+
+    www/index.html:38   FAQPage JSON-LD, "What can I run EzBizi on?"
+    www/index.html:617  the visible <details> answering the same question
+
+both reading *"the iPhone app is built and still to come"*, plus
+`"operatingSystem":"Web, Windows, Android"` in the homepage
+`SoftwareApplication` JSON-LD. Fixed 2026-09-08 to *"The Android app is on
+Google Play and the iPhone app is on the App Store."* and
+`"Web, Windows, Android, iOS"`.
+
+**Three things this is worth remembering for.** (1) It is the *understatement*
+failure again — the direction this file already warned nobody watches for, and
+it cost every homepage visitor the store link for four days. (2) The row above
+checked the page the fix had touched and concluded the site was fine; **a page
+being right is not the claim being right**, and this file's own closing rule —
+grep the whole of `www/` — is what would have caught it. The FAQ is the easiest
+place in the site to miss, because a claim there is phrased as an answer rather
+than as a feature. (3) It is a *store* fact, so the standing check catches the
+store changing state but not the site failing to follow: **after either store
+command flips, grep `www/` for the old sentence, not just the card.**
+
 **Both commands stay, and the Apple one has a second failure mode now.**
 `resultCount` 0 no longer means "not approved" — it would mean a pulled listing.
 And **`curl -sI https://apps.apple.com/app/id6805979795` answered `429 Too Many
@@ -305,6 +332,53 @@ reaches a person — not "never miss a call", not "your calls reach your team",
 not "phone system". The published card says none of them, and a grep for all
 four phrasings across `www/` returns zero. That check is worth re-running
 whenever this card is edited.
+
+## Newsletter — PUBLISHED 2026-09-08
+
+A card in the module grid, between Social media and Inventory:
+
+```html
+<h3>Newsletter</h3>
+<p>Write a mailing in blocks or straight HTML, see the month it goes out on,
+   and send it through your own Mailchimp account &mdash; your list, your
+   sending reputation.</p>
+```
+
+**Every clause was read out of the DEPLOYED tree, not the working one.**
+Production is release `0.0.0168` at `a18b059a` (`/download/windows.json`,
+fetched); the verification below was taken at `cedd6206` (`0.0.0151`, the
+release that first carried it) and the files were confirmed still present at
+`a18b059a`:
+
+    blocks or straight HTML   newsletter_editor.dart:142-143 — a two-segment
+                              control, ButtonSegment 'Blocks' / 'HTML'
+    the month it goes out on  newsletter_dashboard.dart:42 — MonthCalendar over
+                              the scheduled ones; Newsletter.scheduled_for /
+                              scheduled_timezone are real columns
+    your own Mailchimp        NewsletterSenders::for() returns a sender for
+                              SocialProvider::Mailchimp and `default => null`
+                              — the same shape as Publishers, so the same test
+    your list, your           MailchimpSender sends as a campaign on the
+    sending reputation        TENANT's connection. Its docblock says so in as
+                              many words: "EzBizi does not send newsletters, by
+                              design — a mailing goes out on the tenant's own
+                              reputation, to their list, through their
+                              provider."
+
+**The test for this row is `NewsletterSenders::for()`, exactly as the social
+row's is `Publishers::for()`.** If a second provider is added, the card's
+"your own Mailchimp account" is the clause that goes stale, and it goes stale
+by being too *narrow* — the understatement failure this file keeps catching.
+
+**What the card deliberately does not say.** The deploy desk's `0035` caveat
+is that Newsletter is reachable by administrators only until Jose grants
+`newsletter.view` / `newsletter.send` to other roles. That is a permission
+default, not a capability limit, and no sentence on the site describes who in
+an organization can reach a module — so it changes nothing here. It is
+recorded because the next reader will meet the caveat in `0035` and wonder
+whether the card outran it. It did not. **No usage is claimed**: nobody has
+sent a mailing, and the card is capability phrasing under the Inspections
+precedent, like Coverage & capacity.
 
 ## The Suggestions row inverted within a day, and the instruction to invert it is why that was cheap
 
@@ -408,6 +482,36 @@ sent message is the record of what its receiver worked from.
   that same session first put its handoff on the branch that needed merging, where
   whoever would merge it could not read it. This file works because the daily check
   is *told* to open it first.
+
+### The inbox route works, and its answer went stale the same day
+
+**Measured 2026-09-08 by the run after the one that wrote `0034`.** The desk
+answered it as a file — `docs/agents/inbox/0035-deploy-desk-to-website-what-shipped-0141-to-0151.md`,
+committed as `bc9788e1` — a full catalog of `0.0.0142` → `0.0.0151` with two
+caveats and a list of claims to re-check. **So the channel is proven end to
+end: a scheduled run can ask, and a desk that reads its inbox will answer where
+the next scheduled run can read it.** That is the thing to keep doing.
+
+**And by the time it was read, it was a version of production that no longer
+existed.** `0035` says production is `0.0.0151` at `cedd6206`, measured 13:20
+UTC. `/download/windows.json` answered `0.0.0168` built `a18b059a` the same
+evening — **seventeen releases later, all dated 8 Sep 2026 in
+`version_history.dart`.** Nothing was wrong with the answer; it was a
+timestamp, like every peer measurement this file has been burned by.
+
+**So the sequence for the next run is: fetch the manifest FIRST, then read the
+inbox against it.** One `curl` names the deployed version and SHA with no desk
+in the loop, and it is the thing that tells you whether an inbox answer is
+current, a week old, or describing a release that shipped and was superseded
+before you opened the file. Reading the mail first inverts that — you spend the
+run believing a catalog, and the manifest is what would have told you not to.
+
+**`version_history.dart` at the deployed SHA is the fallback catalog**, and it
+is what filled the `0152`–`0168` gap on this run. It is not equal to a desk's
+answer: it says what was *written down*, per version, with no "is it live for a
+paying customer" judgement attached — which is exactly what `0035`'s two
+caveats were. Use it to find what to verify, then verify each clause against
+the code at the deployed SHA, which is what this file has always required.
 
 **This session is already in `SESSIONS.md` and needs no registration** — the
 daily catalog is listed there as *not a role* ("it finds the deploy desk here;
