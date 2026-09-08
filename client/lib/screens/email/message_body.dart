@@ -166,20 +166,25 @@ class _Quote extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
+    // Indented and MUTED, not ruled.
+    //
+    // The rule down the side is out (Jose, 2026-09-08). It was the only thing
+    // marking this as quoted, so it could not simply be deleted: indent alone
+    // is 14px, which reads as a paragraph rather than as somebody else's words.
+    // The muted foreground carries it instead — the same role the app uses
+    // everywhere for text that is context rather than content.
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 4, 0, 4),
-      decoration: BoxDecoration(
-        // A rule down the side, which is what a quoted message looks like
-        // everywhere else and needs no legend.
-        border: Border(left: BorderSide(color: scheme.outlineVariant, width: 3)),
-      ),
       child: Text.rich(
         TextSpan(
           children: [
             for (final span in spans) ...MessageBody._span(context, span),
           ],
         ),
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.5),
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          height: 1.5,
+          color: scheme.onSurfaceVariant,
+        ),
       ),
     );
   }

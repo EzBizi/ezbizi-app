@@ -948,9 +948,10 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
   }) {
     final theme = Theme.of(context);
     final approved = status == 'approved';
-    final stripe = approved
-        ? EzBiziTheme.clockIn(context)
-        : EzBiziTheme.clockOut(context);
+    // The green/red stripe down the leading edge is out (Jose, 2026-09-08).
+    // Nothing is lost: this row already says approved-or-rejected twice more,
+    // in the tinted background and in the heading colour, so the stripe was the
+    // third voice rather than the only one.
     // `onErrorContainer`, not `error`: the background below is the full,
     // opaque container role (not an alpha-blended tint), and that is the
     // foreground Material pairs with it.
@@ -966,7 +967,6 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(10),
-        border: Border(left: BorderSide(color: stripe, width: 4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
