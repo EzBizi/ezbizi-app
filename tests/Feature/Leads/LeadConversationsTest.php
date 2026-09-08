@@ -720,4 +720,31 @@ class LeadConversationsTest extends TestCase
         $this->assertSame(0, $this->inTenant($t['org'], fn () => \App\Models\Job::query()->count()));
         $this->assertSame(Lead::STATUS_NEW, $this->inTenant($t['org'], fn () => $lead->fresh()->status));
     }
+
+    /**
+     * Jose, 2026-09-08: a lead a1tools showed at the top "was not appearing"
+     * here. It was here, far down: ordered by the day it arrived while the
+     * dispatcher was looking for the text that arrived five minutes ago.
+     */
+    public function test_the_list_is_ordered_by_latest_activity_not_by_arrival(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $connection = $this->connected($t);
+
+        $old = $this->leadRow('111', 'Old lead, new text');
+        $old['localServicesLead']['creationDateTime'] = '2026-09-01 08:00:00';
+        $new = $this->leadRow('222', 'New lead, silent');
+        $new['localServicesLead']['creationDateTime'] = '2026-09-08 08:00:00';
+
+        // The old lead's enquirer wrote this morning; the new lead has said nothing.
+        $text = array_slice($this->threadRows('111'), 1, 1);
+        $text[0]['localServicesLeadConversation']['eventDateTime'] = '2026-09-08 09:00:00';
+
+        $this->fakeGoogle([$old, $new], $text);
+        $this->sync($t, $connection);
+
+        $names = $this->signedInAs($t['admin'])->getJson('/api/v1/leads')->assertOk()->json('data.*.contact_name');
+
+        $this->assertSame(['Old lead, new text', 'New lead, silent'], $names);
+    }
 }

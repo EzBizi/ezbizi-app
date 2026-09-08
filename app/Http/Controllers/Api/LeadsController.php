@@ -67,7 +67,15 @@ class LeadsController extends Controller
                     ->where('lead_reads.user_id', '=', $user->getKey());
             })
             ->with(['company:id,name', 'franchise:id,name', 'noteBy:id,name'])
-            ->orderByDesc('leads.received_at')
+            /*
+             * Newest ACTIVITY first, not newest lead. Jose, 2026-09-08: leads
+             * that a1tools showed at the top "were not appearing" here. They
+             * were here, thirty rows down: a lead from three days ago with a
+             * text five minutes ago sorted by the day it arrived, while the
+             * dispatcher was looking for the text. A conversation list is
+             * ordered by its last message; this is one.
+             */
+            ->orderByRaw('COALESCE(leads.last_contact_at, leads.received_at) DESC')
             ->orderByDesc('leads.created_at');
 
         // Reach, not just tenancy. BelongsToTenant already filters to the
