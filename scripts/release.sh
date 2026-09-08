@@ -257,7 +257,13 @@ if [ -z "${EZBIZI_PINNED:-}" ] && [ "$DRY_RUN" -eq 0 ]; then
   set -e
   cd "$MAIN_DIR"
   if [ "$STATUS" -eq 0 ]; then
-    git worktree remove --force "$PIN_DIR" && echo "→ removed pinned worktree $PIN_DIR"
+    # On Windows the Gradle/Kotlin daemons keep files open under the pin's
+    # client/build for minutes after the Android build, and the removal fails
+    # with "Invalid argument", leaving a full checkout behind every release
+    # (four of them on 2026-09-08). Stop the daemons first; they restart on
+    # the next build.
+    (cd "$PIN_DIR/client/android" 2>/dev/null && ./gradlew --stop >/dev/null 2>&1) || true
+    git worktree remove --force "$PIN_DIR" 2>/dev/null && echo "→ removed pinned worktree $PIN_DIR"       || echo "→ pinned worktree still held by a build daemon, remove it later: git worktree remove --force $PIN_DIR"
   else
     echo "→ pinned worktree kept for inspection: $PIN_DIR"
   fi
