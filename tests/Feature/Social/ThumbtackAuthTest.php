@@ -57,6 +57,59 @@ class ThumbtackAuthTest extends TestCase
         $this->assertGreaterThanOrEqual(8, strlen((string) $q['state']));
     }
 
+    /**
+     * The credentials go in the Authorization header, never in the body.
+     *
+     * Both are legal OAuth 2.0, and Thumbtack's client accepts only Basic. It
+     * refuses the other with `invalid_client`, whose stock wording is "unknown
+     * client, no client authentication included, or unsupported authentication
+     * method" - indistinguishable from a wrong secret. Every live connect died
+     * here on 2026-09-08 and the screen told the Pro their account was fine
+     * while EzBizi logged nothing at all.
+     *
+     * Forty-one Thumbtack tests passed through that bug, because every one of
+     * them faked the response and none asserted how the request authenticated.
+     */
+    public function test_the_token_call_authenticates_with_basic_and_not_body_credentials(): void
+    {
+        Http::fake(['*/oauth2/token' => Http::response([
+            'access_token'  => 'new-access',
+            'refresh_token' => 'new-refresh',
+            'expires_in'    => 3600,
+        ])]);
+
+        app(ThumbtackOAuth::class)->exchange('an-auth-code');
+
+        Http::assertSent(function ($request) {
+            // Read defensively: with the header absent entirely - which is
+            // exactly the bug - indexing it would ERROR rather than fail, and
+            // an unreadable failure is most of the way back to no test at all.
+            $sent = $request->header('Authorization')[0] ?? '(no Authorization header)';
+
+            return $sent === 'Basic '.base64_encode('a-client:a-secret')
+                // And NOT repeated in the body: Hydra treats credentials in
+                // two places as a malformed request, so sending both would
+                // trade one refusal for another.
+                && ! isset($request->data()['client_secret'])
+                && ! isset($request->data()['client_id']);
+        });
+    }
+
+    /** Refresh authenticates the same way; it is the same client and the same server. */
+    public function test_refreshing_also_authenticates_with_basic(): void
+    {
+        Http::fake(['*/oauth2/token' => Http::response([
+            'access_token' => 'newer-access',
+            'expires_in'   => 3600,
+        ])]);
+
+        app(ThumbtackOAuth::class)->refresh('a-refresh-token');
+
+        Http::assertSent(fn ($request) => ($request->header('Authorization')[0] ?? null)
+                === 'Basic '.base64_encode('a-client:a-secret')
+            && ! isset($request->data()['client_secret']));
+    }
+
     public function test_an_expired_token_is_refreshed_once_and_the_call_retried(): void
     {
         $t          = $this->provisionTenant('A1-Group');

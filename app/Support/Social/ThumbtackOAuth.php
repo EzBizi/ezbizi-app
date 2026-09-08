@@ -3,7 +3,10 @@
 namespace App\Support\Social;
 
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Thumbtack, as a lead source for EZ Leads.
@@ -162,14 +165,73 @@ final class ThumbtackOAuth implements SocialOAuth
             .'?'.http_build_query($query);
     }
 
+    /**
+     * A token request, authenticated the one way their client accepts.
+     *
+     * ── HTTP Basic, not credentials in the body ─────────────────────
+     *
+     * Both are legal OAuth 2.0 (`client_secret_basic` and `client_secret_post`)
+     * and a client registration names which one it will take. Thumbtack's takes
+     * Basic, and refuses the other with `invalid_client` — whose stock
+     * description reads "unknown client, no client authentication included, or
+     * unsupported authentication method", so it looks exactly like a wrong
+     * secret. Every connect died here on 2026-09-08 and the screen blamed the
+     * account.
+     *
+     * The tell is in the tail of their message, which the stock text buries:
+     * "supports client authentication method 'client_secret_basic', but method
+     * 'client_secret_post' was requested".
+     *
+     * The credentials must NOT also be repeated in the body. Hydra treats
+     * credentials in two places as a malformed request.
+     */
+    private function token(): PendingRequest
+    {
+        return Http::asForm()
+            ->timeout(self::TIMEOUT)
+            ->withBasicAuth(
+                (string) config('services.thumbtack.client_id'),
+                (string) config('services.thumbtack.client_secret'),
+            );
+    }
+
+    /**
+     * Write down why Thumbtack said no.
+     *
+     * ── Why this exists, given the tenant is told nothing ───────────
+     *
+     * The sentence a person sees is deliberately vague — a failed sign-in is
+     * not their fault and not theirs to fix. But on 2026-09-08 the log said
+     * NOTHING EITHER, so a connect that failed for a fixable reason left no
+     * evidence of which of five reasons it was: a wrong secret, an
+     * unregistered redirect URI, a missing audience, an expired code, or the
+     * client auth method it actually turned out to be.
+     *
+     * Diagnosing it needed a hand-built probe against their token endpoint,
+     * and the answer was sitting in a response body nobody had kept. This
+     * keeps it. Same lesson as GoogleApiRefusal, learned the same week.
+     *
+     * The body carries no token on a failure — it is an error document — so
+     * there is nothing here that must not be written down.
+     */
+    private function refused(string $step, ?Response $response): void
+    {
+        Log::warning('Thumbtack refused the '.$step.'.', [
+            'status' => $response?->status(),
+            'error'  => $response?->json('error'),
+            // The whole description. Theirs puts the actionable half at the
+            // END of a long stock sentence, and a truncated log would have
+            // cut off the only part that named the problem.
+            'description' => $response?->json('error_description'),
+        ]);
+    }
+
     public function exchange(string $code, ?string $verifier = null): SocialOAuthGrant
     {
         $form = [
-            'grant_type'    => 'authorization_code',
-            'code'          => $code,
-            'redirect_uri'  => $this->redirectUri(),
-            'client_id'     => (string) config('services.thumbtack.client_id'),
-            'client_secret' => (string) config('services.thumbtack.client_secret'),
+            'grant_type'   => 'authorization_code',
+            'code'         => $code,
+            'redirect_uri' => $this->redirectUri(),
         ];
 
         if ($verifier !== null && $this->usesPkce()) {
@@ -177,14 +239,16 @@ final class ThumbtackOAuth implements SocialOAuth
         }
 
         try {
-            $response = Http::asForm()
-                ->timeout(self::TIMEOUT)
-                ->post((string) config('services.thumbtack.token_url'), $form);
+            $response = $this->token()->post((string) config('services.thumbtack.token_url'), $form);
         } catch (ConnectionException) {
+            $this->refused('exchange', null);
+
             throw SocialOAuthRefused::exchangeFailed('Thumbtack');
         }
 
         if ($response->failed()) {
+            $this->refused('exchange', $response);
+
             throw SocialOAuthRefused::exchangeFailed('Thumbtack');
         }
 
@@ -234,20 +298,20 @@ final class ThumbtackOAuth implements SocialOAuth
     public function refresh(string $refreshToken): SocialOAuthGrant
     {
         try {
-            $response = Http::asForm()
-                ->timeout(self::TIMEOUT)
-                ->post((string) config('services.thumbtack.token_url'), [
-                    'grant_type'    => 'refresh_token',
-                    'refresh_token' => $refreshToken,
-                    'client_id'     => (string) config('services.thumbtack.client_id'),
-                    'client_secret' => (string) config('services.thumbtack.client_secret'),
-                    'audience'      => self::AUDIENCE,
-                ]);
+            $response = $this->token()->post((string) config('services.thumbtack.token_url'), [
+                'grant_type'    => 'refresh_token',
+                'refresh_token' => $refreshToken,
+                'audience'      => self::AUDIENCE,
+            ]);
         } catch (ConnectionException) {
+            $this->refused('refresh', null);
+
             throw SocialOAuthRefused::exchangeFailed('Thumbtack');
         }
 
         if ($response->failed()) {
+            $this->refused('refresh', $response);
+
             throw SocialOAuthRefused::exchangeFailed('Thumbtack');
         }
 
