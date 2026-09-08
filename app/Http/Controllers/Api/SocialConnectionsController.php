@@ -32,10 +32,19 @@ class SocialConnectionsController extends Controller
             Refusal::permission('open Marketing')->message(),
         );
 
+        /*
+         * Places the tenant publishes to or sends through - never the data
+         * sources. Google Ads, Business Profile and Thumbtack are read by
+         * Leads, Reviews and Business Profile, each through its own payload,
+         * and nothing can be posted to one. Listing them here put twenty-two
+         * Google Ads accounts in the Social Media Management composer as
+         * "Pages", each with a tick box, as if a post could go to one.
+         */
         $rows = SocialConnection::query()
             ->orderBy('display_name')
             ->get()
-            ->filter(fn (SocialConnection $c) => $this->access->inView($user, $c))
+            ->filter(fn (SocialConnection $c) => $this->access->inView($user, $c)
+                && ! in_array($c->providerEnum(), SocialProvider::dataSources(), true))
             ->values();
 
         return response()->json([

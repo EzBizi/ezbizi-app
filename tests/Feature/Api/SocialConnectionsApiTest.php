@@ -70,6 +70,29 @@ class SocialConnectionsApiTest extends TestCase
         $this->assertSame(['A-1 Chimney'], $names);
     }
 
+    /**
+     * A Google Ads account is not a page.
+     *
+     * Jose, 2026-09-08: twenty-two Google Ads accounts appeared under "Pages"
+     * in Social Media Management, each with a tick box in the composer. They
+     * are read by Leads through its own payload; nothing is ever published to
+     * one, and the composer offering them is a control that cannot work.
+     */
+    public function test_a_data_source_is_not_listed_among_the_pages(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->connection($t, 'company', $t['company']->id);
+        $this->connection($t, 'company', $t['company']->id, 'A1 Chimney - Cleveland', '4941850746', 'google_ads');
+        $this->connection($t, 'company', $t['company']->id, 'A-1 Chimney GBP', 'accounts/1', 'google_business_profile');
+
+        $names = $this->signedInAs($t['admin'])
+            ->getJson(self::ENDPOINT)
+            ->assertOk()
+            ->json('data.*.display_name');
+
+        $this->assertSame(['A-1 Chimney'], $names);
+    }
+
     public function test_a_company_view_lists_org_company_and_branch_pages_not_a_sibling(): void
     {
         $t = $this->provisionTenant('A1-Group');
@@ -198,14 +221,15 @@ class SocialConnectionsApiTest extends TestCase
         string $scopeId,
         string $name = 'A-1 Chimney',
         string $remoteId = 'pin-1',
+        string $provider = 'pinterest',
     ): SocialConnection {
-        return $this->inTenant($t['org'], function () use ($t, $scopeType, $scopeId, $name, $remoteId) {
+        return $this->inTenant($t['org'], function () use ($t, $scopeType, $scopeId, $name, $remoteId, $provider) {
             $row = new SocialConnection;
             $row->forceFill([
                 'organization_id' => $t['org']->id,
                 'scope_type'      => $scopeType,
                 'scope_id'        => $scopeId,
-                'provider'        => 'pinterest',
+                'provider'        => $provider,
                 'remote_id'       => $remoteId,
                 'display_name'    => $name,
                 'handle'          => strtolower(str_replace(' ', '', $name)),
