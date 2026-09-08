@@ -52,6 +52,13 @@ class TimeClockController extends Controller
         ]);
     }
 
+    public function extend(Request $request): JsonResponse
+    {
+        return response()->json([
+            'data' => ['time_clock' => $this->timeClock->extend($request->user())],
+        ]);
+    }
+
     public function clockOut(Request $request): JsonResponse
     {
         return response()->json([

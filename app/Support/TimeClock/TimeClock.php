@@ -206,6 +206,40 @@ final class TimeClock
     }
 
     /**
+     * Push the scheduled end out by the organization's extension length.
+     * Needs only an open scheduled shift — allowed after the grant or the
+     * org switch is gone, like clock out (design 2026-09-08 §7).
+     */
+    public function extend(User $user): array
+    {
+        return DB::transaction(function () use ($user) {
+            $open = TimeClockShift::query()
+                ->open()
+                ->where('user_id', $user->getKey())
+                ->lockForUpdate()
+                ->first();
+
+            if ($open === null || $open->scheduled_end_at === null) {
+                throw ValidationException::withMessages([
+                    'time_clock' => 'You are not on a scheduled shift.',
+                ]);
+            }
+
+            $minutes = (int) $this->settings->get('time_clock.extension_minutes', $user->organization);
+
+            // ponytail: adds to the stamped end, not to now(). If the close
+            // ran a second earlier this is a race the row already lost.
+            $open->scheduled_end_at = $open->scheduled_end_at->copy()->addMinutes($minutes);
+            $open->extensions = $open->extensions + 1;
+            $open->save();
+
+            $this->audit->log('time_clock.extended', $open, metadata: ['minutes' => $minutes]);
+
+            return $this->payload($user);
+        });
+    }
+
+    /**
      * One calendar day of shifts in the current view timezone (design §7, §9).
      *
      * Rows are people this caller can already see on Records. A shift is
@@ -328,6 +362,9 @@ final class TimeClock
                 ? null
                 : $shift->clocked_out_at->getTimestamp() - $shift->clocked_in_at->getTimestamp(),
             'open' => $open,
+            'ended_by' => $shift->ended_by,
+            'outside_schedule' => (bool) $shift->outside_schedule,
+            'extensions' => (int) $shift->extensions,
         ];
     }
 

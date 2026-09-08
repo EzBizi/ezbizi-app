@@ -810,6 +810,8 @@ Route::prefix('v1')
         // is the only time that counts (design §8).
         Route::post('time-clock/clock-in', [TimeClockController::class, 'clockIn']);
         Route::post('time-clock/clock-out', [TimeClockController::class, 'clockOut']);
+        // Push the scheduled end out by the org's extension length (design 2026-09-08 §7).
+        Route::post('time-clock/extend', [TimeClockController::class, 'extend']);
         // The same block /me carries, for the once-a-minute poll (design 2026-09-08 §3.12).
         Route::get('time-clock/me', [TimeClockController::class, 'me']);
 
