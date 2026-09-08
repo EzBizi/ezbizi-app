@@ -591,6 +591,7 @@ Route::prefix('v1')
         Route::get('leads/{lead}', [LeadsController::class, 'show']);
         Route::get('leads/{lead}/conversations/{conversation}/recording', [LeadsController::class, 'recording']);
         Route::post('leads/{lead}/messages', [LeadsController::class, 'reply']);
+        Route::post('leads/{lead}/suggest-reply', [LeadsController::class, 'suggestReply']);
         Route::post('leads/{lead}/read', [LeadsController::class, 'read']);
         Route::post('leads/{lead}/book', [LeadsController::class, 'book']);
         Route::patch('leads/{lead}', [LeadsController::class, 'update']);

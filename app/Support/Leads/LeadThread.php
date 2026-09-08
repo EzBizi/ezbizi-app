@@ -4,6 +4,7 @@ namespace App\Support\Leads;
 
 use App\Models\Lead;
 use App\Models\LeadConversation;
+use App\Services\Leads\LeadInsights;
 use App\Support\Automations\EventEmitter;
 
 /**
@@ -17,7 +18,10 @@ use App\Support\Automations\EventEmitter;
  */
 final class LeadThread
 {
-    public function __construct(private readonly EventEmitter $events) {}
+    public function __construct(
+        private readonly EventEmitter $events,
+        private readonly LeadInsights $insights,
+    ) {}
 
     /**
      * Hold one message or call on a lead. True when the row is new.
@@ -88,6 +92,44 @@ final class LeadThread
             'last_contact_from'    => $last?->participant,
             'last_contact_preview' => $last !== null ? self::preview($last) : null,
         ])->save();
+
+        $this->classifyOnce($lead);
+    }
+
+    /**
+     * BOOK / SUPPORT / ARCHIVE, once, the first time the enquirer has said
+     * something in words. Every source goes through refresh(), so a website
+     * chat is sorted the same way a Google text is. Never re-run: the pile
+     * a lead landed on is a fact people act on, and `status` is theirs.
+     * `lead.classified` was declared the day the module was drawn, marked
+     * not yet raised; this raises it.
+     */
+    private function classifyOnce(Lead $lead): void
+    {
+        if ($lead->classification !== null || ! $this->insights->enabled()) {
+            return;
+        }
+
+        $read = $this->insights->classify($lead);
+
+        if ($read === null) {
+            return;
+        }
+
+        $lead->forceFill([
+            'classification' => $read['classification'],
+            'summary'        => $read['summary'] !== '' ? $read['summary'] : $lead->summary,
+            'classified_at'  => now(),
+        ])->save();
+
+        $this->events->emitAfterCommit('lead.classified', $lead, [
+            'after' => [
+                'classification' => $lead->classification,
+                'summary'        => $lead->summary,
+                'contact_name'   => $lead->contact_name,
+                'phone'          => $lead->phone,
+            ],
+        ]);
     }
 
     /**

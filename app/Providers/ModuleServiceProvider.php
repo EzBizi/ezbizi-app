@@ -1281,6 +1281,14 @@ class ModuleServiceProvider extends ServiceProvider
                         isRaised: true,
                     ),
                     new TriggerDefinition(
+                        key: 'phone.call.tagged',
+                        label: 'A call was tagged',
+                        description: 'Somebody said what a call was about. It carries the tag '
+                            .'name, so a rule can act on complaints without acting on '
+                            .'bookings. Raised when a tag is put on, not when one is removed.',
+                        isRaised: true,
+                    ),
+                    new TriggerDefinition(
                         key: 'phone.voicemail.left',
                         label: 'A voicemail was left',
                         description: 'A caller left a voicemail on one of the phone lines. The '
@@ -1703,7 +1711,6 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A lead was read and categorised — what kind of work it is '
                             .'about, and whether it looks like a real enquiry at all. It fires '
                             .'after "Lead received", once any recording has been transcribed.',
-                        isRaised: false,
                     ),
                     new TriggerDefinition(
                         key: 'lead.status_changed',
