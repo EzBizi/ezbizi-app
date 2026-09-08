@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Organization;
 use App\Models\SocialConnection;
+use App\Services\Leads\ThumbtackLeads;
 use App\Support\Social\SocialProvider;
 use App\Support\Social\ThumbtackWebhooks;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response as Status;
+use Throwable;
 
 /**
  * Thumbtack telling us something happened.
@@ -97,15 +99,82 @@ class ThumbtackWebhookController extends Controller
     {
         $connection->forceFill(['last_reached_at' => now()])->save();
 
-        return match ($event) {
-            // Deliberately not implemented yet, and answered honestly rather
-            // than with a silent true. Turning a negotiation into an EzBizi
-            // Lead row is the next slice; what this endpoint guarantees today
-            // is that the event ARRIVED and was authenticated, which is the
-            // part that cannot be reconstructed later.
-            'NegotiationCreatedV4', 'MessageCreatedV4', 'ReviewCreatedV4' => false,
-            default => false,
-        };
+        // Both lead events go through the same path. A message can be the
+        // FIRST thing we hear about an enquiry — the negotiation event can be
+        // missed, or predate the connection — so absorbing the negotiation
+        // first means a message never arrives with nowhere to be filed.
+        if ($event === 'NegotiationCreatedV4' || $event === 'MessageCreatedV4') {
+            $negotiationId = $this->negotiationIdFrom($payload);
+
+            if ($negotiationId === null) {
+                return false;
+            }
+
+            try {
+                app(ThumbtackLeads::class)->absorb($connection, $negotiationId);
+            } catch (Throwable $e) {
+                /*
+                 * Reported, then RE-THROWN so this answers 500 and Thumbtack
+                 * retries — which is the opposite of what the rest of this
+                 * class does, and deliberate.
+                 *
+                 * Everywhere else, a 4xx/5xx risks Thumbtack disabling the
+                 * webhook and stopping delivery entirely. Here the alternative
+                 * is worse: their API has no way to list negotiations, so an
+                 * enquiry we acknowledge and fail to store is gone permanently,
+                 * with nothing able to find it again. A disabled webhook is
+                 * recoverable by reconnecting; a lost lead is not.
+                 *
+                 * The report is what makes the retry visible — otherwise a
+                 * failing fetch is a silent 500 nobody reads.
+                 */
+                report($e);
+
+                throw $e;
+            }
+
+            return true;
+        }
+
+        /*
+         * ReviewCreatedV4 is subscribed to and deliberately not acted on here.
+         *
+         * A review is not a lead, and Reviews is its own module that connects
+         * its own sources. Filing one as a Lead row would put it in the wrong
+         * list under a contact name that is not an enquirer. The subscription
+         * stays so the event is not lost when that module grows a Thumbtack
+         * source; answering false says plainly that nothing was written.
+         */
+        return false;
+    }
+
+    /**
+     * The negotiation this event is about, from wherever they nest it.
+     *
+     * Same defensive read as the business id, and for the same reason: their
+     * payload shape differs per event type, and an id we cannot find is work
+     * we cannot do.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function negotiationIdFrom(array $payload): ?string
+    {
+        foreach ([
+            'negotiationID',
+            'negotiation.negotiationID',
+            'data.negotiationID',
+            'data.negotiation.negotiationID',
+            'message.negotiationID',
+            'data.message.negotiationID',
+        ] as $key) {
+            $value = data_get($payload, $key);
+
+            if (is_scalar($value) && (string) $value !== '') {
+                return (string) $value;
+            }
+        }
+
+        return null;
     }
 
     /**
