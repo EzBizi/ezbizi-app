@@ -253,6 +253,20 @@ rule between them"* names no new element — that is craft, and it ships. *"Ther
 is now a panel that opens"* names one — that is design. Jose reported it as a
 defect and left; routing it would have meant it sat overnight.
 
+**Fix it where it lives, not where it was found.** Leads found that the website
+chat endpoint ordered messages by `occurred_at` alone, so two in the same second
+tied and the visitor's question rendered *after* the business's answer. They
+fixed it in `EnquiriesController` with a UUID-v7 tiebreak and a good comment —
+and left `Lead::conversations()` (`app/Models/Lead.php:216`) ordering by
+`occurred_at` alone, which is the relation `LeadsController:174` builds the
+THREAD from. So the defect survived in the surface where it matters most: a
+thread's whole contract is *oldest first*, and a conversation that reads
+backwards is the one failure it cannot survive.
+
+> The habit: when a defect is found in a caller, ask what the caller was calling.
+> A fix at the call site leaves every other caller broken, and the one that hurts
+> is rarely the one that reported it.
+
 **A warning about the system's own capability is DERIVED, never stored.**
 Automations' marks for a trigger nothing raises — the picker badge and the
 saved-rule note — are computed from the catalogue at render, with no model field
