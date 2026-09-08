@@ -13,6 +13,8 @@ class VersionHistory {
       items: [
         'Website enquiries: a chat bubble and a contact form for the customer\'s own website. Both arrive in Leads beside the Google and Thumbtack ones, so a reply typed in the thread reaches the visitor on their page.',
         'Thumbtack enquiries reach the right company when two companies use the same Thumbtack business.',
+        'Hours of operation reads as one table: every day the same height, ruled between, and the times sit tight instead of drifting.',
+        'On a phone the opening and closing times wrap instead of running off the edge.',
       ],
     ),
     VersionRelease(
