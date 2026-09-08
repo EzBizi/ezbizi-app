@@ -211,7 +211,7 @@ months behind grey secondary text.
 > people act on it before it is checked. Read the whole method: compute the end
 > with `awk` on the next `function`, never `+N`.
 
-> **A SECOND finding, 2026-09-08, in the cut that was running:** website
+> **A SECOND finding, 2026-09-08, caught before its cut pinned:** website
 > enquiries raise no `lead.received`. `app/Support/Web/WebsiteEnquiries.php`
 > creates a Lead for `website_chat` and `website_form` and emits **nothing** —
 > zero `emit`/`events` in the file — while `LocalServicesLeads.php:137` and
@@ -221,11 +221,37 @@ months behind grey secondary text.
 > assumed: messages DO go through `LeadThread`, so `lead.contact_received` fires
 > — it is specifically the lead's ARRIVAL that raises nothing. One
 > `emitAfterCommit` fixes it. Reported to the desk, Leads and Web Management.
+> **Correction from the desk:** it was NOT in the running cut — 0.0.0165 pinned at
+> `5c39ce40` before Web's `ab0284de` merged as `12b366f2`, so this rides 0.0.0166,
+> which had not pinned. I said "the cut that is running" from the desk's own
+> mention of 0.0.0166 without checking which SHA 0.0.0165 was pinned at. The
+> finding arrived in time; the urgency I attached to it was a guess.
 >
 > **The check that found it is the one that came out clean on booking**, and that
 > is the point worth keeping: when a NEW path creates an existing kind of thing,
 > ask whether it raises the same events the old paths do. Booking passed; the
 > website path did not, and it is new code rather than a regression.
+
+**A row with a per-row control and a text-only alternate state has two heights,
+and that is what &ldquo;floating&rdquo; means.** Marketing's diagnosis of Web
+Management's Hours panel, 2026-09-08, and it generalises: an open day drew two
+`TextButton`s, each carrying Material's 48dp minimum tap target; a closed day
+drew one line of text at roughly half that. Seven rows alternating between two
+heights with nothing ruling them give the eye no grid. The fix is one minimum
+height for every row, a hairline between them, and compact controls so the ROW
+decides the height rather than Material.
+
+> Two measurements worth keeping: a FIXED height clips — at 375 the times ran
+> 78px past the edge, so it is a minimum plus a `Wrap`. And **the floor must
+> clear the TALLEST row, not the nominal one**: at 44 the open days measured 45
+> and clamped nothing, leaving two heights one pixel apart — invisible to the
+> eye and still exactly the reported defect.
+
+**And the boundary that made it Marketing's to fix:** could the change be
+described without naming a new thing? *"The rows are the same height and have a
+rule between them"* names no new element — that is craft, and it ships. *"There
+is now a panel that opens"* names one — that is design. Jose reported it as a
+defect and left; routing it would have meant it sat overnight.
 
 **When two errors are not equally bad, neither one may be the silent default.**
 Booking a lead offers `customer_matches` — customers sharing the lead's last ten
