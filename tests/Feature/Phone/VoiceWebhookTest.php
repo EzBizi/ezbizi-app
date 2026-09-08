@@ -807,7 +807,13 @@ class VoiceWebhookTest extends TestCase
         $this->assertStringNotContainsString('This line is closed.', $xml);
         $this->assertStringNotContainsString('Please leave a message after the tone.', $xml);
         $this->assertStringContainsString('<Dial', $xml);
-        $this->assertStringContainsString('<Number>+15559876543</Number>', $xml);
+        // The number is dialled, and it now carries a whisper url — TwiML
+        // played to the CALLEE announcing the recording, which on an outbound
+        // call is the only party who never heard it. Asserted as the dialled
+        // number plus the attribute rather than as exact markup, so adding a
+        // second attribute later is not a test failure.
+        $this->assertStringContainsString('>+15559876543</Number>', $xml);
+        $this->assertStringContainsString('/phone/whisper/', $xml);
 
         $call = $this->inTenant($t['org'], fn () => PhoneCall::query()->first());
         $this->assertNotNull($call);
@@ -977,6 +983,118 @@ class VoiceWebhookTest extends TestCase
     }
 
     /** @param  array<string, string>  $params */
+
+    /**
+     * The whisper endpoint says the line's own notice, to the callee.
+     *
+     * The renderer putting a `url` on `<Number>` proves only that a URL was
+     * written into the document. What the callee actually hears is whatever
+     * this endpoint returns, and a whisper that returns an empty document is
+     * the same silence as before with a route in front of it.
+     */
+    public function test_the_whisper_says_the_lines_recording_notice(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$connection, $number] = $this->inTenant($t['org'], function () use ($t) {
+            $connection = PhoneConnection::factory()->create([
+                'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'auth_token' => 'whisper-token',
+                'status' => PhoneConnection::STATUS_CONNECTED,
+            ]);
+
+            $number = PhoneNumber::factory()->create([
+                'connection_id' => $connection->id,
+                'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'e164' => '+12035558822',
+                'record' => true,
+                'recording_notice' => 'A-1 Chimney records its calls.',
+            ]);
+
+            return [$connection, $number];
+        });
+
+        $url = url("/api/v1/phone/whisper/{$t['org']->id}/{$connection->id}/{$number->id}");
+
+        $response = $this->signedPost($url, [], 'whisper-token');
+
+        $response->assertOk();
+        $this->assertStringContainsString(
+            'A-1 Chimney records its calls.',
+            $response->getContent(),
+            'the callee is bridged in silence',
+        );
+    }
+
+    /**
+     * And it says nothing when the line is not recording.
+     *
+     * The whisper is fetched from a `url` written when the call started. If
+     * recording was switched off in between, announcing it anyway tells the
+     * callee something untrue about the call they are on.
+     */
+    public function test_the_whisper_is_silent_when_the_line_does_not_record(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$connection, $number] = $this->inTenant($t['org'], function () use ($t) {
+            $connection = PhoneConnection::factory()->create([
+                'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'auth_token' => 'whisper-token-2',
+                'status' => PhoneConnection::STATUS_CONNECTED,
+            ]);
+
+            $number = PhoneNumber::factory()->create([
+                'connection_id' => $connection->id,
+                'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'e164' => '+12035558823',
+                'record' => false,
+            ]);
+
+            return [$connection, $number];
+        });
+
+        $url = url("/api/v1/phone/whisper/{$t['org']->id}/{$connection->id}/{$number->id}");
+
+        $response = $this->signedPost($url, [], 'whisper-token-2');
+
+        $response->assertOk();
+        $this->assertStringNotContainsString('<Say', $response->getContent());
+    }
+
+    /** An unsigned request is not from Twilio, and this one is public. */
+    public function test_the_whisper_refuses_an_unsigned_request(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$connection, $number] = $this->inTenant($t['org'], function () use ($t) {
+            $connection = PhoneConnection::factory()->create([
+                'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'auth_token' => 'whisper-token-3',
+                'status' => PhoneConnection::STATUS_CONNECTED,
+            ]);
+
+            $number = PhoneNumber::factory()->create([
+                'connection_id' => $connection->id,
+                'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'e164' => '+12035558824',
+                'record' => true,
+            ]);
+
+            return [$connection, $number];
+        });
+
+        $this->post(
+            "/api/v1/phone/whisper/{$t['org']->id}/{$connection->id}/{$number->id}",
+        )->assertForbidden();
+    }
+
     private function signedPost(string $url, array $params, string $authToken): \Illuminate\Testing\TestResponse
     {
         $signature = (new RequestValidator($authToken))->computeSignature($url, $params);
