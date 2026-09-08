@@ -6,6 +6,7 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/side_panel.dart';
 import 'hours.dart';
 
 /// The absolute base a copied snippet must carry, and why it cannot be blank.
@@ -996,7 +997,7 @@ class _SiteDetailState extends State<_SiteDetail> {
              * below the fields: setting up happens once, and editing the
              * details is what somebody opens this screen for every time after.
              */
-            if (!_connected) _installGuide(theme),
+            if (!_connected) _guideButtons(theme),
 
             _addressBlock(theme),
             _fieldGrid(theme, _plainFields),
@@ -1015,9 +1016,8 @@ class _SiteDetailState extends State<_SiteDetail> {
 
             if (_connected) ...[
               const SizedBox(height: 8),
-              _installGuide(theme),
+              _guideButtons(theme),
             ],
-            _snippetBlock(theme),
 
             if (_error != null) ErrorNote(_error!),
                         if (_saved != null)
@@ -1212,13 +1212,8 @@ class _SiteDetailState extends State<_SiteDetail> {
 
     if (parts.isEmpty) return const SizedBox.shrink();
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
-      ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1250,7 +1245,7 @@ class _SiteDetailState extends State<_SiteDetail> {
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest,
+          border: Border.all(color: theme.colorScheme.outlineVariant),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Column(
@@ -1286,7 +1281,7 @@ class _SiteDetailState extends State<_SiteDetail> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
+        border: Border.all(color: theme.colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -1389,11 +1384,80 @@ class _SiteDetailState extends State<_SiteDetail> {
   /// So the two are shown TOGETHER and named for what they are: `ezb_` is the
   /// plugin's, never public; `pk_` is the browser's, printed in page source on
   /// purpose. Seeing them side by side is what makes the difference legible.
-  Widget _snippetBlock(ThemeData theme) {
+  /// The two references, behind buttons.
+  ///
+  /// Both used to sit open on the page: five numbered steps and a script tag,
+  /// above and below the fields somebody actually came here to edit. They are
+  /// read once per website and never again, so they were spending the top of
+  /// the screen on a first day that happens once.
+  Widget _guideButtons(ThemeData theme) {
     final key = widget.site['public_key'] as String? ?? '';
 
-    if (key.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          OutlinedButton.icon(
+            onPressed: () => showSidePanel<void>(
+              context,
+              builder: (_) => SidePanel(
+                title: 'Connection guide',
+                subtitle: _host,
+                child: _guideBody(theme),
+              ),
+            ),
+            icon: const Icon(Icons.help_outline, size: 18),
+            label: const Text('Connection guide'),
+          ),
+          if (key.isNotEmpty)
+            OutlinedButton.icon(
+              onPressed: () => showSidePanel<void>(
+                context,
+                builder: (_) => SidePanel(
+                  title: 'Browser snippet',
+                  subtitle: 'For a site that is not WordPress',
+                  child: _snippetBody(theme, key),
+                ),
+              ),
+              icon: const Icon(Icons.code, size: 18),
+              label: const Text('Browser snippet'),
+            ),
+        ],
+      ),
+    );
+  }
 
+  Widget _guideBody(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('1. Get the EzBizi plugin from wordpress.org, below.'),
+        const Text(
+          '2. In WordPress, open Plugins › Add New › Upload Plugin, choose '
+          'the file, and activate it.',
+        ),
+        const Text('3. Open Settings › EzBizi.'),
+        const Text('4. Paste the token this site was given and save.'),
+        const Text('5. Use the shortcodes beside each field anywhere on the site.'),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: _downloading ? null : _downloadPlugin,
+          icon: const Icon(Icons.download_outlined, size: 18),
+          label: Text(_downloading ? 'Opening…' : 'Get the plugin'),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Lost the token? Close this and use "Issue a new token" — it takes a '
+          'moment and breaks nothing except the old copy.',
+          style: theme.textTheme.bodySmall,
+        ),
+      ],
+    );
+  }
+
+  Widget _snippetBody(ThemeData theme, String key) {
     final base = snippetApiBase(
       configured: ApiClient.baseUrl,
       pageUrl: Uri.base,
@@ -1403,109 +1467,58 @@ class _SiteDetailState extends State<_SiteDetail> {
         '<script src="$base/api/v1/web/ezbizi.js" '
         'data-key="$key"></script>';
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Not WordPress?', style: theme.textTheme.titleSmall),
-          const SizedBox(height: 8),
-          const Text(
-            'Put this one line in the page, then mark any element with '
-            'data-ezbizi to fill it:',
-          ),
-          const SizedBox(height: 8),
-          SelectableText(snippet, style: theme.textTheme.bodySmall),
-          const SizedBox(height: 8),
-          const SelectableText(
-            '<span data-ezbizi="phone">555-0100</span>',
-            style: TextStyle(fontFamily: 'monospace'),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Whatever is already between the tags stays if the value is '
-            'blank, so the page never shows an empty gap — and a search '
-            'engine still reads a real value.',
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: SelectableText(
-                  key,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontFamily: 'monospace',
-                  ),
-                ),
-              ),
-              IconButton(
-                tooltip: 'Copy the snippet',
-                icon: const Icon(Icons.copy_outlined, size: 18),
-                onPressed: () async {
-                  await Clipboard.setData(ClipboardData(text: snippet));
-
-                  if (mounted) setState(() => _saved = 'Snippet copied.');
-                },
-              ),
-              if (widget.canEdit)
-                TextButton(
-                  onPressed: () =>
-                      setState(() => _confirming = 'rotate-key'),
-                  child: const Text('New key'),
-                ),
-            ],
-          ),
-          Text(
-            'This key is safe in public page source — it reads only what this '
-            'site already publishes. The plugin token above is not: it starts '
-            'ezb_ and belongs on your server only.',
-            style: theme.textTheme.bodySmall,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Put this one line in the page, then mark any element with '
+          'data-ezbizi to fill it:',
+        ),
+        const SizedBox(height: 8),
+        SelectableText(
+          snippet,
+          style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+        ),
+        const SizedBox(height: 8),
+        _ShortcodeButton(code: snippet, label: 'Copy the snippet'),
+        const SizedBox(height: 16),
+        const SelectableText(
+          '<span data-ezbizi="phone">555-0100</span>',
+          style: TextStyle(fontFamily: 'monospace'),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Whatever is already between the tags stays if the value is blank, '
+          'so the page never shows an empty gap — and a search engine still '
+          'reads a real value.',
+        ),
+        const Divider(height: 32),
+        Text('This site’s browser key', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 8),
+        SelectableText(
+          key,
+          style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Safe in public page source — it reads only what this site already '
+          'publishes. The plugin token is not: it starts ezb_ and belongs on '
+          'your server only.',
+          style: theme.textTheme.bodySmall,
+        ),
+        if (widget.canEdit) ...[
+          const SizedBox(height: 12),
+          TextButton(
+            // Closes first: the confirmation it opens is drawn on the page
+            // behind this panel, where nobody would see it.
+            onPressed: () {
+              Navigator.of(context).pop();
+              setState(() => _confirming = 'rotate-key');
+            },
+            child: const Text('Issue a new browser key'),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _installGuide(ThemeData theme) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Connect $_host', style: theme.textTheme.titleSmall),
-          const SizedBox(height: 8),
-          const Text('1. Get the EzBizi plugin from wordpress.org, below.'),
-          const Text(
-            '2. In WordPress, open Plugins › Add New › Upload Plugin, choose '
-            'the file, and activate it.',
-          ),
-          const Text('3. Open Settings › EzBizi.'),
-          const Text('4. Paste the token this site was given and save.'),
-          const Text('5. Use the shortcodes below anywhere on the site.'),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: _downloading ? null : _downloadPlugin,
-            icon: const Icon(Icons.download_outlined, size: 18),
-            label: Text(_downloading ? 'Opening…' : 'Get the plugin'),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Lost the token? Issue a new one below — it takes a moment and '
-            'breaks nothing except the old copy.',
-            style: theme.textTheme.bodySmall,
-          ),
-        ],
-      ),
+      ],
     );
   }
 }
@@ -1518,9 +1531,13 @@ class _SiteDetailState extends State<_SiteDetail> {
 /// §6: a snackbar for this would be a notification about the thing you are
 /// looking at.
 class _ShortcodeButton extends StatefulWidget {
-  const _ShortcodeButton({required this.code});
+  const _ShortcodeButton({required this.code, this.label});
 
   final String code;
+
+  /// What to show instead of the code itself, for something too long to wear
+  /// as a label — the whole script tag, say.
+  final String? label;
 
   @override
   State<_ShortcodeButton> createState() => _ShortcodeButtonState();
@@ -1546,8 +1563,11 @@ class _ShortcodeButtonState extends State<_ShortcodeButton> {
       },
       icon: Icon(_copied ? Icons.check : Icons.copy_outlined, size: 15),
       label: Text(
-        _copied ? 'Copied' : widget.code,
-        style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+        _copied ? 'Copied' : (widget.label ?? widget.code),
+        style: TextStyle(
+          fontFamily: widget.label == null ? 'monospace' : null,
+          fontSize: 12,
+        ),
       ),
       style: OutlinedButton.styleFrom(
         foregroundColor:
