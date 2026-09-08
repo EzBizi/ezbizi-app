@@ -102,7 +102,154 @@ class InspectionReportReachTest extends TestCase
         $this->assertSame([], $body['data']);
     }
 
+    /**
+     * READING ONE BY ID obeys the same boundary as listing.
+     *
+     * The index filtered and the policy did not: `InspectionReportPolicy::view`
+     * checked `organization_id` and nothing else, so any report in the
+     * organization could be fetched by id from any branch — customer, address,
+     * every answer, and the PDF. The class docblock said otherwise ("A report
+     * whose job is outside reach is no such report"), which is exactly why it
+     * survived: the promise was written down and never implemented.
+     *
+     * Not found rather than forbidden, because "there is a report here you may
+     * not read" is itself a disclosure about another branch's work.
+     */
+    public function test_another_branchs_report_cannot_be_fetched_by_id(): void
+    {
+        [$reader, $report] = $this->readerAndForeignReport();
+
+        $this->signedInAs($reader)
+            ->getJson("/api/v1/inspections/reports/{$report->id}")
+            ->assertNotFound();
+    }
+
+    /** The PDF is the same document by another route, so it obeys the same rule. */
+    public function test_another_branchs_report_cannot_be_downloaded_as_a_pdf(): void
+    {
+        [$reader, $report] = $this->readerAndForeignReport();
+
+        $this->signedInAs($reader)
+            ->get("/api/v1/inspections/reports/{$report->id}/pdf")
+            ->assertNotFound();
+    }
+
+    /** Nor archived — a write on another branch's record is worse than a read. */
+    public function test_another_branchs_report_cannot_be_archived(): void
+    {
+        [$reader, $report] = $this->readerAndForeignReport(['inspection.view', 'inspection.archive']);
+
+        $this->signedInAs($reader)
+            ->postJson("/api/v1/inspections/reports/{$report->id}/archive")
+            ->assertNotFound();
+
+        $this->assertNull(
+            $this->inTenant($reader->organization, fn () => $report->fresh()->archived_at),
+            'it must not have been archived',
+        );
+    }
+
+    /**
+     * The control. Your OWN branch's report is still readable by id.
+     *
+     * Without this, a policy that denied everything would pass the three above
+     * and the module would be broken in a way the suite called correct.
+     */
+    public function test_your_own_branchs_report_is_still_readable_by_id(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $reader = $this->userWithRole($tenant, 'Tech', ['inspection.view'], onlyAt: $tenant['franchise']);
+
+        $report = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $customer = $this->customer($tenant, $tenant['franchise']->id);
+
+            return $this->report($tenant, $customer, job: null);
+        });
+
+        $this->signedInAs($reader)
+            ->getJson("/api/v1/inspections/reports/{$report->id}")
+            ->assertOk();
+    }
+
+    /**
+     * A CUSTOMER-ONLY report from another branch is reachable by none of the
+     * four verbs.
+     *
+     * This is the case the other tests in this file could not see, and the
+     * reason is worth keeping. `assertReach` opened with:
+     *
+     *     if ($report->job_id === null) { return; }
+     *
+     * — so a report with no job was reachable by id, by PDF, and by archive,
+     * from any branch. The tests above use a JOB-linked report, which I
+     * described in their fixture as "the strongest form" because a job names
+     * its franchise outright. That was true and it was the wrong fixture: it
+     * exercised the half of `assertReach` that worked and was blind to the
+     * early return above it.
+     *
+     * All three verbs go through the same `assertReach`, so a single test can
+     * carry them — but the statuses are COLLECTED FIRST and asserted
+     * afterwards, so a failing `show` cannot hide a leaking `pdf`.
+     */
+    public function test_a_customer_only_report_from_another_branch_is_reachable_by_nothing(): void
+    {
+        [$reader, $report] = $this->readerAndForeignReport(
+            ['inspection.view', 'inspection.archive'],
+            withJob: false,
+        );
+
+        $show = $this->signedInAs($reader)->getJson("/api/v1/inspections/reports/{$report->id}")->status();
+        $pdf = $this->signedInAs($reader)->get("/api/v1/inspections/reports/{$report->id}/pdf")->status();
+        $archive = $this->signedInAs($reader)
+            ->postJson("/api/v1/inspections/reports/{$report->id}/archive")
+            ->status();
+
+        $stillLive = $this->inTenant($reader->organization, fn () => $report->fresh()->archived_at);
+
+        $this->assertNull($stillLive, 'it must not have been archived');
+        $this->assertSame(404, $show, 'show must not reach another branch');
+        $this->assertSame(404, $pdf, 'the PDF must not reach another branch');
+        $this->assertSame(404, $archive, 'archive must not reach another branch');
+    }
+
     // ── fixtures ─────────────────────────────────────────────────
+
+    /**
+     * A reader at one branch, and a report that belongs to another.
+     *
+     * `withJob` picks WHICH half of the reach rule is under test, and both are
+     * needed. With a job, the report names its franchise outright — that half
+     * always worked. Without one, the branch comes from the customer, and that
+     * is the half `assertReach` skipped entirely. A fixture that only ever
+     * built the first kind is how the second went unnoticed.
+     *
+     * @param  array<int, string>  $permissions
+     * @return array{0: \App\Models\User, 1: InspectionReport}
+     */
+    private function readerAndForeignReport(
+        array $permissions = ['inspection.view'],
+        bool $withJob = true,
+    ): array {
+        $tenant = $this->provisionTenant('Alpha');
+        $elsewhere = $this->extraFranchise($tenant, 'Second');
+        $reader = $this->userWithRole($tenant, 'Tech', $permissions, onlyAt: $elsewhere);
+
+        $report = $this->inTenant($tenant['org'], function () use ($tenant, $withJob) {
+            $customer = $this->customer($tenant, $tenant['franchise']->id);
+
+            $job = $withJob ? Job::create([
+                'franchise_id' => $tenant['franchise']->id,
+                'customer_id' => $customer->id,
+                'number' => 'J-'.bin2hex(random_bytes(3)),
+                'title' => 'Work',
+                'status' => 'scheduled',
+            ]) : null;
+
+            return $this->report($tenant, $customer, $job);
+        });
+
+        return [$reader, $report];
+    }
 
     private function customer(array $tenant, string $franchiseId): Customer
     {

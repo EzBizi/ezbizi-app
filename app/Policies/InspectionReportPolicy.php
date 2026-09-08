@@ -10,8 +10,20 @@ use Illuminate\Auth\Access\Response;
 /**
  * Generated Reports. `inspection.view` to read; `inspection.archive` to hide.
  *
- * Jobs stay franchise-scoped. A report whose job is outside reach is "no such
- * report", not a permission miss — same existence rule as JobPolicy.
+ * ── THE FRANCHISE RULE IS NOT IN THIS FILE ──────────────────────
+ *
+ * This policy answers permission and TENANT only. "Which branch may read this
+ * report" is `InspectionReportsController::assertReach`, which every one of
+ * show, pdf, archive and unarchive calls straight after `authorize`, and which
+ * asks `InspectionReport::automationScope()` — the job's franchise, then the
+ * customer's.
+ *
+ * This docblock used to state the franchise rule as though the policy applied
+ * it ("A report whose job is outside reach is no such report"). It was true of
+ * the module and not of this file, and a reader checking the claim here found
+ * it asserted rather than implemented. Saying where the rule actually lives is
+ * the whole of this note; if the reach check is ever moved INTO the policy,
+ * delete it rather than leaving two places that both look authoritative.
  */
 class InspectionReportPolicy
 {

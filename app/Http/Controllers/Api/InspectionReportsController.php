@@ -237,17 +237,38 @@ class InspectionReportsController extends Controller
         ]);
     }
 
+    /**
+     * Where this report sits, against where the reader may look.
+     *
+     * ── What this used to do ────────────────────────────────────
+     *
+     *     if ($report->job_id === null) { return; }
+     *
+     * A report with no job was reachable from ANY branch — by id, as a PDF,
+     * and by archive, which is a write. All four verbs come through here, so
+     * that early return opened all four. A customer-only inspection is
+     * ordinary: the picker allows starting one against a client with no job.
+     *
+     * ── Why it asks the model instead of re-deriving ────────────
+     *
+     * `automationScope()` already answers "which branch does this belong to",
+     * job first and customer second, `withTrashed()` on both. It is the answer
+     * the notification audience uses, and having the reader use a different
+     * one is how the two drift into disagreeing about the same report. This
+     * file has already paid for a duplicated franchise rule once —
+     * `InspectionGlance` carried a copy of the list filter, bug included.
+     *
+     * A report that cannot say where it sits is reachable by nobody, which is
+     * the fail-closed direction: the alternative is the early return that was
+     * just removed.
+     */
     private function assertReach(Request $request, InspectionReport $report): void
     {
-        if ($report->job_id === null) {
-            return;
-        }
-
-        $reachable = collect(ViewScope::forUser($request->user())->franchiseIds());
-        $job = Job::withTrashed()->find($report->job_id);
+        [$type, $franchiseId] = $report->automationScope();
 
         abort_if(
-            $job === null || ! $reachable->contains($job->franchise_id),
+            $type !== 'franchise'
+                || ! in_array($franchiseId, ViewScope::forUser($request->user())->franchiseIds(), true),
             404,
         );
     }
