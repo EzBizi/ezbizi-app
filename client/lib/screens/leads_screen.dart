@@ -757,9 +757,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
     return InkWell(
       onTap: onTap,
       child: Container(
-        color: selected
-            ? theme.colorScheme.primary.withValues(alpha: 0.08)
-            : null,
+        // Approved colour layout 3 (c31b50ad): a primaryContainer fill,
+        // unmistakable at a glance where a 3px rule is not. No leading-edge
+        // accent bar anywhere, on Jose's ruling of 2026-09-08.
+        color: selected ? theme.colorScheme.primaryContainer : null,
         padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -872,14 +873,16 @@ class _Badge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
       decoration: BoxDecoration(
-        color: call ? scheme.primaryContainer : scheme.tertiaryContainer,
+        // Call is the primary family, Text the secondary. tertiaryContainer
+        // is off limits: it would be the first purple in the app.
+        color: call ? scheme.primaryContainer : scheme.secondaryContainer,
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
         text,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
           fontWeight: FontWeight.w700,
-          color: call ? scheme.onPrimaryContainer : scheme.onTertiaryContainer,
+          color: call ? scheme.onPrimaryContainer : scheme.onSecondaryContainer,
         ),
       ),
     );

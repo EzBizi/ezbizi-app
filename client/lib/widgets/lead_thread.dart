@@ -290,15 +290,20 @@ class _LeadThreadState extends State<LeadThread> {
   }) {
     final attachments = (c['attachments'] as List? ?? const []).cast<String>();
 
+    // Approved colour layout 3 / 6 (c31b50ad): ours is `primary` with
+    // `onPrimary` text, the loudest this palette allows without red; theirs
+    // stays `surface` with an outline all round. No leading-edge accent bar
+    // anywhere, on Jose's ruling of 2026-09-08. `primary` inverts between the
+    // themes (dark teal / white in light, bright cyan / near-black in dark),
+    // so both are pinned in lead_thread_colour_test.dart.
+    final scheme = theme.colorScheme;
+    final ink = mine ? scheme.onPrimary : scheme.onSurface;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(11, 8, 11, 6),
       decoration: BoxDecoration(
-        color: mine
-            ? theme.colorScheme.primaryContainer
-            : theme.colorScheme.surface,
-        border: mine
-            ? null
-            : Border.all(color: theme.colorScheme.outlineVariant),
+        color: mine ? scheme.primary : scheme.surface,
+        border: mine ? null : Border.all(color: scheme.outlineVariant),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -306,7 +311,10 @@ class _LeadThreadState extends State<LeadThread> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if ((c['text'] as String?)?.isNotEmpty == true)
-            Text(c['text'] as String, style: theme.textTheme.bodyMedium),
+            Text(
+              c['text'] as String,
+              style: theme.textTheme.bodyMedium?.copyWith(color: ink),
+            ),
           if (attachments.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 6),
@@ -324,7 +332,9 @@ class _LeadThreadState extends State<LeadThread> {
             child: Text(
               '$who · $when',
               style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+                color: mine
+                    ? scheme.onPrimary.withValues(alpha: 0.8)
+                    : scheme.onSurfaceVariant,
               ),
             ),
           ),
@@ -387,22 +397,34 @@ class _LeadThreadState extends State<LeadThread> {
                       padding: EdgeInsets.all(8),
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : IconButton(
-                      key: ValueKey('play-$id'),
-                      tooltip: playing
-                          ? 'Stop'
-                          : _player.playsInApp
-                          ? 'Play'
-                          : 'Play in your audio player',
-                      padding: EdgeInsets.zero,
-                      onPressed: () => _play(c),
-                      icon: Icon(
-                        playing
-                            ? Icons.stop_circle_outlined
+                  // A filled disc: primaryContainer at rest, primary while
+                  // playing, per the approved colour layout.
+                  : Material(
+                      color: playing
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.primaryContainer,
+                      shape: const CircleBorder(),
+                      clipBehavior: Clip.antiAlias,
+                      child: IconButton(
+                        key: ValueKey('play-$id'),
+                        tooltip: playing
+                            ? 'Stop'
                             : _player.playsInApp
-                            ? Icons.play_circle_outline
-                            : Icons.open_in_new,
-                        color: theme.colorScheme.primary,
+                            ? 'Play'
+                            : 'Play in your audio player',
+                        padding: EdgeInsets.zero,
+                        iconSize: 20,
+                        onPressed: () => _play(c),
+                        icon: Icon(
+                          playing
+                              ? Icons.stop
+                              : _player.playsInApp
+                              ? Icons.play_arrow
+                              : Icons.open_in_new,
+                          color: playing
+                              ? theme.colorScheme.onPrimary
+                              : theme.colorScheme.onPrimaryContainer,
+                        ),
                       ),
                     ),
             ),
