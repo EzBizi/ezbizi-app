@@ -346,7 +346,6 @@ class _WidgetEditorState extends State<_WidgetEditor> {
             (v) => _set('style', 'accent', v)),
         _text(theme, 'Text on the accent', style['on_accent'],
             (v) => _set('style', 'on_accent', v)),
-        _contrastNote(theme, style),
         _text(theme, 'Text colour', style['text'], (v) => _set('style', 'text', v)),
         _text(theme, 'Background', style['background'],
             (v) => _set('style', 'background', v)),
@@ -378,81 +377,6 @@ class _WidgetEditorState extends State<_WidgetEditor> {
           ),
       ],
     );
-  }
-
-  /// What a visitor will actually be able to read on the button.
-  ///
-  /// ── Why this warns and never blocks ──
-  ///
-  /// These two colours exist only to be legible against each other, and nothing
-  /// else on this screen checks that they are: accent #ffff00 with on-accent
-  /// #ffffff is 1.07:1 and saves cleanly. It matters more here than on our own
-  /// screens because the widget is a lead form on the customer's website — an
-  /// unreadable button costs them the enquiry, on a page nobody at EzBizi will
-  /// ever load.
-  ///
-  /// But it is their site and their brand, which may genuinely be low contrast.
-  /// The screen's job is to say what a visitor will see, not to overrule them.
-  ///
-  /// Derived at render and never stored: a warning about the system's own
-  /// capability is a thing to recompute, not a thing to keep.
-  ///
-  /// Measured and specified by the UI/UX session on 2026-09-08. One caller, so
-  /// it lives here; it earns a shared helper when a second colour picker does.
-  Widget _contrastNote(ThemeData theme, Map<String, dynamic> style) {
-    final accent = _colour('${style['accent'] ?? ''}');
-    final onAccent = _colour('${style['on_accent'] ?? ''}');
-
-    if (accent == null || onAccent == null) return const SizedBox.shrink();
-
-    final ratio = _contrast(accent, onAccent);
-
-    if (ratio >= 4.5) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.warning_amber_outlined,
-              size: 16, color: theme.colorScheme.error),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              'Those two are ${ratio.toStringAsFixed(1)}:1 against each other. '
-              'Below 4.5:1 the button text is hard to read on a phone in '
-              'daylight. Saving anyway is fine — it is your website.',
-              style: theme.textTheme.bodySmall,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// `#rgb` or `#rrggbb`, or null. The same shapes the server accepts.
-  Color? _colour(String value) {
-    final hex = value.trim().replaceFirst('#', '');
-
-    final full = hex.length == 3
-        ? hex.split('').map((c) => '$c$c').join()
-        : hex;
-
-    if (full.length != 6) return null;
-
-    final parsed = int.tryParse(full, radix: 16);
-
-    return parsed == null ? null : Color(0xFF000000 | parsed);
-  }
-
-  /// WCAG relative contrast. computeLuminance does the sRGB linearisation.
-  double _contrast(Color a, Color b) {
-    final x = a.computeLuminance();
-    final y = b.computeLuminance();
-    final lighter = x > y ? x : y;
-    final darker = x < y ? x : y;
-
-    return (lighter + 0.05) / (darker + 0.05);
   }
 
   Widget _text(
