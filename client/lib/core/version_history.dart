@@ -11,7 +11,6 @@ class VersionHistory {
       version: '0.0.0167',
       date: '8 Sep 2026',
       items: [
-        'Inspection: a report filed without a job now follows the same branch rules as every other report - visible only to people who can see the branch it belongs to. It used to appear in every branch\'s list, and anyone in the organization could open it, download its PDF or archive it by id.',
         'Business hours can be opened and edited again. If the hours were created from a line belonging to a branch, the screen took the branch\'s own clock - and that clock was not among the ones the screen offered, so the editor came up blank. Nothing was lost; it could not be opened.',
         'The clock list is places now, not offsets: Eastern - New York rather than UTC-5. Offsets ignore daylight saving, so hours set that way answered an hour early for half the year. Existing hours keep whatever they were set to and are still shown, so nothing changes underneath you - but hours on a fixed offset are worth setting to a place.',
         'The week no longer steps up and down as days are opened and closed, and the form fits a phone. "24-hour" is said once above the week instead of twice on every open day.',
@@ -26,6 +25,7 @@ class VersionHistory {
       version: '0.0.0166',
       date: '8 Sep 2026',
       items: [
+        'Inspection: a report filed without a job now follows the same branch rules as every other report - visible only to people who can see the branch it belongs to. It used to appear in every branch\'s list, and anyone in the organization could open it, download its PDF or archive it by id.',
         'Leads is one list across Google Ads, Thumbtack and your website. Each row shows where it came from, a Source chip narrows the list, and Connected sources at the top opens every provider\'s accounts in one place.',
         'Automations: an event nothing reports yet is now marked in the picker, and a rule already built on one says on its row that nothing will set it off - instead of sitting switched on, looking finished, and never running.',
         'Website enquiries: a chat bubble and a contact form for the customer\'s own website. Both arrive in Leads beside the Google and Thumbtack ones, so a reply typed in the thread reaches the visitor on their page.',
