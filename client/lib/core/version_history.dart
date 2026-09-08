@@ -15,6 +15,7 @@ class VersionHistory {
         'The clock list is places now, not offsets: Eastern - New York rather than UTC-5. Offsets ignore daylight saving, so hours set that way answered an hour early for half the year. Existing hours keep whatever they were set to and are still shown, so nothing changes underneath you - but hours on a fixed offset are worth setting to a place.',
         'The week no longer steps up and down as days are opened and closed, and the form fits a phone. "24-hour" is said once above the week instead of twice on every open day.',
         'Web Management: a Widgets tab. The chat bubble and the contact form are dressed here - colours, wording, and the questions the form asks - and every site that follows the primary changes with it. Nobody edits a WordPress page to change a colour any more.',
+        'Hours of operation now lines up on a phone as well as on a desktop.',
         'Web Management: a website can say which branch it answers for, so an enquiry from a branch subdomain lands on that branch instead of at company level.',
         'Leads: replying to a website chat from the thread reaches the person on the page, the same way replying to a Google lead reaches them.',
         'Automations: a rule can now run when somebody starts a live chat or sends a contact form on one of your websites, and can tell which website it was.',
