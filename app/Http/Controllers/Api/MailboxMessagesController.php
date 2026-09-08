@@ -196,6 +196,21 @@ class MailboxMessagesController extends Controller
             $this->readState->markSeen($mailbox, $part->summary->id, $user);
         }
 
+        /*
+         * And at the mail service, if this mailbox asked for that.
+         *
+         * HERE as well as on markSeen, because THIS is the act somebody
+         * described: open a promotion, and expect it to stop being bold in
+         * Gmail too. Wiring only the explicit "mark as read" button would have
+         * left the setting doing nothing in the case it was asked for — built,
+         * shipped, and silent.
+         *
+         * Once for the conversation, not once per part: the reader modifies
+         * the thread, which is what makes a Gmail conversation stop showing as
+         * unread and matches the loop above marking every part seen locally.
+         */
+        $this->alsoMarkAtSource($mailbox, $detail->summary->id);
+
         $seen = $this->readState->seenBy($mailbox, [$detail->summary->id], $user);
 
         return response()->json([
@@ -603,6 +618,9 @@ class MailboxMessagesController extends Controller
 
         $this->assertMayRead($user, $mailbox, 'mark a message in this inbox');
 
+        // EzBizi's own mark FIRST, and it is the one that must not be lost.
+        // It is per person, it is what "Seen by" reads, and it is the thing
+        // this request was actually for.
         $this->readState->markSeen($mailbox, $message, $user);
 
         return response()->json([
@@ -610,8 +628,50 @@ class MailboxMessagesController extends Controller
                 'message_id' => $message,
                 'seen_by'    => $this->readState->seenBy($mailbox, [$message], $user)[$message] ?? [],
                 'shared'     => $this->readState->isShared($mailbox),
+                'at_source'  => $this->alsoMarkAtSource($mailbox, $message),
             ],
         ]);
+    }
+
+    /**
+     * Also mark it read at the mail service, when this mailbox asked for that.
+     *
+     * ── Why a failure here does NOT fail the request ─────────────
+     *
+     * The local mark is the primary fact and it is already written. If Google
+     * refuses, the honest outcome is "read in EzBizi, still unread in Gmail" —
+     * which is exactly how every mailbox behaved before this existed, so the
+     * degradation is to the previous behaviour rather than to something
+     * broken. Throwing here would instead lose the mark the person asked for
+     * because of a secondary effect they did not.
+     *
+     * ── And why it is not swallowed either ───────────────────────
+     *
+     * Returning the outcome is what stops this being the "did nothing" failure
+     * this module keeps finding. The caller is told which of the two happened,
+     * so a switch that is quietly not working is visible rather than
+     * indistinguishable from one that is.
+     *
+     * A genuinely broken connection still surfaces the usual way: the reader
+     * is wrapped by {@see \App\Support\Email\RecordingMailboxReader}, which
+     * raises `email.mailbox_broken` when a call fails for a reason that means
+     * the connection is gone.
+     *
+     * @return bool|null  true marked, false tried and refused, null not asked for
+     */
+    private function alsoMarkAtSource(Mailbox $mailbox, string $message): ?bool
+    {
+        if (! $mailbox->mark_read_at_source) {
+            return null;
+        }
+
+        try {
+            $this->readers->for($mailbox)->markReadAtSource($mailbox, $message);
+
+            return true;
+        } catch (CannotChangeMail|CannotReadMailbox|CannotReachHost) {
+            return false;
+        }
     }
 
     /**

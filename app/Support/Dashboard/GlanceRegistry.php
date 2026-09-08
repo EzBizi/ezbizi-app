@@ -37,7 +37,7 @@ class GlanceRegistry
         'hr', 'customers', 'jobs', 'scheduling', 'inspection', 'marketing',
         'web_management', 'phone', 'fleet_management', 'inventory',
         'services', 'leads', 'reviews', 'business_profile', 'email', 'training',
-        'automations', 'monitoring',
+        'automations', 'monitoring', 'newsletter',
     ];
 
     /**
@@ -74,7 +74,24 @@ class GlanceRegistry
          */
         'training' => [
             'label' => 'Training',
-            'sentence' => 'Training is where guides are read and tests are taken. Open the Training tab to see who has been assigned what.',
+            'sentence' => 'Training will show who has been assigned a guide, and who is due to retake a test.',
+        ],
+        /*
+         * Added with the Newsletter module, not with a Newsletter glance, and
+         * the reasoning is Training's above rather than Marketing's below.
+         *
+         * Newsletter has its own DASHBOARD INSIDE the tab — the month with the
+         * scheduled mailings on it, what went out, and how many it reached.
+         * That was the owner's design, so a second summary on the home screen
+         * would restate it a click away from the real one and then drift from
+         * it. A placeholder is the honest answer here, not a temporary one.
+         *
+         * A live glance registered later wins on this key without this entry
+         * being removed first.
+         */
+        'newsletter' => [
+            'label' => 'Newsletter',
+            'sentence' => 'Newsletter keeps its own dashboard inside the tab: the month ahead, what has gone out, and who it reached. Open the Newsletter tab for it.',
         ],
         'monitoring' => [
             'label' => 'Monitoring',

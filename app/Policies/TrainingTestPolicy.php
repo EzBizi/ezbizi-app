@@ -7,6 +7,7 @@ use App\Models\Franchise;
 use App\Models\TrainingTest;
 use App\Models\User;
 use App\Support\Access\Refusal;
+use App\Support\Scoping\OwnedScope;
 use Illuminate\Auth\Access\Response;
 
 /**
@@ -110,16 +111,16 @@ class TrainingTestPolicy
             return Response::denyAsNotFound();
         }
 
+        if ($write) {
+            return OwnedScope::mayWrite(
+                $user,
+                $test->organization_id,
+                $test->franchise_id !== null ? 'franchise' : ($test->company_id !== null ? 'company' : 'organization'),
+                $test->franchise_id ?? $test->company_id,
+            ) ? Response::allow() : Response::deny('You cannot change this record from your current view or assignments.');
+        }
         if ($test->company_id === null) {
-            if (! $write) {
-                return Response::allow();
-            }
-
-            $organization = $user->organization;
-
-            return $user->canActOnOrganization($organization)
-                ? Response::allow()
-                : Refusal::noReach($user, Refusal::AT_ORGANIZATION, $act, $organization->name);
+            return Response::allow();
         }
 
         // Looked up rather than read off a `company()` relation: TrainingTest

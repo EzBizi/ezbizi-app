@@ -79,6 +79,103 @@ use Tests\TestCase;
  * `emit('user.invited', payload: [...])` with the subject skipped entirely, so
  * the subject is `null` and reaches the same fallthrough. There is no model to
  * hand an interface to. Closing that means `emit()` refusing a missing subject.
+ *
+ * ── AND IT CHECKS SHAPE, NEVER THE ANSWER ────────────────────────
+ *
+ * The sharpest limitation, because it is the one this file's own name hides.
+ * Nothing here ever CALLS `automationScope()` — grep this file for it and the
+ * count is zero. Every assertion is about whether the interface is present,
+ * not about what it returns.
+ *
+ * So a model can implement `CarriesAutomationScope`, satisfy every check in
+ * these 344 lines, and still answer "the whole organization" for a record that
+ * belongs to one franchise — which is the widening the interface exists to
+ * prevent. Measured by the Marketing session: with Newsletter's franchise arm
+ * flattened to `[null, null]`, this file stays entirely green. Their mutation
+ * to `$emits` was caught here; their mutation to the MAPPING was not.
+ *
+ * Of the eight models implementing the interface, THREE have no test anywhere
+ * that reads their answer — `Invitation`, `Onboarding`, `TrainingAssignment`.
+ * `Mailbox`, `PhoneCall`, `PhoneMessage`, `TrainingAttempt` and
+ * `TrainingProgress` are read, in their own modules' suites.
+ *
+ * An earlier version of this paragraph said `Onboarding` was covered and named
+ * `PhoneCall`/`PhoneMessage` as owed. Phone has since landed
+ * `PhoneAutomationScopeTest`; `Onboarding` was never covered at all, and both
+ * the deploy desk and this file had it wrong for the same reason — a grep for
+ * "a test that mentions Onboarding and calls automationScope()" matches
+ * `TrainingProgressTest`, which names it three times (:212, :215, :613) in
+ * DOCBLOCKS, describing the model Training copied its shape from. Every call in
+ * that file is on a `TrainingProgress`. **Co-occurrence in a file is not
+ * coverage of a model** — check the receiver of the call, not the presence of
+ * the name.
+ *
+ * ONBOARDING IS THE WORST ONE TO HAVE MISCOUNTED, and it is why the correction
+ * is recorded here rather than quietly applied. This interface exists because
+ * HR shipped a leak and fixed it "by putting the interface on Onboarding and
+ * Invitation" — see the top of this docblock. Those two are the records the
+ * whole class was discovered on, and they are two of the three whose answers
+ * nothing verifies. The fix was applied to them and has never once been read
+ * back. `Onboarding::automationScope` at Onboarding.php:467 is a `match` with
+ * two named arms over a `default => [null, null]`, which is precisely the shape
+ * Marketing's mutation proved this file cannot see.
+ *
+ * ── And a warning about checking this by grep ────────────────────
+ *
+ * The paragraph above is itself a hazard, because it names all eight models and
+ * contains the string `automationScope()`. A coverage check written as "some
+ * test file mentions model M and calls automationScope" therefore matches THIS
+ * FILE for every M and reports eight of eight covered. That happened — the
+ * false green was produced by this very comment within an hour of it being
+ * committed. Any real coverage assertion has to observe the call's receiver at
+ * runtime, not the text of a file.
+ *
+ * ── Why the obvious fix is not written here ──────────────────────
+ *
+ * The proposal was: for each declared emitter that has a factory, assert a
+ * record filed at a franchise does not answer `[null, null]`. **NONE of the
+ * eight models has a factory** (checked 2026-09-04: no `Invitation`,
+ * `Mailbox`, `Onboarding`, `PhoneCall`, `PhoneMessage`, `TrainingAssignment`,
+ * `TrainingAttempt` or `TrainingProgress` factory exists). That assertion would
+ * iterate an empty set and pass — a check that is green because it never ran,
+ * which is strictly worse than no check, because the next reader counts it.
+ *
+ * Building the eight factories is not a test-file change either: each needs a
+ * whole tenant graph, and each belongs to its module rather than here.
+ *
+ * **So the honest division is: this file proves the interface is DECLARED, and
+ * each module owes a test that reads what its own records ANSWER.** Written
+ * down rather than fixed silently, because a gate trusted for something it does
+ * not do is how the leak it guards gets re-introduced by somebody who checked.
+ *
+ * ── What an owed test has to contain (from Marketing, 2026-09-04) ─
+ *
+ * TWO CHECKS, and a module doing only the second has not verified its mapping.
+ *
+ *   1. THE MODEL CHECK. `assertSame(['franchise', $id], $record->automationScope())`
+ *      for a record filed at a franchise, and the company equivalent. This is
+ *      the one that catches a flattened arm, and it is the whole point.
+ *
+ *   2. THE ENGINE CHECK. Run that answer through `Automation::coversScope()`
+ *      with the NEGATIVE cases too — the branch next door does not cover this
+ *      record; a branch-scoped rule does not reach a company-wide one. Largely
+ *      redundant with (1) for a model-side change, and that is fine: what it
+ *      buys is a guard on the ENGINE. If `coversScope` semantics move, the
+ *      module finds out instead of silently widening to everybody.
+ *
+ * **Pass the company chain.** `coversScope(?string $scopeType, ?string $scopeId,
+ * array $companyChain = [])` — Automation.php:66, and the third argument
+ * DEFAULTS TO EMPTY. A company-scoped rule is `in_array($this->scope_id,
+ * $companyChain)`, so omitting the chain compiles, runs, and answers "does not
+ * cover" for every company rule. Marketing dropped it and reproduced Phone's
+ * false negative — which reads exactly like a broken mapping and is not one.
+ *
+ * When those four owed tests exist, the assertion worth adding here is a
+ * COVERAGE one — every model implementing the interface is read by some test
+ * somewhere — which needs no factories and turns the absence above into a red
+ * build. It is not added today only because it would go red on four modules
+ * that have not been asked yet, and a shared gate is not the place to open a
+ * conversation.
  */
 class AutomationSubjectScopeTest extends TestCase
 {
@@ -115,7 +212,7 @@ class AutomationSubjectScopeTest extends TestCase
      */
     private const HAS_NOT_DECLARED_WHAT_IT_EMITS = [
         'companies', 'franchises', 'users', 'hr', 'time_clock',
-        'customers', 'jobs', 'inspection', 'marketing', 'phone',
+        'customers', 'jobs', 'marketing', 'phone',
         'fleet_management', 'inventory', 'services', 'leads', 'reviews',
         'business_profile', 'email', 'monitoring',
     ];

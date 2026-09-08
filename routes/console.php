@@ -73,6 +73,18 @@ Schedule::command('ezbizi:sync-thumbtack-phone-numbers')->dailyAt('04:40')->with
 // Hourly is deliberately slower than the hour a handoff is signed for: this
 // only ever finds files that already stopped working, so racing it against a
 // live post would be the only way to make it dangerous.
+/*
+ * Every five minutes, and that number is a quota decision.
+ *
+ * Google Ads Basic Access is 15,000 operations a day against a ceiling owned by
+ * the whole Cloud project - one number shared by every tenant, not one each. At
+ * one minute an account costs 1,440 calls a day, so the platform could carry
+ * ten accounts; A-1 Chimney alone connected 22 in a single action. Five minutes
+ * is 288 an account, which supports 52 and leaves room for somebody pressing
+ * Fetch new and for Reviews once its own approval lands.
+ */
+Schedule::command('ezbizi:sync-leads')->everyFiveMinutes()->withoutOverlapping(10);
+
 Schedule::command('ezbizi:expire-social-handoffs')->hourly()->withoutOverlapping(10);
 
 // Watching the shared inboxes, so `email.received` can fire (§5.5).
@@ -130,6 +142,22 @@ Schedule::command('ezbizi:prune-devices')->dailyAt('04:30')->withoutOverlapping(
 // about a subsystem that stopped, not about an incident in progress. What makes
 // it useful is that a MISSING verdict counts as a failure — see the command.
 Schedule::command('ezbizi:check-backups --quiet-when-healthy')->dailyAt('05:00');
+
+// Training pass expiry (2026-08-28-training-module, task 10). At 04:10 — after
+// the data-expiry sweep at 03:50 and clear of the Twilio cost job at 04:20, so
+// none of the three ever contend for the same minute.
+//
+// This is the sweep that makes the whole "a pass runs out" option worth
+// having: it is the only thing that ever looks at `training_attempts.expires_on`
+// again after LearnController::submit stamps it, and `training.expired` is
+// what lets an organization write "re-assign the ladder guide when the pass
+// lapses."
+//
+// It inserts outbox rows and dispatches nothing itself — same reasoning as
+// the watch-mailboxes sweep above and StartUp.md §10: one automation rule
+// failing while re-assigning one lapsed pass must never take the sweep down
+// for everybody else's.
+Schedule::command('ezbizi:expire-training-passes')->dailyAt('04:10');
 
 // Per-company Twilio cost (§5). At 04:20 — after midnight in every US zone the
 // platform serves, so "yesterday" is a day Twilio has finished totting up, and

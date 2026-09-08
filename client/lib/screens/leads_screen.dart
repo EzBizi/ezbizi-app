@@ -6,6 +6,8 @@ import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
 import '../widgets/connected_account.dart';
+import '../widgets/leads_accounts.dart';
+import '../widgets/side_panel.dart';
 import '../widgets/tab_bar_like.dart';
 
 /// Leads — enquiries from connected advertising (EZ Leads).
@@ -168,11 +170,59 @@ class _LeadsScreenState extends State<LeadsScreen> {
     await _load();
   }
 
+  /// The same list, through the door the width calls for.
+  ///
+  /// A side panel on a desktop because that is what this app already uses for
+  /// every list-you-occasionally-edit, so Escape, the scrim and focus handling
+  /// come with it. A pushed screen on a phone, because a panel that is the
+  /// whole window is a screen wearing a costume.
+  Future<void> _openAccounts({required bool pushed}) async {
+    final list = LeadsAccountsList(
+      api: widget.api,
+      session: widget.session,
+      connections: _googleAdsAccounts,
+      onChanged: _load,
+    );
+
+    if (pushed) {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => Scaffold(
+            appBar: AppBar(title: const Text('Google Ads accounts')),
+            body: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: list,
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    await showSidePanel<void>(
+      context,
+      builder: (_) => SidePanel(
+        title: 'Google Ads accounts',
+        subtitle:
+            "Where each account's leads go. Changing it moves the leads that "
+            'account has already produced.',
+        child: list,
+      ),
+    );
+  }
+
   bool get _anyGoogleAds =>
       _connections.any((c) => c['provider'] == 'google_ads');
 
-  /// The connected account itself, so the tab can name it and remove it.
-  Map<String, dynamic>? get _googleAds => _connectionFor('google_ads');
+  /// EVERY Google Ads account, not the first one the query happened to return.
+  ///
+  /// `_connectionFor` answers with the first match, which was right when a
+  /// connect made one row and wrong the moment it made twenty-two in the same
+  /// second: twenty-one were invisible and the one shown was arbitrary.
+  List<Map<String, dynamic>> get _googleAdsAccounts => [
+    for (final c in _connections)
+      if (c['provider'] == 'google_ads') c,
+  ];
 
   Map<String, dynamic>? get _thumbtack => _connectionFor('thumbtack');
 
@@ -298,11 +348,20 @@ class _LeadsScreenState extends State<LeadsScreen> {
             ],
           ),
         ),
-        if (_googleAds != null)
-          ConnectedAccount(
-            api: widget.api,
-            connection: _googleAds!,
-            onDisconnected: _load,
+        // Desktop layout 1 / mobile layout 4: one row on the way to the leads,
+        // at twenty-two accounts or two hundred. The list itself is the same
+        // widget behind both doors — a side panel here, a pushed screen there.
+        if (_googleAdsAccounts.isNotEmpty)
+          LayoutBuilder(
+            builder: (context, constraints) => constraints.maxWidth < 600
+                ? LeadsAccountsTile(
+                    connections: _googleAdsAccounts,
+                    onOpen: () => _openAccounts(pushed: true),
+                  )
+                : LeadsAccountsBand(
+                    connections: _googleAdsAccounts,
+                    onManage: () => _openAccounts(pushed: false),
+                  ),
           ),
         if (_notice != null)
           Padding(

@@ -9,6 +9,24 @@
 	     whether or not the API is ever reached, and the string is shown to the
 	     person at the moment iOS asks - so it names the feature and gives the
 	     example Apple asks for, rather than saying "for audio". -->
+	<!-- Export compliance, answered once here instead of once per upload.
+	     Without this key App Store Connect marks every build Missing
+	     Compliance and asks the same question by hand before the build can
+	     go anywhere, including TestFlight.
+
+	     false means "uses no NON-EXEMPT encryption", not "uses none". EzBizi
+	     talks HTTPS to its own API and Twilio's calling SDK negotiates TLS
+	     and SRTP - all of it standard, published algorithms through the
+	     platform's own stack, which is exactly what the exemption covers.
+
+	     This stops being true the day EzBizi ships its OWN cryptography:
+	     a bundled cipher, a proprietary key exchange, end-to-end encrypted
+	     messaging with keys the server never sees. Any of those and this key
+	     has to become true and the annual self-classification report starts
+	     applying. Using a library that speaks TLS is not that.
+	-->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>EzBizi needs the microphone so you can speak during phone calls made and received in the app, such as calling a customer back about a job. It is used only while you are on a call.</string>
 	<key>CFBundleDevelopmentRegion</key>

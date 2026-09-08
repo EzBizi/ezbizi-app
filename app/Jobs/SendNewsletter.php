@@ -10,11 +10,12 @@ use App\Models\Organization;
 use App\Models\SocialConnection;
 use App\Support\Automations\EventEmitter;
 use App\Support\Newsletter\BlockRenderer;
-use App\Support\Newsletter\NewsletterSendFailed;
 use App\Support\Newsletter\NewsletterSenders;
+use App\Support\Newsletter\NewsletterSendFailed;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
@@ -55,7 +56,20 @@ final class SendNewsletter implements ShouldQueue
             return;
         }
 
-        $tenant->run($organization, fn () => $this->deliver($send, $events, $renderer, $organization));
+        $tenant->run($organization, function () use ($send, $events, $renderer, $organization) {
+            $claimed = DB::transaction(function () use ($send) {
+                $current = NewsletterSend::query()->lockForUpdate()->find($send->id);
+                if ($current === null || $current->status !== NewsletterSend::STATUS_SENDING || $current->started_at !== null) {
+                    return null;
+                }
+                $current->forceFill(['started_at' => now()])->save();
+
+                return $current;
+            });
+            if ($claimed !== null) {
+                $this->deliver($claimed, $events, $renderer, $organization);
+            }
+        });
     }
 
     private function deliver(
@@ -65,7 +79,8 @@ final class SendNewsletter implements ShouldQueue
         Organization $organization,
     ): void {
         $newsletter = $send->newsletter;
-        $connection = SocialConnection::query()->find($this->connectionId);
+        // Stored identity is authoritative; an old job argument cannot substitute an account.
+        $connection = $send->connection_id === null ? null : SocialConnection::query()->find($send->connection_id);
 
         if ($newsletter === null || $connection === null) {
             $this->fail($send, 'The newsletter or the account it was going through is gone.');
@@ -86,7 +101,7 @@ final class SendNewsletter implements ShouldQueue
             : $renderer->render((array) ($newsletter->blocks ?? []), [
                 'company' => (string) $organization->name,
                 'address' => (string) ($organization->address ?? ''),
-                'unsubscribe_url' => url('/api/v1/newsletter/unsubscribe/'.$newsletter->getKey()),
+                'unsubscribe_url' => '*|UNSUB|*',
             ]);
 
         try {
@@ -97,8 +112,8 @@ final class SendNewsletter implements ShouldQueue
             return;
         } catch (Throwable $e) {
             report($e);
-            $this->fail($send, $events,
-                'EzBizi could not reach '.$connection->providerLabel().'. Nothing was sent.');
+            $this->fail($send,
+                'The outcome from '.$connection->providerLabel().' is unknown. Check the account before sending again.');
 
             return;
         }
@@ -107,10 +122,10 @@ final class SendNewsletter implements ShouldQueue
         $newsletter->forceFill(['status' => Newsletter::STATUS_SENT])->save();
 
         $events->emit('newsletter.sent', $newsletter, [
-            'subject'    => $newsletter->subject,
-            'audience'   => $newsletter->audience?->name,
+            'subject' => $newsletter->subject,
+            'audience' => $newsletter->audience?->name,
             'recipients' => $result['recipients'],
-            'provider'   => $connection->provider,
+            'provider' => $connection->provider,
         ]);
     }
 
@@ -138,9 +153,9 @@ final class SendNewsletter implements ShouldQueue
             ->get()
             ->reject(fn (Customer $c) => in_array(mb_strtolower((string) $c->email), $gone, true))
             ->map(fn (Customer $c) => array_filter([
-                'email'      => (string) $c->email,
+                'email' => (string) $c->email,
                 'first_name' => (string) ($c->first_name ?? ''),
-                'last_name'  => (string) ($c->last_name ?? ''),
+                'last_name' => (string) ($c->last_name ?? ''),
             ], fn ($v) => $v !== ''))
             ->values()
             ->all();

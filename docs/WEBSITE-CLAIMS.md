@@ -1,37 +1,5 @@
 # What the website claims, and on whose authority
 
-> ## ⚠ PENDING PUBLICATION — `c0b28cd`, committed 2026-09-03, NOT on the site
->
-> **Two false claims are live on www.ezbizi.com until this is published.** The fix
-> is on `main`; only the publish is outstanding. Delete this block once the two
-> checks below pass.
->
-> 1. **The site sells Tasks, which is retired from the product.** The deployed
->    client carries zero Tasks screens, so a customer on `0.0.0148` has no Tasks
->    screen at all.
-> 2. **A billing claim.** Homepage step 04 read "**Bill** from the completed
->    work". `billing` was in the gate; the word was `Bill`.
->
-> **Who publishes:** `scripts/deploy-www.sh`, which belongs to the deploy desk,
-> and the call is **Jose's** — an outward-facing publish is not actioned on a
-> peer's request. `docs/MODULE-OWNERS.md:147` names `ezbizi-a1` for Deploy and
-> **that session was not alive on 2026-09-03**; the roster's session column is
-> stale exactly as its own header warns. **The role had no address that night.**
->
-> **Verify it published — do not infer it from a green release.** `deploy.sh:479`
-> runs the site publish last and non-fatally, warning only to stderr:
->
-> ```
-> curl -sS https://www.ezbizi.com/ | grep -c "Bill from the completed work"   # must be 0
-> curl -sS https://www.ezbizi.com/ | grep -c "id=\"p-task\""                    # must be 0
-> curl -sS https://www.ezbizi.com/social-media/ | grep -c "Five networks send today"  # must be 1
-> ```
->
-> **This is in a file rather than a message on purpose.** It was handed to a
-> deploy session that ended before publishing, and the next desk has a different
-> name. A message dies with its session; `main` and a file somebody reads do not.
-
-
 The public site says what EzBizi does. This page records **why each claim is
 allowed to be there**, and — more importantly — what must *not* go back on.
 
@@ -54,6 +22,18 @@ stale silently; a row that states a *test* fails loudly the first time somebody
 runs it — which is why every row below now carries one, and why the tests are
 written against columns rather than against counts.
 
+**Standing authority, set by Jose on 2026-09-04: "do as you recommend, stop
+asking me for approvals."** Verified, accurate copy ships — do not hold it for
+his sight and do not open a FOR YOU TO DO item asking him to approve wording.
+A card was held a full day for that reason before he said this.
+
+**This makes the file below the only gate, so it carries the whole load.** The
+question stopped being "has he seen the words" and is now "is every clause
+checked against the deployed code or a production row". Publish what passes
+that; hold what does not, and say plainly that you are holding it and why.
+Keep FOR YOU TO DO for things only a person can do — a console login, a store
+submission, a filing — never for permission.
+
 ---
 
 ## Do not put these on the site
@@ -63,7 +43,7 @@ written against columns rather than against counts.
 | **Quotes, billing, invoicing, estimates, payments** | Does not exist. 151 production tables searched for `quote` / `invoic` / `bill` / `estimate` return nothing, and no such module is registered among 26. The only `payment` match is `vehicle_payments` — Fleet recording what it paid for a van. Removed in `6c67efb`. |
 | **Scheduling a job onto a calendar** | Not built, and **test the relation, not a column.** The obvious check — "`jobs` has no scheduled-date column" — is already false: `jobs.scheduled_for` (datetime) and `jobs.assigned_role_id` exist on production, and **0 of 25 jobs have either set**. The durable test is structural: **no table carries both a job reference and a date-or-slot reference.** `service_area_slots` is `(service_area_id, weekday, start_time, end_time, max_jobs)` — a recurring weekly capacity *template* with no `job_id`, no date and no per-occurrence row, so it cannot express "this job, this day, this slot" even in principle. That stays true until the module is actually built, which is exactly when the claim should change. |
 | **Training** | **Corrected 2026-09-02 — the old reason was false.** Its five tables *are* on production (`training_assignments`, `training_attempts`, `training_guides`, `training_progress`, `training_tests`); the row used to say they were not. The verdict does not change, but the reason does: **all five are empty**, so nothing has ever been assigned, attempted or completed. The checkable test is a row count in those tables, not their existence — the old test would now pass and the claim would still be false. |
-| **Phone / Communication** | **Jose approved it for the site on 2026-09-03** (relayed by the deploy session, which put the 2-of-7 fraction to him explicitly). **The approval covers the capability, not any particular sentence, and the fraction has not moved.** Draft copy is below, unpublished, awaiting his sight of the actual words. Everything following is the measurement that shapes them.<br><br>**The old blocker has partly lifted; the answer is still no to the strong claim, for a smaller reason.** The row used to say no production line had a ring group and every inbound call reached voicemail. As of 2026-09-02 `phone_ring_groups` has **2 rows**, and **2 of 7** `phone_numbers` carry a non-null `ring_group_id`. So calls to those two reach a person. **Five of seven still dead-end at voicemail**, which is why "phone system" remains an overstatement rather than a promise kept — and the module was renamed **Communication** in `0.0.0141`, so any future copy names that, not "Phone". The checkable test: `phone_numbers` with a non-null `ring_group_id`, as a fraction of all of them. Do not write the claim off a lifted gate; write it off the fraction. |
+| **Phone / Communication** | **PUBLISHED 2026-09-04 as a card reading "Your business numbers in one place — dial, texts and voicemail…" — the row now governs only what may NOT be added to it.** **Jose approved it for the site on 2026-09-03** (relayed by the deploy session, which put the 2-of-7 fraction to him explicitly). **The approval covers the capability, not any particular sentence, and the fraction has not moved.** Draft copy is below, unpublished, awaiting his sight of the actual words. Everything following is the measurement that shapes them.<br><br>**The old blocker has partly lifted; the answer is still no to the strong claim, for a smaller reason.** The row used to say no production line had a ring group and every inbound call reached voicemail. As of 2026-09-02 `phone_ring_groups` has **2 rows**, and **2 of 7** `phone_numbers` carry a non-null `ring_group_id`. So calls to those two reach a person. **Five of seven still dead-end at voicemail**, which is why "phone system" remains an overstatement rather than a promise kept — and the module was renamed **Communication** in `0.0.0141`, so any future copy names that, not "Phone". The checkable test: `phone_numbers` with a non-null `ring_group_id`, as a fraction of all of them. Do not write the claim off a lifted gate; write it off the fraction. |
 | **Local Services enquiries arriving as leads** | **Contradicted, not merely unverified — and the evidence is a decoy.** Querying production returns `source = local_services` on 8 leads, which reads exactly like the confirmation this row has been waiting for. All 8 were created in the *same second* and none carries a provider id: they are `leads:seed-demo`, run on production by the deploy session on 2026-08-31. The `source` string was written by the seeder, not by Google. **True count of real Local Services enquiries: 0**, re-confirmed 2026-09-02. **The test this row used to name does not work, and saying so is the point.** It told you to look for a provider `external_id`; there is no `external_id` column on `leads` and none anywhere in `database/migrations/`, so the check silently has nothing to compare and a careful session runs it, finds nothing, and cannot tell "no real leads" from "no such column". **The first replacement written for this row was also wrong, and it is left here as the warning.** It said a genuine enquiry has a `connection_id` and a non-null `synced_at` while a seeded one has neither — reasoned from the real sync path (`LocalServicesLeads.php:216,228`) without ever opening the seeder. **`LeadsSeedDemo.php:132,143` writes both**, pointing `connection_id` at a genuine `social_connections` row it creates. The seeded rows are indistinguishable from real ones on every field that describes *how a lead arrives*, because the seeder's whole job is to look real. **The test that works is the one the seeder deliberately leaves behind:** `LeadsSeedDemo.php:45` stamps `private const PREFIX = 'DEMO-'` onto `remote_id` on every row it plants (`:128`). So — **a real enquiry's `remote_id` is Google's own id and never begins `DEMO-`:**
 
 ```sql
@@ -228,19 +208,41 @@ judgement. Pull them the same way if that changes.
 ## Store listings — check the store, not a session
 
 **Android is live on Google Play** (`com.ezbizi.app`), linked from `/download/`
-since 2026-09-01. **iOS is not published.** Neither fact should ever be taken from
-a message; both are one command, and they are the cheapest way to notice that a
-listing went live and the page did not:
+since 2026-09-01. **iOS is live too — INVERTED 2026-09-08.** Neither fact should
+ever be taken from a message; both are one command, and they are the cheapest way
+to notice that a listing went live and the page did not:
 
 ```
 curl -sI "https://play.google.com/store/apps/details?id=com.ezbizi.app"   # 200 = live
 curl -s  "https://itunes.apple.com/lookup?bundleId=com.ezbizi.app"        # resultCount
 ```
 
-The iOS card claims only what is checkable — built and signed, not on the store —
-because its actual review status has been contested between two repo files since
-August. **It owes the public a link the moment that lookup returns a result**, and
-nothing else about it should change before then.
+**The debt this section recorded is paid, and the page paid it first.** The card
+used to claim only what was checkable — built and signed, not on the store — and
+this section said it owed the public a link the moment the lookup returned a
+result. Measured 2026-09-08: `resultCount` is **1** — `trackId` 6805979795,
+`trackName` EzBizi, `version` 0.0.0150, `releaseDate` 2026-09-04,
+`currentVersionReleaseDate` 2026-09-05, `minimumOsVersion` 15.0, seller
+EzBizi LLC. The `/download/` card already reads *"On the App Store"* and links
+`apps.apple.com/app/id6805979795` from both the button and the
+`SoftwareApplication` JSON-LD, and the **live page carries that link twice**
+(`curl https://www.ezbizi.com/download/ | grep -c id6805979795` -> 2), so this
+file was the stale one, not the site. Nothing to publish; only this row needed
+correcting.
+
+**Both commands stay, and the Apple one has a second failure mode now.**
+`resultCount` 0 no longer means "not approved" — it would mean a pulled listing.
+And **`curl -sI https://apps.apple.com/app/id6805979795` answered `429 Too Many
+Requests` during this very run**, while the lookup API kept answering normally:
+Apple rate-limits the storefront HTML. **A 429 is not a dead link — take the
+verdict from the `itunes.apple.com/lookup` JSON, never from a `HEAD` of the
+storefront.**
+
+**What would put this row back the other way:** the lookup returning
+`resultCount` 0 for more than a day, which is a pulled or rejected listing rather
+than propagation. Then the card's App Store button and the JSON-LD
+`downloadUrl` *and* `installUrl` come down the same day — three places on one
+page, plus the `og:` and `twitter:` descriptions, which both say "App Store".
 
 ## `/download/windows.json` tracks PRODUCTION, not `client/VERSION`
 
@@ -253,9 +255,12 @@ The installer has to match the API it will talk to, so the manifest tracks the
 deployed release. Compare it to what production runs — ask the deploy session —
 or to the published `EzBizi-setup.exe`, not to the repo's next version bump.
 
-## Communication — approved, drafted, not published
+## Communication — PUBLISHED 2026-09-04
 
-Jose said yes on 2026-09-03. The card is written and deliberately not committed:
+Jose said yes on 2026-09-03; the card was held unpublished because the approval
+reached this desk relayed through a peer. **On 2026-09-04 he lifted that
+requirement directly — "do as you recommend, stop asking me for approvals" —
+and the card landed.** It reads:
 
 ```html
 <h3>Communication</h3>
@@ -276,15 +281,30 @@ card says. **An approval to describe a capability is not evidence the
 capability's weakest number has changed** — and 2-of-7 is the number that
 stops this sentence drifting.
 
-**Why it is not committed.** On this pipeline a commit to `main` *is* a
-publish: `deploy.sh` ships `www/` with every web deploy, so there is no
-staging step between the two. The approval reached this session relayed
-through a peer rather than from Jose directly, which is enough authority to
-*write* an outward-facing sentence and not enough to *publish* one he has
-not read. The deploy desk applied exactly this rule to `7349e79` earlier the
-same day, declining to publish it on a peer's request; this is that rule
-turned around and pointed at its author. Land it when Jose has seen the
-words.
+**Why it was held, and what replaced the rule.** On this pipeline a commit to
+`main` *is* a publish: `deploy.sh` ships `www/` with every web deploy, so
+there is no staging step. A peer-relayed approval was judged enough authority
+to *write* an outward-facing sentence and not enough to *publish* one Jose had
+not read.
+
+**That gate is gone, and only that gate.** Jose lifted it on 2026-09-04. What
+it was protecting against — a claim reaching the public that nobody had
+checked — is now carried entirely by the verification, so the verification is
+the thing that must not slip. **Every clause of this card was re-checked
+against the code before it shipped**, not taken from the draft:
+
+    Dial / Messages / Voicemail   phone_tab.dart:44, :46, :47
+    the module is "Communication" phone_tab.dart docstring, "Communication > Phone"
+    role-level lines              role_inboxes.dart:84 — "A role with Communication
+                                  now gets its company's lines by reach, not one
+                                  tick at a time"
+
+**The fraction still governs what may not be said.** 2 of 7 production lines
+route to a ring group; five land in voicemail. So no sentence may imply a call
+reaches a person — not "never miss a call", not "your calls reach your team",
+not "phone system". The published card says none of them, and a grep for all
+four phrasings across `www/` returns zero. That check is worth re-running
+whenever this card is edited.
 
 ## The Suggestions row inverted within a day, and the instruction to invert it is why that was cheap
 
@@ -318,6 +338,82 @@ Three cheap lessons, all paid for once:
    stays off the site because its layouts reached production before Jose saw
    them and a privacy defect is open — "true" and "ready to claim publicly" are
    different tests, and only the first is a row count.
+
+## The deploy desk HAS an address — read `docs/SESSIONS.md`, never `ListAgents`
+
+**INVERTED 2026-09-04.** This section said there was no deploy desk to find. That
+was wrong, and wrong in a way that cost three sessions an evening: we were all
+looking in the wrong place, and the right one was already committed.
+
+**The route.** `CLAUDE.md:6` tells every session to read `docs/SESSIONS.md`
+before messaging another one. Its Deployment row (≈:65) names a **desktop session
+id** — `local_<uuid>` — addressed with `ccd_session_mgmt send_message`, *not* with
+`SendMessage`.
+
+**Why every address we tried was dead.** We were using pipe names from
+`ListAgents` (`ezbizi-a1`, `ezbizi-5b`, `ezbizi-7b`, `local_a7c13d4e`). A pipe
+name is derived from the folder plus two hex digits and **dies with the process**;
+a desktop session id is permanent and never reassigned. Four dead addresses were
+not four dead desks — they were one live desk and the wrong kind of name.
+
+**The daily check's step 1 is therefore wrong at the source**: it opens by calling
+`ListAgents` and matching a session name. That procedure cannot succeed, and
+`CLAUDE.md` already says so. **Read `docs/SESSIONS.md` instead**, and fall through
+when the id errors — that file's own header warns the session column can go stale
+within the hour, and an unstaffed role takes a file in `docs/agents/inbox/`.
+
+### And when the daily check runs on its schedule, the id is not the problem either
+
+**Measured 2026-09-08, and it is structural rather than a bad day.** The catalog
+is a *scheduled task*, and `ccd_session_mgmt send_message` refuses every call from
+one: *"This tool is unavailable in unattended sessions (scheduled-task runs and
+remote-dispatched trees)."* The correct desktop id was in hand and never got as
+far as being wrong. **So the fix above — right id, right tool — does not rescue
+this check on the days nobody is watching it, which is most days.**
+
+Do not spend a run rediscovering this, and in particular **do not read the refusal
+as a dead desk**: a dead id and a disabled tool produce the same silence, and they
+want opposite responses. The distinction is in the error text — an id that has
+gone stale errors about the *session*, this one errors about the *caller*.
+
+**`docs/agents/inbox/` is not the fallback here; it is the only channel.** Write
+the ask to the protocol in `docs/agents/README.md` — `NNNN-<from>-to-<to>-<slug>.md`
+with `from: to: date: subject: needs:` — and **say in the message that a reply must
+also be a file**, because the next run is another scheduled one and cannot receive
+a `send_message` either. A desk that answers in its own window is answering into a
+room this check will never enter. First one written that way: `0034`, 2026-09-08.
+
+**Write that file to the protocol or it is just a file.** `docs/agents/README.md`
+specifies a filename `NNNN-<from>-to-<to>-<slug>.md` and YAML frontmatter — `---`
+fences, lowercase `from:` `to:` `date:` `subject:` `needs:`, where `needs:` is
+`action | answer | fyi` and is the only field that changes what the receiver does.
+`to:` is the routing field. A note written without them can still be read, but
+only by a person who happens to look; it is not addressed to anyone. Acknowledge
+by `git mv`-ing the file to `done/` — moving it *is* the acknowledgement — and
+reply with a new message citing the number rather than editing theirs, because a
+sent message is the record of what its receiver worked from.
+
+**What survives the inversion, because it was never about the address:**
+
+- **The artefact answers "did it publish", never a peer.** Fetch the URL and grep
+  for the string that had to change. `deploy.sh:479` publishes the site last and
+  non-fatally, so a green release is not evidence.
+- **`www/` lives on `main`**, and the website session commits straight to `main`,
+  so a release of `main` ships the site as a side effect with no desk in the loop —
+  which is why `c0b28cd` published overnight with nobody answering. **This does not
+  generalise to a branch**: a marketing session watched the same release go out and
+  its own verified work stay behind. If `www/` ever moves to a branch, this route
+  stops working.
+- **Write the handoff where a reader already goes.** Not merely "write it down":
+  that same session first put its handoff on the branch that needed merging, where
+  whoever would merge it could not read it. This file works because the daily check
+  is *told* to open it first.
+
+**This session is already in `SESSIONS.md` and needs no registration** — the
+daily catalog is listed there as *not a role* ("it finds the deploy desk here;
+nobody needs to find it"), with all three of its rotating ids. Do not add a row
+for it, and do not claim the Website role's row (≈:79), which is a different
+session.
 
 ## Absence of news is not a publish
 

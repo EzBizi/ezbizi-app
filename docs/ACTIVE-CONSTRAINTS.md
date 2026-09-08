@@ -196,15 +196,14 @@ in the repo root, untracked and — until this was written — unignored, one
 ---
 
 Committing safely on this shared tree is **not** temporary and lives in
-`StartUp.md` §4. Who owns which files is in `docs/MODULE-OWNERS.md`.
+[development rules](DEVELOPMENT-RULES.md). The original incident record is in [archived StartUp](history/2026-09-08-startup.md). Who owns which files is in `docs/MODULE-OWNERS.md`.
 
 ---
 
 ## 5 · CRLF — moved, because it outlives this file
 
 The `git archive` bug and the `$`-anchored-regex hazard now live in
-**`StartUp.md` §8**, under "A green suite proves the code works, not that it is
-what you shipped".
+the [development rules](DEVELOPMENT-RULES.md), with the original incident under "A green suite proves the code works, not that it is what you shipped" in [archived StartUp](history/2026-09-08-startup.md).
 
 They were written here first and that was a mistake: this file's own header says
 to delete it when App Store review clears, and CRLF checkouts have nothing to do

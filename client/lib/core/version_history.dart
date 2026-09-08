@@ -8,7 +8,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
-      version: '0.0.0151',
+      version: '0.0.0153',
       date: '04 Sep 2026',
       items: [
         'Web Management: pick a primary website and the others follow it. Set '
@@ -23,6 +23,72 @@ class VersionHistory {
             'the right shape.',
         'Web Management: SEO has sections, starting with General, and the '
             'fields are smaller so more of them fit on screen at once.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0152',
+      date: '8 Sep 2026',
+      items: [
+        'Leads: every connected Google Ads account is visible, and each one '
+            'can be given a name and pointed at a franchise. One connect made '
+            'twenty-two accounts in the same second, and the screen showed one '
+            'of them - whichever came back first - so twenty-one were '
+            'invisible and the one on screen was arbitrary.',
+        'Leads: an account can be named. Twenty-two rows of phone numbers are '
+            'hard to tell apart, so you can call one Connecticut and it keeps '
+            'its number beside the name for checking against Google Ads.',
+        'Leads: sending an account\'s leads to a franchise moves the leads it '
+            'has already produced, and the screen says how many moved. If '
+            'there were none to move it says that too, rather than going '
+            'quiet and looking like it failed.',
+        'Your selected company or franchise stays with your requests, even '
+            'when another device changes its view. Shared records remain '
+            'readable, with changes limited to the places you manage.',
+        'Newsletters keep the mailing account chosen when scheduled, prevent '
+            'duplicate sends, and respect unsubscribed recipients. Cancel a '
+            'scheduled mailing before changing its content or audience.',
+        'Inventory cancellation and stock movements now agree when they '
+            'happen together. Late phone updates keep completed calls complete.',
+        'Automations preserve where an event happened after a record is '
+            'deleted and retry temporary webhook failures without repeating '
+            'actions that already succeeded.',
+        'Expired sessions clear consistently, and sign-in protection, remote '
+            'image loading, and release verification have been strengthened.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0151',
+      date: '4 Sep 2026',
+      items: [
+        'Newsletter: write a mailing in blocks or as HTML, with the real email '
+            'shown beside the editor as you type. It sends through the mailing '
+            'account your company connects - Mailchimp - so it goes out on your '
+            'own list and your own sending reputation, not EzBizi\'s.',
+        'Newsletter opens on a dashboard: what has gone out, what is waiting, and '
+            'a month calendar of everything scheduled. Tap a scheduled mailing to '
+            'open and edit it until it goes.',
+        'Settings has an Integrations tab listing every account this view is '
+            'connected to - social, mailing, advertising - and where each is '
+            'managed.',
+        'Suggestions: the tab where you write one has the layout you chose - your '
+            'suggestions listed on the left, the one you are reading beside them. '
+            'And a suggestion marked as in review can no longer carry a note, '
+            'because in review tells the author nothing and the note would never '
+            'have been seen.',
+        'The desktop app opens once. Launching it while it is already open brings '
+            'the running window forward instead of starting a second copy.',
+        'An inspection event says which branch it happened at, so an automation '
+            'rule scoped to one location fires for that location\'s inspections '
+            'and not for everybody\'s.',
+        '"Text me my codes" is on the account screen at a desk, not only on a '
+            'phone. It was added to the phone layout alone, so the setting '
+            'existed on a handset and did not exist on a computer - which is '
+            'where most people would have gone looking for it. It now sits '
+            'under Two-factor in both.',
+        'Email: an inbox can now mark mail as read in the mail service itself, so '
+            'a message you open here stops being bold in Gmail too. Off unless you '
+            'turn it on, per inbox, on Email > Settings - because on an inbox your '
+            'team shares it would hide mail from a colleague who has not read it.',
       ],
     ),
     VersionRelease(

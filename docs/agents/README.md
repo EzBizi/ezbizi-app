@@ -151,7 +151,12 @@ nobody was wrong; the module just did not move.
 - **Never put a secret in a message.** These files are committed. Name the key,
   never the value — `AWS_SECRET_ACCESS_KEY is empty`, not what it should be.
 - **Commit the message with your work.** A message sitting uncommitted in a
-  working tree the other agent cannot see has not been sent.
+  working tree the other agent cannot see has not been sent. A mail file is
+  the one docs-only thing that goes to `main` directly, path-limited to the
+  file, even from a session that otherwise works on a branch: a note about a
+  merge that can only be read by merging the branch it sits on is no note.
+  Two sessions reached that on 2026-09-04 (`5117113f`, `c978ddaa`) and both
+  were right. Nothing else rides that exception.
 - **Correct yourself by sending another message**, not by editing history. A
   message 0003 saying "0001 was wrong, here is why" is worth more than a clean
   0001.

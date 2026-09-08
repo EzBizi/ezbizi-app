@@ -252,7 +252,7 @@ class LeadsController extends Controller
     {
         $user = request()->user();
 
-        return SocialConnection::query()
+        $connections = SocialConnection::query()
             ->whereIn('provider', array_map(
                 fn (SocialProvider $p) => $p->value,
                 SocialProvider::dataSources(),
@@ -268,14 +268,60 @@ class LeadsController extends Controller
              * this way; these three tabs never did.
              */
             ->filter(fn (SocialConnection $c) => $user !== null && $this->access->inView($user, $c))
+            ->values();
+
+        /*
+         * Counted in ONE grouped query, not per row.
+         *
+         * The screen's whole problem is that A-1 Chimney has twenty-two
+         * accounts that look alike, and the only thing that tells them apart is
+         * which ones actually produce enquiries. Two busy accounts and twenty
+         * silent ones is a readable list; twenty-two identical rows in
+         * arbitrary order is not. So the count is what the design is sorted and
+         * grouped by, which is why it is here rather than left to the client -
+         * `present(Lead)` names no connection, so nothing could be counted
+         * client-side at all.
+         */
+        $counts = Lead::query()
+            ->whereIn('connection_id', $connections->map(fn (SocialConnection $c) => $c->getKey()))
+            ->selectRaw('connection_id, COUNT(*) as total')
+            ->groupBy('connection_id')
+            ->pluck('total', 'connection_id');
+
+        /*
+         * Name a franchise only if this person can reach it.
+         *
+         * An account may be placed on a franchise outside the reader's reach -
+         * a company-level placement seen by someone scoped to one branch. The
+         * id still goes out, because the screen needs to know a placement
+         * EXISTS, but the name does not: rendering a bare uuid is worse than
+         * saying nothing, and naming a franchise somebody cannot otherwise see
+         * leaks the shape of the organization one row at a time.
+         *
+         * Null name with a non-null id is therefore a real answer, not missing
+         * data, and the screen renders it as a place the reader cannot see.
+         */
+        $reachable = $user?->reachableFranchises()->pluck('name', 'id') ?? collect();
+
+        return $connections
             ->map(fn (SocialConnection $c) => [
                 // The id is what lets the tab that owns this connection
                 // remove it. Without it the only disconnect was in
                 // Marketing, a module these providers are kept out of.
-                'id'           => $c->getKey(),
-                'provider'     => $c->provider,
-                'display_name' => $c->display_name,
-                'status'       => $c->status,
+                'id'                   => $c->getKey(),
+                'provider'             => $c->provider,
+                'display_name'         => $c->display_name,
+
+                // What a person called it, or null. The screen shows this when
+                // set and display_name when not — twenty-two numbers are not
+                // something anybody remembers the meaning of.
+                'label'                => $c->label,
+                'status'               => $c->status,
+                'leads_franchise_id'   => $c->leads_franchise_id,
+                'leads_franchise_name' => $c->leads_franchise_id === null
+                    ? null
+                    : $reachable->get($c->leads_franchise_id),
+                'leads_count'          => (int) ($counts[$c->getKey()] ?? 0),
             ])
             ->values()
             ->all();

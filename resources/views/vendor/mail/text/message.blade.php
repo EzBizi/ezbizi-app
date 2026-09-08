@@ -21,7 +21,10 @@
     {{-- Footer --}}
     <x-slot:footer>
         <x-mail::footer>
-            © {{ date('Y') }} {{ config('app.name') }}. @lang('All rights reserved.')
+            © {{ date('Y') }} {{ config('app.name') }}
+            https://www.ezbizi.com
+            Privacy: https://www.ezbizi.com/privacy/
+            Terms: https://www.ezbizi.com/terms/
         </x-mail::footer>
     </x-slot:footer>
 </x-mail::layout>

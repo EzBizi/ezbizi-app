@@ -2,13 +2,9 @@
 #
 # VERSIONED COPY of /var/repos/ezbizi.git/hooks/post-receive on the app box.
 #
-# The live file is the one that runs; this is here so it is reviewable and a
-# rebuilt box is reproducible — the same reason the nginx configs are versioned.
-# Editing one without the other is exactly the drift this project already paid
-# for once (§17), so change this file, then copy it up:
-#
-#   scp deploy/post-receive app:/tmp/ && ssh app #     'sudo cp /tmp/post-receive /var/repos/ezbizi.git/hooks/ && sudo chmod +x /var/repos/ezbizi.git/hooks/post-receive'
-#
+# scripts/deploy.sh installs this pinned hook atomically through receive-release
+# under the deployment lock before pushing code. Direct pushes use the installed
+# hook and leave the current UI in place.
 #
 # Deploy on push to main (plan §11.2).
 #
@@ -31,15 +27,25 @@ RELEASES=/var/www/ezbizi-releases
 KEEP=5
 BRANCH=main
 
+# The orchestrated receiver holds this same lock through API and UI activation.
+if [ "${EZBIZI_DEPLOY_LOCKED:-}" != 1 ]; then
+  exec 9>/var/repos/ezbizi-deploy.lock
+  flock -x 9 || exit 1
+fi
+
 while read -r _old _new ref; do
   [ "$ref" = "refs/heads/$BRANCH" ] || { echo "  (ignoring $ref)"; continue; }
 
   STAMP=$(date +%Y%m%d%H%M%S)
-  TARGET="$RELEASES/$STAMP"
-  mkdir -p "$TARGET"
+  TARGET=$(mktemp -d "$RELEASES/$STAMP-${_new:0:12}-XXXXXX") || exit 1
+  chmod 0755 "$TARGET" || exit 1
 
-  echo "→ checking out $BRANCH"
-  git --work-tree="$TARGET" --git-dir=/var/repos/ezbizi.git checkout -f "$BRANCH"
+  echo "→ extracting received commit $_new"
+  if ! git -c core.autocrlf=false --git-dir=/var/repos/ezbizi.git archive "$_new" | tar -x -C "$TARGET"; then
+    echo "✗ could not extract received commit — deployment aborted" >&2
+    rm -rf "$TARGET"; exit 1
+  fi
+  printf '%s\n' "$_new" > "$TARGET/.ezbizi-release-sha"
 
   echo "→ carrying over environment + storage"
   # .env NEVER lives in the repo (plan §15 Phase 0). It stays on the box.
@@ -269,28 +275,6 @@ while read -r _old _new ref; do
   echo "→ pruning old releases (keeping $KEEP)"
   ls -1dt "$RELEASES"/*/ 2>/dev/null | tail -n +$((KEEP+1)) | xargs -r rm -rf
 
-  # Does the hook running this deploy match the one in the release it just
-  # deployed?
-  #
-  # This file lives at /var/repos/ezbizi.git/hooks/post-receive and is NOT
-  # updated by pushing. So deploy/post-receive in the repo can be edited,
-  # reviewed, committed and shipped while the box goes on running whatever was
-  # copied there by hand months ago — the whole class of "the fix is in the
-  # repo, so it must be live". It happened the first time this hook was changed:
-  # a pre-migration dump was added, pushed, and did not run.
-  #
-  # Not self-updating. A hook that rewrites itself mid-run is a hook that can
-  # brick every future deploy in one bad push, and this is the one script with
-  # no way to roll itself back. Saying so loudly is enough — the drift is
-  # visible on the next deploy either way, which is the part that was missing.
-  if ! diff -q "$0" "$TARGET/deploy/post-receive" >/dev/null 2>&1; then
-    echo
-    echo "!! This hook differs from deploy/post-receive in the release just shipped."
-    echo "   The repo copy is not live until it is installed:"
-    echo "     ssh app 'sudo install -m 0755 -o ubuntu -g ubuntu \\"
-    echo "       $TARGET/deploy/post-receive /var/repos/ezbizi.git/hooks/post-receive'"
-    echo
-  fi
-
+  # Direct pushes can use an older installed hook; use deploy.sh to install updates.
   echo "✓ deployed $STAMP"
 done

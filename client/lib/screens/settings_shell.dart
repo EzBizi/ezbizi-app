@@ -6,6 +6,7 @@ import '../core/ui_strings.dart';
 import '../widgets/tab_bar_like.dart';
 import 'organization_screen.dart';
 import 'roles_screen.dart';
+import 'settings/integrations_screen.dart';
 import 'settings_screen.dart';
 
 /// The Settings destination: the shape of the business, how the work behaves,
@@ -70,6 +71,18 @@ class _SettingsShellState extends State<SettingsShell> {
         Icons.tune_outlined,
         () => SettingsScreen(api: widget.api, session: widget.session),
       ),
+      /*
+       * Integrations sits between Settings and Roles: it is a thing you look
+       * at while configuring, and it is not a permission surface. Gated on
+       * marketing.view because that is the module that owns most of what it
+       * lists, and somebody who cannot see Marketing has nothing to read here.
+       */
+      if (me.can('marketing.view'))
+        (
+          'Integrations',
+          Icons.link_outlined,
+          () => IntegrationsScreen(api: widget.api, session: widget.session),
+        ),
       if (roles != null && roles.reachable)
         (
           roles.label,

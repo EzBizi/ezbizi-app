@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Franchise;
+use App\Models\Lead;
 use App\Models\SocialConnection;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
@@ -10,6 +12,7 @@ use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response as Status;
 
 class SocialConnectionsController extends Controller
@@ -67,6 +70,198 @@ class SocialConnectionsController extends Controller
                 'posting_note'           => Publishers::postingNoteFor($c->providerEnum()),
             ])->all(),
         ]);
+    }
+
+    /**
+     * PATCH /api/v1/social/connections/{connection}/label
+     *
+     * Name an account, because nobody remembers what the numbers mean.
+     *
+     * `display_name` is Google's — `405-172-9356` — and stays untouched: it is
+     * how somebody cross-checks a row against the advertising account behind
+     * it. This is the name a person chose, stored beside it. Twenty-two
+     * numbered rows is the actual complaint the Leads accounts list exists to
+     * answer, and a count tells them apart only while their counts differ.
+     *
+     * Blank input clears the name rather than storing an empty string, so
+     * "unnamed" has exactly one representation and the screen never has to
+     * decide whether '' means anything.
+     */
+    public function rename(Request $request, string $connection): JsonResponse
+    {
+        $user = $request->user();
+
+        $row = SocialConnection::query()->find($connection);
+
+        abort_if(
+            $row === null || ! $this->access->inView($user, $row),
+            Status::HTTP_NOT_FOUND,
+        );
+
+        // The same gate as connecting, disconnecting and placing: the module
+        // that reads the account decides what it is called.
+        $provider = SocialProvider::tryFrom($row->provider);
+
+        abort_unless(
+            $user->hasPermission($provider?->connectPermission() ?? 'marketing.edit'),
+            Status::HTTP_FORBIDDEN,
+            Refusal::permission('rename a connected account')->message(),
+        );
+
+        $input = $request->validate([
+            'label' => ['present', 'nullable', 'string', 'max:80'],
+        ]);
+
+        $label  = trim((string) ($input['label'] ?? '')) ?: null;
+        $before = $row->label;
+
+        if ($before === $label) {
+            return response()->json(['data' => $this->placement($row)]);
+        }
+
+        DB::transaction(function () use ($row, $label, $before) {
+            $row->forceFill(['label' => $label])->save();
+
+            $this->audit->log('social.renamed', $row, [
+                'provider' => $row->provider,
+                'before'   => $before,
+                'after'    => $label,
+            ]);
+        });
+
+        return response()->json(['data' => $this->placement($row->fresh())]);
+    }
+
+    /**
+     * PATCH /api/v1/social/connections/{connection}/leads-franchise
+     *
+     * Which franchise owns the enquiries this account produces.
+     *
+     * Separate from `scope_id`, which says who can SEE the connection, and
+     * deliberately so: re-scoping the connection itself would hide it from the
+     * company that just assigned it, because inView() makes a franchise-scoped
+     * connection invisible to the company above. Null puts it back at company
+     * level, which is where every account starts.
+     */
+    public function placeLeads(Request $request, string $connection): JsonResponse
+    {
+        $user = $request->user();
+
+        $row = SocialConnection::query()->find($connection);
+
+        abort_if(
+            $row === null || ! $this->access->inView($user, $row),
+            Status::HTTP_NOT_FOUND,
+        );
+
+        // Same gate as connecting and disconnecting: the module that reads the
+        // account decides where its leads go.
+        $provider = SocialProvider::tryFrom($row->provider);
+
+        abort_unless(
+            $user->hasPermission($provider?->connectPermission() ?? 'marketing.edit'),
+            Status::HTTP_FORBIDDEN,
+            Refusal::permission('place a connected account')->message(),
+        );
+
+        $input = $request->validate([
+            'leads_franchise_id' => ['present', 'nullable', 'uuid'],
+        ]);
+
+        $franchiseId = $input['leads_franchise_id'] ?? null;
+
+        if ($franchiseId !== null) {
+            /*
+             * The franchise must be in THIS connection's organization.
+             *
+             * A foreign key only proves the row exists; it says nothing about
+             * whose it is. Without this, a valid-looking id belonging to
+             * another tenant would route one customer's enquiries into
+             * another customer's list — a cross-tenant write dressed as a
+             * dropdown choice.
+             */
+            $owned = Franchise::query()
+                ->whereKey($franchiseId)
+                ->where('organization_id', $row->organization_id)
+                ->exists();
+
+            abort_unless($owned, Status::HTTP_NOT_FOUND);
+        }
+
+        $before = $row->leads_franchise_id;
+
+        if ($before === $franchiseId) {
+            return response()->json(['data' => $this->placement($row)]);
+        }
+
+        $row->forceFill(['leads_franchise_id' => $franchiseId])->save();
+
+        /*
+         * Retroactive, on Jose's ruling of 2026-09-08: assigning an account
+         * moves the leads it has ALREADY produced, not only the next ones. A
+         * manager setting this up expects the branch to see its own history
+         * rather than an empty list.
+         *
+         * The cost is real and was accepted with it stated: a lead's
+         * franchise_id stops recording where it arrived and starts reflecting
+         * the account's current assignment, so re-assigning later moves the
+         * history again.
+         *
+         * Chunked rather than one UPDATE because 400 leads today is not 400
+         * forever, and an unbounded write on a growing table is a lock somebody
+         * eventually notices. One audit row at the end, not one per chunk: the
+         * event is the re-assignment, not the batching.
+         */
+        $moved = 0;
+
+        Lead::query()
+            ->where('connection_id', $row->getKey())
+            ->select('id')
+            ->chunkById(500, function ($leads) use ($franchiseId, &$moved) {
+                DB::transaction(function () use ($leads, $franchiseId, &$moved) {
+                    $moved += Lead::query()
+                        ->whereIn('id', $leads->pluck('id'))
+                        ->update(['franchise_id' => $franchiseId]);
+                });
+            });
+
+        $this->audit->log('social.leads_placed', $row, [
+            'provider'     => $row->provider,
+            'display_name' => $row->display_name,
+            'before'       => $before,
+            'after'        => $franchiseId,
+            'leads_moved'  => $moved,
+        ], actor: $user);
+
+        /*
+         * The moved count goes back with the response.
+         *
+         * Placement is retroactive, so the thing a person looks for to believe
+         * it worked is "14 leads moved to Connecticut" - not the row quietly
+         * changing. Returning it here saves the screen a full refetch to
+         * discover a number the write already knew.
+         */
+        return response()->json(['data' => $this->placement($row->fresh(), $moved)]);
+    }
+
+    /** @return array<string, mixed> */
+    private function placement(SocialConnection $row, ?int $moved = null): array
+    {
+        return [
+            'id'                 => $row->getKey(),
+            'provider'           => $row->provider,
+            'display_name'       => $row->display_name,
+
+            // The chosen name, null when nobody has set one. Kept separate
+            // from display_name so the screen can show one and cross-check
+            // against the other.
+            'label'              => $row->label,
+            'leads_franchise_id' => $row->leads_franchise_id,
+
+            // Null when nothing changed, 0 when a placement moved no leads.
+            // Those are different answers and the screen says different things.
+            'leads_moved'        => $moved,
+        ];
     }
 
     /**

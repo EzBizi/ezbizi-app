@@ -86,13 +86,16 @@ class AutomationEvent extends Model implements StatesRetention
     protected $fillable = [
         'organization_id', 'event_key', 'subject_type', 'subject_id', 'payload',
         'actor_id', 'actor_label', 'root_event_id', 'causation_id', 'depth',
-        'correlation_id', 'occurred_at', 'available_at',
+        'correlation_id', 'occurred_at', 'available_at', 'scope_snapshot',
     ];
 
     protected function casts(): array
     {
         return [
             'payload'      => 'array',
+            'scope_snapshot' => 'array',
+            'version_ids' => 'array',
+            'processing_until' => 'datetime',
             'occurred_at'  => 'datetime',
             'available_at' => 'datetime',
             'delivered_at' => 'datetime',

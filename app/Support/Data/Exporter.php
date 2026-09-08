@@ -6,6 +6,7 @@ use App\Models\Customer;
 use App\Models\User;
 use App\Support\Privacy\HoldsSensitiveValues;
 use App\Support\Privacy\SensitiveValues;
+use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -89,7 +90,7 @@ class Exporter
     public function csv(string $resource, User $user, bool $includeSensitive = false): StreamedResponse
     {
         $definition = ResourceMap::get($resource);
-        $columns    = $definition['columns'];
+        $columns = $definition['columns'];
 
         // Both captured HERE, not read inside the callback.
         //
@@ -100,7 +101,7 @@ class Exporter
         // writes another organization's customers into this file. Reach is
         // resolved eagerly for the same reason.
         $organization = $this->tenant->get();
-        $reach        = $this->reachFor($definition, $user);
+        $reach = $this->reachFor($definition, $user);
 
         return response()->streamDownload(function () use ($definition, $columns, $organization, $reach, $user, $includeSensitive) {
             $out = fopen('php://output', 'w');
@@ -233,7 +234,7 @@ class Exporter
 
         $visible = $user->hasPermission($jobs['permission'])
             ? $customer->jobs()
-                ->whereIn($jobs['reach_column'], $user->reachableFranchises()->pluck('id'))
+                ->whereIn($jobs['reach_column'], ViewScope::forUser($user)->franchiseIds())
                 ->orderBy('created_at')->get()
             : collect();
 
@@ -261,7 +262,7 @@ class Exporter
     private function reachFor(array $definition, User $user): ?array
     {
         return isset($definition['reach_column'])
-            ? $user->reachableFranchises()->pluck('id')->all()
+            ? ViewScope::forUser($user)->franchiseIds()
             : null;
     }
 
