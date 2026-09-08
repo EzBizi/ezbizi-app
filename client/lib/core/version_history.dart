@@ -12,6 +12,7 @@ class VersionHistory {
       date: '8 Sep 2026',
       items: [
         'Website enquiries: a chat bubble and a contact form for the customer\'s own website. Both arrive in Leads beside the Google and Thumbtack ones, so a reply typed in the thread reaches the visitor on their page.',
+        'Thumbtack enquiries reach the right company when two companies use the same Thumbtack business.',
       ],
     ),
     VersionRelease(
