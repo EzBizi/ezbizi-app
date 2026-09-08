@@ -248,6 +248,40 @@ function reset_site() {
     $_SERVER['REQUEST_URI'] = '/';
 }
 
+function widget_payload($enabled = true) {
+    $base = json_decode(payload_json(['phone' => '555-0100']), true);
+    $base['public_key'] = 'pk_testkey';
+    $base['widgets'] = [
+        'chat' => [
+            'enabled' => $enabled,
+            'title' => 'Talk to A-1',
+            'intro' => 'We answer fast.',
+            'button' => 'Chat',
+            'placeholder' => 'Type here',
+            'send' => 'Send',
+            'position' => 'bottom-right',
+        ],
+        'form' => [
+            'enabled' => $enabled,
+            'button' => 'Send it',
+            'thanks' => 'Got it.',
+            'error' => 'Did not send.',
+            'fields' => [
+                ['label' => 'Name', 'type' => 'text', 'required' => true],
+                ['label' => 'What needs doing?', 'type' => 'textarea', 'required' => true],
+                ['label' => 'Service', 'type' => 'select', 'required' => false,
+                    'options' => ['Sweep', 'Repair']],
+            ],
+        ],
+        'style' => [
+            'accent' => '#aa0000', 'on_accent' => '#ffffff', 'text' => '#111111',
+            'background' => '#ffffff', 'font' => 'inherit', 'radius' => 12,
+        ],
+    ];
+
+    return json_encode($base);
+}
+
 function ok_response(array $values, array $pages = []) {
     $GLOBALS['http_next'] = ['code' => 200, 'body' => payload_json($values, $pages)];
 }
@@ -502,35 +536,45 @@ $GLOBALS['tr'] = [];
 ezbizi_fetch();
 check('the credential survives', count($GLOBALS['app_passwords']), 1);
 
-echo PHP_EOL . "The form and chat shortcodes render, or say nothing at all" . PHP_EOL;
+echo PHP_EOL . "The widgets are dressed by EzBizi, not by the shortcode" . PHP_EOL;
 reset_site();
-ok_response(['phone' => '555-0100']);
-$GLOBALS['http_next'] = ['code' => 200, 'body' => json_encode(array_merge(
-    json_decode(payload_json(['phone' => '555-0100']), true),
-    ['public_key' => 'pk_testkey']
-))];
-$GLOBALS['tr'] = [];
+$GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload()];
 ezbizi_fetch();
 do_action('init');
 check('[ezbizi_form] registered', isset($GLOBALS['sc']['ezbizi_form']), true);
 check('[ezbizi_chat] registered', isset($GLOBALS['sc']['ezbizi_chat']), true);
 
-$form = $GLOBALS['sc']['ezbizi_form'](['fields' => 'Name,Email,Tell us what needs doing and when']);
-check('the form posts to the form endpoint', str_contains($form, 'web\/form'), true);
-check('and carries this site key', str_contains($form, 'pk_testkey'), true);
-check('a long question gets a textarea', str_contains($form, '<textarea'), true);
-check('a short one gets an input', str_contains($form, '<input type="text"'), true);
-check('email is typed as email', str_contains($form, 'type="email"'), true);
+$form = $GLOBALS['sc']['ezbizi_form']([]);
+check('the questions come from EzBizi', str_contains($form, 'What needs doing?'), true);
+check('a textarea because EzBizi said so', str_contains($form, '<textarea'), true);
+check('a select renders its options', str_contains($form, '<option value="Sweep">'), true);
+check('required is marked', str_contains($form, 'required'), true);
+check('the accent colour is applied', str_contains($form, '--ezbizi-accent:#aa0000'), true);
+check('the button says what EzBizi says', str_contains($form, '>Send it<'), true);
+check('the form posts to the form endpoint', str_contains($form, 'web' . chr(92) . '/form'), true);
 
 $chat = $GLOBALS['sc']['ezbizi_chat']([]);
-// Built by plain concatenation in the widget's JS, so the slashes are real
-// here where the form's -- passed through wp_json_encode -- are escaped.
+check('the chat title comes from EzBizi', str_contains($chat, 'Talk to A-1'), true);
+check('and its position', str_contains($chat, 'right:20px'), true);
 check('the chat posts to the chat endpoint', str_contains($chat, '/api/v1/web/chat'), true);
-check('and polls with a bearer token', str_contains($chat, 'Bearer '), true);
+
+echo PHP_EOL . "A shortcode argument cannot override EzBizi" . PHP_EOL;
+$forced = $GLOBALS['sc']['ezbizi_form'](['fields' => 'Something,Else', 'button' => 'Override me']);
+check('the fields still come from EzBizi', str_contains($forced, 'What needs doing?'), true);
+check('and the button is too', str_contains($forced, '>Send it<'), true);
+check('the argument is ignored entirely', str_contains($forced, 'Override me'), false);
+
+echo PHP_EOL . "A widget switched off in EzBizi renders nothing" . PHP_EOL;
+reset_site();
+$GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload(false)];
+ezbizi_fetch();
+$GLOBALS['is_admin'] = false;
+check('the form is absent', $GLOBALS['sc']['ezbizi_form']([]), '');
+check('and so is the chat', $GLOBALS['sc']['ezbizi_chat']([]), '');
 check(
-    'the visitor token is never written into the page',
-    str_contains($chat, 'ezb_') || str_contains($form, 'ezb_'),
-    false
+    'somebody who can fix it is told',
+    str_contains(($GLOBALS['is_admin'] = true) ? $GLOBALS['sc']['ezbizi_form']([]) : '', 'switched off'),
+    true
 );
 
 echo PHP_EOL . "A site with no browser key shows a visitor nothing" . PHP_EOL;

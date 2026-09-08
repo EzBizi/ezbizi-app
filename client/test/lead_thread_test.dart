@@ -129,6 +129,41 @@ void main() {
     );
   });
 
+  /// A draft, never a send: Suggest fills the box, the person presses Send.
+  testWidgets('Suggest fills the box with the draft and sends nothing', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      suggestion: 'Hi, yes we can inspect it. Which day suits you?',
+    );
+
+    await tester.tap(find.byKey(const ValueKey('reply-suggest')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('reply-box')))
+          .controller!
+          .text,
+      'Hi, yes we can inspect it. Which day suits you?',
+    );
+    expect(_sent, isEmpty, reason: 'a draft is not a send');
+  });
+
+  testWidgets('without the model there is no Suggest button', (tester) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+    );
+
+    expect(find.byKey(const ValueKey('reply-suggest')), findsNothing);
+    expect(find.byKey(const ValueKey('reply-box')), findsOneWidget);
+  });
+
   testWidgets('a call lead has no reply box and says why', (tester) async {
     await _pump(
       tester,
@@ -236,6 +271,7 @@ Future<void> _pump(
   required Completer<void> recordingGate,
   bool canReply = true,
   String? refuseSend,
+  String? suggestion,
   Future<void> Function()? onRead,
   Future<Map<String, dynamic>?> Function(String? note)? onNote,
 }) async {
@@ -246,6 +282,17 @@ Future<void> _pump(
 
   final api = ApiClient(
     client: MockClient((request) async {
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/suggest-reply')) {
+        return http.Response(
+          jsonEncode({
+            'data': {'text': suggestion},
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
       if (request.method == 'POST' && request.url.path.endsWith('/messages')) {
         final text = (jsonDecode(request.body) as Map)['text'] as String;
         if (refuseSend != null) {
@@ -289,6 +336,7 @@ Future<void> _pump(
             'data': {
               'id': 'lead-1',
               'can_reply': canReply,
+              'can_suggest': suggestion != null,
               'conversations': [
                 {
                   'id': 'c-call',

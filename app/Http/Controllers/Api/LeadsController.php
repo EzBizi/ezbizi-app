@@ -8,6 +8,7 @@ use App\Models\Job;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\SocialConnection;
+use App\Services\Leads\LeadInsights;
 use App\Services\Leads\LocalServicesLeads;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
@@ -47,6 +48,7 @@ class LeadsController extends Controller
         private readonly EventEmitter $events,
         private readonly RecordNumberGenerator $numbers,
         private readonly LeadReplies $replies,
+        private readonly LeadInsights $insights,
     ) {}
 
     /** GET /api/v1/leads */
@@ -122,6 +124,13 @@ class LeadsController extends Controller
             $query->whereNotNull('leads.starred_at');
         }
 
+        // Source is the fourth filter, beside the three it narrows with (UI/UX
+        // sources layout 1, 2026-09-08): one list answers "who is waiting on
+        // me" across Google, Thumbtack and the website at once.
+        if (is_string($source = $request->query('source')) && $source !== '') {
+            $query->where('leads.source', $source);
+        }
+
         // One box, two meanings. Somebody looking for a lead has either a name
         // or a phone number in front of them, and asking which they typed is a
         // question the screen should answer for itself. Digits are matched
@@ -170,6 +179,9 @@ class LeadsController extends Controller
         // Whether a reply can go anywhere: Google accepts them for text
         // enquiries only, and only while the account is connected.
         $data['can_reply'] = $this->replies->canReply($lead);
+
+        // A draft is offered only where a reply can go and the model is on.
+        $data['can_suggest'] = $data['can_reply'] && $this->insights->enabled();
 
         // Customers this number already belongs to, so booking can attach to
         // one instead of making a second Jane Doe. Same digits-only match the
@@ -398,6 +410,30 @@ class LeadsController extends Controller
             // token through the recording endpoint.
             'has_recording' => $c->recording_url !== null,
         ];
+    }
+
+    /**
+     * POST /api/v1/leads/{lead}/suggest-reply
+     *
+     * A draft, never a send. The text comes back for the composer; a person
+     * reads it, changes it, and presses Send, or does not. Gated the same as
+     * replying, because a draft for a lead you may not answer is noise.
+     */
+    public function suggestReply(Lead $lead): JsonResponse
+    {
+        $this->authorize('update', $lead);
+
+        abort_unless(
+            $this->replies->canReply($lead) && $this->insights->enabled(),
+            Response::HTTP_UNPROCESSABLE_ENTITY,
+            'A suggested reply is not available for this enquiry.',
+        );
+
+        $draft = $this->insights->suggestReply($lead);
+
+        abort_if($draft === null, Response::HTTP_BAD_GATEWAY, 'The model did not answer. Write the reply yourself.');
+
+        return response()->json(['data' => ['text' => $draft]]);
     }
 
     /**
@@ -828,6 +864,12 @@ class LeadsController extends Controller
             'locale'        => $lead->locale,
             'summary'       => $lead->summary,
             'status'        => $lead->status,
+
+            // What the lead LOOKS LIKE (BOOK / SUPPORT / ARCHIVE, read by a
+            // model), beside what somebody DECIDED (status). Null until the
+            // enquirer has said something in words, or while the model is off.
+            'classification' => $lead->classification,
+            'classified_at'  => $lead->classified_at?->toIso8601String(),
             'starred'       => $lead->starred_at !== null,
             'note'          => $lead->note,
             'note_by'       => $lead->note_by_user_id !== null && $lead->relationLoaded('noteBy')

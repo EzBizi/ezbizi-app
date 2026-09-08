@@ -73,6 +73,14 @@ class LeadConversation extends Model implements HoldsPersonalData, StatesRetenti
         return null;
     }
 
+    /**
+     * Fractions written, not only read. Eloquent formats dates for the
+     * database with this, and the default drops the microseconds that
+     * `occurred_at` holds since 2026_09_09_002500; two chat messages inside
+     * one second then tie, and a tie's order is the engine's whim.
+     */
+    protected $dateFormat = 'Y-m-d H:i:s.u';
+
     protected $fillable = [
         'organization_id', 'lead_id', 'remote_id', 'channel', 'participant',
         'occurred_at', 'duration_ms', 'recording_url', 'text', 'attachments',

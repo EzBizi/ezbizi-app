@@ -149,6 +149,48 @@ sentence for a screen.
 Livechat and Form in a1leads are website sources, not Google ones — a later
 piece, not this read.
 
+## 4a · One list across every source (decided 2026-09-08, reversible)
+
+Jose asked for "a new sub tab in Leads" for website chat and forms. UI/UX drew
+both shapes (docs/previews/leads-sources-layouts.html, 80646605) and, under
+his instruction to decide in his absence, recommended **one list** with the
+source as a badge on the row and a chip beside Unread / Unreplied / Starred;
+built at d1b2e77b. The reason is measured, not taste: the two tabs that
+existed were never a source split (the Thumbtack tab drew a connect flow and
+no leads), and the triage marks answer "who is waiting on me" only when there
+is one list to ask. The row, badges and band are identical in the tab layout,
+so **if Jose says "tabs", only the strip changes.**
+
+- `GET leads?source=local_services|thumbtack|website_chat|website_form`.
+- The Google accounts band is now **Connected sources**, one row at any number
+  of providers, opening a panel with a section per provider (Google's
+  accounts list, Thumbtack's list or connect door, a line for the website
+  until Web Management sends its widget). Placement counts moved into the
+  panel with it.
+
+## 4b · What a model can say: classification and a draft reply
+
+Item 5 of the a1tools list, Jose's "as you recommend" (2026-09-08). Amazon
+Bedrock, Claude, through the AWS SDK the app already carries for SES.
+`LeadInsights` (app/Services/Leads) is **off until** `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY` and `BEDROCK_MODEL` are set on the box; `enabled()` is
+false otherwise and nothing on screen depends on it. The model id is the one
+the Bedrock console shows for Claude in `us-east-1`; it is not guessed here.
+
+- **Classification** BOOK / SUPPORT / ARCHIVE plus a one-line `summary`, once,
+  the first time the enquirer has said something in words, from
+  `LeadThread::refresh()` so every source (Google, website chat) is sorted the
+  same way. Stored in `classification` / `classified_at`; never re-run;
+  `status` untouched. Raises `lead.classified` (declared on day one, raised
+  now). On screen: "Looks like work to book · <summary>" under the header.
+- **Suggested reply** `POST leads/{id}/suggest-reply` returns text for the
+  composer; a person reads, edits and presses Send. It stores nothing. Offered
+  only where a reply can go (`can_suggest`).
+- **Not built, on purpose:** auto-reply (a1leads sends without a person; the
+  Lead model forbids it until Jose lifts that by name) and call transcription
+  (needs an S3 bucket and Amazon Transcribe, both his to provision).
+- Cost at A-1 Chimney's volume, measured: single digits a month.
+
 ## 5 · `login-customer-id` is per connection
 
 Never an installation-wide config value. The manager an account sits under is a

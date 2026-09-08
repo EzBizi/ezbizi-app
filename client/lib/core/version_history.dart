@@ -8,6 +8,40 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0167',
+      date: '8 Sep 2026',
+      items: [
+        'On a call you make from EzBizi, the person you called now hears that the call is recorded. Until now that announcement was played to whoever placed the call and never to the person on the other end - so the one party who needed telling was the one party who was not told. Calls you receive were always correct.',
+        'You are no longer read your own recording warning before an outgoing call connects.',
+        'Nothing is announced when the line is not recording, or on an internal call between two colleagues.',
+        'Business hours can be opened and edited again. If the hours were created from a line belonging to a branch, the screen took the branch\'s own clock - and that clock was not among the ones the screen offered, so the editor came up blank. Nothing was lost; it could not be opened.',
+        'The clock list is places now, not offsets: Eastern - New York rather than UTC-5. Offsets ignore daylight saving, so hours set that way answered an hour early for half the year. Existing hours keep whatever they were set to and are still shown, so nothing changes underneath you - but hours on a fixed offset are worth setting to a place.',
+        'The week no longer steps up and down as days are opened and closed, and the form fits a phone. "24-hour" is said once above the week instead of twice on every open day.',
+        'Web Management: a Widgets tab. The chat bubble and the contact form are dressed here - colours, wording, and the questions the form asks - and every site that follows the primary changes with it. Nobody edits a WordPress page to change a colour any more.',
+        'Hours of operation now lines up on a phone as well as on a desktop. The times shrink to fit on one line rather than wrapping onto a second, which is what left the open days taller than the closed ones.',
+        'Web Management: a website can say which branch it answers for, so an enquiry from a branch subdomain lands on that branch instead of at company level.',
+        'Leads: replying to a website chat from the thread reaches the person on the page, the same way replying to a Google lead reaches them.',
+        'Automations: a rule can now run when somebody starts a live chat or sends a contact form on one of your websites, and can tell which website it was.',
+        'A lead\'s conversation always reads oldest first, even when two messages arrived in the same second.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0166',
+      date: '8 Sep 2026',
+      items: [
+        'Inspection: a report filed without a job now follows the same branch rules as every other report - visible only to people who can see the branch it belongs to. It used to appear in every branch\'s list, and anyone in the organization could open it, download its PDF or archive it by id.',
+        'Leads is one list across Google Ads, Thumbtack and your website. Each row shows where it came from, a Source chip narrows the list, and Connected sources at the top opens every provider\'s accounts in one place.',
+        'Automations: an event nothing reports yet is now marked in the picker, and a rule already built on one says on its row that nothing will set it off - instead of sitting switched on, looking finished, and never running.',
+        'Website enquiries: a chat bubble and a contact form for the customer\'s own website. Both arrive in Leads beside the Google and Thumbtack ones, so a reply typed in the thread reaches the visitor on their page.',
+        'Thumbtack enquiries reach the right company when two companies use the same Thumbtack business.',
+        'Hours of operation reads as one table: every day the same height, ruled between, and the times sit tight instead of drifting.',
+        'On a phone the opening and closing times wrap instead of running off the edge.',
+        'Changing how a company answers its phone now needs permission to change phone settings. The screen was only reachable by people who had it, but the underlying request was not checked, so somebody with read-only access to Phone could have altered call routing and switched off call recording.',
+        'A branch can no longer change the parent company\'s call handling by reaching up to it. Which settings you can change is bounded by where you work, the same way everything else is.',
+        'Automations can now act on what a call was about. Tagging a call raises "A call was tagged", carrying the tag name - so a rule can watch for complaints without watching for bookings. Tagging was already compulsory before hanging up; until now it fed reports and nothing else.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0165',
       date: '8 Sep 2026',
       items: [

@@ -43,15 +43,6 @@ final class ThumbtackAccount
         return new self(new ThumbtackClient($connection));
     }
 
-    /**
-     * The Thumbtack user this connection authenticates as.
-     *
-     * @return array<string, mixed>
-     */
-    public function self(): array
-    {
-        return $this->client->get('/v4/users/self');
-    }
 
     /**
      * Revoke at Thumbtack's end.

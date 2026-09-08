@@ -211,6 +211,101 @@ months behind grey secondary text.
 > people act on it before it is checked. Read the whole method: compute the end
 > with `awk` on the next `function`, never `+N`.
 
+> **A SECOND finding, 2026-09-08, caught before its cut pinned:** website
+> enquiries raise no `lead.received`. `app/Support/Web/WebsiteEnquiries.php`
+> creates a Lead for `website_chat` and `website_form` and emits **nothing** —
+> zero `emit`/`events` in the file — while `LocalServicesLeads.php:137` and
+> `ThumbtackLeads.php:73` both emit on create. So an automation on *"Lead
+> received"* would fire for three sources and silently skip the fourth, with no
+> error and the rule sitting enabled. Partly mitigated and checked rather than
+> assumed: messages DO go through `LeadThread`, so `lead.contact_received` fires
+> — it is specifically the lead's ARRIVAL that raises nothing. One
+> `emitAfterCommit` fixes it. Reported to the desk, Leads and Web Management.
+> **Correction from the desk:** it was NOT in the running cut — 0.0.0165 pinned at
+> `5c39ce40` before Web's `ab0284de` merged as `12b366f2`, so this rides 0.0.0166,
+> which had not pinned. I said "the cut that is running" from the desk's own
+> mention of 0.0.0166 without checking which SHA 0.0.0165 was pinned at. The
+> finding arrived in time; the urgency I attached to it was a guess.
+>
+> **The check that found it is the one that came out clean on booking**, and that
+> is the point worth keeping: when a NEW path creates an existing kind of thing,
+> ask whether it raises the same events the old paths do. Booking passed; the
+> website path did not, and it is new code rather than a regression.
+
+**A row with a per-row control and a text-only alternate state has two heights,
+and that is what &ldquo;floating&rdquo; means.** Marketing's diagnosis of Web
+Management's Hours panel, 2026-09-08, and it generalises: an open day drew two
+`TextButton`s, each carrying Material's 48dp minimum tap target; a closed day
+drew one line of text at roughly half that. Seven rows alternating between two
+heights with nothing ruling them give the eye no grid. The fix is one minimum
+height for every row, a hairline between them, and compact controls so the ROW
+decides the height rather than Material.
+
+> Two measurements worth keeping: a FIXED height clips — at 375 the times ran
+> 78px past the edge, so it is a minimum plus a `Wrap`. And **the floor must
+> clear the TALLEST row, not the nominal one**: at 44 the open days measured 45
+> and clamped nothing, leaving two heights one pixel apart — invisible to the
+> eye and still exactly the reported defect.
+
+**And the boundary that made it Marketing's to fix:** could the change be
+described without naming a new thing? *"The rows are the same height and have a
+rule between them"* names no new element — that is craft, and it ships. *"There
+is now a panel that opens"* names one — that is design. Jose reported it as a
+defect and left; routing it would have meant it sat overnight.
+
+**Fix it where it lives, not where it was found.** Leads found that the website
+chat endpoint ordered messages by `occurred_at` alone, so two in the same second
+tied and the visitor's question rendered *after* the business's answer. They
+fixed it in `EnquiriesController` with a UUID-v7 tiebreak and a good comment —
+and left `Lead::conversations()` (`app/Models/Lead.php:216`) ordering by
+`occurred_at` alone, which is the relation `LeadsController:174` builds the
+THREAD from. So the defect survived in the surface where it matters most: a
+thread's whole contract is *oldest first*, and a conversation that reads
+backwards is the one failure it cannot survive.
+
+> The habit: when a defect is found in a caller, ask what the caller was calling.
+> A fix at the call site leaves every other caller broken, and the one that hurts
+> is rarely the one that reported it.
+
+**A warning about the system's own capability is DERIVED, never stored.**
+Automations' marks for a trigger nothing raises — the picker badge and the
+saved-rule note — are computed from the catalogue at render, with no model field
+and no migration behind them (verified: zero occurrences in `app/Models` and
+`database/migrations`). So the day a sweep raises `item.low`, every saved rule
+waiting on it stops saying it will not run and starts running. Nobody has to
+remember to clear anything.
+
+> It is the exact inverse of [[release-notes-go-stale-silently]]: a hand-written
+> note about behaviour goes stale and manufactures bug reports; a mark computed
+> from the thing it describes cannot. **Same class of fact, opposite mechanism,
+> opposite outcome** — so when a screen must say something about what the product
+> can currently do, derive it from the registry rather than writing it down.
+
+**A second badge must say something the first does not.** Leads' rows carry a
+channel badge (Call / Text / Chat / Form) and, since the sources merge, a source
+badge (Google / Thumbtack / Chat / Forms). Independent for Google and Thumbtack —
+"Call · Google" is two facts. But `LIVECHAT → Chat` beside `website_chat → Chat`
+renders **"Chat · Chat"**, and `FORM` beside `website_form` renders "Form · Form".
+
+> Stated so it survives the next source: **draw the channel badge only when it
+> would not render the same word as the source badge.** No list of special cases,
+> and a fifth single-channel source gets the right answer for free.
+
+This is the third instance of one shape on this screen — the module name printed
+by both the shell and the panel header, "At a glance" under a lit *Dashboard*
+chip, and now a badge echoing a badge. **A row that gains a mark should be asked
+what the marks it already has are saying**, not just where the new one fits.
+
+**A summary line belongs to the question the surface now asks.** The Google
+accounts band carried "20 at company level · 2 on franchises" — called at the
+time "the only fact worth a permanent row". When the band became the *Connected
+sources* roster, that line did not come with it, and should not: placement does
+not generalise across sources that have none, and the need behind it is met
+better inside the panel, where a placement change already answers "14 leads moved
+to Connecticut" on the surface you are looking at when you make it. **A fact
+earns a permanent row against the question its surface asks, and that question
+can change under it.**
+
 **When two errors are not equally bad, neither one may be the silent default.**
 Booking a lead offers `customer_matches` — customers sharing the lead's last ten
 digits, which the server itself calls *advisory only*. Attaching to the **wrong
@@ -466,6 +561,40 @@ Fleet, Training, Web Management and others each have their own tree. Reviewing
 a module's golden PNGs from `main` reviews the wrong file, silently, because the paths
 are identical. Confirm the tree before reporting pixel findings.
 
+**Delegating half a subject to a shared helper makes the un-delegated half invisible.**
+Web Management, 2026-09-08, offering their own miss as a category: *"the code looks
+event-aware because some of it is."* Website enquiries wired their conversation half
+through `LeadThread` and got `lead.contact_received` for free — which is precisely
+why nobody went looking for the arrival event, and `lead.received` was never raised for
+a website enquiry at all. The half that came free from the helper made the half that
+did not look handled.
+
+> As an audit category: **a subject that is half-delegated reads as fully handled.**
+> When a module gets some of its behaviour from a shared helper, list what the helper
+> supplies and what it does not, and audit only the second list. Grepping for the
+> module's own event calls finds the delegated half and stops.
+
+**A colour token cannot be exported past the theme that gave it meaning.** Web
+Management asked, 2026-09-08, whether widget defaults on customers' own websites should
+inherit these palette rules rather than drift. They should not inherit the *values*, and
+the reason is measurable: `primary` inverts between brightnesses — `#00708f` on white
+is 5.65:1 and `#00aeef` on near-black is 7.94:1, both correct here. Export the dark one
+onto a customer's white page and it is **2.53:1**, under even the 3:1 large-text floor.
+A widget config has no brightness to resolve against, so whichever value travels,
+travels without the pairing that made it correct.
+
+> The design reason outranks the arithmetic, though: **the widget is the customer's
+> brand surface, not ours.** These tokens exist to make EzBizi look like EzBizi; putting
+> them on A-1 Chimney's website makes A-1 Chimney's website look like EzBizi. Their
+> default `#0b5cad` (6.67:1 on white) is right *because* it is not our brand colour —
+> it reads as "a form", not as any particular company. We hold `logo_path` on
+> Organization and no brand colour anywhere, so the customer types their own; the
+> default's job is to be neutral and legible until they do.
+>
+> What does travel is the **rule, not the token**: a foreground and its background are
+> chosen together and checked together. See the gap below — the pair currently ships
+> unchecked.
+
 ---
 
 ## Known gaps in the four cross-cutting files
@@ -592,6 +721,7 @@ on main may have moved on.
 | 🔨 | **Scheduling · Availability + Settings** | **Layout 7 approved, being built** (Overview + area rail — Jose's own combination of 1 and 2); Availability is **layout 4**. `docs/previews/scheduling-layouts.html` @ `560aed5`. Held by the Scheduling session. |
 | 📬 | **Fleet · vehicle Identity card** | **Layout 2 approved, handed to the deploy desk to route.** `docs/previews/fleet-identity-layouts.html` @ `560aed5`. The Fleet session that briefed it ended before it was drawn. **Not urgent** — nothing in Fleet is broken; the card works and the complaint was a long scroll at 375px. Fold it into the next Fleet work rather than staffing for it. |
 | ⏳ AWAITING JOSE | **Leads · connected accounts** | Six layouts in `docs/previews/leads-accounts-layouts.html` — 3 desktop, 3 mobile. Brief from the Google API session (`local_8111908f`), server done at `c55b3c33`. **22 Google Ads accounts, one shown**: `leads_screen.dart:179` `_connectionFor` returns the first provider match. **Two payload gaps found by reading it and raised with them:** `connectionState()` carries no `leads_franchise_id`, so the placement column cannot render on load; and nothing links a lead to the account that produced it, so no per-account count exists client-side or server-side. The count is not a decoration — it is what separates "2 accounts that matter from 20 quiet ones" from twenty-two identical rows, and layouts marked `needs the count` degrade honestly without it. Design builds it once picked. |
+| ⚠️ **DECIDED IN JOSE'S ABSENCE — reversible in one word** | **Leads · four sources** | Desktop **1** + mobile **4** — `docs/previews/leads-sources-layouts.html`. Jose said *"a new sub tab in Leads"* for website chat and forms; **I recommended ONE LIST with source as a filter instead**, under his 2026-09-08 instruction *"do as you believe or recommend, dont wait for me"*. Layout 2 is his wording drawn properly and buildable as-is — the row, the badges and the sources band are identical in both, so only the strip changes. **If he says "tabs", it is one word and Leads builds 2.** |
 | ✅ APPROVED, **built by Leads** | **Leads · book a job from a lead** | Desktop **1** + mobile **4** — `docs/previews/leads-booking-layouts.html` @ `d1c69cb5`. Jose, 2026-09-08: *"as you recommend for the layouts"*. **Nothing is preselected when `customer_matches` is non-empty**, and Book stays disabled until answered — see the rule below. No match → straight to a new customer, no question. |
 | ✅ APPROVED, **built by Leads** | **Leads · read, star, note** | Desktop **1** + mobile **4** — `docs/previews/leads-triage-layouts.html` @ `18012c74`. Jose, 2026-09-08: *"2 - as u recommend"*. **Unread is WEIGHT, not a second dot** — the dot is unreplied and a leading-edge bar is banned, so the three marks live in three channels: weight (unread, yours), dot (unreplied, everyone's), star (everyone's). Filters narrow TOGETHER. On the same delegation the note gets an **author and an edited-at**, asked of Leads: a shared free-text field that cannot say who or when is one people stop trusting, and silent last-write-wins is the worse half. |
 | ✅ APPROVED, **built by Leads** | **Leads · conversation colour** | Desktop **3** + mobile **6** — `docs/previews/leads-conversation-colour-layouts.html` @ the commit below. Jose, 2026-09-08: *"option 3 for desktop, 6 for mobile"* — the saturated direction, ours filled `primary` with `onPrimary`. **No accent bar anywhere**, per the same message. `primary` inverts between brightnesses (#00708f/white light, #00aeef/near-black dark), so the build must be checked in both. |
@@ -765,6 +895,43 @@ claimed the setup-blocks-above-when-unconnected rule needs to know when setup is
 finished and cannot. That was wrong — it keys off `connected_at != null`, whether a
 plugin has ever read the site, which the module answers exactly. The tier decision
 rests on the opposite-facts argument alone, which is sufficient on its own.*
+
+### 5 · Web Management · Widgets — the accent pair ships unchecked
+
+`client/lib/screens/web/widgets_tab.dart:345-348` on `session/web-management`, not yet on
+`main`. "Accent colour" and "Text on the accent" are two adjacent free-text hex fields
+whose whole job is to be legible against each other, and nothing checks that they are.
+Everything else about that screen is careful — the values are sanitised on the way in
+AND on the way out, colours are `#rgb` or nothing, the font is stripped, the radius
+clamped — because the output lands in a `<style>` block on a site we do not serve. The
+guard that is missing is not a security one; it is the design one.
+
+Accent `#ffff00` with on-accent `#ffffff` is 1.07:1 and saves cleanly today. The widget
+where that ships is a **lead capture form on the customer's own website** — the one
+surface where an unreadable button costs them the enquiry, on a page nobody at EzBizi
+will ever load.
+
+**This does not want a palette, a token export or a colour system.** Flutter already
+ships `Color.computeLuminance()`, which does the sRGB linearisation; the check is the
+ratio and a warning row:
+
+```dart
+double _ratio(Color a, Color b) {
+  final x = a.computeLuminance(), y = b.computeLuminance();
+  return ((x > y ? x : y) + 0.05) / ((x < y ? x : y) + 0.05);
+}
+```
+
+Warn under 4.5:1 on the pair — **warn, never block.** A customer's brand may genuinely
+be low-contrast, and this is their site, not ours; the screen's job is to tell them what
+a visitor will see, not to overrule them. Derived at render from the two fields and
+never stored, per the standing rule that a warning about the system's own capability is
+DERIVED. One caller today, so it belongs in that file — promote it to a shared helper
+when a second colour picker exists, not before.
+
+**Owner: Web Management** — their branch, their file, mid-flight. The rule and the
+measurement are UI/UX's; the paste is theirs. Sent 2026-09-08.
+
 
 ### Suggestions · two screens out for decision
 

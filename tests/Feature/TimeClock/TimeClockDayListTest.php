@@ -4,6 +4,7 @@ namespace Tests\Feature\TimeClock;
 
 use App\Models\Franchise;
 use App\Models\Organization;
+use App\Models\Role;
 use App\Models\TimeClockShift;
 use App\Models\User;
 use App\Support\Access\Refusal;
@@ -243,6 +244,82 @@ class TimeClockDayListTest extends TestCase
         $ids = array_column(array_column($shifts, 'user'), 'id');
         $this->assertContains($insider->id, $ids);
         $this->assertNotContains($outsider->id, $ids);
+    }
+
+    /**
+     * A person with NO assignment at all — the case no fixture here could build.
+     *
+     * visibleTo() has three arms: yourself, people whose assignments are within
+     * your reach, and — only when the actor can act on the organization —
+     * people with no assignments at all. That third arm is the same shape as
+     * the bug the Inspection session found on 2026-09-08, where a record whose
+     * parent was null fell out of the franchise filter and became visible to
+     * everyone. Here it is written correctly and was never once exercised.
+     *
+     * It could not be. userWithRole() ALWAYS creates an Assignment — org-level
+     * when onlyAt is null, franchise-level otherwise — so every person in every
+     * other test in this file has one, and the arm is unreachable from the
+     * fixture. test_a_sibling_franchise_person_is_not_listed reads like the
+     * reach test and only ever proved the assigned half.
+     *
+     * So this builds the weak form by hand and asserts BOTH directions in one
+     * test: the org-level actor must see the orphan (or the feature is dead and
+     * a green suite says nothing), and the franchise-only actor must not (or
+     * the guard is gone). Both lists are collected before either is asserted,
+     * so a broken first assertion cannot hide a leak in the second.
+     */
+    public function test_somebody_with_no_assignment_is_org_only_never_franchise_wide(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->enableClockIn($alpha['org']);
+
+        $orphan = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $role = Role::create([
+                'organization_id' => $alpha['org']->id,
+                'name' => 'Unplaced',
+                'is_system' => false,
+            ]);
+            $role->syncPermissionKeys(['time_clock.view']);
+
+            // Deliberately no Assignment row. That is the whole point.
+            return User::create([
+                'organization_id' => $alpha['org']->id,
+                'role_id' => $role->id,
+                'name' => 'Unplaced',
+                'email' => 'unplaced@alpha.test',
+                'password' => 'a-real-password',
+                'is_active' => true,
+            ]);
+        });
+
+        $atFranchise = $this->userWithRole(
+            $alpha, 'AtFranchise', ['hr.view'], 'atf@alpha.test', onlyAt: $alpha['franchise'],
+        );
+        $atOrg = $this->userWithRole($alpha, 'AtOrg', ['hr.view'], 'atorg@alpha.test');
+
+        $this->inTenant($alpha['org'], fn () => TimeClockShift::query()->create([
+            'organization_id' => $alpha['org']->id,
+            'user_id' => $orphan->id,
+            'clocked_in_at' => '2026-08-25 14:00:00',
+            'clocked_out_at' => '2026-08-25 18:00:00',
+        ]));
+
+        $seenByFranchise = $this->idsOn($atFranchise);
+        $seenByOrg = $this->idsOn($atOrg);
+
+        $this->assertContains($orphan->id, $seenByOrg, 'an organization-wide actor must see an unplaced person');
+        $this->assertNotContains($orphan->id, $seenByFranchise, 'an unplaced person must not leak to a franchise-only actor');
+    }
+
+    /** @return list<string> */
+    private function idsOn(User $viewer): array
+    {
+        $shifts = $this->signedInAs($viewer)
+            ->getJson('/api/v1/hr/time-clock?on=2026-08-25')
+            ->assertOk()
+            ->json('data.shifts');
+
+        return array_column(array_column($shifts, 'user'), 'id');
     }
 
     public function test_another_organization_is_never_listed(): void

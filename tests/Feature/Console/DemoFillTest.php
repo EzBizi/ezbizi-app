@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Console;
 
+use App\Models\Assignment;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Organization;
@@ -192,6 +193,43 @@ class DemoFillTest extends TestCase
             VehicleAssignment::query()->withoutGlobalScopes()->count(),
             'and the step must actually have run, or this proves nothing',
         );
+    }
+
+    public function test_the_staff_it_creates_are_placed_not_unplaced(): void
+    {
+        // A user with no Assignment row is "unplaced", and that is a real state
+        // with consequences rather than a tidiness point. TimeClock::visibleTo
+        // and HrPeopleController::visibleTo only show unplaced people to
+        // somebody standing at the ORGANIZATION, so a franchise-level viewer
+        // would meet vans held by nobody and an empty time clock. HR's Headcount
+        // widget gives them their own row reading "Not assigned to a place",
+        // and five of those on an App Store screenshot reads as a broken
+        // install.
+        //
+        // Found by following the Inspection session's null-parent thread into
+        // my own unshipped command on 2026-09-08, not by a failing test.
+        $tenant = $this->demoTenant();
+
+        $this->artisan('demo:fill')->assertSuccessful();
+
+        $staff = User::query()->withoutGlobalScopes()
+            ->where('email', 'like', '%@demo.ezbizi.invalid')
+            ->get();
+
+        $this->assertGreaterThan(0, $staff->count(), 'the step must have run, or this proves nothing');
+
+        foreach ($staff as $person) {
+            $placement = Assignment::query()->withoutGlobalScopes()
+                ->where('user_id', $person->id)
+                ->first();
+
+            $this->assertNotNull($placement, $person->name.' has no assignment and is unplaced');
+            $this->assertSame(
+                $tenant['franchise']->id,
+                $placement->assigned_franchise_id,
+                $person->name.' must be placed at the demo franchise',
+            );
+        }
     }
 
     public function test_dry_run_writes_nothing(): void

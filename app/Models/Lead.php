@@ -158,11 +158,14 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
             : null;
     }
 
+    /** Fractions written for received_at and last_contact_at (see LeadConversation). */
+    protected $dateFormat = 'Y-m-d H:i:s.u';
+
     protected $fillable = [
         'organization_id', 'company_id', 'franchise_id', 'connection_id', 'job_id',
         'source', 'remote_id', 'contact_name', 'phone', 'email', 'phone_digits',
         'lead_type', 'category', 'service', 'locale', 'summary', 'note', 'note_by_user_id', 'note_updated_at',
-        'status', 'starred_at', 'source_status', 'charge_status', 'received_at', 'synced_at',
+        'status', 'classification', 'classified_at', 'starred_at', 'source_status', 'charge_status', 'received_at', 'synced_at',
         'last_contact_at', 'last_contact_channel', 'last_contact_from', 'last_contact_preview',
     ];
 
@@ -174,6 +177,7 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
             'last_contact_at' => 'datetime',
             'starred_at' => 'datetime',
             'note_updated_at' => 'datetime',
+            'classified_at' => 'datetime',
         ];
     }
 
@@ -209,10 +213,22 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
         return $this->belongsTo(Job::class);
     }
 
-    /** Every call and message on this enquiry, oldest first. */
+    /**
+     * Every call and message on this enquiry, oldest first.
+     *
+     * Then by id, because "oldest first" is the whole contract of a thread
+     * and a tie on occurred_at leaves the order to the engine: with rows
+     * around them, the visitor's question came back after the business's
+     * answer (UI/UX, 2026-09-08, found first in Web's endpoint and then here,
+     * the original). The id is a UUID v7, time-ordered to the millisecond.
+     * occurred_at now carries fractions too; the tiebreak stays for rows that
+     * predate that and for two stamps that are genuinely equal.
+     */
     public function conversations(): HasMany
     {
-        return $this->hasMany(LeadConversation::class)->orderBy('occurred_at');
+        return $this->hasMany(LeadConversation::class)
+            ->orderBy('occurred_at')
+            ->orderBy('id');
     }
 
     /**

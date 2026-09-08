@@ -4,15 +4,20 @@ namespace App\Providers;
 
 use App\Models\ApiToken;
 use App\Models\InspectionReport;
+use App\Services\Leads\LeadInsights;
+use App\Services\Leads\LocalServicesLeads;
 use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
 use App\Support\Files\Attachables;
+use App\Support\Leads\LeadReplies;
 use App\Support\Modules\ModuleAvailability;
 use App\Support\Phone\HttpTwilioGateway;
 use App\Support\Phone\TwilioGateway;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Subscriptions\SubscriptionGuard;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Web\WebsiteChatReplies;
+use Aws\BedrockRuntime\BedrockRuntimeClient;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Foundation\Events\DiagnosingHealth;
@@ -34,11 +39,37 @@ class AppServiceProvider extends ServiceProvider
         // One instance per process — see plan §5.1
         $this->app->singleton(TenantContext::class);
 
-        // Where a reply to a lead goes, per source. Google's is here; Web
-        // Management tags its own for website chat in its provider.
+        // Bedrock, for what a model can say about a lead. No keys, no client:
+        // LeadInsights::enabled() is false and every caller shows nothing.
+        $this->app->bind(LeadInsights::class, function () {
+            $cfg = (array) config('services.bedrock');
+            $on = ($cfg['key'] ?? '') !== '' && ($cfg['secret'] ?? '') !== '' && ($cfg['model'] ?? '') !== '';
+
+            return new LeadInsights(
+                $on ? new BedrockRuntimeClient([
+                    'version' => 'latest',
+                    'region' => (string) ($cfg['region'] ?? 'us-east-1'),
+                    'credentials' => ['key' => $cfg['key'], 'secret' => $cfg['secret']],
+                ]) : null,
+                (string) ($cfg['model'] ?? ''),
+            );
+        });
+
+        /*
+         * Where a reply to a lead goes, per source.
+         *
+         * Both are here rather than one of them in a provider of its own. A
+         * whole ServiceProvider for a single tag line is a file to register,
+         * a file to find and a file to forget, and the two channels are
+         * easier to compare one above the other. The tag is what the
+         * controller reads, so neither module learns the other's name.
+         */
         $this->app->tag(
-            [\App\Services\Leads\LocalServicesLeads::class],
-            \App\Support\Leads\LeadReplies::TAG,
+            [
+                LocalServicesLeads::class,
+                WebsiteChatReplies::class,
+            ],
+            LeadReplies::TAG,
         );
 
         /*

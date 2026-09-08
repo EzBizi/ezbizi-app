@@ -1220,10 +1220,36 @@ class ModuleServiceProvider extends ServiceProvider
                     .'This states a defect, not a decision, and it is not permission to stay '
                     .'this way — see TODO #35 for how to close it and delete this line.',
                 actions: ['view', 'edit'],
-                automationExemptBecause: 'Nothing here happens on its own. A value changes because '
-                    .'somebody typed it, and a plugin reading it is a machine polling on a timer — '
-                    .'neither is an event a rule could usefully act on. The one real candidate is '
-                    .'a site going silent, and that waits for the health check that would notice.',
+                /*
+                 * This module was automation-exempt on the grounds that
+                 * "nothing here happens on its own". That stopped being true
+                 * when the chat and form widgets shipped: a visitor starting a
+                 * conversation on a customer's website is exactly the kind of
+                 * thing that happens without anybody in EzBizi doing anything,
+                 * at an hour when nobody is looking at the screen.
+                 *
+                 * The subject is the SITE rather than the lead. Leads already
+                 * raises `lead.contact_received` for every source it holds, and
+                 * a second trigger meaning the same thing would be a trap. What
+                 * this adds is the one thing Leads cannot express: WHICH
+                 * website, so a rule can send nj.a-1chimney.com's enquiries to
+                 * the New Jersey branch and leave the rest alone.
+                 */
+                subject: new AutomationSubject(\App\Models\WebSite::class, 'Website'),
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'website.chat_started',
+                        label: 'Live chat started',
+                        description: 'Somebody on one of your websites opened the chat widget '
+                            .'and sent a first message. It arrives in Leads at the same moment.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'website.form_submitted',
+                        label: 'Contact form submitted',
+                        description: 'Somebody filled in the contact form on one of your '
+                            .'websites. It arrives in Leads at the same moment.',
+                    ),
+                ],
             ),
 
             /*
@@ -1283,6 +1309,14 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'A call was missed',
                         description: 'Nobody answered, and the caller either hung up or reached '
                             .'voicemail.',
+                        isRaised: true,
+                    ),
+                    new TriggerDefinition(
+                        key: 'phone.call.tagged',
+                        label: 'A call was tagged',
+                        description: 'Somebody said what a call was about. It carries the tag '
+                            .'name, so a rule can act on complaints without acting on '
+                            .'bookings. Raised when a tag is put on, not when one is removed.',
                         isRaised: true,
                     ),
                     new TriggerDefinition(
@@ -1708,7 +1742,6 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A lead was read and categorised — what kind of work it is '
                             .'about, and whether it looks like a real enquiry at all. It fires '
                             .'after "Lead received", once any recording has been transcribed.',
-                        isRaised: false,
                     ),
                     new TriggerDefinition(
                         key: 'lead.status_changed',

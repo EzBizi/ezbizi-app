@@ -18,6 +18,147 @@ void main() {
   DayHours open(TimeOfDay a, TimeOfDay b) =>
       DayHours(closed: false, open: a, close: b);
 
+  /// The shape of the grid, which is what "feels like its floating" was about.
+  ///
+  /// Nothing here measured layout before: this file is a format/parse round
+  /// trip, and `web_management_test.dart` asserts the grid EXISTS rather than
+  /// how it sits. So the defect Jose reported was invisible to the suite in
+  /// both directions — it could neither be caught nor be proved fixed.
+  ///
+  /// The cause was two row heights. An OPEN day drew two `TextButton`s, each
+  /// carrying Material's 48dp minimum tap target; a CLOSED day drew one line
+  /// of text at roughly half that. Seven rows alternating between two heights,
+  /// with no rule between them, is a column with no grid for the eye.
+  group('the grid sits still', () {
+    Future<void> pump(WidgetTester tester, {required double width}) async {
+      tester.view.physicalSize = Size(width, 1400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: HoursField(
+                controller: TextEditingController(
+                  text: 'Mon-Fri 8:00 AM - 5:00 PM',
+                ),
+                enabled: true,
+                label: 'Hours of operation',
+                shortcode: '[ezbizi_hours]',
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('an open day and a closed day are the same height', (
+      tester,
+    ) async {
+      await pump(tester, width: 900);
+
+      // Monday is open, Sunday is closed — the two shapes that used to differ.
+      final monday = tester.getSize(
+        find.ancestor(
+          of: find.text('Monday'),
+          matching: find.byType(Container),
+        ).first,
+      );
+      final sunday = tester.getSize(
+        find.ancestor(
+          of: find.text('Sunday'),
+          matching: find.byType(Container),
+        ).first,
+      );
+
+      expect(
+        monday.height,
+        sunday.height,
+        reason: 'an open day and a closed day drew at different heights, '
+            'which is what made the column look unanchored',
+      );
+    });
+
+    /*
+     * The same comparison at phone width, which is where it can come back.
+     *
+     * Copied from Phone's client/test/phone_hours_pane_test.dart (418ad958),
+     * which runs its comparison at 1280 AND 375. Mine ran at 900 only, and 900
+     * is the width where nothing wraps — so it could only ever have proved the
+     * easy half.
+     *
+     * 375 is the interesting one because the times are in a `Wrap`. When the
+     * Wrap takes a second line the open row grows, and a MINIMUM height floors
+     * a row without capping it — so the two states can diverge again at exactly
+     * the width where the original overflow lived, and the desk-width test
+     * would still be green.
+     */
+    testWidgets('an open day and a closed day match at phone width too', (
+      tester,
+    ) async {
+      await pump(tester, width: 375);
+
+      final monday = tester.getSize(
+        find.ancestor(
+          of: find.text('Monday'),
+          matching: find.byType(Container),
+        ).first,
+      );
+      final sunday = tester.getSize(
+        find.ancestor(
+          of: find.text('Sunday'),
+          matching: find.byType(Container),
+        ).first,
+      );
+
+      expect(
+        monday.height,
+        sunday.height,
+        reason: 'the rows match at 900 but not at 375 — the Wrap takes a '
+            'second line and the open day grows, so the defect Jose reported '
+            'is still there on a phone',
+      );
+    });
+
+    testWidgets('every one of the seven rows is the same height', (
+      tester,
+    ) async {
+      await pump(tester, width: 900);
+
+      final heights = <double>{
+        for (final day in weekdayLongNames)
+          tester.getSize(
+            find.ancestor(
+              of: find.text(day),
+              matching: find.byType(Container),
+            ).first,
+          ).height,
+      };
+
+      expect(
+        heights.length,
+        1,
+        reason: 'the seven rows drew at ${heights.length} different heights',
+      );
+    });
+
+    /// The regression this change introduced and the suite caught.
+    ///
+    /// The first attempt used a fixed height and a `Row`. A Row cannot wrap, so
+    /// at phone width the two times and their separator ran 78 pixels past the
+    /// edge — content nobody can see or tap. A minimum height plus a `Wrap` is
+    /// what makes narrow safe, and this is the assertion that says so.
+    testWidgets('at 375 the times wrap instead of running off the edge', (
+      tester,
+    ) async {
+      await pump(tester, width: 375);
+
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   group('formatting', () {
     test('collapses consecutive days that share hours', () {
       final week = [

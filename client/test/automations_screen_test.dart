@@ -818,6 +818,101 @@ void main() {
     expect(find.textContaining('a user'), findsWidgets);
   });
 
+  /// A saved rule that can never run says so, in the loud register.
+  ///
+  /// The picker marks an unraised trigger quietly, because there it is
+  /// information helping a choice. Once the rule is SAVED the fault has
+  /// happened: it is switched on, sits among the live ones, and nothing will
+  /// ever set it off. That is what this register is for, and this is the
+  /// surface where nobody is looking because the work felt finished.
+  ///
+  /// Two rules in the list on purpose — one on a raised trigger, one not — so
+  /// the note has to tell them apart rather than appear on every row.
+  testWidgets('a saved rule on a trigger nothing raises says it will not run', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        catalogue: _catalogueWithAnUnraisedTrigger(),
+        list: const [
+          {
+            'id': 'a-1',
+            'name': 'Tell the office when stock arrives',
+            'description': null,
+            'trigger_key': 'item.received',
+            'is_active': true,
+            'is_live': true,
+            'disabled_reason': null,
+            'runs_count': 4,
+            'version': 1,
+          },
+          {
+            'id': 'a-2',
+            'name': 'Reorder when we run low',
+            'description': null,
+            'trigger_key': 'item.low',
+            'is_active': true,
+            'is_live': true,
+            'disabled_reason': null,
+            'runs_count': 0,
+            'version': 1,
+          },
+        ],
+      ),
+    );
+
+    expect(
+      find.textContaining('Nothing sets this off yet'),
+      findsOneWidget,
+      reason:
+          'The rule on item.low can never run and has to say so. One, not two '
+          '— the rule on item.received beside it is fine.',
+    );
+  });
+
+  /// A trigger nothing emits looks exactly like one that fires.
+  ///
+  /// The description already ends with "Nothing raises this yet, so a rule
+  /// built on it will not run", and that sentence says the consequence a badge
+  /// cannot. But it is the tail of a paragraph: the row is indistinguishable
+  /// from the twenty around it until you read to the end of one, and the rule
+  /// you build on it saves, sits enabled, and never runs. No error, ever.
+  ///
+  /// Raised by the UI/UX session, 2026-09-08, against the precedent of five
+  /// production phone lines that went to voicemail for months because the
+  /// state was disclosed in grey secondary text.
+  ///
+  /// The row stays SELECTABLE. Refusing the tap would answer nobody's question
+  /// about why an obvious event is missing; the point is to mark it, not to
+  /// hide it.
+  testWidgets('a trigger nothing raises yet is marked, and still choosable', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(catalogue: _catalogueWithAnUnraisedTrigger()));
+    await _tap(tester, find.text('Build'));
+    await _tap(tester, find.text('Inventory'));
+
+    expect(
+      find.text('Not raised yet'),
+      findsOneWidget,
+      reason:
+          'The unraised trigger needs a marker that is not the tail of a '
+          'paragraph. One, not two — the raised row beside it must not carry it.',
+    );
+
+    // And it is still a real choice: tapping it selects the trigger rather
+    // than doing nothing.
+    await _tap(tester, find.text('Stock is low'));
+
+    expect(
+      find.text('Stock is low'),
+      findsWidgets,
+      reason: 'A marked trigger is still selectable; the badge explains, it '
+          'does not forbid.',
+    );
+  });
+
   /// A declared action the builder cannot render is a dead menu entry.
   ///
   /// "Send a message" is the first Phone action that is NOT about the record
@@ -936,6 +1031,40 @@ Finder _inStep(Finder finder) =>
 FilledButton _saveButton(WidgetTester tester) => tester.widget<FilledButton>(
   find.widgetWithText(FilledButton, 'Create automation'),
 );
+
+/// A module carrying one trigger nothing emits yet, beside one that fires.
+///
+/// Both in the same module on purpose: the badge has to distinguish them from
+/// each other, which is the whole complaint. A fixture with only the unraised
+/// one would pass while marking every row.
+Map<String, Object?> _catalogueWithAnUnraisedTrigger() => {
+  ..._catalogue,
+  'modules': [
+    ...(_catalogue['modules'] as List),
+    {
+      'key': 'inventory',
+      'label': 'Inventory',
+      'subject': null,
+      'triggers': [
+        {
+          'key': 'item.received',
+          'label': 'Stock received',
+          'description': 'Stock arrived at a location.',
+          'is_raised': true,
+        },
+        {
+          'key': 'item.low',
+          'label': 'Stock is low',
+          'description':
+              'On-hand is at or below the reorder point. Nothing raises this '
+              'yet, so a rule built on it will not run.',
+          'is_raised': false,
+        },
+      ],
+      'declared_actions': [],
+    },
+  ],
+};
 
 /// The catalogue with a User subject that nothing may write to.
 ///
@@ -1097,6 +1226,7 @@ MockClientHandler _handler({
   void Function(String path)? onActivate,
   Map<String, dynamic> detail = _detail,
   Object catalogue = _catalogue,
+  List<Map<String, Object?>> list = _list,
   // Null leaves the endpoint unanswered, which is what every test written
   // before the field picker expects: the form falls back to a text box.
   List<String>? triggerFields,
@@ -1167,7 +1297,7 @@ MockClientHandler _handler({
         return _json({'data': <String, dynamic>{}}, 201);
       }
 
-      return _json({'data': _list});
+      return _json({'data': list});
     }
 
     if (path.endsWith('/phone/numbers') && request.method == 'GET') {

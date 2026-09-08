@@ -322,13 +322,18 @@ class _HoursPaneState extends State<HoursPane> {
 
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
+          // A dropdown sizes itself to its WIDEST menu item unless told not
+          // to, so one long label pushes the whole control past the screen —
+          // 185px past it at 375, which is how "Arizona (no DST)" broke a
+          // phone. isExpanded makes it fit its parent and ellipsise instead.
+          isExpanded: true,
           initialValue: draft.timezone,
           decoration: const InputDecoration(
             labelText: 'Clock these hours run on',
             border: OutlineInputBorder(),
           ),
           items: [
-            for (final zone in _zones)
+            for (final zone in zonesFor(draft.timezone))
               DropdownMenuItem(value: zone, child: Text(_zoneLabel(zone))),
           ],
           onChanged: (v) => setState(() => draft.timezone = v ?? 'UTC'),
@@ -338,7 +343,7 @@ class _HoursPaneState extends State<HoursPane> {
         Text('The week', style: theme.textTheme.labelLarge),
         const SizedBox(height: 4),
         Text(
-          'A day with no times is closed, and says so.',
+          'Times are 24-hour. A day with no times is closed, and says so.',
           style: theme.textTheme.bodySmall,
         ),
         const SizedBox(height: 8),
@@ -421,12 +426,36 @@ class _HoursPaneState extends State<HoursPane> {
     );
   }
 
+  /// Both states sit in a box at least this tall, so the week does not step.
+  ///
+  /// ── Why a number, and why a MINIMUM ──────────────────────────
+  ///
+  /// An open day draws two dense outlined fields and measured 56; a closed day
+  /// draws one line of bodySmall and measured 48. Seven rows alternating
+  /// between two heights with nothing ruled between them is what reads as
+  /// floating — Jose's word for the same shape in Web Management's hours, and
+  /// the generalisation UI/UX recorded from it: a row with a per-row CONTROL
+  /// and a text-only ALTERNATE STATE has two heights.
+  ///
+  /// A minimum rather than a fixed height, because the Web Management fix
+  /// reached for fixed first and clipped — content ran 78px past the edge at
+  /// 375. A floor lets a row grow when it must and holds the list even when it
+  /// need not.
+  ///
+  /// The number is pinned by phone_hours_pane_test, which compares an open row
+  /// to a closed one at two widths. If Material ever changes a dense field's
+  /// metrics, that test fails rather than the list quietly stepping again —
+  /// which is the only reason a hard-coded 56 is honest here.
+  static const double _dayRowMinHeight = 56;
+
   Widget _dayRow(_Draft draft, String key, String label, ThemeData theme) {
     final day = draft.week[key]!;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: _dayRowMinHeight),
+        child: Row(
         children: [
           SizedBox(
             width: 108,
@@ -450,7 +479,6 @@ class _HoursPaneState extends State<HoursPane> {
                 decoration: const InputDecoration(
                   labelText: 'From',
                   hintText: '09:00',
-                  helperText: '24-hour',
                   border: OutlineInputBorder(),
                   isDense: true,
                 ),
@@ -467,7 +495,6 @@ class _HoursPaneState extends State<HoursPane> {
                 decoration: const InputDecoration(
                   labelText: 'To',
                   hintText: '17:00',
-                  helperText: '24-hour',
                   border: OutlineInputBorder(),
                   isDense: true,
                 ),
@@ -476,6 +503,7 @@ class _HoursPaneState extends State<HoursPane> {
             ),
           ],
         ],
+        ),
       ),
     );
   }
@@ -516,21 +544,73 @@ final List<TextInputFormatter> _timeInput = <TextInputFormatter>[
 /// Same convention as SettingRegistry: people pick UTC-5, not a city, and the
 /// wire value is `UTC` or `Etc/GMT…`. POSIX signs are inverted there —
 /// `Etc/GMT+5` IS UTC-5 — which is exactly the trap this list exists to hide.
-final List<String> _zones = <String>[
-  for (var h = -12; h <= 14; h++)
-    if (h == 0) 'UTC' else 'Etc/GMT${h > 0 ? '-' : '+'}${h.abs()}',
-];
+/// The clocks a business keeps hours on — real places, not offsets.
+///
+/// ── Why fixed offsets were wrong, not just narrow ────────────────
+///
+/// This was `UTC` and twenty-seven `Etc/GMT±N` entries. Two things followed.
+///
+/// A fixed offset does not observe daylight saving. A company open 09:00–17:00
+/// in New York is open 09:00–17:00 all year, but stored as `Etc/GMT+5` those
+/// hours answer an hour early for the half of the year New York spends on EDT
+/// — so the line reports CLOSED at 08:30 in January and OPEN at 08:30 in July,
+/// and nothing on the screen suggests the clock moved.
+///
+/// And the server accepts any IANA identifier
+/// (`DateTimeZone::listIdentifiers(ALL_WITH_BC)`), while every franchise row
+/// carries a real one — `America/New_York` on all eight today. Creating hours
+/// from a franchise-scoped number defaults the schedule to the franchise's
+/// zone, which was then not in this list at all: opening that schedule threw
+/// a DropdownButtonFormField assertion and the editor rendered nothing.
+///
+/// So the list is places, and [zonesFor] guarantees whatever a schedule
+/// already holds is among them.
+const Map<String, String> _zoneNames = <String, String>{
+  'America/New_York': 'Eastern — New York',
+  'America/Detroit': 'Eastern — Detroit',
+  'America/Chicago': 'Central — Chicago',
+  'America/Denver': 'Mountain — Denver',
+  'America/Phoenix': 'Arizona (no DST)',
+  'America/Los_Angeles': 'Pacific — Los Angeles',
+  'America/Anchorage': 'Alaska',
+  'Pacific/Honolulu': 'Hawaii (no DST)',
+  'America/Toronto': 'Eastern — Toronto',
+  'America/Winnipeg': 'Central — Winnipeg',
+  'America/Edmonton': 'Mountain — Edmonton',
+  'America/Vancouver': 'Pacific — Vancouver',
+  'UTC': 'UTC',
+};
+
+/// The options to offer, with [current] guaranteed present.
+///
+/// A dropdown whose value is not among its items is an assertion, not a
+/// fallback — so a zone set through the API, or by a franchise this list has
+/// never heard of, must still open. It is shown by its raw identifier, which
+/// is honest: we do not know a friendly name for it.
+List<String> zonesFor(String? current) {
+  final zones = _zoneNames.keys.toList();
+
+  if (current != null && current.isNotEmpty && !zones.contains(current)) {
+    zones.insert(0, current);
+  }
+
+  return zones;
+}
 
 String _zoneLabel(String zone) {
-  if (zone == 'UTC') return 'UTC';
+  final known = _zoneNames[zone];
+  if (known != null) return known;
 
+  // A fixed offset from before this list held places. Read it back for the
+  // person looking at it rather than showing them POSIX's inverted sign.
   final match = RegExp(r'^Etc/GMT([+-])(\d+)$').firstMatch(zone);
-  if (match == null) return zone;
+  if (match != null) {
+    final sign = match.group(1) == '+' ? '-' : '+';
 
-  // Flip the POSIX sign back for the reader.
-  final sign = match.group(1) == '+' ? '-' : '+';
+    return 'UTC$sign${match.group(2)} (fixed, no DST)';
+  }
 
-  return 'UTC$sign${match.group(2)}';
+  return zone;
 }
 
 class _DayDraft {

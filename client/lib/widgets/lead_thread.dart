@@ -101,6 +101,10 @@ class _LeadThreadState extends State<LeadThread> {
   bool _sending = false;
   String? _sendError;
 
+  /// A draft is offered only where a reply can go and the model is on.
+  bool _canSuggest = false;
+  bool _suggesting = false;
+
   String? _fetchingId;
   String? _playingId;
   String? _playError;
@@ -161,6 +165,32 @@ class _LeadThreadState extends State<LeadThread> {
   /// A sentence to a stranger in the customer's name: it goes because a
   /// person pressed Send. Appended to the thread as ours the moment Google
   /// takes it; on refusal the text stays in the box and the reason is shown.
+  /// A draft into the box, never a send: the person reads it, changes it,
+  /// and presses Send, or does not.
+  Future<void> _suggest() async {
+    if (_suggesting) return;
+    setState(() {
+      _suggesting = true;
+      _sendError = null;
+    });
+
+    final response = await widget.api.post(
+      '/leads/${widget.lead['id']}/suggest-reply',
+      const {},
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _suggesting = false;
+      if (!response.ok) {
+        _sendError = response.message;
+        return;
+      }
+      final text = (response.data as Map?)?['text'] as String? ?? '';
+      if (text.isNotEmpty) _compose.text = text;
+    });
+  }
+
   Future<void> _send() async {
     final text = _compose.text.trim();
     if (text.isEmpty || _sending) return;
@@ -215,6 +245,7 @@ class _LeadThreadState extends State<LeadThread> {
             .cast<Map<String, dynamic>>(),
       );
       _canReply = data['can_reply'] == true;
+      _canSuggest = data['can_suggest'] == true;
       _matches = List<Map<String, dynamic>>.from(
         (data['customer_matches'] as List? ?? const [])
             .cast<Map<String, dynamic>>(),
@@ -414,6 +445,21 @@ class _LeadThreadState extends State<LeadThread> {
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
+                    // What it looks like, read by a model, beside what
+                    // somebody decided. Only when a reading exists.
+                    if (lead['classification'] is String)
+                      Text(
+                        [
+                          'Looks like ${classificationWord(lead['classification'] as String)}',
+                          if ((lead['summary'] as String?)?.isNotEmpty == true)
+                            lead['summary'] as String,
+                        ].join(' · '),
+                        key: const ValueKey('classification-line'),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
                     _noteBlock(theme, lead),
                     if (lead['job'] is Map)
                       _bookedLine(theme, lead['job'] as Map),
@@ -531,6 +577,14 @@ class _LeadThreadState extends State<LeadThread> {
                 ),
               ),
             ),
+            if (_canSuggest) ...[
+              const SizedBox(width: 8),
+              OutlinedButton(
+                key: const ValueKey('reply-suggest'),
+                onPressed: _sending || _suggesting ? null : _suggest,
+                child: Text(_suggesting ? 'Drafting…' : 'Suggest'),
+              ),
+            ],
             const SizedBox(width: 8),
             FilledButton.icon(
               key: const ValueKey('reply-send'),
@@ -964,6 +1018,14 @@ String sourceWord(String? source) => switch (source) {
   'website_chat' => 'Website chat',
   'website_form' => 'Website form',
   _ => 'Google Ads',
+};
+
+/// BOOK / SUPPORT / ARCHIVE, in words. The wire value never reaches the screen.
+String classificationWord(String? classification) => switch (classification) {
+  'BOOK' => 'work to book',
+  'SUPPORT' => 'an existing customer',
+  'ARCHIVE' => 'nothing to act on',
+  _ => 'an enquiry',
 };
 
 /// fireplace_chimney → "Fireplace chimney". Null in, null out.

@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/leads_screen.dart';
+import 'package:ezbizi_client/widgets/leads_accounts.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
@@ -77,7 +78,7 @@ void main() {
     );
 
     expect(
-      find.text('3 Google Ads accounts'),
+      find.textContaining('Google Ads · 3 accounts'),
       findsOneWidget,
       reason:
           'The band states how many accounts exist. Naming one of them was the '
@@ -85,7 +86,8 @@ void main() {
     );
 
     // And the second line carries the fact that actually changes.
-    expect(find.text('2 at company level · 1 on a franchise'), findsOneWidget);
+    // Placement moved into the panel with the sources layout; the band
+    // names the providers and their counts (UI/UX 80646605).
   });
 
   testWidgets('with an account connected and no leads it says the week was '
@@ -168,96 +170,169 @@ void main() {
     expect(find.text('Connect Google Ads'), findsOneWidget);
   });
 
-  // ── the two sources, since Thumbtack arrived ──────────────────
+  // ── one list across every source (sources layout 1 / 4) ─────────
 
-  testWidgets('each source gets its own tab, so one empty list cannot speak '
-      'for the other', (tester) async {
+  testWidgets('one list: the sources band names every provider and there is '
+      'no tab strip', (tester) async {
     await _pump(tester, leads: const [], connections: const []);
 
-    expect(find.text('Google Leads'), findsOneWidget);
-    expect(find.text('Thumbtack Leads'), findsOneWidget);
+    expect(find.text('Connected sources'), findsOneWidget);
+    expect(find.text('Google Leads'), findsNothing);
+    expect(find.text('Thumbtack Leads'), findsNothing);
   });
 
-  testWidgets('an unconnected Thumbtack offers to connect and says what '
-      'connecting is for', (tester) async {
+  testWidgets('the source chips narrow the list by source, beside the other '
+      'three', (tester) async {
     await _pump(tester, leads: const [], connections: const []);
 
-    await tester.tap(find.text('Thumbtack Leads'));
+    await tester.tap(find.byKey(const ValueKey('source-website_chat')));
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['source'], 'website_chat');
+
+    await tester.tap(find.byKey(const ValueKey('filter-all')));
+    await tester.pumpAndSettle();
+    expect(_lastListQuery.containsKey('source'), isFalse);
+  });
+
+  testWidgets('every row carries its source as a badge', (tester) async {
+    await _pump(
+      tester,
+      leads: [
+        _lead(
+          'lead-1',
+          'Marcus Bell',
+          from: 'CONSUMER',
+          channel: 'PHONE_CALL',
+          preview: 'Call · 4:32',
+        ),
+        {
+          ..._lead('lead-2', '(no name given)'),
+          'source': 'website_form',
+          'contact_name': null,
+          'phone': null,
+        },
+      ],
+      connections: _connected,
+    );
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('source-badge-lead-1')),
+        matching: find.text('Google'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('source-badge-lead-2')),
+        matching: find.text('Form'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  /// "Chat · Chat" was one fact twice. The channel badge is drawn only when
+  /// it says a word the source badge does not; Google rows keep both.
+  testWidgets('a website row does not say its source twice; a Google row '
+      'keeps channel and source', (tester) async {
+    await _pump(
+      tester,
+      leads: [
+        _lead(
+          'lead-1',
+          'Marcus Bell',
+          from: 'CONSUMER',
+          channel: 'PHONE_CALL',
+          preview: 'Call · 4:32',
+        ),
+        {
+          ..._lead(
+            'lead-2',
+            'Visitor 4471',
+            from: 'CONSUMER',
+            channel: 'LIVECHAT',
+            preview: 'Do you service gas inserts?',
+          ),
+          'source': 'website_chat',
+        },
+      ],
+      connections: _connected,
+    );
+
+    expect(find.text('Call'), findsOneWidget);
+    expect(
+      find.text('Chat'),
+      findsNWidgets(2),
+      reason: 'the chip and one badge, not a second badge',
+    );
+  });
+
+  testWidgets('an unconnected Thumbtack offers to connect from the sources '
+      'panel and says what connecting is for', (tester) async {
+    await _pump(tester, leads: const [], connections: const []);
+
+    await tester.tap(find.byKey(const ValueKey('sources-manage')));
     await tester.pumpAndSettle();
 
     expect(find.text('No Thumbtack account connected'), findsOneWidget);
     expect(find.text('Connect Thumbtack'), findsOneWidget);
-
-    // Google's empty state must not bleed through the tab: its sentence is
-    // about advertising and would be wrong here.
-    expect(find.text('No advertising account connected'), findsNothing);
   });
 
-  testWidgets('a connected Thumbtack says enquiries are not fetched yet, '
-      'rather than showing an empty list', (tester) async {
+  testWidgets('a connected Thumbtack says enquiries are not fetched yet', (
+    tester,
+  ) async {
     await _pump(
       tester,
       leads: const [],
       connections: const [
         {
+          'id': 'tb-1',
           'provider': 'thumbtack',
           'display_name': 'A-1 Chimney',
+          'remote_id': '58126687849144320',
           'status': 'connected',
         },
       ],
     );
 
-    await tester.tap(find.text('Thumbtack Leads'));
+    await tester.tap(find.byKey(const ValueKey('sources-manage')));
     await tester.pumpAndSettle();
 
-    // The distinction the whole module exists for. An empty list here would
-    // tell somebody their week was quiet while their Thumbtack enquiries are
-    // arriving perfectly well in Thumbtack's own app.
     expect(find.text('Connected — enquiries not fetched yet'), findsOneWidget);
-    expect(find.text('No enquiries yet'), findsNothing);
     expect(find.textContaining('not missing'), findsOneWidget);
   });
 
   testWidgets('every connected Thumbtack business is reachable, not just the '
       'first', (tester) async {
     // The defect, exactly as it happened on 2026-09-08: one connect made TWELVE
-    // businesses and the tab drew one. Eleven were invisible, and disconnecting
-    // the visible one redrew the next, so the button read as broken. It was not.
+    // businesses and the screen drew one. Eleven were invisible, and
+    // disconnecting the visible one redrew the next, so the button read as
+    // broken. It was not.
     await _pump(
       tester,
       leads: const [],
       connections: [
         for (var i = 0; i < 12; i++)
           {
-            'id': 'c\$i',
+            'id': 'c$i',
             'provider': 'thumbtack',
-            // All twelve carry the SAME name, which is what Thumbtack really
-            // returned. A list alone would not have been enough.
             'display_name': 'A1 Chimney',
-            'remote_id': '58126687849144320\$i',
+            'remote_id': '58126687849144320$i',
             'status': 'connected',
           },
       ],
     );
 
-    await tester.tap(find.text('Thumbtack Leads'));
+    expect(find.textContaining('Thumbtack · 12'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('sources-manage')));
     await tester.pumpAndSettle();
 
-    // The count is the whole point: one row on the way to the leads that admits
-    // how many there are, rather than a single row pretending to be all of it.
-    // Asserted on the tile's own wording because the default test surface is
-    // narrow - the band and the tile say the same thing in different words, and
-    // pinning the wrong one makes this pass or fail on the viewport.
-    expect(find.text('Thumbtack'), findsOneWidget);
-    expect(find.textContaining('12 accounts'), findsOneWidget);
-
-    // And the row it replaced is gone. This is the assertion that would have
-    // caught the original defect: ConnectedAccount drew exactly one business
-    // and named it, which is why removing one looked like nothing happening.
+    expect(find.byType(LeadsAccountsList), findsOneWidget);
     expect(find.text('Thumbtack · A1 Chimney'), findsNothing);
   });
 
-  testWidgets('without leads.edit the Thumbtack tab names who can connect '
+  testWidgets('without leads.edit the sources panel names who can connect '
       'instead of offering a button that would be refused', (tester) async {
     await _pump(
       tester,
@@ -266,14 +341,12 @@ void main() {
       permissions: const ['leads.view'],
     );
 
-    await tester.tap(find.text('Thumbtack Leads'));
+    await tester.tap(find.byKey(const ValueKey('sources-manage')));
     await tester.pumpAndSettle();
 
     expect(find.text('Connect Thumbtack'), findsNothing);
-    expect(
-      find.textContaining('Somebody who can manage Leads'),
-      findsOneWidget,
-    );
+    expect(find.text('Connect Google Ads'), findsNothing);
+    expect(find.textContaining('Somebody who can manage Leads'), findsWidgets);
   });
 }
 

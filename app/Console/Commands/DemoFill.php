@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Assignment;
 use App\Models\Franchise;
 use App\Models\Organization;
 use App\Models\ServiceArea;
@@ -157,6 +158,8 @@ class DemoFill extends Command
      */
     private function staff(bool $dry): void
     {
+        $franchise = Franchise::query()->orderBy('created_at')->first();
+
         $people = [
             'Ada Vance' => 'ada.vance',
             'Marcus Iheme' => 'marcus.iheme',
@@ -189,6 +192,26 @@ class DemoFill extends Command
             ]);
             $user->organization_id = $this->organizationId;
             $user->save();
+
+            // A user with no Assignment row is "unplaced", which is a real
+            // state with real consequences and not a tidiness point. HR's
+            // Headcount widget gives unplaced people their own row reading
+            // "Not assigned to a place" — five of those on a store screenshot
+            // reads as a broken install. Worse, TimeClock::visibleTo and
+            // HrPeopleController::visibleTo only show unplaced people to
+            // somebody standing at the ORGANIZATION, so a franchise-level
+            // viewer would see the vans assigned to nobody and an empty clock.
+            //
+            // Placing them at the franchise that already owns the service
+            // areas makes them ordinary staff, which is what a demo tenant is
+            // supposed to look like.
+            if ($franchise !== null) {
+                Assignment::query()->firstOrCreate([
+                    'user_id' => $user->id,
+                ], [
+                    'assigned_franchise_id' => $franchise->getKey(),
+                ]);
+            }
 
             $this->info(sprintf('  staff: added %s', $name));
         }

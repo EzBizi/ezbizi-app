@@ -80,6 +80,10 @@ class SitesController extends Controller
                 'required', 'uuid',
                 Rule::exists('companies', 'id')->where('organization_id', $this->tenant->idOrFail()),
             ],
+            'franchise_id' => [
+                'nullable', 'uuid',
+                Rule::exists('franchises', 'id')->where('organization_id', $this->tenant->idOrFail()),
+            ],
             'host' => ['required', 'string', 'max:191'],
             'label' => ['nullable', 'string', 'max:191'],
         ]);
@@ -99,6 +103,8 @@ class SitesController extends Controller
 
         $site = new WebSite([
             'company_id' => $company->getKey(),
+            // Which branch this site answers for; null means the company itself.
+            'franchise_id' => $input['franchise_id'] ?? null,
             'host' => $host,
             'label' => $input['label'] ?? null,
         ]);
@@ -127,7 +133,22 @@ class SitesController extends Controller
         $input = $request->validate([
             'host' => ['sometimes', 'string', 'max:191'],
             'label' => ['sometimes', 'nullable', 'string', 'max:191'],
+            'franchise_id' => [
+                'sometimes', 'nullable', 'uuid',
+                Rule::exists('franchises', 'id')->where('organization_id', $this->tenant->idOrFail()),
+            ],
         ]);
+
+        if (array_key_exists('franchise_id', $input)) {
+            /*
+             * Only the enquiries that arrive AFTER this land on the new branch.
+             * The ones already in Leads keep the placement they were filed
+             * under: re-homing somebody else's list because a setting changed
+             * is a surprise, and the branch that worked them would watch them
+             * vanish.
+             */
+            $site->franchise_id = $input['franchise_id'];
+        }
 
         if (array_key_exists('host', $input)) {
             $host = $this->normalizedHost($input['host']);
@@ -317,7 +338,7 @@ class SitesController extends Controller
     /** @return array<string, mixed> */
     private function present(WebSite $site): array
     {
-        $site->loadMissing('company:id,name');
+        $site->loadMissing('company:id,name', 'franchise:id,name');
 
         return [
             'id' => $site->id,
@@ -333,6 +354,15 @@ class SitesController extends Controller
             'company' => [
                 'id' => $site->company_id,
                 'name' => $site->company?->name,
+            ],
+            /*
+             * Which branch this site answers for. Null is ordinary and means
+             * the company itself; it decides where an enquiry from this website
+             * lands in Leads.
+             */
+            'franchise' => $site->franchise_id === null ? null : [
+                'id' => $site->franchise_id,
+                'name' => $site->franchise?->name,
             ],
             'connected_at' => $site->connected_at?->toIso8601String(),
             'last_seen_at' => $site->last_seen_at?->toIso8601String(),

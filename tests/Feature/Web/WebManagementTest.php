@@ -44,9 +44,16 @@ class WebManagementTest extends TestCase
             ['web_management.view', 'web_management.edit'],
             $module->permissionKeys(),
         );
-        $this->assertNotEmpty(
-            $module->automationExemptBecause,
-            'Web Management declared no events and gave no reason.',
+        /*
+         * This module used to be automation-exempt on the grounds that nothing
+         * here happens on its own. The chat and form widgets ended that: a
+         * visitor starting a conversation is an event, and rules can act on it.
+         * The subject is the SITE, so a rule can name which website.
+         */
+        $this->assertNull($module->automationExemptBecause);
+        $this->assertSame(
+            ['website.chat_started', 'website.form_submitted'],
+            array_map(fn ($trigger) => $trigger->key, $module->triggers),
         );
     }
 
@@ -646,7 +653,10 @@ class WebManagementTest extends TestCase
         $body = $this->getJson('/api/v1/web/public/values?key='.$site['data']['public_key'])
             ->assertOk()->json();
 
-        $this->assertSame(['fields', 'values', 'pages'], array_keys($body));
+        // `widgets` joined this list when the chat and form widgets arrived: a
+        // site that is not WordPress needs the same look and the same questions
+        // as one that is, and the config names neither a company nor a host.
+        $this->assertSame(['fields', 'widgets', 'values', 'pages'], array_keys($body));
         $this->assertStringNotContainsString('a-1chimney.com', json_encode($body));
         $this->assertStringNotContainsString('Alpha Co', json_encode($body));
     }
