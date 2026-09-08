@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi — Leads › four sources</title>
+<style>
+  :root{--primary:#00708f;--onPrimary:#fff;--primaryC:#c6e7ff;--onPrimaryC:#004c6b;
+    --secondaryC:#d2e5f4;--onSecondaryC:#004c6b;--surface:#fff;--low:#f0f4f8;--high:#dfe3e7;
+    --outline:#c1c7ce;--ink:#060808;--muted:#5B6672;--warn:#B5730B;--warnC:#FFF4D6;
+    --errC:#FDECEC;--ok:#0B8F5B;--okC:#E5F6EE;--infoC:#E6F7FD;}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#DDE3E8;color:var(--ink);font:14px/1.45 system-ui,"Segoe UI",sans-serif}
+  button{font:inherit;cursor:pointer}
+  .app{max-width:1320px;margin:0 auto;padding:16px 16px 64px}
+  header.picker{background:#fff;border:1px solid #E9EDF1;border-radius:12px;padding:16px 20px;margin-bottom:16px}
+  header.picker h1{font-size:18px;margin:0 0 4px}
+  header.picker>p{margin:0 0 12px;color:var(--muted);max-width:88ch}
+  .locked,.ask,.found{font-size:13px;border-radius:8px;padding:10px 12px;margin-bottom:12px;max-width:96ch}
+  .locked{background:var(--infoC)}.ask{background:var(--warnC)}.found{background:var(--errC)}
+  .locked strong,.ask strong,.found strong{display:block;margin-bottom:5px}
+  .locked strong{color:var(--primary)}.ask strong{color:var(--warn)}.found strong{color:#A33}
+  .brk{display:block;margin-top:8px;font-weight:700}
+  code{background:rgba(0,0,0,.06);padding:1px 5px;border-radius:4px;font-size:12px}
+  .nums{display:flex;flex-wrap:wrap;gap:8px}
+  .nums button{min-width:44px;min-height:44px;border-radius:8px;padding:0 12px;
+    border:1px solid #E9EDF1;background:#fff;color:var(--ink)}
+  .nums button[aria-pressed="true"]{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .nums .sep{width:1px;background:#E9EDF1;margin:2px 4px}
+  .caption{margin-top:12px;padding-top:12px;border-top:1px solid #E9EDF1;max-width:94ch}
+  .caption strong{display:block;margin-bottom:4px}
+  .win{border:1px solid #E9EDF1;border-radius:12px;overflow:hidden;background:#fff;margin-bottom:14px}
+  .cap{font-size:12px;color:var(--muted);padding:7px 12px;background:#F5F8FA;
+    border-bottom:1px solid #E9EDF1;font-weight:600}
+  .measure{font-size:12px;color:var(--muted);padding:9px 14px 14px}
+  .measure b{color:var(--ink)}
+
+  .screen{min-height:430px;display:flex;flex-direction:column}
+  .tabs{display:flex;gap:7px;padding:9px 13px;border-bottom:1px solid var(--outline);flex-wrap:wrap}
+  .tab{padding:5px 12px;border-radius:999px;border:1px solid var(--outline);font-size:12.5px;color:var(--muted);
+    display:flex;gap:5px;align-items:center}
+  .tab.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .filters{display:flex;gap:7px;padding:8px 13px;border-bottom:1px solid var(--outline);flex-wrap:wrap;
+    align-items:center}
+  .chip{padding:4px 11px;border-radius:999px;border:1px solid var(--outline);font-size:12px;color:var(--muted)}
+  .chip.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .grp{font-size:10.5px;font-weight:700;color:var(--muted);letter-spacing:.04em;margin-right:2px}
+  .bar{display:flex;gap:9px;align-items:center;padding:8px 13px;border-bottom:1px solid var(--outline);
+    background:var(--low);font-size:12.5px}
+  .bar .g{flex:1;min-width:0}
+  .bar .g b{display:block;font-size:12.5px}
+  .bar .g span{color:var(--muted);font-size:11.5px}
+  .lnk{color:var(--primary);font-size:12.5px}
+
+  .lead{display:flex;gap:9px;padding:9px 13px;border-bottom:1px solid var(--outline);align-items:flex-start}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--primary);flex:none;margin-top:5px}
+  .dot.off{background:transparent}
+  .lead .g{flex:1;min-width:0}
+  .nm{font-size:13px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .nm.unread{font-weight:700}
+  .src{font-size:9.5px;font-weight:700;border-radius:4px;padding:1px 5px;letter-spacing:.03em;
+    background:var(--high);color:var(--muted)}
+  .src.g{background:var(--primaryC);color:var(--onPrimaryC)}
+  .src.t{background:var(--okC);color:var(--ok)}
+  .src.c{background:var(--secondaryC);color:var(--onSecondaryC)}
+  .src.f{background:var(--warnC);color:var(--warn)}
+  .prev{font-size:11.5px;color:var(--muted);margin-top:2px;overflow:hidden;white-space:nowrap;
+    text-overflow:ellipsis}
+  .prev b{color:var(--ink);font-weight:600}
+  .star{color:var(--outline);flex:none}
+  .star.on{color:var(--warn)}
+  .when{font-size:11px;color:var(--muted);flex:none}
+  .empty{padding:26px 14px;text-align:center;color:var(--muted);font-size:12.5px}
+
+  .phones{display:flex;gap:18px;flex-wrap:wrap;justify-content:center}
+  .phone{width:352px;border:7px solid var(--ink);border-radius:24px;overflow:hidden;height:520px;
+    display:flex;flex-direction:column;background:#fff}
+  .pbar{padding:0 12px;height:42px;display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;
+    border-bottom:1px solid var(--outline);flex:none}
+  .sc{overflow:auto;flex:1}
+  .nt{color:var(--muted);font-size:12.5px;margin:8px 0 0;max-width:94ch}
+  .nt b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>Leads &rsaquo; four sources — tabs, or one list?</h1>
+    <p>Six numbered layouts: <b>1&ndash;3 desktop, 4&ndash;6 mobile</b>. This one carries a
+      <b>recommendation that differs from how Jose worded it</b>, which is stated plainly below
+      rather than buried.</p>
+
+    <div class="ask">
+      <strong>Jose said &ldquo;a new sub tab in Leads&rdquo; for each. I am recommending against it, and here is why that is not me ignoring him</strong>
+      He said it while looking at a screen that has tabs, and describing an outcome: chat and forms
+      should be visible in Leads. His own reference — a1tools, which he has had open beside this all
+      week — puts every source in <b>one list</b> with the source as a chip across the top. So the
+      one-list shape is arguably closer to what he has been pointing at than to what he typed.
+      <span class="brk">He also said, tonight: &ldquo;if u have a question do as you believe or
+      recommend, dont wait for me.&rdquo;</span>
+      So layout 2 is his wording, drawn properly and buildable as-is. If he says
+      &ldquo;tabs&rdquo; tomorrow it is one word and Leads builds 2 instead — the row, the badges
+      and the sources band are identical in both, so only the strip changes.
+    </div>
+
+    <div class="found">
+      <strong>Measured: today's two tabs are NOT a source split, which weakens the precedent</strong>
+      The Thumbtack tab renders <b>no leads at all</b> — it shows a connect flow and the sentence
+      <em>&ldquo;Connected — enquiries not fetched yet&rdquo;</em>. So the current strip is not
+      &ldquo;Google's leads / Thumbtack's leads&rdquo;. It is <b>the leads, and a provider that has
+      none</b>. Adding two more tabs would be the first time the strip actually sliced one list four
+      ways.
+      <span class="brk">And that slicing breaks the question the whole triage design answers.</span>
+      The unread weight, the unreplied dot and the star were approved to answer <em>&ldquo;who is
+      waiting on me&rdquo;</em>. Split across four tabs they answer it <b>per source</b> — and
+      nobody has ever wanted to know who is waiting <em>among Google leads specifically</em>. Four
+      tabs means four places to check before you know you are done.
+      <span class="brk">Source is also the FOURTH filter, and three already live together.</span>
+      Unread, Starred and Unreplied are one chip row that narrows together, approved and built. Put
+      source in a tab strip and one idea is split across two controls, where "Website chat + Unread"
+      is a tab plus a chip instead of two chips.
+    </div>
+
+    <div class="locked">
+      <strong>What the sources band becomes, because two providers is the real objection</strong>
+      Google's accounts band works because there is one provider. With Thumbtack mounting the same
+      list, two bands stacked above one list is worse than one band per tab — that is the honest cost
+      of collapsing the strip, and it has an answer that already exists: <b>one
+      &ldquo;Connected sources&rdquo; row opening a panel</b>, which is exactly the band&rarr;panel
+      shape shipped for Google. One row whatever the number of providers, the same as it costs one
+      row whatever the number of accounts.
+      <span class="brk">One small ask of Leads either way.</span>
+      <code>index()</code> has no source filter today — I read the query. Layouts 1 and 3 need
+      <code>source=</code> on the list; layout 2 needs it too, since a tab is a filter with a
+      different hat on.
+      <span class="brk">And the schema holds, checked while I was in there.</span>
+      The list already scopes by <code>reachableFranchises</code> and
+      <code>reachableCompanies</code>, so nothing here changes who sees what.
+    </div>
+
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+  <div id="stage"></div>
+</div>
+
+<script>
+const LEADS=[
+ ['Marcus Bell','g','Google','Call · 4:32','22h','they',1,0],
+ ['(no name given)','f','Form','Fireplace inspection · 14 Ash Lane · needs weekend','23h','they',1,1],
+ ['Visitor 4471','c','Chat','Do you service gas inserts? · /services/gas-inserts','1d','they',0,0],
+ ['Dana Whitfield','g','Google','Can you come out Thursday?','1d','you',0,0],
+ ['R. Okonkwo','t','Thumbtack','Chimney sweep, this week','2d','you',0,0]];
+
+const row=(l)=>`<div class="lead">
+  <span class="dot ${l[5]==='they'?'':'off'}"></span>
+  <div class="g"><div class="nm ${l[6]?'unread':''}">${l[0]}
+    <span class="src ${l[1]}">${l[2]}</span></div>
+    <div class="prev">${l[5]==='you'?'<b>You:</b> ':''}${l[3]}</div></div>
+  <span class="star ${l[7]?'on':''}">&#9733;</span>
+  <span class="when">${l[4]}</span></div>`;
+
+const sourcesBand=`<div class="bar">&#128279;
+  <div class="g"><b>Connected sources</b>
+    <span>Google Ads · 22 accounts · Thumbtack · 1 · Website · chat and forms</span></div>
+  <span class="lnk">Manage</span></div>`;
+
+const filterRow=(withSource)=>`<div class="filters">
+  <span class="chip on">All</span><span class="chip">Unread</span>
+  <span class="chip">Starred</span><span class="chip">Unreplied</span>
+  ${withSource?'<span style="width:1px;height:18px;background:var(--outline);margin:0 3px"></span>'
+   +'<span class="grp">SOURCE</span><span class="chip">Google</span><span class="chip">Thumbtack</span>'
+   +'<span class="chip">Chat</span><span class="chip">Forms</span>':''}
+  <span style="flex:1"></span><span class="lnk">Mark all read</span></div>`;
+
+const tabStrip=(labels,on)=>`<div class="tabs">${labels.map((t,i)=>
+  `<span class="tab ${i===on?'on':''}">${t}</span>`).join('')}</div>`;
+
+const D1=()=>`<div class="win"><div class="cap">Layout 1 · one list, source as a filter</div>
+  <div class="screen">${sourcesBand}${filterRow(true)}${LEADS.map(row).join('')}</div></div>
+  <div class="measure">Four sources, one list, <b>one place that answers "who is waiting on me"</b> — three
+   unreplied here, visible without visiting anything. Source joins the three filters it belongs with, so
+   "Chat + Unread" is two chips rather than a tab plus a chip. A fifth source is one more chip, not a
+   fifth tab.</div>`;
+
+const D2=()=>`<div class="win"><div class="cap">Layout 2 · four tabs, exactly as Jose worded it</div>
+  <div class="screen">${tabStrip(['Google Leads','Thumbtack Leads','Website chat','Website forms'],0)}
+    ${sourcesBand}${filterRow(false)}
+    ${LEADS.filter(l=>l[1]==='g').map(row).join('')}
+    <div class="empty">The two unreplied enquiries on the other three tabs are not visible from here.<br>
+      Nor is the one starred form.</div></div></div>
+  <div class="measure">Faithful to the wording, and buildable tonight. The cost is drawn rather than
+   argued: this is the Google tab, and the two people waiting on a reply through chat and forms are
+   <b>somewhere else</b>. The triage marks still work — they just answer a question per source.</div>`;
+
+const D3=()=>`<div class="win"><div class="cap">Layout 3 · tabs with All first — the hybrid</div>
+  <div class="screen">${tabStrip(['All','Google','Thumbtack','Chat','Forms'],0)}
+    ${sourcesBand}${filterRow(false)}${LEADS.map(row).join('')}</div></div>
+  <div class="measure">Answers both: "who is waiting" lives on All, and every source has a tab as
+   worded. Honest weakness — <b>this is layout 1 with the source chips moved into a strip</b>. Same
+   capability, one more control, and the four filters are now split across two rows that look
+   unrelated. Drawn because if Jose wants the word "tab" honoured, this is the version that costs
+   least.</div>`;
+
+const mList=(withSource)=>`<div class="pbar">&#9776; Leads</div>
+  <div class="sc">${sourcesBand}
+    <div class="filters" style="padding:8px 12px;flex-wrap:nowrap;overflow-x:auto">
+      <span class="chip on">All</span><span class="chip">Unread</span><span class="chip">Unreplied</span>
+      ${withSource?'<span class="chip">Google</span><span class="chip">Chat</span><span class="chip">Forms</span>':''}
+    </div>${LEADS.map(row).join('')}</div>`;
+
+const M4=()=>`<div class="phones"><div class="phone">${mList(true)}</div></div>
+  <p class="nt" style="text-align:center">One list, the source chips scrolling with the other filters.
+   On a phone the argument is stronger still: four tabs at 352px either truncate or scroll, and
+   <b>every one you cannot see is a place unread leads might be hiding</b>.</p>`;
+
+const M5=()=>`<div class="phones"><div class="phone">
+  ${tabStrip(['Google','Thumbtack','Chat','Forms'],0)}
+  <div class="sc">${sourcesBand}${LEADS.filter(l=>l[1]==='g').map(row).join('')}
+  <div class="empty">Two waiting elsewhere.</div></div></div></div>
+  <p class="nt" style="text-align:center">Four tabs at 352px. They fit here only because the labels were
+   shortened; "Website forms" and "Thumbtack Leads" together do not.</p>`;
+
+const M6=()=>`<div class="phones"><div class="phone">
+  ${tabStrip(['All','Google','Chat','Forms'],0)}
+  <div class="sc">${sourcesBand}${LEADS.map(row).join('')}</div></div></div>
+  <p class="nt" style="text-align:center">The hybrid on a phone, with Thumbtack already pushed off the
+   strip. Five tabs do not fit at 352px, which is the shape telling you it is one control too many.</p>`;
+
+const CAPTIONS={
+ 1:["1 · Desktop — one list, source as a filter (recommended)",
+    "Every source in one list, the source as a badge on the row and a chip in the filter row it belongs to. Recommended because the triage design already approved — unread weight, unreplied dot, star — exists to answer \"who is waiting on me\", and this is the only layout where that question has one answer. Source is the fourth filter and the other three already narrow together, so putting it here keeps one idea in one control: \"Chat + Unread\" is two chips. It also scales without a decision — a fifth source is another chip, where four tabs becoming five is a redesign. The row shapes carry the differences: a form has no name and its preview is the field lines, a chat has the page it started on, a Google lead has a call or a text."],
+ 2:["2 · Desktop — four tabs, exactly as Jose worded it",
+    "Google Leads · Thumbtack Leads · Website chat · Website forms. Faithful to what he said, buildable tonight, and drawn properly rather than as a straw man. The cost is shown instead of argued: the pane is the Google tab, and the two enquirers waiting on a reply through chat and forms are on other tabs, as is the starred form. Nothing is broken — the marks work, per source. It is the question they answer that narrows. Choose this if the source split matters more than the single queue."],
+ 3:["3 · Desktop — tabs with All first, the hybrid",
+    "All · Google · Thumbtack · Chat · Forms. It genuinely answers both: the single queue lives on All and every source has its own tab as worded. Weakness, stated honestly because it is nearly invisible: this IS layout 1 with the source chips lifted into a strip. The same capability, one more control, and the four filter dimensions now sit in two rows that look unrelated to each other. Worth choosing if the word \"tab\" should be honoured — it is the cheapest way to do that."],
+ 4:["4 · Mobile — one list, source chips with the others (recommended)",
+    "The same shape at 352px, where the argument gets stronger rather than weaker: four tabs either truncate or scroll on a phone, and a tab you cannot see is a place unread leads might be sitting. The chips scroll as one row, so source reads as one more way to narrow rather than as a different kind of control."],
+ 5:["5 · Mobile — four tabs",
+    "Jose's wording on a phone. Drawn with SHORTENED labels, because that is the only way it fits — \"Thumbtack Leads\" and \"Website forms\" at full length do not sit on one 352px row together. That truncation is itself the finding: the strip is being asked to hold more than it can show."],
+ 6:["6 · Mobile — the hybrid on a phone",
+    "All · Google · Chat · Forms, with Thumbtack already pushed off the visible strip at 352px. Five tabs do not fit, and a control that cannot show its own options is one control too many. If the hybrid is chosen, this is the width where it has to be a scrolling strip and admits it."]
+};
+
+const L={1:D1,2:D2,3:D3,4:M4,5:M5,6:M6};
+const nums=document.getElementById('nums'),stage=document.getElementById('stage'),
+      caption=document.getElementById('caption');
+Object.keys(L).forEach((k,i)=>{
+  if(i===3){const s=document.createElement('div');s.className='sep';nums.appendChild(s);}
+  const b=document.createElement('button');
+  b.textContent=(i<3?'Desktop ':'Mobile ')+k;b.dataset.k=k;b.onclick=()=>show(k);nums.appendChild(b);});
+function show(k){
+  [...nums.querySelectorAll('button')].forEach(b=>b.setAttribute('aria-pressed',b.dataset.k===String(k)));
+  caption.innerHTML='<strong>'+CAPTIONS[k][0]+'</strong>'+CAPTIONS[k][1];
+  stage.innerHTML=L[k]();
+  window.scrollTo({top:0,behavior:'smooth'});}
+show(1);
+</script>
+</body>
+</html>
