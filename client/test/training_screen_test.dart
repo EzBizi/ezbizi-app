@@ -101,24 +101,32 @@ void main() {
     expect(find.text('Try again'), findsOneWidget);
   });
 
-  testWidgets('Settings says what it is, not TODO', (tester) async {
-    await _pumpScreen(tester);
+  // Settings (task 15) is no longer a placeholder either — its own tab, its
+  // own permission gate (`training.manage`), and its own storyboard editors
+  // are covered in `training_builder_test.dart`, not here. This is only the
+  // shell-level smoke check: granted the permission, the chip opens the real
+  // screen, never the retired `ComingSoonScreen` text.
+  testWidgets('Settings is a real screen, not a placeholder', (tester) async {
+    await _pumpScreen(tester, me: {'permissions': const ['training.view', 'training.manage']});
 
     await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
     expect(find.text('TODO'), findsNothing);
-    expect(find.textContaining('Coming'), findsWidgets);
+    expect(find.textContaining('Coming next'), findsNothing);
+    expect(find.text('Guides'), findsOneWidget);
   });
 
   // Dashboard (task 14) is no longer a placeholder — its own tab, its own
   // permission gate (`training.monitor`), and its own list/pane behaviour
   // are covered in `training_dashboard_tab_test.dart`, not here. The
-  // default fixture below only grants `training.view`, so the Dashboard
-  // chip must never appear at all — see that gate proven directly.
+  // fixture below grants `training.manage` (so Settings still appears —
+  // that gate is `training_builder_test.dart`'s own to prove) but not
+  // `training.monitor`, so the Dashboard chip must never appear at all —
+  // see that gate proven directly.
   testWidgets('a viewer without training.monitor sees Learn and Settings, never Dashboard', (
     tester,
   ) async {
-    await _pumpScreen(tester);
+    await _pumpScreen(tester, me: {'permissions': const ['training.view', 'training.manage']});
 
     expect(find.text('Learn'), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
@@ -496,6 +504,18 @@ MockClientHandler _handler({
 
     if (path.endsWith('/training/learn')) {
       return _json({'assigned': assigned, 'library': library});
+    }
+
+    // Settings (task 15) fetches its own guide/test catalogue whenever the
+    // tab is reached — stubbed empty here so tests in this file that merely
+    // grant `training.manage` and open the tab (never assert its contents;
+    // see `training_builder_test.dart` for that) do not fall through to the
+    // 500 below.
+    if (path.endsWith('/training/guides') || path.endsWith('/training/tests')) {
+      return _json({
+        'data': const [],
+        'meta': {'total': 0},
+      });
     }
 
     return _json({'message': 'Nothing stubbed for $path.'}, 500);
