@@ -12,7 +12,8 @@ class VersionHistory {
       date: '8 Sep 2026',
       items: [
         'You can reply to a text enquiry from the lead\'s conversation. The message goes to the person through Google, in the account\'s own name, and appears in the thread at once. Calls cannot be replied to this way and the screen says so.',
-        'The coloured stripe down the side of quoted text in Email and of rows in Suggestions is gone. Quoted text is now set in the muted colour the app uses for context, so it still reads as somebody else\'s words.',
+        'Email: the line down the side of a quoted message is gone. The quoted text is greyed instead, so it still reads as somebody else\'s words rather than as part of the reply.',
+        'Suggestions: the coloured stripe down the side of each row is gone. Whether a suggestion was approved or rejected is still said by the row\'s colour and its heading, which is where it was already being said.',
       ],
     ),
     VersionRelease(
