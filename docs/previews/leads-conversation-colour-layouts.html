@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi — Leads › conversation colour</title>
+<style>
+  /* Every colour below is a MEASURED theme token, printed by a probe against
+     EzBiziTheme.light() and .dark(). Nothing here is picked by eye. */
+  :root{
+    --l-primary:#00708f; --l-onPrimary:#ffffff;
+    --l-primaryC:#c6e7ff; --l-onPrimaryC:#004c6b;
+    --l-secondaryC:#d2e5f4; --l-onSecondaryC:#004c6b;
+    --l-surface:#ffffff; --l-low:#f0f4f8; --l-high:#dfe3e7;
+    --l-outline:#c1c7ce; --l-error:#ba1a1a; --l-errorC:#ffdad6; --l-ink:#060808; --l-muted:#5B6672;
+    --d-primary:#00aeef; --d-onPrimary:#060808;
+    --d-primaryC:#004c6b; --d-onPrimaryC:#c6e7ff;
+    --d-secondaryC:#374955; --d-onSecondaryC:#c6e7ff;
+    --d-surface:#10161b; --d-low:#181c1f; --d-high:#313539;
+    --d-outline:#41484d; --d-error:#ffb4ab; --d-errorC:#93000a; --d-ink:#ffffff; --d-muted:#9AA5AF;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#DDE3E8;color:#060808;font:14px/1.45 system-ui,"Segoe UI",sans-serif}
+  button{font:inherit;cursor:pointer}
+  .app{max-width:1320px;margin:0 auto;padding:16px 16px 64px}
+  header.picker{background:#fff;border:1px solid #E9EDF1;border-radius:12px;padding:16px 20px;margin-bottom:16px}
+  header.picker h1{font-size:18px;margin:0 0 4px}
+  header.picker>p{margin:0 0 12px;color:#5B6672;max-width:88ch}
+  .locked,.ask,.found{font-size:13px;border-radius:8px;padding:10px 12px;margin-bottom:12px;max-width:96ch}
+  .locked{background:#E6F7FD}.ask{background:#FFF4D6}.found{background:#FDECEC}
+  .locked strong,.ask strong,.found strong{display:block;margin-bottom:5px}
+  .locked strong{color:#00708F}.ask strong{color:#B5730B}.found strong{color:#A33}
+  .brk{display:block;margin-top:8px;font-weight:700}
+  code{background:rgba(0,0,0,.06);padding:1px 5px;border-radius:4px;font-size:12px}
+  table.m{border-collapse:collapse;font-size:12px;margin:9px 0 2px}
+  table.m th,table.m td{border:1px solid rgba(0,0,0,.13);padding:4px 9px;text-align:left}
+  table.m th{background:rgba(0,0,0,.05)}
+  .sw{display:inline-block;width:12px;height:12px;border-radius:3px;border:1px solid rgba(0,0,0,.2);
+    vertical-align:-2px;margin-right:5px}
+  .nums{display:flex;flex-wrap:wrap;gap:8px}
+  .nums button{min-width:44px;min-height:44px;border-radius:8px;padding:0 12px;
+    border:1px solid #E9EDF1;background:#fff;color:#060808}
+  .nums button[aria-pressed="true"]{background:#00708F;color:#fff;border-color:#00708F}
+  .nums .sep{width:1px;background:#E9EDF1;margin:2px 4px}
+  .caption{margin-top:12px;padding-top:12px;border-top:1px solid #E9EDF1;max-width:94ch}
+  .caption strong{display:block;margin-bottom:4px}
+
+  .pair{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .win{border:1px solid #E9EDF1;border-radius:12px;overflow:hidden;background:#fff;margin-bottom:14px}
+  .cap{font-size:12px;color:#5B6672;padding:7px 12px;background:#F5F8FA;
+    border-bottom:1px solid #E9EDF1;font-weight:600}
+  .measure{font-size:12px;color:#5B6672;padding:9px 14px 14px}
+  .measure b{color:#060808}
+
+  /* a themed pane: .t.light or .t.dark sets every var used inside */
+  .t{--primary:var(--l-primary);--onPrimary:var(--l-onPrimary);--primaryC:var(--l-primaryC);
+     --onPrimaryC:var(--l-onPrimaryC);--secondaryC:var(--l-secondaryC);--onSecondaryC:var(--l-onSecondaryC);
+     --surface:var(--l-surface);--low:var(--l-low);--high:var(--l-high);--outline:var(--l-outline);
+     --error:var(--l-error);--errorC:var(--l-errorC);--ink:var(--l-ink);--muted:var(--l-muted);}
+  .t.dark{--primary:var(--d-primary);--onPrimary:var(--d-onPrimary);--primaryC:var(--d-primaryC);
+     --onPrimaryC:var(--d-onPrimaryC);--secondaryC:var(--d-secondaryC);--onSecondaryC:var(--d-onSecondaryC);
+     --surface:var(--d-surface);--low:var(--d-low);--high:var(--d-high);--outline:var(--d-outline);
+     --error:var(--d-error);--errorC:var(--d-errorC);--ink:var(--d-ink);--muted:var(--d-muted);}
+  .t{background:var(--surface);color:var(--ink);display:grid;grid-template-columns:210px 1fr;min-height:400px}
+
+  .lcol{border-right:1px solid var(--outline);display:flex;flex-direction:column}
+  .lead{display:flex;gap:9px;padding:10px 12px;border-bottom:1px solid var(--outline);align-items:flex-start}
+  .lead .g{flex:1;min-width:0}
+  .lead .nm{font-weight:600;font-size:12.5px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .prev{font-size:11.5px;color:var(--muted);margin-top:2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--primary);flex:none;margin-top:5px}
+  .dot.off{background:transparent}
+  .badge{font-size:9.5px;font-weight:700;border-radius:4px;padding:1px 5px;letter-spacing:.03em}
+
+  .tbody{padding:12px;background:var(--low);overflow:auto}
+  .msg{max-width:80%;padding:7px 10px;border-radius:12px;font-size:12.5px;margin-bottom:7px}
+  .msg .t2{display:block;font-size:9.5px;opacity:.75;margin-top:3px}
+  .them{background:var(--surface);border:1px solid var(--outline);color:var(--ink)}
+  .callrow{display:flex;gap:9px;align-items:center;padding:8px 10px;border-radius:12px;
+    margin-bottom:7px;max-width:80%;background:var(--surface);border:1px solid var(--outline)}
+  .play{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex:none;font-size:10px}
+  .callrow .g b{display:block;font-size:12px}
+  .callrow .g span{font-size:10.5px;color:var(--muted)}
+
+  .phones{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+  .phone{width:340px;border:7px solid #060808;border-radius:24px;overflow:hidden;height:470px;
+    display:flex;flex-direction:column}
+  .phone .t{grid-template-columns:1fr;min-height:0;flex:1;overflow:hidden}
+  .pbar{padding:0 12px;height:42px;display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;
+    background:var(--surface);color:var(--ink);border-bottom:1px solid var(--outline)}
+  .note{color:#5B6672;font-size:12.5px;margin:8px 0 0;max-width:94ch}
+  .note b{color:#060808}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>Leads &rsaquo; conversation colour — bubbles, badges, the call row</h1>
+    <p>Six numbered layouts: <b>1&ndash;3 desktop, 4&ndash;6 mobile</b>. Every one is drawn <b>light and
+      dark side by side</b>, because the finding below is that they are not the same design.</p>
+
+    <div class="found">
+      <strong>Measured first: <code>primary</code> INVERTS between light and dark</strong>
+      Probed against <code>EzBiziTheme.light()</code> and <code>.dark()</code>, not picked by eye:
+      <table class="m">
+        <tr><th></th><th>primary</th><th>text on it</th><th>contrast</th></tr>
+        <tr><td>Light</td><td><span class="sw" style="background:#00708f"></span><code>#00708f</code> dark teal</td>
+          <td><span class="sw" style="background:#fff"></span>white</td><td>5.65:1</td></tr>
+        <tr><td>Dark</td><td><span class="sw" style="background:#00aeef"></span><code>#00aeef</code> bright cyan</td>
+          <td><span class="sw" style="background:#060808"></span>near-black</td><td>7.94:1</td></tr>
+      </table>
+      So &ldquo;fill our bubbles with <code>primary</code> and put light text on them&rdquo; is right
+      in light mode and <b>upside down in dark</b> — there it is a bright cyan slab with black text.
+      Any colour direction stated as one sentence is only half designed, which is why all six are
+      drawn twice.
+      <span class="brk">And the colour a1leads uses is already taken here.</span>
+      Their business messages are saturated red. In this app red is <code>error</code> —
+      <code>#ba1a1a</code> light, <code>#ffb4ab</code> dark — and <code>errorContainer</code> plus a
+      count is the settled vocabulary for <em>&ldquo;this is broken and nobody noticed&rdquo;</em>,
+      which Phone shipped four instances of in one day. Colouring our own messages red would make
+      every message the business sent look like a fault. That is the one thing from a1leads that
+      cannot be copied, and it is not visible from looking at the two apps side by side.
+    </div>
+
+    <div class="locked">
+      <strong>Every pairing below passes AA in both brightnesses — measured, not assumed</strong>
+      <code>onPrimaryContainer</code> on <code>primaryContainer</code> <b>7.25:1</b> (both),
+      <code>onPrimary</code> on <code>primary</code> <b>5.65</b> light / <b>7.94</b> dark,
+      <code>onSecondaryContainer</code> on <code>secondaryContainer</code> <b>7.23:1</b> (both),
+      <code>primary</code> as text on <code>surfaceContainerLow</code> <b>5.12</b> / <b>6.78</b>.
+      The floor is 4.5:1 for body text.
+      <span class="brk">One token is off limits without a decision: <code>tertiaryContainer</code>.</span>
+      Material generates it from the cyan seed as <span class="sw" style="background:#e8ddff"></span>
+      <code>#e8ddff</code>, a pale lavender. Nothing else in this app is purple, so any layout
+      wanting a third hue is proposing to introduce one — layout 2 is the only one that does, and it
+      uses <code>secondaryContainer</code> instead for exactly that reason.
+    </div>
+
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+  <div id="stage"></div>
+</div>
+
+<script>
+const CAPTIONS={
+ 1:["1 · Desktop — colour marks WHO said it, one step louder than today",
+    "What ships now, with the weight turned up: our bubbles keep primaryContainer but gain a saturated primary spine down the leading edge and darker onPrimaryContainer text; theirs stay surface with an outline and get no spine. The selected row in the list gains a primary bar, the unreplied dot stays. It reads apart at a glance without the timestamp because the spine is the only saturated thing in the thread. Weakness, and it is the honest one: Jose asked for more colour and this is mostly more CONTRAST — a careful step rather than the thing he saw in a1leads."],
+ 2:["2 · Desktop — colour means WHAT KIND, not who (recommended)",
+    "The hue carries the CHANNEL and the side carries the speaker. A call is the primary family everywhere it appears — badge, play control, the call row's edge — and a text is the secondary family. Direction is still obvious from which side the bubble sits on and whether it is filled or outlined. Recommended because it is the only one of the three where the colour is INFORMATION: you can tell a thread that was all calls from one that was all texts from across the room, and the badge, the row and the bubble finally agree with each other instead of each being coloured for its own reasons. It also spends no new hue — secondaryContainer is a blue the theme already generates, which is why it is used rather than the lavender tertiary."],
+ 3:["3 · Desktop — saturated ours, the a1leads direction done in tokens",
+    "Our messages filled with primary and onPrimary text, which is as close to what Jose saw as this palette allows without using red. Loudest by a distance, and instantly readable. Weakness is visible in the right-hand pane rather than argued: in dark mode primary is #00aeef, so a ten-message thread is ten bright cyan slabs on a near-black ground, and the eye goes to the brightest thing rather than the newest. Drawn because he asked for more colour and should see the top of the range before choosing below it."],
+ 4:["4 · Mobile — colour marks who, at 375",
+    "Layout 1 on a phone. The same spine, the same restraint. On a phone the argument for restraint is stronger than on a desktop: a bubble is a much larger share of the screen, so a treatment that is tasteful at 1280 is a wall of colour at 375."],
+ 5:["5 · Mobile — colour means what kind (recommended)",
+    "Layout 2 on a phone, and it survives the shrink better than the other two because the colour is doing a job. The channel badge is often the only way to tell a missed call from an unanswered text when the preview line is truncated to a thumb's width, and here the badge, the bubble edge and the play control all say the same thing in the same hue."],
+ 6:["6 · Mobile — saturated ours, at 375",
+    "Layout 3 on a phone, and this is where its cost is easiest to see. A saturated bubble that is 78% of a 375px screen is a different object from the same bubble at 1280 — in dark mode it is close to a lit panel. Drawn at the same size as the other two so the comparison is fair rather than flattering."]
+};
+
+const LEADS=[['Marcus Bell','Call','they',1],['Dana Whitfield','Text','they',0],
+             ['R. Okonkwo','Text','you',0]];
+
+// badge colours per direction of the design
+const badgeStyle=(kind,mode)=>{
+  if(mode==='who') return 'background:var(--high);color:var(--muted)';
+  return kind==='Call' ? 'background:var(--primaryC);color:var(--onPrimaryC)'
+                       : 'background:var(--secondaryC);color:var(--onSecondaryC)';
+};
+
+const row=(l,i,sel,mode)=>`<div class="lead" style="${i===sel?'background:var(--low);box-shadow:inset 3px 0 0 var(--primary)':''}">
+  <span class="dot ${l[2]==='they'?'':'off'}"></span>
+  <div class="g"><div class="nm">${l[0]}
+    <span class="badge" style="${badgeStyle(l[1],mode)}">${l[1]}</span></div>
+    <div class="prev">${l[2]==='you'?'You: ':''}Can you come out Thursday?</div></div></div>`;
+
+// ours: 1 = spine, 2 = channel-tinted, 3 = saturated
+const ours=(v)=>{
+  if(v===3) return 'background:var(--primary);color:var(--onPrimary);margin-left:auto';
+  if(v===2) return 'background:var(--secondaryC);color:var(--onSecondaryC);margin-left:auto;'
+    +'border-right:3px solid var(--primary)';
+  return 'background:var(--primaryC);color:var(--onPrimaryC);margin-left:auto;'
+    +'border-right:3px solid var(--primary)';
+};
+const call=(v)=>v===2
+  ? 'border-color:var(--primary);border-left:3px solid var(--primary)'
+  : '';
+const playSty=(v)=>v===3
+  ? 'background:var(--primary);color:var(--onPrimary)'
+  : 'background:var(--primaryC);color:var(--onPrimaryC)';
+
+const thread=(v)=>`<div class="tbody">
+  <div class="callrow" style="${call(v)}"><span class="play" style="${playSty(v)}">&#9654;</span>
+    <div class="g"><b>Call · 4:32</b><span>They called · 22h ago</span></div></div>
+  <div class="msg them">Is the fireplace inspection something you do?<span class="t2">They · 22h</span></div>
+  <div class="msg" style="${ours(v)}">We do. What is the address?<span class="t2">You · 21h</span></div>
+  <div class="msg them">14 Ash Lane, sending a photo.<span class="t2">They · 21h</span></div>
+  <div class="msg" style="${ours(v)}">Thursday at 9 works.<span class="t2">You · 20h</span></div></div>`;
+
+const pane=(v,dark,mode)=>`<div class="t ${dark?'dark':''}">
+  <div class="lcol">${LEADS.map((l,i)=>row(l,i,0,mode)).join('')}</div>
+  <div style="display:flex;flex-direction:column;min-width:0">${thread(v)}</div></div>`;
+
+const D=(n,v,mode,measure)=>`<div class="pair">
+  <div class="win"><div class="cap">Layout ${n} &middot; light</div>${pane(v,false,mode)}</div>
+  <div class="win"><div class="cap">Layout ${n} &middot; dark</div>${pane(v,true,mode)}</div>
+</div><div class="measure">${measure}</div>`;
+
+const P=(v,dark,mode)=>`<div class="phone">
+  <div class="t ${dark?'dark':''}" style="display:block">
+    <div class="pbar">&#8249; Marcus Bell</div>${thread(v)}</div></div>`;
+
+const M=(n,v,mode,measure)=>`<div class="phones">
+  ${P(v,false,mode)}${P(v,true,mode)}</div><p class="note" style="text-align:center">${measure}</p>`;
+
+const L={
+ 1:()=>D(1,1,'who','The spine is the only saturated thing in the thread, so it reads as ours at a glance without the label. <b>onPrimaryContainer on primaryContainer is 7.25:1 in both modes</b> — the one pairing in this palette that does not change character when the theme flips.'),
+ 2:()=>D(2,2,'kind','Call is the primary family and Text the secondary family, on the badge, the bubble edge and the play control at once. <b>Both container pairings sit at 7.2:1 in both modes.</b> The lavender tertiary is deliberately unused: a third hue here would be the first purple in the app.'),
+ 3:()=>D(3,3,'who','Compare the two panes rather than the two arguments. Light is a deep teal slab with white text at 5.65:1; dark is <b>#00aeef</b> with near-black text at 7.94:1 — both legible, and not the same design. Four messages already carry it; a real thread has thirty.'),
+ 4:()=>M(4,1,'who','A bubble is a far larger share of 375px than of 1280. Restraint costs less here and buys more.'),
+ 5:()=>M(5,2,'kind','When the preview line truncates to a thumb\'s width, the badge is often the only thing separating a missed call from an unanswered text — so the hue is carrying information rather than mood.'),
+ 6:()=>M(6,3,'who','The same treatment at phone width. In dark it is close to a lit panel, which is the cost stated as a picture rather than as an opinion.')
+};
+
+const nums=document.getElementById('nums'),stage=document.getElementById('stage'),
+      caption=document.getElementById('caption');
+Object.keys(L).forEach((k,i)=>{
+  if(i===3){const s=document.createElement('div');s.className='sep';nums.appendChild(s);}
+  const b=document.createElement('button');
+  b.textContent=(i<3?'Desktop ':'Mobile ')+k;b.dataset.k=k;b.onclick=()=>show(k);nums.appendChild(b);});
+function show(k){
+  [...nums.querySelectorAll('button')].forEach(b=>b.setAttribute('aria-pressed',b.dataset.k===String(k)));
+  caption.innerHTML='<strong>'+CAPTIONS[k][0]+'</strong>'+CAPTIONS[k][1];
+  stage.innerHTML=L[k]();
+  window.scrollTo({top:0,behavior:'smooth'});}
+show(2);
+</script>
+</body>
+</html>
