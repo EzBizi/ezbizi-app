@@ -994,6 +994,11 @@ Route::prefix('v1')
 
         Route::post('phone/connections', [PhoneConnectionsController::class, 'store']);
         Route::delete('phone/connections/{connection}', [PhoneConnectionsController::class, 'destroy']);
+
+        // How the company runs the phone system it has, as opposed to whether
+        // it has one — a company-wide rule, on the row that is already one per
+        // company.
+        Route::patch('phone/connections/{connection}', [PhoneConnectionsController::class, 'update']);
         // Trust & caller identity. The attestation grade is captured on the
         // call rows; the observation log has no API behind it by necessity.
         // Colleagues messaging each other. Not gated on a permission: both

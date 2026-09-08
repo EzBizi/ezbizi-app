@@ -799,6 +799,79 @@ void main() {
     expect(find.byType(Autocomplete<Object>), findsNothing);
     expect(find.textContaining('CT main'), findsWidgets);
   });
+
+  /// A company that requires a tag gets one, and the pad says so.
+  ///
+  /// The prompt already existed and could be ignored: the desk stayed fully
+  /// usable behind it, so the next call went out and the last one stayed
+  /// unaccounted for. A requirement nothing enforces is decorative, and the
+  /// reports it feeds end up with holes nobody knows about.
+  ///
+  /// The rule is the COMPANY's, read off the connection, so a company that has
+  /// not set up tags never finds its pad locked by a requirement it did not
+  /// choose — which is why the off case is asserted too.
+  testWidgets('a required tag stops the next call until it is given', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    addTearDown(device.dispose);
+
+    await _pump(tester, device: device, requireCallTag: true);
+
+    device.ring('+13055550100');
+    await tester.pumpAndSettle();
+    await _tap(tester, find.widgetWithText(FilledButton, 'Accept'));
+    await _tap(tester, find.widgetWithText(FilledButton, 'Hang up'));
+
+    expect(find.byKey(const ValueKey('tag-the-call')), findsOneWidget);
+    expect(find.textContaining('Required before the next call'), findsOneWidget);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Number'),
+      '305 555 0199',
+    );
+    await tester.pumpAndSettle();
+    await _tap(tester, find.widgetWithText(FilledButton, 'Call'));
+
+    expect(
+      device.connectedTo,
+      isNull,
+      reason: 'the next call went out with the last one unaccounted for',
+    );
+    expect(
+      find.textContaining('before starting another'),
+      findsOneWidget,
+      reason: 'the pad refused and did not say why',
+    );
+  });
+
+  /// And a company that did not ask for it is not held up.
+  testWidgets('without the rule the pad stays usable after a call', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    addTearDown(device.dispose);
+
+    await _pump(tester, device: device);
+
+    device.ring('+13055550100');
+    await tester.pumpAndSettle();
+    await _tap(tester, find.widgetWithText(FilledButton, 'Accept'));
+    await _tap(tester, find.widgetWithText(FilledButton, 'Hang up'));
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Number'),
+      '305 555 0199',
+    );
+    await tester.pumpAndSettle();
+    await _tap(tester, find.widgetWithText(FilledButton, 'Call'));
+
+    expect(
+      device.connectedTo,
+      '+13055550199',
+      reason: 'a company that never asked for tags had its pad locked',
+    );
+  });
 }
 
 class _FakeDevice implements VoiceDevice {
@@ -895,12 +968,16 @@ Future<void> _pump(
   List<Map<String, Object?>>? numbers,
   VoiceDevice? device,
   List<http.Request>? seen,
+  bool requireCallTag = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
-  final inner = _handler(numbers: numbers ?? const [_number]);
+  final inner = _handler(
+    numbers: numbers ?? const [_number],
+    requireCallTag: requireCallTag,
+  );
   final api = ApiClient(
     client: MockClient((request) async {
       seen?.add(request);
@@ -933,12 +1010,58 @@ Future<void> _pump(
   await tester.pumpAndSettle();
 }
 
-MockClientHandler _handler({required List<Map<String, Object?>> numbers}) {
+MockClientHandler _handler({
+  required List<Map<String, Object?>> numbers,
+  bool requireCallTag = false,
+}) {
   return (request) async {
     final path = request.url.path;
 
     if (path.endsWith('/me')) {
       return _json({'data': _me});
+    }
+
+    // What the call could have been about, and the call itself. The desk asks
+    // for both after a hang-up; without them there is no question to answer
+    // and the prompt correctly stays away.
+    if (path.endsWith('/phone/tags') && request.method == 'GET') {
+      return _json({
+        'data': [
+          {'id': 'tag-1', 'name': 'Booked a job', 'is_active': true},
+        ],
+      });
+    }
+
+    if (path.endsWith('/phone/calls') && request.method == 'GET') {
+      return _json({
+        'data': [
+          {
+            'id': 'ca-just-ended',
+            'number_id': 'n-1',
+            'direction': 'inbound',
+            'from_e164': '+13055550100',
+            'to_e164': '+12035550142',
+            'status': 'completed',
+            'created_at': '2026-09-08T17:00:00+00:00',
+          },
+        ],
+      });
+    }
+
+    // The company's own rules live on its connection — one row per company.
+    if (path.endsWith('/phone/connections') && request.method == 'GET') {
+      return _json({
+        'data': [
+          {
+            'id': 'pc-1',
+            'scope_type': 'company',
+            'scope_id': 'co-1',
+            'kind': 'subaccount',
+            'status': 'connected',
+            'require_call_tag': requireCallTag,
+          },
+        ],
+      });
     }
 
     if (path.endsWith('/phone/numbers') && request.method == 'GET') {

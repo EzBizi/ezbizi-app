@@ -1915,6 +1915,105 @@ void main() {
       reason: 'an unroutable box read as though nobody had rung',
     );
   });
+
+  /// The two lists are different questions, and the screen says which.
+  ///
+  /// "Who it rings" and "Lines it answers" sat under one another with no
+  /// wording between them, so somebody who had given people their own numbers
+  /// on Users reasonably read the second list as those assignments and could
+  /// not see why every line was greyed out. Nothing was wrong; nothing
+  /// explained it either.
+  ///
+  /// And a claimed line now NAMES the group that has it. "Answered by another
+  /// group" says you cannot have it without saying where it went, which leaves
+  /// opening every other group to find out.
+  testWidgets('ring groups say what each list means and who holds a line', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      connections: const [
+        {
+          'id': 'conn-1',
+          'scope_type': 'company',
+          'scope_id': 'co-1',
+          'kind': 'subaccount',
+          'status': 'connected',
+          'account_sid': 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        },
+      ],
+      numbers: const [
+        {
+          'id': 'num-1',
+          'connection_id': 'conn-1',
+          'e164': '+12394560829',
+          'label': 'General Use',
+          'ring_group_id': 'rg-marketing',
+        },
+      ],
+      members: const [
+        {'id': 'u-1', 'name': 'Dana Reyes', 'role_id': 'r-1'},
+      ],
+      ringGroups: const [
+        {
+          'id': 'rg-marketing',
+          'connection_id': 'conn-1',
+          'name': 'Marketing',
+          'mode': 'simultaneous',
+          'timeout_seconds': 30,
+          'overflow': 'voicemail',
+          'member_ids': <String>[],
+          'line_ids': ['num-1'],
+        },
+        {
+          'id': 'rg-dispatch',
+          'connection_id': 'conn-1',
+          'name': 'Dispatch',
+          'mode': 'simultaneous',
+          'timeout_seconds': 30,
+          'overflow': 'voicemail',
+          'member_ids': <String>[],
+          'line_ids': <String>[],
+        },
+      ],
+    );
+
+    await _tap(tester, _tab('Settings'));
+    await _tap(tester, find.text('Ring groups'));
+
+    // Edit on Dispatch — the card is a summary; the two lists live in its
+    // form. Dispatch is the second card, and Marketing holds the line.
+    await _tap(
+      tester,
+      find
+          .descendant(
+            of: find.ancestor(
+              of: find.text('Dispatch'),
+              matching: find.byType(Card),
+            ),
+            matching: find.widgetWithText(TextButton, 'Edit'),
+          )
+          .first,
+    );
+
+    expect(
+      find.textContaining('Which main numbers route INTO this group'),
+      findsOneWidget,
+      reason: 'nothing distinguished the two lists',
+    );
+    expect(
+      find.textContaining('set per person on Users'),
+      findsOneWidget,
+      reason: 'the screen never said assignments are a different thing',
+    );
+
+    expect(
+      find.textContaining('answered by Marketing'),
+      findsOneWidget,
+      reason: 'a claimed line still refused to say which group has it',
+    );
+    expect(find.textContaining('answered by another group'), findsNothing);
+  });
 }
 Finder _tab(String label) => find.widgetWithText(ChoiceChip, label);
 

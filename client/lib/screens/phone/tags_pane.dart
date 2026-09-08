@@ -31,6 +31,15 @@ class TagsPane extends StatefulWidget {
 }
 
 class _TagsPaneState extends State<TagsPane> {
+  /// The company's connection, and whether it insists on a tag.
+  ///
+  /// One row per company, so this is where a company-wide rule belongs rather
+  /// than on each line — a rule set per number is one somebody has to set
+  /// seven times and can leave off the eighth.
+  String? _connectionId;
+  bool _requireTag = false;
+  bool _savingRule = false;
+
   /// Which tag has its palette open, if any.
   String? _colouring;
 
@@ -81,6 +90,25 @@ class _TagsPaneState extends State<TagsPane> {
       _error = null;
       _tags = _Tag.listFrom(response.body);
     });
+
+    await _loadRule();
+  }
+
+  /// The company's connection, which is where its rule lives.
+  Future<void> _loadRule() async {
+    final response = await widget.api.get('/phone/connections');
+    if (!mounted || !response.ok) return;
+
+    for (final row in (response.data as List? ?? const [])) {
+      if (row is! Map<String, dynamic>) continue;
+
+      setState(() {
+        _connectionId = row['id'] as String?;
+        _requireTag = row['require_call_tag'] == true;
+      });
+
+      return;
+    }
   }
 
   Future<void> _add() async {
@@ -142,6 +170,34 @@ class _TagsPaneState extends State<TagsPane> {
     await _load();
   }
 
+  /// Turn the company's rule on or off.
+  ///
+  /// Written straight through and re-read from the answer rather than assumed:
+  /// a switch that flips on screen and not on the server is the shape this
+  /// module keeps producing.
+  Future<void> _setRequireTag(bool on) async {
+    final id = _connectionId;
+    if (id == null) return;
+
+    setState(() => _savingRule = true);
+
+    final response = await widget.api.patch('/phone/connections/$id', {
+      'require_call_tag': on,
+    });
+
+    if (!mounted) return;
+
+    setState(() {
+      _savingRule = false;
+      if (response.ok) {
+        final data = response.data;
+        _requireTag = data is Map && data['require_call_tag'] == true;
+      } else {
+        _formError = response.message;
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -178,6 +234,34 @@ class _TagsPaneState extends State<TagsPane> {
           'What a call was about. Whoever answers picks one when the call ends, '
           'and reports count by them.',
           style: theme.textTheme.bodySmall,
+        ),
+
+        const SizedBox(height: 12),
+
+        // The rule, beside the thing it is a rule about.
+        //
+        // Off unless somebody turns it on: a company with no tags set up would
+        // otherwise find its dial pad locked by the first call it took, by a
+        // requirement it never chose.
+        Refused(
+          reason: _canEdit ? null : _editRefusal,
+          child: SwitchListTile(
+            key: const ValueKey('require-call-tag'),
+            value: _requireTag,
+            onChanged: _canEdit && !_savingRule && _connectionId != null
+                ? _setRequireTag
+                : null,
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Make a tag required after every call'),
+            subtitle: Text(
+              _tags.where((tag) => tag.isActive).isEmpty
+                  ? 'Add at least one tag first — a requirement with nothing '
+                        'to choose would stop the phone.'
+                  : 'The person who took the call picks one before the desk '
+                        'can start another. Applies to this company.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
         ),
 
         if (_note != null) ...[
