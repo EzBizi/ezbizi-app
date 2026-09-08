@@ -827,6 +827,8 @@ Route::prefix('v1')
         // lives next to the person rather than in a privacy module of its own.
         Route::get('hr/people/{user}/consents', [HrPeopleController::class, 'consents']);
         Route::patch('hr/people/{user}', [HrPeopleController::class, 'update']);
+        // Their weekday schedule (design 2026-09-08 §10.3). Zone is the caller's view.
+        Route::patch('hr/people/{user}/schedule', [HrPeopleController::class, 'updateSchedule']);
 
         // Sign-in recovery, gated by hr.security.reset rather than hr.edit — see
         // UserPolicy::resetSecurity for why clearing somebody's second factor is
@@ -1506,6 +1508,8 @@ Route::prefix('v1')
         // record, so there is nobody else to authorize against.
         Route::get('me/profile', [ProfileController::class, 'show']);
         Route::patch('me', [ProfileController::class, 'update']);
+        // Own schedule, only when the organization's self_schedule switch is on.
+        Route::patch('me/schedule', [ProfileController::class, 'updateSchedule']);
 
         // Pictures are served through a controller, never as a public file. A
         // guessable avatar URL leaks who works where, across every tenant.

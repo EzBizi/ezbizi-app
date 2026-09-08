@@ -35,6 +35,8 @@ use Laravel\Sanctum\HasApiTokens;
  */
 #[Fillable(['organization_id', 'role_id', 'name', 'email', 'password', 'is_active',
     'first_name', 'middle_name', 'last_name', 'phone', 'address', 'gender', 'date_of_birth',
+    // Records may switch the lock screen off for one person (design 2026-09-08 §4).
+    'lock_screen_exempt',
 ])]
 #[Hidden(['password', 'remember_token', 'totp_secret', 'pending_totp_secret', 'recovery_codes'])]
 class User extends Authenticatable implements HoldsPersonalData
