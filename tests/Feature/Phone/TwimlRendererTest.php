@@ -736,4 +736,86 @@ class TwimlRendererTest extends TestCase
             'overflow' => 'voicemail',
         ]);
     }
+
+    /**
+     * A line with nothing of its own answers with the COMPANY's settings.
+     *
+     * General looked like a company screen and behaved like a per-number
+     * editor, so "what happens when somebody rings us" had to be set once per
+     * line. Seven numbers meant seven settings, and the eighth — bought next
+     * month — silently answered differently from the other seven, with nothing
+     * anywhere saying it would.
+     *
+     * The failure is invisible from inside the app: the new line has a perfect
+     * settings screen, all of it empty, and empty renders as "no menu, no
+     * hours, no voicemail box" rather than as "not set up". Only the caller
+     * finds out.
+     *
+     * Every value here is set on the CONNECTION and nothing on the number.
+     */
+    public function test_a_line_with_no_settings_answers_with_the_companys(): void
+    {
+        $t = $this->provisionTenant();
+
+        $number = $this->inTenant($t['org'], function () use ($t) {
+            $connection = $this->connection($t);
+
+            // Somebody who would actually be rung. A group with nobody
+            // reachable correctly falls through to voicemail, so an empty one
+            // would prove nothing about whether the company default was read.
+            $desk = $this->member($t, 'Desk');
+            PhonePresence::query()->create([
+                'connection_id' => $connection->id,
+                'user_id' => $desk->id,
+                'state' => PhonePresence::STATE_REGISTERED,
+            ]);
+
+            $connection->forceFill([
+                'default_ring_group_id' => $this->group($connection, [$desk->id])->id,
+                'default_recording_notice' => 'Calls to A-1 Chimney are '
+                    .'recorded for training.',
+                'default_record' => true,
+            ])->save();
+
+            // Nothing of its own. This is every line after the wipe, and every
+            // line bought from now on.
+            return $this->number($t, $connection, [
+                'ring_group_id' => null,
+                'recording_notice' => null,
+                'record' => false,
+            ])->fresh();
+        });
+
+        $twiml = $this->inTenant(
+            $t['org'],
+            fn () => (new TwimlRenderer)->inbound($number, []),
+        );
+
+        // Deliberately NOT the built-in sentence.
+        //
+        // The first version of this test used "This call may be recorded.",
+        // which is exactly what RecordingNotice::sentence() falls back to — so
+        // it passed with inheritance ripped out, and I only found that by
+        // running the sabotage. A test whose expected value is also the
+        // fallback asserts nothing at all.
+        $this->assertStringContainsString(
+            'recorded for training',
+            $twiml,
+            'the company recording notice never reached the caller',
+        );
+
+        $this->assertStringNotContainsString(
+            'Please leave a message',
+            $twiml,
+            'the company ring group was ignored and the caller went straight '
+            .'to voicemail',
+        );
+
+        $this->assertStringContainsString(
+            'record',
+            $twiml,
+            'the company said record calls and the line did not',
+        );
+
+    }
 }

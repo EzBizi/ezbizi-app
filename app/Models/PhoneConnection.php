@@ -61,6 +61,14 @@ class PhoneConnection extends Model implements HoldsSensitiveValues, StatesReten
         // was about before the desk is theirs again. See the migration for
         // why a company setting lives on this row.
         'require_call_tag',
+
+        // What answers a call, decided once for the company. A line may still
+        // differ — resolution is `number ?? connection`, see
+        // PhoneNumber::resolved() — but nothing has to be set seven times.
+        'default_flow_id', 'default_hours_schedule_id', 'default_ring_group_id',
+        'default_voicemail_box_id', 'default_fallback_number',
+        'default_recording_notice', 'default_record', 'default_transcribe',
+        'default_after_hours', 'default_after_hours_number',
     ];
 
     protected function casts(): array
@@ -69,6 +77,8 @@ class PhoneConnection extends Model implements HoldsSensitiveValues, StatesReten
             'credentials' => 'encrypted',
             'auth_token' => 'encrypted',
             'require_call_tag' => 'boolean',
+            'default_record' => 'boolean',
+            'default_transcribe' => 'boolean',
         ];
     }
 

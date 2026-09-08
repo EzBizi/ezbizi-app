@@ -26,10 +26,17 @@ final class RecordingNotice
         return 'This call may be recorded.';
     }
 
-    /** The sentence this line speaks — its own, or the default. */
+    /**
+     * The sentence this line speaks: its own, then the company's, then ours.
+     *
+     * Three steps rather than two. The middle one is new and is the point of
+     * the company defaults — a line that says nothing takes what the company
+     * set, and only a company that set nothing either falls back to the
+     * built-in wording.
+     */
     public static function forNumber(PhoneNumber $number): string
     {
-        $own = trim((string) $number->recording_notice);
+        $own = trim((string) $number->resolved('recording_notice'));
 
         return $own === '' ? self::sentence() : $own;
     }

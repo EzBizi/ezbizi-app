@@ -452,13 +452,26 @@ class ConnectionsController extends Controller
      */
     public function update(Request $request, PhoneConnection $connection): JsonResponse
     {
+        // `sometimes` throughout, so General can save the answering settings
+        // without restating the tag rule and the Tags screen can save the tag
+        // rule without restating everything else. A required field here would
+        // make each screen responsible for the other's values, and whichever
+        // one was written second would quietly blank the first.
         $input = $request->validate([
-            'require_call_tag' => ['required', 'boolean'],
+            'require_call_tag' => ['sometimes', 'boolean'],
+            'default_flow_id' => ['sometimes', 'nullable', 'string', 'max:191'],
+            'default_hours_schedule_id' => ['sometimes', 'nullable', 'string', 'max:191'],
+            'default_ring_group_id' => ['sometimes', 'nullable', 'string', 'max:191'],
+            'default_voicemail_box_id' => ['sometimes', 'nullable', 'string', 'max:191'],
+            'default_fallback_number' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'default_recording_notice' => ['sometimes', 'nullable', 'string', 'max:500'],
+            'default_record' => ['sometimes', 'boolean'],
+            'default_transcribe' => ['sometimes', 'boolean'],
+            'default_after_hours' => ['sometimes', 'nullable', 'in:voicemail,forward,closed'],
+            'default_after_hours_number' => ['sometimes', 'nullable', 'string', 'max:32'],
         ]);
 
-        $connection->forceFill([
-            'require_call_tag' => $input['require_call_tag'],
-        ])->save();
+        $connection->forceFill($input)->save();
 
         return response()->json(['data' => $this->row($connection->refresh())]);
     }
@@ -485,6 +498,19 @@ class ConnectionsController extends Controller
 
             // A company-wide rule the desk reads, not a per-line one.
             'require_call_tag' => (bool) $connection->require_call_tag,
+
+            // What answers a call, for every line on this account unless the
+            // line says otherwise. General edits these; the lines inherit.
+            'default_flow_id' => $connection->default_flow_id,
+            'default_hours_schedule_id' => $connection->default_hours_schedule_id,
+            'default_ring_group_id' => $connection->default_ring_group_id,
+            'default_voicemail_box_id' => $connection->default_voicemail_box_id,
+            'default_fallback_number' => $connection->default_fallback_number,
+            'default_recording_notice' => $connection->default_recording_notice,
+            'default_record' => (bool) $connection->default_record,
+            'default_transcribe' => (bool) $connection->default_transcribe,
+            'default_after_hours' => $connection->default_after_hours ?? 'voicemail',
+            'default_after_hours_number' => $connection->default_after_hours_number,
         ];
     }
 }

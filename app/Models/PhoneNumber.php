@@ -90,6 +90,68 @@ class PhoneNumber extends Model implements StatesRetention
         return $this->belongsTo(PhoneConnection::class, 'connection_id');
     }
 
+    /**
+     * A setting, with the company's default behind it.
+     *
+     * ── Why this exists ──────────────────────────────────────────
+     *
+     * General looked like a company screen and behaved like a per-number
+     * editor: what answers a call had to be set once per line, so seven
+     * numbers meant seven settings and the eighth — bought next month —
+     * silently answered differently from the rest.
+     *
+     * So the company decides, on its connection, and a line that has nothing
+     * of its own INHERITS rather than meaning "nothing". `ring_group_id` is
+     * the case that proves this is not hedging: a group claims one line and
+     * not another through Ring groups, so that column genuinely varies per
+     * line — and it still falls back, so a line no group claimed is answered
+     * by the company's default group instead of by nobody.
+     *
+     * ── Read this, never the raw column ──────────────────────────
+     *
+     * Every caller in TwimlRenderer goes through here. A site left reading
+     * `$number->flow_id` directly is a line still answering from its own
+     * cleared column, which is to say answering with nothing, silently — the
+     * exact failure this module keeps producing. `resolved()` is greppable;
+     * the bare attribute is not.
+     */
+    public function resolved(string $key): mixed
+    {
+        $own = $this->getAttribute($key);
+
+        // '' is a cleared text field, not a choice. Without this an emptied
+        // fallback number would beat the company's rather than fall through.
+        if ($own !== null && $own !== '') {
+            return $own;
+        }
+
+        // getRelationValue, NOT $this->connection.
+        //
+        // Eloquent's Model has its own protected $connection holding the
+        // DATABASE connection name, and from inside the class that property
+        // wins over the relation — so `$this->connection` is the string
+        // "mysql" here, not a PhoneConnection. From outside the class the
+        // relation resolves normally, which is why every other call site is
+        // fine and only this one had to learn it.
+        return $this->getRelationValue('connection')
+            ?->getAttribute('default_'.$key);
+    }
+
+    /**
+     * A boolean setting, where false is a real answer and not an absence.
+     *
+     * Separate from [resolved] because `false ?? default` is not the question:
+     * a line that says "do not record" means it, and inheriting `true` over it
+     * would record a call somebody switched recording off for. Only a line
+     * that has never been set defers — which, after the wipe, is all of them.
+     */
+    public function resolvedFlag(string $key): bool
+    {
+        return (bool) ($this->getAttribute($key)
+            ?: $this->getRelationValue('connection')
+                ?->getAttribute('default_'.$key));
+    }
+
     public function grants(): HasMany
     {
         return $this->hasMany(PhoneNumberGrant::class, 'number_id');
