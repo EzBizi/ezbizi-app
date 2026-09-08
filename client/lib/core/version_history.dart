@@ -11,6 +11,9 @@ class VersionHistory {
       version: '0.0.0160',
       date: '8 Sep 2026',
       items: [
+        'Voicemail recordings play on the desktop app. The Play button did nothing there at all: it was drawn, enabled, pressed, and silent, because the part of the app that plays audio on Windows had never been written - only a placeholder that reported success. Recordings now open in whatever your computer uses for audio, which is what the button says.',
+        'A recording that will not play now says why instead of doing nothing at all.',
+        'Voicemail shows your messages even when no boxes have been set up. It used to say "no voicemail boxes yet" and stop, so an account with messages and no boxes was shown nothing.',
         'Lead and message times are now shown in the right hour. Google reports them in the advertising account\'s own time zone, and they were being read as UTC, so everything looked four hours older than it was.',
       ],
     ),
