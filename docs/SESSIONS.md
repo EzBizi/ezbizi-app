@@ -42,6 +42,12 @@ grep the artefact) and still refuses what is refused for everyone, but it
 no longer asks him to repeat an instruction a session carries. Say which
 session carried it.
 
+**There is no `production` remote, on purpose (2026-09-08).** A plain
+`git push production main` deployed through the hook that afternoon, from a
+session that believed it was pushing to GitHub. Releases reach the box only
+through `scripts/deploy.sh`, which pushes the bare repo by URL; do not add
+the remote back. Push to `origin` only; ask the desk to cut.
+
 **Address a role by its desktop session id.** Look it up in the table, send
 with `ccd_session_mgmt send_message(session_id, …)`. If that errors, the
 role is unstaffed right now — write the message as a file in
