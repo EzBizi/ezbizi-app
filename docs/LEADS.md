@@ -149,6 +149,25 @@ sentence for a screen.
 Livechat and Form in a1leads are website sources, not Google ones — a later
 piece, not this read.
 
+## 4a · One list across every source (decided 2026-09-08, reversible)
+
+Jose asked for "a new sub tab in Leads" for website chat and forms. UI/UX drew
+both shapes (docs/previews/leads-sources-layouts.html, 80646605) and, under
+his instruction to decide in his absence, recommended **one list** with the
+source as a badge on the row and a chip beside Unread / Unreplied / Starred;
+built at d1b2e77b. The reason is measured, not taste: the two tabs that
+existed were never a source split (the Thumbtack tab drew a connect flow and
+no leads), and the triage marks answer "who is waiting on me" only when there
+is one list to ask. The row, badges and band are identical in the tab layout,
+so **if Jose says "tabs", only the strip changes.**
+
+- `GET leads?source=local_services|thumbtack|website_chat|website_form`.
+- The Google accounts band is now **Connected sources**, one row at any number
+  of providers, opening a panel with a section per provider (Google's
+  accounts list, Thumbtack's list or connect door, a line for the website
+  until Web Management sends its widget). Placement counts moved into the
+  panel with it.
+
 ## 4b · What a model can say: classification and a draft reply
 
 Item 5 of the a1tools list, Jose's "as you recommend" (2026-09-08). Amazon
