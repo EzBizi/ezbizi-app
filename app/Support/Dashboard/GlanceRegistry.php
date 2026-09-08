@@ -54,7 +54,15 @@ class GlanceRegistry
     private const COMING_SOON = [
         'marketing' => [
             'label' => 'Marketing',
-            'sentence' => 'Marketing will show scheduled and published posts here once compose is live.',
+            /*
+             * Reworded 2026-09-08. It read "once compose is live" — a
+             * condition met on 2026-08-28, when Publish now shipped. So the
+             * sentence named a wait that was already over while the box still
+             * was not there, telling somebody the hold-up was a thing that had
+             * happened. What is actually missing is the glance, so that is
+             * what it says.
+             */
+            'sentence' => 'Marketing keeps scheduled and published posts inside the tab. A summary of them here is not built yet.',
         ],
         'phone' => [
             'label' => 'Phone',

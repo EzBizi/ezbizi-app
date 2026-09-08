@@ -114,7 +114,17 @@ class GlanceRegistryTest extends TestCase
         $this->assertTrue($array['coming_soon']);
         $this->assertSame([], $array['allowed_presentations']);
         $this->assertSame('text', $array['presentation']);
-        $this->assertStringContainsString('compose is live', $array['data']['sentence']);
+        /*
+         * Not a literal from Marketing's copy any more.
+         *
+         * This pinned the exact words "compose is live", so correcting a
+         * sentence that had gone stale turned THIS test red — a test in
+         * Dashboard defending wrong copy in another module, and the reason the
+         * correction sat unmade through a release. The intent here is that a
+         * coming-soon glance resolves to text with no chart and a real
+         * sentence; the specific wording was never the subject.
+         */
+        $this->assertNotSame('', trim((string) $array['data']['sentence']));
     }
 
     /**
