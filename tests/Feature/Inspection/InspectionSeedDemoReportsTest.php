@@ -110,6 +110,37 @@ class InspectionSeedDemoReportsTest extends TestCase
     }
 
     /**
+     * Without a terminal and without --force, it says so instead of just failing.
+     *
+     * `confirm()` returns its default — no — when there is nothing to answer on,
+     * so the first production run printed a question nobody could see and filed
+     * nothing, with the prompt text as the only clue. The refusal was correct
+     * and unreadable.
+     *
+     * The assertion is on the WORDING as well as the rows, because the rows
+     * were already right: this bug produced a correct refusal for an
+     * unexplained reason, so a row count alone cannot tell the fix from the bug.
+     * This is the exception the ordering rule names — the message IS the
+     * property — and the count is still asserted first.
+     */
+    public function test_it_explains_itself_when_there_is_no_terminal_to_confirm_on(): void
+    {
+        $demo = $this->seedableTenant('EzBizi Demo');
+
+        // --no-interaction is the explicit form of what a TTY-less shell does
+        // implicitly; both land on $input->isInteractive() === false. The test
+        // runner keeps input interactive, so calling without it would reach
+        // confirm() and prove nothing.
+        $status = Artisan::call('inspection:seed-demo-reports', ['--no-interaction' => true]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $this->reportCount($demo), 'an unanswerable prompt must not write');
+        $this->assertStringContainsString('no terminal here to confirm on', $output);
+        $this->assertStringContainsString('--force', $output, 'it has to name the flag that would work');
+        $this->assertSame(1, $status);
+    }
+
+    /**
      * The flag is the question that actually matters.
      *
      * `organizations.is_demo` is the first-class marker for "this tenant is a
