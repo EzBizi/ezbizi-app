@@ -300,6 +300,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
                 id: n.id,
                 subject: n.subject,
                 wall: n.scheduledFor!,
+                zone: n.scheduledTimezone,
                 at: DateTime.tryParse(n.scheduledFor!.replaceFirst(' ', 'T')),
               ),
         ],
@@ -465,6 +466,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
       audienceId: _audienceId,
       when: _when,
       viewName: _viewName,
+      scheduledTimezone: _selected?.scheduledTimezone,
       session: widget.session,
       sendingRefusedBecause: _sendingRefusedBecause,
       saveError: _saveError,
@@ -547,6 +549,7 @@ class _Newsletter {
     required this.status,
     this.audienceId,
     this.scheduledFor,
+    this.scheduledTimezone,
   });
 
   final String id;
@@ -555,6 +558,11 @@ class _Newsletter {
   final String status;
   final String? audienceId;
   final String? scheduledFor;
+
+  /// The clock the SERVER filed that wall time against, which is not always
+  /// the clock of the place named in the view. Above franchise scope it is the
+  /// platform default, a fixed offset that does not follow daylight saving.
+  final String? scheduledTimezone;
 
   String get statusWord => switch (status) {
     'sent' => 'sent',
@@ -572,6 +580,7 @@ class _Newsletter {
       status: json['status'] as String? ?? 'draft',
       audienceId: audience is Map ? audience['id'] as String? : null,
       scheduledFor: json['scheduled_for'] as String?,
+      scheduledTimezone: json['scheduled_timezone'] as String?,
       blocks: ((json['blocks'] as List<dynamic>?) ?? const [])
           .whereType<Map<String, dynamic>>()
           .toList(),

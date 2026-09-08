@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'clock_label.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/month_calendar.dart';
 
@@ -48,7 +49,7 @@ class NewsletterDashboard extends StatelessWidget {
                 CalendarEntry(
                   day: s.at!,
                   label: s.subject,
-                  detail: '${s.subject} · ${s.wall}',
+                  detail: '${s.subject} · ${s.wall}${clockSuffix(s.zone)}',
                   onTap: () => onOpen(s.id),
                 ),
           ],
@@ -168,6 +169,7 @@ class ScheduledNewsletter {
     required this.subject,
     required this.wall,
     required this.at,
+    this.zone,
   });
 
   final String id;
@@ -175,6 +177,11 @@ class ScheduledNewsletter {
 
   /// The wall time exactly as promised, for the tooltip.
   final String wall;
+
+  /// And the clock it was promised ON. A wall time with no clock beside it is
+  /// only half a promise once the view is above a franchise, where the default
+  /// is a fixed offset rather than the place's own time.
+  final String? zone;
 
   /// The same, parsed to a day for the grid. Null when it will not parse,
   /// which puts the entry nowhere rather than on the wrong day.
@@ -187,6 +194,7 @@ class ScheduledNewsletter {
       id: json['id'] as String? ?? '',
       subject: json['subject'] as String? ?? '',
       wall: wall,
+      zone: json['scheduled_timezone'] as String?,
       at: DateTime.tryParse(wall.replaceFirst(' ', 'T')),
     );
   }
