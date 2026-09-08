@@ -826,4 +826,69 @@ class LeadConversationsTest extends TestCase
         $this->assertSame(['From a form'], $form);
         $this->assertSame(['From Google'], $ads);
     }
+
+    /**
+     * Two messages inside one second keep their order. Web Management's
+     * first chat test caught a staff reply rendering above the visitor's
+     * question; Google stamps to the microsecond and the column dropped it.
+     */
+    public function test_messages_inside_one_second_keep_their_order(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::create([
+            'organization_id' => $t['org']->id, 'company_id' => $t['company']->id,
+            'source' => 'website_chat', 'remote_id' => 'chat-1', 'contact_name' => 'Visitor',
+            'status' => Lead::STATUS_NEW, 'received_at' => now(),
+        ]));
+
+        $base = \Illuminate\Support\Carbon::parse('2026-09-08 21:20:40.100000', 'UTC');
+
+        $this->inTenant($t['org'], function () use ($lead, $base) {
+            $threads = app(\App\Support\Leads\LeadThread::class);
+            $threads->store($lead, 'm-1', ['channel' => 'LIVECHAT', 'participant' => 'CONSUMER', 'occurred_at' => $base, 'text' => 'Are you open Saturday?']);
+            $threads->store($lead, 'm-2', ['channel' => 'LIVECHAT', 'participant' => 'ADVERTISER', 'occurred_at' => $base->copy()->addMilliseconds(300), 'text' => 'We are, 8 until 1.']);
+            $threads->refresh($lead);
+        });
+
+        $rows = $this->inTenant($t['org'], fn () => $lead->conversations()->get());
+        $this->assertSame(['m-1', 'm-2'], $rows->pluck('remote_id')->all());
+        $this->assertSame('21:20:40.400000', $rows[1]->occurred_at->format('H:i:s.u'), 'the fraction survives the write');
+        $this->assertSame('We are, 8 until 1.', $this->inTenant($t['org'], fn () => $lead->fresh()->last_contact_preview));
+    }
+
+    /**
+     * The thread itself, not only Web's endpoint: two rows with the SAME
+     * occurred_at come back in insertion order, with rows around them,
+     * which is what changed the engine's mind the first time.
+     */
+    public function test_the_thread_keeps_insertion_order_when_two_stamps_are_equal(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::create([
+            'organization_id' => $t['org']->id, 'company_id' => $t['company']->id,
+            'source' => 'website_chat', 'remote_id' => 'chat-1', 'contact_name' => 'Visitor',
+            'status' => Lead::STATUS_NEW, 'received_at' => now(),
+        ]));
+
+        $stamp = \Illuminate\Support\Carbon::parse('2026-09-08 21:20:40', 'UTC');
+
+        $this->inTenant($t['org'], function () use ($lead, $stamp) {
+            $threads = app(\App\Support\Leads\LeadThread::class);
+            $threads->store($lead, 'm-0', ['channel' => 'LIVECHAT', 'participant' => 'ADVERTISER', 'occurred_at' => $stamp->copy()->subMinute(), 'text' => 'Hello, how can we help?']);
+            $threads->store($lead, 'm-1', ['channel' => 'LIVECHAT', 'participant' => 'CONSUMER', 'occurred_at' => $stamp, 'text' => 'Is the fireplace inspection something you do?']);
+            $threads->store($lead, 'm-2', ['channel' => 'LIVECHAT', 'participant' => 'ADVERTISER', 'occurred_at' => $stamp, 'text' => 'We do. What is the address?']);
+            $threads->store($lead, 'm-3', ['channel' => 'LIVECHAT', 'participant' => 'CONSUMER', 'occurred_at' => $stamp->copy()->addMinute(), 'text' => '14 Ash Lane.']);
+            $threads->refresh($lead);
+        });
+
+        $detail = $this->signedInAs($t['admin'])->getJson("/api/v1/leads/{$lead->id}")->assertOk()->json('data.conversations');
+
+        $this->assertSame(
+            ['Hello, how can we help?', 'Is the fireplace inspection something you do?', 'We do. What is the address?', '14 Ash Lane.'],
+            array_column($detail, 'text'),
+            'a thread that reads backwards is the one defect a thread cannot survive',
+        );
+    }
 }
