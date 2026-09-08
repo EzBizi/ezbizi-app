@@ -16,7 +16,9 @@ class VersionHistory {
         'The Leads list now puts the most recent call or message first, so a lead that just wrote is at the top even if it first came in days ago.',
         'Web Management: EzBizi can publish to a WordPress site now, not just be read from it. Connecting creates a restricted account on your site and hands EzBizi a key for it - one that can write posts, pages and images and nothing else, and that you can revoke from either end.',
         'Connecting a Thumbtack account works. It was refused at the last step of sign-in, and the message said nothing that would have helped anyone.',
-        'On the desktop app, voicemails and call recordings play inside EzBizi. Until now Windows saved the recording to a temporary folder, opened it in whatever plays MP3s on the machine, and left the file there afterwards.',
+        'Voicemails and call recordings play IN the app now, on every platform. On Windows the app used to save the recording into a temporary folder and hand it to whatever your computer opens MP3s with, so the sound came out of another application - or out of nothing at all if the computer had no MP3 player set up. It plays here now, the same way calls do.',
+        'Playing a recording gives you a proper transport: pause, and a bar you can drag to go back a few seconds when somebody says a number too fast. It used to be a single Play button, so hearing a number again meant starting the whole message from the beginning.',
+        'Recordings are no longer written to your computer\'s temporary folder to be played. A customer\'s voicemail used to be left there, unencrypted, after you listened to it. Nothing is written to disk at any point now.',
       ],
     ),
     VersionRelease(
