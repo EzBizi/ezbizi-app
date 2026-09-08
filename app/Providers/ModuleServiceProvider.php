@@ -1236,6 +1236,24 @@ class ModuleServiceProvider extends ServiceProvider
                  * the New Jersey branch and leave the rest alone.
                  */
                 subject: new AutomationSubject(\App\Models\WebSite::class, 'Website'),
+                /*
+                 * Both record types this module hands to events->emit(),
+                 * not just the subject. WebSite carries the two triggers
+                 * below; Lead carries the `lead.received` that
+                 * WebsiteEnquiries raises when a chat or a form becomes an
+                 * enquiry, which is this module's code even though the
+                 * trigger is the Leads module's.
+                 *
+                 * Both can say where they sit -- `web_sites.franchise_id`
+                 * arrived with branch routing, and `leads.franchise_id` was
+                 * always there -- so a notify rule on either reaches the
+                 * branch concerned rather than every active user in the
+                 * organization.
+                 */
+                emits: [
+                    \App\Models\WebSite::class,
+                    \App\Models\Lead::class,
+                ],
                 triggers: [
                     new TriggerDefinition(
                         key: 'website.chat_started',
