@@ -156,4 +156,113 @@ class PhoneVoicemailBoxTest extends TestCase
             'max_seconds' => 3,
         ])->assertStatus(422)->assertJsonValidationErrors('max_seconds');
     }
+
+    /**
+     * A box says how many lines actually send voicemail to it.
+     *
+     * This is the whole of the Voicemail screen's bug, in one integer. A box
+     * that no line points at can never fill, and on screen it was
+     * indistinguishable from a box nobody had left a message in — so two boxes
+     * sat there looking like a quiet week while nineteen real voicemails were
+     * filed against lines with no box at all.
+     *
+     * Nobody reports this. An empty list is exactly what an empty list looks
+     * like.
+     */
+    public function test_a_box_reports_how_many_lines_send_voicemail_to_it(): void
+    {
+        [$t, $connection] = $this->connected();
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+
+        [$attached, $orphan] = $this->inTenant($t['org'], function () use ($t, $connection) {
+            $attached = PhoneVoicemailBox::query()->create([
+                'organization_id' => $t['org']->id,
+                'connection_id' => $connection->id,
+                'name' => 'Front desk',
+                'owner_type' => PhoneVoicemailBox::OWNER_COMPANY,
+            ]);
+
+            $orphan = PhoneVoicemailBox::query()->create([
+                'organization_id' => $t['org']->id,
+                'connection_id' => $connection->id,
+                'name' => 'Nothing points here',
+                'owner_type' => PhoneVoicemailBox::OWNER_COMPANY,
+            ]);
+
+            PhoneNumber::factory()->create([
+                'connection_id' => $connection->id,
+                'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'e164' => '+12035557711',
+                'voicemail_box_id' => $attached->id,
+            ]);
+
+            return [$attached, $orphan];
+        });
+
+        $rows = collect(
+            $this->signedInAs($editor)
+                ->getJson('/api/v1/phone/voicemail-boxes')
+                ->assertOk()
+                ->json('data')
+        )->keyBy('id');
+
+        $this->assertSame(1, $rows[$attached->id]['line_count']);
+
+        $this->assertSame(
+            0,
+            $rows[$orphan->id]['line_count'],
+            'a box nothing routes to reported itself as though it could fill',
+        );
+    }
+
+    /**
+     * Every voicemail, whether or not it is filed in a box.
+     *
+     * The Voicemail screen opens on this. Filtering by box first is what made
+     * nineteen messages unreachable: they belong to lines, and none of those
+     * lines had a box.
+     */
+    public function test_voicemails_can_be_listed_without_a_box(): void
+    {
+        [$t, $connection] = $this->connected();
+        $viewer = $this->userWithRole($t, 'Phone viewer', ['phone.view']);
+
+        $this->inTenant($t['org'], function () use ($t, $connection) {
+            $number = PhoneNumber::factory()->create([
+                'connection_id' => $connection->id,
+                'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'e164' => '+12035557712',
+                'voicemail_box_id' => null,
+            ]);
+
+            foreach ([['CA1', true], ['CA2', false]] as [$sid, $isVoicemail]) {
+                \App\Models\PhoneCall::query()->create([
+                    'organization_id' => $t['org']->id,
+                    'connection_id' => $connection->id,
+                    'number_id' => $number->id,
+                    'twilio_sid' => $sid.bin2hex(random_bytes(15)),
+                    'direction' => 'inbound',
+                    'from_e164' => '+13055550100',
+                    'to_e164' => $number->e164,
+                    'status' => 'completed',
+                    'voicemail' => $isVoicemail,
+                ]);
+            }
+        });
+
+        $rows = $this->signedInAs($viewer)
+            ->getJson('/api/v1/phone/calls?voicemail_only=1')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertCount(
+            1,
+            $rows,
+            'a voicemail on a line with no box was unreachable, which is how '
+            .'the screen came to show nothing at all',
+        );
+        $this->assertTrue($rows[0]['voicemail']);
+    }
 }

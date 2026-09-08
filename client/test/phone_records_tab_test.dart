@@ -72,7 +72,7 @@ void main() {
     await _tap(tester, find.widgetWithText(ChoiceChip, 'SMS'));
     expect(find.textContaining('Thursday morning still good?'), findsOneWidget);
 
-    await _tap(tester, find.byKey(const Key('phone-record-m-1')));
+    await _tap(tester, find.byKey(const Key('phone-thread-+12035550199')));
     expect(find.text('Play recording'), findsNothing);
     expect(find.textContaining('Thursday morning still good?'), findsWidgets);
   });
@@ -113,6 +113,90 @@ void main() {
     );
     expect(player.played, isNotEmpty);
     expect(find.text('The recording is playing.'), findsOneWidget);
+  });
+
+  /// Two texts from one person are one conversation, not two strangers.
+  ///
+  /// The list used to be one row per MESSAGE, each headed with the same
+  /// number — so somebody who sent two texts appeared twice, and the thing you
+  /// open the screen to read, what has been said back and forth, was nowhere.
+  testWidgets('texts from the same number are one thread, not two rows', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      size: const Size(1280, 900),
+      messages: const [
+        _sms,
+        {
+          'id': 'm-2',
+          'number_id': 'n-1',
+          'connection_id': 'pc-1',
+          'direction': 'inbound',
+          'from_e164': '+12035550199',
+          'to_e164': '+12035550142',
+          'body': 'Why are you calling',
+          'created_at': '2026-08-23T16:09:00+00:00',
+        },
+        {
+          'id': 'm-3',
+          'number_id': 'n-1',
+          'connection_id': 'pc-1',
+          'direction': 'outbound',
+          'from_e164': '+12035550142',
+          'to_e164': '+13055550188',
+          'body': 'On our way',
+          'created_at': '2026-08-23T16:20:00+00:00',
+        },
+      ],
+    );
+
+    await _tap(tester, find.widgetWithText(ChoiceChip, 'SMS'));
+
+    // Two people, three messages: two rows, not three.
+    expect(find.byKey(const Key('phone-thread-+12035550199')), findsOneWidget);
+    expect(find.byKey(const Key('phone-thread-+13055550188')), findsOneWidget);
+    expect(
+      find.byType(InkWell).evaluate().length,
+      lessThan(6),
+      reason: 'the list still has a row per message rather than per person',
+    );
+
+    // The row shows the LAST thing said, not the first.
+    expect(find.textContaining('Why are you calling'), findsOneWidget);
+
+    // Opening it shows both sides of the conversation.
+    await _tap(tester, find.byKey(const Key('phone-thread-+12035550199')));
+    expect(find.textContaining('Thursday morning still good?'), findsWidgets);
+    expect(find.textContaining('Why are you calling'), findsWidgets);
+  });
+
+  /// Ours reads as ours.
+  testWidgets('a thread says which side said the last thing', (tester) async {
+    await _pump(
+      tester,
+      size: const Size(1280, 900),
+      messages: const [
+        {
+          'id': 'm-9',
+          'number_id': 'n-1',
+          'connection_id': 'pc-1',
+          'direction': 'outbound',
+          'from_e164': '+12035550142',
+          'to_e164': '+13055550188',
+          'body': 'On our way',
+          'created_at': '2026-08-23T16:20:00+00:00',
+        },
+      ],
+    );
+
+    await _tap(tester, find.widgetWithText(ChoiceChip, 'SMS'));
+
+    expect(
+      find.textContaining('You: On our way'),
+      findsOneWidget,
+      reason: 'the last line reads as something the customer said',
+    );
   });
 }
 

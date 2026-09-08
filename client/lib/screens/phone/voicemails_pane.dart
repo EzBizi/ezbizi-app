@@ -89,16 +89,18 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
         if (row is Map<String, dynamic>) _Box.fromJson(row),
     ];
 
-    // Open on the reader's own box. It is the one they came for, and picking
-    // the first alphabetically instead means everybody lands on somebody
-    // else's messages.
-    final mine = widget.session.me?.id;
-    final own = boxes.where((b) => b.ownerId == mine).firstOrNull;
-
+    // Opens on EVERYTHING, and a box is a filter you choose.
+    //
+    // It used to open on the reader's own box, which was wrong in the way that
+    // is hardest to see: a box only holds messages if a LINE points at it, and
+    // on this account not one line did. So every box was empty, the nineteen
+    // real voicemails were unreachable from this screen, and an empty box
+    // looks exactly like a quiet week. Defaulting to all of them means the
+    // screen shows what exists before it shows how it is filed.
     setState(() {
       _loading = false;
       _boxes = boxes;
-      _boxId = own?.id ?? (boxes.isEmpty ? null : boxes.first.id);
+      _boxId = null;
     });
 
     await _loadMessages();
@@ -106,16 +108,14 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
 
   Future<void> _loadMessages() async {
     final boxId = _boxId;
-    if (boxId == null) {
-      setState(() => _messages = const []);
 
-      return;
-    }
+    // No box chosen is EVERY voicemail, not none. `voicemail_only` asks the
+    // server for the same set the box filter would have narrowed.
+    final query = boxId == null
+        ? {'voicemail_only': '1', 'per_page': '50'}
+        : {'box_id': boxId, 'per_page': '50'};
 
-    final response = await widget.api.get('/phone/calls', {
-      'box_id': boxId,
-      'per_page': '50',
-    });
+    final response = await widget.api.get('/phone/calls', query);
     if (!mounted) return;
 
     setState(() {
@@ -202,12 +202,27 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
           padding: const EdgeInsets.fromLTRB(14, 6, 14, 8),
           child: Text('Boxes', style: theme.textTheme.titleSmall),
         ),
+        ListTile(
+          dense: true,
+          key: const Key('voicemail-box-all'),
+          selected: _boxId == null,
+          title: const Text('All voicemails'),
+          onTap: () {
+            setState(() => _boxId = null);
+            _loadMessages();
+          },
+        ),
         for (final box in _boxes)
           ListTile(
             dense: true,
+            key: Key('voicemail-box-${box.id}'),
             selected: box.id == _boxId,
             title: Text(box.name),
-            subtitle: Text(box.who),
+
+            // Only when it says something the name does not. A box called
+            // "A-1 Chimney Mailbox" subtitled "The company" is the same fact
+            // twice, and it reads as a label that failed to load.
+            subtitle: box.who == null ? null : Text(box.who!),
             onTap: () {
               setState(() => _boxId = box.id);
               _loadMessages();
@@ -240,11 +255,25 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
 
   Widget _messageList(ThemeData theme) {
     if (_messages.isEmpty) {
+      final box = _boxes.where((b) => b.id == _boxId).firstOrNull;
+
+      // Empty because nothing routes here, or empty because nobody rang —
+      // those look identical and mean opposite things. The first is a setting
+      // somebody has to change; the second is a quiet week.
+      final unrouted = box != null && box.lineCount == 0;
+
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
-            'Nothing waiting in this box.',
+            unrouted
+                ? 'No line sends voicemail to this box yet, so nothing can '
+                      'arrive in it. Point a line at it under Settings › '
+                      'Numbers.'
+                : _boxId == null
+                ? 'No voicemails yet.'
+                : 'Nothing waiting in this box.',
+            textAlign: TextAlign.center,
             style: theme.textTheme.bodySmall,
           ),
         ),
@@ -349,6 +378,7 @@ class _Box {
     required this.ownerType,
     required this.ownerId,
     required this.ownerName,
+    required this.lineCount,
   });
 
   final String id;
@@ -357,13 +387,19 @@ class _Box {
   final String? ownerId;
   final String? ownerName;
 
-  /// Whose box this is, in words somebody can act on.
-  String get who => switch (ownerType) {
-    'user' => ownerName == null ? 'A person' : "${ownerName!}'s",
-    'ring_group' => ownerName == null ? 'A ring group' : 'Rings ${ownerName!}',
-    'number' => ownerName ?? 'One line',
-    'company' => ownerName ?? 'The company',
-    _ => 'Shared',
+  /// How many lines send voicemail here. Zero means the box cannot fill.
+  final int lineCount;
+
+  /// Whose box this is, or null when the name already says it.
+  ///
+  /// It used to answer for every case, so a company box with no named owner
+  /// got "The company" printed under a name that already said which company —
+  /// which reads as a subtitle that failed to load rather than as a fact.
+  String? get who => switch (ownerType) {
+    'user' => ownerName == null ? null : "${ownerName!}'s",
+    'ring_group' => ownerName == null ? null : 'Rings ${ownerName!}',
+    'number' => ownerName,
+    _ => null,
   };
 
   factory _Box.fromJson(Map<String, dynamic> json) => _Box(
@@ -372,6 +408,7 @@ class _Box {
     ownerType: (json['owner_type'] ?? '').toString(),
     ownerId: json['owner_id'] as String?,
     ownerName: json['owner_name'] as String?,
+    lineCount: (json['line_count'] as num?)?.toInt() ?? 0,
   );
 }
 

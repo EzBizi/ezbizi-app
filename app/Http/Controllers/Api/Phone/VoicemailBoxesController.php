@@ -174,6 +174,17 @@ class VoicemailBoxesController extends Controller
             // has to look every owner up itself to draw a name, and a screen
             // that cannot say "Ana's" is a list of boxes nobody can tell apart.
             'owner_name' => $this->ownerName($box),
+
+            // How many lines actually send voicemail here.
+            //
+            // A box with none is the failure this module keeps producing: it
+            // exists, it lists, it opens, and it is empty forever — and an
+            // empty box is indistinguishable on screen from a quiet week. The
+            // count is what lets the Voicemail screen say "nothing routes here
+            // yet" instead of "nothing waiting".
+            'line_count' => PhoneNumber::query()
+                ->where('voicemail_box_id', $box->id)
+                ->count(),
             'greeting_mode' => $box->greeting_mode,
             'greeting_text' => $box->greeting_text,
             'greeting_voice' => $box->greeting_voice,

@@ -63,7 +63,13 @@ class _RecordsTabState extends State<RecordsTab> {
 
   late RecordsFilter _filter = widget.initialFilter;
   _Call? _openCall;
-  _Message? _openMessage;
+  /// The counterpart number whose conversation is open, if any.
+  ///
+  /// Held as the NUMBER rather than a thread object, so the open conversation
+  /// survives a refetch: a new text arriving rebuilds every thread, and a
+  /// reference to the old one would leave the pane showing a conversation that
+  /// no longer gains messages.
+  String? _openThread;
   String? _playError;
   bool _playing = false;
 
@@ -85,7 +91,7 @@ class _RecordsTabState extends State<RecordsTab> {
     super.dispose();
   }
 
-  bool get _hasOpen => _openCall != null || _openMessage != null;
+  bool get _hasOpen => _openCall != null || _openThread != null;
 
   List<Object> get _rows {
     switch (_filter) {
@@ -100,8 +106,37 @@ class _RecordsTabState extends State<RecordsTab> {
             if (call.voicemail) call,
         ];
       case RecordsFilter.sms:
-        return _messages;
+        return _threads;
     }
+  }
+
+  /// One row per PERSON, newest first — not one row per text.
+  ///
+  /// Two messages from the same number used to be two rows saying the same
+  /// number twice, which reads as two strangers and hides the thing somebody
+  /// is actually looking for: the conversation. Grouped on the counterpart,
+  /// which is the other end whichever way the message went — our own line
+  /// would collapse the whole day into one row.
+  List<_Thread> get _threads {
+    final byPeer = <String, List<_Message>>{};
+
+    for (final message in _messages) {
+      final peer = message.outbound ? message.toE164 : message.fromE164;
+      (byPeer[peer] ??= []).add(message);
+    }
+
+    final threads = [
+      for (final entry in byPeer.entries)
+        _Thread(
+          peer: entry.key,
+          messages: entry.value
+            ..sort((a, b) => a.createdAt.compareTo(b.createdAt)),
+        ),
+    ];
+
+    threads.sort((a, b) => b.latest.createdAt.compareTo(a.latest.createdAt));
+
+    return threads;
   }
 
   Future<void> _load() async {
@@ -164,16 +199,16 @@ class _RecordsTabState extends State<RecordsTab> {
     _player.stop();
     setState(() {
       _openCall = call;
-      _openMessage = null;
+      _openThread = null;
       _playError = null;
       _playing = false;
     });
   }
 
-  void _selectMessage(_Message message) {
+  void _selectThread(_Thread thread) {
     _player.stop();
     setState(() {
-      _openMessage = message;
+      _openThread = thread.peer;
       _openCall = null;
       _playError = null;
       _playing = false;
@@ -184,7 +219,7 @@ class _RecordsTabState extends State<RecordsTab> {
     _player.stop();
     setState(() {
       _openCall = null;
-      _openMessage = null;
+      _openThread = null;
       _playError = null;
       _playing = false;
     });
@@ -195,7 +230,7 @@ class _RecordsTabState extends State<RecordsTab> {
     setState(() {
       _filter = filter;
       _openCall = null;
-      _openMessage = null;
+      _openThread = null;
       _playError = null;
       _playing = false;
     });
@@ -346,7 +381,7 @@ class _RecordsTabState extends State<RecordsTab> {
                   itemBuilder: (context, i) {
                     final row = rows[i];
                     if (row is _Call) return _callRow(row);
-                    return _messageRow(row as _Message);
+                    return _threadRow(row as _Thread);
                   },
                 ),
         ),
@@ -459,18 +494,19 @@ class _RecordsTabState extends State<RecordsTab> {
     );
   }
 
-  Widget _messageRow(_Message message) {
+  /// A conversation: who, the last thing said, and how many there are.
+  Widget _threadRow(_Thread thread) {
     final theme = Theme.of(context);
-    final selected = _openMessage?.id == message.id;
-    final who = message.outbound ? message.toE164 : message.fromE164;
+    final selected = _openThread == thread.peer;
+    final latest = thread.latest;
 
     return Material(
-      key: Key('phone-record-${message.id}'),
+      key: Key('phone-thread-${thread.peer}'),
       color: selected
           ? theme.colorScheme.primaryContainer
           : theme.colorScheme.surface,
       child: InkWell(
-        onTap: () => _selectMessage(message),
+        onTap: () => _selectThread(thread),
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 44),
           child: Padding(
@@ -478,9 +514,30 @@ class _RecordsTabState extends State<RecordsTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('SMS · $who', style: theme.textTheme.bodyMedium),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        formatPhoneNumber(thread.peer),
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    ),
+                    // Only once there is more than one, because "1" beside a
+                    // single message is noise pretending to be information.
+                    if (thread.messages.length > 1)
+                      Text(
+                        '${thread.messages.length}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
+                ),
                 Text(
-                  message.body,
+                  // Said out loud which way it went. Without it the last line
+                  // of a thread reads as something they said when it is often
+                  // the last thing we said to them.
+                  latest.outbound ? 'You: ${latest.body}' : latest.body,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
@@ -498,7 +555,9 @@ class _RecordsTabState extends State<RecordsTab> {
   Widget _pane({required bool showBack}) {
     final theme = Theme.of(context);
     final call = _openCall;
-    final message = _openMessage;
+    final thread = _openThread == null
+        ? null
+        : _threads.where((row) => row.peer == _openThread).firstOrNull;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -517,8 +576,8 @@ class _RecordsTabState extends State<RecordsTab> {
                   child: Text(
                     call != null
                         ? _callTitle(call)
-                        : message != null
-                        ? 'SMS'
+                        : thread != null
+                        ? formatPhoneNumber(thread.peer)
                         : 'Records',
                     style: theme.textTheme.titleMedium,
                     overflow: TextOverflow.ellipsis,
@@ -530,8 +589,8 @@ class _RecordsTabState extends State<RecordsTab> {
         Expanded(
           child: call != null
               ? _callDetail(call)
-              : message != null
-              ? _messageDetail(message)
+              : thread != null
+              ? _threadDetail(thread)
               : Center(
                   child: Text(
                     'Choose a call or message.',
@@ -602,29 +661,52 @@ class _RecordsTabState extends State<RecordsTab> {
     );
   }
 
-  Widget _messageDetail(_Message message) {
+  /// The conversation, oldest at the top, each side on its own side.
+  ///
+  /// It reads as a chat because that is what it is. The old pane showed one
+  /// message with no idea what came before it, which is the wrong shape for
+  /// the question somebody opens this to answer: what have we said to each
+  /// other.
+  Widget _threadDetail(_Thread thread) {
     final theme = Theme.of(context);
     final formats = widget.session.me!.display;
 
-    return ListView(
+    return ListView.builder(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-      children: [
-        Text(
-          message.outbound
-              ? 'Sent to ${message.toE164}'
-              : 'From ${message.fromE164}',
-          style: theme.textTheme.titleMedium,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          formatStamp(message.createdAt, '', formats: formats),
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+      itemCount: thread.messages.length,
+      itemBuilder: (context, i) {
+        final message = thread.messages[i];
+
+        return Align(
+          alignment: message.outbound
+              ? Alignment.centerRight
+              : Alignment.centerLeft,
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 420),
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+            decoration: BoxDecoration(
+              color: message.outbound
+                  ? theme.colorScheme.primaryContainer
+                  : theme.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(message.body, style: theme.textTheme.bodyMedium),
+                const SizedBox(height: 4),
+                Text(
+                  formatStamp(message.createdAt, '', formats: formats),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 16),
-        Text(message.body, style: theme.textTheme.bodyLarge),
-      ],
+        );
+      },
     );
   }
 
@@ -709,6 +791,19 @@ class _Call {
     errorCode: json['error_code'] as String?,
     errorMessage: json['error_message'] as String?,
   );
+}
+
+/// Every text exchanged with one number, in the order they were said.
+class _Thread {
+  _Thread({required this.peer, required this.messages});
+
+  /// The other end. The same value however the message went, which is what
+  /// makes the two directions one conversation.
+  final String peer;
+
+  final List<_Message> messages;
+
+  _Message get latest => messages.last;
 }
 
 class _Message {
