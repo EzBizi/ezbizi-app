@@ -561,6 +561,40 @@ Fleet, Training, Web Management and others each have their own tree. Reviewing
 a module's golden PNGs from `main` reviews the wrong file, silently, because the paths
 are identical. Confirm the tree before reporting pixel findings.
 
+**Delegating half a subject to a shared helper makes the un-delegated half invisible.**
+Web Management, 2026-09-08, offering their own miss as a category: *"the code looks
+event-aware because some of it is."* Website enquiries wired their conversation half
+through `LeadThread` and got `lead.contact_received` for free — which is precisely
+why nobody went looking for the arrival event, and `lead.received` was never raised for
+a website enquiry at all. The half that came free from the helper made the half that
+did not look handled.
+
+> As an audit category: **a subject that is half-delegated reads as fully handled.**
+> When a module gets some of its behaviour from a shared helper, list what the helper
+> supplies and what it does not, and audit only the second list. Grepping for the
+> module's own event calls finds the delegated half and stops.
+
+**A colour token cannot be exported past the theme that gave it meaning.** Web
+Management asked, 2026-09-08, whether widget defaults on customers' own websites should
+inherit these palette rules rather than drift. They should not inherit the *values*, and
+the reason is measurable: `primary` inverts between brightnesses — `#00708f` on white
+is 5.65:1 and `#00aeef` on near-black is 7.94:1, both correct here. Export the dark one
+onto a customer's white page and it is **2.53:1**, under even the 3:1 large-text floor.
+A widget config has no brightness to resolve against, so whichever value travels,
+travels without the pairing that made it correct.
+
+> The design reason outranks the arithmetic, though: **the widget is the customer's
+> brand surface, not ours.** These tokens exist to make EzBizi look like EzBizi; putting
+> them on A-1 Chimney's website makes A-1 Chimney's website look like EzBizi. Their
+> default `#0b5cad` (6.67:1 on white) is right *because* it is not our brand colour —
+> it reads as "a form", not as any particular company. We hold `logo_path` on
+> Organization and no brand colour anywhere, so the customer types their own; the
+> default's job is to be neutral and legible until they do.
+>
+> What does travel is the **rule, not the token**: a foreground and its background are
+> chosen together and checked together. See the gap below — the pair currently ships
+> unchecked.
+
 ---
 
 ## Known gaps in the four cross-cutting files
@@ -861,6 +895,43 @@ claimed the setup-blocks-above-when-unconnected rule needs to know when setup is
 finished and cannot. That was wrong — it keys off `connected_at != null`, whether a
 plugin has ever read the site, which the module answers exactly. The tier decision
 rests on the opposite-facts argument alone, which is sufficient on its own.*
+
+### 5 · Web Management · Widgets — the accent pair ships unchecked
+
+`client/lib/screens/web/widgets_tab.dart:345-348` on `session/web-management`, not yet on
+`main`. "Accent colour" and "Text on the accent" are two adjacent free-text hex fields
+whose whole job is to be legible against each other, and nothing checks that they are.
+Everything else about that screen is careful — the values are sanitised on the way in
+AND on the way out, colours are `#rgb` or nothing, the font is stripped, the radius
+clamped — because the output lands in a `<style>` block on a site we do not serve. The
+guard that is missing is not a security one; it is the design one.
+
+Accent `#ffff00` with on-accent `#ffffff` is 1.07:1 and saves cleanly today. The widget
+where that ships is a **lead capture form on the customer's own website** — the one
+surface where an unreadable button costs them the enquiry, on a page nobody at EzBizi
+will ever load.
+
+**This does not want a palette, a token export or a colour system.** Flutter already
+ships `Color.computeLuminance()`, which does the sRGB linearisation; the check is the
+ratio and a warning row:
+
+```dart
+double _ratio(Color a, Color b) {
+  final x = a.computeLuminance(), y = b.computeLuminance();
+  return ((x > y ? x : y) + 0.05) / ((x < y ? x : y) + 0.05);
+}
+```
+
+Warn under 4.5:1 on the pair — **warn, never block.** A customer's brand may genuinely
+be low-contrast, and this is their site, not ours; the screen's job is to tell them what
+a visitor will see, not to overrule them. Derived at render from the two fields and
+never stored, per the standing rule that a warning about the system's own capability is
+DERIVED. One caller today, so it belongs in that file — promote it to a shared helper
+when a second colour picker exists, not before.
+
+**Owner: Web Management** — their branch, their file, mid-flight. The rule and the
+measurement are UI/UX's; the paste is theirs. Sent 2026-09-08.
+
 
 ### Suggestions · two screens out for decision
 
