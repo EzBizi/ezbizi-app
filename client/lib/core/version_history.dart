@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0163',
+      date: '8 Sep 2026',
+      items: [
+        'Leads you have not opened yet show in bold, you can star a lead, and a note on each lead says who wrote it and when. Filters for Unread, Unreplied and Starred narrow together, and Mark all read clears the list in one go.',
+        'A lead can be booked from its conversation: Book creates the customer and the job in the franchise you choose, with a time if you have one, and the lead then shows its job. If the number already belongs to a customer you are asked which one, and nothing is chosen for you.',
+        'The Leads list now puts the most recent call or message first, so a lead that just wrote is at the top even if it first came in days ago.',
+        'Web Management: EzBizi can publish to a WordPress site now, not just be read from it. Connecting creates a restricted account on your site and hands EzBizi a key for it - one that can write posts, pages and images and nothing else, and that you can revoke from either end.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0162',
       date: '8 Sep 2026',
       items: [
