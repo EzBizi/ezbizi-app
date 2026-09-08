@@ -443,6 +443,26 @@ class ConnectionsController extends Controller
         return true;
     }
 
+    /**
+     * PATCH /api/v1/phone/connections/{connection} — the company's own rules.
+     *
+     * Separate from the connect/disconnect endpoints on purpose: those change
+     * whether a phone system exists, this changes how the company runs the one
+     * it has, and the permission for the second should not imply the first.
+     */
+    public function update(Request $request, PhoneConnection $connection): JsonResponse
+    {
+        $input = $request->validate([
+            'require_call_tag' => ['required', 'boolean'],
+        ]);
+
+        $connection->forceFill([
+            'require_call_tag' => $input['require_call_tag'],
+        ])->save();
+
+        return response()->json(['data' => $this->row($connection->refresh())]);
+    }
+
     /** @return array<string, mixed> */
     private function row(PhoneConnection $connection): array
     {
@@ -462,6 +482,9 @@ class ConnectionsController extends Controller
             'twiml_app_sid' => $connection->twiml_app_sid,
             'status' => $connection->status,
             'status_reason' => $connection->status_reason,
+
+            // A company-wide rule the desk reads, not a per-line one.
+            'require_call_tag' => (bool) $connection->require_call_tag,
         ];
     }
 }

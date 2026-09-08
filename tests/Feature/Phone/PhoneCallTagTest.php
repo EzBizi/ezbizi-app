@@ -280,4 +280,50 @@ class PhoneCallTagTest extends TestCase
             ->postJson('/api/v1/phone/tags', ['name' => 'Warranty'])
             ->assertStatus(422);
     }
+
+    /**
+     * The requirement is the COMPANY's, and it is off until somebody says so.
+     *
+     * It rides the connection because that row is already unique per company —
+     * a rule kept per line is one somebody has to set seven times and can
+     * leave off the eighth, and the eighth is the line that then goes
+     * uncounted.
+     *
+     * Off by default matters as much as the toggle: a company that has not
+     * made any tags would otherwise find its dial pad stopped by the first
+     * call it took, by a rule it never chose.
+     */
+    public function test_requiring_a_tag_is_a_company_rule_and_starts_off(): void
+    {
+        $t = $this->provisionTenant();
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+
+        $connection = $this->inTenant($t['org'], fn () => PhoneConnection::factory()->create([
+            'scope_type' => PhoneConnection::SCOPE_COMPANY,
+            'scope_id' => $t['company']->id,
+            'status' => PhoneConnection::STATUS_CONNECTED,
+        ]));
+
+        $this->signedInAs($editor)
+            ->getJson('/api/v1/phone/connections')
+            ->assertOk()
+            ->assertJsonPath('data.0.require_call_tag', false);
+
+        $this->signedInAs($editor)
+            ->patchJson("/api/v1/phone/connections/{$connection->id}", [
+                'require_call_tag' => true,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.require_call_tag', true);
+
+        $this->inTenant($t['org'], fn () => $this->assertTrue(
+            (bool) $connection->refresh()->require_call_tag,
+            'the switch reported success and stored nothing',
+        ));
+
+        $this->signedInAs($editor)
+            ->getJson('/api/v1/phone/connections')
+            ->assertOk()
+            ->assertJsonPath('data.0.require_call_tag', true);
+    }
 }

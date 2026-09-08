@@ -360,6 +360,18 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
     ),
   );
 
+  /// The group holding a line, by name.
+  ///
+  /// Falls back to the old wording rather than an id: a group this account
+  /// cannot see is still a real answer, and an id on screen is not.
+  String _groupName(String id) {
+    for (final group in _groups) {
+      if (group.id == id) return group.name;
+    }
+
+    return 'another group';
+  }
+
   Widget _groupCard(_Group group, ThemeData theme) {
     final answering = _lines.where((l) => l.ringGroupId == group.id).toList();
     final editing = _draft?.id == group.id;
@@ -510,6 +522,13 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
 
             const SizedBox(height: 16),
             Text('Who it rings', style: theme.textTheme.labelLarge),
+            Text(
+              'The people whose phones ring when a call reaches this group.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 4),
             if (_people.isEmpty)
               Text('Nobody to add yet.', style: theme.textTheme.bodySmall)
             else
@@ -548,6 +567,22 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
 
             const SizedBox(height: 16),
             Text('Lines it answers', style: theme.textTheme.labelLarge),
+
+            // Said out loud, because these two lists look like one setting and
+            // are not. Somebody who has given people their own numbers on Users
+            // reasonably expects those lines to appear here already claimed —
+            // they are a different fact entirely, and nothing on this screen
+            // used to say so.
+            Text(
+              'Which main numbers route INTO this group. This is not the same '
+              'as the line a person calls out from, or their extension — those '
+              'are set per person on Users. A number can be answered by one '
+              'group only.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 4),
             if (sameConnection.isEmpty)
               Text(
                 'No numbers on this phone account yet. A group with no line '
@@ -569,8 +604,12 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
                         }),
                   title: Text(line.label),
                   subtitle: Text(
+                    // NAMED. "answered by another group" tells somebody they
+                    // cannot have the line and not where it went, so the next
+                    // move is to open every other group looking for it.
                     line.ringGroupId != null && line.ringGroupId != draft.id
-                        ? '${line.e164} · answered by another group'
+                        ? '${line.e164} · answered by '
+                              '${_groupName(line.ringGroupId!)}'
                         : line.e164,
                   ),
                   contentPadding: EdgeInsets.zero,

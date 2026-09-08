@@ -56,6 +56,11 @@ class PhoneConnection extends Model implements HoldsSensitiveValues, StatesReten
         'organization_id', 'scope_type', 'scope_id',
         'kind', 'account_sid', 'api_key_sid', 'twiml_app_sid',
         'status', 'status_reason',
+
+        // A company-wide rule: must the person who took a call say what it
+        // was about before the desk is theirs again. See the migration for
+        // why a company setting lives on this row.
+        'require_call_tag',
     ];
 
     protected function casts(): array
@@ -63,6 +68,7 @@ class PhoneConnection extends Model implements HoldsSensitiveValues, StatesReten
         return [
             'credentials' => 'encrypted',
             'auth_token' => 'encrypted',
+            'require_call_tag' => 'boolean',
         ];
     }
 

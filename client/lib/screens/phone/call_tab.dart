@@ -91,6 +91,19 @@ class _CallTabState extends State<CallTab> {
   String? _untaggedCallId;
   List<_Tag> _tags = const [];
   bool _tagging = false;
+
+  /// The company requires a tag before the desk is usable again.
+  ///
+  /// A company-wide rule on the connection, not a per-line one — see the
+  /// migration. Off unless somebody turned it on, so a company with no tags
+  /// set up never finds its dial pad locked by a requirement it did not
+  /// choose.
+  bool _requireTag = false;
+
+  /// A call is finished and unaccounted for, and this company says that stops
+  /// the pad. Both halves matter: without the second, one company's rule would
+  /// govern everybody's desk.
+  bool get _tagBlocking => _requireTag && _untaggedCallId != null;
   String? _tagError;
   String? _sendError;
 
@@ -231,7 +244,30 @@ class _CallTabState extends State<CallTab> {
     });
 
     if (numbers.isEmpty) return;
+    await _loadCompanyRules();
     await _loadDesk();
+  }
+
+  /// The rules this company set for its own phone system.
+  ///
+  /// Read from the connection the chosen line belongs to, so a person covering
+  /// two businesses gets each one's rule while they are on its line — rather
+  /// than one company's requirement following them onto the other's calls.
+  Future<void> _loadCompanyRules() async {
+    final number = _selected;
+    if (number == null) return;
+
+    final response = await widget.api.get('/phone/connections');
+    if (!mounted || !response.ok) return;
+
+    for (final row in (response.data as List? ?? const [])) {
+      if (row is! Map<String, dynamic>) continue;
+      if (row['id'] != number.connectionId) continue;
+
+      setState(() => _requireTag = row['require_call_tag'] == true);
+
+      return;
+    }
   }
 
   Future<void> _loadDesk() async {
@@ -307,6 +343,19 @@ class _CallTabState extends State<CallTab> {
   String? _bridgeNote;
 
   Future<void> _placeCall({required bool internal}) async {
+    // Refused, not queued. The company asked that a call be accounted for
+    // before the next one, and a pad that dials anyway makes the requirement
+    // decorative — worse than not having it, because the reports it exists to
+    // feed then have holes nobody knows about.
+    if (_tagBlocking) {
+      setState(
+        () => _tagError =
+            'Say what the last call was about before starting another.',
+      );
+
+      return;
+    }
+
     final number = _selected;
     if (number == null) return;
 
@@ -1615,7 +1664,9 @@ extension _CallTagging on _CallTabState {
           Text('What was that call about?', style: theme.textTheme.titleSmall),
           const SizedBox(height: 4),
           Text(
-            'Pick one so it can be counted later.',
+            _requireTag
+                ? 'Required before the next call, so it can be counted later.'
+                : 'Pick one so it can be counted later.',
             style: theme.textTheme.bodySmall,
           ),
           if (_tagError != null) ...[
