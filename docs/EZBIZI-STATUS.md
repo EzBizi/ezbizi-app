@@ -1,6 +1,6 @@
 # EzBizi — where things stand
 
-**2026-09-03.** One page. If something contradicts another document, this one is right —
+**2026-09-08.** One page. If something contradicts another document, this one is right —
 which only works if it is the newest, and on 6 August it was not: it claimed the off-site
 backup was still outstanding some three hours after `EZBIZI-TODO.md` recorded it closed.
 **Update this page in the same pass as the thing it describes, or delete the claim.** The four
@@ -17,10 +17,10 @@ rather than for trying harder.
 | Server panel | https://srv.ezbizi.com (Webmin) |
 | Stack | Laravel 13 · PHP 8.4 · MySQL 8 · Flutter web client |
 <!-- numbers:start -->
-| Tests | ? backend · 10 client, from the last deploy that ran them. Gates are opt-in: `release.sh --gates`. |
-| Client version | `v0.0.0148` — shown bottom-left in the app and on sign-in, so a stale cache is visible rather than guessed at. |
-| Production data | **2 organization(s) · 7 companies · 18 franchises · 15 users · 14 customers · 25 jobs.** Counted 2026-09-03 against the live database by `scripts/status-numbers.sh`, not typed. |
-| Permissions in production | **97 rows.** `ezbizi:sync-permissions` runs on every deploy, between the migration and the caches. |
+| Tests | 2866 backend · 1276 client, from the last deploy that ran them. Gates are opt-in: `release.sh --gates`. |
+| Client version | `v0.0.0152` — shown bottom-left in the app and on sign-in, so a stale cache is visible rather than guessed at. |
+| Production data | **2 organization(s) · 7 companies · 18 franchises · 15 users · 14 customers · 25 jobs.** Counted 2026-09-08 against the live database by `scripts/status-numbers.sh`, not typed. |
+| Permissions in production | **102 rows.** `ezbizi:sync-permissions` runs on every deploy, between the migration and the caches. |
 <!-- numbers:end -->
 
 ## Build phases (§18 of the build plan)
@@ -164,13 +164,13 @@ worth having. The numbers point at `EZBIZI-TODO.md`, which was renumbered from 1
 
 ## How deployment works
 
-Edit locally and release through `scripts/release.sh --gates` (API/web only: `scripts/deploy.sh --gates`). Gates are opt-in, not automatic. The reviewed pipeline pins one commit, serializes API/UI publication and verifies release identity. Server-side access is for diagnosis, not shipping edits. See [DEPLOY](DEPLOY.md) for failure handling and [release notes](RELEASE-NOTES.md) for changes pending deployment.
+Edit locally and release through `scripts/release.sh --gates` (API/web only: `scripts/deploy.sh --gates`). Gates are opt-in, not automatic. The reviewed pipeline pins one commit, serializes API/UI publication and verifies release identity. Server-side access is for diagnosis, not shipping edits. See [DEPLOY](DEPLOY.md) for failure handling and [release notes](RELEASE-NOTES.md) for verified release outcomes.
 
 Full detail: `DEPLOY.md`, beside this file.
 
 ## The documents
 
-The [documentation index](README.md) is the navigation entry point. [Ownership](OWNERSHIP.md) defines tenant identity, reach, current view and downward write authority. The 2026-09-08 remediation is locally under verification; no deployment is claimed by this documentation update. Existing generated numbers above retain their original measurement date.
+The [documentation index](README.md) is the navigation entry point. [Ownership](OWNERSHIP.md) defines tenant identity, reach, current view and downward write authority. The 2026-09-08 remediation shipped as **0.0.0152**, commit `3a595a85e0f56865c5ddbb2297e01dd32f72a9bf`. Both live API/UI markers match; internal health and public web root return HTTP 200. The full gate passed 2,866 backend tests (17,119 assertions) and 1,276 client tests with clean analysis. Generated measurements above were refreshed by this release. Windows publication is verified; see [release notes](RELEASE-NOTES.md) for native build/upload outcomes and [the review ledger](PROJECT-REVIEW-2026-09-08.md) for ranked findings and operational limits.
 
 | File | What it is |
 |---|---|

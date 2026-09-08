@@ -535,3 +535,11 @@ which is why every query here filters `user_id` explicitly on top of the usual t
 The content would stay hidden and the channel would still be dead.
 
 No client version bump — the deploy desk owns that.
+
+## 2026-09-08 — review remediation shipped, 0.0.0152
+
+Release `3a595a85e0f56865c5ddbb2297e01dd32f72a9bf` fixes all 28 findings in the [ranked review](PROJECT-REVIEW-2026-09-08.md), plus shared ownership-policy gaps, server receive/activation serialization, CommonMark advisories, invalid source encoding and the newsletter dashboard icon. Full gates passed **2,866 backend tests/17,119 assertions**, **1,276 Flutter tests**, and client analysis; three release shell suites passed. The earlier failed gate did not activate production.
+
+API/UI markers match the commit in `/var/www/ezbizi-releases/20260908133213-3a595a85e0f5-8m2zM8`; internal health and public web return HTTP 200. Windows manifest and installer checksum are verified. Signed Android AAB is built. iOS and macOS validation/uploads succeeded; public store rollout is separate. See [release notes](RELEASE-NOTES.md) and [store workflow](STORES.md). The coordinator completed successfully, with a Windows temporary-worktree cleanup warning after publication.
+
+The short StartUp front door, documentation index, [ownership contract](OWNERSHIP.md) and development rules replace conflicting guidance while preserving historical material. Keep inherited reads separate from downward write authority; file on the displayed view, never the user's entire reach. Delayed work retains its admitted connection, scope and outcomes. Unknown provider outcomes require reconciliation, not blind repeat delivery. Other sessions' changes and existing external obligations remain intact.

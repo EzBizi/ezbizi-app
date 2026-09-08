@@ -13,12 +13,20 @@
 - [x] Phase C — safety/auth/network/release (1,7–8,10–11): guard effective DB before migrations; independent per-account factor throttle; pin webhook DNS; enforce streamed image cap; pass explicit release SHA from orchestrator to deploy and reject mismatch. First reproduce with safe tests; no production API probing. Own TestCase, auth, fetchers, release/deploy scripts and associated tests.
 - [x] Phase D — workflow ordering (16–18,21–22): lock inventory parent across cancellation/movement; monotonic phone callbacks and durable dedup; immutable automation event scope for deletions; retry only retryable failed actions with durable action outcomes and stable per-action idempotency. Targeted tests preserve previous successful action outcomes and terminal phone state.
 - [x] Phase E — docs/cleanup (27–28): concise StartUp/README and durable ownership guide; documentation index; release-policy/version source corrections; retain incident history in archive; release notes referencing this review; remove only starter welcome/Vite pipeline, preserve email templates/snippets. Report each finding's resolution and test evidence. Reconcile existing main documentation edits rather than overwrite them.
-- [ ] Phase F — independent review and verification: inspect complete diff for accidental changes/secrets; lint/PHP analysis; targeted MySQL regressions followed by full isolated backend suite; Flutter analyze/test; shell release identity tests; fix review failures. No claim of a pass without captured results.
-- [ ] Phase G — integrate/deploy: verify current main and merge preserving concurrent work; commit only after review; run release with gates and explicit one-SHA behavior, API before clients; verify serving release/artifact identity and health. Mark board and report fixed/deployed versus actual external blockers; update STATUS/TODO/log sources without duplicate moving numbers.
+- [x] Phase F — independent review and verification: inspect complete diff for accidental changes/secrets; lint/PHP analysis; targeted MySQL regressions followed by full isolated backend suite; Flutter analyze/test; shell release identity tests; fix review failures. No claim of a pass without captured results.
+- [x] Phase G — integrate/deploy: verify current main and merge preserving concurrent work; commit only after review; run release with gates and explicit one-SHA behavior, API before clients; verify serving release/artifact identity and health. Mark board and report fixed/deployed versus actual external blockers; update STATUS/TODO/log sources without duplicate moving numbers.
 
 This plan uses the ranked audit as its detailed acceptance specification. Each implementation report must list changed paths, regression commands/results, remaining issues and compatibility decisions. Do not weaken controls or silently mark a finding resolved when only documented.
 
-## Restart checkpoint — 2026-09-08 08:35 America/New_York
+## Release checkpoint — 2026-09-08
+
+- Version `0.0.0152`, corrected release commit `3a595a85e0f56865c5ddbb2297e01dd32f72a9bf`, is pinned in `H:/Development/wt/release-3a595a85e0f5`.
+- The first completed Linux gate on the earlier commit found an invalid UTF-8 message and missing newsletter dashboard icon. Both were repaired and targeted tests passed; a PHP source-encoding regression was added. No production activation occurred during that failed gate.
+- The full gate passed 2,866 backend tests/17,119 assertions and 1,276 Flutter tests plus analysis. Web/API and Windows publication is verified; signed Android AAB is built and iOS upload succeeded. macOS validation and upload also succeeded. The coordinator exited successfully; its temporary-worktree cleanup reported a Windows deletion warning after release completion. The release uses `--no-bump --gates` with SSH keepalives.
+- Other sessions are editing main. Keep their work intact; a later main commit is not automatically part of this pinned release.
+- After interruption, inspect the live `.ezbizi-release-sha`, website installer manifest and exact-version native artifacts before retrying. Resume missing targets from the verified commit; do not assume an uploaded Apple build can be uploaded again or bump a version merely to resume.
+
+## Historical restart checkpoint (superseded by release checkpoint) — 2026-09-08 08:35 America/New_York
 
 PC restarted during implementation. All work above is in this worktree, uncommitted. Main remains separate with four pre-existing documentation edits; do not overwrite them. No deployment has occurred.
 

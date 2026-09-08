@@ -2,9 +2,9 @@
 
 The original read-only audit is preserved below in priority order. P1 means address first; P2 means a material defect or security concern; P3 means maintainability. The audit itself performed no fixes or deployment. Subsequent authorized remediation is recorded separately here; original line numbers refer to the audited tree.
 
-## Remediation ledger — 2026-09-08, not deployed
+## Remediation ledger — deployed 2026-09-08, version 0.0.0152
 
-The isolated implementation is undergoing integrated verification. Local fixes do not establish deployment or store availability. Unrelated main-tree documentation edits are preserved during integration.
+All 28 original findings are fixed in release `3a595a85e0f56865c5ddbb2297e01dd32f72a9bf`, including the supplemental repairs below. Web/API and Windows publication are verified. Native distribution outcomes are recorded in [release notes](RELEASE-NOTES.md); a build/upload does not establish public store availability. Unrelated work from other sessions is preserved. The table records individual regression evidence; the full release gates below cover the integrated tree.
 
 | Finding | Resolution in review | Status |
 |---|---|---|
@@ -37,19 +37,26 @@ The isolated implementation is undergoing integrated verification. Local fixes d
 | 27 | Short frontdoor, indexed docs, canonical ownership and accurate release policy | Reviewed; archived history verified |
 | 28 | Remove starter Vite/welcome; retain local HTTP 200 API identity | Root regression passed: 1 test/2 assertions; references checked |
 
-Observed validation: the final combined backend regression run passed **409 tests/2,167 assertions** with CommonMark 2.10.1 installed and the complete migrations. Full Flutter suite **1,276 passed**, whole-client analysis clean. All **three deployment shell suites passed**. Independent implementation reviews found no remaining blockers. The earlier broad local preflight was stopped during schema changes and is not a pass. The committed release will run the full backend and client gates in isolation before publication; deployment remains pending.
+Observed validation: the final combined backend regression run passed **409 tests/2,167 assertions** with CommonMark 2.10.1 installed and the complete migrations. Full Flutter suite **1,276 passed**, whole-client analysis clean. All **three deployment shell suites passed**. Independent implementation reviews found no remaining blockers. The earlier broad local preflight was stopped during schema changes and is not a pass. The pinned release then passed the full Linux backend gate: **2,866 tests/17,119 assertions**, and repeated the full client gate successfully. Production API and UI markers both match the release SHA; internal health and public web root return HTTP 200. The live Windows manifest matches version 0.0.0152 and commit 3a595a85, and its installer checksum matches the local artifact.
+
+### Operational follow-up and limits
+
+1. Existing queued newsletters that predate stored connection identity fail explicitly if that identity is missing. They must be reviewed and re-scheduled with the intended account; this release never guesses an account. No production inventory of such rows was performed.
+2. An interrupted mail/SMS action with an unknown provider outcome is not automatically repeated. Webhook delivery remains at least once; receivers must honor the supplied stable idempotency key. Historical deleted subjects without an ownership snapshot cannot have that lost scope reconstructed automatically.
+3. Android bundle creation and Apple build upload are distinct from public store rollout. The actual publication matrix and any console follow-up are documented in [STORES](STORES.md). The server lock covers API/UI activation, not simultaneous native builds or store publication.
+4. The regression suite and source review do not constitute real provider sends, a live penetration test, or a multiprocess load test. Existing unrelated provider/console/DNS obligations remain on TODO and the board.
 
 ### Full-gate follow-up
 
-The first completed Linux gate ran 2,864 backend tests and caught two additional defects: invalid UTF-8 in the read-only automation refusal, and an omitted newsletter dashboard icon. The message now uses valid text, a PHP source-encoding regression prevents recurrence, and the newsletter has an explicit icon. Targeted verification and a new full gate precede deployment; no production activation occurred during the failed run.
+The first completed Linux gate ran 2,864 backend tests and caught two additional defects: invalid UTF-8 in the read-only automation refusal, and an omitted newsletter dashboard icon. The message now uses valid text, a PHP source-encoding regression prevents recurrence, and the newsletter has an explicit icon. Targeted verification and the new full gate passed before deployment; no production activation occurred during the failed run.
 
 ### Supplemental P1 — dependency security
 
-The scan found CommonMark 2.9.0 affected by high-severity advisories [GHSA-8rr7-cvq3-gmfh](https://github.com/advisories/GHSA-8rr7-cvq3-gmfh), [GHSA-jjv6-8j6v-6j52](https://github.com/advisories/GHSA-jjv6-8j6v-6j52), [GHSA-f8fg-pg57-v4j8](https://github.com/advisories/GHSA-f8fg-pg57-v4j8) and [GHSA-j8pm-gj4c-rq4x](https://github.com/advisories/GHSA-j8pm-gj4c-rq4x). The lock is minimally updated to **2.10.1**, with no other package changes. `composer audit --locked` reports no advisories; installation and combined backend regressions passed; full release gates remain pending.
+The scan found CommonMark 2.9.0 affected by high-severity advisories [GHSA-8rr7-cvq3-gmfh](https://github.com/advisories/GHSA-8rr7-cvq3-gmfh), [GHSA-jjv6-8j6v-6j52](https://github.com/advisories/GHSA-jjv6-8j6v-6j52), [GHSA-f8fg-pg57-v4j8](https://github.com/advisories/GHSA-f8fg-pg57-v4j8) and [GHSA-j8pm-gj4c-rq4x](https://github.com/advisories/GHSA-j8pm-gj4c-rq4x). The lock is minimally updated to **2.10.1**, with no other package changes. `composer audit --locked` reports no advisories; installation and combined backend regressions passed; full release gates passed.
 
 ### Supplemental P1 — production receive identity and serialization
 
-The old hook read the received SHA but checked out mutable `main`. The updated hook archives the received commit, writes `.ezbizi-release-sha` and uses a production lock. The receive wrapper installs pinned helpers, holds the lock through API/UI activation and checks identity. A failed UI swap restores the previous UI and reports partial activation. Local shell checks are separate from live installation/deployment; see [DEPLOY](DEPLOY.md).
+The old hook read the received SHA but checked out mutable `main`. The updated hook archives the received commit, writes `.ezbizi-release-sha` and uses a production lock. The receive wrapper installs pinned helpers, holds the lock through API/UI activation and checks identity. A failed UI swap restores the previous UI and reports partial activation. All three shell suites passed. Live API/UI release markers and the installed hook checksum were verified against this release; see [DEPLOY](DEPLOY.md).
 
 ### Supplemental P2 — reusable ownership policy
 

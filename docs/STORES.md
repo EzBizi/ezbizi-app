@@ -1,146 +1,41 @@
-# Getting EzBizi into the app stores
+# App builds, distribution and store submissions
 
-Console work, in the order it has to happen. Same spirit as MAIL-SETUP.md: the
-steps that cannot be done from this repo, written down before they are needed so
-nobody rediscovers them under pressure.
+Repository behavior verified 2026-09-08. This document describes what the build scripts do; it does not assert current public store availability, account approval or successful upload of a particular release. Record those outcomes with a dated console/release result on the work board and in [STATUS](EZBIZI-STATUS.md).
 
-Decided: EzBizi ships through the **public** stores, and buys **no code-signing
-certificate**. That is not a compromise — a self-hosted MSIX would need one, but
-a Store-published build is signed by Microsoft; Play App Signing means Google
-holds the Android key; Apple issues its own through the Developer Program. The
-A1 Chimney YubiKey is not used here and should not be proposed.
+Developer accounts and connections owned by EzBizi use **development@ezbizi.com**, after that Workspace mailbox exists. Use the organization identity and existing registered app records. Customer OAuth remains the customer's identity. Keep signing credentials and reviewer passwords outside the repository, board and chat.
 
-The cost is accounts and review latency, not certificates.
+## Build and publication matrix
 
----
+| Target | Current repository identity | Build artifact | Publication implemented |
+|---|---|---|---|
+| Windows | EzBizi | Flutter release folder, packaged as an Inno Setup `.exe` | `release.sh` uploads versioned/current installers and then `windows.json` to the website download directory. This is the desktop updater's channel; MSIX/Partner Center publication is not implemented here. |
+| Android | `com.ezbizi.app`, display label EzBizi | Release `.aab`, signed with the configured local upload key | The release saves the AAB under `Distribution/Android`. No automatic Play Console upload or production-track promotion is implemented. |
+| iOS | `com.ezbizi.app`, display name EzBizi | Signed `.ipa` exported on the Mac relay when the correct distribution identity/profile is available | `build-app.sh --upload` invokes the relay upload helper; `release.sh` requests this upload. Upload submits a build to App Store Connect for processing/testing, not public review or release. |
+| macOS | `com.ezbizi.app`, product name EzBizi | Signed archive exported to `.pkg` on the Mac relay | With `--upload`, the relay helper submits the package to App Store Connect. This does not submit the app version for public review or establish store availability. |
 
-## Do this first, before any submission
+Source of truth: [release orchestration](../scripts/release.sh), [native builds](../scripts/build-app.sh), [Windows installer](../scripts/windows-installer.iss), [desktop updater](../client/lib/core/desktop_update.dart), [Android configuration](../client/android/app/build.gradle.kts), [Android label](../client/android/app/src/main/AndroidManifest.xml), [iOS project](../client/ios/Runner.xcodeproj/project.pbxproj), [iOS display name](../client/ios/Runner/Info.plist), and [macOS identity](../client/macos/Runner/Configs/AppInfo.xcconfig).
 
-### Fix the bundle identifiers
+The Windows installer currently has no signing step. Do not describe it as Microsoft-signed or assume a certificate purchase is required by this workflow. The A1 Chimney YubiKey is not used here. Android's local upload key is separate from any app-signing key managed in Play Console; the repository does not establish that console configuration.
 
-They are still `flutter create` defaults and they do not match each other:
+Standalone Apple build helpers have unsigned/ad-hoc compile fallbacks when signing identities are absent. An unsigned compile check is not an installable/store-upload result. The release orchestrator performs signing preflights; report the actual signed artifact and upload outcome rather than treating any successful compilation as distribution.
 
-| Platform | Current | Where |
-|---|---|---|
-| Android | `com.ezbizi.ezbizi_client` | `client/android/app/build.gradle.kts` |
-| iOS/macOS | `com.ezbizi.ezbiziClient` | `client/ios/Runner.xcodeproj/project.pbxproj` |
+Artifacts go to the main checkout's `Distribution/Windows`, `Distribution/Android` and `Distribution/Apple`, including when the release runs from a pinned worktree. `client/VERSION` and the pinned commit supply release identity. Do not take the product version from the template version in `client/pubspec.yaml`.
 
-**A bundle identifier is permanent.** Once a build carrying one is accepted, it
-is the app's identity forever — you cannot rename it, and shipping under a new
-one means a new listing that existing installs will never update to. So this is
-a five-minute edit now and an unfixable annoyance later.
+## Console work, separate from building
 
-Pick one and use it everywhere. `com.ezbizi.app` reads correctly in a store
-listing and does not contain the word "client", which is an implementation
-detail nobody outside this repo should see.
+These are checks for the next submission, not claims that every item is currently missing. Inspect existing console records and the [work board](http://localhost:8787) before creating duplicate accounts, identifiers or listings.
 
-Display names need the same pass: Android's label is `ezbizi_client` and iOS's
-`CFBundleDisplayName` is `Ezbizi Client`. Both should be **EzBizi**, spelled with
-the capital B, which is the product's name.
+- **Apple:** verify organization membership, registered app record/platform, team, signing profile and upload credentials. After upload, confirm processing, resolve any required compliance answers, select the intended build, update metadata/screenshots/privacy answers and reviewer access, then explicitly submit the app version for review when authorized. Record review and public-release outcomes separately from TestFlight/build upload.
+- **Google Play:** verify the organization account and existing `com.ezbizi.app` record, upload/app-signing configuration, policy declarations and selected testing/production track. Upload the signed AAB through the console or a separately authorized publication workflow. Track review and production rollout explicitly; a local AAB does not complete them.
+- **Microsoft:** the current release path is website `.exe` distribution. Any Microsoft Store listing, packaging/signing route or Partner Center submission is separate work, to be scoped and verified before implementation. Do not treat the old MSIX plan as an existing capability.
+- **All submissions:** maintain usable reviewer access with representative tenant data and a valid subscription. Check privacy, support and marketing links; answer data declarations from actual collection and use, including the `HoldsPersonalData` inventory. Keep screenshots consistent with the submitted build.
 
-### Have a demo account ready, and keep it alive
+Fees, enrollment requirements, test-track rules, screenshot dimensions and review policies are deliberately not quoted as current facts here. Verify the relevant provider's current requirements and the account's actual console state when doing that work; no provider-console checks were performed for this documentation update.
 
-Apple and Google both reject an app a reviewer cannot get inside, and EzBizi is
-sign-in-only. Submit working credentials with representative data, and make sure
-that account does not lapse — a reviewer landing on an expired subscription is a
-rejection, and the appeal costs more days than the fix.
+The previous document was an early enrollment plan. Its claims that identifiers/display names remained Flutter defaults, Apple releases were always unsigned, and Windows shipped through MSIX are superseded by the repository evidence above. Existing incident and submission records remain in [build history](EZBIZI-BUILD-LOG.md) and the [documentation index](README.md).
 
-Give it a real organization with a couple of companies, some customers and some
-jobs. An empty account looks broken to somebody who has never seen the product.
+## Installed-client compatibility
 
-### Have the public URLs ready
+The client sends platform/version information and the server supports a minimum version per platform through the control plane. **Do not set or raise that minimum as part of these steps.** Follow [active constraints](ACTIVE-CONSTRAINTS.md): a database floor can lock out installed clients and reviewers without any code deployment.
 
-Every store asks for these and will not accept a placeholder:
-
-- a privacy policy at a stable public URL
-- a support URL or support email
-- a marketing URL (the site is enough)
-
----
-
-## Apple — iOS and macOS
-
-One Developer Program membership covers both. Currently **$99/year**.
-
-**Enrol as an organization, not an individual.** Individual enrolment is faster
-but the seller name on the listing becomes a person's legal name, which is wrong
-for a product sold to businesses. Organization enrolment requires a **D-U-N-S
-number** for the legal entity — free from Dun & Bradstreet, but it can take days
-to a couple of weeks to issue or correct. **Start this first**; it is the longest
-lead time in this document and everything Apple-shaped waits behind it.
-
-Then, in App Store Connect:
-
-1. Register the bundle ID (the fixed one, from above).
-2. Create the app records — iOS and macOS are separate records sharing one ID.
-3. Fill in the privacy questionnaire. EzBizi handles customer contact details and
-   staff personal data, so answer it against `HoldsPersonalData` and the data
-   inventory rather than from memory.
-4. Screenshots at the required sizes, for each device class. For the Mac,
-   `scripts/store-screenshots.sh` takes the whole set from the real app on the
-   relay in one command; its header says where the demo credentials live.
-5. Upload a build. Builds come from the Mac relay — see `scripts/build-app.sh`,
-   which currently builds `--no-codesign`. Signed builds need the team and a
-   provisioning profile installed on the relay first.
-
-**TestFlight** is the way to get it onto a real phone before any public listing,
-and is worth using well before submitting. Builds expire after 90 days.
-
-**Apple Business Manager custom apps** were considered and set aside when the
-answer was "public". Worth remembering it exists if a customer ever wants a
-private build.
-
-## Google — Android
-
-Play Console, currently **$25 one-time**.
-
-**Register as an organization.** Beyond the same seller-name reason as Apple,
-Google applies extra requirements to *personal* developer accounts created in
-recent years — a closed test with a minimum number of testers running for a
-minimum period before production access is granted. Organization accounts are not
-subject to it. Confirm the current rules at signup; this policy has changed more
-than once.
-
-1. Create the app, choose the package name (permanent, as above).
-2. Turn on **Play App Signing** — Google holds the upload key and re-signs. This
-   is what removes the certificate requirement.
-3. Complete the **Data safety** form. Same source as Apple's privacy answers;
-   they must agree with each other and with what the app actually does.
-4. Content rating questionnaire, target audience, ads declaration (none).
-5. Internal testing track first, then closed, then production.
-
-Once shipping, add the **In-App Updates API** so an outdated app can prompt the
-user without leaving the app. That is the Android complement to the server-side
-version gate — the gate says *you are too old*, the API is how they fix it.
-
-## Microsoft — Windows
-
-Partner Center, one-time fee (individual and company tiers differ; company
-requires verification). Verification can take a few days.
-
-1. Reserve the app name.
-2. Package as **MSIX**. Flutter does not do this itself — the `msix` pub package
-   is the usual route, configured in `client/pubspec.yaml`.
-3. Submit unsigned; Microsoft signs on ingestion.
-
-To test an MSIX locally before submitting you need a self-signed certificate and
-to trust it on the machine. That is a development convenience, not a purchase,
-and it never leaves the build machine.
-
----
-
-## What the server already does about all this
-
-`scripts/build-app.sh` builds every non-web target and stamps each with the
-version from `client/VERSION`, the commit, and a `+` if the tree was dirty. The
-Apple targets go through the Mac relay in one session.
-
-The client sends its platform and version on every request, and the server holds
-a **minimum version per platform**, set from the control plane. An outdated app
-is answered with HTTP 426 and a plain sentence rather than failing strangely.
-
-The minimum is per platform on purpose: Windows can ship a fix in minutes while
-iOS sits in review for days, so one global number would lock out every iOS user
-the moment Windows moved. The gate also **fails open** — no version header, an
-unparseable version, an unconfigured platform all pass — because the blast radius
-of failing closed is every customer at once.
+The middleware's current compatibility behavior is defined in [EnforceMinimumClientVersion](../app/Http/Middleware/EnforceMinimumClientVersion.php). A build upload or review delay must not be worked around by forcing installed users onto an unavailable version. API deployment precedes new client publication; release gates, SHA checks and partial-failure handling are documented in [DEPLOY](DEPLOY.md).
