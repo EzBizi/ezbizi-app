@@ -59,6 +59,46 @@ void main() {
 
     expect(shut, open, reason: 'the two heights diverge on a narrow screen');
   });
+
+  /// A NEW schedule does not start on a fixed offset.
+  ///
+  /// Making places selectable fixed what could be chosen. This is where the
+  /// wrong one was being chosen for you: the blank form hardcoded
+  /// `Etc/GMT+5`, so every schedule created from this screen began on a clock
+  /// with no daylight saving and answered an hour early from March to
+  /// November.
+  ///
+  /// Asserted as "not an Etc/ offset" rather than as one expected zone,
+  /// because the point is the CLASS of value. A test naming America/New_York
+  /// would pass for a US-only default that is wrong the moment somebody opens
+  /// an office in Denver; this one fails for any fixed offset and for nothing
+  /// else.
+  testWidgets('a new schedule starts on a real place, not an offset', (
+    tester,
+  ) async {
+    await _pump(tester, openEditor: false);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Add hours'));
+    await tester.pumpAndSettle();
+
+    final dropdown = tester.widget<DropdownButtonFormField<String>>(
+      find.byType(DropdownButtonFormField<String>),
+    );
+
+    expect(
+      dropdown.initialValue,
+      isNotNull,
+      reason: 'a new schedule has no clock at all',
+    );
+
+    expect(
+      dropdown.initialValue!.startsWith('Etc/'),
+      isFalse,
+      reason:
+          'a new schedule starts on ${dropdown.initialValue}, a fixed offset '
+          'that ignores daylight saving',
+    );
+  });
 }
 
 double _rowHeight(WidgetTester tester, String day) {
@@ -71,7 +111,11 @@ double _rowHeight(WidgetTester tester, String day) {
       .height;
 }
 
-Future<void> _pump(WidgetTester tester, {Size size = const Size(1280, 900)}) async {
+Future<void> _pump(
+  WidgetTester tester, {
+  Size size = const Size(1280, 900),
+  bool openEditor = true,
+}) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -113,6 +157,8 @@ Future<void> _pump(WidgetTester tester, {Size size = const Size(1280, 900)}) asy
     ),
   );
   await tester.pumpAndSettle();
+
+  if (!openEditor) return;
 
   // The day rows live in the editor, not the list. Open the one schedule.
   await tester.tap(find.widgetWithText(TextButton, 'Edit'));

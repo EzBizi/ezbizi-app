@@ -642,7 +642,28 @@ class _Draft {
     id: null,
     connectionId: connectionId,
     name: '',
-    timezone: 'Etc/GMT+5',
+
+    // A REAL ZONE, not an offset.
+    //
+    // This was 'Etc/GMT+5', so every schedule created from this screen began
+    // on a clock that does not observe daylight saving — the hours then answer
+    // an hour early for the half of the year New York spends on EDT. The
+    // dropdown offering places fixed what could be CHOSEN; this is where the
+    // wrong one was being chosen for you.
+    //
+    // It matches what Phone already does elsewhere: HoursController defaults a
+    // franchise-scoped schedule to the franchise's own timezone, which is
+    // America/New_York on every franchise row in production, and falls back to
+    // that same value when a franchise has none. So the blank form now agrees
+    // with the server rather than contradicting it.
+    //
+    // Deliberately NOT read from the organization's timezone setting. Phone
+    // does not consult that setting anywhere — it reads the franchise column
+    // or refuses and makes somebody choose — and the platform default is
+    // itself a fixed offset that the Marketing session has escalated to Jose
+    // as a product decision. Reaching for it here would import the defect this
+    // line exists to remove.
+    timezone: 'America/New_York',
     week: {
       for (final key in const ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'])
         key: _DayDraft(
