@@ -211,6 +211,22 @@ months behind grey secondary text.
 > people act on it before it is checked. Read the whole method: compute the end
 > with `awk` on the next `function`, never `+N`.
 
+> **A SECOND finding, 2026-09-08, in the cut that was running:** website
+> enquiries raise no `lead.received`. `app/Support/Web/WebsiteEnquiries.php`
+> creates a Lead for `website_chat` and `website_form` and emits **nothing** —
+> zero `emit`/`events` in the file — while `LocalServicesLeads.php:137` and
+> `ThumbtackLeads.php:73` both emit on create. So an automation on *"Lead
+> received"* would fire for three sources and silently skip the fourth, with no
+> error and the rule sitting enabled. Partly mitigated and checked rather than
+> assumed: messages DO go through `LeadThread`, so `lead.contact_received` fires
+> — it is specifically the lead's ARRIVAL that raises nothing. One
+> `emitAfterCommit` fixes it. Reported to the desk, Leads and Web Management.
+>
+> **The check that found it is the one that came out clean on booking**, and that
+> is the point worth keeping: when a NEW path creates an existing kind of thing,
+> ask whether it raises the same events the old paths do. Booking passed; the
+> website path did not, and it is new code rather than a regression.
+
 **When two errors are not equally bad, neither one may be the silent default.**
 Booking a lead offers `customer_matches` — customers sharing the lead's last ten
 digits, which the server itself calls *advisory only*. Attaching to the **wrong
