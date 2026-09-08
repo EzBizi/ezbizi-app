@@ -618,6 +618,177 @@ void main() {
     expect(find.byType(Dialog), findsNothing);
   });
 
+  // ── Bug 1: create files on the current VIEW, never the organization ───
+  //
+  // Jose, standing at a company (A-1 Chimney), tapped "New guide" and got
+  // the server's own refusal — `PlaceInView::assert` correctly rejects an
+  // organization-level filing (`company_id === null`) from a non-org view.
+  // The server was right; `_newGuide`/`_newTest` (settings_tab.dart) were
+  // wrong — they never sent a place at all, so every create was an
+  // organization filing regardless of where the author was standing. These
+  // assert on the REQUEST BODY, not the screen: the screen looks identical
+  // whether or not `company_id` made it into the POST.
+
+  testWidgets(
+    'at a company view, "New guide" files it on that company — never the organization',
+    (tester) async {
+      Map<String, dynamic>? sentBody;
+
+      await _pumpScreen(
+        tester,
+        permissions: const ['training.view', 'training.manage'],
+        me: _companyScope,
+        onRequest: (request) {
+          if (request.method == 'POST' && request.url.path.endsWith('/training/guides')) {
+            sentBody = jsonDecode(request.body) as Map<String, dynamic>;
+            return _json({'data': _guide(id: 'new-g1', title: 'Untitled guide', companyId: 'co-a1')});
+          }
+          if (request.method == 'GET' && request.url.path.endsWith('/training/guides/new-g1')) {
+            return _json({'data': _guide(id: 'new-g1', title: 'Untitled guide', companyId: 'co-a1')});
+          }
+          return null;
+        },
+      );
+
+      await tester.tap(find.text('Settings'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('New guide'));
+      await tester.pumpAndSettle();
+
+      expect(sentBody, isNotNull);
+      // Before the fix this key is simply absent — `sentBody!['company_id']`
+      // reads `null`, same as filing on the group, which is exactly the
+      // organization-level POST the server correctly refused for Jose.
+      expect(sentBody!['company_id'], 'co-a1');
+    },
+  );
+
+  testWidgets(
+    'at a company view, "New test" files it on that company too',
+    (tester) async {
+      Map<String, dynamic>? sentBody;
+
+      await _pumpScreen(
+        tester,
+        permissions: const ['training.view', 'training.manage'],
+        me: _companyScope,
+        onRequest: (request) {
+          if (request.method == 'POST' && request.url.path.endsWith('/training/tests')) {
+            sentBody = jsonDecode(request.body) as Map<String, dynamic>;
+            return _json({'data': _test(id: 'new-t1', title: 'Untitled test', companyId: 'co-a1')});
+          }
+          if (request.method == 'GET' && request.url.path.endsWith('/training/tests/new-t1')) {
+            return _json({'data': _test(id: 'new-t1', title: 'Untitled test', companyId: 'co-a1')});
+          }
+          return null;
+        },
+      );
+
+      await tester.tap(find.text('Settings'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('New test'));
+      await tester.pumpAndSettle();
+
+      expect(sentBody, isNotNull);
+      expect(sentBody!['company_id'], 'co-a1');
+    },
+  );
+
+  // ── Bug 2: the builder stays inside the app — no route, chrome intact ──
+  //
+  // Jose's words: opening a guide from Settings replaced the entire
+  // window — sidebar, header, top bar, all gone, because `_openGuide`/
+  // `_openTest` pushed a `MaterialPageRoute`. Learn already does this
+  // correctly (`LearnShelves._selected`, an in-body swap via `setState`,
+  // no route) — Settings must do the same. `navigator.canPop()` is the
+  // direct proof nothing was pushed: a real push leaves something to pop.
+
+  testWidgets(
+    'opening an existing guide from Settings stays inside the app — no route is pushed',
+    (tester) async {
+      await _pumpScreen(
+        tester,
+        permissions: const ['training.view', 'training.manage'],
+        guides: [_guide(id: 'g1', title: 'Ladder Safety', screens: [_screen('Intro')])],
+      );
+
+      await tester.tap(find.text('Settings'));
+      await tester.pumpAndSettle();
+
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      expect(navigator.canPop(), isFalse);
+
+      await tester.tap(find.text('Ladder Safety'));
+      await tester.pumpAndSettle();
+
+      // Reached the real builder...
+      expect(find.byKey(const Key('training.screen-editor')), findsOneWidget);
+      // ...without a route push: still nothing to pop, still one Scaffold
+      // (the harness's own — a pushed route wrapped in its own `Scaffold`
+      // would make this two), and the module's own tab strip (never
+      // redrawn by GuideBuilder) is still on screen beside it.
+      expect(navigator.canPop(), isFalse);
+      expect(find.byType(Scaffold), findsOneWidget);
+      expect(find.text('Learn'), findsOneWidget);
+      expect(find.text('Settings'), findsOneWidget);
+    },
+  );
+
+  // ── Both bugs together: the empty state, which is how Jose hit this ───
+  //
+  // A test that stubs guide rows in cannot see a broken way to create the
+  // FIRST one — Jose had zero guides at A-1 Chimney, which is exactly why
+  // "New guide" (not an existing row) was his only door in.
+
+  testWidgets(
+    'a company view with no guides yet can still create the first one — filed on '
+    'the company, in-body, with the tab strip still on screen',
+    (tester) async {
+      Map<String, dynamic>? sentBody;
+
+      await _pumpScreen(
+        tester,
+        permissions: const ['training.view', 'training.manage'],
+        me: _companyScope,
+        guides: const [],
+        onRequest: (request) {
+          if (request.method == 'POST' && request.url.path.endsWith('/training/guides')) {
+            sentBody = jsonDecode(request.body) as Map<String, dynamic>;
+            return _json({'data': _guide(id: 'new-g1', title: 'Untitled guide', companyId: 'co-a1')});
+          }
+          if (request.method == 'GET' && request.url.path.endsWith('/training/guides/new-g1')) {
+            return _json({'data': _guide(id: 'new-g1', title: 'Untitled guide', companyId: 'co-a1')});
+          }
+          return null;
+        },
+      );
+
+      await tester.tap(find.text('Settings'));
+      await tester.pumpAndSettle();
+
+      // The empty state itself — the entry point Jose actually used, not a
+      // stubbed row.
+      expect(find.text('No guides yet — "New guide" starts one.'), findsOneWidget);
+
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      expect(navigator.canPop(), isFalse);
+
+      await tester.tap(find.text('New guide'));
+      await tester.pumpAndSettle();
+
+      // Bug 1: filed on the view actually standing on it.
+      expect(sentBody, isNotNull);
+      expect(sentBody!['company_id'], 'co-a1');
+
+      // Bug 2: still inside the app.
+      expect(navigator.canPop(), isFalse);
+      expect(find.byType(Scaffold), findsOneWidget);
+      expect(find.text('Learn'), findsOneWidget);
+      expect(find.text('Settings'), findsOneWidget);
+      expect(find.byKey(const Key('training.screen-editor')), findsOneWidget);
+    },
+  );
+
   // ── Reorder: move-left/move-right, not drag (ruled finding) ────────────
 
   testWidgets(
@@ -869,6 +1040,7 @@ Future<void> _pumpGuideBuilder(
 Future<void> _pumpScreen(
   WidgetTester tester, {
   required List<String> permissions,
+  Map<String, dynamic>? me,
   List<Map<String, dynamic>> guides = const [],
   List<Map<String, dynamic>> tests = const [],
   http.Response? Function(http.Request request)? onRequest,
@@ -882,7 +1054,7 @@ Future<void> _pumpScreen(
 
       if (path.endsWith('/me')) {
         return _json({
-          'data': {..._me, 'permissions': permissions},
+          'data': {..._me, 'permissions': permissions, ...?me},
         });
       }
       if (path.endsWith('/training/learn')) {
@@ -961,5 +1133,33 @@ const _me = {
       'available': true,
       'reachable': true,
     },
+  ],
+};
+
+/// `me` override for a session standing at a COMPANY view — bug 1's own
+/// repro shape (Jose at A-1 Chimney). `scope.type` is `'company'`, so
+/// `Me.filingCompanyId` (session.dart) resolves to `co-a1`, never `null`
+/// and never `companies.first` off some other company reachable but not in
+/// view.
+const _companyScope = {
+  'organization': {
+    'id': 'org-1',
+    'name': 'EzBizi Group',
+    'franchise_label': 'Franchise',
+    'is_read_only': false,
+  },
+  'scope': {
+    'type': 'company',
+    'id': 'co-a1',
+    'label': 'A-1 Chimney',
+    'path': ['A-1 Chimney'],
+  },
+  'companies': [
+    {'id': 'co-a1', 'name': 'A-1 Chimney', 'parent_company_id': null},
+    {'id': 'co-ever', 'name': 'Everdoors', 'parent_company_id': null},
+  ],
+  'franchises': [
+    {'id': 'fr-a1', 'name': 'Connecticut', 'company_id': 'co-a1'},
+    {'id': 'fr-ever', 'name': 'Ohio', 'company_id': 'co-ever'},
   ],
 };

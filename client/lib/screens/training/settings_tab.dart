@@ -17,15 +17,22 @@ import 'test_builder.dart';
 /// one level up and the storyboard is reached by leaving it entirely, not by
 /// a pane beside it (the rejected layout 7's own shape).
 ///
-/// Selecting a row PUSHES a real route — never a modal, never a pane — to
-/// [GuideBuilder] or [TestBuilder], each wrapped in its own `Scaffold` the
-/// same way `GuidePlayer._openTest` wraps `TestPlayer` (see that file's own
-/// docblock on why the wrap is not optional: the pushed widget's own
-/// `RadioListTile`s/`TextFormField`s need a `Material`/`Form` ancestor a bare
-/// route does not supply). `training_builder_test.dart`'s own "through the
-/// real route" test reaches both this way, not by constructing either
-/// builder directly, guarding the exact class of bug task 13's postmortem
-/// describes.
+/// Selecting a row SWAPS [_open] via `setState` — never a modal, never a
+/// `Navigator.push` — so [build] returns [GuideBuilder] or [TestBuilder] in
+/// place of the list, the exact same in-body pattern `LearnShelves._selected`
+/// already uses for its own two players (learn_shelves.dart). The app shell
+/// — sidebar, header, top bar — is whatever already wraps this tab; a real
+/// route replaced all of it, which is the containment bug this fixed (Jose:
+/// "it should all be within the main UI"). Neither builder needs a `Scaffold`
+/// of its own to supply `Material`/`Form` for its `RadioListTile`s/
+/// `TextFormField`s here — rendered in-body, the app shell's own `Material`
+/// (from `Scaffold`, further up the tree) already reaches them, the same way
+/// it already reaches `LearnShelves`' swapped-in players. A route push is
+/// what used to force the artificial `Scaffold` wrap; without a push there
+/// is nothing to wrap. `training_builder_test.dart`'s own "through the real
+/// route" tests still reach both by tapping through from this tab's real
+/// UI, never by constructing either builder directly — the same guarantee
+/// task 13's postmortem calls for, just proven without a route to push.
 class TrainingSettingsTab extends StatefulWidget {
   const TrainingSettingsTab({super.key, required this.api, required this.session});
 
@@ -44,6 +51,13 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
 
   bool _creating = false;
   String? _createError;
+
+  /// (type, id) of the builder open in place of the list — 'guide' or
+  /// 'test'. Null when neither is open, which is when the list draws. The
+  /// same shape `LearnShelves._selected` uses for its own two players.
+  (String, String)? _open;
+
+  Me get _me => widget.session.me!;
 
   @override
   void initState() {
@@ -84,38 +98,17 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
     });
   }
 
-  void _openGuide(String id) {
-    Navigator.of(context)
-        .push(
-          MaterialPageRoute<void>(
-            builder: (routeContext) => Scaffold(
-              body: GuideBuilder(
-                api: widget.api,
-                session: widget.session,
-                guideId: id,
-                onLeave: () => Navigator.of(routeContext).pop(),
-              ),
-            ),
-          ),
-        )
-        .then((_) => _load());
-  }
+  void _openGuide(String id) => setState(() => _open = ('guide', id));
 
-  void _openTest(String id) {
-    Navigator.of(context)
-        .push(
-          MaterialPageRoute<void>(
-            builder: (routeContext) => Scaffold(
-              body: TestBuilder(
-                api: widget.api,
-                session: widget.session,
-                testId: id,
-                onLeave: () => Navigator.of(routeContext).pop(),
-              ),
-            ),
-          ),
-        )
-        .then((_) => _load());
+  void _openTest(String id) => setState(() => _open = ('test', id));
+
+  /// The builder's own "All training" back link (guide_builder.dart,
+  /// test_builder.dart) calls this — the in-body equivalent of the old
+  /// route's pop, so a title/publish-status edit made inside the builder is
+  /// reflected the moment the list draws again.
+  void _closeBuilder() {
+    setState(() => _open = null);
+    _load();
   }
 
   Future<void> _newGuide() async {
@@ -124,7 +117,14 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
       _createError = null;
     });
 
-    final response = await widget.api.post('/training/guides', {'title': 'Untitled guide'});
+    final response = await widget.api.post('/training/guides', {
+      'title': 'Untitled guide',
+      // The current view's own place — never `me.companies.first`, which
+      // is reach, not view. `null` at the organization, exactly what the
+      // server requires there (`PlaceInView::assert`).
+      'company_id': ?_me.filingCompanyId,
+      'franchise_id': ?_me.filingFranchiseId,
+    });
     if (!mounted) return;
     setState(() => _creating = false);
 
@@ -145,6 +145,8 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
     final response = await widget.api.post('/training/tests', {
       'title': 'Untitled test',
       'questions': const [],
+      'company_id': ?_me.filingCompanyId,
+      'franchise_id': ?_me.filingFranchiseId,
     });
     if (!mounted) return;
     setState(() => _creating = false);
@@ -159,6 +161,14 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
 
   @override
   Widget build(BuildContext context) {
+    final open = _open;
+    if (open != null) {
+      final (type, id) = open;
+      return type == 'test'
+          ? TestBuilder(api: widget.api, session: widget.session, testId: id, onLeave: _closeBuilder)
+          : GuideBuilder(api: widget.api, session: widget.session, guideId: id, onLeave: _closeBuilder);
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

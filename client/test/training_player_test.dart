@@ -167,17 +167,19 @@ void main() {
     expect(find.text('Passed'), findsOneWidget);
   });
 
-  // ── The real route, not the test harness's own shortcut ─────────────
+  // ── Through the real interaction, not the test harness's own shortcut ──
   //
   // `_pumpTest` (below) builds `TestPlayer` directly inside `Scaffold(body:
-  // ...)`, which is NOT how the app reaches it — `GuidePlayer._openTest`
-  // pushes it as its own route via `Navigator.push`. A `TestPlayer` that
-  // supplies no `Material`/`Scaffold` of its own renders fine under
-  // `_pumpTest`'s borrowed one and throws "No Material widget found" the
-  // moment it is reached the real way, which `_pumpTest` can never catch
-  // because it never goes through `_openTest` at all.
+  // ...)`, which is NOT how the app reaches it from here — `GuidePlayer`
+  // swaps it in for the reader via `setState` (`_openTest`/`_testOpen`), the
+  // same in-body pattern `LearnShelves._selected` uses; no route is pushed,
+  // so there is nothing left to wrap in a `Scaffold` of its own. This test
+  // still taps the real "start test" control on the real reader — not a
+  // direct `TestPlayer` construction — so a future regression that stops
+  // wiring `TestPlayer` up to that tap shows up here, the same guarantee
+  // this test held when the wiring was a pushed route.
   testWidgets(
-    'opening the test from the guide reader, through the real route, renders '
+    'opening the test from the guide reader, through the real interaction, renders '
     'the choices and Submit',
     (tester) async {
       await _pumpGuide(
@@ -186,12 +188,21 @@ void main() {
         test: _testEntry(guideId: 'g1', requiresGuide: true),
       );
 
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      expect(navigator.canPop(), isFalse);
+
       await tester.tap(find.byKey(const Key('training.start-test')));
       await tester.pumpAndSettle();
 
       expect(find.text('One foot out for every four feet'), findsOneWidget);
       expect(find.text('Four rungs per minute'), findsOneWidget);
       expect(find.byKey(const Key('training.submit-test')), findsOneWidget);
+
+      // Bug 2's third instance (`GuidePlayer._openTest`): reaching the test
+      // never pushes a route — still nothing to pop, still the harness's
+      // one Scaffold, same as `LearnShelves`' own swap.
+      expect(navigator.canPop(), isFalse);
+      expect(find.byType(Scaffold), findsOneWidget);
     },
   );
 

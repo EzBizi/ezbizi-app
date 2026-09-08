@@ -91,6 +91,12 @@ class _GuidePlayerState extends State<GuidePlayer> {
 
   int _current = 0;
 
+  /// True once the reader's own "Unlocks when all N are seen" control has
+  /// been used — [build] swaps [TestPlayer] in for the reader in place
+  /// (`setState`), the same in-body pattern `LearnShelves._selected` uses,
+  /// never a `Navigator.push`.
+  bool _testOpen = false;
+
   @override
   void initState() {
     super.initState();
@@ -189,34 +195,34 @@ class _GuidePlayerState extends State<GuidePlayer> {
     unawaited(_markSeen(index));
   }
 
-  void _openTest(BuildContext context) {
-    final test = _test;
-    if (test == null) return;
-
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        // `TestPlayer` supplies only a header `Material` (test_player.dart)
-        // — its body's `RadioListTile`s need a `Material` ancestor of their
-        // own, and a bare `MaterialPageRoute` gives a pushed page none. The
-        // test harness's `_pumpTest` (training_player_test.dart) hid this
-        // for a long time by building `TestPlayer` straight inside its own
-        // borrowed `Scaffold(body: ...)`, which is not how this app ever
-        // reaches it — only `_openTest`'s real route is. Wrap here, the way
-        // every other pushed screen in this app is wrapped.
-        builder: (_) => Scaffold(
-          body: TestPlayer(
-            api: widget.api,
-            session: widget.session,
-            testId: test['id'] as String,
-            onLeave: () => Navigator.of(context).pop(),
-          ),
-        ),
-      ),
-    );
+  void _openTest() {
+    if (_test == null) return;
+    setState(() => _testOpen = true);
   }
+
+  void _closeTest() => setState(() => _testOpen = false);
 
   @override
   Widget build(BuildContext context) {
+    final test = _test;
+    if (_testOpen && test != null) {
+      // In-body, the same as `LearnShelves._selected` swaps its own two
+      // players in — no `Navigator.push`, so nothing above this widget
+      // (the app shell included) is ever replaced. `TestPlayer` supplies
+      // only a header `Material` of its own (test_player.dart) — its body's
+      // `RadioListTile`s need a `Material` ancestor, which the app shell's
+      // own `Scaffold`, further up the tree, already supplies here exactly
+      // as it does for `LearnShelves`' swapped-in players. A route push is
+      // what used to force wrapping this in its own `Scaffold`; without a
+      // push there is nothing to wrap.
+      return TestPlayer(
+        api: widget.api,
+        session: widget.session,
+        testId: test['id'] as String,
+        onLeave: _closeTest,
+      );
+    }
+
     final total = _screens.length;
     final seenCount = _lastScreen >= 0 ? (_lastScreen + 1).clamp(0, total).toInt() : 0;
 
@@ -263,7 +269,7 @@ class _GuidePlayerState extends State<GuidePlayer> {
                                     test: _test!,
                                     unlocked: unlocked,
                                     totalScreens: total,
-                                    onStart: () => _openTest(context),
+                                    onStart: _openTest,
                                   )
                                 : null,
                           );
@@ -284,7 +290,7 @@ class _GuidePlayerState extends State<GuidePlayer> {
                                     onSelect: _selectScreen,
                                     test: _test,
                                     unlocked: unlocked,
-                                    onStartTest: () => _openTest(context),
+                                    onStartTest: _openTest,
                                   ),
                                 ),
                               ),
