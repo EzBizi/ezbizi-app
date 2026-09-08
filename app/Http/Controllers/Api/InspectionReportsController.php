@@ -10,6 +10,7 @@ use App\Support\Automations\EventEmitter;
 use App\Support\Files\HardenedPdf;
 use App\Support\Inspection\LooksLikeJobNumber;
 use App\Support\Inspection\ReportDocument;
+use App\Support\Inspection\InspectionScope;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingRegistry;
 use App\Support\Settings\SettingsResolver;
@@ -58,10 +59,7 @@ class InspectionReportsController extends Controller
             $query->whereNull('archived_at');
         }
 
-        $query->where(function ($q) use ($reachable) {
-            $q->whereNull('job_id')
-                ->orWhereHas('job', fn ($jobs) => $jobs->withTrashed()->whereIn('franchise_id', $reachable));
-        });
+        InspectionScope::constrainReports($query, $reachable->all());
 
         $message = null;
 
