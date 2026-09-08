@@ -168,3 +168,22 @@ its new hooks on the box by design (the box held the old hook and no
 `receive-release` at 13:20 UTC).
 
 A1 Tools sessions live in `H:\A1Chimney\a1_tools` and are outside this file.
+
+## Three conformances every hand-over states (Jose, 2026-09-08 evening)
+
+Jose's words before leaving: "Make sure everything goes with the Organization -
+Company - Franchise Schema as well as with Automations and Roles-Permissions."
+The desk checks these three on every hand-over before the merge or the cut, and
+a hand-over that states them saves a round trip:
+
+1. **Placement.** Rows and queries are scoped by organization / company /
+   franchise (BelongsToTenant or the equivalent); an id never comes from the
+   caller. Say which model carries the scope and how a public route derives it.
+2. **Permission.** A new thing people can do has a permission, the routes are
+   gated by it, and the hand-over names the role(s) that grant it (or says it
+   is administrator-only until Jose grants it).
+3. **Automations.** A new event or record people would want to react to is a
+   trigger or action in the catalogue, or the hand-over says why not.
+
+A hand-over that cannot answer one goes back to its session with the question,
+never to Jose. Sessions decide as they believe and report; nobody waits for him.
