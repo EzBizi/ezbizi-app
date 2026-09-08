@@ -9,24 +9,11 @@ class VersionHistory {
   static const List<VersionRelease> releases = [
     VersionRelease(
       version: '0.0.0157',
-      date: '4 Sep 2026',
+      date: '8 Sep 2026',
       items: [
-        'Communication - Phone - Messages: texts from the same number are one '
-            'conversation now. Two messages from one person used to be two '
-            'rows headed with the same number, which reads as two strangers, '
-            'and opening one showed that message alone with no idea what came '
-            'before it. Opening a conversation shows both sides in order, and '
-            'the list shows the last thing said with "You:" in front of it '
-            'when it was us.',
-        'Communication - Phone - Voicemail opens on all your voicemails '
-            'instead of on a box. Boxes only fill once a line is pointed at '
-            'them, and none were - so every box was empty and the messages '
-            'that did exist could not be reached from that screen at all. A '
-            'box nothing is pointed at now says exactly that, rather than '
-            'showing an empty list that looks like a quiet week.',
-        'A voicemail box no longer prints "The company" under a name that '
-            'already said which company. That line only appears now when it '
-            'says something the name does not - whose box it is.',
+        'Communication - Phone - Messages: texts from the same number are one conversation now. Two messages from one person used to be two rows headed with the same number, which reads as two strangers, and opening one showed that message alone with no idea what came before it. Opening a conversation shows both sides in order, and the list shows the last thing said with "You:" in front of it when it was us.',
+        'Communication - Phone - Voicemail opens on all your voicemails instead of on a box. Boxes only fill once a line is pointed at them, and none were - so every box was empty and the messages that did exist could not be reached from that screen at all. A box nothing is pointed at now says exactly that, rather than showing an empty list that looks like a quiet week.',
+        'A voicemail box no longer prints "The company" under a name that already said which company. That line only appears now when it says something the name does not - whose box it is.',
       ],
     ),
     VersionRelease(
