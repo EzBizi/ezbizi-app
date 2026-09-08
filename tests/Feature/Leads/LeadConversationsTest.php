@@ -826,4 +826,34 @@ class LeadConversationsTest extends TestCase
         $this->assertSame(['From a form'], $form);
         $this->assertSame(['From Google'], $ads);
     }
+
+    /**
+     * Two messages inside one second keep their order. Web Management's
+     * first chat test caught a staff reply rendering above the visitor's
+     * question; Google stamps to the microsecond and the column dropped it.
+     */
+    public function test_messages_inside_one_second_keep_their_order(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::create([
+            'organization_id' => $t['org']->id, 'company_id' => $t['company']->id,
+            'source' => 'website_chat', 'remote_id' => 'chat-1', 'contact_name' => 'Visitor',
+            'status' => Lead::STATUS_NEW, 'received_at' => now(),
+        ]));
+
+        $base = \Illuminate\Support\Carbon::parse('2026-09-08 21:20:40.100000', 'UTC');
+
+        $this->inTenant($t['org'], function () use ($lead, $base) {
+            $threads = app(\App\Support\Leads\LeadThread::class);
+            $threads->store($lead, 'm-1', ['channel' => 'LIVECHAT', 'participant' => 'CONSUMER', 'occurred_at' => $base, 'text' => 'Are you open Saturday?']);
+            $threads->store($lead, 'm-2', ['channel' => 'LIVECHAT', 'participant' => 'ADVERTISER', 'occurred_at' => $base->copy()->addMilliseconds(300), 'text' => 'We are, 8 until 1.']);
+            $threads->refresh($lead);
+        });
+
+        $rows = $this->inTenant($t['org'], fn () => $lead->conversations()->get());
+        $this->assertSame(['m-1', 'm-2'], $rows->pluck('remote_id')->all());
+        $this->assertSame('21:20:40.400000', $rows[1]->occurred_at->format('H:i:s.u'), 'the fraction survives the write');
+        $this->assertSame('We are, 8 until 1.', $this->inTenant($t['org'], fn () => $lead->fresh()->last_contact_preview));
+    }
 }

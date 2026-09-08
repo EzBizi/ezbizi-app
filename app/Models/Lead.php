@@ -158,6 +158,9 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
             : null;
     }
 
+    /** Fractions written for received_at and last_contact_at (see LeadConversation). */
+    protected $dateFormat = 'Y-m-d H:i:s.u';
+
     protected $fillable = [
         'organization_id', 'company_id', 'franchise_id', 'connection_id', 'job_id',
         'source', 'remote_id', 'contact_name', 'phone', 'email', 'phone_digits',
