@@ -122,6 +122,20 @@
       cannot be copied, and it is not visible from looking at the two apps side by side.
     </div>
 
+    <div class="ask">
+      <strong>No leading-edge accent bar anywhere — Jose, 2026-09-08</strong>
+      The thin vertical rule down the leading edge of a bubble, a call row or a selected row is
+      <b>out</b>, on his instruction with a picture of one. Every layout in this file has been
+      stripped of it, including the two he did not pick, so nothing here can be read later as
+      permission to bring it back. The selected row in the list is now a
+      <code>primaryContainer</code> fill instead — 7.25:1 in both modes, and it survives being the
+      only marker because a filled row is unmistakable at a glance where a 3px rule is not.
+      <span class="brk">It is still shipped in three places I do not own.</span>
+      <code>email/message_body.dart:174</code> (the quoted-text block) and the Suggestions rows in
+      <code>suggestions_screen.dart:969</code> and <code>staff/suggestions_queue_screen.dart:525</code>
+      use the same device at 3px and 4px. Those are other modules' screens; whether the ruling
+      reaches them is Jose's to say, and it is in his to-do list rather than assumed either way.
+    </div>
     <div class="locked">
       <strong>Every pairing below passes AA in both brightnesses — measured, not assumed</strong>
       <code>onPrimaryContainer</code> on <code>primaryContainer</code> <b>7.25:1</b> (both),
@@ -168,7 +182,7 @@ const badgeStyle=(kind,mode)=>{
                        : 'background:var(--secondaryC);color:var(--onSecondaryC)';
 };
 
-const row=(l,i,sel,mode)=>`<div class="lead" style="${i===sel?'background:var(--low);box-shadow:inset 3px 0 0 var(--primary)':''}">
+const row=(l,i,sel,mode)=>`<div class="lead" style="${i===sel?'background:var(--primaryC);color:var(--onPrimaryC)':''}">
   <span class="dot ${l[2]==='they'?'':'off'}"></span>
   <div class="g"><div class="nm">${l[0]}
     <span class="badge" style="${badgeStyle(l[1],mode)}">${l[1]}</span></div>
@@ -177,14 +191,10 @@ const row=(l,i,sel,mode)=>`<div class="lead" style="${i===sel?'background:var(--
 // ours: 1 = spine, 2 = channel-tinted, 3 = saturated
 const ours=(v)=>{
   if(v===3) return 'background:var(--primary);color:var(--onPrimary);margin-left:auto';
-  if(v===2) return 'background:var(--secondaryC);color:var(--onSecondaryC);margin-left:auto;'
-    +'border-right:3px solid var(--primary)';
-  return 'background:var(--primaryC);color:var(--onPrimaryC);margin-left:auto;'
-    +'border-right:3px solid var(--primary)';
+  if(v===2) return 'background:var(--secondaryC);color:var(--onSecondaryC);margin-left:auto';
+  return 'background:var(--primaryC);color:var(--onPrimaryC);margin-left:auto';
 };
-const call=(v)=>v===2
-  ? 'border-color:var(--primary);border-left:3px solid var(--primary)'
-  : '';
+const call=(v)=>v===2 ? 'border-color:var(--primary)' : '';
 const playSty=(v)=>v===3
   ? 'background:var(--primary);color:var(--onPrimary)'
   : 'background:var(--primaryC);color:var(--onPrimaryC)';
@@ -233,7 +243,7 @@ function show(k){
   caption.innerHTML='<strong>'+CAPTIONS[k][0]+'</strong>'+CAPTIONS[k][1];
   stage.innerHTML=L[k]();
   window.scrollTo({top:0,behavior:'smooth'});}
-show(2);
+show(3);
 </script>
 </body>
 </html>

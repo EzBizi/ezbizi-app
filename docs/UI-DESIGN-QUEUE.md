@@ -175,6 +175,20 @@ app asks for that carries no weight of its own. **That test is what found the
 third one; the audit behind the gallery had only looked for the two I had
 already noticed.**
 
+**No leading-edge accent bar.** Jose, 2026-09-08, with a picture of one: *"stop
+with this shits."* The thin vertical rule down the leading edge of a bubble, a
+row or a card is out. It was in two of the six conversation-colour layouts and —
+the part I nearly shipped — on the **selected list row of the two he approved**,
+so "he picked the ones without it" was not true until I looked. Stripped from
+every layout in that file including the rejected ones, so nothing there reads
+later as permission to bring it back. A selected row is a `primaryContainer`
+fill instead: unmistakable at a glance, where a 3px rule is not, and 7.25:1 in
+both brightnesses.
+
+> Still shipped in three places design does not own — `email/message_body.dart:174`,
+> `suggestions_screen.dart:969`, `staff/suggestions_queue_screen.dart:525`. Whether
+> the ruling reaches them is Jose's to say; it is in his queue, not assumed.
+
 **Two panels that summon different people must differ in tense as well as wording.**
 HR's certification panel is a *lookahead* with a `days` window defaulting to 60 —
 nobody is out of compliance yet. Training's counts passes that have **already lapsed** —
@@ -511,6 +525,7 @@ on main may have moved on.
 | 🔨 | **Scheduling · Availability + Settings** | **Layout 7 approved, being built** (Overview + area rail — Jose's own combination of 1 and 2); Availability is **layout 4**. `docs/previews/scheduling-layouts.html` @ `560aed5`. Held by the Scheduling session. |
 | 📬 | **Fleet · vehicle Identity card** | **Layout 2 approved, handed to the deploy desk to route.** `docs/previews/fleet-identity-layouts.html` @ `560aed5`. The Fleet session that briefed it ended before it was drawn. **Not urgent** — nothing in Fleet is broken; the card works and the complaint was a long scroll at 375px. Fold it into the next Fleet work rather than staffing for it. |
 | ⏳ AWAITING JOSE | **Leads · connected accounts** | Six layouts in `docs/previews/leads-accounts-layouts.html` — 3 desktop, 3 mobile. Brief from the Google API session (`local_8111908f`), server done at `c55b3c33`. **22 Google Ads accounts, one shown**: `leads_screen.dart:179` `_connectionFor` returns the first provider match. **Two payload gaps found by reading it and raised with them:** `connectionState()` carries no `leads_franchise_id`, so the placement column cannot render on load; and nothing links a lead to the account that produced it, so no per-account count exists client-side or server-side. The count is not a decoration — it is what separates "2 accounts that matter from 20 quiet ones" from twenty-two identical rows, and layouts marked `needs the count` degrade honestly without it. Design builds it once picked. |
+| ✅ APPROVED, **built by Leads** | **Leads · conversation colour** | Desktop **3** + mobile **6** — `docs/previews/leads-conversation-colour-layouts.html` @ the commit below. Jose, 2026-09-08: *"option 3 for desktop, 6 for mobile"* — the saturated direction, ours filled `primary` with `onPrimary`. **No accent bar anywhere**, per the same message. `primary` inverts between brightnesses (#00708f/white light, #00aeef/near-black dark), so the build must be checked in both. |
 | ✅ APPROVED, **built by Leads** | **Leads · conversations** | Desktop **1** + mobile **4** — `docs/previews/leads-conversations-layouts.html` @ `6c3f6d46`. Jose, 2026-09-08: *"let leads build it, yes approve 1 and 4"*. **This is an explicit exception, not a change to the rule.** "An approval is not a delivery" still stands and design still builds what design draws unless Jose says otherwise for a named piece of work — that rule exists because three approvals rotted unbuilt, and one directed handover does not undo the reason. Handover sent to `local_8111908f-…` with the full constraint list. |
 | ✅ SHIPPED `2819822` | **Your account · desktop + phone** | **Desktop layout 3** — `docs/previews/account-profile-layouts.html`; **phone layout 2** — `docs/previews/account-profile-phone-layouts.html` @ `b0fa539`. The two are **deliberately different designs**, not one narrowed: desktop answers *"show me everything about my account"* (form left, assigned facts in a always-visible right column); phone answers *"what do you want to change?"* (identity header, then rows that each open one screen and each show their current value). **Carry into the build:** the date of birth is a **masked field, never a picker** — a picker is a dialog, same rule as Hours; gender is the chips **only**, not chips plus a text box; and **"You can act on" must be DISTINCT** — it currently lists Connecticut four times and DMV twice, fourteen entries for ten places. No module owns `main.dart`, so design builds it. |
 | 🔨 | **Phone · Call desk proportions** | **Layout 2 approved** — `docs/previews/phone-call-desk-proportions.html` @ `bb289f9`. **25 · 25 · 50** (Team / Dial / Customer) as `flex: 1 / 1 / 2`, **with floors** ~220 / ~260 / ~340. Today is `SizedBox(220) · Expanded · `SizedBox(280)` = 19/57/24, so the panes holding the most content are fixed at their smallest and the pad takes the remainder. The floors exist because **a keypad has a minimum and a roster does not** — bare 25% gives the pad 166px at a 950 window, above the stacking breakpoint. |
