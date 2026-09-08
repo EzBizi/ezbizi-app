@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/screens/web/seo_tab.dart';
+import 'package:ezbizi_client/widgets/address_lookup.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
@@ -194,6 +195,37 @@ void main() {
     // line above.
     expect(find.text('Phone number'), findsNothing);
     expect(find.text('Address'), findsNothing);
+  });
+
+  /// One address, typed once.
+  ///
+  /// The five boxes each carry a shortcode, which is why this screen cannot
+  /// just use the Settings widget wholesale — it shares the search half and
+  /// keeps its own boxes. Picking a suggestion must fill them, or the split
+  /// address is five things to type instead of one.
+  testWidgets('picking a full address fills the parts', (tester) async {
+    await _pumpDestination(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+    );
+
+    final search = find.descendant(
+      of: find.byType(AddressLookup),
+      matching: find.byType(TextField),
+    );
+
+    await tester.ensureVisible(search);
+    await tester.pumpAndSettle();
+    await tester.enterText(search, '1 Elm');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('1 Elm St, Newark, NJ 07102'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextField, '1 Elm St'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Newark'), findsOneWidget);
+    expect(find.widgetWithText(TextField, '07102'), findsOneWidget);
   });
 
   /// SEO has sections now, and General is the one that exists.
@@ -525,6 +557,18 @@ Future<http.Response> Function(http.Request) _respond(
 
     if (path == '/api/v1/me') {
       body = {'data': _me(permissions, scopedToCompany)};
+    } else if (path == '/api/v1/address-lookup') {
+      body = {
+        'data': [
+          {
+            'label': '1 Elm St, Newark, NJ 07102',
+            'address_line1': '1 Elm St',
+            'city': 'Newark',
+            'state': 'NJ',
+            'postal_code': '07102',
+          },
+        ],
+      };
     } else if (path == '/api/v1/web/sites') {
       body = {
         'data': _sites,
@@ -555,6 +599,30 @@ Future<http.Response> Function(http.Request) _respond(
               'label': 'Company name',
               'hint': '',
               'shortcode': '[ezbizi_company_name]',
+            },
+            {
+              'key': 'address_line1',
+              'label': 'Street address',
+              'hint': '',
+              'shortcode': '[ezbizi_address_line1]',
+            },
+            {
+              'key': 'city',
+              'label': 'City',
+              'hint': '',
+              'shortcode': '[ezbizi_city]',
+            },
+            {
+              'key': 'state',
+              'label': 'State',
+              'hint': '',
+              'shortcode': '[ezbizi_state]',
+            },
+            {
+              'key': 'postal_code',
+              'label': 'ZIP',
+              'hint': '',
+              'shortcode': '[ezbizi_postal_code]',
             },
             {
               'key': 'hours',

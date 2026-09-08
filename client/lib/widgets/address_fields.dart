@@ -1,9 +1,8 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/api_client.dart';
+import 'address_lookup.dart';
 
 /// Street, suite, city, state, postal — and a search box that fills them.
 ///
@@ -35,56 +34,11 @@ class AddressFields extends StatefulWidget {
 }
 
 class _AddressFieldsState extends State<AddressFields> {
-  final _search = TextEditingController();
-  Timer? _debounce;
-  int _lookup = 0;
-  List<Map<String, dynamic>> _suggestions = [];
-  bool _looking = false;
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    _search.dispose();
-    super.dispose();
-  }
-
-  void _onSearch(String query) {
-    _debounce?.cancel();
-    final trimmed = query.trim();
-    if (trimmed.length < 3) {
-      setState(() {
-        _suggestions = [];
-        _looking = false;
-      });
-      return;
-    }
-
-    _debounce = Timer(const Duration(milliseconds: 280), () => _lookupAddress(trimmed));
-  }
-
-  Future<void> _lookupAddress(String query) async {
-    final token = ++_lookup;
-    setState(() => _looking = true);
-
-    final response = await widget.api.get('/address-lookup', {'q': query});
-    if (!mounted || token != _lookup) return;
-
-    setState(() {
-      _looking = false;
-      final data = response.ok ? response.data : null;
-      _suggestions = data is List
-          ? data.whereType<Map<String, dynamic>>().toList()
-          : const [];
-    });
-  }
-
   void _apply(Map<String, dynamic> suggestion) {
     widget.line1.text = '${suggestion['address_line1'] ?? ''}';
     widget.city.text = '${suggestion['city'] ?? ''}';
     widget.state.text = '${suggestion['state'] ?? ''}';
     widget.postal.text = '${suggestion['postal_code'] ?? ''}';
-    _search.clear();
-    setState(() => _suggestions = []);
   }
 
   @override
@@ -92,45 +46,11 @@ class _AddressFieldsState extends State<AddressFields> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextField(
-          controller: _search,
+        AddressLookup(
+          api: widget.api,
           enabled: widget.enabled,
-          decoration: InputDecoration(
-            border: const OutlineInputBorder(),
-            isDense: true,
-            labelText: 'Find an address',
-            hintText: 'Start typing a street or place',
-            prefixIcon: const Icon(Icons.search, size: 20),
-            suffixIcon: _looking
-                ? const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  )
-                : null,
-          ),
-          onChanged: _onSearch,
+          onPicked: _apply,
         ),
-        if (_suggestions.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          Material(
-            elevation: 1,
-            borderRadius: BorderRadius.circular(8),
-            child: Column(
-              children: [
-                for (final suggestion in _suggestions)
-                  ListTile(
-                    dense: true,
-                    title: Text('${suggestion['label'] ?? ''}'),
-                    onTap: () => _apply(suggestion),
-                  ),
-              ],
-            ),
-          ),
-        ],
         const SizedBox(height: 12),
         TextField(
           controller: widget.line1,
