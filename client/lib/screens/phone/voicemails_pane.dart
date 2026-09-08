@@ -148,20 +148,13 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
       );
     }
 
-    if (_boxes.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            'No voicemail boxes yet. Make one under Settings › Voicemail and '
-            'point a line at it — until then callers hear the built-in '
-            'sentence and the message is filed against the line.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall,
-          ),
-        ),
-      );
-    }
+    // No guard on an empty box list any more.
+    //
+    // This used to return "No voicemail boxes yet" and stop, which meant an
+    // account with messages and no boxes was shown nothing at all — the same
+    // mistake as filtering by a box before checking whether any line pointed
+    // at one. Boxes are a way to narrow the list, not a precondition for
+    // having one.
 
     return LayoutBuilder(
       builder: (context, box) {
@@ -294,18 +287,37 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
     // Fetched through EzBizi with the connection's credentials, never a bare
     // Twilio URL — a recording link that works without signing in is a
     // customer's voicemail anybody can replay.
+    setState(() => _playError = null);
+
     final bytes = await widget.api.getBytes(
       '/phone/calls/${message.id}/recording',
     );
-    if (!mounted || bytes == null) return;
+    if (!mounted) return;
+
+    if (bytes == null) {
+      setState(
+        () => _playError = 'That recording could not be fetched from Twilio.',
+      );
+
+      return;
+    }
 
     try {
       await _player.play(bytes);
-    } catch (_) {
-      // The transcript is still on screen; a failed play is not a reason to
-      // take the words away.
+    } on RecordingPlaybackFailure catch (failure) {
+      // SAID, not swallowed. The old catch here was silent, so the desktop
+      // stub that played nothing at all reported success for weeks — a Play
+      // button that is drawn, enabled, pressed, and does nothing.
+      if (mounted) setState(() => _playError = failure.message);
+    } catch (error) {
+      if (mounted) {
+        setState(() => _playError = 'That recording would not play. $error');
+      }
     }
   }
+
+  /// Why the last Play did not play. Null when it did.
+  String? _playError;
 
   Widget _row(_Voicemail message, ThemeData theme) {
     return Card(
@@ -339,10 +351,26 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(
                   icon: const Icon(Icons.play_arrow, size: 18),
-                  label: const Text('Play'),
+                  // Says where the sound is about to come from. On desktop the
+                  // file is handed to whatever the machine plays MP3s with, and
+                  // a button that says only "Play" there is a button somebody
+                  // presses twice wondering why the app is silent.
+                  label: Text(
+                    _player.playsInApp ? 'Play' : 'Play in your audio player',
+                  ),
                   onPressed: () => _play(message),
                 ),
               ),
+              if (_playError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    _playError!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
+                ),
             ],
 
             const SizedBox(height: 8),

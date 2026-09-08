@@ -201,6 +201,9 @@ void main() {
 }
 
 class _FakePlayer implements RecordingPlayer {
+  @override
+  bool get playsInApp => true;
+
   final played = <List<int>>[];
 
   @override

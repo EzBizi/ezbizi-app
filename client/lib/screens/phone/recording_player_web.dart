@@ -12,6 +12,10 @@ class HtmlRecordingPlayer implements RecordingPlayer {
   web.HTMLAudioElement? _audio;
   String? _url;
 
+  /// The browser plays it in the page, so the screen can offer a stop.
+  @override
+  bool get playsInApp => true;
+
   @override
   Future<void> play(List<int> bytes) async {
     stop();
