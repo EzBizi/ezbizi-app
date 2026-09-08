@@ -22,7 +22,7 @@ class VersionHistory {
         'Web Management: a website can say which branch it answers for, so an enquiry from a branch subdomain lands on that branch instead of at company level.',
         'Leads: replying to a website chat from the thread reaches the person on the page, the same way replying to a Google lead reaches them.',
         'Automations: a rule can now run when somebody starts a live chat or sends a contact form on one of your websites, and can tell which website it was.',
-        'Web Management: the Widgets screen now says when the button colour and its text are too close to read, with the number, and lets you save anyway - it is your website.',
+        'Website widget colours now show what a visitor will actually see. The accent and its text, and the text and its background, each render as a swatch of the real pair with a readability score beside them, and a note when the two are too close to read comfortably. It is advice, not a rule - a business whose brand really is low-contrast can still save it.',
         'A lead\'s conversation always reads oldest first, even when two messages arrived in the same second.',
       ],
     ),
