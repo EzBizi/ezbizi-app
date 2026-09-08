@@ -23,11 +23,6 @@ class TrainingScreen extends StatefulWidget {
   final ApiClient api;
   final Session session;
 
-  /// Below this the selected row (or pane, once Task 14/15 have one) is the
-  /// whole body — the same constant `InventoryScreen` names, for whichever
-  /// tab under this module needs a split later.
-  static const double splitAbove = 600;
-
   @override
   State<TrainingScreen> createState() => _TrainingScreenState();
 }

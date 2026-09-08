@@ -120,10 +120,12 @@ class LearnController extends Controller
         $guides = $this->readableGuides($user, $scope);
         $tests = $this->readableTests($user, $scope);
         $lapsedTestIds = $this->lapsedTestIds($user, $tests);
+        $guideProgress = $this->guideProgress($user, $guides);
+        $lastAttempts = $this->lastAttempts($user, $tests);
 
         return response()->json([
-            'assigned' => $this->assigned($user, $guides, $tests, $lapsedTestIds),
-            'library' => $this->library($guides, $tests, $lapsedTestIds),
+            'assigned' => $this->assigned($user, $guides, $tests, $lapsedTestIds, $guideProgress, $lastAttempts),
+            'library' => $this->library($guides, $tests, $lapsedTestIds, $guideProgress, $lastAttempts),
         ]);
     }
 
@@ -152,7 +154,22 @@ class LearnController extends Controller
             ->where('training_attempts.user_id', $user->getKey())
             ->exists() ? [$row->id] : [];
 
-        return response()->json(['data' => $this->presentTest($row, $lapsedTestIds)]);
+        // Same fields [presentTest] carries in `library`/`assigned`, kept
+        // consistent here rather than a thinner shape for this one call
+        // site — a second, unstripped-looking entry shape is exactly the
+        // kind of drift this class's own docblock warns about for the
+        // answer-key boundary, and the reasoning is identical for this one:
+        // one presenter, one shape, every time it is used. One extra query
+        // scoped to a single (user, test) pair — no N+1 risk on an endpoint
+        // that already does one row lookup and one `exists()` check.
+        $lastAttempt = TrainingAttempt::query()
+            ->where('user_id', $user->getKey())
+            ->where('test_id', $row->id)
+            ->orderByDesc('taken_at')
+            ->orderByDesc('id')
+            ->first();
+
+        return response()->json(['data' => $this->presentTest($row, $lapsedTestIds, $lastAttempt)]);
     }
 
     /**
@@ -329,12 +346,21 @@ class LearnController extends Controller
      * @param  Collection<string, TrainingGuide>  $guides
      * @param  Collection<string, TrainingTest>  $tests
      * @param  list<string>  $lapsedTestIds  see this class's own docblock, "A lapsed pass reappears here"
+     * @param  Collection<string, TrainingProgress>  $guideProgress  see [guideProgress]
+     * @param  Collection<string, TrainingAttempt>  $lastAttempts  see [lastAttempts]
      * @return array<int, array<string, mixed>>
      */
-    private function library(Collection $guides, Collection $tests, array $lapsedTestIds): array
-    {
-        return $guides->map(fn (TrainingGuide $g) => $this->presentGuide($g))
-            ->concat($tests->map(fn (TrainingTest $t) => $this->presentTest($t, $lapsedTestIds)))
+    private function library(
+        Collection $guides,
+        Collection $tests,
+        array $lapsedTestIds,
+        Collection $guideProgress,
+        Collection $lastAttempts,
+    ): array {
+        return $guides->map(fn (TrainingGuide $g) => $this->presentGuide($g, $guideProgress->get($g->id)))
+            ->concat($tests->map(
+                fn (TrainingTest $t) => $this->presentTest($t, $lapsedTestIds, $lastAttempts->get($t->id))
+            ))
             ->values()
             ->all();
     }
@@ -358,14 +384,24 @@ class LearnController extends Controller
      * @param  Collection<string, TrainingGuide>  $guides
      * @param  Collection<string, TrainingTest>  $tests
      * @param  list<string>  $lapsedTestIds  see this class's own docblock, "A lapsed pass reappears here"
+     * @param  Collection<string, TrainingProgress>  $guideProgress  see [guideProgress]
+     * @param  Collection<string, TrainingAttempt>  $lastAttempts  see [lastAttempts]
      * @return array<int, array<string, mixed>>
      */
-    private function assigned(User $user, Collection $guides, Collection $tests, array $lapsedTestIds): array
-    {
+    private function assigned(
+        User $user,
+        Collection $guides,
+        Collection $tests,
+        array $lapsedTestIds,
+        Collection $guideProgress,
+        Collection $lastAttempts,
+    ): array {
         $rawAssignments = $this->assignedQuery($user)->get();
 
         $rows = $rawAssignments
-            ->map(fn (TrainingAssignment $a) => $this->presentAssignment($a, $guides, $tests, $lapsedTestIds))
+            ->map(fn (TrainingAssignment $a) => $this->presentAssignment(
+                $a, $guides, $tests, $lapsedTestIds, $guideProgress, $lastAttempts,
+            ))
             ->filter()
             ->values();
 
@@ -384,7 +420,7 @@ class LearnController extends Controller
                 'assignment_id' => null,
                 'due_on' => null,
                 'assignee_type' => null,
-                ...$this->presentTest($tests->get($testId), $lapsedTestIds),
+                ...$this->presentTest($tests->get($testId), $lapsedTestIds, $lastAttempts->get($testId)),
             ]);
         }
 
@@ -419,6 +455,71 @@ class LearnController extends Controller
             ->unique()
             ->values()
             ->all();
+    }
+
+    /**
+     * This learner's own progress row for every guide THIS read can even
+     * show — one query, batched against `$guides->keys()`, never one per
+     * card the way [guideFinishedBy] queries one guide at a time for the
+     * `submit` gate check. `(user_id, guide_id)` is unique
+     * (`ProgressController::seen`'s own `insertOrIgnore`), so keying by
+     * `guide_id` can never collide two rows onto one key.
+     *
+     * @param  Collection<string, TrainingGuide>  $guides
+     * @return Collection<string, TrainingProgress>
+     */
+    private function guideProgress(User $user, Collection $guides): Collection
+    {
+        if ($guides->isEmpty()) {
+            return collect();
+        }
+
+        return TrainingProgress::query()
+            ->where('user_id', $user->getKey())
+            ->whereIn('guide_id', $guides->keys())
+            ->get()
+            ->keyBy('guide_id');
+    }
+
+    /**
+     * This learner's own MOST RECENT attempt at every test THIS read can
+     * even show — whatever its outcome, pass or fail. A different question
+     * from [lapsedTestIds]/`LapsedPasses::currentStandingQuery`: that one
+     * asks "which PASSED attempt is this person's current standing", and a
+     * fail after it would not change the answer. This one asks "what did
+     * they do most recently", which a `presentTest` card needs regardless
+     * of whether it passed — "Passed last year" and a failed retake both
+     * come off the same field.
+     *
+     * One window-function query, batched against `$tests->keys()` — the
+     * same one-query-per-collection-read shape [lapsedTestIds] already
+     * uses, never N+1 per card. `taken_at` DESC then `id` DESC as the
+     * tiebreak, matching `LapsedPasses::currentStandingQuery`'s own
+     * ordering for the identical reason: two attempts inserted in the same
+     * transaction can share a `taken_at`.
+     *
+     * @param  Collection<string, TrainingTest>  $tests
+     * @return Collection<string, TrainingAttempt>
+     */
+    private function lastAttempts(User $user, Collection $tests): Collection
+    {
+        if ($tests->isEmpty()) {
+            return collect();
+        }
+
+        $latest = TrainingAttempt::query()
+            ->select(['id'])
+            ->selectRaw('ROW_NUMBER() OVER (PARTITION BY test_id ORDER BY taken_at DESC, id DESC) AS rn')
+            ->where('user_id', $user->getKey())
+            ->whereIn('test_id', $tests->keys());
+
+        return TrainingAttempt::query()
+            ->joinSub($latest, 'latest_attempt', function ($join) {
+                $join->on('training_attempts.id', '=', 'latest_attempt.id');
+            })
+            ->where('latest_attempt.rn', 1)
+            ->get()
+            ->keyBy('test_id');
     }
 
     /** Just the assignee union (decision 2). Place scope and publication are decided in [presentAssignment]. */
@@ -459,15 +560,23 @@ class LearnController extends Controller
      * @param  Collection<string, TrainingGuide>  $guides
      * @param  Collection<string, TrainingTest>  $tests
      * @param  list<string>  $lapsedTestIds  see this class's own docblock, "A lapsed pass reappears here"
+     * @param  Collection<string, TrainingProgress>  $guideProgress  see [guideProgress]
+     * @param  Collection<string, TrainingAttempt>  $lastAttempts  see [lastAttempts]
      * @return array<string, mixed>|null
      */
-    private function presentAssignment(TrainingAssignment $assignment, Collection $guides, Collection $tests, array $lapsedTestIds): ?array
-    {
+    private function presentAssignment(
+        TrainingAssignment $assignment,
+        Collection $guides,
+        Collection $tests,
+        array $lapsedTestIds,
+        Collection $guideProgress,
+        Collection $lastAttempts,
+    ): ?array {
         $content = match (true) {
             $assignment->test_id !== null && $tests->has($assignment->test_id)
-                => $this->presentTest($tests->get($assignment->test_id), $lapsedTestIds),
+                => $this->presentTest($tests->get($assignment->test_id), $lapsedTestIds, $lastAttempts->get($assignment->test_id)),
             $assignment->guide_id !== null && $guides->has($assignment->guide_id)
-                => $this->presentGuide($guides->get($assignment->guide_id)),
+                => $this->presentGuide($guides->get($assignment->guide_id), $guideProgress->get($assignment->guide_id)),
             default => null,
         };
 
@@ -483,8 +592,18 @@ class LearnController extends Controller
         ];
     }
 
-    /** @return array<string, mixed> */
-    private function presentGuide(TrainingGuide $guide): array
+    /**
+     * `last_screen`/`completed_at` are this learner's own reading position
+     * — the SAME row `ProgressController::seen` writes and
+     * `guideFinishedBy` already reads, off `$progress`, batched once per
+     * request by [guideProgress] rather than queried per card. `null` for
+     * both when there is no row at all: a guide never opened, exactly the
+     * shape `seen()`'s own response gives a guide that has not been
+     * touched yet.
+     *
+     * @return array<string, mixed>
+     */
+    private function presentGuide(TrainingGuide $guide, ?TrainingProgress $progress = null): array
     {
         return [
             'type' => 'guide',
@@ -495,6 +614,8 @@ class LearnController extends Controller
             'franchise_id' => $guide->franchise_id,
             'screen_count' => $guide->screenCount(),
             'screens' => $guide->screens,
+            'last_screen' => $progress?->last_screen,
+            'completed_at' => $progress?->completed_at?->toIso8601String(),
         ];
     }
 
@@ -512,10 +633,16 @@ class LearnController extends Controller
      * reappears here" above for why it is a field here rather than a
      * separately-shaped entry.
      *
+     * `last_score`/`last_passed`/`last_taken_at` are this learner's own most
+     * recent attempt at this test, whatever its outcome — batched once per
+     * request by [lastAttempts] rather than queried per card, and passed in
+     * as `$lastAttempt` rather than looked up here. `null` for all three
+     * when there is no attempt at all: a test never taken.
+     *
      * @param  list<string>  $lapsedTestIds
      * @return array<string, mixed>
      */
-    private function presentTest(TrainingTest $test, array $lapsedTestIds = []): array
+    private function presentTest(TrainingTest $test, array $lapsedTestIds = [], ?TrainingAttempt $lastAttempt = null): array
     {
         return [
             'type' => 'test',
@@ -531,6 +658,9 @@ class LearnController extends Controller
             'due_for_retaking' => in_array($test->id, $lapsedTestIds, true),
             'question_count' => $test->questionCount(),
             'questions' => LearnerView::stripAnswerKey($test->questions ?? []),
+            'last_score' => $lastAttempt?->score,
+            'last_passed' => $lastAttempt?->passed,
+            'last_taken_at' => $lastAttempt?->taken_at?->toIso8601String(),
         ];
     }
 }

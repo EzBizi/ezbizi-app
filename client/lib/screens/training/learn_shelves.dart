@@ -16,16 +16,23 @@ import '../../widgets/tag.dart';
 /// `{assigned: [...], library: [...]}`, no `data` envelope, so every read
 /// here goes through `response.body` directly rather than `response.data`.
 ///
-/// Every entry — in either shelf — is a guide (`screen_count`, `screens`) or
-/// a test (`question_count`, `questions`, `due_for_retaking`). `library` and
-/// `assigned` share the exact same rendering for the fields both carry;
-/// `assigned` additionally carries `due_on` (a real assignment) and
-/// `due_for_retaking` can be true on a synthetic row with no `assignment_id`
-/// at all — a lapsed pass reappearing (LearnController's own docblock, "A
-/// lapsed pass reappears here"). Neither `answers` nor the correct option on
-/// any question ever appears in this response (`LearnerView::stripAnswerKey`)
-/// and this screen renders none of `questions` at all — that is the player's
-/// job, not the shelf's.
+/// Every entry — in either shelf — is a guide (`screen_count`, `screens`,
+/// `last_screen`, `completed_at`) or a test (`question_count`, `questions`,
+/// `due_for_retaking`, `last_score`, `last_passed`, `last_taken_at`).
+/// `library` and `assigned` share the exact same rendering for the fields
+/// both carry; `assigned` additionally carries `due_on` (a real assignment)
+/// and `due_for_retaking` can be true on a synthetic row with no
+/// `assignment_id` at all — a lapsed pass reappearing (LearnController's own
+/// docblock, "A lapsed pass reappears here"). Neither `answers` nor the
+/// correct option on any question ever appears in this response
+/// (`LearnerView::stripAnswerKey`) and this screen renders none of
+/// `questions` at all — that is the player's job, not the shelf's.
+///
+/// `_EntryCard`'s progress bar is drawn only from `last_screen`/
+/// `screen_count` — a real fraction a guide's own reading position
+/// supports. A test has no "screens seen" to show a fraction of, so its
+/// card states its last outcome as text ("Passed 11 Aug" / "Failed 11 Aug" /
+/// "Not started") rather than drawing a bar this data does not support.
 class LearnShelves extends StatefulWidget {
   const LearnShelves({super.key, required this.api, required this.session});
 
@@ -77,8 +84,12 @@ class _LearnShelvesState extends State<LearnShelves> {
             .toList()
       : const [];
 
+  /// A count, matching the mockup's subtitle slot ("3 to do · 1 overdue") —
+  /// never a second sentence saying the shelf is empty. `emptyText` below
+  /// the rule already says that; this returning one too was two sentences
+  /// making the identical claim.
   String get _assignedSubtitle {
-    if (_assigned.isEmpty) return 'Nothing outstanding right now.';
+    if (_assigned.isEmpty) return '';
 
     final today = _today();
     final overdue = _assigned.where((entry) {
@@ -90,8 +101,27 @@ class _LearnShelvesState extends State<LearnShelves> {
     return overdue == 0 ? base : '$base · $overdue overdue';
   }
 
+  /// Every guide id a test in either shelf names as its own `guide_id` —
+  /// `presentTest` already sends it, so no server change is needed to
+  /// match a guide against the test that follows it (the mockup's "8
+  /// screens · test at the end"). Read across BOTH shelves, not just the
+  /// one a card is drawn in: a guide sitting in `assigned` and its test
+  /// sitting in `library` (readable but not itself assigned) is an
+  /// ordinary shape, not an edge case.
+  Set<String> get _guidesWithATest {
+    final ids = <String>{};
+    for (final entry in [..._assigned, ..._library]) {
+      if (entry['type'] != 'test') continue;
+      final guideId = entry['guide_id'] as String?;
+      if (guideId != null) ids.add(guideId);
+    }
+    return ids;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final guidesWithATest = _guidesWithATest;
+
     return AsyncBody(
       loading: _loading,
       error: _error,
@@ -106,6 +136,7 @@ class _LearnShelvesState extends State<LearnShelves> {
             entries: _assigned,
             session: widget.session,
             assigned: true,
+            guidesWithATest: guidesWithATest,
           ),
           const SizedBox(height: 24),
           _Shelf(
@@ -115,6 +146,7 @@ class _LearnShelvesState extends State<LearnShelves> {
             entries: _library,
             session: widget.session,
             assigned: false,
+            guidesWithATest: guidesWithATest,
           ),
         ],
       ),
@@ -134,6 +166,7 @@ class _Shelf extends StatelessWidget {
     required this.entries,
     required this.session,
     required this.assigned,
+    required this.guidesWithATest,
   });
 
   final String title;
@@ -142,6 +175,7 @@ class _Shelf extends StatelessWidget {
   final List<Map<String, dynamic>> entries;
   final Session session;
   final bool assigned;
+  final Set<String> guidesWithATest;
 
   @override
   Widget build(BuildContext context) {
@@ -183,6 +217,7 @@ class _Shelf extends StatelessWidget {
                     entry: entry,
                     session: session,
                     assigned: assigned,
+                    guidesWithATest: guidesWithATest,
                   ),
                 ),
             ],
@@ -199,11 +234,16 @@ class _EntryCard extends StatelessWidget {
     required this.entry,
     required this.session,
     required this.assigned,
+    required this.guidesWithATest,
   });
 
   final Map<String, dynamic> entry;
   final Session session;
   final bool assigned;
+
+  /// Every guide id some test in this read names as its own `guide_id` —
+  /// see `_LearnShelvesState._guidesWithATest`.
+  final Set<String> guidesWithATest;
 
   @override
   Widget build(BuildContext context) {
@@ -212,13 +252,52 @@ class _EntryCard extends StatelessWidget {
 
     final isTest = entry['type'] == 'test';
     final title = entry['title'] as String? ?? '';
+    // The mockup's second meta clause: a guide followed by a test reads "N
+    // screens · test at the end"; a test with no guide of its own reads
+    // "Test only · N questions". A gated test (guide_id set) shows its
+    // question count plain — its guide's own card is the one naming the
+    // pairing, so saying it twice would not add information.
     final meta = isTest
-        ? _count(entry['question_count'], 'question')
+        ? (entry['guide_id'] == null
+              ? 'Test only · ${_count(entry['question_count'], 'question')}'
+              : _count(entry['question_count'], 'question'))
+        : guidesWithATest.contains(entry['id'])
+        ? '${_count(entry['screen_count'], 'screen')} · test at the end'
         : _count(entry['screen_count'], 'screen');
 
     final dueOn = assigned ? parseCalendarDay(entry['due_on'] as String?) : null;
     final overdue = dueOn != null && dueOn.isBefore(_today());
     final dueForRetaking = entry['due_for_retaking'] == true;
+
+    // `last_screen`/`completed_at` (guide) and `last_score`/`last_passed`/
+    // `last_taken_at` (test) — LearnController's own progress fields,
+    // added alongside `screens`/`questions` (never trimmed from this
+    // payload: Task 13's guide player wants them from the same read).
+    final screenCount = entry['screen_count'] is num ? (entry['screen_count'] as num).toInt() : null;
+    final lastScreen = entry['last_screen'] is num ? (entry['last_screen'] as num).toInt() : null;
+    final completedAt = _parseIso(entry['completed_at'] as String?);
+    final lastPassed = entry['last_passed'] as bool?;
+    final lastTakenAt = _parseIso(entry['last_taken_at'] as String?);
+
+    // A real fraction off `last_screen`/`screen_count` — never invented for
+    // a test, which has no notion of "screens seen". `last_screen` is a
+    // 0-indexed high-water mark (ProgressController::seen's own docblock),
+    // so the screen actually reached is one more than the stored index.
+    final guideFraction = (!isTest && screenCount != null && screenCount > 0)
+        ? ((lastScreen != null ? lastScreen + 1 : 0) / screenCount).clamp(0.0, 1.0)
+        : null;
+
+    final progressLabel = isTest
+        ? switch (lastPassed) {
+            null => 'Not started',
+            true => lastTakenAt == null ? 'Passed' : 'Passed ${me.display.formatDate(lastTakenAt)}',
+            false => lastTakenAt == null ? 'Failed' : 'Failed ${me.display.formatDate(lastTakenAt)}',
+          }
+        : (completedAt != null
+              ? 'Done ${me.display.formatDate(completedAt)}'
+              : lastScreen != null
+              ? '${lastScreen + 1} of ${screenCount ?? '?'}'
+              : 'Not started');
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -244,23 +323,33 @@ class _EntryCard extends StatelessWidget {
           ),
           const SizedBox(height: 3),
           Text(meta, style: theme.textTheme.bodyMedium),
-          if (dueOn != null || dueForRetaking) ...[
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                if (dueOn != null)
-                  Tag(
-                    overdue
-                        ? 'Was due ${me.display.formatDate(dueOn)}'
-                        : 'Due ${me.display.formatDate(dueOn)}',
-                    warn: overdue,
-                  ),
-                if (dueForRetaking) const Tag('Due for retaking', warn: true),
-              ],
+          if (guideFraction != null) ...[
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: guideFraction,
+                minHeight: 6,
+                backgroundColor: theme.colorScheme.surfaceContainerHighest,
+              ),
             ),
           ],
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              if (dueOn != null)
+                Tag(
+                  overdue
+                      ? 'Was due ${me.display.formatDate(dueOn)}'
+                      : 'Due ${me.display.formatDate(dueOn)}',
+                  warn: overdue,
+                ),
+              if (dueForRetaking) const Tag('Due for retaking', warn: true),
+              Tag(progressLabel),
+            ],
+          ),
         ],
       ),
     );
@@ -272,16 +361,28 @@ class _EntryCard extends StatelessWidget {
 /// actually name. `company_id`/`franchise_id` are already scope-filtered by
 /// `InventoryVisibility::constrain` on the server, so a sibling company's own
 /// training never reaches this list to look up in the first place.
+///
+/// `*InView` (current-scope-narrowed), not `companies`/`franchises` (full
+/// reach) — a label lookup by an id the server already vetted never NEEDS
+/// full reach, and `*InView` costs nothing extra here: per
+/// `InventoryVisibility::constrain`, every id this screen can ever receive
+/// already resolves to the same row in either list (company scope: the same
+/// set; franchise scope: the one parent company; organization scope:
+/// identity — the ancestor-company case that would tell the two apart can
+/// never arise). So this switch mislabels nothing today, and it means a row
+/// `constrain` could never legitimately produce renders 'Organization'
+/// instead of a sibling's name, rather than depending on the server alone to
+/// keep that true.
 String _scopeLabel(Me me, Map<String, dynamic> entry) {
   final franchiseId = entry['franchise_id'] as String?;
   if (franchiseId != null) {
-    final franchise = me.franchises.where((f) => f.id == franchiseId).firstOrNull;
+    final franchise = me.franchisesInView.where((f) => f.id == franchiseId).firstOrNull;
     if (franchise != null) return franchise.name;
   }
 
   final companyId = entry['company_id'] as String?;
   if (companyId != null) {
-    final company = me.companies.where((c) => c.id == companyId).firstOrNull;
+    final company = me.companiesInView.where((c) => c.id == companyId).firstOrNull;
     if (company != null) return company.name;
   }
 
@@ -297,3 +398,9 @@ DateTime _today() {
   final now = DateTime.now();
   return DateTime(now.year, now.month, now.day);
 }
+
+/// `completed_at`/`last_taken_at` off the wire — an ISO-8601 instant, shown
+/// in the reader's own zone (`.toLocal()`), the same conversion
+/// `formatStamp` (`core/timestamps.dart`) applies. Null for anything that
+/// does not parse, same as that function's own fallback shape.
+DateTime? _parseIso(String? iso) => iso == null ? null : DateTime.tryParse(iso)?.toLocal();

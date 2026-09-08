@@ -18,8 +18,8 @@ void main() {
     (tester) async {
       await _pumpScreen(
         tester,
-        assigned: [_assignedLadderSafety],
-        library: [_libraryVanLoadOut],
+        assigned: [_assign(_guide(id: 'g-1', title: 'Ladder Safety', screenCount: 8))],
+        library: [_guide(id: 'g-2', title: 'Van Load-Out Checklist', screenCount: 6)],
       );
 
       final assigned = tester.getTopLeft(find.text('Assigned to you'));
@@ -30,14 +30,23 @@ void main() {
     },
   );
 
-  testWidgets('a company view does not offer sibling companies', (
+  // ── §3: the scope tag is a label lookup, proven live in both directions ──
+
+  testWidgets('a company view names its own company and never a sibling', (
     tester,
   ) async {
     // The §3 leak that shipped in Inventory, Fleet and Phone. /me carries a
-    // sibling; standing in one company it must not be offered.
+    // sibling; standing in one company it must not be offered. Round 2 of
+    // this test: the entry now carries a REAL company_id (co-a1, in view)
+    // rather than null/null, so the lookup branch this test exists to guard
+    // actually runs — a poison literal in `_scopeLabel` (replacing
+    // `return company.name;`/`return franchise.name;` with a fixed string)
+    // must turn this red, which a null-only fixture could never detect.
     await _pumpScreen(
       tester,
-      assigned: [_assignedLadderSafety],
+      assigned: [
+        _assign(_guide(id: 'g-1', title: 'Ladder Safety', screenCount: 8, companyId: 'co-a1')),
+      ],
       me: {
         'scope': {
           'type': 'company',
@@ -55,6 +64,9 @@ void main() {
       },
     );
 
+    // The branch is proven LIVE: an in-view row renders its real name.
+    expect(find.text('A-1 Chimney'), findsOneWidget);
+    // The sibling /me can reach but this view does not cover must never leak.
     expect(find.text('Everdoors'), findsNothing);
   });
 
@@ -63,11 +75,12 @@ void main() {
 
     expect(find.text('Assigned to you'), findsOneWidget);
     expect(find.text('Library'), findsOneWidget);
-    expect(
-      find.textContaining('Nothing is assigned to you'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('Nothing is assigned to you'), findsOneWidget);
     expect(find.textContaining('nothing in your library'), findsOneWidget);
+    // The subtitle slot is a count ("3 to do · 1 overdue"), never a SECOND
+    // sentence saying the shelf is empty — that would say the same thing
+    // twice, once above the rule and once below it.
+    expect(find.text('Nothing outstanding right now.'), findsNothing);
   });
 
   testWidgets('a failed load is the request failed, not an empty shelf', (
@@ -103,31 +116,326 @@ void main() {
     expect(find.text('TODO'), findsNothing);
     expect(find.textContaining('Coming'), findsWidgets);
   });
+
+  // ── 375px: the convention every other screen's tests already follow ──
+
+  testWidgets('the shelf grid collapses to a single column at 375px', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      assigned: [
+        _assign(_guide(id: 'g-1', title: 'Ladder Safety', screenCount: 8)),
+        _assign(_test(id: 't-1', title: 'Carbon Monoxide Awareness')),
+      ],
+      size: const Size(375, 900),
+    );
+
+    final ladder = tester.getTopLeft(find.text('Ladder Safety'));
+    final carbon = tester.getTopLeft(find.text('Carbon Monoxide Awareness'));
+
+    // Single column: the second card sits strictly below the first, never
+    // beside it — and nothing overflowed getting there.
+    expect(carbon.dy, greaterThan(ladder.dy));
+    expect(tester.takeException(), isNull);
+  });
+
+  // ── Tests (`'type': 'test'`) — question_count, due-for-retaking, overdue ──
+
+  testWidgets('a test entry carries its question count', (tester) async {
+    await _pumpScreen(
+      tester,
+      library: [_test(id: 't-1', title: 'Reading a Flue Liner Report', questionCount: 10)],
+    );
+
+    expect(find.textContaining('10 questions'), findsOneWidget);
+  });
+
+  testWidgets('a due-for-retaking test carries the tag, with no due date of its own', (
+    tester,
+  ) async {
+    // The synthetic shape LearnController::assigned adds for a lapsed pass —
+    // no assignment_id, no due_on (this class's own docblock, "A lapsed
+    // pass reappears here").
+    await _pumpScreen(
+      tester,
+      assigned: [
+        _lapsed(_test(id: 't-1', title: 'Customer Greeting & Uniform', questionCount: 10)),
+      ],
+    );
+
+    expect(find.text('Due for retaking'), findsOneWidget);
+    expect(find.textContaining('Was due'), findsNothing);
+  });
+
+  testWidgets('an overdue assigned entry draws an error-tinted border and a "Was due" tag', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      assigned: [
+        _assign(_guide(id: 'g-1', title: 'Ladder Safety', screenCount: 8), dueOn: _pastDate),
+      ],
+    );
+
+    expect(find.textContaining('Was due'), findsOneWidget);
+    expect(find.textContaining('Due '), findsNothing);
+
+    final container = tester.widget<Container>(
+      find.ancestor(of: find.text('Ladder Safety'), matching: find.byType(Container)).first,
+    );
+    final decoration = container.decoration! as BoxDecoration;
+    final border = decoration.border! as Border;
+
+    expect(
+      border.top.color,
+      EzBiziTheme.light().colorScheme.error.withValues(alpha: 0.5),
+      reason: 'An overdue card must draw with the error-tinted border, not the plain edge.',
+    );
+  });
+
+  testWidgets('a not-yet-due assigned entry shows a plain "Due" tag, never "Was due"', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      assigned: [
+        _assign(_guide(id: 'g-1', title: 'Ladder Safety', screenCount: 8), dueOn: _futureDate),
+      ],
+    );
+
+    expect(find.textContaining('Due '), findsOneWidget);
+    expect(find.textContaining('Was due'), findsNothing);
+  });
+
+  testWidgets('the assigned subtitle counts items and, separately, overdue items', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      assigned: [
+        _assign(
+          _guide(id: 'g-1', title: 'Ladder Safety', screenCount: 8),
+          dueOn: _pastDate,
+          assignmentId: 'ta-1',
+        ),
+        _assign(
+          _test(id: 't-1', title: 'Carbon Monoxide Awareness'),
+          dueOn: _futureDate,
+          assignmentId: 'ta-2',
+        ),
+        // Due for retaking, no due_on — must count toward "to do" but never
+        // toward "overdue" (there is no date to compare).
+        _lapsed(_test(id: 't-2', title: 'Customer Greeting & Uniform')),
+      ],
+    );
+
+    expect(find.text('3 to do · 1 overdue'), findsOneWidget);
+  });
+
+  // ── The big one: progress data the approved design shows ──────────
+
+  testWidgets('a library guide in progress shows its reading position and a progress bar', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      library: [_guide(id: 'g-1', title: 'Ladder Safety', screenCount: 8, lastScreen: 2)],
+    );
+
+    expect(find.text('3 of 8'), findsOneWidget);
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+  });
+
+  testWidgets('a finished library guide says Done and the date, not a fraction', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      library: [
+        _guide(
+          id: 'g-1',
+          title: 'Ladder Safety',
+          screenCount: 8,
+          lastScreen: 7,
+          completedAt: '2026-08-11T10:00:00Z',
+        ),
+      ],
+    );
+
+    expect(find.textContaining('Done '), findsOneWidget);
+    expect(find.text('8 of 8'), findsNothing);
+  });
+
+  testWidgets('an untouched library guide says Not started', (tester) async {
+    await _pumpScreen(tester, library: [_guide(id: 'g-1', title: 'Ladder Safety', screenCount: 8)]);
+
+    expect(find.text('Not started'), findsOneWidget);
+  });
+
+  testWidgets('one learner never sees a different card carry no progress at all when it has some', (
+    tester,
+  ) async {
+    // Two guides in the same shelf, only one touched — the batching this
+    // proves is on the server (LearnController::guideProgress); this is the
+    // client half, that the untouched card's own fields stay null rather
+    // than picking up the touched one's.
+    await _pumpScreen(
+      tester,
+      library: [
+        _guide(id: 'g-touched', title: 'Touched Guide', screenCount: 4, lastScreen: 1),
+        _guide(id: 'g-untouched', title: 'Untouched Guide', screenCount: 4),
+      ],
+    );
+
+    expect(find.text('2 of 4'), findsOneWidget);
+    expect(find.text('Not started'), findsOneWidget);
+  });
+
+  testWidgets('a library test states its last outcome as Passed or Failed with a date', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      library: [
+        _test(
+          id: 't-pass',
+          title: 'Customer Greeting & Uniform',
+          lastPassed: true,
+          lastTakenAt: '2025-08-01T00:00:00Z',
+        ),
+        _test(
+          id: 't-fail',
+          title: 'Carbon Monoxide Awareness',
+          lastPassed: false,
+          lastTakenAt: '2026-08-20T00:00:00Z',
+        ),
+      ],
+    );
+
+    expect(find.textContaining('Passed '), findsOneWidget);
+    expect(find.textContaining('Failed '), findsOneWidget);
+  });
+
+  testWidgets('a never-taken test says Not started, and draws no progress bar', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      library: [_test(id: 't-1', title: 'Reading a Flue Liner Report')],
+    );
+
+    expect(find.text('Not started'), findsOneWidget);
+    // A test has no "screens seen" to draw a fraction of — the bar is
+    // guide-only, never invented for a test (this class's own docblock).
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+  });
+
+  testWidgets(
+    'a guide paired with a test in the payload notes "test at the end"; a standalone test says "Test only"',
+    (tester) async {
+      await _pumpScreen(
+        tester,
+        library: [
+          _guide(id: 'g-1', title: 'Ladder Safety', screenCount: 8),
+          _test(id: 't-1', title: 'Ladder Safety Check', guideId: 'g-1', questionCount: 5),
+          _test(id: 't-2', title: 'Reading a Flue Liner Report', questionCount: 10),
+        ],
+      );
+
+      expect(find.textContaining('8 screens · test at the end'), findsOneWidget);
+      expect(find.textContaining('Test only · 10 questions'), findsOneWidget);
+      // The gated test's own card states its count plain — the pairing is
+      // already said once, on the guide's own card.
+      expect(find.text('5 questions'), findsOneWidget);
+      expect(find.textContaining('Test only · 5'), findsNothing);
+    },
+  );
 }
 
-const _assignedLadderSafety = {
-  'assignment_id': 'ta-1',
-  'due_on': '2026-08-24',
-  'assignee_type': 'user',
+// ── Fixtures ──────────────────────────────────────────────────────────
+
+/// Relative to "now" rather than a fixed calendar date, so an overdue/
+/// not-yet-due assertion stays true for as long as this suite runs — a
+/// hardcoded date is a moving target the moment overdue is asserted against
+/// it (`DateTime.now()`, inside `_EntryCard.build`).
+final String _pastDate = _isoDate(DateTime.now().subtract(const Duration(days: 15)));
+final String _futureDate = _isoDate(DateTime.now().add(const Duration(days: 15)));
+
+String _isoDate(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+/// The shape `LearnController::presentGuide` produces.
+Map<String, dynamic> _guide({
+  required String id,
+  required String title,
+  int screenCount = 4,
+  String? companyId,
+  String? franchiseId,
+  int? lastScreen,
+  String? completedAt,
+}) => {
   'type': 'guide',
-  'id': 'g-1',
-  'title': 'Ladder Safety',
-  'summary': 'Working safely at height.',
-  'company_id': null,
-  'franchise_id': null,
-  'screen_count': 8,
-  'screens': [],
+  'id': id,
+  'title': title,
+  'summary': 'Summary.',
+  'company_id': companyId,
+  'franchise_id': franchiseId,
+  'screen_count': screenCount,
+  'screens': const [],
+  'last_screen': lastScreen,
+  'completed_at': completedAt,
 };
 
-const _libraryVanLoadOut = {
-  'type': 'guide',
-  'id': 'g-2',
-  'title': 'Van Load-Out Checklist',
-  'summary': 'Every tool, every day.',
-  'company_id': null,
-  'franchise_id': null,
-  'screen_count': 6,
-  'screens': [],
+/// The shape `LearnController::presentTest` produces.
+Map<String, dynamic> _test({
+  required String id,
+  required String title,
+  int questionCount = 10,
+  String? guideId,
+  String? companyId,
+  String? franchiseId,
+  bool dueForRetaking = false,
+  int? lastScore,
+  bool? lastPassed,
+  String? lastTakenAt,
+}) => {
+  'type': 'test',
+  'id': id,
+  'title': title,
+  'company_id': companyId,
+  'franchise_id': franchiseId,
+  'guide_id': guideId,
+  'requires_guide': false,
+  'pass_mark': 60,
+  'max_attempts': null,
+  'valid_for_days': null,
+  'due_for_retaking': dueForRetaking,
+  'question_count': questionCount,
+  'questions': const [],
+  'last_score': lastScore,
+  'last_passed': lastPassed,
+  'last_taken_at': lastTakenAt,
+};
+
+/// A real assignment row wrapping a guide/test entry — `assigned`'s own
+/// extra fields (`LearnController::presentAssignment`).
+Map<String, dynamic> _assign(
+  Map<String, dynamic> entry, {
+  String assignmentId = 'ta-1',
+  String? dueOn,
+}) => {'assignment_id': assignmentId, 'due_on': dueOn, 'assignee_type': 'user', ...entry};
+
+/// The synthetic "lapsed pass reappears" row `LearnController::assigned`
+/// adds — no `assignment_id`, no `due_on` (LearnController's own docblock),
+/// and `due_for_retaking` forced true regardless of what `testEntry` set:
+/// that field is the entire reason this shape exists.
+Map<String, dynamic> _lapsed(Map<String, dynamic> testEntry) => {
+  'assignment_id': null,
+  'due_on': null,
+  'assignee_type': null,
+  ...testEntry,
+  'due_for_retaking': true,
 };
 
 Future<void> _pumpScreen(
