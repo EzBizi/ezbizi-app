@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0168',
+      date: '8 Sep 2026',
+      items: [
+        'New business hours now start on a real place rather than a fixed offset, so they keep working when the clocks change. Hours created before this keep whatever they were set to and are still shown - they are worth changing to a place.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0167',
       date: '8 Sep 2026',
       items: [
