@@ -941,11 +941,21 @@ DERIVED. One caller today, so it belongs in that file — promote it to a shared
 when a second colour picker exists, not before.
 
 **Built by UI/UX, 2026-09-08, `24a5d314`.** Written up first as a finding to hand over,
-because the file was on `session/web-management` and mid-flight. It merged and shipped in
-0.0.0167 while that message was being written, so by the time it sent, the reason for
-handing it over had gone: not a peer's private branch any more but main, in a released
-cut, with the pair live and unchecked. Built it and told them, with an offer to back it
-out if they had the same work going.
+because the file was on `session/web-management` and mid-flight. It merged **to main**
+while that message was being written, so by the time it sent, the reason for handing it
+over had gone: not a peer's private branch any more, but a shared file with the pair
+unchecked. Built it and told them, with an offer to back it out if they had the same
+work going.
+
+> **Correction, same evening, from the deploy desk.** The paragraph above first said the
+> file had *shipped* in 0.0.0167, and it had not. I read a commit whose subject line was
+> `0.0.0167: …` as the release having happened; it was the desk writing the notes, and
+> the cut was still in its gates. 0.0.0167 is in fact pinned at `24a5d314`, so the widget
+> screen goes live for the first time **with** the guard — the "released without a check"
+> gap I described never existed. **A commit that names a version is not that version
+> shipping**, any more than a green release script is a published site. It cost nothing
+> here because the reason for building was the merge to main, not the release; had the
+> release been the reason, the whole justification would have been fiction.
 
 **Two things only visible from inside the file**, and the reason a finding written from
 the outside should not be trusted to be complete:
