@@ -6,6 +6,8 @@ import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/tag.dart';
+import 'guide_player.dart';
+import 'test_player.dart';
 
 /// The Learn tab — layout 1 of
 /// `docs/previews/training-layouts.html` (Jose's approved pick).
@@ -48,6 +50,12 @@ class _LearnShelvesState extends State<LearnShelves> {
   String? _error;
   List<Map<String, dynamic>> _assigned = const [];
   List<Map<String, dynamic>> _library = const [];
+
+  /// (type, id) of the card open in the player — `GuidePlayer`/`TestPlayer`
+  /// (task 13). Null when neither is open, which is when the two shelves
+  /// draw. This is a screen swap, not a modal (house rule: no modals; a
+  /// selection is a pane or a screen).
+  (String, String)? _selected;
 
   @override
   void initState() {
@@ -118,8 +126,39 @@ class _LearnShelvesState extends State<LearnShelves> {
     return ids;
   }
 
+  /// Opens the player for a tapped card — a guide entry opens `GuidePlayer`,
+  /// a test entry opens `TestPlayer` directly (task 13). Entries with
+  /// neither a recognised `type` nor an `id` are inert taps, not a crash.
+  void _open(Map<String, dynamic> entry) {
+    final type = entry['type'] as String?;
+    final id = entry['id'] as String?;
+    if (id == null || (type != 'guide' && type != 'test')) return;
+
+    setState(() => _selected = (type!, id));
+  }
+
+  void _closePlayer() => setState(() => _selected = null);
+
   @override
   Widget build(BuildContext context) {
+    final selected = _selected;
+    if (selected != null) {
+      final (type, id) = selected;
+      return type == 'test'
+          ? TestPlayer(
+              api: widget.api,
+              session: widget.session,
+              testId: id,
+              onLeave: _closePlayer,
+            )
+          : GuidePlayer(
+              api: widget.api,
+              session: widget.session,
+              guideId: id,
+              onLeave: _closePlayer,
+            );
+    }
+
     final guidesWithATest = _guidesWithATest;
 
     return AsyncBody(
@@ -137,6 +176,7 @@ class _LearnShelvesState extends State<LearnShelves> {
             session: widget.session,
             assigned: true,
             guidesWithATest: guidesWithATest,
+            onOpen: _open,
           ),
           const SizedBox(height: 24),
           _Shelf(
@@ -147,6 +187,7 @@ class _LearnShelvesState extends State<LearnShelves> {
             session: widget.session,
             assigned: false,
             guidesWithATest: guidesWithATest,
+            onOpen: _open,
           ),
         ],
       ),
@@ -167,6 +208,7 @@ class _Shelf extends StatelessWidget {
     required this.session,
     required this.assigned,
     required this.guidesWithATest,
+    required this.onOpen,
   });
 
   final String title;
@@ -176,6 +218,7 @@ class _Shelf extends StatelessWidget {
   final Session session;
   final bool assigned;
   final Set<String> guidesWithATest;
+  final ValueChanged<Map<String, dynamic>> onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -218,6 +261,7 @@ class _Shelf extends StatelessWidget {
                     session: session,
                     assigned: assigned,
                     guidesWithATest: guidesWithATest,
+                    onTap: () => onOpen(entry),
                   ),
                 ),
             ],
@@ -235,11 +279,13 @@ class _EntryCard extends StatelessWidget {
     required this.session,
     required this.assigned,
     required this.guidesWithATest,
+    required this.onTap,
   });
 
   final Map<String, dynamic> entry;
   final Session session;
   final bool assigned;
+  final VoidCallback onTap;
 
   /// Every guide id some test in this read names as its own `guide_id` —
   /// see `_LearnShelvesState._guidesWithATest`.
@@ -299,58 +345,62 @@ class _EntryCard extends StatelessWidget {
               ? '${lastScreen + 1} of ${screenCount ?? '?'}'
               : 'Not started');
 
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: overdue
-              ? theme.colorScheme.error.withValues(alpha: 0.5)
-              : EzBiziTheme.edge(context),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Tag(_scopeLabel(me, entry)),
-          const SizedBox(height: 8),
-          Text(
-            title,
-            style: theme.textTheme.titleSmall,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: overdue
+                ? theme.colorScheme.error.withValues(alpha: 0.5)
+                : EzBiziTheme.edge(context),
           ),
-          const SizedBox(height: 3),
-          Text(meta, style: theme.textTheme.bodyMedium),
-          if (guideFraction != null) ...[
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Tag(_scopeLabel(me, entry)),
             const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: guideFraction,
-                minHeight: 6,
-                backgroundColor: theme.colorScheme.surfaceContainerHighest,
+            Text(
+              title,
+              style: theme.textTheme.titleSmall,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 3),
+            Text(meta, style: theme.textTheme.bodyMedium),
+            if (guideFraction != null) ...[
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: guideFraction,
+                  minHeight: 6,
+                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                ),
               ),
+            ],
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                if (dueOn != null)
+                  Tag(
+                    overdue
+                        ? 'Was due ${me.display.formatDate(dueOn)}'
+                        : 'Due ${me.display.formatDate(dueOn)}',
+                    warn: overdue,
+                  ),
+                if (dueForRetaking) const Tag('Due for retaking', warn: true),
+                Tag(progressLabel),
+              ],
             ),
           ],
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              if (dueOn != null)
-                Tag(
-                  overdue
-                      ? 'Was due ${me.display.formatDate(dueOn)}'
-                      : 'Due ${me.display.formatDate(dueOn)}',
-                  warn: overdue,
-                ),
-              if (dueForRetaking) const Tag('Due for retaking', warn: true),
-              Tag(progressLabel),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
