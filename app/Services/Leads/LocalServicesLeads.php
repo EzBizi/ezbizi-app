@@ -338,9 +338,20 @@ class LocalServicesLeads
                     'company_id'      => $connection->scope_type === SocialConnection::SCOPE_COMPANY
                         ? $connection->scope_id
                         : null,
-                    'franchise_id'    => $connection->scope_type === SocialConnection::SCOPE_FRANCHISE
-                        ? $connection->scope_id
-                        : null,
+                    /*
+                     * Placement first, then scope.
+                     *
+                     * `leads_franchise_id` says which franchise OWNS the
+                     * enquiries this account produces, and is set by somebody
+                     * choosing it. It is a different fact from scope_id, which
+                     * says who can SEE the connection — the company keeps
+                     * seeing it either way, which is the whole point of the two
+                     * columns being separate.
+                     */
+                    'franchise_id'    => $connection->leads_franchise_id
+                        ?? ($connection->scope_type === SocialConnection::SCOPE_FRANCHISE
+                            ? $connection->scope_id
+                            : null),
                     'connection_id'   => $connection->getKey(),
                     'source'          => Lead::SOURCE_LOCAL_SERVICES,
                     'remote_id'       => $remoteId,
