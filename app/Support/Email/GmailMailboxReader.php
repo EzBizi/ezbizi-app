@@ -67,10 +67,26 @@ use Illuminate\Support\Facades\Http;
  * deleting mail and administering the account, and nothing below deletes
  * anything.
  *
- * NOT `gmail.modify` either, which is the tempting one-scope simplification —
- * it permits labelling and binning, and this class marks NOTHING at Google.
- * Read state is EzBizi's own `message_seen` table precisely so that opening a
- * shared inbox here does not mark a message read in Gmail for everybody else.
+ * `gmail.modify` IS requested — see GoogleOAuth:204, which lists it beside the
+ * other two. This paragraph used to say it was not, and used to say that this
+ * class "marks NOTHING at Google". Both were true when written and neither is
+ * now:
+ *
+ *   - {@see trash} moves a thread to Google's bin, which needs modify.
+ *   - {@see markReadAtSource} removes the UNREAD label, which needs it too.
+ *
+ * The claim decayed TWICE before anybody noticed, which is the argument for
+ * writing what a scope is spent ON rather than which scopes are refused: the
+ * first list goes stale when behaviour is added, the second only when the
+ * consent screen changes.
+ *
+ * What is still true, and is the part that matters: read state is EzBizi's own
+ * `message_seen` table, per person, and opening a shared inbox here does NOT
+ * mark a message read in Gmail — UNLESS that mailbox has been switched to
+ * `mark_read_at_source`, which is off by default and off on every mailbox that
+ * has not chosen it. The default is what keeps "seen by Jenny" meaningful on an
+ * inbox several people answer; the switch exists for the inbox one person
+ * reads, where the two ideas of "read" are the same idea.
  *
  * ── The failures it CAN tell apart, and the one it cannot ────────
  *
