@@ -96,7 +96,7 @@ how stale.
 | Marketing module | `local_067b17d7-5a25-4047-8eef-d6d0da3565bc` | EzBizi - Marketing Module | 2026-09-04 | `ezbizi-76 [7f2040]` |
 | Web Management (WordPress plugin) | `local_89561020-da81-4ac1-b953-62324562ea00` | EzBizi - Web Module | 2026-09-04 | — (no reply yet) |
 | Suggestions module | `local_cd7e62ef-dcf0-4939-8467-452f94ce3d63` | EzBizi - Suggestion Module | 2026-09-04 | `ezbizi-83 [67ea80]` |
-| UI / UX | `local_f82e74ac-d808-40cd-bc95-ce473619183a` | EzBizi - UI-UX Manager | 2026-09-04 | `ezbizi-e3 [a6b36a]` |
+| UI / UX (also written UI/UX, UI-UX; title "EzBizi - UI-UX Manager") | `local_f82e74ac-d808-40cd-bc95-ce473619183a` | EzBizi - UI-UX Manager | 2026-09-04 | `ezbizi-e3 [a6b36a]` |
 | Phone system | `local_d95f72da-cef3-4ffb-b8b1-8f4de859e7f3` | EzBizi - Phone System Module | 2026-09-04 | `ezbizi-7e [74574e]` |
 | Google API (also the **Leads** module: Google Ads, Local Services, Thumbtack tabs, lead threads, LeadInsights) | `local_8111908f-4bbb-400e-b842-6194f832387f` | EzBizi - Google API Module | 2026-09-04 | `ezbizi-02 [dd7f64]` — **same name as Inventory this minute** |
 | Clock In / Work Hours | `local_8b413ba1-91de-47c8-8a59-92176a3599f7` | EzBizi - Clock In | 2026-09-08 | — (registered 2026-09-08 by message; owns app/Support/TimeClock, TimeClockController, TimeClockShift + policy, client/lib/screens/hr/time_clock_tab.dart, the _ClockButton in main.dart) |
