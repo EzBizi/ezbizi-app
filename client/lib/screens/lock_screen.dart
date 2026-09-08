@@ -115,7 +115,10 @@ class _LockScreenState extends State<LockScreen> with WidgetsBindingObserver {
                 Text(
                   now,
                   textAlign: TextAlign.center,
-                  style: theme.textTheme.displayMedium,
+                  // headlineMedium, not displayMedium: theme.dart fills the
+                  // former and leaves the latter empty, and an empty slot
+                  // renders with no size and no weight (theme conventions test).
+                  style: theme.textTheme.headlineMedium,
                 ),
                 const SizedBox(height: 8),
                 Text(
