@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
+use App\Support\Inspection\InspectionScope;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
@@ -138,13 +139,22 @@ final class InspectionGlance extends DescribedGlance
     }
 
     /**
-     * Same franchise filter as InspectionReportsController::index.
+     * The one franchise filter, shared with InspectionReportsController::index.
+     *
+     * This was a COPY of the controller's, with a docblock saying so. The copy
+     * carried the controller's bug — a record with no job was counted for every
+     * branch in the organization — and the comment claiming the two matched is
+     * why the second one was never re-read. It delegates now, so they cannot
+     * drift apart again.
+     *
+     * Applied to runs as well as reports, which is sound because both models
+     * carry the same `job` and `customer` relations; the shared method asks
+     * only for those.
      *
      * @param  \Illuminate\Support\Collection<int, string>  $reachable
      */
     private function constrainToReach(Builder $query, $reachable): void
     {
-        $query->whereNull('job_id')
-            ->orWhereHas('job', fn (Builder $jobs) => $jobs->withTrashed()->whereIn('franchise_id', $reachable));
+        InspectionScope::constrainReports($query, $reachable->all());
     }
 }

@@ -34,6 +34,29 @@ class AppServiceProvider extends ServiceProvider
         // One instance per process — see plan §5.1
         $this->app->singleton(TenantContext::class);
 
+        // Bedrock, for what a model can say about a lead. No keys, no client:
+        // LeadInsights::enabled() is false and every caller shows nothing.
+        $this->app->bind(\App\Services\Leads\LeadInsights::class, function () {
+            $cfg = (array) config('services.bedrock');
+            $on  = ($cfg['key'] ?? '') !== '' && ($cfg['secret'] ?? '') !== '' && ($cfg['model'] ?? '') !== '';
+
+            return new \App\Services\Leads\LeadInsights(
+                $on ? new \Aws\BedrockRuntime\BedrockRuntimeClient([
+                    'version'     => 'latest',
+                    'region'      => (string) ($cfg['region'] ?? 'us-east-1'),
+                    'credentials' => ['key' => $cfg['key'], 'secret' => $cfg['secret']],
+                ]) : null,
+                (string) ($cfg['model'] ?? ''),
+            );
+        });
+
+        // Where a reply to a lead goes, per source. Google's is here; Web
+        // Management tags its own for website chat in its provider.
+        $this->app->tag(
+            [\App\Services\Leads\LocalServicesLeads::class],
+            \App\Support\Leads\LeadReplies::TAG,
+        );
+
         /*
          * AuditLogger holds per-request state — the correlation id, and whether
          * Lead Developer suppression is active — and every caller is written as

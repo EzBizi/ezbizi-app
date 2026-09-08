@@ -552,6 +552,13 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                 key: trigger.key,
                 label: trigger.label,
                 description: trigger.description,
+                // ENABLED stays true on purpose. A trigger declared ahead of
+                // its emitter is a reasonable thing to offer — hiding it or
+                // refusing the tap answers nobody's question about why an
+                // obvious event is missing, and the description explains the
+                // consequence. What was wrong was that the ONLY marker was the
+                // tail of a paragraph, so the row looked like every other one.
+                badge: trigger.isRaised ? null : 'Not raised yet',
               ),
           ],
         ),

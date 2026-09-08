@@ -162,7 +162,7 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
         'organization_id', 'company_id', 'franchise_id', 'connection_id', 'job_id',
         'source', 'remote_id', 'contact_name', 'phone', 'email', 'phone_digits',
         'lead_type', 'category', 'service', 'locale', 'summary', 'note', 'note_by_user_id', 'note_updated_at',
-        'status', 'starred_at', 'source_status', 'charge_status', 'received_at', 'synced_at',
+        'status', 'classification', 'classified_at', 'starred_at', 'source_status', 'charge_status', 'received_at', 'synced_at',
         'last_contact_at', 'last_contact_channel', 'last_contact_from', 'last_contact_preview',
     ];
 
@@ -174,6 +174,7 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
             'last_contact_at' => 'datetime',
             'starred_at' => 'datetime',
             'note_updated_at' => 'datetime',
+            'classified_at' => 'datetime',
         ];
     }
 

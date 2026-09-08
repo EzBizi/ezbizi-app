@@ -175,6 +175,123 @@ app asks for that carries no weight of its own. **That test is what found the
 third one; the audit behind the gallery had only looked for the two I had
 already noticed.**
 
+**Audit, 2026-09-08 — the Leads work against Org/Company/Franchise, Automations
+and Roles-Permissions.** Jose's brief on leaving. Measured, not assumed:
+
+- **Scope.** `book()` authorizes `create` on Customer AND Job *scoped to the
+  chosen franchise*, so a booking cannot make either somewhere the person cannot
+  reach. Placement names a franchise only when the reader can reach it, which is
+  why "Placed somewhere you cannot see" exists as a row state. Customers are
+  org-shared by design (`CustomersController` says so), so attaching a
+  Connecticut job to a customer owned elsewhere is correct, not a leak.
+- **Permissions.** Every Leads action is gated — eleven `authorize` calls. There
+  is **no side door**: booking requires `leads.edit` *and* `customers.create`
+  *and* `jobs.create`, so it cannot be used to create a job somebody lacks the
+  permission to create directly.
+- **Automations.** Leads declares five triggers; four are emitted, and the fifth
+  (`lead.classified`) carries `isRaised: false`, which is the honest mechanism
+  rather than a gap. Booking emits `customer.created`, `job.created`,
+  `job.scheduled` and `lead.converted` — checked specifically, because a booking
+  path that skipped `job.created` would make every automation on new jobs
+  silently miss booked ones.
+
+**The one finding, handed to Automations as a prominence fix:** twelve triggers
+carry `isRaised: false`, and the only thing saying so on screen is a sentence at
+the END of the trigger's description. A rule built on one saves, sits enabled and
+never runs, with no error — the exact silent-failure class this app reserves
+`errorContainer` and a count for, after five phone lines went to voicemail for
+months behind grey secondary text.
+
+> **And the mistake I nearly shipped as a security report.** My first read of
+> `book()` was `sed -n '<start>,+22p'` and found one `authorize` call, which
+> looked like booking bypassing the Jobs and Customers permissions entirely. The
+> other two calls are at relative lines 47 and 50 — outside the window. **A
+> windowed read is the worst possible basis for an ABSENCE claim, and a security
+> absence is the worst kind to get wrong**, because it is dramatic enough that
+> people act on it before it is checked. Read the whole method: compute the end
+> with `awk` on the next `function`, never `+N`.
+
+> **A SECOND finding, 2026-09-08, caught before its cut pinned:** website
+> enquiries raise no `lead.received`. `app/Support/Web/WebsiteEnquiries.php`
+> creates a Lead for `website_chat` and `website_form` and emits **nothing** —
+> zero `emit`/`events` in the file — while `LocalServicesLeads.php:137` and
+> `ThumbtackLeads.php:73` both emit on create. So an automation on *"Lead
+> received"* would fire for three sources and silently skip the fourth, with no
+> error and the rule sitting enabled. Partly mitigated and checked rather than
+> assumed: messages DO go through `LeadThread`, so `lead.contact_received` fires
+> — it is specifically the lead's ARRIVAL that raises nothing. One
+> `emitAfterCommit` fixes it. Reported to the desk, Leads and Web Management.
+> **Correction from the desk:** it was NOT in the running cut — 0.0.0165 pinned at
+> `5c39ce40` before Web's `ab0284de` merged as `12b366f2`, so this rides 0.0.0166,
+> which had not pinned. I said "the cut that is running" from the desk's own
+> mention of 0.0.0166 without checking which SHA 0.0.0165 was pinned at. The
+> finding arrived in time; the urgency I attached to it was a guess.
+>
+> **The check that found it is the one that came out clean on booking**, and that
+> is the point worth keeping: when a NEW path creates an existing kind of thing,
+> ask whether it raises the same events the old paths do. Booking passed; the
+> website path did not, and it is new code rather than a regression.
+
+**A row with a per-row control and a text-only alternate state has two heights,
+and that is what &ldquo;floating&rdquo; means.** Marketing's diagnosis of Web
+Management's Hours panel, 2026-09-08, and it generalises: an open day drew two
+`TextButton`s, each carrying Material's 48dp minimum tap target; a closed day
+drew one line of text at roughly half that. Seven rows alternating between two
+heights with nothing ruling them give the eye no grid. The fix is one minimum
+height for every row, a hairline between them, and compact controls so the ROW
+decides the height rather than Material.
+
+> Two measurements worth keeping: a FIXED height clips — at 375 the times ran
+> 78px past the edge, so it is a minimum plus a `Wrap`. And **the floor must
+> clear the TALLEST row, not the nominal one**: at 44 the open days measured 45
+> and clamped nothing, leaving two heights one pixel apart — invisible to the
+> eye and still exactly the reported defect.
+
+**And the boundary that made it Marketing's to fix:** could the change be
+described without naming a new thing? *"The rows are the same height and have a
+rule between them"* names no new element — that is craft, and it ships. *"There
+is now a panel that opens"* names one — that is design. Jose reported it as a
+defect and left; routing it would have meant it sat overnight.
+
+**A warning about the system's own capability is DERIVED, never stored.**
+Automations' marks for a trigger nothing raises — the picker badge and the
+saved-rule note — are computed from the catalogue at render, with no model field
+and no migration behind them (verified: zero occurrences in `app/Models` and
+`database/migrations`). So the day a sweep raises `item.low`, every saved rule
+waiting on it stops saying it will not run and starts running. Nobody has to
+remember to clear anything.
+
+> It is the exact inverse of [[release-notes-go-stale-silently]]: a hand-written
+> note about behaviour goes stale and manufactures bug reports; a mark computed
+> from the thing it describes cannot. **Same class of fact, opposite mechanism,
+> opposite outcome** — so when a screen must say something about what the product
+> can currently do, derive it from the registry rather than writing it down.
+
+**A second badge must say something the first does not.** Leads' rows carry a
+channel badge (Call / Text / Chat / Form) and, since the sources merge, a source
+badge (Google / Thumbtack / Chat / Forms). Independent for Google and Thumbtack —
+"Call · Google" is two facts. But `LIVECHAT → Chat` beside `website_chat → Chat`
+renders **"Chat · Chat"**, and `FORM` beside `website_form` renders "Form · Form".
+
+> Stated so it survives the next source: **draw the channel badge only when it
+> would not render the same word as the source badge.** No list of special cases,
+> and a fifth single-channel source gets the right answer for free.
+
+This is the third instance of one shape on this screen — the module name printed
+by both the shell and the panel header, "At a glance" under a lit *Dashboard*
+chip, and now a badge echoing a badge. **A row that gains a mark should be asked
+what the marks it already has are saying**, not just where the new one fits.
+
+**A summary line belongs to the question the surface now asks.** The Google
+accounts band carried "20 at company level · 2 on franchises" — called at the
+time "the only fact worth a permanent row". When the band became the *Connected
+sources* roster, that line did not come with it, and should not: placement does
+not generalise across sources that have none, and the need behind it is met
+better inside the panel, where a placement change already answers "14 leads moved
+to Connecticut" on the surface you are looking at when you make it. **A fact
+earns a permanent row against the question its surface asks, and that question
+can change under it.**
+
 **When two errors are not equally bad, neither one may be the silent default.**
 Booking a lead offers `customer_matches` — customers sharing the lead's last ten
 digits, which the server itself calls *advisory only*. Attaching to the **wrong
@@ -556,6 +673,7 @@ on main may have moved on.
 | 🔨 | **Scheduling · Availability + Settings** | **Layout 7 approved, being built** (Overview + area rail — Jose's own combination of 1 and 2); Availability is **layout 4**. `docs/previews/scheduling-layouts.html` @ `560aed5`. Held by the Scheduling session. |
 | 📬 | **Fleet · vehicle Identity card** | **Layout 2 approved, handed to the deploy desk to route.** `docs/previews/fleet-identity-layouts.html` @ `560aed5`. The Fleet session that briefed it ended before it was drawn. **Not urgent** — nothing in Fleet is broken; the card works and the complaint was a long scroll at 375px. Fold it into the next Fleet work rather than staffing for it. |
 | ⏳ AWAITING JOSE | **Leads · connected accounts** | Six layouts in `docs/previews/leads-accounts-layouts.html` — 3 desktop, 3 mobile. Brief from the Google API session (`local_8111908f`), server done at `c55b3c33`. **22 Google Ads accounts, one shown**: `leads_screen.dart:179` `_connectionFor` returns the first provider match. **Two payload gaps found by reading it and raised with them:** `connectionState()` carries no `leads_franchise_id`, so the placement column cannot render on load; and nothing links a lead to the account that produced it, so no per-account count exists client-side or server-side. The count is not a decoration — it is what separates "2 accounts that matter from 20 quiet ones" from twenty-two identical rows, and layouts marked `needs the count` degrade honestly without it. Design builds it once picked. |
+| ⚠️ **DECIDED IN JOSE'S ABSENCE — reversible in one word** | **Leads · four sources** | Desktop **1** + mobile **4** — `docs/previews/leads-sources-layouts.html`. Jose said *"a new sub tab in Leads"* for website chat and forms; **I recommended ONE LIST with source as a filter instead**, under his 2026-09-08 instruction *"do as you believe or recommend, dont wait for me"*. Layout 2 is his wording drawn properly and buildable as-is — the row, the badges and the sources band are identical in both, so only the strip changes. **If he says "tabs", it is one word and Leads builds 2.** |
 | ✅ APPROVED, **built by Leads** | **Leads · book a job from a lead** | Desktop **1** + mobile **4** — `docs/previews/leads-booking-layouts.html` @ `d1c69cb5`. Jose, 2026-09-08: *"as you recommend for the layouts"*. **Nothing is preselected when `customer_matches` is non-empty**, and Book stays disabled until answered — see the rule below. No match → straight to a new customer, no question. |
 | ✅ APPROVED, **built by Leads** | **Leads · read, star, note** | Desktop **1** + mobile **4** — `docs/previews/leads-triage-layouts.html` @ `18012c74`. Jose, 2026-09-08: *"2 - as u recommend"*. **Unread is WEIGHT, not a second dot** — the dot is unreplied and a leading-edge bar is banned, so the three marks live in three channels: weight (unread, yours), dot (unreplied, everyone's), star (everyone's). Filters narrow TOGETHER. On the same delegation the note gets an **author and an edited-at**, asked of Leads: a shared free-text field that cannot say who or when is one people stop trusting, and silent last-write-wins is the worse half. |
 | ✅ APPROVED, **built by Leads** | **Leads · conversation colour** | Desktop **3** + mobile **6** — `docs/previews/leads-conversation-colour-layouts.html` @ the commit below. Jose, 2026-09-08: *"option 3 for desktop, 6 for mobile"* — the saturated direction, ours filled `primary` with `onPrimary`. **No accent bar anywhere**, per the same message. `primary` inverts between brightnesses (#00708f/white light, #00aeef/near-black dark), so the build must be checked in both. |

@@ -8,9 +8,11 @@ use App\Models\Job;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\SocialConnection;
+use App\Services\Leads\LeadInsights;
 use App\Services\Leads\LocalServicesLeads;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Leads\LeadReplies;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Social\GoogleToken;
 use App\Support\Social\SocialConnectionAccess;
@@ -45,6 +47,8 @@ class LeadsController extends Controller
         private readonly TenantContext $tenant,
         private readonly EventEmitter $events,
         private readonly RecordNumberGenerator $numbers,
+        private readonly LeadReplies $replies,
+        private readonly LeadInsights $insights,
     ) {}
 
     /** GET /api/v1/leads */
@@ -120,6 +124,13 @@ class LeadsController extends Controller
             $query->whereNotNull('leads.starred_at');
         }
 
+        // Source is the fourth filter, beside the three it narrows with (UI/UX
+        // sources layout 1, 2026-09-08): one list answers "who is waiting on
+        // me" across Google, Thumbtack and the website at once.
+        if (is_string($source = $request->query('source')) && $source !== '') {
+            $query->where('leads.source', $source);
+        }
+
         // One box, two meanings. Somebody looking for a lead has either a name
         // or a phone number in front of them, and asking which they typed is a
         // question the screen should answer for itself. Digits are matched
@@ -167,7 +178,10 @@ class LeadsController extends Controller
 
         // Whether a reply can go anywhere: Google accepts them for text
         // enquiries only, and only while the account is connected.
-        $data['can_reply'] = $lead->lead_type === 'MESSAGE' && $lead->connection_id !== null;
+        $data['can_reply'] = $this->replies->canReply($lead);
+
+        // A draft is offered only where a reply can go and the model is on.
+        $data['can_suggest'] = $data['can_reply'] && $this->insights->enabled();
 
         // Customers this number already belongs to, so booking can attach to
         // one instead of making a second Jane Doe. Same digits-only match the
@@ -399,6 +413,30 @@ class LeadsController extends Controller
     }
 
     /**
+     * POST /api/v1/leads/{lead}/suggest-reply
+     *
+     * A draft, never a send. The text comes back for the composer; a person
+     * reads it, changes it, and presses Send, or does not. Gated the same as
+     * replying, because a draft for a lead you may not answer is noise.
+     */
+    public function suggestReply(Lead $lead): JsonResponse
+    {
+        $this->authorize('update', $lead);
+
+        abort_unless(
+            $this->replies->canReply($lead) && $this->insights->enabled(),
+            Response::HTTP_UNPROCESSABLE_ENTITY,
+            'A suggested reply is not available for this enquiry.',
+        );
+
+        $draft = $this->insights->suggestReply($lead);
+
+        abort_if($draft === null, Response::HTTP_BAD_GATEWAY, 'The model did not answer. Write the reply yourself.');
+
+        return response()->json(['data' => ['text' => $draft]]);
+    }
+
+    /**
      * POST /api/v1/leads/{lead}/messages
      *
      * Reply to the enquirer. The message goes through Google into the chat
@@ -417,17 +455,27 @@ class LeadsController extends Controller
 
         abort_if($text === '', Response::HTTP_UNPROCESSABLE_ENTITY, 'Write something to send.');
 
-        try {
-            $row = $this->localServices->reply($lead, $text);
-        } catch (RuntimeException $e) {
-            // Google's refusal and "this is a call" both arrive here with a
-            // sentence written for the screen. 422 for the ones the person can
-            // act on, 502 for the ones only Google can.
-            $status = $lead->lead_type !== 'MESSAGE' || $lead->connection === null
-                ? Response::HTTP_UNPROCESSABLE_ENTITY
-                : Response::HTTP_BAD_GATEWAY;
+        // Which door the text goes through is the source's business, not this
+        // controller's: Google's Local Services, a website chat, and a form
+        // that has no way back each answer for themselves.
+        $channel = $this->replies->for($lead);
 
-            abort($status, $e->getMessage());
+        abort_if(
+            $channel === null || ! $channel->canReply($lead),
+            Response::HTTP_UNPROCESSABLE_ENTITY,
+            $channel === null
+                ? 'Replies cannot be sent to enquiries from this source.'
+                : ($lead->lead_type !== 'MESSAGE' && $lead->source === Lead::SOURCE_LOCAL_SERVICES
+                    ? 'Google only accepts replies to text enquiries. This one came in as a call.'
+                    : 'This enquiry cannot be replied to right now.'),
+        );
+
+        try {
+            $row = $channel->send($lead, $text);
+        } catch (RuntimeException $e) {
+            // The provider refused, with a sentence written for the screen.
+            // Only the provider can act on it, so 502.
+            abort(Response::HTTP_BAD_GATEWAY, $e->getMessage());
         }
 
         $this->audit->log('lead.replied', $lead, [
@@ -816,6 +864,12 @@ class LeadsController extends Controller
             'locale'        => $lead->locale,
             'summary'       => $lead->summary,
             'status'        => $lead->status,
+
+            // What the lead LOOKS LIKE (BOOK / SUPPORT / ARCHIVE, read by a
+            // model), beside what somebody DECIDED (status). Null until the
+            // enquirer has said something in words, or while the model is off.
+            'classification' => $lead->classification,
+            'classified_at'  => $lead->classified_at?->toIso8601String(),
             'starred'       => $lead->starred_at !== null,
             'note'          => $lead->note,
             'note_by'       => $lead->note_by_user_id !== null && $lead->relationLoaded('noteBy')

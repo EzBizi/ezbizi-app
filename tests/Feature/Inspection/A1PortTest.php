@@ -108,6 +108,52 @@ class A1PortTest extends TestCase
         $this->artisan('inspection:import-a1', ['organization' => 'A1 Group'])->assertFailed();
     }
 
+    /**
+     * THE PORTED DRAFT SURVIVES PUBLISH.
+     *
+     * The import deliberately creates a draft and never publishes, so that
+     * somebody reads it in the Builder first. That leaves an untested step
+     * between "imported" and "usable": publish re-runs the whole definition
+     * through `FieldSet`, drops citations whose codes have gone, and freezes
+     * the rest into a version. 166 fields carrying code citations is exactly
+     * the shape that could pass the import's validation and fail the
+     * publisher's — and nobody would find out until they clicked the button
+     * and got an error on a form they had been told was ready.
+     *
+     * Asserted through the real endpoint rather than by calling the model, so
+     * the authorisation, the citation freeze and the version write are all the
+     * ones production uses.
+     */
+    public function test_the_ported_inspection_can_actually_be_published(): void
+    {
+        $tenant = $this->provisionTenant('A1 Group');
+
+        $this->artisan('inspection:import-a1', ['organization' => 'A1 Group'])->assertSuccessful();
+
+        $definition = $this->inTenant(
+            $tenant['org'],
+            fn () => InspectionDefinition::query()->firstOrFail(),
+        );
+
+        $this->signedInAs($tenant['admin'])
+            ->postJson("/api/v1/inspections/{$definition->id}/publish")
+            ->assertOk();
+
+        [$publishedAt, $versionId, $screenCount] = $this->inTenant($tenant['org'], function () use ($definition) {
+            $fresh = $definition->fresh()->load('currentVersion');
+
+            return [
+                $fresh->published_at,
+                $fresh->current_version_id,
+                count($fresh->currentVersion?->screens ?? []),
+            ];
+        });
+
+        $this->assertNotNull($publishedAt, 'the ported inspection must be publishable');
+        $this->assertNotNull($versionId, 'publishing must leave a frozen version to run from');
+        $this->assertSame(4, $screenCount, 'the frozen version must carry all four screens');
+    }
+
     public function test_it_can_belong_to_one_company(): void
     {
         $tenant = $this->provisionTenant('A1 Group');

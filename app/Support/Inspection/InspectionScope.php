@@ -89,6 +89,62 @@ final class InspectionScope
      *
      * @return string[]
      */
+    /**
+     * Which FILED REPORTS a person may read, by the branch the work sits at.
+     *
+     * ── Why this is not a copy in two places ────────────────────
+     *
+     * It was. `InspectionReportsController::index` carried the filter and
+     * `InspectionGlance::constrainToReach` carried a copy whose docblock said
+     * "Same franchise filter as InspectionReportsController::index" — so when
+     * the controller was wrong the dashboard was wrong identically, and the
+     * comment asserting they matched is the reason nobody re-read the second
+     * one. One home, two call sites.
+     *
+     * ── The hole it closes ──────────────────────────────────────
+     *
+     * Both copies read `whereNull('job_id')->orWhereHas('job', ...)`, which let
+     * EVERY report filed without a job through to every branch in the
+     * organization. A customer-only inspection is ordinary, not a corner: the
+     * picker allows starting one against a client with no job, and
+     * `InspectionReport::automationScope()` already falls back to the
+     * customer's `owning_franchise_id` for exactly that reason. The READ side
+     * simply never asked the second question.
+     *
+     * So a report answers with its JOB's branch, and with its CUSTOMER's when
+     * there is no job — the same order, and the same two questions, that decide
+     * who gets notified about it. `withTrashed()` on both, and that is not
+     * tidiness: a job soft-deletes and a report outlives it, and §9 anonymises
+     * a customer in place rather than removing the row, so reading through the
+     * default scope would drop a report out of its own branch's list the moment
+     * either was binned.
+     *
+     * A report whose customer has no owning franchise is visible to nobody
+     * here, deliberately. It cannot say where it sits, and the answer to "which
+     * branch may read this" is never "all of them".
+     *
+     * STATIC on purpose: the dashboard glance is not a controller and has no
+     * constructor to inject into, and a filter that two callers must agree on
+     * is worth more than matching the shape of `constrain()` above it.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<\App\Models\InspectionReport>  $query
+     * @param  array<int, string>  $reachable  franchise ids this person may see
+     */
+    public static function constrainReports(Builder $query, array $reachable): void
+    {
+        $query->where(function (Builder $q) use ($reachable) {
+            $q->whereHas(
+                'job',
+                fn (Builder $jobs) => $jobs->withTrashed()->whereIn('franchise_id', $reachable),
+            )->orWhere(function (Builder $noJob) use ($reachable) {
+                $noJob->whereNull('job_id')->whereHas(
+                    'customer',
+                    fn (Builder $c) => $c->withTrashed()->whereIn('owning_franchise_id', $reachable),
+                );
+            });
+        });
+    }
+
     public function companyChainFor(User $user): array
     {
         $chain = [];

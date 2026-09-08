@@ -20,6 +20,8 @@ import 'package:http/testing.dart';
 /// seconds on a twelve-minute call reads as broken, and the longest recordings
 /// are the ones people most want to hear. The fetching state is not decoration.
 void main() {
+  _wordTests();
+
   testWidgets('play says it is fetching until the bytes arrive, then hands '
       'them to the player', (tester) async {
     final gate = Completer<void>();
@@ -87,19 +89,14 @@ void main() {
       'own words', (tester) async {
     await _pump(
       tester,
-      player: FakeRecordingPlayer(
-        refuses: 'This recording would not play.',
-      ),
+      player: FakeRecordingPlayer(refuses: 'This recording would not play.'),
       recordingGate: Completer()..complete(),
     );
 
     await tester.tap(find.byKey(const ValueKey('play-c-call')));
     await tester.pumpAndSettle();
 
-    expect(
-      find.text('This recording would not play.'),
-      findsOneWidget,
-    );
+    expect(find.text('This recording would not play.'), findsOneWidget);
   });
 
   testWidgets('a reply goes out on Send and appears in the thread as ours', (
@@ -130,6 +127,41 @@ void main() {
       isEmpty,
       reason: 'the box clears once Google has taken it',
     );
+  });
+
+  /// A draft, never a send: Suggest fills the box, the person presses Send.
+  testWidgets('Suggest fills the box with the draft and sends nothing', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      suggestion: 'Hi, yes we can inspect it. Which day suits you?',
+    );
+
+    await tester.tap(find.byKey(const ValueKey('reply-suggest')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('reply-box')))
+          .controller!
+          .text,
+      'Hi, yes we can inspect it. Which day suits you?',
+    );
+    expect(_sent, isEmpty, reason: 'a draft is not a send');
+  });
+
+  testWidgets('without the model there is no Suggest button', (tester) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+    );
+
+    expect(find.byKey(const ValueKey('reply-suggest')), findsNothing);
+    expect(find.byKey(const ValueKey('reply-box')), findsOneWidget);
   });
 
   testWidgets('a call lead has no reply box and says why', (tester) async {
@@ -239,6 +271,7 @@ Future<void> _pump(
   required Completer<void> recordingGate,
   bool canReply = true,
   String? refuseSend,
+  String? suggestion,
   Future<void> Function()? onRead,
   Future<Map<String, dynamic>?> Function(String? note)? onNote,
 }) async {
@@ -249,6 +282,17 @@ Future<void> _pump(
 
   final api = ApiClient(
     client: MockClient((request) async {
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/suggest-reply')) {
+        return http.Response(
+          jsonEncode({
+            'data': {'text': suggestion},
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
       if (request.method == 'POST' && request.url.path.endsWith('/messages')) {
         final text = (jsonDecode(request.body) as Map)['text'] as String;
         if (refuseSend != null) {
@@ -292,6 +336,7 @@ Future<void> _pump(
             'data': {
               'id': 'lead-1',
               'can_reply': canReply,
+              'can_suggest': suggestion != null,
               'conversations': [
                 {
                   'id': 'c-call',
@@ -362,4 +407,17 @@ Future<void> _pump(
     ),
   );
   await tester.pumpAndSettle();
+}
+
+void _wordTests() {
+  test('channels and sources read as words, never as wire values', () {
+    expect(channelWord('PHONE_CALL'), 'Call');
+    expect(channelWord('MESSAGE'), 'Text');
+    expect(channelWord('SMS'), 'Text');
+    expect(channelWord('LIVECHAT'), 'Chat');
+    expect(channelWord('FORM'), 'Form');
+    expect(sourceWord('local_services'), 'Google Ads');
+    expect(sourceWord('website_chat'), 'Website chat');
+    expect(sourceWord('website_form'), 'Website form');
+  });
 }
