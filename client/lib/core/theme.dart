@@ -182,6 +182,22 @@ class EzBiziTheme {
       ),
 
       textTheme: TextTheme(
+        // The one surface that wants a number read from across a room: the
+        // Clock In lock screen, where the time IS the content. It asked for
+        // `displayMedium`, found it empty, and correctly fell back to
+        // `headlineMedium` -- so a full-screen clock was rendering at 28, the
+        // same size as a section heading. Filled here rather than fixed there.
+        //
+        // 40 continues the ramp (20 -> 28 -> 40) instead of taking Material's
+        // 45, which was drawn for a scale this app does not use. w700 not w800:
+        // at this size the heavier weight stops reading as emphasis and starts
+        // closing up the counters in 8 and 0.
+        displayMedium: TextStyle(
+          fontSize: 40,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -1,
+          color: isDark ? Colors.white : _ink,
+        ),
         headlineMedium: TextStyle(
           fontSize: 28,
           fontWeight: FontWeight.w800,
