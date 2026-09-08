@@ -7,9 +7,8 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
-import 'voice_device.dart';
+import '../../core/phone_call_service.dart';
 import 'staff_thread.dart';
-import 'voice_view.dart';
 import 'call_history_pane.dart';
 
 /// Call desk — layout 1: teammates, pad, person. Below 600px, one pane at a time.
@@ -27,13 +26,17 @@ class CallTab extends StatefulWidget {
     super.key,
     required this.api,
     required this.session,
-    this.device,
+    this.service,
     this.view = CallView.dial,
   });
 
   final ApiClient api;
   final Session session;
-  final VoiceDevice? device;
+  /// The desk. Defaults to the app-wide one the shell brought up; a test
+  /// passes its own so it does not have to stub three endpoints to get a
+  /// phone that answers.
+  final PhoneCallService? service;
+
   final CallView view;
 
   static const double splitAbove = 600;
@@ -48,8 +51,7 @@ class _CallTabState extends State<CallTab> {
   static const _refusal =
       'This line cannot send texts until messaging is approved.';
 
-  late final VoiceDevice _device;
-  late final bool _ownsDevice;
+  late final PhoneCallService _service;
 
   final _destination = TextEditingController();
   final _body = TextEditingController();
@@ -72,7 +74,13 @@ class _CallTabState extends State<CallTab> {
   Map<String, int> _unread = const {};
   _CallPane _pane = _CallPane.pad;
   bool _dnd = false;
-  bool _onCall = false;
+
+  /// Who is ringing and whether audio is up are the SERVICE's answers, not
+  /// this screen's. They used to be fields here, which is why they were only
+  /// true while this screen existed.
+  String? get _incomingFrom => _service.incomingFrom;
+
+  bool get _onCall => _service.onCall;
 
   /// The call just finished, waiting to be said what it was about.
   ///
@@ -84,25 +92,26 @@ class _CallTabState extends State<CallTab> {
   List<_Tag> _tags = const [];
   bool _tagging = false;
   String? _tagError;
-  String? _incomingFrom;
   String? _sendError;
 
   @override
   void initState() {
     super.initState();
-    _ownsDevice = widget.device == null;
-    _device = widget.device ?? createVoiceDevice();
-    _device.onIncoming = (incoming) {
-      if (!mounted) return;
-      setState(() => _incomingFrom = incoming.from);
-    };
+    _service = widget.service ?? PhoneCallService.current;
+    _service.addListener(_onServiceChanged);
     _load();
+  }
+
+  /// The desk changed under us — a call arrived, was answered, or the
+  /// registration finally came up. Never disposes the service: it is the
+  /// app's, not this screen's, and outliving this screen is the whole point.
+  void _onServiceChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
-    _device.onIncoming = null;
-    if (_ownsDevice) _device.dispose();
+    _service.removeListener(_onServiceChanged);
     _destination.dispose();
     _body.dispose();
     super.dispose();
@@ -251,7 +260,6 @@ class _CallTabState extends State<CallTab> {
     }
 
     await _loadMessages();
-    await _register();
   }
 
   Future<void> _loadMessages() async {
@@ -279,58 +287,13 @@ class _CallTabState extends State<CallTab> {
     });
   }
 
-  Future<void> _register() async {
-    final number = _selected;
-    if (number == null) return;
-
-    // Phase one FIRST, then a frame, then register.
-    //
-    // The Windows device's microphone prompt is delivered to its mounted
-    // widget; unmounted, `getUserMedia` goes unanswered and Twilio's register()
-    // rejects. [VoiceDevice.platformView] is null until prepare() has built the
-    // controller, so the widget cannot exist before this call — and awaiting
-    // one frame after it is what actually puts it in the tree. Without the
-    // frame this is the same bug with an extra method: prepared, still not
-    // mounted, still refused.
-    //
-    // A no-op on every other platform, so there is one path here rather than a
-    // Windows branch.
-    await _device.prepare();
-    if (!mounted) return;
-    setState(() {});
-    await WidgetsBinding.instance.endOfFrame;
-    if (!mounted) return;
-
-    final token = await widget.api.post('/phone/tokens', {
-      'connection_id': number.connectionId,
-    });
-    if (token.ok) {
-      final value = token.body['token'] as String? ?? '';
-      if (value.isNotEmpty) await _device.setup(value);
-    }
-
-    // Say so when the desk did not actually come up. setup() returns on a
-    // refused token and on signalling that never connected as well as on
-    // success, so "it returned" is not "it is ready" — and a dial pad that
-    // looks ready but can never ring is the failure this whole path had.
-    if (mounted) setState(() => _deskDown = !_device.registered);
-
-    // And keep reading it. Registration finishes after setup() returns on
-    // Windows, so the line above is a sample taken while the answer is still
-    // false — which is how the desk came to say "not connected to the phone
-    // network" across the top of a call that was connected underneath it.
-    _device.onRegistrationChanged = () {
-      if (mounted) setState(() => _deskDown = !_device.registered);
-    };
-
-    await widget.api.put('/phone/presence', {
-      'connection_id': number.connectionId,
-      'state': _dnd ? 'dnd' : 'registered',
-    });
-  }
-
-  /// The Voice device never registered, so this desk cannot take a call.
-  bool _deskDown = false;
+  /// The desk never registered, so it cannot take a call.
+  ///
+  /// Read from the service rather than sampled here. It used to be a field set
+  /// once when this screen registered the device itself, which is how the
+  /// banner came to sit across the top of a call that was connected
+  /// underneath it.
+  bool get _deskDown => !_service.registered;
 
   /// Keep the customer column even with nobody on the line.
   bool _customerPinned = false;
@@ -357,14 +320,13 @@ class _CallTabState extends State<CallTab> {
     // tell four of the five platforms the phone is not for them, EzBizi asks
     // Twilio to ring the person's own handset and bridge them to the customer.
     // No SDK, no microphone, and the customer still sees the company line.
-    if (!_device.supported) {
+    if (!_service.supported) {
       await _bridgeCall(number, to);
 
       return;
     }
 
-    await _device.connect(to: to, callerId: number.e164);
-    setState(() => _onCall = true);
+    await _service.connect(to: to, callerId: number.e164);
     await widget.api.put('/phone/presence', {
       'connection_id': number.connectionId,
       'state': 'on_call',
@@ -402,13 +364,10 @@ class _CallTabState extends State<CallTab> {
   }
 
   Future<void> _hangUp() async {
-    _device.hangUp();
+    _service.hangUp();
 
     // The call that just ended is a row the history does not have yet.
-    setState(() {
-      _onCall = false;
-      _historyToken++;
-    });
+    setState(() => _historyToken++);
     final number = _selected;
     if (number == null) return;
     await widget.api.put('/phone/presence', {
@@ -483,11 +442,7 @@ class _CallTabState extends State<CallTab> {
   }
 
   Future<void> _accept() async {
-    _device.acceptIncoming();
-    setState(() {
-      _incomingFrom = null;
-      _onCall = true;
-    });
+    _service.accept();
     final number = _selected;
     if (number == null) return;
     await widget.api.put('/phone/presence', {
@@ -497,8 +452,7 @@ class _CallTabState extends State<CallTab> {
   }
 
   void _decline() {
-    _device.declineIncoming();
-    setState(() => _incomingFrom = null);
+    _service.decline();
   }
 
   Future<void> _send() async {
@@ -605,12 +559,9 @@ class _CallTabState extends State<CallTab> {
                     if (_deskDown) _deskDownBanner(),
                     Expanded(child: wide ? _wide() : _narrow()),
 
-                    // Zero-sized, and load-bearing. WebView2 delivers the
-                    // microphone prompt to this widget's own delegate, so
-                    // a device whose view never enters the tree registers
-                    // and then cannot hear anybody — a phone that looks
-                    // perfect and is deaf. Empty on every other platform.
-                    voiceDeviceView(_device.platformView),
+                    // The zero-sized WebView2 host moved to the shell with
+                    // the device it belongs to. Mounting a second one here
+                    // would be a second phone on one identity.
                   ],
                 );
               },
@@ -638,17 +589,17 @@ class _CallTabState extends State<CallTab> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                _device.supported
+                _service.supported
                     // Say WHAT WENT WRONG when the platform told us, and only
                     // guess when it did not. The old sentence named the
                     // network every time, so an expired token, a rejected
                     // identity or a missing audio device all read as "your
                     // wifi" — and sent somebody to check a firewall for a
                     // fault that was never there.
-                    ? (_device.registrationError != null
+                    ? (_service.registrationError != null
                           ? 'This desk could not connect to the phone '
                                 'network, so it cannot take or make calls. '
-                                '${_device.registrationError}'
+                                '${_service.registrationError}'
                           : 'This desk is not connected to the phone network, '
                                 'so it cannot take or make calls. Reload the '
                                 'page; if it keeps happening the network is '
@@ -673,8 +624,11 @@ class _CallTabState extends State<CallTab> {
             ),
             // No Retry where retrying cannot succeed. A control that can
             // only ever fail is worse than none: it reads as "not yet".
-            if (_device.supported)
-              TextButton(onPressed: _register, child: const Text('Try again')),
+            if (_service.supported)
+              TextButton(
+                onPressed: () => _service.restart(widget.api),
+                child: const Text('Try again'),
+              ),
           ],
         ),
       ),

@@ -8,6 +8,25 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0156',
+      date: '4 Sep 2026',
+      items: [
+        'Your phone now stays on the hook wherever you are in EzBizi. It did '
+            'not before: the phone was switched on by opening Communication '
+            'and switched off again by leaving it, so between signing in and '
+            'going to the phone - and any time you were on Jobs, or '
+            'Customers, or anywhere else - a call had nowhere to arrive and '
+            'nothing said so. The dial pad looked perfectly fine, because '
+            'coming back to it was what turned the phone on.',
+        'A call now appears as a bar across the top of whatever you are '
+            'doing, with Answer, Decline and a way through to the phone '
+            'screen. It is a bar and not a pop-up on purpose: you can answer '
+            'and carry on typing up the job you were in the middle of. Once '
+            'you are on the call the bar stays, so you can hang up from '
+            'wherever you have got to.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0155',
       date: '8 Sep 2026',
       items: [

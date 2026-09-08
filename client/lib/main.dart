@@ -38,6 +38,9 @@ import 'widgets/notification_bell.dart';
 import 'widgets/scope_switcher.dart';
 import 'widgets/user_avatar.dart';
 import 'widgets/availability_button.dart';
+import 'widgets/incoming_call_bar.dart';
+import 'core/phone_call_service.dart';
+import 'screens/phone/voice_view.dart';
 
 Future<void> main() async {
   // Bindings first: TokenStore.init reaches a platform channel (the keychain),
@@ -420,6 +423,18 @@ class _HomeShellState extends State<HomeShell> {
     _screenshots = ScreenshotService(widget.api);
     _liveView = LiveViewService(widget.api);
     _remoteControl = RemoteControlService(widget.api);
+
+    // The softphone comes up with the SHELL, not with the Dial tab.
+    //
+    // It used to be created and disposed by CallTab, and this shell renders
+    // only the selected module — so a person who had not opened Communication,
+    // or who had walked away from it, was unreachable and nothing said so.
+    // Starting it here is what makes the bar below able to exist at all.
+    //
+    // Safe for somebody with no phone line: start() looks, finds nothing, and
+    // leaves everything false.
+    unawaited(PhoneCallService.current.start(widget.api));
+
     _apply(widget.address?.path);
     _stopListening = widget.address?.listen((path) {
       if (!mounted) return;
@@ -434,6 +449,11 @@ class _HomeShellState extends State<HomeShell> {
     _screenshots.dispose();
     _liveView.dispose();
     _remoteControl.dispose();
+
+    // stop(), not dispose(): the service is a singleton that outlives this
+    // widget, and the next person to sign in is not this person.
+    PhoneCallService.current.stop();
+
     super.dispose();
   }
 
@@ -1011,6 +1031,35 @@ class _HomeShellState extends State<HomeShell> {
         top: false,
         child: Column(
           children: [
+            /*
+             * The call, above whatever you were doing.
+             *
+             * A strip rather than a modal, in the same Column as the update
+             * notice: a ringing phone must not take the app away from somebody
+             * halfway through writing up a job. Answer, keep typing.
+             *
+             * It draws nothing when nobody is calling and no call is up, so
+             * this costs an empty box the rest of the time.
+             */
+            IncomingCallBar(
+              onOpenDial: () => _show(_Rail.modules, 'phone'),
+            ),
+
+            /*
+             * Zero-sized, and load-bearing — the same widget CallTab used to
+             * mount, moved up with the device that needs it.
+             *
+             * WebView2 delivers the microphone prompt to THIS widget's own
+             * delegate. A softphone whose view is not in the tree registers and
+             * then cannot hear anybody: a phone that looks perfect and is deaf.
+             * Empty on every platform but Windows.
+             */
+            AnimatedBuilder(
+              animation: PhoneCallService.current,
+              builder: (context, _) =>
+                  voiceDeviceView(PhoneCallService.current.platformView),
+            ),
+
             /*
              * A newer build, offered rather than imposed.
              *
