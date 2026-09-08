@@ -123,6 +123,16 @@ class User extends Authenticatable implements HoldsPersonalData
                 'The second factor, where the account has one.',
                 Erasure::erase(),
                 encrypted: true),
+            new PersonalDataEntry('work_schedule', PersonalDataEntry::ACTIVITY,
+                'Which weekdays and hours they are expected to work, in the zone of the '
+                .'place that set it. Read by the shift-end reminder and the lock screen.',
+                Erasure::erase()),
+            new PersonalDataEntry('lock_screen_exempt', PersonalDataEntry::TECHNICAL,
+                'Whether the lock screen is switched off for this person (a remote worker).',
+                // NOT NULL boolean: the purge's stand-in string cannot land
+                // here, and a switch says nothing about the person once the
+                // account is anonymised. It goes with the row.
+                Erasure::keep('A switch, not a fact about them; dropped with the account row.')),
         ];
     }
 
@@ -180,6 +190,9 @@ class User extends Authenticatable implements HoldsPersonalData
             'sms_code_expires_at'   => 'datetime',
             // §2.1 category 6 — theirs, nobody else's.
             'preferences'         => 'array',
+            // HR data, not a preference: Records sets it. Shape in WorkSchedule.
+            'work_schedule'       => 'array',
+            'lock_screen_exempt'  => 'boolean',
         ];
     }
 

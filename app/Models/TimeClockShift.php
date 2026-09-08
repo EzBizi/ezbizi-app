@@ -23,6 +23,11 @@ class TimeClockShift extends Model implements HoldsPersonalData
     use HasUuids;
     use BelongsToTenant;
 
+    /** Who closed the shift (design 2026-09-08 §5.2). Null while open. */
+    public const ENDED_BY_PERSON = 'person';
+    public const ENDED_BY_SCHEDULE = 'schedule';
+    public const ENDED_BY_AUTOMATION = 'automation';
+
     // ── §9 data inventory ────────────────────────────────────────
 
     public static function personalDataPurpose(): string
@@ -55,6 +60,10 @@ class TimeClockShift extends Model implements HoldsPersonalData
                     .'says somebody punched without saying when, which is worse than '
                     .'keeping times against an already-anonymised account. Do not invent '
                     .'an out time on erasure.')),
+            new PersonalDataEntry('scheduled_end_at, extensions, outside_schedule, ended_by',
+                PersonalDataEntry::ACTIVITY,
+                'What the schedule said about this shift and who closed it.',
+                Erasure::keep('Facts about the punch, not about the person; they go with the row.')),
         ];
     }
 
@@ -67,6 +76,7 @@ class TimeClockShift extends Model implements HoldsPersonalData
 
     protected $fillable = [
         'organization_id', 'user_id', 'clocked_in_at', 'clocked_out_at',
+        'scheduled_end_at', 'extensions', 'outside_schedule', 'ended_by',
     ];
 
     protected function casts(): array
@@ -74,6 +84,9 @@ class TimeClockShift extends Model implements HoldsPersonalData
         return [
             'clocked_in_at' => 'datetime',
             'clocked_out_at' => 'datetime',
+            'scheduled_end_at' => 'datetime',
+            'extensions' => 'integer',
+            'outside_schedule' => 'boolean',
         ];
     }
 
