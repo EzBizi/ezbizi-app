@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.1.0
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -81,10 +81,30 @@ this plugin's version number.
   the background rather than while a visitor waits
 - When an administrator saves the settings page or presses "Refresh now"
 
-**What data is NOT sent:** No information about your visitors — no IP
-addresses, no page views, no analytics, no personal data of any kind. The page a
-visitor is on is never sent either: per-page values are selected on your own
-server from data already received.
+**What data is NOT sent by the shortcodes:** No information about your
+visitors — no IP addresses, no page views, no analytics, no personal data of any
+kind. The page a visitor is on is never sent either: per-page values are
+selected on your own server from data already received.
+
+**The chat and contact form widgets are different, and this is the important
+paragraph on this page.** Both are OFF unless you switch them on in EzBizi, and
+neither sends anything until a visitor uses one. When a visitor does:
+
+- Their browser sends what they typed — which may include their name, email
+  address, telephone number, and the text of their message or their answers to
+  your form's questions — directly to EzBizi, where it becomes an enquiry you
+  can reply to.
+- The address of the page they were on is sent with it, so you can see where
+  they were when they got in touch.
+- Because their browser makes that request itself, EzBizi receives their IP
+  address the way any website they visit would. It is not stored as part of the
+  enquiry.
+- Live chat stores a token in that browser's sessionStorage so the visitor can
+  read replies to their own conversation and nobody else's. It is cleared when
+  they close the tab.
+
+If you switch both widgets off, none of the above happens and this plugin sends
+nothing about your visitors at all.
 
 **What data is received:** Only the business details you entered in EzBizi for
 this site — company name, phone number, email, address, opening hours, licence
@@ -167,6 +187,17 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.2.0 =
+* Live chat and a contact form for your website. Both are off until you turn
+  them on in EzBizi, and enquiries arrive there beside your other leads, where
+  you can reply.
+* Everything about how they look and what the form asks — colours, wording,
+  the questions — is set in EzBizi under Web Management › Widgets, so
+  [ezbizi_chat] and [ezbizi_form] take no settings of their own and one change
+  reaches every site you run.
+* "External Services" above now describes what a visitor's browser sends when
+  they use one of these widgets. Read it before switching them on.
 
 = 1.1.0 =
 * EzBizi can now publish and edit content on this site. On connecting, the
