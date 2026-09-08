@@ -175,6 +175,27 @@ app asks for that carries no weight of its own. **That test is what found the
 third one; the audit behind the gallery had only looked for the two I had
 already noticed.**
 
+**When two errors are not equally bad, neither one may be the silent default.**
+Booking a lead offers `customer_matches` — customers sharing the lead's last ten
+digits, which the server itself calls *advisory only*. Attaching to the **wrong
+existing** customer puts a stranger's job in somebody's history and **looks
+exactly like a correct booking**; creating a **duplicate** splits the history but
+shows up as two identical rows. A shared line, a family, a landlord and a tenant
+all produce a genuine match between different people. So the panel preselects
+NOTHING when a match exists and will not submit until somebody answers, with
+"Create a new customer" as a peer of the matches rather than the fallback — and
+asks nothing at all when there is no match, because there is nothing to decide.
+
+> The generalisation: **prefer the visible error to the invisible one, but do not
+> let that make either automatic.** One extra decision, only where the ambiguity
+> is real, taken by the person best placed to resolve it.
+
+**A screen must not imply a reservation it did not make.** `scheduled_for` is a
+field on the job — Scheduling has no appointment model, so nothing is reserved,
+no slot is consumed and nobody is notified. The control is labelled *When the job
+is scheduled for*, never "Book a time": a screen that says Book twice about two
+different things will be read as having booked twice.
+
 **A mark needs its own CHANNEL, not its own badge.** When a row already carries
 one boolean and gains a second, the answer is rarely a second badge beside the
 first — it is a different dimension. Leads' rows carry three: unread (yours),
@@ -535,6 +556,7 @@ on main may have moved on.
 | 🔨 | **Scheduling · Availability + Settings** | **Layout 7 approved, being built** (Overview + area rail — Jose's own combination of 1 and 2); Availability is **layout 4**. `docs/previews/scheduling-layouts.html` @ `560aed5`. Held by the Scheduling session. |
 | 📬 | **Fleet · vehicle Identity card** | **Layout 2 approved, handed to the deploy desk to route.** `docs/previews/fleet-identity-layouts.html` @ `560aed5`. The Fleet session that briefed it ended before it was drawn. **Not urgent** — nothing in Fleet is broken; the card works and the complaint was a long scroll at 375px. Fold it into the next Fleet work rather than staffing for it. |
 | ⏳ AWAITING JOSE | **Leads · connected accounts** | Six layouts in `docs/previews/leads-accounts-layouts.html` — 3 desktop, 3 mobile. Brief from the Google API session (`local_8111908f`), server done at `c55b3c33`. **22 Google Ads accounts, one shown**: `leads_screen.dart:179` `_connectionFor` returns the first provider match. **Two payload gaps found by reading it and raised with them:** `connectionState()` carries no `leads_franchise_id`, so the placement column cannot render on load; and nothing links a lead to the account that produced it, so no per-account count exists client-side or server-side. The count is not a decoration — it is what separates "2 accounts that matter from 20 quiet ones" from twenty-two identical rows, and layouts marked `needs the count` degrade honestly without it. Design builds it once picked. |
+| ✅ APPROVED, **built by Leads** | **Leads · book a job from a lead** | Desktop **1** + mobile **4** — `docs/previews/leads-booking-layouts.html` @ `d1c69cb5`. Jose, 2026-09-08: *"as you recommend for the layouts"*. **Nothing is preselected when `customer_matches` is non-empty**, and Book stays disabled until answered — see the rule below. No match → straight to a new customer, no question. |
 | ✅ APPROVED, **built by Leads** | **Leads · read, star, note** | Desktop **1** + mobile **4** — `docs/previews/leads-triage-layouts.html` @ `18012c74`. Jose, 2026-09-08: *"2 - as u recommend"*. **Unread is WEIGHT, not a second dot** — the dot is unreplied and a leading-edge bar is banned, so the three marks live in three channels: weight (unread, yours), dot (unreplied, everyone's), star (everyone's). Filters narrow TOGETHER. On the same delegation the note gets an **author and an edited-at**, asked of Leads: a shared free-text field that cannot say who or when is one people stop trusting, and silent last-write-wins is the worse half. |
 | ✅ APPROVED, **built by Leads** | **Leads · conversation colour** | Desktop **3** + mobile **6** — `docs/previews/leads-conversation-colour-layouts.html` @ the commit below. Jose, 2026-09-08: *"option 3 for desktop, 6 for mobile"* — the saturated direction, ours filled `primary` with `onPrimary`. **No accent bar anywhere**, per the same message. `primary` inverts between brightnesses (#00708f/white light, #00aeef/near-black dark), so the build must be checked in both. |
 | ✅ APPROVED, **built by Leads** | **Leads · conversations** | Desktop **1** + mobile **4** — `docs/previews/leads-conversations-layouts.html` @ `6c3f6d46`. Jose, 2026-09-08: *"let leads build it, yes approve 1 and 4"*. **This is an explicit exception, not a change to the rule.** "An approval is not a delivery" still stands and design still builds what design draws unless Jose says otherwise for a named piece of work — that rule exists because three approvals rotted unbuilt, and one directed handover does not undo the reason. Handover sent to `local_8111908f-…` with the full constraint list. |
