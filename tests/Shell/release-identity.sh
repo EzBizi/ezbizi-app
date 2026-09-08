@@ -50,7 +50,7 @@ git checkout -q --detach "$PIN"
 export CAPTURE="$TMP/deploy-calls"
 bash scripts/deploy.sh --code --skip-gates --sha "$PIN" > "$TMP/deploy-output" 2>&1 && exit 1
 failures=0
-if ! grep -q "receive-release $PIN code production $PIN:main" "$CAPTURE"; then
+if ! grep -q "receive-release $PIN code app:/var/repos/ezbizi.git $PIN:main" "$CAPTURE"; then
   echo 'FAIL: deploy did not ship the explicitly pinned detached commit'
   failures=$((failures+1))
 fi
@@ -58,7 +58,7 @@ if grep -q 'UNEXPECTED NETWORK' "$CAPTURE"; then exit 1; fi
 export CAPTURE="$TMP/default-deploy-calls"
 MAIN_SHA=$(git rev-parse main)
 bash scripts/deploy.sh --code --skip-gates > "$TMP/default-output" 2>&1 && exit 1
-grep -q "receive-release $MAIN_SHA code production $MAIN_SHA:main" "$CAPTURE" || { echo 'FAIL: standalone deploy default changed'; exit 1; }
+grep -q "receive-release $MAIN_SHA code app:/var/repos/ezbizi.git $MAIN_SHA:main" "$CAPTURE" || { echo 'FAIL: standalone deploy default changed'; exit 1; }
 export CAPTURE="$TMP/mismatch-calls"
 EZBIZI_RELEASE_SHA="$MAIN_SHA" bash scripts/deploy.sh --code --sha "$PIN" > "$TMP/mismatch-output" 2>&1 && exit 1
 [[ ! -e "$CAPTURE" ]] || { echo 'FAIL: mismatched identity reached deployment'; exit 1; }

@@ -15,6 +15,13 @@
 set -euo pipefail
 
 REMOTE=app                       # ~/.ssh/config alias
+# The box's bare repo, pushed to BY URL. There is deliberately no git remote
+# named "production" any more: on 2026-09-08 a session ran a plain
+# `git push production main` believing it was pushing to GitHub, and the
+# post-receive hook deployed it — no staging, no desk. A remote nobody has
+# cannot be pushed to by accident; a release still gets here through this
+# script and its receive-pack.
+PRODUCTION_REPO="$REMOTE:/var/repos/ezbizi.git"
 SHARED=/var/www/ezbizi/public-app
 # GATES ARE OFF BY DEFAULT. Pass --gates to run them.
 #
@@ -272,7 +279,7 @@ if [ "$CODE_ONLY" != "--code" ]; then
 fi
 # receive-release holds one server flock through the hook and UI activation.
 # Explicit SSH command arguments are restricted above to fixed paths and hex SHA.
-git push --receive-pack="bash $DEPLOY_STAGE/receive-release $GATED_SHA $UI_STAGE" production "$GATED_SHA":main
+git push --receive-pack="bash $DEPLOY_STAGE/receive-release $GATED_SHA $UI_STAGE" "$PRODUCTION_REPO" "$GATED_SHA":main
 # GitHub gets what actually shipped, and only once it has shipped.
 #
 # Until 2026-08-28 every commit in this project existed on one disk. The backup
