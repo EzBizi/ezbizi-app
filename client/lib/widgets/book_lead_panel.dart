@@ -184,6 +184,14 @@ class _BookLeadPanelState extends State<BookLeadPanel> {
           _whoBlock(theme),
           const SizedBox(height: 16),
         ],
+        // HIDDEN when an existing customer is chosen, never shown disabled.
+        // These fields are prefilled FROM THE LEAD, so a greyed block under
+        // "Jane Doe C-12" would show the lead's address as if it were hers -
+        // the same-data-different-owner error this panel exists to avoid,
+        // wearing a disabled state as a badge of accuracy. And it could not
+        // show her real details instead: customer_matches carries {id,
+        // number, name, phone} and no address. Showing the chosen customer's
+        // details here is a payload change first, not a widget change.
         if (_who == null || _who == _newCustomer) ...[
           Text('The customer', style: theme.textTheme.titleSmall),
           const SizedBox(height: 8),
