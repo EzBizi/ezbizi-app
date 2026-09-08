@@ -2292,8 +2292,8 @@ class ModuleServiceProvider extends ServiceProvider
                     new TriggerDefinition(
                         key: 'training.failed',
                         label: 'Test failed',
-                        description: 'Somebody took a test and did not meet the pass mark. '
-                            .'Whether they may try again is the test\'s own retake setting.',
+                        description: 'Somebody took a test and did not meet the pass mark. It carries '
+                            .'the score. Whether they may try again is the test\'s own retake setting.',
                         isRaised: true,
                     ),
                     /*

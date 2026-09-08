@@ -3,6 +3,8 @@
 namespace App\Support\Training;
 
 use App\Models\AutomationEvent;
+use App\Models\Company;
+use App\Models\Franchise;
 use App\Models\Role;
 use App\Models\TrainingAssignment;
 use App\Models\TrainingGuide;
@@ -11,6 +13,7 @@ use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Automations\EventEmitter;
 use App\Support\Inventory\InventoryVisibility;
+use App\Support\Scoping\PlaceInView;
 use App\Support\Scoping\ViewScope;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -167,6 +170,9 @@ final class AssignmentWriter
 
         [$guide, $test] = $this->exactlyOneTarget($input['guide_id'] ?? null, $input['test_id'] ?? null);
 
+        // Coherence audit finding 5 — see [assertContentInView]'s own docblock.
+        $this->assertContentInView($assigner, $guide, $test);
+
         $assigneeType = $input['assignee_type'] ?? null;
         $assigneeId = $input['assignee_id'] ?? null;
 
@@ -253,6 +259,41 @@ final class AssignmentWriter
         });
     }
 
+    /**
+     * Files this write on the ASSIGNER's current view — coherence audit
+     * finding 5.
+     *
+     * [create] has no place field of its own for the caller to name; the
+     * assignment's `company_id`/`franchise_id` are copied from whichever
+     * guide or test is being assigned (see the INSERT below). That still
+     * means picking a `guide_id`/`test_id` is the one way this write
+     * chooses a place, and it was the only one of Training's five writes
+     * that let a caller's REACH stand in for their VIEW there:
+     * `GuidesController`/`TestsController` both call `PlaceInView::assert`
+     * against the place a `store`/`update` request names directly, so an
+     * organization-level author standing in Company A's view is refused
+     * when authoring something at Company B even though their reach covers
+     * it. This write skipped that, so the identical author standing in
+     * Company A's view could assign a guide filed at Company B — no
+     * escalation (§4 reach over the assignEE is still required by
+     * [assertLearnerCanSee]/[authorizeRole]), but a write that answered to
+     * reach where every sibling write answers to the view.
+     *
+     * Asks the same `PlaceInView::assert` the other four already call,
+     * about the content's own place rather than a place named directly in
+     * the request — the only place value this write has.
+     */
+    private function assertContentInView(User $assigner, ?TrainingGuide $guide, ?TrainingTest $test): void
+    {
+        $companyId = $guide?->company_id ?? $test?->company_id;
+        $franchiseId = $guide?->franchise_id ?? $test?->franchise_id;
+
+        $company = $companyId === null ? null : Company::find($companyId);
+        $franchise = $franchiseId === null ? null : Franchise::find($franchiseId);
+
+        PlaceInView::assert($assigner, $company, $franchise, 'assignment');
+    }
+
     /** @return array{0: ?TrainingGuide, 1: ?TrainingTest} */
     private function exactlyOneTarget(?string $guideId, ?string $testId): array
     {
@@ -277,10 +318,19 @@ final class AssignmentWriter
     /**
      * For a USER assignee only — see this class's own docblock on why a role
      * target is not checked this way.
+     *
+     * `ViewScope::reachOf`, not `forUser` — coherence audit finding 2. This
+     * asks whether the learner could EVER be shown the target, which is a
+     * fact about their §4 reach; `forUser` would have answered a different
+     * question — what their own saved `navigation.scope` happens to be
+     * pointed at today — and a manager's otherwise-valid assignment would
+     * then stand or fall on which chip the LEARNER last clicked in their
+     * own top bar, something the manager cannot see and did not do. See
+     * `ViewScope::reachOf`'s own docblock.
      */
     private function assertLearnerCanSee(?TrainingGuide $guide, ?TrainingTest $test, User $learner): void
     {
-        $scope = ViewScope::forUser($learner);
+        $scope = ViewScope::reachOf($learner);
 
         $visible = $guide !== null
             ? InventoryVisibility::constrain(TrainingGuide::query(), $learner, $scope)->whereKey($guide->getKey())->exists()

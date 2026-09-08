@@ -11,6 +11,7 @@ use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\PlaceInView;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Training\GuidePlaceReach;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -346,9 +347,12 @@ class TestsController extends Controller
             return;
         }
 
-        $compatible = $guide->company_id === null
-            || ($guide->company_id === $company?->getKey() && $guide->franchise_id === null)
-            || ($guide->company_id === $company?->getKey() && $guide->franchise_id === $franchise?->getKey());
+        // The one shared definition — see GuidePlaceReach's own docblock on
+        // why GuidesController::update asks it too rather than a second copy.
+        $compatible = GuidePlaceReach::covers(
+            $guide->company_id, $guide->franchise_id,
+            $company?->getKey(), $franchise?->getKey(),
+        );
 
         if (! $compatible) {
             throw ValidationException::withMessages([

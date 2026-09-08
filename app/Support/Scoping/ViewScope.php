@@ -132,6 +132,34 @@ class ViewScope
         return new self($type, $id, $user);
     }
 
+    /**
+     * A person's full §4 reach, with no VIEW narrowing on top of it.
+     *
+     * `forUser` answers "what is this person looking at right now" — a
+     * request header or their own stored `navigation.scope` preference, both
+     * of which can be, and are meant to be, narrower than everything they
+     * are allowed to see. Some callers are not asking about a screen at
+     * all: they are asking whether a PERSON can ever be shown something,
+     * which has to be answered from what they may reach, never from which
+     * chip they last clicked in their own top bar — a stored preference is
+     * user input (this class's own docblock, "Reach is a floor the scope
+     * cannot dig under").
+     *
+     * An ORGANIZATION-type scope applies no narrowing beyond that floor —
+     * see `InventoryVisibility::companyIdsFor`'s own "not symmetrical on
+     * purpose" comment, which is exactly why the organization arm there
+     * resolves from reach directly rather than from `$scope->companyIds()`.
+     * So this is simply that type, constructed without going through
+     * `forUser`'s header/preference lookup — which is what makes it safe to
+     * call about a person who is not the one making the request (a learner,
+     * from the assigner's request), and what keeps it from ever picking up
+     * a narrower saved view by accident.
+     */
+    public static function reachOf(User $user): self
+    {
+        return new self(self::ORGANIZATION, null, $user);
+    }
+
     public function isOrganization(): bool
     {
         return $this->type === self::ORGANIZATION;

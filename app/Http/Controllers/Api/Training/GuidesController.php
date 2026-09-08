@@ -6,13 +6,16 @@ use App\Http\Controllers\Api\Controller;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\TrainingGuide;
+use App\Models\TrainingTest;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\PlaceInView;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Training\GuidePlaceReach;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -151,6 +154,9 @@ class GuidesController extends Controller
                 } else {
                     $this->authorize('create', [TrainingGuide::class, $company, $franchise]);
                 }
+
+                $blameField = array_key_exists('company_id', $input) ? 'company_id' : 'franchise_id';
+                $this->assertMoveDoesNotStrandTests($guide, $companyId, $franchiseId, $blameField);
             }
         }
 
@@ -158,6 +164,56 @@ class GuidesController extends Controller
         $guide->save();
 
         return response()->json(['data' => $this->present($guide->fresh())]);
+    }
+
+    /**
+     * Refuses a guide move that would strand a test pointing at it.
+     *
+     * `TestsController::assertGuideCompatible` guards this rule from the
+     * TEST's side — a test may only be authored or moved onto a guide that
+     * still reaches it. It has no way to stop the GUIDE moving out from
+     * under a test that already passed that check, which is exactly the
+     * auditor's proven case: an organization guide behind an organization
+     * `requires_guide: true` test, the guide moved to a franchise, and a
+     * learner elsewhere left with a 404 on the guide and a permanent 403 on
+     * the test — `assertGuideGateHasATarget`'s own docblock names a test
+     * nobody can ever pass as exactly the dead end this module refuses to
+     * create.
+     *
+     * So the guide's side is guarded here, asking the identical question
+     * `GuidePlaceReach` already answers for the test's side — never a
+     * second copy of "is this guide reachable from that place" — for every
+     * test currently pointing at this guide, in either direction: one that
+     * merely references it, or one that requires finishing it first. Not a
+     * detach, not a cascade onto the tests: refused, naming what would be
+     * stranded, so the author can act instead of the module acting for
+     * them.
+     */
+    private function assertMoveDoesNotStrandTests(
+        TrainingGuide $guide,
+        ?string $newCompanyId,
+        ?string $newFranchiseId,
+        string $field,
+    ): void {
+        $stranded = TrainingTest::query()
+            ->where('guide_id', $guide->getKey())
+            ->get()
+            ->reject(fn (TrainingTest $test) => GuidePlaceReach::covers(
+                $newCompanyId, $newFranchiseId,
+                $test->company_id, $test->franchise_id,
+            ));
+
+        if ($stranded->isEmpty()) {
+            return;
+        }
+
+        $names = $stranded->pluck('title')->implode(', ');
+
+        throw ValidationException::withMessages([
+            $field => "Moving this guide would leave the following test(s) pointing at a guide some "
+                ."of their own takers could no longer reach: {$names}. Move those tests first, or "
+                .'leave this guide where it is.',
+        ]);
     }
 
     /** DELETE /api/v1/training/guides/{guide} */

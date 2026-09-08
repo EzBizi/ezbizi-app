@@ -110,11 +110,18 @@ class TrainingAttempt extends Model implements CarriesAutomationScope, HoldsPers
      * the whole company. That leak was proven live in this codebase today, on
      * Human Resources — see `HrAutomationsTest`.
      *
+     * `oldest()->oldest('id')`, not a bare `first()` — see
+     * `TrainingProgress::automationScope`'s own docblock (coherence audit
+     * finding 6): §4 allows several assignments per user, an unordered
+     * `first()` lets MySQL pick a different one on different runs, and the
+     * oldest is the one choice that does not move every time a later
+     * assignment is added.
+     *
      * @return array{0: string|null, 1: string|null}
      */
     public function automationScope(): array
     {
-        $assignment = $this->user?->assignments()->first();
+        $assignment = $this->user?->assignments()->oldest()->oldest('id')->first();
 
         return match ($assignment?->scopeType()) {
             Assignment::SCOPE_FRANCHISE => ['franchise', $assignment->scopeId()],

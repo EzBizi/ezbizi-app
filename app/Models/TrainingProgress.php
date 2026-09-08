@@ -113,13 +113,25 @@ class TrainingProgress extends Model implements CarriesAutomationScope, HoldsPer
      * own docblock, and `NotificationDispatcher::audienceFor`'s).
      *
      * `first()` rather than anything cleverer, matching `Onboarding::scope`'s
-     * own fallback branch exactly: one user, one home assignment.
+     * own fallback branch exactly: one user, one home assignment. But §4
+     * allows a user to hold SEVERAL — with no ordering, MySQL is free to
+     * hand back a different row on different runs, so which supervisor "who
+     * should be told" resolves to would move around underneath an identical
+     * completion (coherence audit finding 6). Ordered oldest-first: the
+     * assignment given first is this person's original home place, and
+     * stays their home no matter how many more places they pick up later —
+     * a newest-first order would instead re-point every future
+     * notification at whatever was assigned most recently, flapping scope
+     * on a write this method never sees. `id` breaks a tie between two rows
+     * created in the same request (e.g. `ProvisionOrganization`'s own
+     * write): `HasUuids` gives this table ordered UUIDs, so it is already a
+     * second, finer creation clock.
      *
      * @return array{0: string|null, 1: string|null}
      */
     public function automationScope(): array
     {
-        $assignment = $this->user?->assignments()->first();
+        $assignment = $this->user?->assignments()->oldest()->oldest('id')->first();
 
         return match ($assignment?->scopeType()) {
             Assignment::SCOPE_FRANCHISE => ['franchise', $assignment->scopeId()],

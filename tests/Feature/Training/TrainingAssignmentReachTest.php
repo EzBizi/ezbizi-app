@@ -7,6 +7,7 @@ use App\Models\Automation;
 use App\Models\AutomationEvent;
 use App\Models\AutomationRun;
 use App\Models\AutomationVersion;
+use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Notification;
 use App\Models\Role;
@@ -139,6 +140,148 @@ class TrainingAssignmentReachTest extends TestCase
             $this->assertNotSame('', $message);
             $this->assertStringContainsString($tenant['org']->name, $message);
         });
+    }
+
+    // ── Coherence audit finding 2: bound by the learner's reach, never their saved view ──
+
+    /**
+     * The auditor's own executed probe. `$learner` is assigned at the
+     * COMPANY level, so their §4 reach covers both Riverside and Northgate.
+     * With no saved view, assigning a Northgate guide succeeds. Saving the
+     * learner's OWN `navigation.scope` at Riverside — a display preference
+     * on their own top bar, set by the learner, not the assigner, and
+     * nothing about where they may be reached — used to turn the identical,
+     * still-valid Northgate assignment into a 422 claiming it was "outside
+     * where they are assigned", which was false: the learner's reach never
+     * changed. `AssignmentWriter::assertLearnerCanSee` must ask
+     * `ViewScope::reachOf`, never `ViewScope::forUser`.
+     */
+    public function test_a_learners_own_saved_view_does_not_decide_whether_they_can_be_assigned_training(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $riverside = $tenant['franchise'];
+        $northgate = $this->extraFranchise($tenant, 'Northgate');
+
+        $learner = $this->userAtCompany($tenant, 'Learner', ['training.view']);
+
+        $guide = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
+            'company_id' => $tenant['company']->id, 'franchise_id' => $northgate->id,
+            'title' => 'Northgate Guide', 'status' => TrainingGuide::PUBLISHED,
+            'screens' => $this->screens(1),
+        ]));
+
+        // No saved view yet: succeeds.
+        $this->signedInAs($tenant['admin'])->postJson('/api/v1/training/assignments', [
+            'guide_id' => $guide->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id,
+        ])->assertCreated();
+
+        // The learner saves a Riverside view on their OWN top bar — a display
+        // preference, reachable to them (Riverside is under their company),
+        // but narrower than their full reach and not touched by the assigner.
+        $this->inTenant($tenant['org'], function () use ($learner, $riverside) {
+            $learner->forceFill(['preferences' => ['navigation.scope' => 'franchise:'.$riverside->id]])->save();
+        });
+
+        $test = $this->inTenant($tenant['org'], fn () => TrainingTest::create([
+            'company_id' => $tenant['company']->id, 'franchise_id' => $northgate->id,
+            'title' => 'Northgate Test', 'status' => TrainingTest::PUBLISHED,
+            'questions' => [], 'pass_mark' => 80,
+        ]));
+
+        // Still the identical, still-valid Northgate assignment — must still succeed.
+        $this->signedInAs($tenant['admin'])->postJson('/api/v1/training/assignments', [
+            'test_id' => $test->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id,
+        ])->assertCreated();
+    }
+
+    /** The other half: a guide genuinely OUTSIDE the learner's reach is still refused, with the same sentence. */
+    public function test_a_guide_genuinely_outside_the_learners_reach_is_still_refused(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $riverside = $tenant['franchise'];
+        $northgate = $this->extraFranchise($tenant, 'Northgate');
+
+        // Assigned at Riverside ONLY — reach never covers Northgate.
+        $learner = $this->userInFranchise($tenant, $riverside, 'Learner', ['training.view']);
+
+        $guide = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
+            'company_id' => $tenant['company']->id, 'franchise_id' => $northgate->id,
+            'title' => 'Northgate Guide', 'status' => TrainingGuide::PUBLISHED,
+            'screens' => $this->screens(1),
+        ]));
+
+        $response = $this->signedInAs($tenant['admin'])->postJson('/api/v1/training/assignments', [
+            'guide_id' => $guide->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id,
+        ]);
+
+        $response->assertStatus(422)->assertJsonValidationErrors(['guide_id']);
+        $this->assertStringContainsString(
+            'outside where they are assigned',
+            (string) $response->json('errors.guide_id.0'),
+        );
+    }
+
+    // ── Coherence audit finding 5: AssignmentWriter::create files on the view, like every other Training write ──
+
+    /**
+     * `$admin` has organization-level §4 reach — plenty to reach both
+     * companies — but is currently VIEWING Company A, and the guide named
+     * is filed at a SIBLING company's General. Every other Training write
+     * (`GuidesController`/`TestsController` store and update) refuses
+     * authoring something at a place outside the current view via
+     * `PlaceInView::assert`, even when reach would allow it; this write was
+     * the one that let reach stand in for the view.
+     */
+    public function test_an_admin_viewing_one_company_cannot_assign_a_guide_filed_at_a_sibling_company(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $companyA = $tenant['company'];
+        $companyB = $this->inTenant($tenant['org'], fn () => Company::create([
+            'organization_id' => $tenant['org']->id, 'name' => 'Beta Co', 'is_active' => true,
+        ]));
+
+        $admin = $tenant['admin'];
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view']);
+
+        $guide = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
+            'company_id' => $companyB->id, 'franchise_id' => null,
+            'title' => 'Beta General Guide', 'status' => TrainingGuide::PUBLISHED,
+            'screens' => $this->screens(1),
+        ]));
+
+        $this->inTenant($tenant['org'], function () use ($admin, $companyA) {
+            $admin->forceFill(['preferences' => ['navigation.scope' => 'company:'.$companyA->id]])->save();
+        });
+
+        $this->signedInAs($admin)->postJson('/api/v1/training/assignments', [
+            'guide_id' => $guide->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id,
+        ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['company_id']);
+    }
+
+    /** Viewing the SAME company the guide is filed at still succeeds — the fix narrows to the view, it does not add a blanket refusal. */
+    public function test_an_admin_viewing_the_guides_own_company_may_still_assign_it(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $companyA = $tenant['company'];
+
+        $admin = $tenant['admin'];
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view']);
+
+        $guide = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
+            'company_id' => $companyA->id, 'franchise_id' => null,
+            'title' => 'Alpha General Guide', 'status' => TrainingGuide::PUBLISHED,
+            'screens' => $this->screens(1),
+        ]));
+
+        $this->inTenant($tenant['org'], function () use ($admin, $companyA) {
+            $admin->forceFill(['preferences' => ['navigation.scope' => 'company:'.$companyA->id]])->save();
+        });
+
+        $this->signedInAs($admin)->postJson('/api/v1/training/assignments', [
+            'guide_id' => $guide->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id,
+        ])->assertCreated();
     }
 
     // ── Decision 2: exactly one of guide_id/test_id ──────────────────

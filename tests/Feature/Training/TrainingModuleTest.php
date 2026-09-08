@@ -60,6 +60,28 @@ class TrainingModuleTest extends TestCase
     }
 
     /**
+     * Coherence audit finding 4: `LearnController::submit` ships `score` in
+     * BOTH `training.passed` and `training.failed`'s payload
+     * (`ModuleRegistryTest` — every field a payload carries must be named in
+     * its own trigger's published description), but `training.failed`'s
+     * description used to promise only the retake setting. The failing
+     * score is exactly the same data class `training.passed` already
+     * promises, and is genuinely useful on its own ("if they scored above
+     * 70, offer a retake") — so the fix amends the description to promise
+     * it, rather than dropping the field from the payload.
+     */
+    public function test_training_failed_promises_the_score_it_actually_carries(): void
+    {
+        $module = app(ModuleRegistry::class)->get('training');
+        $this->assertNotNull($module);
+
+        $trigger = collect($module->triggers)->first(fn ($t) => $t->key === 'training.failed');
+
+        $this->assertNotNull($trigger, 'Training declares no training.failed trigger.');
+        $this->assertStringContainsString('score', $trigger->description);
+    }
+
+    /**
      * The half of that the literal assertion above cannot see.
      *
      * The catalogue does not compare the action's KEY against that const — it

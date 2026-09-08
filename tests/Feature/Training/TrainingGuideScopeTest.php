@@ -6,6 +6,7 @@ use App\Models\Assignment;
 use App\Models\Company;
 use App\Models\Role;
 use App\Models\TrainingGuide;
+use App\Models\TrainingTest;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
@@ -232,6 +233,136 @@ class TrainingGuideScopeTest extends TestCase
             $row = TrainingGuide::query()->find($guide->id);
             $this->assertSame($tenant['company']->id, $row?->company_id);
         });
+    }
+
+    // ── Coherence audit finding 1: a move that would strand a test ──
+
+    /**
+     * The auditor's own executed probe: an organization guide behind an
+     * organization `requires_guide: true` test. Moving the guide down to a
+     * franchise used to succeed (200) and then permanently 404 the guide
+     * and 403 the test for every learner outside that one franchise —
+     * `assertGuideGateHasATarget`'s own docblock names a test nobody can
+     * ever pass as exactly the dead end this module refuses to create. The
+     * move is refused instead, naming the stranded test, and the guide's
+     * row never changes.
+     */
+    public function test_moving_a_guide_that_would_strand_a_requires_guide_test_is_refused(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+        $riverside = $tenant['franchise'];
+
+        $guide = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
+            'company_id' => null, 'franchise_id' => null,
+            'title' => 'Ladder Safety Guide', 'status' => TrainingGuide::PUBLISHED, 'screens' => [],
+        ]));
+
+        $test = $this->inTenant($tenant['org'], fn () => TrainingTest::create([
+            'company_id' => null, 'franchise_id' => null,
+            'guide_id' => $guide->id, 'requires_guide' => true,
+            'title' => 'Ladder Safety Test', 'status' => TrainingTest::PUBLISHED,
+            'questions' => [], 'pass_mark' => 80,
+        ]));
+
+        $response = $this->signedInAs($admin)
+            ->patchJson('/api/v1/training/guides/'.$guide->id, [
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $riverside->id,
+            ]);
+
+        $response->assertStatus(422)->assertJsonValidationErrors(['company_id']);
+
+        $message = trim((string) $response->json('errors.company_id.0'));
+        $this->assertNotSame('', $message);
+        $this->assertStringContainsString('Ladder Safety Test', $message);
+        $this->assertStringNotContainsString('§', $message);
+        $this->assertStringNotContainsString('GuidesController', $message);
+        $this->assertStringNotContainsString('immutable', $message);
+
+        $this->inTenant($tenant['org'], function () use ($guide, $test) {
+            $row = TrainingGuide::query()->findOrFail($guide->id);
+            $this->assertNull($row->company_id);
+            $this->assertNull($row->franchise_id);
+
+            // The test's own gate is untouched — refused, not detached.
+            $this->assertSame($guide->id, TrainingTest::query()->findOrFail($test->id)->guide_id);
+        });
+    }
+
+    /** A test that merely references the guide (no gate) is stranded the same way — the rule is not `requires_guide`-specific. */
+    public function test_moving_a_guide_that_would_strand_a_non_gating_test_is_also_refused(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+        $riverside = $tenant['franchise'];
+
+        $guide = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
+            'company_id' => null, 'franchise_id' => null,
+            'title' => 'Org Guide', 'status' => TrainingGuide::PUBLISHED, 'screens' => [],
+        ]));
+
+        $this->inTenant($tenant['org'], fn () => TrainingTest::create([
+            'company_id' => null, 'franchise_id' => null,
+            'guide_id' => $guide->id, 'requires_guide' => false,
+            'title' => 'Reference Only Test', 'status' => TrainingTest::PUBLISHED,
+            'questions' => [], 'pass_mark' => 80,
+        ]));
+
+        $this->signedInAs($admin)
+            ->patchJson('/api/v1/training/guides/'.$guide->id, [
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $riverside->id,
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['company_id']);
+    }
+
+    /** A guide with no test pointing at it moves freely — the new check only ever fires when something would actually strand. */
+    public function test_moving_a_guide_with_no_tests_pointing_at_it_still_succeeds(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+        $riverside = $tenant['franchise'];
+
+        $guide = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
+            'company_id' => null, 'franchise_id' => null,
+            'title' => 'Untested Guide', 'status' => TrainingGuide::PUBLISHED, 'screens' => [],
+        ]));
+
+        $this->signedInAs($admin)
+            ->patchJson('/api/v1/training/guides/'.$guide->id, [
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $riverside->id,
+            ])
+            ->assertOk();
+    }
+
+    /** Broadening a guide's place can only ever help a test reach it, never strand one — proves the check is not simply "any place move is refused". */
+    public function test_broadening_a_guides_place_never_strands_a_test(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+        $riverside = $tenant['franchise'];
+
+        $guide = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
+            'company_id' => $tenant['company']->id, 'franchise_id' => $riverside->id,
+            'title' => 'Riverside Guide', 'status' => TrainingGuide::PUBLISHED, 'screens' => [],
+        ]));
+
+        $this->inTenant($tenant['org'], fn () => TrainingTest::create([
+            'company_id' => $tenant['company']->id, 'franchise_id' => $riverside->id,
+            'guide_id' => $guide->id, 'requires_guide' => true,
+            'title' => 'Riverside Test', 'status' => TrainingTest::PUBLISHED,
+            'questions' => [], 'pass_mark' => 80,
+        ]));
+
+        $this->signedInAs($admin)
+            ->patchJson('/api/v1/training/guides/'.$guide->id, [
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => null,
+            ])
+            ->assertOk();
     }
 
     public function test_destroy_removes_a_guide_you_may_reach(): void
