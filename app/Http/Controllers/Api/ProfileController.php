@@ -5,6 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Support\Audit\AuditLogger;
 use App\Support\Auth\SessionContext;
 use App\Support\Files\FileStore;
+use App\Support\Scoping\ViewScope;
+use App\Support\Settings\SettingsResolver;
+use App\Support\TimeClock\WorkSchedule;
 use Illuminate\Http\Request;
 
 /**
@@ -35,6 +38,7 @@ class ProfileController extends Controller
     public function __construct(
         private AuditLogger $audit,
         private FileStore $files,
+        private SettingsResolver $settings,
     ) {}
 
     /**
@@ -203,7 +207,34 @@ class ProfileController extends Controller
     {
         $user = $request->user();
 
-        return ['email' => $user->email] + $this->present($user);
+        return ['email' => $user->email]
+            + $this->present($user)
+            + [
+                'work_schedule' => $user->work_schedule,
+                'can_edit_schedule' => (bool) $this->settings->get('time_clock.self_schedule', $user->organization),
+            ];
+    }
+
+    /**
+     * PATCH /api/v1/me/schedule — only when the organization allows it
+     * (design 2026-09-08 §3.3). Human Resources can always set it from Records.
+     */
+    public function updateSchedule(Request $request): array
+    {
+        $user = $request->user();
+
+        if (! $this->settings->get('time_clock.self_schedule', $user->organization)) {
+            abort(403, 'Your organization sets work schedules from Human Resources. Ask them to change yours.');
+        }
+
+        $days = WorkSchedule::validate($request->input('days'));
+        $zone = (string) $this->settings->get('timezone', ViewScope::forUser($user)->settingsScope());
+
+        $user->work_schedule = ['timezone' => $zone, 'days' => $days];
+        $this->audit->logChange('user.updated', $user);
+        $user->save();
+
+        return ['work_schedule' => $user->work_schedule];
     }
 
     /**

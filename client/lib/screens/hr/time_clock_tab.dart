@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/ui_strings.dart';
 import '../../widgets/async_body.dart';
+import '../../widgets/tag.dart';
 
 /// One day of clock-in shifts for people in reach (design §9).
 ///
@@ -144,11 +145,25 @@ class _TimeClockTabState extends State<TimeClockTab> {
         ? UiStrings.t('time_clock.in')
         : clockedOut;
     final seconds = shift['duration_seconds'];
+    final endedBy = shift['ended_by'];
+    final outside = shift['outside_schedule'] == true;
+    final extensions = shift['extensions'];
 
     return Card(
       child: ListTile(
         contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-        title: Text(name, style: Theme.of(context).textTheme.titleMedium),
+        // Who closed it, and whether it was on schedule (design 2026-09-08
+        // §10.4). Words, not colour: the tags read on their own.
+        title: Wrap(
+          spacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(name, style: Theme.of(context).textTheme.titleMedium),
+            if (endedBy == 'schedule') Tag(UiStrings.t('time_clock.auto')),
+            if (outside) Tag(UiStrings.t('time_clock.outside'), warn: true),
+            if (extensions is int && extensions > 0) Tag('+$extensions'),
+          ],
+        ),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 4),
           child: Row(

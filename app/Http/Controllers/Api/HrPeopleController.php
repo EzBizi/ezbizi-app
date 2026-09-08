@@ -11,6 +11,9 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Modules\PermissionCatalogue;
 use App\Support\Privacy\ConsentLedger;
+use App\Support\Scoping\ViewScope;
+use App\Support\Settings\SettingsResolver;
+use App\Support\TimeClock\WorkSchedule;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use App\Services\Auth\PasswordResets;
@@ -55,6 +58,7 @@ class HrPeopleController extends Controller
         private readonly EventEmitter $events,
         private readonly TenantContext $tenant,
         private readonly ConsentLedger $consents,
+        private readonly SettingsResolver $settings,
     ) {}
 
     /**
@@ -283,6 +287,9 @@ class HrPeopleController extends Controller
             'role_id' => ['sometimes', 'required', 'uuid', Rule::exists('roles', 'id')
                 ->where('organization_id', $this->tenant->idOrFail())],
             'is_active' => ['sometimes', 'required', 'boolean'],
+            // The lock-screen exemption (design 2026-09-08 §4). Same
+            // authority as the rest of the row: hr.edit within reach.
+            'lock_screen_exempt' => ['sometimes', 'required', 'boolean'],
         ]);
 
         $deactivating = array_key_exists('is_active', $input)
@@ -430,6 +437,31 @@ class HrPeopleController extends Controller
      *                       Argentina may see the person working there without
      *                       learning that they also work in France.
      */
+    /**
+     * PATCH /api/v1/hr/people/{user}/schedule
+     *
+     * The timezone is the CALLER's view, never the body: a schedule is
+     * written by somebody standing somewhere, and that somewhere is the clock
+     * it means (design 2026-09-08 §3.2). A franchise view therefore snapshots
+     * the franchise's own override, which is the Organization › Company ›
+     * Franchise cascade doing its job.
+     */
+    public function updateSchedule(Request $request, User $user): JsonResponse
+    {
+        $this->authorize('update', $user);
+
+        $days = WorkSchedule::validate($request->input('days'));
+        $zone = (string) $this->settings->get('timezone', ViewScope::forUser($request->user())->settingsScope());
+
+        $user->work_schedule = ['timezone' => $zone, 'days' => $days];
+        $this->audit->logChange('user.updated', $user);
+        $user->save();
+
+        return response()->json([
+            'data' => $this->present($user->fresh(['role', 'assignments']), $request->user()),
+        ]);
+    }
+
     private function present(User $person, User $actor): array
     {
         return [
@@ -456,6 +488,8 @@ class HrPeopleController extends Controller
                     },
                 ])->values()->all(),
             'joined_at' => $person->created_at?->toIso8601String(),
+            'work_schedule'      => $person->work_schedule,
+            'lock_screen_exempt' => (bool) $person->lock_screen_exempt,
         ];
     }
 }

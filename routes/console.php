@@ -57,6 +57,12 @@ Schedule::command('ezbizi:publish-due-social-posts')->everyMinute()->withoutOver
 // same mailing twice.
 Schedule::command('ezbizi:send-due-newsletters')->everyMinute()->withoutOverlapping(5);
 
+// Shifts past their scheduled end (design 2026-09-08 §8). The row is the
+// state — Extend moves the end and the row stops being due — and this is the
+// only thing that closes one without a person or a rule. Every minute
+// because the reminder counts down to a minute the person was shown.
+Schedule::command('ezbizi:close-ended-shifts')->everyMinute()->withoutOverlapping(5);
+
 // The phone numbers Thumbtack matches calls against, kept level with the
 // people actually assigned to each connected business.
 //

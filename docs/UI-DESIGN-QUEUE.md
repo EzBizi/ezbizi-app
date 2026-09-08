@@ -561,6 +561,25 @@ Fleet, Training, Web Management and others each have their own tree. Reviewing
 a module's golden PNGs from `main` reviews the wrong file, silently, because the paths
 are identical. Confirm the tree before reporting pixel findings.
 
+**On the public web paths, the key IS the boundary — so "regenerate" is a safety
+control, not a convenience.** Web Management audited this 2026-09-08 (`f889c6fe`, seven
+cases, mutation-checked) and I verified the mechanism rather than taking the summary:
+six lookups across four paths — plugin token, snippet public key, widget public key, and
+the visitor's per-conversation token — run before any tenant exists, so they call
+`TenantContext::runWithoutTenant()` and the row itself names the organization.
+
+The design is sound and worth knowing precisely, because it is better than "the scope is
+dropped": `TenantScope::apply` **throws** when no tenant is bound rather than quietly
+returning everything, and the opt-out is one named, greppable call. Unscoped reads cannot
+happen by accident here; they have to be written on purpose.
+
+> What that constrains for design: on those paths the unguessability of the key is the
+> whole of the isolation. So **never shorten a key for display and offer copy from the
+> shortened form**, never reuse one key across sites for tidiness, and never bury reissue
+> — a key that leaks is the entire incident, and regeneration is the only remedy. Web's
+> browser key already reissues inline and never in a dialog, which is the right shape;
+> the rule is written down so the next screen does not have to rediscover why.
+
 **An advisory must not wear the failure component.** Web Management, 2026-09-08, asking
 that this be made a rule after the widget contrast work: *"dressing an advisory as a
 failure teaches people to ignore the component that also carries real failures."* The

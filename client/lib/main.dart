@@ -18,7 +18,10 @@ import 'core/session.dart';
 import 'core/staff_session.dart';
 import 'core/theme.dart';
 import 'core/ui_strings.dart';
+import 'core/clock_window.dart';
 import 'core/version_gate.dart';
+import 'screens/lock_screen.dart';
+import 'widgets/shift_reminder.dart';
 import 'screens/development_screen.dart';
 import 'screens/hr/onboarding_form.dart';
 import 'screens/invitation_screen.dart';
@@ -46,6 +49,10 @@ Future<void> main() async {
   // Bindings first: TokenStore.init reaches a platform channel (the keychain),
   // and a channel used before this call throws.
   WidgetsFlutterBinding.ensureInitialized();
+
+  // The desktop window facade, before any screen can ask it for the window.
+  // A no-op on web and phones (core/clock_window.dart).
+  await ClockWindow.init();
 
   // Awaited, deliberately, and it is the only thing between launch and the
   // first frame. Session.restore reads TokenStore synchronously; if that read
@@ -297,6 +304,12 @@ class _EzBiziAppState extends State<EzBiziApp> {
       // LATER build does, and by then it is right.
       _signingUp = false;
 
+      // The lock is the server's answer, never a permission read here
+      // (design 2026-09-08 §3.9). Phones never lock, whatever it says.
+      if (_session.me!.timeClock.lock && ClockWindow.canLock) {
+        return LockScreen(api: _api, session: _session);
+      }
+
       return HomeShell(api: _api, session: _session, address: _address);
     }
 
@@ -374,6 +387,11 @@ class HomeShell extends StatefulWidget {
 enum _Rail { modules, pinned, staff, profile }
 
 class _HomeShellState extends State<HomeShell> {
+  /// The countdown before a scheduled shift ends (design 2026-09-08 §10.1).
+  late final ShiftReminderController _reminder;
+  Timer? _clockPoll;
+  VoidCallback? _stopClockListening;
+
   _Rail _rail = _Rail.modules;
   void Function()? _stopListening;
 
@@ -424,6 +442,32 @@ class _HomeShellState extends State<HomeShell> {
     _liveView = LiveViewService(widget.api);
     _remoteControl = RemoteControlService(widget.api);
 
+    _reminder = ShiftReminderController(
+      api: widget.api,
+      session: widget.session,
+      context: () => context,
+    );
+    _reminder.sync();
+    widget.session.addListener(_reminder.sync);
+    _stopClockListening = () => widget.session.removeListener(_reminder.sync);
+
+    // One small block every minute while the organization has the clock on,
+    // so an exemption, a schedule change or a server-side close reaches an
+    // open app (design 2026-09-08 §3.12). Same cadence as the bell.
+    _clockPoll = Timer.periodic(const Duration(seconds: 60), (_) async {
+      final status = widget.session.me?.timeClock;
+      if (status == null ||
+          (!status.organizationEnabled && status.open == null)) {
+        return;
+      }
+      final response = await widget.api.get('/time-clock/me');
+      if (!mounted || !response.ok || response.data is! Map) return;
+      final block = (response.data as Map)['time_clock'];
+      if (block is Map) {
+        widget.session.applyTimeClock(Map<String, dynamic>.from(block));
+      }
+    });
+
     // The softphone comes up with the SHELL, not with the Dial tab.
     //
     // It used to be created and disposed by CallTab, and this shell renders
@@ -453,6 +497,10 @@ class _HomeShellState extends State<HomeShell> {
     // stop(), not dispose(): the service is a singleton that outlives this
     // widget, and the next person to sign in is not this person.
     PhoneCallService.current.stop();
+
+    _clockPoll?.cancel();
+    _stopClockListening?.call();
+    _reminder.dispose();
 
     super.dispose();
   }

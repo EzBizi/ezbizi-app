@@ -3,6 +3,7 @@
 namespace Tests\Feature\TimeClock;
 
 use App\Models\TimeClockShift;
+use App\Models\User;
 use App\Support\Privacy\DeclaringModels;
 use App\Support\Privacy\Erasure;
 use App\Support\Tenancy\TenantContext;
@@ -116,5 +117,41 @@ class TimeClockShiftTest extends TestCase
         $about = TimeClockShift::personalDataAbout($alpha['admin']);
         $this->assertNotNull($about);
         $this->assertSame([$mine->id], $about->pluck('id')->all());
+    }
+
+    public function test_the_schedule_stamps_exist_with_their_defaults(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $person = $this->userWithRole($alpha, 'Tech', ['time_clock.view']);
+
+        $shift = $this->inTenant($alpha['org'], fn () => TimeClockShift::query()->create([
+            'organization_id' => $alpha['org']->id,
+            'user_id' => $person->id,
+            'clocked_in_at' => '2026-09-08 12:00:00',
+        ])->fresh());
+
+        $this->assertNull($shift->scheduled_end_at);
+        $this->assertSame(0, $shift->extensions);
+        $this->assertFalse($shift->outside_schedule);
+        $this->assertNull($shift->ended_by);
+
+        $person = $this->inTenant($alpha['org'], function () use ($person) {
+            $person->forceFill([
+                'work_schedule' => ['timezone' => 'Etc/GMT+5', 'days' => []],
+                'lock_screen_exempt' => true,
+            ])->save();
+
+            return $person->fresh();
+        });
+        $this->assertSame('Etc/GMT+5', $person->work_schedule['timezone']);
+        $this->assertTrue($person->lock_screen_exempt);
+    }
+
+    public function test_the_two_user_columns_are_on_the_personal_data_inventory(): void
+    {
+        $fields = array_map(fn ($entry) => $entry->field, User::personalDataHeld());
+
+        $this->assertContains('work_schedule', $fields);
+        $this->assertContains('lock_screen_exempt', $fields);
     }
 }
