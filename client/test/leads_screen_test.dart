@@ -32,6 +32,59 @@ void main() {
     expect(find.text('No enquiries yet'), findsNothing);
   });
 
+  /// THE REPORTED DEFECT. One connect created twenty-two accounts in the same
+  /// second, and the header showed one of them — whichever the query returned
+  /// first. Twenty-one were invisible and the one on screen was arbitrary.
+  ///
+  /// Jose: "I'm seeing only one account, even tho we have 20 somethings
+  /// accounts for a1-chimney."
+  testWidgets('the header counts every connected account, not the first one', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: const [],
+      connections: const [
+        {
+          'id': 'c1',
+          'provider': 'google_ads',
+          'display_name': '405-172-9356',
+          'status': 'connected',
+          'leads_franchise_id': null,
+          'leads_count': 4,
+        },
+        {
+          'id': 'c2',
+          'provider': 'google_ads',
+          'display_name': '118-904-2210',
+          'status': 'connected',
+          'leads_franchise_id': 'fr-1',
+          'leads_franchise_name': 'Connecticut',
+          'leads_count': 2,
+        },
+        {
+          'id': 'c3',
+          'provider': 'google_ads',
+          'display_name': '772-410-3388',
+          'status': 'connected',
+          'leads_franchise_id': null,
+          'leads_count': 0,
+        },
+      ],
+    );
+
+    expect(
+      find.text('3 Google Ads accounts'),
+      findsOneWidget,
+      reason:
+          'The band states how many accounts exist. Naming one of them was the '
+          'defect: it looked correct and was arbitrary.',
+    );
+
+    // And the second line carries the fact that actually changes.
+    expect(find.text('2 at company level · 1 on a franchise'), findsOneWidget);
+  });
+
   testWidgets('with an account connected and no leads it says the week was '
       'quiet, not that something is broken', (tester) async {
     await _pump(

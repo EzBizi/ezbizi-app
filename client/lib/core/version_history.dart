@@ -11,6 +11,18 @@ class VersionHistory {
       version: '0.0.0152',
       date: '8 Sep 2026',
       items: [
+        'Leads: every connected Google Ads account is visible, and each one '
+            'can be given a name and pointed at a franchise. One connect made '
+            'twenty-two accounts in the same second, and the screen showed one '
+            'of them - whichever came back first - so twenty-one were '
+            'invisible and the one on screen was arbitrary.',
+        'Leads: an account can be named. Twenty-two rows of phone numbers are '
+            'hard to tell apart, so you can call one Connecticut and it keeps '
+            'its number beside the name for checking against Google Ads.',
+        'Leads: sending an account's leads to a franchise moves the leads it '
+            'has already produced, and the screen says how many moved. If '
+            'there were none to move it says that too, rather than going '
+            'quiet and looking like it failed.',
         'Your selected company or franchise stays with your requests, even '
             'when another device changes its view. Shared records remain '
             'readable, with changes limited to the places you manage.',
