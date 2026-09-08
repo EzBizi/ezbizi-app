@@ -77,6 +77,60 @@ class LeadPlacementAndScheduledSyncTest extends TestCase
         );
     }
 
+    public function test_the_connections_payload_carries_placement_and_a_lead_count(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $c = $this->connection($t);
+
+        $this->fakeGoogle(['L-1', 'L-2']);
+        $this->signedInAs($t['admin'])->postJson('/api/v1/leads/sync')->assertOk();
+
+        $this->place($t, $c, $t['franchise']->id)->assertOk();
+
+        $row = $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/leads')
+            ->assertOk()
+            ->json('meta.connections.0');
+
+        // Without these the screen cannot draw an account's placement on load,
+        // and cannot tell the two busy accounts from the twenty silent ones.
+        $this->assertSame($t['franchise']->id, $row['leads_franchise_id']);
+        $this->assertSame($t['franchise']->name, $row['leads_franchise_name']);
+        $this->assertSame(2, $row['leads_count']);
+    }
+
+    public function test_an_account_at_company_level_reports_no_placement_and_still_counts(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $this->connection($t);
+
+        $this->fakeGoogle(['L-1']);
+        $this->signedInAs($t['admin'])->postJson('/api/v1/leads/sync')->assertOk();
+
+        $row = $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/leads')
+            ->assertOk()
+            ->json('meta.connections.0');
+
+        $this->assertNull($row['leads_franchise_id']);
+        $this->assertNull($row['leads_franchise_name']);
+        $this->assertSame(1, $row['leads_count']);
+    }
+
+    public function test_placing_reports_how_many_leads_it_moved(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $c = $this->connection($t);
+
+        $this->fakeGoogle(['L-1', 'L-2', 'L-3']);
+        $this->signedInAs($t['admin'])->postJson('/api/v1/leads/sync')->assertOk();
+
+        // The number somebody looks for to believe a retroactive move worked.
+        $this->place($t, $c, $t['franchise']->id)
+            ->assertOk()
+            ->assertJsonPath('data.leads_moved', 3);
+    }
+
     public function test_a_lead_from_a_placed_account_lands_at_the_franchise_and_stays_visible_to_the_company(): void
     {
         $t = $this->provisionTenant('A1-Chimney');

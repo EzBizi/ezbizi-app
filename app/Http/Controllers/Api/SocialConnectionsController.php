@@ -173,17 +173,29 @@ class SocialConnectionsController extends Controller
             'leads_moved'  => $moved,
         ], actor: $user);
 
-        return response()->json(['data' => $this->placement($row->fresh())]);
+        /*
+         * The moved count goes back with the response.
+         *
+         * Placement is retroactive, so the thing a person looks for to believe
+         * it worked is "14 leads moved to Connecticut" - not the row quietly
+         * changing. Returning it here saves the screen a full refetch to
+         * discover a number the write already knew.
+         */
+        return response()->json(['data' => $this->placement($row->fresh(), $moved)]);
     }
 
     /** @return array<string, mixed> */
-    private function placement(SocialConnection $row): array
+    private function placement(SocialConnection $row, ?int $moved = null): array
     {
         return [
             'id'                 => $row->getKey(),
             'provider'           => $row->provider,
             'display_name'       => $row->display_name,
             'leads_franchise_id' => $row->leads_franchise_id,
+
+            // Null when nothing changed, 0 when a placement moved no leads.
+            // Those are different answers and the screen says different things.
+            'leads_moved'        => $moved,
         ];
     }
 
