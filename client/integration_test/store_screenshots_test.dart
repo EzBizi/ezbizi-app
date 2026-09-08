@@ -203,7 +203,21 @@ void main() {
     //
     // Each is tried rather than asserted: a module that is not reachable in
     // the demo tenant should not fail the whole run and leave you with nothing.
-    Future<void> shoot(String key, String label, String name) async {
+    // `tab` opens a named tab inside the module before the frame is taken.
+    //
+    // Inspection is why this exists. It opens on New Inspection, which is a
+    // search box over nothing until somebody types, so the frame came back ~85%
+    // empty black and was dropped from both the macOS and iPad sets. The
+    // Inspection session filed three reports on the demo tenant on 2026-09-04,
+    // and that ALONE would not have changed the picture by one pixel: the
+    // reports live under Generated Reports and the default tab would still have
+    // photographed the same empty search box. Data and the view onto it are two
+    // different fixes and this is the second one.
+    //
+    // Best-effort, like everything else here: a tab that is not found prints a
+    // line and the module's default view is captured instead, because a weak
+    // frame beats a failed run.
+    Future<void> shoot(String key, String label, String name, {String? tab}) async {
       try {
         if (desktop) {
           final icon = moduleScreens[key]?.icon;
@@ -234,6 +248,18 @@ void main() {
           await tester.tap(item.first);
         }
         await settle(6);
+
+        if (tab != null) {
+          final t = find.text(tab);
+          if (t.evaluate().isEmpty) {
+            // ignore: avoid_print
+            print('  $name: no "$tab" tab, keeping the default view');
+          } else {
+            await tester.tap(t.first);
+            await settle(6);
+          }
+        }
+
         await snap(name);
       } catch (e) {
         // ignore: avoid_print
@@ -243,7 +269,7 @@ void main() {
 
     await shoot('customers', 'Customers', '03-customers');
     await shoot('jobs', 'Jobs', '04-jobs');
-    await shoot('inspection', 'Inspection', '05-inspection');
+    await shoot('inspection', 'Inspection', '05-inspection', tab: 'Generated Reports');
     await shoot('inventory', 'Inventory', '06-inventory');
     await shoot('fleet_management', 'Fleet Management', '07-fleet');
     if (desktop) {
