@@ -87,8 +87,9 @@ class SyncLeads extends Command
             ->get()
             ->keyBy(fn (Organization $o) => $o->getKey());
 
-        $fetched = 0;
-        $failed  = 0;
+        $fetched  = 0;
+        $messages = 0;
+        $failed   = 0;
 
         foreach ($connections as $connection) {
             $organization = $organizations->get($connection->organization_id);
@@ -103,7 +104,8 @@ class SyncLeads extends Command
                     fn () => $this->localServices->sync($connection),
                 );
 
-                $fetched += $result['fetched'];
+                $fetched  += $result['fetched'];
+                $messages += $result['conversations']['created'];
             } catch (Throwable $e) {
                 /*
                  * One account must not stop the other twenty-one. A suspended
@@ -124,7 +126,7 @@ class SyncLeads extends Command
             }
         }
 
-        $this->info("Synced {$connections->count()} connection(s): {$fetched} lead(s), {$failed} failed.");
+        $this->info("Synced {$connections->count()} connection(s): {$fetched} lead(s), {$messages} new call(s)/message(s), {$failed} failed.");
 
         return self::SUCCESS;
     }

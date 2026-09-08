@@ -1676,6 +1676,14 @@ class ModuleServiceProvider extends ServiceProvider
                             .'and location it came through, and when it arrived — not yet what it '
                             .'is about.',
                     ),
+                    new TriggerDefinition(
+                        key: 'lead.contact_received',
+                        label: 'Enquirer called or messaged',
+                        description: 'The person behind a lead reached out again — a call, or a '
+                            .'message — and Google recorded it. It carries the channel, when, and '
+                            .'the first line of what they wrote. The business\'s own replies do '
+                            .'not raise it.',
+                    ),
                     /*
                      * Separate from "received" because the gap between them is
                      * real and sometimes minutes long: a voicemail has to be

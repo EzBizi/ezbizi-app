@@ -560,6 +560,7 @@ Route::prefix('v1')
         Route::post('leads/sync', [LeadsController::class, 'sync']);
         Route::get('leads', [LeadsController::class, 'index']);
         Route::get('leads/{lead}', [LeadsController::class, 'show']);
+        Route::get('leads/{lead}/conversations/{conversation}/recording', [LeadsController::class, 'recording']);
         Route::patch('leads/{lead}', [LeadsController::class, 'update']);
         Route::apiResource('vehicles', VehiclesController::class);
         Route::apiResource('inventory/items', InventoryItemsController::class);

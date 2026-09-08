@@ -3,16 +3,21 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Lead;
+use App\Models\LeadConversation;
 use App\Models\SocialConnection;
 use App\Services\Leads\LocalServicesLeads;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Social\GoogleToken;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\Rule;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
@@ -109,7 +114,81 @@ class LeadsController extends Controller
     {
         $this->authorize('view', $lead);
 
-        return response()->json(['data' => $this->present($lead->load(['company:id,name', 'franchise:id,name']))]);
+        $data = $this->present($lead->load(['company:id,name', 'franchise:id,name']));
+
+        // The thread. Every call and message, oldest first, so the screen reads
+        // top to bottom the way the conversation happened.
+        $data['conversations'] = $lead->conversations
+            ->map(fn (LeadConversation $c) => [
+                'id'            => $c->id,
+                'channel'       => $c->channel,
+                'from'          => $c->participant,
+                'occurred_at'   => $c->occurred_at?->toIso8601String(),
+                'duration_ms'   => $c->duration_ms,
+                'text'          => $c->text,
+                'attachments'   => $c->attachments ?? [],
+                // Never the URL itself: it is fetched with the connection's
+                // token through the endpoint below.
+                'has_recording' => $c->recording_url !== null,
+            ])
+            ->values()
+            ->all();
+
+        return response()->json(['data' => $data]);
+    }
+
+    /**
+     * GET /api/v1/leads/{lead}/conversations/{conversation}/recording
+     *
+     * The call, played through EzBizi.
+     *
+     * Google's recording URL answers only to a bearer token for the account
+     * the call was billed to, so the client cannot open it and must not be
+     * handed it: the token would go with it. The audio is fetched here with
+     * the connection's credentials and streamed back once, uncached. Somebody
+     * listening to a stranger's voice is worth an audit row.
+     */
+    public function recording(Request $request, Lead $lead, string $conversation): HttpResponse
+    {
+        $this->authorize('view', $lead);
+
+        $row = $lead->conversations()->whereKey($conversation)->first();
+
+        abort_if($row === null || $row->recording_url === null, Response::HTTP_NOT_FOUND);
+
+        $connection = $lead->connection;
+
+        abort_if(
+            $connection === null,
+            Response::HTTP_CONFLICT,
+            'The account this enquiry came through is no longer connected, so its recording cannot be fetched.',
+        );
+
+        try {
+            $audio = Http::withToken(GoogleToken::forConnection($connection, 'google_ads'))
+                ->withHeaders(['developer-token' => (string) config('services.google_ads.developer_token')])
+                ->timeout(30)
+                ->get($row->recording_url);
+        } catch (ConnectionException) {
+            abort(Response::HTTP_BAD_GATEWAY, 'Google did not answer while fetching the recording.');
+        }
+
+        abort_if(
+            $audio->failed(),
+            Response::HTTP_BAD_GATEWAY,
+            sprintf('Google refused the recording (HTTP %d).', $audio->status()),
+        );
+
+        $this->audit->log('lead.recording_played', $lead, [
+            'conversation_id' => $row->id,
+            'occurred_at'     => $row->occurred_at?->toIso8601String(),
+            'duration_ms'     => $row->duration_ms,
+        ], actor: $request->user());
+
+        return response($audio->body(), Response::HTTP_OK, [
+            'Content-Type'  => $audio->header('Content-Type') ?: 'audio/mpeg',
+            'Cache-Control' => 'private, no-store',
+        ]);
     }
 
     /**
@@ -186,16 +265,20 @@ class LeadsController extends Controller
             ], Response::HTTP_CONFLICT);
         }
 
-        $totals = ['fetched' => 0, 'created' => 0, 'updated' => 0];
+        $totals = ['fetched' => 0, 'created' => 0, 'updated' => 0, 'messages' => 0];
         $failures = [];
 
         foreach ($connections as $connection) {
             try {
                 $result = $this->localServices->sync($connection);
 
-                foreach ($totals as $key => $value) {
-                    $totals[$key] = $value + $result[$key];
+                foreach (['fetched', 'created', 'updated'] as $key) {
+                    $totals[$key] += $result[$key];
                 }
+
+                // New calls and messages, so "Fetched 0 new leads" can still
+                // say that three people wrote back.
+                $totals['messages'] += $result['conversations']['created'];
             } catch (RuntimeException $e) {
                 // One broken connection must not hide the leads the others
                 // fetched successfully. Both halves are reported.
@@ -338,11 +421,22 @@ class LeadsController extends Controller
             'email'         => $lead->email,
             'lead_type'     => $lead->lead_type,
             'category'      => $lead->category,
+            'service'       => $lead->service,
+            'locale'        => $lead->locale,
             'summary'       => $lead->summary,
+            'source_note'   => $lead->source_note,
             'status'        => $lead->status,
             'source_status' => $lead->source_status,
             'charge_status' => $lead->charge_status,
             'received_at'   => $lead->received_at?->toIso8601String(),
+
+            // The preview line: the newest call or message, who it was from,
+            // and one line of it. `last_contact_from` = CONSUMER with nothing
+            // after it is what "unreplied" means.
+            'last_contact_at'      => $lead->last_contact_at?->toIso8601String(),
+            'last_contact_channel' => $lead->last_contact_channel,
+            'last_contact_from'    => $lead->last_contact_from,
+            'last_contact_preview' => $lead->last_contact_preview,
             'company'       => $lead->company?->only(['id', 'name']),
             'franchise'     => $lead->franchise?->only(['id', 'name']),
         ];
