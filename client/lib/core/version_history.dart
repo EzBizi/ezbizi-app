@@ -19,7 +19,7 @@ class VersionHistory {
         'Leads: an account can be named. Twenty-two rows of phone numbers are '
             'hard to tell apart, so you can call one Connecticut and it keeps '
             'its number beside the name for checking against Google Ads.',
-        'Leads: sending an account's leads to a franchise moves the leads it '
+        'Leads: sending an account\'s leads to a franchise moves the leads it '
             'has already produced, and the screen says how many moved. If '
             'there were none to move it says that too, rather than going '
             'quiet and looking like it failed.',
