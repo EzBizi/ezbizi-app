@@ -825,14 +825,54 @@ class SettingRegistry
 
     private function hr(): array
     {
+        $orgOnly = [SettingDefinition::SCOPE_ORGANIZATION];
+
         return [
             new SettingDefinition(
                 key: 'time_clock.enabled',
                 label: 'Clock in',
                 type: SettingDefinition::TYPE_BOOL,
                 default: false,
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                allowedScopes: $orgOnly,
                 help: 'When on, people whose role includes Clock in see a button in the top bar. Human Resources shows the day list.',
+            ),
+            new SettingDefinition(
+                key: 'time_clock.lock_screen',
+                label: 'Lock screen',
+                type: SettingDefinition::TYPE_BOOL,
+                default: false,
+                allowedScopes: $orgOnly,
+                help: 'When on, people whose role includes Lock screen see only a Clock In screen '
+                    .'while they are not clocked in on a working day. Mark somebody exempt on '
+                    .'Human Resources › Records.',
+            ),
+            // Enums rather than free ints: TYPE_INT has no bounds, and a
+            // 0-minute warning or a 9-hour extension is a support ticket.
+            new SettingDefinition(
+                key: 'time_clock.warning_minutes',
+                label: 'Minutes of warning before a shift ends',
+                type: SettingDefinition::TYPE_ENUM,
+                default: 5,
+                options: [1, 2, 3, 5, 10, 15],
+                allowedScopes: $orgOnly,
+                help: 'How long before the scheduled end the reminder appears.',
+            ),
+            new SettingDefinition(
+                key: 'time_clock.extension_minutes',
+                label: 'Extension length, minutes',
+                type: SettingDefinition::TYPE_ENUM,
+                default: 30,
+                options: [15, 30, 45, 60, 90, 120],
+                allowedScopes: $orgOnly,
+                help: 'How much each Extend adds to the scheduled end. There is no limit on how many times.',
+            ),
+            new SettingDefinition(
+                key: 'time_clock.self_schedule',
+                label: 'People can edit their own schedule',
+                type: SettingDefinition::TYPE_BOOL,
+                default: false,
+                allowedScopes: $orgOnly,
+                help: 'When on, Your account offers Edit on the work schedule. Human Resources can always edit it.',
             ),
         ];
     }

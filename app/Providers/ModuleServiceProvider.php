@@ -617,7 +617,12 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'time_clock',
                 label: 'Clock in',
-                actions: ['view'],
+                // `lock_screen`, not `lock`: the roles label is derived from
+                // the key (PermissionCatalogue::actionLabel), so this reads
+                // "Lock screen" beside the checkbox with no override. Any
+                // action implies `view`, which is right — a locked person
+                // must be able to punch.
+                actions: ['view', 'lock_screen'],
                 sidebar: false,
                 triggers: [
                     new TriggerDefinition(
