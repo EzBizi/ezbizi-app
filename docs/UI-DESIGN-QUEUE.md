@@ -253,6 +253,20 @@ rule between them"* names no new element — that is craft, and it ships. *"Ther
 is now a panel that opens"* names one — that is design. Jose reported it as a
 defect and left; routing it would have meant it sat overnight.
 
+**A warning about the system's own capability is DERIVED, never stored.**
+Automations' marks for a trigger nothing raises — the picker badge and the
+saved-rule note — are computed from the catalogue at render, with no model field
+and no migration behind them (verified: zero occurrences in `app/Models` and
+`database/migrations`). So the day a sweep raises `item.low`, every saved rule
+waiting on it stops saying it will not run and starts running. Nobody has to
+remember to clear anything.
+
+> It is the exact inverse of [[release-notes-go-stale-silently]]: a hand-written
+> note about behaviour goes stale and manufactures bug reports; a mark computed
+> from the thing it describes cannot. **Same class of fact, opposite mechanism,
+> opposite outcome** — so when a screen must say something about what the product
+> can currently do, derive it from the registry rather than writing it down.
+
 **A second badge must say something the first does not.** Leads' rows carry a
 channel badge (Call / Text / Chat / Form) and, since the sources merge, a source
 badge (Google / Thumbtack / Chat / Forms). Independent for Google and Thumbtack —
