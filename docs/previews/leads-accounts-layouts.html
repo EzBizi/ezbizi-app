@@ -90,6 +90,8 @@
     min-width:66px; text-align:right; }
   .acct .cnt.zero { opacity:.5; }
   .quiet { background:var(--alt); }
+  .nameit { font-weight:600; font-size:11.5px; color:var(--primary); border:1px dashed var(--primary);
+    border-radius:5px; padding:1px 6px; margin-left:6px; opacity:.75; }
   .ghead { font-size:11px; font-weight:700; letter-spacing:.6px; color:var(--muted);
     padding:9px 12px 5px; text-transform:uppercase; background:var(--alt); }
 
@@ -139,6 +141,24 @@
       provider match, so one of twenty-two shows and which one is an accident of row order.
     </div>
 
+    <div class="ask">
+      <strong>Accounts can be named now (73ff1737, verified on main) — and it changed two things</strong>
+      A row carries <code>label</code> beside <code>display_name</code>. The name is shown when set and
+      the number when not, and <b>both stay on the row</b>: the name is how you find it, the number is
+      how you check it against Google Ads. Blank clears to null, so &ldquo;unnamed&rdquo; has exactly
+      one representation.
+      <span class="brk">What it did NOT overturn: the fold.</span>
+      Nineteen rows are nineteen rows whatever they are called, so grouping by lead count still keeps
+      the accounts from burying the leads. But it exposed a real hole — once rows have names you may
+      be looking for <em>one</em>, and a fold hides it. So: <b>search reaches through the fold.</b>
+      A fold is only legitimate when the thing behind it is still findable; otherwise it is hiding
+      rows from the one person who wanted them.
+      <span class="brk">What it DID overturn: &ldquo;the common case is reading, not editing&rdquo;.</span>
+      That is true of the steady state and false of day one, which is twenty-two rows long. So naming
+      happens <b>in the row</b> — the dashed <em>Name it</em> — and never in a panel you open and close
+      twenty-two times. Bulk naming is one scroll. This is the Google API session&#39;s catch, not mine;
+      my reading was right about every visit except the first, and the first is the expensive one.
+    </div>
     <div class="locked">
       <strong>Both gaps closed, and verified here rather than taken on report</strong>
       <code>a83b53d5</code> is an ancestor of HEAD. <code>connectionState()</code> now returns
@@ -185,7 +205,7 @@ const CAPTIONS = {
     "In the header, a single row: \"Google Ads · 22 accounts · 2 placed\", with a chevron. It opens a full screen listing them, each with its placement, and tapping one opens that account. Recommended because it is the same shape as Your account on a phone, which is already built and approved — a row that states its value, so most visits end without opening anything. The row carries \"2 placed\" rather than just the count because that is the number that changes, and somebody checking whether their assignment took can see it without opening anything at all."],
  5:["5 · Mobile — the accounts as a third tab",
     "Google Leads · Thumbtack Leads · Accounts. Reachable in one tap from anywhere in the module and it needs no new screen. Weakness: it makes a settings surface a peer of the two content lists, so the tab row stops meaning \"which leads\" and starts meaning \"which leads, or not leads\". It also puts Accounts one tap from a mis-tap on the busiest control on the screen, and there is no reason to visit it monthly, let alone daily."],
- 6:["6 · Mobile — grouped by count, quiet accounts folded away, and what a change says back",
+ 6:["6 · Mobile — grouped by count, folded but searchable, and what a change says back",
     "The account screen from layout 4, but sorted and grouped: the accounts that have produced leads first, then a folded \"18 that have never sent a lead\" the rest live behind. With twenty-two rows this is the difference between a list and a wall. Drawn as a variant of 4 rather than a rival: 4 should look like this. Beside it is the other half — what the app says after a placement changes. The API keeps leads_moved null (nothing changed) and 0 (changed, nothing to carry) apart, so the screen says three different things rather than one hedge covering all of them."]
 };
 
@@ -208,11 +228,14 @@ const leads=()=>`<div class="leads">${LEADS.map(l=>`<div class="lead"><div class
 const band=(action)=>`<div class="band"><span class="gmark">G</span><div class="g">
   <b>22 Google Ads accounts</b><span>20 at company level · 2 on a franchise</span></div>${action}</div>`;
 
-const ACCTS=[['405-172-9356','Company level',142],['118-904-2210','Connecticut',88],
-  ['772-410-3388','DMV',31],['905-221-7740','Company level',0],['441-092-5512','Company level',0],
-  ['330-887-1204','Company level',0]];
+// [number, placement, leads, label-or-null]
+const ACCTS=[['405-172-9356','Company level',142,'Main line'],['118-904-2210','Connecticut',88,'Connecticut'],
+  ['772-410-3388','DMV',31,null],['905-221-7740','Company level',0,'Ohio'],['441-092-5512','Company level',0,null],
+  ['330-887-1204','Company level',0,null]];
 const acct=(a,showCount)=>`<div class="acct ${a[2]===0?'quiet':''}"><div class="g">
-  <div class="num">${a[0]}</div>
+  <div class="num">${a[3]
+    ? a[3]+' <span style="font-weight:400;color:var(--muted);font-size:12.5px">'+a[0]+'</span>'
+    : a[0]+' <span class="nameit">Name it</span>'}</div>
   <div class="where">${a[1]==='Company level'?'Company level':'<b>'+a[1]+'</b>'}</div></div>
   ${showCount?`<div class="cnt ${a[2]===0?'zero':''}">${a[2]===0?'no leads':a[2]+' leads'}</div>`:''}
   <button class="btn ghost sm">Change</button><button class="btn ghost sm danger">Disconnect</button></div>`;
@@ -262,6 +285,13 @@ const D3=()=>win('<b>Layout 3</b> &middot; accounts as a permanent left column',
      <div style="flex:1;min-width:0">${leads()}</div></div></div></div>`,
  'The only layout where placing an account and watching its leads move happens in one view — and placement is retroactive, so that is the moment somebody wants proof. It pays <b>280px permanently</b> for a surface the brief says most people never touch, and collapses into layout 1 below ~1100px anyway.');
 
+// A phone row's identity. Named: the name leads and the number verifies beneath.
+// Unnamed: the number IS the name, with the way to fix that on the row — because
+// naming twenty-two accounts has to be a scroll here too, not a trip per row.
+const mname=(a)=>a[3]
+  ? `<b>${a[3]}</b><span style="color:var(--muted);font-size:11.5px">${a[0]}</span>`
+  : `<b>${a[0]}</b><span class="nameit">Name it</span>`;
+
 const P=(cap,inner)=>`<div style="display:flex;flex-direction:column">
   <div class="cap" style="border:1px solid var(--line);border-bottom:0;border-radius:10px 10px 0 0">${cap}</div>
   <div class="phone" style="border-radius:0 0 26px 26px">${inner}</div></div>`;
@@ -279,7 +309,7 @@ const M4=()=>`<div class="phones">
         <span class="pill new">New</span></div></div>`)}
   ${P('<b>What the row opens</b>',`
     <div class="bar"><span class="back">&#8249; Leads</span> Google Ads accounts</div>
-    <div class="sc">${ACCTS.map(a=>`<div class="row"><div class="g"><b>${a[0]}</b>
+    <div class="sc">${ACCTS.map(a=>`<div class="row"><div class="g">${mname(a)}
       <span style="color:var(--muted);font-size:12px">${a[1]}</span></div><span class="chev">&#8250;</span></div>`).join('')}
       <div style="padding:12px 16px;color:var(--muted);font-size:12px">…16 more</div></div>`)}
 </div>
@@ -293,7 +323,7 @@ const M5=()=>`<div class="phones">
     <div class="sc"><div class="mt"><h2>Leads</h2></div>
       <div class="tabs" style="padding:10px 16px;flex-wrap:nowrap;overflow-x:auto">
         <span>Google</span><span>Thumbtack</span><span class="on">Accounts</span></div>
-      ${ACCTS.map(a=>`<div class="row"><div class="g"><b>${a[0]}</b>
+      ${ACCTS.map(a=>`<div class="row"><div class="g">${mname(a)}
         <span style="color:var(--muted);font-size:12px">${a[1]}</span></div><span class="chev">&#8250;</span></div>`).join('')}</div>`)}
 </div>
 <p class="note" style="text-align:center;margin-top:12px">One tap from anywhere, no new screen — and
@@ -303,10 +333,11 @@ const M6=()=>`<div class="phones">
   ${P('<b>Layout 6</b> &middot; grouped, quiet accounts folded away',`
     <div class="bar"><span class="back">&#8249; Leads</span> Google Ads accounts</div>
     <div class="sc"><div class="ghead">Producing leads · 4</div>
-      ${ACCTS.slice(0,3).map(a=>`<div class="row"><div class="g"><b>${a[0]}</b>
+      ${ACCTS.slice(0,3).map(a=>`<div class="row"><div class="g">${mname(a)}
         <span style="color:var(--muted);font-size:12px">${a[1]}</span></div>
         <span class="v">${a[2]} leads</span><span class="chev">&#8250;</span></div>`).join('')}
-      <div class="row" style="background:var(--alt)"><div class="g"><b>18 that have never sent a lead</b></div>
+      <div class="row" style="background:var(--alt)"><div class="g"><b>18 that have never sent a lead</b>
+        <div style="font-size:11.5px;color:var(--muted);font-weight:400;margin-top:2px">Search reaches in here</div></div>
         <span class="chev">&#8250;</span></div></div>`)}
   ${P('<b>After changing one</b> &middot; three different answers',`
     <div class="bar"><span class="back">&#8249; Accounts</span> 118-904-2210</div>
