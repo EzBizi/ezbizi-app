@@ -20,6 +20,7 @@ void main() {
     WidgetTester tester, {
     required List<String> permissions,
     bool own = false,
+    Map<String, Object?>? style,
   }) async {
     final client = MockClient((request) async {
       // Matched on the WHOLE path. ApiClient prefixes /api/v1, and a suffix
@@ -90,14 +91,15 @@ void main() {
                 {'label': 'What needs doing?', 'type': 'textarea'},
               ],
             },
-            'style': {
-              'accent': '#aa0000',
-              'on_accent': '#ffffff',
-              'text': '#111111',
-              'background': '#ffffff',
-              'font': 'inherit',
-              'radius': 12,
-            },
+            'style': style ??
+                const {
+                  'accent': '#aa0000',
+                  'on_accent': '#ffffff',
+                  'text': '#111111',
+                  'background': '#ffffff',
+                  'font': 'inherit',
+                  'radius': 12,
+                },
           },
           'inherited': own
               ? {
@@ -159,6 +161,101 @@ void main() {
 
     expect(find.textContaining('Following the primary website'), findsOneWidget);
     expect(find.text('Follow the primary again'), findsNothing);
+  });
+
+  /// The accent and the text on it are two free-text boxes whose only job is to
+  /// be legible against each other, and nothing else on the screen renders
+  /// either one. A pair that cannot be read ships to a lead form on the
+  /// customer's own website -- the page nobody at EzBizi will ever load.
+  testWidgets('an unreadable pair says so, in the ratio a visitor gets', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      style: const {
+        'accent': '#ffff00',
+        'on_accent': '#ffffff',
+        'text': '#111111',
+        'background': '#ffffff',
+        'font': 'inherit',
+        'radius': 12,
+      },
+    );
+
+    // The NUMBER, not the sentence: a warning that appears with the wrong
+    // ratio is a warning that has stopped measuring anything.
+    expect(find.textContaining('1.1:1'), findsOneWidget);
+    expect(find.textContaining('may not be able to read'), findsOneWidget);
+
+    // The other pair on the same screen is fine and must not be swept up.
+    expect(find.textContaining('18.9:1'), findsOneWidget);
+  });
+
+  /// Warn, never block: this is the customer's website and their brand, so the
+  /// screen reports what a visitor sees and leaves the choice alone.
+  testWidgets('a low-contrast pair still saves', (tester) async {
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      style: const {
+        'accent': '#ffff00',
+        'on_accent': '#ffffff',
+        'text': '#111111',
+        'background': '#ffffff',
+        'font': 'inherit',
+        'radius': 12,
+      },
+    );
+
+    final save = find.text('Save');
+    expect(save, findsOneWidget);
+    expect(
+      tester.widget<FilledButton>(
+        find.ancestor(of: save, matching: find.byType(FilledButton)),
+      ).onPressed,
+      isNotNull,
+    );
+  });
+
+  /// `WidgetDefaults::colour` keeps `#rgb` as well as `#rrggbb`. A checker that
+  /// only understood the long form would pass every short one unexamined --
+  /// silently, because saying nothing is also what it does mid-typing.
+  testWidgets('three-digit hex is checked, not skipped', (tester) async {
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      style: const {
+        'accent': '#ff0',
+        'on_accent': '#fff',
+        'text': '#111111',
+        'background': '#ffffff',
+        'font': 'inherit',
+        'radius': 12,
+      },
+    );
+
+    expect(find.textContaining('1.1:1'), findsOneWidget);
+  });
+
+  /// Half a colour is somebody typing, not somebody wrong.
+  testWidgets('a half-typed colour is not a finding', (tester) async {
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      style: const {
+        'accent': '#0b5c',
+        'on_accent': '#ffffff',
+        'text': '#111111',
+        'background': '#ffffff',
+        'font': 'inherit',
+        'radius': 12,
+      },
+    );
+
+    expect(find.textContaining('Contrast against the accent'), findsNothing);
+    // The finished pair below it still reports.
+    expect(find.textContaining('18.9:1'), findsOneWidget);
   });
 
   testWidgets('a site dressing itself can go back to following', (tester) async {
