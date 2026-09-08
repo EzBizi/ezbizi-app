@@ -81,6 +81,10 @@ class GuidesController extends Controller
     {
         $input = $request->validate($this->rules());
 
+        if (array_key_exists('screens', $input)) {
+            $input['screens'] = $this->normalizeScreens($input['screens']);
+        }
+
         $company = isset($input['company_id'])
             ? Company::findOrFail($input['company_id'])
             : null;
@@ -125,6 +129,10 @@ class GuidesController extends Controller
         $this->authorize('update', $guide);
 
         $input = $request->validate($this->rules(updating: true));
+
+        if (array_key_exists('screens', $input)) {
+            $input['screens'] = $this->normalizeScreens($input['screens']);
+        }
 
         if (array_key_exists('company_id', $input) || array_key_exists('franchise_id', $input)) {
             $companyId = array_key_exists('company_id', $input) ? $input['company_id'] : $guide->company_id;
@@ -172,9 +180,60 @@ class GuidesController extends Controller
             'summary' => ['sometimes', 'nullable', 'string', 'max:500'],
             'status' => ['sometimes', 'string', Rule::in([TrainingGuide::DRAFT, TrainingGuide::PUBLISHED])],
             'screens' => ['sometimes', 'array', 'max:200'],
+            'screens.*.title' => ['required', 'string', 'max:200'],
+            'screens.*.body' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'screens.*.media_kind' => ['sometimes', 'string', Rule::in(['none', 'image', 'video'])],
+            // A bad scheme is refused HERE, at authoring time, rather than
+            // merely defended against on every read — see [normalizeScreens]'s
+            // own docblock and the client's `isHttpUrl` (guide_player.dart),
+            // which does the identical check as a second, independent gate.
+            'screens.*.media_url' => [
+                'sometimes',
+                'nullable',
+                'string',
+                'max:2000',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if ($value === null || $value === '') {
+                        return;
+                    }
+
+                    $scheme = parse_url($value, PHP_URL_SCHEME);
+
+                    if (! in_array($scheme, ['http', 'https'], true)) {
+                        $fail('The media link must be a plain http or https URL.');
+                    }
+                },
+            ],
             'company_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('companies')],
             'franchise_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('franchises')],
         ];
+    }
+
+    /**
+     * Rebuilds each screen from its known keys only — `title`, `body`,
+     * `media_kind`, `media_url` — the same reason
+     * `TestsController::normalizeQuestions` rebuilds a question: a wildcard
+     * rule (`screens.*.media_url` and its siblings, above) validates the
+     * keys it names, it does not strip the ones it doesn't, so an extra key
+     * on a screen object can otherwise ride `$request->validate()` straight
+     * into stored JSON forever.
+     *
+     * The scheme check on `media_url` lives in [rules] rather than here —
+     * it must REFUSE a bad value with a 422, not silently drop it, so a
+     * caller finds out immediately rather than having their video quietly
+     * vanish.
+     *
+     * @param  array<int, array{title?: mixed, body?: mixed, media_kind?: mixed, media_url?: mixed}>  $screens
+     * @return array<int, array{title: mixed, body: mixed, media_kind: mixed, media_url: mixed}>
+     */
+    private function normalizeScreens(array $screens): array
+    {
+        return array_map(fn (array $screen) => [
+            'title' => $screen['title'] ?? '',
+            'body' => $screen['body'] ?? '',
+            'media_kind' => $screen['media_kind'] ?? 'none',
+            'media_url' => $screen['media_url'] ?? null,
+        ], $screens);
     }
 
     /** @return array<string, mixed> */

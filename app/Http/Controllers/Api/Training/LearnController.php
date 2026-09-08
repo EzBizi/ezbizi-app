@@ -122,10 +122,11 @@ class LearnController extends Controller
         $lapsedTestIds = $this->lapsedTestIds($user, $tests);
         $guideProgress = $this->guideProgress($user, $guides);
         $lastAttempts = $this->lastAttempts($user, $tests);
+        $attemptCounts = $this->attemptCounts($user, $tests);
 
         return response()->json([
-            'assigned' => $this->assigned($user, $guides, $tests, $lapsedTestIds, $guideProgress, $lastAttempts),
-            'library' => $this->library($guides, $tests, $lapsedTestIds, $guideProgress, $lastAttempts),
+            'assigned' => $this->assigned($user, $guides, $tests, $lapsedTestIds, $guideProgress, $lastAttempts, $attemptCounts),
+            'library' => $this->library($guides, $tests, $lapsedTestIds, $guideProgress, $lastAttempts, $attemptCounts),
         ]);
     }
 
@@ -169,7 +170,17 @@ class LearnController extends Controller
             ->orderByDesc('id')
             ->first();
 
-        return response()->json(['data' => $this->presentTest($row, $lapsedTestIds, $lastAttempt)]);
+        // The exact count [_capReached] (test_player.dart) needs and the
+        // learner-facing read never used to send — see [attemptCounts]'s
+        // own docblock. One more query scoped to this single (user, test)
+        // pair, same reasoning as $lastAttempt just above: no N+1 risk on
+        // an endpoint that already does two.
+        $attemptsTaken = TrainingAttempt::query()
+            ->where('user_id', $user->getKey())
+            ->where('test_id', $row->id)
+            ->count();
+
+        return response()->json(['data' => $this->presentTest($row, $lapsedTestIds, $lastAttempt, $attemptsTaken)]);
     }
 
     /**
@@ -348,6 +359,7 @@ class LearnController extends Controller
      * @param  list<string>  $lapsedTestIds  see this class's own docblock, "A lapsed pass reappears here"
      * @param  Collection<string, TrainingProgress>  $guideProgress  see [guideProgress]
      * @param  Collection<string, TrainingAttempt>  $lastAttempts  see [lastAttempts]
+     * @param  Collection<string, int>  $attemptCounts  see [attemptCounts]
      * @return array<int, array<string, mixed>>
      */
     private function library(
@@ -356,10 +368,13 @@ class LearnController extends Controller
         array $lapsedTestIds,
         Collection $guideProgress,
         Collection $lastAttempts,
+        Collection $attemptCounts,
     ): array {
         return $guides->map(fn (TrainingGuide $g) => $this->presentGuide($g, $guideProgress->get($g->id)))
             ->concat($tests->map(
-                fn (TrainingTest $t) => $this->presentTest($t, $lapsedTestIds, $lastAttempts->get($t->id))
+                fn (TrainingTest $t) => $this->presentTest(
+                    $t, $lapsedTestIds, $lastAttempts->get($t->id), $attemptCounts->get($t->id, 0),
+                )
             ))
             ->values()
             ->all();
@@ -386,6 +401,7 @@ class LearnController extends Controller
      * @param  list<string>  $lapsedTestIds  see this class's own docblock, "A lapsed pass reappears here"
      * @param  Collection<string, TrainingProgress>  $guideProgress  see [guideProgress]
      * @param  Collection<string, TrainingAttempt>  $lastAttempts  see [lastAttempts]
+     * @param  Collection<string, int>  $attemptCounts  see [attemptCounts]
      * @return array<int, array<string, mixed>>
      */
     private function assigned(
@@ -395,12 +411,13 @@ class LearnController extends Controller
         array $lapsedTestIds,
         Collection $guideProgress,
         Collection $lastAttempts,
+        Collection $attemptCounts,
     ): array {
         $rawAssignments = $this->assignedQuery($user)->get();
 
         $rows = $rawAssignments
             ->map(fn (TrainingAssignment $a) => $this->presentAssignment(
-                $a, $guides, $tests, $lapsedTestIds, $guideProgress, $lastAttempts,
+                $a, $guides, $tests, $lapsedTestIds, $guideProgress, $lastAttempts, $attemptCounts,
             ))
             ->filter()
             ->values();
@@ -420,7 +437,9 @@ class LearnController extends Controller
                 'assignment_id' => null,
                 'due_on' => null,
                 'assignee_type' => null,
-                ...$this->presentTest($tests->get($testId), $lapsedTestIds, $lastAttempts->get($testId)),
+                ...$this->presentTest(
+                    $tests->get($testId), $lapsedTestIds, $lastAttempts->get($testId), $attemptCounts->get($testId, 0),
+                ),
             ]);
         }
 
@@ -522,6 +541,40 @@ class LearnController extends Controller
             ->keyBy('test_id');
     }
 
+    /**
+     * This learner's own COUNT of attempts at every test THIS read can even
+     * show — the field the review that opened task-13's report flagged as
+     * missing: `last_taken_at` only ever says "at least one, or none", which
+     * cannot tell one prior attempt from several. Under `max_attempts: 3`
+     * and three prior attempts from an earlier sitting, a client computing
+     * its own client-side gate from `last_taken_at` alone under-counts —
+     * `_capReached` in `test_player.dart` used to do exactly that — and
+     * offers a Submit the server then refuses with a 403.
+     *
+     * Batched once per request against `$tests->keys()`, the same
+     * one-query-per-collection-read shape [lastAttempts] and [lapsedTestIds]
+     * already use — never N+1 per card.
+     *
+     * @param  Collection<string, TrainingTest>  $tests
+     * @return Collection<string, int>
+     */
+    private function attemptCounts(User $user, Collection $tests): Collection
+    {
+        if ($tests->isEmpty()) {
+            return collect();
+        }
+
+        return TrainingAttempt::query()
+            ->select('test_id')
+            ->selectRaw('COUNT(*) AS taken')
+            ->where('user_id', $user->getKey())
+            ->whereIn('test_id', $tests->keys())
+            ->groupBy('test_id')
+            ->get()
+            ->keyBy('test_id')
+            ->map(fn ($row) => (int) $row->taken);
+    }
+
     /** Just the assignee union (decision 2). Place scope and publication are decided in [presentAssignment]. */
     private function assignedQuery(User $user): Builder
     {
@@ -562,6 +615,7 @@ class LearnController extends Controller
      * @param  list<string>  $lapsedTestIds  see this class's own docblock, "A lapsed pass reappears here"
      * @param  Collection<string, TrainingProgress>  $guideProgress  see [guideProgress]
      * @param  Collection<string, TrainingAttempt>  $lastAttempts  see [lastAttempts]
+     * @param  Collection<string, int>  $attemptCounts  see [attemptCounts]
      * @return array<string, mixed>|null
      */
     private function presentAssignment(
@@ -571,10 +625,16 @@ class LearnController extends Controller
         array $lapsedTestIds,
         Collection $guideProgress,
         Collection $lastAttempts,
+        Collection $attemptCounts,
     ): ?array {
         $content = match (true) {
             $assignment->test_id !== null && $tests->has($assignment->test_id)
-                => $this->presentTest($tests->get($assignment->test_id), $lapsedTestIds, $lastAttempts->get($assignment->test_id)),
+                => $this->presentTest(
+                    $tests->get($assignment->test_id),
+                    $lapsedTestIds,
+                    $lastAttempts->get($assignment->test_id),
+                    $attemptCounts->get($assignment->test_id, 0),
+                ),
             $assignment->guide_id !== null && $guides->has($assignment->guide_id)
                 => $this->presentGuide($guides->get($assignment->guide_id), $guideProgress->get($assignment->guide_id)),
             default => null,
@@ -639,11 +699,23 @@ class LearnController extends Controller
      * as `$lastAttempt` rather than looked up here. `null` for all three
      * when there is no attempt at all: a test never taken.
      *
+     * `attempts_taken` (task-13 review) is the exact count of this
+     * learner's own attempts at this test — batched once per request by
+     * [attemptCounts], same shape as `$lastAttempt`. Added because
+     * `last_taken_at` alone cannot tell one prior attempt from several, and
+     * a client gating Submit on `max_attempts` needs the real number to
+     * avoid offering a control the server's own cap
+     * (`submit()`'s `Refusal::trainingAttemptCapReached`) would 403.
+     *
      * @param  list<string>  $lapsedTestIds
      * @return array<string, mixed>
      */
-    private function presentTest(TrainingTest $test, array $lapsedTestIds = [], ?TrainingAttempt $lastAttempt = null): array
-    {
+    private function presentTest(
+        TrainingTest $test,
+        array $lapsedTestIds = [],
+        ?TrainingAttempt $lastAttempt = null,
+        int $attemptsTaken = 0,
+    ): array {
         return [
             'type' => 'test',
             'id' => $test->id,
@@ -654,6 +726,7 @@ class LearnController extends Controller
             'requires_guide' => $test->requires_guide,
             'pass_mark' => $test->pass_mark,
             'max_attempts' => $test->max_attempts,
+            'attempts_taken' => $attemptsTaken,
             'valid_for_days' => $test->valid_for_days,
             'due_for_retaking' => in_array($test->id, $lapsedTestIds, true),
             'question_count' => $test->questionCount(),

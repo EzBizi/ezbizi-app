@@ -30,22 +30,27 @@ import '../../widgets/error_note.dart';
 /// there is no Submit control at all (§4: a control that is offered must be
 /// a control that works), only the sentence explaining why.
 ///
-/// ── The retake cap is a best-effort gate, not a promise ─────────────
+/// ── The retake cap is exact, and a refusal latches it ────────────────
 ///
 /// `max_attempts` is a real cap the server enforces
-/// (`LearnController::submit`, a locked read plus a count), but nothing this
-/// LEARNER-facing read exposes says how many attempts have already been
-/// made — only `last_taken_at` (at least one, or none). [_capReached] can
-/// only prove the cap is reached from what it can actually count: attempts
-/// submitted in THIS sitting, plus one known prior attempt when
-/// `last_taken_at` is set. That is EXACT for `max_attempts == 1` and a safe
-/// UNDER-count otherwise — it never disables Submit the server would allow,
-/// and in the case it cannot see (several prior attempts in an earlier
-/// sitting, `max_attempts` above 1) it can still let one submission through
-/// that the server refuses. That refusal is shown verbatim as
+/// (`LearnController::submit`, a locked read plus a count). [_capReached]
+/// used to under-count it — `last_taken_at` only ever says "at least one
+/// prior attempt, or none", which cannot tell one from several — so it
+/// could still offer a Submit the server would 403 whenever several prior
+/// attempts came from an earlier sitting. `attempts_taken`
+/// (`LearnController::attemptCounts`, task-13 review) closes that: it is the
+/// real count, batched the same way `last_score`/`last_passed` already are,
+/// so [_capReached] adding it to [_sessionAttempts] is exact, not a
+/// best-effort under-count.
+///
+/// A 403 is still handled defensively rather than trusted never to happen —
+/// a race with another sitting, or a stale read, can still land one. When
+/// [_submit] comes back [ApiResponse.forbidden], [_refused] latches true and
+/// Submit stays disabled from then on: the server has just said the cap is
+/// reached, and offering the same control again would only invite hammering
+/// it against repeated 403s. The refusal text itself is shown verbatim as
 /// [_submitError] (`response.reason`) rather than invented, exactly like
-/// every other refusal this client shows — closing the gap for good needs an
-/// attempts-taken count in a response this endpoint does not send today.
+/// every other refusal this client shows.
 class TestPlayer extends StatefulWidget {
   const TestPlayer({
     super.key,
@@ -78,6 +83,12 @@ class _TestPlayerState extends State<TestPlayer> {
   int _sessionAttempts = 0;
   bool _submitting = false;
   String? _submitError;
+
+  /// Latched true the moment the server refuses a submission with a 403
+  /// (see this class's own docblock, "a refusal latches it") — never reset
+  /// by [_retake], since a retake after the cap is reached is exactly the
+  /// control this exists to withhold.
+  bool _refused = false;
   Map<String, dynamic>? _result;
 
   @override
@@ -148,11 +159,14 @@ class _TestPlayerState extends State<TestPlayer> {
   }
 
   bool get _capReached {
+    if (_refused) return true;
+
     final max = _test?['max_attempts'];
     if (max is! num) return false;
 
-    final knownPrior = _test?['last_taken_at'] != null ? 1 : 0;
-    return (knownPrior + _sessionAttempts) >= max.toInt();
+    final attemptsTaken = _test?['attempts_taken'];
+    final priorAttempts = attemptsTaken is num ? attemptsTaken.toInt() : 0;
+    return (priorAttempts + _sessionAttempts) >= max.toInt();
   }
 
   Future<void> _submit() async {
@@ -171,6 +185,10 @@ class _TestPlayerState extends State<TestPlayer> {
       setState(() {
         _submitting = false;
         _submitError = response.reason;
+        // See this class's own docblock, "a refusal latches it" — a 403
+        // means the server has already decided no further attempt will be
+        // accepted, so Submit must not be offered again this sitting.
+        if (response.forbidden) _refused = true;
       });
       return;
     }
@@ -287,11 +305,18 @@ class _TestPlayerState extends State<TestPlayer> {
           ErrorNote(_submitError!),
           const SizedBox(height: 12),
         ],
-        if (_capReached)
+        // Guarded on `max is num` rather than `_capReached` alone: a 403
+        // latches `_capReached` true via [_refused] even for a test whose
+        // own `max_attempts` is null (this client cannot always prove why a
+        // 403 happened — see this class's own docblock). The refusal's own
+        // sentence is already shown verbatim above via [_submitError]; this
+        // second notice only adds anything when there is a real number to
+        // name.
+        if (_capReached && _test?['max_attempts'] is num)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: Text(
-              'This test allows at most ${(_test?['max_attempts'] as num).toInt()} '
+              'This test allows at most ${(_test!['max_attempts'] as num).toInt()} '
               'attempts, and that many have already been made.',
               style: theme.textTheme.bodyMedium,
             ),

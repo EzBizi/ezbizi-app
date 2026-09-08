@@ -194,12 +194,22 @@ class _GuidePlayerState extends State<GuidePlayer> {
     if (test == null) return;
 
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => TestPlayer(
-          api: widget.api,
-          session: widget.session,
-          testId: test['id'] as String,
-          onLeave: () => Navigator.of(context).pop(),
+      MaterialPageRoute<void>(
+        // `TestPlayer` supplies only a header `Material` (test_player.dart)
+        // — its body's `RadioListTile`s need a `Material` ancestor of their
+        // own, and a bare `MaterialPageRoute` gives a pushed page none. The
+        // test harness's `_pumpTest` (training_player_test.dart) hid this
+        // for a long time by building `TestPlayer` straight inside its own
+        // borrowed `Scaffold(body: ...)`, which is not how this app ever
+        // reaches it — only `_openTest`'s real route is. Wrap here, the way
+        // every other pushed screen in this app is wrapped.
+        builder: (_) => Scaffold(
+          body: TestPlayer(
+            api: widget.api,
+            session: widget.session,
+            testId: test['id'] as String,
+            onLeave: () => Navigator.of(context).pop(),
+          ),
         ),
       ),
     );
@@ -210,71 +220,85 @@ class _GuidePlayerState extends State<GuidePlayer> {
     final total = _screens.length;
     final seenCount = _lastScreen >= 0 ? (_lastScreen + 1).clamp(0, total).toInt() : 0;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _Header(title: _title, seenCount: seenCount, total: total, onLeave: widget.onLeave),
-        Divider(height: 1, color: EzBiziTheme.edge(context)),
-        Expanded(
-          child: AsyncBody(
-            loading: _loading,
-            error: _error,
-            onRetry: _load,
-            child: total == 0
-                ? Center(
-                    child: Text(
-                      'This guide has no screens yet.',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  )
-                : LayoutBuilder(
-                    builder: (context, constraints) {
-                      final wide = constraints.maxWidth >= GuidePlayer.splitAbove;
-                      final unlocked = _completedAt != null;
+    // One outer LayoutBuilder rather than the split decision's own inner
+    // one: `_Header`'s own "X of Y seen" / "X / Y" wording (task-13 review
+    // minor) differs by the SAME breakpoint the rail collapses at
+    // (training-layouts.html: the wide top bar reads "3 of 8 seen", the
+    // narrow phone's reads "3 / 8"), so both need the identical `wide` this
+    // build produces exactly once.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= GuidePlayer.splitAbove;
+        final unlocked = _completedAt != null;
 
-                      final reader = _ReaderBody(
-                        screen: _screens[_current],
-                        onBack: _current > 0 ? () => _selectScreen(_current - 1) : null,
-                        onNext: _current < total - 1 ? () => _selectScreen(_current + 1) : null,
-                        trailing: (!wide && _test != null)
-                            ? _TestEntry(
-                                test: _test!,
-                                unlocked: unlocked,
-                                totalScreens: total,
-                                onStart: () => _openTest(context),
-                              )
-                            : null,
-                      );
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _Header(title: _title, seenCount: seenCount, total: total, wide: wide, onLeave: widget.onLeave),
+            Divider(height: 1, color: EzBiziTheme.edge(context)),
+            Expanded(
+              child: AsyncBody(
+                loading: _loading,
+                error: _error,
+                onRetry: _load,
+                child: total == 0
+                    ? Center(
+                        child: Text(
+                          'This guide has no screens yet.',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      )
+                    : Builder(
+                        builder: (context) {
+                          final reader = _ReaderBody(
+                            screen: _screens[_current],
+                            onBack: _current > 0 ? () => _selectScreen(_current - 1) : null,
+                            onNext: _current < total - 1 ? () => _selectScreen(_current + 1) : null,
+                            wide: wide,
+                            current: _current,
+                            total: total,
+                            lastScreen: _lastScreen,
+                            trailing: (!wide && _test != null)
+                                ? _TestEntry(
+                                    test: _test!,
+                                    unlocked: unlocked,
+                                    totalScreens: total,
+                                    onStart: () => _openTest(context),
+                                  )
+                                : null,
+                          );
 
-                      if (!wide) return reader;
+                          if (!wide) return reader;
 
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(
-                            flex: 1,
-                            child: KeyedSubtree(
-                              key: const Key('training.screen-rail'),
-                              child: _Rail(
-                                screens: _screens,
-                                current: _current,
-                                lastScreen: _lastScreen,
-                                onSelect: _selectScreen,
-                                test: _test,
-                                unlocked: unlocked,
-                                onStartTest: () => _openTest(context),
+                          return Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(
+                                flex: 1,
+                                child: KeyedSubtree(
+                                  key: const Key('training.screen-rail'),
+                                  child: _Rail(
+                                    screens: _screens,
+                                    current: _current,
+                                    lastScreen: _lastScreen,
+                                    onSelect: _selectScreen,
+                                    test: _test,
+                                    unlocked: unlocked,
+                                    onStartTest: () => _openTest(context),
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                          VerticalDivider(width: 1, thickness: 1, color: EzBiziTheme.edge(context)),
-                          Expanded(flex: 3, child: reader),
-                        ],
-                      );
-                    },
-                  ),
-          ),
-        ),
-      ],
+                              VerticalDivider(width: 1, thickness: 1, color: EzBiziTheme.edge(context)),
+                              Expanded(flex: 3, child: reader),
+                            ],
+                          );
+                        },
+                      ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -294,12 +318,19 @@ class _Header extends StatelessWidget {
     required this.title,
     required this.seenCount,
     required this.total,
+    required this.wide,
     required this.onLeave,
   });
 
   final String title;
   final int seenCount;
   final int total;
+
+  /// Same breakpoint `GuidePlayer.build` computes the rail split from — the
+  /// progress pill's own wording differs by it too
+  /// (training-layouts.html: the wide top bar reads "3 of 8 seen", the
+  /// narrow phone's reads "3 / 8"; task-13 review minor).
+  final bool wide;
   final VoidCallback onLeave;
 
   @override
@@ -326,7 +357,7 @@ class _Header extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            if (total > 0) Tag('$seenCount of $total seen'),
+            if (total > 0) Tag(wide ? '$seenCount of $total seen' : '$seenCount / $total'),
           ],
         ),
       ),
@@ -374,14 +405,11 @@ class _Rail extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(13, 12, 13, 8),
             child: Divider(color: EzBiziTheme.edge(context), height: 1),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 13),
-            child: _TestEntry(
-              test: test!,
-              unlocked: unlocked,
-              totalScreens: screens.length,
-              onStart: onStartTest,
-            ),
+          _TestEntry(
+            test: test!,
+            unlocked: unlocked,
+            totalScreens: screens.length,
+            onStart: onStartTest,
           ),
         ],
       ],
@@ -473,16 +501,18 @@ class _Badge extends StatelessWidget {
 
 /// The guide's own test, as the rail draws it (last item) and as a narrow
 /// screen draws it (appended under the reader) — the SAME widget either way,
-/// so the gate can never read differently in the two places. A real
-/// `ElevatedButton` rather than a plain row: §4 wants a control that is
-/// offered to be a control that works, and `onPressed: null` is what makes
-/// "disabled" a fact a test (and a screen reader) can observe, not a look.
+/// so the gate can never read differently in the two places.
 ///
-/// No colour is set on the two lines of text inside the button on purpose —
-/// `ElevatedButton` supplies its own foreground per enabled/disabled state,
-/// which is what actually dims the reason text when the gate is shut; baking
-/// in `theme.textTheme`'s own ink colour here would print the same dark text
-/// whether or not the control can be pressed.
+/// Redrawn (task-13 review) as an `InkWell` row in the same visual family as
+/// `_ScreenRow` above it, matching the approved layout
+/// (`training-layouts.html:488-491`): a badge, a bold title, and a muted
+/// italic reason line — never the solid-fill `ElevatedButton` this used to
+/// be, which the mockup never draws. §4 does not require a button to prove
+/// a disabled control is disabled: `onTap: null` is exactly as observable,
+/// to a test and to a screen reader, as `onPressed: null` was — an `InkWell`
+/// with no `onTap` renders no tap semantics and produces no ink response,
+/// the same "offered a control that works, or not offered at all" the
+/// button version argued for.
 class _TestEntry extends StatelessWidget {
   const _TestEntry({
     required this.test,
@@ -498,26 +528,53 @@ class _TestEntry extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        key: const Key('training.start-test'),
-        onPressed: unlocked ? onStart : null,
-        style: ElevatedButton.styleFrom(
-          alignment: Alignment.centerLeft,
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
-        ),
-        child: Column(
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return InkWell(
+      key: const Key('training.start-test'),
+      onTap: unlocked ? onStart : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              test['title'] as String? ?? 'Test',
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+            // The mockup's cyan "?" badge — `scheme.tertiary` rather than a
+            // literal colour, so this stays inside the theme's own palette
+            // (the colour ratchet in theme_conventions_test.dart forbids a
+            // new hardcoded one) while still reading as visually distinct
+            // from `_Badge`'s seen/unseen numbering.
+            Container(
+              width: 20,
+              height: 20,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: scheme.tertiary),
+              ),
+              child: Text(
+                '?',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: scheme.tertiary),
+              ),
             ),
-            Text(
-              unlocked ? 'Ready — tap to begin' : 'Unlocks when all $totalScreens are seen',
-              style: const TextStyle(fontSize: 12),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    test['title'] as String? ?? 'Test',
+                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  Text(
+                    unlocked ? 'Ready — tap to begin' : 'Unlocks when all $totalScreens are seen',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontStyle: FontStyle.italic,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -535,12 +592,27 @@ class _ReaderBody extends StatelessWidget {
     required this.screen,
     required this.onBack,
     required this.onNext,
+    required this.wide,
+    required this.current,
+    required this.total,
+    required this.lastScreen,
     this.trailing,
   });
 
   final Map<String, dynamic> screen;
   final VoidCallback? onBack;
   final VoidCallback? onNext;
+
+  /// The same breakpoint the navbar's own shape follows (task-13 review
+  /// minor): wide draws Back/Next adjacent with a small gap
+  /// (training-layouts.html:504-505, `display:flex;gap:9px` — never pushed
+  /// to opposite ends), narrow draws progress dots between them
+  /// (training-layouts.html:873-877), which [current]/[total]/[lastScreen]
+  /// are here to feed [_ProgressDots].
+  final bool wide;
+  final int current;
+  final int total;
+  final int lastScreen;
   final Widget? trailing;
 
   @override
@@ -577,24 +649,101 @@ class _ReaderBody extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           child: Row(
-            children: [
-              OutlinedButton(
-                key: const Key('training.nav-back'),
-                onPressed: onBack,
-                child: const Text('◀ Back'),
-              ),
-              const Spacer(),
-              ElevatedButton(
-                key: const Key('training.nav-next'),
-                onPressed: onNext,
-                child: const Text('Next ▶'),
-              ),
-            ],
+            children: wide
+                ? [
+                    OutlinedButton(
+                      key: const Key('training.nav-back'),
+                      onPressed: onBack,
+                      child: const Text('◀ Back'),
+                    ),
+                    const SizedBox(width: 9),
+                    ElevatedButton(
+                      key: const Key('training.nav-next'),
+                      onPressed: onNext,
+                      child: const Text('Next ▶'),
+                    ),
+                  ]
+                : [
+                    OutlinedButton(
+                      key: const Key('training.nav-back'),
+                      onPressed: onBack,
+                      child: const Text('◀'),
+                    ),
+                    Expanded(
+                      child: _ProgressDots(current: current, total: total, lastScreen: lastScreen),
+                    ),
+                    ElevatedButton(
+                      key: const Key('training.nav-next'),
+                      onPressed: onNext,
+                      child: const Text('Next ▶'),
+                    ),
+                  ],
           ),
         ),
       ],
     );
   }
+}
+
+/// The narrow reader's own progress indicator between Back and Next
+/// (training-layouts.html:873-877, `.dots` — `<i class="seen">`/`<i
+/// class="on">`/plain) — task-13 review minor: not implemented before this,
+/// even though the header pill beside it already carried the same
+/// information as a count.
+class _ProgressDots extends StatelessWidget {
+  const _ProgressDots({required this.current, required this.total, required this.lastScreen});
+
+  final int current;
+  final int total;
+  final int lastScreen;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (var i = 0; i < total; i++) ...[
+          if (i > 0) const SizedBox(width: 4),
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: i == current
+                  ? scheme.primary
+                  : i <= lastScreen
+                  ? scheme.primary.withValues(alpha: 0.5)
+                  : scheme.outlineVariant,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Whether a guide screen's `media_url` is safe to hand to the video
+/// `<iframe>` (video_embed_web.dart) or to `launchUrl` (`_openExternal`
+/// below) — task-13 review.
+///
+/// `media_url` is author-supplied and, on the client, unvalidated: nothing
+/// here re-checks the scheme `GuidesController` is supposed to have already
+/// rejected at write time (see that controller's own docblock on
+/// `normalizeScreens`). Read as a second, independent gate rather than
+/// trusting the server always ran it — the video iframe's sandbox grants
+/// `allow-scripts` and `allow-same-origin` TOGETHER (video_embed_web.dart),
+/// so a `javascript:` URL reaching it verbatim would run in THIS app's own
+/// origin, with access to `parent` and the session token; `launchUrl` does
+/// not filter schemes on its own either.
+///
+/// Pure and exported for the same reason `snippetApiBase` (seo_tab.dart)
+/// is — worth asserting directly rather than only through a widget that
+/// happens to call it.
+bool isHttpUrl(String url) {
+  final uri = Uri.tryParse(url);
+  return uri != null && (uri.scheme == 'http' || uri.scheme == 'https');
 }
 
 /// A screen's media — an image (a plain `Image.network`, no platform split
@@ -628,7 +777,18 @@ class _ScreenMedia extends StatelessWidget {
                   errorBuilder: (context, error, stack) =>
                       _MediaFallback(url: url, icon: Icons.broken_image_outlined, label: 'Open image'),
                 )
-              : kIsWeb
+              // `kind == 'video'` is checked explicitly, not merely "not
+              // image" — `media_kind` is author-supplied text
+              // (GuidesController now restricts it at write time, but
+              // nothing here assumes every screen was written after that
+              // changed) and used to fall through anything unrecognised
+              // straight into the iframe branch. isHttpUrl then gates the
+              // embed itself, not merely the fallback link below — see that
+              // function's own docblock. Either a non-http scheme or an
+              // unrecognised kind degrades to the same "Open video" link
+              // every off-web build already shows, rather than reaching the
+              // iframe at all.
+              : (kind == 'video' && kIsWeb && isHttpUrl(url))
               ? VideoEmbed(url: url)
               : _MediaFallback(url: url, icon: Icons.play_circle_outline, label: 'Open video'),
         ),
@@ -669,8 +829,12 @@ class _MediaFallback extends StatelessWidget {
 }
 
 Future<void> _openExternal(String url) async {
-  final uri = Uri.tryParse(url);
-  if (uri == null) return;
+  // Same scheme gate isHttpUrl documents for the video iframe — this
+  // matches camera_monitoring_tab.dart's own `_openUrl` byte for byte
+  // otherwise, but that precedent never checked the scheme either, and
+  // `launchUrl` on a javascript: URL is the same class of problem there.
+  if (!isHttpUrl(url)) return;
+  final uri = Uri.parse(url);
 
   try {
     await launchUrl(uri, mode: LaunchMode.externalApplication);

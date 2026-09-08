@@ -32,6 +32,66 @@ void main() {
     expect(find.text('The four-to-one rule'), findsOneWidget);
   });
 
+  // ── The header pill and the navbar both follow the same breakpoint
+  //    (task-13 review minors) ─────────────────────────────────────────
+
+  testWidgets(
+    'wide: the header reads "X of Y seen" and Back/Next sit adjacent, '
+    'not pushed to opposite ends',
+    (tester) async {
+      await _pumpGuide(tester, guide: _guide(lastScreen: 2));
+
+      expect(find.text('3 of 8 seen'), findsOneWidget);
+      expect(find.text('3 / 8'), findsNothing);
+      expect(find.text('◀ Back'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'narrow: the header reads "X / Y" and the navbar shows the short Back '
+    'label with progress dots between Back and Next',
+    (tester) async {
+      await _pumpGuide(
+        tester,
+        guide: _guide(lastScreen: 2),
+        size: const Size(375, 800),
+      );
+
+      expect(find.text('3 / 8'), findsOneWidget);
+      expect(find.text('3 of 8 seen'), findsNothing);
+      expect(find.text('◀ Back'), findsNothing);
+      expect(find.text('◀'), findsOneWidget);
+      expect(find.text('Next ▶'), findsOneWidget);
+    },
+  );
+
+  // The reviewer's one "cannot verify": the rail is the only place layout 4
+  // draws the guide's own test, and it is gone below 600px — `_TestEntry` is
+  // appended a second place (under the reader) so the test stays reachable.
+  // Reachable, gated the SAME way as the wide rail, and drawn exactly once
+  // — never both the (absent) rail's copy and the reader's own.
+  testWidgets(
+    "below 600px the guide's own test stays reachable, gated the same way, "
+    'and is not doubled',
+    (tester) async {
+      await _pumpGuide(
+        tester,
+        guide: _guide(lastScreen: 2),
+        test: _testEntry(guideId: 'g1', requiresGuide: true),
+        size: const Size(375, 800),
+      );
+
+      expect(find.byKey(const Key('training.screen-rail')), findsNothing);
+      expect(find.byKey(const Key('training.start-test')), findsOneWidget);
+      expect(find.text('Unlocks when all 8 are seen'), findsOneWidget);
+
+      final row = tester.widget<InkWell>(
+        find.byKey(const Key('training.start-test')),
+      );
+      expect(row.onTap, isNull);
+    },
+  );
+
   // ── §4: a control that is offered must be a control that works ─────
 
   testWidgets(
@@ -44,10 +104,10 @@ void main() {
       );
 
       expect(find.text('Unlocks when all 8 are seen'), findsOneWidget);
-      final button = tester.widget<ElevatedButton>(
+      final row = tester.widget<InkWell>(
         find.byKey(const Key('training.start-test')),
       );
-      expect(button.onPressed, isNull);
+      expect(row.onTap, isNull);
     },
   );
 
@@ -64,10 +124,10 @@ void main() {
 
       // Starts unlocked: the guide was already finished before the player
       // opened.
-      var button = tester.widget<ElevatedButton>(
+      var row = tester.widget<InkWell>(
         find.byKey(const Key('training.start-test')),
       );
-      expect(button.onPressed, isNotNull);
+      expect(row.onTap, isNotNull);
 
       // Page back to an earlier screen — this POSTs `seen` for a screen
       // index BELOW the stored high-water mark. The fake server mirrors
@@ -77,11 +137,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Unlocks when all 8 are seen'), findsNothing);
-      button = tester.widget<ElevatedButton>(
+      row = tester.widget<InkWell>(
         find.byKey(const Key('training.start-test')),
       );
       expect(
-        button.onPressed,
+        row.onTap,
         isNotNull,
         reason: 'Re-reading an earlier screen of a finished guide must not '
             'take the completion away (ProgressController::seen: a '
@@ -105,6 +165,180 @@ void main() {
 
     expect(find.text('Score: 100%'), findsOneWidget);
     expect(find.text('Passed'), findsOneWidget);
+  });
+
+  // ── The real route, not the test harness's own shortcut ─────────────
+  //
+  // `_pumpTest` (below) builds `TestPlayer` directly inside `Scaffold(body:
+  // ...)`, which is NOT how the app reaches it — `GuidePlayer._openTest`
+  // pushes it as its own route via `Navigator.push`. A `TestPlayer` that
+  // supplies no `Material`/`Scaffold` of its own renders fine under
+  // `_pumpTest`'s borrowed one and throws "No Material widget found" the
+  // moment it is reached the real way, which `_pumpTest` can never catch
+  // because it never goes through `_openTest` at all.
+  testWidgets(
+    'opening the test from the guide reader, through the real route, renders '
+    'the choices and Submit',
+    (tester) async {
+      await _pumpGuide(
+        tester,
+        guide: _guide(lastScreen: 7, completedAt: '2026-08-01T00:00:00Z'),
+        test: _testEntry(guideId: 'g1', requiresGuide: true),
+      );
+
+      await tester.tap(find.byKey(const Key('training.start-test')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('One foot out for every four feet'), findsOneWidget);
+      expect(find.text('Four rungs per minute'), findsOneWidget);
+      expect(find.byKey(const Key('training.submit-test')), findsOneWidget);
+    },
+  );
+
+  // ── The retake cap: an exact count, not an under-count ───────────────
+
+  testWidgets(
+    'attempts_taken from an earlier sitting caps Submit exactly, where '
+    'last_taken_at alone would only under-count it',
+    (tester) async {
+      // last_taken_at only proves ONE prior attempt; attempts_taken says
+      // three, which is the real number LearnController::attemptCounts now
+      // sends. A client still gating on last_taken_at alone would compute
+      // 1 >= 3 == false and offer an enabled Submit the server would 403.
+      await _pumpTest(
+        tester,
+        test: _testEntry(
+          maxAttempts: 3,
+          lastTakenAt: '2026-01-01T00:00:00Z',
+          attemptsTaken: 3,
+        ),
+      );
+
+      final button = tester.widget<ElevatedButton>(
+        find.byKey(const Key('training.submit-test')),
+      );
+      expect(
+        button.onPressed,
+        isNull,
+        reason: 'attempts_taken (3) already meets max_attempts (3) — Submit '
+            'must not be offered.',
+      );
+      expect(find.textContaining('This test allows at most 3'), findsOneWidget);
+    },
+  );
+
+  // ── The retake cap: latch the disable on a real refusal ──────────────
+
+  testWidgets(
+    'a 403 refusal on submit latches Submit disabled rather than leaving it '
+    'to be hammered',
+    (tester) async {
+      await _pumpTest(
+        tester,
+        test: _testEntry(id: 't1'),
+        attemptStatus: 403,
+        attemptBody: {
+          'message':
+              'This test allows at most 1 attempts, and that many have '
+              'already been made.',
+        },
+      );
+
+      await tester.tap(find.text('One foot out for every four feet'));
+      await tester.pumpAndSettle();
+
+      var button = tester.widget<ElevatedButton>(
+        find.byKey(const Key('training.submit-test')),
+      );
+      expect(button.onPressed, isNotNull, reason: 'Not refused yet.');
+
+      await tester.tap(find.byKey(const Key('training.submit-test')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'This test allows at most 1 attempts, and that many have already '
+          'been made.',
+        ),
+        findsOneWidget,
+      );
+
+      button = tester.widget<ElevatedButton>(
+        find.byKey(const Key('training.submit-test')),
+      );
+      expect(
+        button.onPressed,
+        isNull,
+        reason: 'The server just refused this submission with a 403; the '
+            'client must not keep offering a Submit that would 403 again.',
+      );
+    },
+  );
+
+  // ── No modals anywhere in this module — pin it (task-13 review) ──────
+  //
+  // The pattern `theme_conventions_test.dart:9-14` describes: a rule
+  // nothing checks is a preference, and this module genuinely draws none —
+  // through the guide reader, the real route into the test, answering a
+  // question, and the graded result panel.
+  testWidgets(
+    'the guide player and the test player never draw a Dialog or AlertDialog',
+    (tester) async {
+      await _pumpGuide(
+        tester,
+        guide: _guide(lastScreen: 7, completedAt: '2026-08-01T00:00:00Z'),
+        test: _testEntry(guideId: 'g1', requiresGuide: true),
+      );
+      expect(find.byType(Dialog), findsNothing);
+      expect(find.byType(AlertDialog), findsNothing);
+
+      await tester.tap(find.byKey(const Key('training.start-test')));
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsNothing);
+      expect(find.byType(AlertDialog), findsNothing);
+
+      await tester.tap(find.text('One foot out for every four feet'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('training.submit-test')));
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsNothing);
+      expect(find.byType(AlertDialog), findsNothing);
+    },
+  );
+
+  // ── A screen's media_url must be http/https before it reaches an iframe
+  //    or launchUrl (task-13 review) ────────────────────────────────────
+  //
+  // Pure and exported for the same reason `snippetApiBase` (seo_tab.dart)
+  // is — worth asserting directly rather than only through a widget that
+  // happens to call it. `_ScreenMedia` gates the video iframe on this
+  // (guide_player.dart), and `_openExternal` refuses to `launchUrl` a URL
+  // this returns false for.
+  group('isHttpUrl refuses anything that is not http/https', () {
+    test('an ordinary https link is allowed', () {
+      expect(isHttpUrl('https://www.youtube.com/watch?v=abc'), isTrue);
+    });
+
+    test('an ordinary http link is allowed', () {
+      expect(isHttpUrl('http://example.com/video'), isTrue);
+    });
+
+    test('a javascript: URL is refused', () {
+      // The actual attack this closes: `allow-scripts` and
+      // `allow-same-origin` are granted together on the video iframe
+      // (video_embed_web.dart), so a javascript: URL handed to it verbatim
+      // would run in THIS app's own origin, with access to `parent` and the
+      // session token.
+      expect(isHttpUrl('javascript:alert(document.cookie)'), isFalse);
+    });
+
+    test('a data: URL is refused', () {
+      expect(isHttpUrl('data:text/html,<script>alert(1)</script>'), isFalse);
+    });
+
+    test('an unparseable string is refused', () {
+      expect(isHttpUrl('not a url at all'), isFalse);
+    });
   });
 }
 
@@ -149,6 +383,7 @@ Map<String, dynamic> _testEntry({
   bool requiresGuide = false,
   int? maxAttempts,
   String? lastTakenAt,
+  int attemptsTaken = 0,
 }) => {
   'type': 'test',
   'id': id,
@@ -159,6 +394,7 @@ Map<String, dynamic> _testEntry({
   'requires_guide': requiresGuide,
   'pass_mark': 60,
   'max_attempts': maxAttempts,
+  'attempts_taken': attemptsTaken,
   'valid_for_days': 365,
   'due_for_retaking': false,
   'question_count': 1,
@@ -210,12 +446,23 @@ Future<void> _pumpTest(
   WidgetTester tester, {
   required Map<String, dynamic> test,
   Size size = const Size(1280, 900),
+  int attemptStatus = 200,
+  Map<String, dynamic>? attemptBody,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
-  final api = ApiClient(client: MockClient(_handler(guides: const [], tests: [test])));
+  final api = ApiClient(
+    client: MockClient(
+      _handler(
+        guides: const [],
+        tests: [test],
+        attemptStatus: attemptStatus,
+        attemptBody: attemptBody,
+      ),
+    ),
+  );
   final session = Session(api);
   await tester.runAsync(() => session.adopt('tok'));
   expect(session.signedIn, isTrue);
@@ -239,6 +486,8 @@ Widget _wrap(Widget child) =>
 MockClientHandler _handler({
   required List<Map<String, dynamic>> guides,
   required List<Map<String, dynamic>> tests,
+  int attemptStatus = 200,
+  Map<String, dynamic>? attemptBody,
 }) {
   // Mutable so `seen` can mirror ProgressController's own max() across
   // repeated calls in one test, the same way the real server would.
@@ -298,7 +547,10 @@ MockClientHandler _handler({
       r'/training/learn/tests/([^/]+)/attempts$',
     ).firstMatch(path);
     if (method == 'POST' && attemptMatch != null) {
-      return _json({'score': 100, 'passed': true, 'expires_on': '2027-08-01'});
+      return _json(
+        attemptBody ?? {'score': 100, 'passed': true, 'expires_on': '2027-08-01'},
+        attemptStatus,
+      );
     }
 
     return _json({'message': 'Nothing stubbed for $method $path.'}, 500);

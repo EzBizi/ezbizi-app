@@ -204,6 +204,101 @@ class TrainingLearnProgressFieldsTest extends TestCase
         $this->assertNull($row['completed_at']);
     }
 
+    // ── attempts_taken: the count nothing else in the learner payload can
+    //    give (task-13 review) ──────────────────────────────────────────
+    //
+    // `last_taken_at` only ever says "at least one, or none" — it cannot
+    // tell one prior attempt from several. Under `max_attempts: 3` a
+    // learner with three prior attempts from an EARLIER sitting reopens
+    // the test fresh: the client has no session-local count either, so
+    // without this field it has nothing to gate Submit on and offers a
+    // control the server will 403. `attempts_taken` is the exact count,
+    // batched the same way [lastAttempts] already is — see
+    // [LearnController::attemptCounts].
+
+    public function test_a_library_test_carries_the_exact_number_of_attempts_taken(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $tenant['franchise']);
+        $test = $this->aTest($tenant, 'Three Sittings');
+
+        $this->attempt($tenant, $learner, $test, score: 40, passed: false, takenAt: now()->subDays(30));
+        $this->attempt($tenant, $learner, $test, score: 50, passed: false, takenAt: now()->subDays(20));
+        $this->attempt($tenant, $learner, $test, score: 60, passed: true, takenAt: now()->subDays(10));
+
+        $row = $this->libraryEntry($learner, $test->id);
+
+        $this->assertSame(3, $row['attempts_taken']);
+    }
+
+    public function test_an_untaken_test_carries_zero_attempts_taken(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $tenant['franchise']);
+        $test = $this->aTest($tenant, 'Never Sat');
+
+        $row = $this->libraryEntry($learner, $test->id);
+
+        $this->assertSame(0, $row['attempts_taken']);
+    }
+
+    /** Same batching proof [lastAttempts] already has, for the count read. */
+    public function test_an_untaken_test_alongside_a_taken_one_carries_the_right_count_for_each(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $tenant['franchise']);
+        $taken = $this->aTest($tenant, 'Taken Twice');
+        $untaken = $this->aTest($tenant, 'Untaken Again');
+
+        $this->attempt($tenant, $learner, $taken, score: 40, passed: false, takenAt: now()->subDays(2));
+        $this->attempt($tenant, $learner, $taken, score: 90, passed: true, takenAt: now());
+
+        $this->assertSame(2, $this->libraryEntry($learner, $taken->id)['attempts_taken']);
+        $this->assertSame(0, $this->libraryEntry($learner, $untaken->id)['attempts_taken']);
+    }
+
+    public function test_show_test_carries_the_same_attempts_taken_count_as_the_list(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $tenant['franchise']);
+        $test = $this->aTest($tenant, 'Two Sittings');
+
+        $this->attempt($tenant, $learner, $test, score: 40, passed: false, takenAt: now()->subDays(5));
+        $this->attempt($tenant, $learner, $test, score: 70, passed: true, takenAt: now()->subDays(1));
+
+        $this->signedInAs($learner)
+            ->getJson("/api/v1/training/learn/tests/{$test->id}")
+            ->assertOk()
+            ->assertJsonPath('data.attempts_taken', 2);
+    }
+
+    public function test_show_test_carries_zero_attempts_taken_when_never_sat(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $tenant['franchise']);
+        $test = $this->aTest($tenant, 'Show Never Sat');
+
+        $this->signedInAs($learner)
+            ->getJson("/api/v1/training/learn/tests/{$test->id}")
+            ->assertOk()
+            ->assertJsonPath('data.attempts_taken', 0);
+    }
+
+    /** One learner's attempt count must never appear on another learner's card. */
+    public function test_one_learners_attempts_taken_never_appears_on_another_learners_card(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $learnerA = $this->userWithRole($tenant, 'LearnerA', ['training.view'], onlyAt: $tenant['franchise']);
+        $learnerB = $this->userWithRole($tenant, 'LearnerB', ['training.view'], onlyAt: $tenant['franchise']);
+        $test = $this->aTest($tenant, 'Shared Test');
+
+        $this->attempt($tenant, $learnerA, $test, score: 40, passed: false, takenAt: now());
+
+        $row = $this->libraryEntry($learnerB, $test->id);
+
+        $this->assertSame(0, $row['attempts_taken'], "Learner B must not see Learner A's attempt count.");
+    }
+
     // ── showTest stays consistent with the list ───────────────────────
 
     public function test_show_test_carries_the_same_last_attempt_fields_as_the_list(): void
