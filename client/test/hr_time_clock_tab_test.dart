@@ -81,6 +81,32 @@ void main() {
     },
   );
 
+  testWidgets('a row shows Auto, Outside schedule and the extension count', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      onClock: (_, _) => _day(
+        date: '2026-08-25',
+        shifts: [
+          {
+            ..._bea,
+            'ended_by': 'schedule',
+            'outside_schedule': true,
+            'extensions': 2,
+          },
+        ],
+      ),
+    );
+
+    await _tap(tester, _tab('Clock in\u2013out'));
+
+    expect(find.text('Auto'), findsOneWidget);
+    expect(find.text('Outside schedule'), findsOneWidget);
+    expect(find.text('+2'), findsOneWidget);
+  });
+
   testWidgets('empty shifts show the empty-day sentence', (tester) async {
     await _pump(
       tester,
