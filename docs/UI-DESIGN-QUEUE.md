@@ -561,6 +561,18 @@ Fleet, Training, Web Management and others each have their own tree. Reviewing
 a module's golden PNGs from `main` reviews the wrong file, silently, because the paths
 are identical. Confirm the tree before reporting pixel findings.
 
+**An advisory must not wear the failure component.** Web Management, 2026-09-08, asking
+that this be made a rule after the widget contrast work: *"dressing an advisory as a
+failure teaches people to ignore the component that also carries real failures."* The
+contrast note on `widgets_tab.dart` deliberately does not use `ErrorNote`, which
+documents itself as *"a failure the user needs to read"* — nothing failed there and
+nothing is blocked, and the customer may have chosen the low-contrast pair on purpose.
+
+> The cost is not on the advisory, it is on the component: every non-failure wearing the
+> red error treatment is a lesson that red can be ignored, and it is collected by the
+> screens where red does mean stop. **Ask what the user is meant to DO** — fix it now, or
+> know it. The second one is prose in the surrounding style, not a bordered alarm.
+
 **Delegating half a subject to a shared helper makes the un-delegated half invisible.**
 Web Management, 2026-09-08, offering their own miss as a category: *"the code looks
 event-aware because some of it is."* Website enquiries wired their conversation half
