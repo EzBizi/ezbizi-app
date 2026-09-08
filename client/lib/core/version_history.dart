@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0155',
+      date: '8 Sep 2026',
+      items: [
+        'Google Ads accounts are now named the way Google names them ("A1 Chimney - Cleveland") instead of by their digits.',
+        'Google Ads and Business Profile accounts no longer appear under Pages in Social Media Management; nothing can be posted to them.',
+        'Leads now carry every call and message on the enquiry: who spoke, when, call length, and message text. The list shows the latest one under each lead; the detail shows the thread; call recordings play through EzBizi.',
+        'Automations gain a trigger, "Enquirer called or messaged".',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0154',
       date: '8 Sep 2026',
       items: [
