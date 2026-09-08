@@ -97,7 +97,11 @@ WHERE local_services_lead_conversation.event_date_time >= '<newest held − 1 da
 
 Measured live against `4941850746` ("A1 Chimney - Cleveland"): eleven rows for
 three days, with durations and recording URLs. The lead SELECT also grew
-`service_id`, `locale` and `note` — everything Google holds on a lead.
+`service_id` and `locale`. Not `note`: GAQL answers **400
+`PROHIBITED_FIELD_IN_SELECT_CLAUSE`** for it (measured 2026-09-08), and one
+refused field fails the whole request. `service_id` is an identifier, not a
+label — `fireplace_chimney` — and `category_id` is `xcat:…`; neither is a
+sentence for a screen.
 
 - **Table `lead_conversations`**, unique on `(organization_id, remote_id)`,
   cascades with its lead. The lead carries four `last_contact_*` columns as a

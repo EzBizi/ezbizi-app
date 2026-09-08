@@ -500,13 +500,21 @@ class LocalServicesLeads
         ];
     }
 
-    /** Everything Google holds on a lead. Shared by the window read and the by-id recovery. */
+    /**
+     * Everything Google will hand over on a lead. Shared by the window read
+     * and the by-id recovery.
+     *
+     * Not `note`: measured on 2026-09-08 against the live account, GAQL
+     * answers 400 PROHIBITED_FIELD_IN_SELECT_CLAUSE for it - "The following
+     * field may not be used in SELECT clause" - and one refused field fails
+     * the whole request, so every lead fetch would have failed on deploy.
+     * `service_id` and `locale` were verified in the same probe.
+     */
     private const LEAD_FIELDS = 'SELECT local_services_lead.id, local_services_lead.lead_type, '
         .'local_services_lead.category_id, local_services_lead.service_id, '
         .'local_services_lead.contact_details, local_services_lead.lead_status, '
         .'local_services_lead.lead_charged, local_services_lead.credit_details.credit_state, '
-        .'local_services_lead.creation_date_time, local_services_lead.locale, '
-        .'local_services_lead.note '
+        .'local_services_lead.creation_date_time, local_services_lead.locale '
         .'FROM local_services_lead';
 
     /**
@@ -632,7 +640,6 @@ class LocalServicesLeads
             'creationDateTime'=> $lead['creationDateTime'] ?? null,
             'service'         => $lead['serviceId'] ?? null,
             'locale'          => $lead['locale'] ?? null,
-            'note'            => $lead['note'] ?? null,
             'contactDetails'  => [
                 'phoneNumber'  => $contact['phoneNumber'] ?? null,
                 'consumerName' => $contact['consumerName'] ?? null,
@@ -674,7 +681,6 @@ class LocalServicesLeads
                 'category'      => trim((string) ($raw['leadCategory'] ?? '')) ?: null,
                 'service'       => trim((string) ($raw['service'] ?? '')) ?: null,
                 'locale'        => trim((string) ($raw['locale'] ?? '')) ?: null,
-                'source_note'   => trim((string) ($raw['note'] ?? '')) ?: null,
                 'source_status' => trim((string) ($raw['leadStatus'] ?? '')) ?: null,
                 'charge_status' => trim((string) ($raw['chargeStatus'] ?? '')) ?: null,
                 'received_at'   => isset($raw['creationDateTime'])

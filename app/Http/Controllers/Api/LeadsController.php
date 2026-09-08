@@ -424,7 +424,6 @@ class LeadsController extends Controller
             'service'       => $lead->service,
             'locale'        => $lead->locale,
             'summary'       => $lead->summary,
-            'source_note'   => $lead->source_note,
             'status'        => $lead->status,
             'source_status' => $lead->source_status,
             'charge_status' => $lead->charge_status,

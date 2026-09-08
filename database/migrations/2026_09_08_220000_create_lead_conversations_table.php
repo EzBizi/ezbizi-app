@@ -61,10 +61,10 @@ return new class extends Migration
         });
 
         Schema::table('leads', function (Blueprint $table) {
-            // The rest of what Google says about a lead and we never asked for.
+            // The rest of what Google will say about a lead and we never asked
+            // for. Not its `note`: GAQL refuses that field in a SELECT.
             $table->string('service')->nullable()->after('category');
             $table->string('locale', 16)->nullable()->after('service');
-            $table->text('source_note')->nullable()->after('summary');
 
             // The preview line. See the class comment.
             $table->timestamp('last_contact_at')->nullable()->after('received_at');
@@ -78,7 +78,7 @@ return new class extends Migration
     {
         Schema::table('leads', function (Blueprint $table) {
             $table->dropColumn([
-                'service', 'locale', 'source_note',
+                'service', 'locale',
                 'last_contact_at', 'last_contact_channel', 'last_contact_from', 'last_contact_preview',
             ]);
         });

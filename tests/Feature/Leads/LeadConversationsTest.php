@@ -60,7 +60,6 @@ class LeadConversationsTest extends TestCase
             'categoryId'       => 'xcat:service_area_business_chimney_sweep',
             'serviceId'        => 'chimney_repair',
             'locale'           => 'en-US',
-            'note'             => 'Called back twice, no answer.',
             'leadStatus'       => 'NEW',
             'leadCharged'      => true,
             'creationDateTime' => '2026-09-05 08:00:00',
@@ -164,7 +163,14 @@ class LeadConversationsTest extends TestCase
         // The rest of what Google says about the lead, now asked for.
         $this->assertSame('chimney_repair', $lead->service);
         $this->assertSame('en-US', $lead->locale);
-        $this->assertSame('Called back twice, no answer.', $lead->source_note);
+
+        // And never `note`: GAQL refuses it in a SELECT (400, measured live),
+        // and one refused field fails the whole fetch.
+        Http::assertNotSent(function (Request $request) {
+            $query = (string) (((array) $request->data())['query'] ?? '');
+
+            return str_contains($query, 'local_services_lead.note');
+        });
 
         $thread = $this->inTenant($t['org'], fn () => $lead->conversations()->get());
         $this->assertCount(3, $thread);
