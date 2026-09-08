@@ -68,6 +68,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// present and always empty teaches people the list is broken.
   bool _unreplied = false;
 
+  /// Approved triage layout (18012c74): three filters that NARROW TOGETHER.
+  /// Unread + Starred means both, because "starred things I have not read"
+  /// is the combination somebody actually wants and "either" cannot say it.
+  bool _unread = false;
+  bool _starred = false;
+
   /// Desktop layout 1: the lead whose thread is open beside the list. Null
   /// means the first one, so the pane is never blank while there are leads.
   String? _selectedId;
@@ -113,6 +119,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
     final response = await widget.api.get('/leads', {
       if (_status.isNotEmpty) 'status': _status,
       if (_unreplied) 'unreplied': '1',
+      if (_unread) 'unread': '1',
+      if (_starred) 'starred': '1',
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
     });
 
@@ -429,18 +437,48 @@ class _LeadsScreenState extends State<LeadsScreen> {
           ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Wrap(
-            spacing: 8,
+          child: Row(
             children: [
-              ChoiceChip(
-                label: const Text('All'),
-                selected: !_unreplied,
-                onSelected: (_) => _filterUnreplied(false),
+              Expanded(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    ChoiceChip(
+                      label: const Text('All'),
+                      selected: !_unreplied && !_unread && !_starred,
+                      onSelected: (_) => _setFilters(
+                        unread: false,
+                        unreplied: false,
+                        starred: false,
+                      ),
+                    ),
+                    FilterChip(
+                      key: const ValueKey('filter-unread'),
+                      label: const Text('Unread'),
+                      selected: _unread,
+                      onSelected: (on) => _setFilters(unread: on),
+                    ),
+                    FilterChip(
+                      key: const ValueKey('filter-unreplied'),
+                      label: const Text('Unreplied'),
+                      selected: _unreplied,
+                      onSelected: (on) => _setFilters(unreplied: on),
+                    ),
+                    FilterChip(
+                      key: const ValueKey('filter-starred'),
+                      label: const Text('Starred'),
+                      selected: _starred,
+                      onSelected: (on) => _setFilters(starred: on),
+                    ),
+                  ],
+                ),
               ),
-              ChoiceChip(
-                label: const Text('Unreplied'),
-                selected: _unreplied,
-                onSelected: (_) => _filterUnreplied(true),
+              // Where a1tools puts it: the top of the list.
+              TextButton(
+                key: const ValueKey('mark-all-read'),
+                onPressed: _leads.isEmpty ? null : _readAll,
+                child: const Text('Mark all read'),
               ),
             ],
           ),
@@ -469,10 +507,77 @@ class _LeadsScreenState extends State<LeadsScreen> {
     );
   }
 
-  void _filterUnreplied(bool on) {
-    if (on == _unreplied) return;
-    setState(() => _unreplied = on);
+  void _setFilters({bool? unread, bool? unreplied, bool? starred}) {
+    final next = (
+      unread ?? _unread,
+      unreplied ?? _unreplied,
+      starred ?? _starred,
+    );
+    if (next == (_unread, _unreplied, _starred)) return;
+    setState(() {
+      _unread = next.$1;
+      _unreplied = next.$2;
+      _starred = next.$3;
+    });
     _load();
+  }
+
+  /// This person has seen this lead. The row un-bolds at once; the server
+  /// keeps the mark. Nobody else's row changes.
+  Future<void> _markRead(Map<String, dynamic> lead) async {
+    if (lead['is_unread'] != true) return;
+    _replace({...lead, 'is_unread': false});
+    await widget.api.post('/leads/${lead['id']}/read', const {});
+  }
+
+  Future<void> _readAll() async {
+    final response = await widget.api.post('/leads/read-all', const {});
+    if (!mounted) return;
+    if (!response.ok) {
+      setState(() => _notice = response.message);
+      return;
+    }
+    setState(() {
+      _leads = [
+        for (final l in _leads) {...l, 'is_unread': false},
+      ];
+    });
+  }
+
+  /// Star and note are marks, shared by everybody who can see the lead.
+  /// Returns the lead as the server now holds it, so the thread can show the
+  /// author and time the server stamped on the note.
+  Future<Map<String, dynamic>?> _mark(
+    Map<String, dynamic> lead, {
+    bool? starred,
+    String? note,
+    bool clearNote = false,
+  }) async {
+    final response = await widget.api.patch('/leads/${lead['id']}', {
+      'starred': ?starred,
+      if (note != null || clearNote) 'note': note,
+    });
+    if (!mounted) return null;
+    if (!response.ok) {
+      setState(() => _notice = response.message);
+      return null;
+    }
+    // The list row carried the reader's mark; the PATCH answer does not.
+    final fresh = {
+      ...(response.data as Map<String, dynamic>? ?? const {}),
+      'is_unread': lead['is_unread'],
+    };
+    _replace(fresh);
+    return fresh;
+  }
+
+  void _replace(Map<String, dynamic> lead) {
+    setState(() {
+      _leads = [
+        for (final l in _leads)
+          if (l['id'] == lead['id']) lead else l,
+      ];
+    });
   }
 
   Widget _twoPane(ThemeData theme) {
@@ -500,6 +605,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
                   api: widget.api,
                   lead: selected,
                   onStatusChanged: (status) => _setStatus(selected, status),
+                  onRead: () => _markRead(selected),
+                  onStar: (on) => _mark(selected, starred: on),
+                  onNote: (text) =>
+                      _mark(selected, note: text, clearNote: text == null),
                 ),
         ),
       ],
@@ -521,6 +630,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
               await _setStatus(lead, status);
               if (routeContext.mounted) Navigator.of(routeContext).pop();
             },
+            onRead: () => _markRead(lead),
+            onStar: (on) => _mark(lead, starred: on),
+            onNote: (text) => _mark(lead, note: text, clearNote: text == null),
           ),
         ),
       ),
@@ -750,8 +862,18 @@ class _LeadsScreenState extends State<LeadsScreen> {
     final mine = from == 'ADVERTISER';
     final channel = lead['last_contact_channel'] as String?;
     final preview = lead['last_contact_preview'] as String?;
+    // Approved triage layout 1 / 4 (18012c74): unread is WEIGHT, not a badge
+    // and not a tint. The name and the preview go bold; the dot stays
+    // unreplied; the star is the third mark. Three facts, three channels, so
+    // all eight combinations read, and bold survives the selected row's fill
+    // where a tint would not.
+    final unread = lead['is_unread'] == true;
+    final starred = lead['starred'] == true;
     final muted = theme.textTheme.bodySmall?.copyWith(
-      color: theme.colorScheme.onSurfaceVariant,
+      color: unread
+          ? theme.colorScheme.onSurface
+          : theme.colorScheme.onSurfaceVariant,
+      fontWeight: unread ? FontWeight.w700 : null,
     );
 
     return InkWell(
@@ -791,7 +913,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
                       Flexible(
                         child: Text(
                           leadTitle(lead),
-                          style: theme.textTheme.titleSmall,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: unread ? FontWeight.w700 : null,
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -843,14 +967,37 @@ class _LeadsScreenState extends State<LeadsScreen> {
                 ],
               ),
             ),
-            const SizedBox(width: 10),
-            Text(
-              leadWhen(
-                (lead['last_contact_at'] ?? lead['received_at']) as String?,
-              ),
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+            const SizedBox(width: 6),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  leadWhen(
+                    (lead['last_contact_at'] ?? lead['received_at']) as String?,
+                  ),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                // Hollow until set; 44px of target for a 16px glyph.
+                IconButton(
+                  key: ValueKey('star-$id'),
+                  tooltip: starred ? 'Unstar' : 'Star',
+                  iconSize: 16,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 44,
+                    minHeight: 44,
+                  ),
+                  onPressed: () => _mark(lead, starred: !starred),
+                  icon: Icon(
+                    starred ? Icons.star : Icons.star_border,
+                    color: starred
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.outline,
+                  ),
+                ),
+              ],
             ),
           ],
         ),

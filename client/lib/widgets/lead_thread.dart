@@ -28,6 +28,9 @@ class LeadThread extends StatefulWidget {
     required this.lead,
     this.player,
     this.onStatusChanged,
+    this.onRead,
+    this.onStar,
+    this.onNote,
   });
 
   final ApiClient api;
@@ -41,6 +44,15 @@ class LeadThread extends StatefulWidget {
   /// Null hides the status control (somebody who may only read).
   final Future<void> Function(String status)? onStatusChanged;
 
+  /// Called once when the thread opens: this person has now seen the lead.
+  final Future<void> Function()? onRead;
+
+  /// Star and note are marks on the lead, shared. Each returns the lead as
+  /// the server now holds it (author and time on the note), or null when
+  /// the save was refused.
+  final Future<Map<String, dynamic>?> Function(bool starred)? onStar;
+  final Future<Map<String, dynamic>?> Function(String? note)? onNote;
+
   @override
   State<LeadThread> createState() => _LeadThreadState();
 }
@@ -48,6 +60,15 @@ class LeadThread extends StatefulWidget {
 class _LeadThreadState extends State<LeadThread> {
   late final RecordingPlayer _player = widget.player ?? createRecordingPlayer();
   bool get _ownsPlayer => widget.player == null;
+
+  /// The lead as last saved. Starts as the row the list handed over and
+  /// follows what onStar / onNote return, so a pushed screen on a phone
+  /// shows the note's byline without the list having to rebuild it.
+  late Map<String, dynamic> _lead = widget.lead;
+
+  bool _editingNote = false;
+  bool _savingNote = false;
+  final _note = TextEditingController();
 
   bool _loading = true;
   String? _error;
@@ -76,10 +97,42 @@ class _LeadThreadState extends State<LeadThread> {
   void initState() {
     super.initState();
     _load();
+    // After the first frame: the parent answers by rebuilding its list, and
+    // a setState during this widget's own build is an exception, not a mark.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onRead?.call();
+    });
+  }
+
+  @override
+  void didUpdateWidget(LeadThread old) {
+    super.didUpdateWidget(old);
+    if (!identical(old.lead, widget.lead)) _lead = widget.lead;
+  }
+
+  Future<void> _star() async {
+    final fresh = await widget.onStar?.call(_lead['starred'] != true);
+    if (!mounted || fresh == null) return;
+    setState(() => _lead = fresh);
+  }
+
+  Future<void> _saveNote() async {
+    setState(() => _savingNote = true);
+    final text = _note.text.trim();
+    final fresh = await widget.onNote?.call(text.isEmpty ? null : text);
+    if (!mounted) return;
+    setState(() {
+      _savingNote = false;
+      if (fresh != null) {
+        _lead = fresh;
+        _editingNote = false;
+      }
+    });
   }
 
   @override
   void dispose() {
+    _note.dispose();
     _compose.dispose();
     _player.stop();
     if (_ownsPlayer) _player.dispose();
@@ -205,7 +258,8 @@ class _LeadThreadState extends State<LeadThread> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final lead = widget.lead;
+    final lead = _lead;
+    final starred = lead['starred'] == true;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -219,7 +273,29 @@ class _LeadThreadState extends State<LeadThread> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(leadTitle(lead), style: theme.textTheme.titleMedium),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            leadTitle(lead),
+                            style: theme.textTheme.titleMedium,
+                          ),
+                        ),
+                        if (widget.onStar != null)
+                          IconButton(
+                            key: const ValueKey('thread-star'),
+                            tooltip: starred ? 'Unstar' : 'Star',
+                            iconSize: 18,
+                            onPressed: _star,
+                            icon: Icon(
+                              starred ? Icons.star : Icons.star_border,
+                              color: starred
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.outline,
+                            ),
+                          ),
+                      ],
+                    ),
                     // The number on its own line only when the title is a
                     // name; when the title IS the number, saying it twice
                     // adds nothing.
@@ -236,6 +312,7 @@ class _LeadThreadState extends State<LeadThread> {
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
+                    _noteBlock(theme, lead),
                   ],
                 ),
               ),
@@ -355,6 +432,133 @@ class _LeadThreadState extends State<LeadThread> {
       ],
     ),
   );
+
+  /// One shared line with Edit in place, and a byline: "Maya · 2h ago".
+  ///
+  /// A shared field that cannot say who wrote it is one people stop
+  /// trusting, and the silent overwrite is the worse half; the server stamps
+  /// the author and the time on every change.
+  Widget _noteBlock(ThemeData theme, Map<String, dynamic> lead) {
+    final scheme = theme.colorScheme;
+    final note = lead['note'] as String?;
+    final canEdit = widget.onNote != null;
+
+    if (_editingNote) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              key: const ValueKey('note-box'),
+              controller: _note,
+              minLines: 1,
+              maxLines: 4,
+              autofocus: true,
+              enabled: !_savingNote,
+              decoration: const InputDecoration(
+                isDense: true,
+                hintText: 'A note for whoever picks this up next',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: _savingNote
+                      ? null
+                      : () => setState(() => _editingNote = false),
+                  child: const Text('Cancel'),
+                ),
+                const SizedBox(width: 4),
+                FilledButton(
+                  key: const ValueKey('note-save'),
+                  onPressed: _savingNote ? null : _saveNote,
+                  child: Text(_savingNote ? 'Saving…' : 'Save'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (note == null || note.isEmpty) {
+      if (!canEdit) return const SizedBox.shrink();
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          key: const ValueKey('note-add'),
+          onPressed: () {
+            _note.clear();
+            setState(() => _editingNote = true);
+          },
+          icon: const Icon(Icons.edit_outlined, size: 16),
+          label: const Text('Add a note'),
+        ),
+      );
+    }
+
+    final by = (lead['note_by'] as Map?)?['name'] as String?;
+    final when = leadWhen(lead['note_updated_at'] as String?);
+    final byline = [?by, if (when.isNotEmpty) when].join(' · ');
+
+    return Container(
+      margin: const EdgeInsets.only(top: 9),
+      padding: const EdgeInsets.fromLTRB(10, 7, 6, 7),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Note',
+            style: theme.textTheme.labelSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: scheme.onSecondaryContainer,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  note,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSecondaryContainer,
+                  ),
+                ),
+                if (byline.isNotEmpty)
+                  Text(
+                    byline,
+                    key: const ValueKey('note-byline'),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: scheme.onSecondaryContainer.withValues(
+                        alpha: 0.75,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (canEdit)
+            TextButton(
+              key: const ValueKey('note-edit'),
+              onPressed: () {
+                _note.text = note;
+                setState(() => _editingNote = true);
+              },
+              child: const Text('Edit'),
+            ),
+        ],
+      ),
+    );
+  }
 
   Widget _nothing(ThemeData theme) => Center(
     child: Padding(

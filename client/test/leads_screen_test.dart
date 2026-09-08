@@ -18,6 +18,7 @@ import 'package:http/http.dart' as http;
 /// invisible in a screenshot.
 void main() {
   _conversationRowTests();
+  _triageTests();
 
   testWidgets('with nothing connected the empty state says so, rather than '
       'reporting a quiet week', (tester) async {
@@ -253,8 +254,16 @@ Map<String, dynamic> _lead(
   String? preview,
   String? service = 'fireplace_chimney',
   String? category = 'xcat:service_area_business_home_inspector',
+  bool unread = false,
+  bool starred = false,
+  String? note,
 }) => {
   'id': id,
+  'is_unread': unread,
+  'starred': starred,
+  'note': note,
+  'note_by': null,
+  'note_updated_at': null,
   'contact_name': name,
   'phone': '+1 (555) 123-4567',
   'category': category,
@@ -268,6 +277,106 @@ Map<String, dynamic> _lead(
   'franchise': {'id': 'f-1', 'name': 'Connecticut'},
   'company': {'id': 'c-1', 'name': 'A-1 Chimney'},
 };
+
+/// Approved triage layout 1 / 4 (18012c74): unread is WEIGHT, the star is
+/// the third mark, the three filters narrow together, Mark all read is at
+/// the top of the list.
+void _triageTests() {
+  testWidgets('an unread row is bold and a read one is not; opening a lead '
+      'marks it read', (tester) async {
+    await _pump(
+      tester,
+      leads: [
+        _lead('lead-1', 'Marcus Bell', unread: true),
+        _lead('lead-2', 'Dana Whitfield', unread: true),
+      ],
+      connections: _connected,
+    );
+
+    // Both arrive unread. lead-1 is auto-selected on a desktop, so its
+    // thread opened and it was marked read and un-bolded; lead-2 was not
+    // opened and stays bold. A lead already read sends no call at all.
+    expect(_posts, contains('/api/v1/leads/lead-1/read'));
+    expect(_posts, isNot(contains('/api/v1/leads/lead-2/read')));
+
+    final read = tester.widget<Text>(find.text('Marcus Bell').first);
+    final unread = tester.widget<Text>(find.text('Dana Whitfield').first);
+    expect(read.style?.fontWeight, isNot(FontWeight.w700));
+    expect(unread.style?.fontWeight, FontWeight.w700);
+  });
+
+  testWidgets('the star on the row sets the mark, hollow until then', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: [
+        _lead('lead-1', 'Marcus Bell'),
+        _lead('lead-2', 'Dana Whitfield'),
+      ],
+      connections: _connected,
+    );
+
+    expect(
+      tester
+          .widget<Icon>(
+            find.descendant(
+              of: find.byKey(const ValueKey('star-lead-2')),
+              matching: find.byType(Icon),
+            ),
+          )
+          .icon,
+      Icons.star_border,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('star-lead-2')));
+    await tester.pumpAndSettle();
+
+    expect(_patches['lead-2'], {'starred': true});
+    expect(
+      tester
+          .widget<Icon>(
+            find.descendant(
+              of: find.byKey(const ValueKey('star-lead-2')),
+              matching: find.byType(Icon),
+            ),
+          )
+          .icon,
+      Icons.star,
+    );
+  });
+
+  testWidgets('filters narrow together and Mark all read clears the weight', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: [
+        _lead('lead-1', 'Marcus Bell'),
+        _lead('lead-2', 'Dana', unread: true),
+      ],
+      connections: _connected,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('filter-unread')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('filter-starred')));
+    await tester.pumpAndSettle();
+
+    expect(_lastListQuery['unread'], '1');
+    expect(_lastListQuery['starred'], '1', reason: 'both, not either');
+
+    await tester.tap(find.byKey(const ValueKey('mark-all-read')));
+    await tester.pumpAndSettle();
+
+    expect(_posts, contains('/api/v1/leads/read-all'));
+    expect(find.byKey(const ValueKey('unreplied-lead-2')), findsNothing);
+    expect(
+      tester.widget<Text>(find.text('Dana').first).style?.fontWeight,
+      isNot(FontWeight.w700),
+    );
+  });
+}
 
 /// Approved desktop layout 1: the dot is the only mark for unreplied and it
 /// is on the left; when the business sent last the preview says "You:".
@@ -402,6 +511,10 @@ void _conversationRowTests() {
   });
 }
 
+final _posts = <String>[];
+final _patches = <String, Map<String, dynamic>>{};
+Map<String, String> _lastListQuery = const {};
+
 Future<void> _pump(
   WidgetTester tester, {
   required List<Map<String, dynamic>> leads,
@@ -409,12 +522,48 @@ Future<void> _pump(
   List<String> permissions = const ['leads.view', 'leads.edit'],
   Size size = const Size(1200, 900),
 }) async {
+  _posts.clear();
+  _patches.clear();
+  _lastListQuery = const {};
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
   final api = ApiClient(
     client: MockClient((request) async {
+      if (request.method == 'POST' &&
+          request.url.path.startsWith('/api/v1/leads/')) {
+        _posts.add(request.url.path);
+        return http.Response(
+          '{"data":{}}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
+      if (request.method == 'PATCH' &&
+          request.url.path.startsWith('/api/v1/leads/')) {
+        final id = request.url.path.split('/').last;
+        final body = (jsonDecode(request.body) as Map).cast<String, dynamic>();
+        _patches[id] = body;
+        final lead = leads.firstWhere((l) => l['id'] == id);
+        return http.Response(
+          jsonEncode({
+            'data': {
+              ...lead,
+              if (body.containsKey('starred')) 'starred': body['starred'],
+              if (body.containsKey('note')) 'note': body['note'],
+              if (body.containsKey('note'))
+                'note_by': {'id': 'u-1', 'name': 'Jose'},
+              if (body.containsKey('note'))
+                'note_updated_at': '2026-09-08T18:00:00Z',
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
       if (request.url.path.endsWith('/me')) {
         return http.Response(
           jsonEncode({
@@ -426,6 +575,7 @@ Future<void> _pump(
       }
 
       if (request.url.path.endsWith('/leads')) {
+        _lastListQuery = request.url.queryParameters;
         return http.Response(
           jsonEncode({
             'data': leads,

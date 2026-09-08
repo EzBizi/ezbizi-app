@@ -157,6 +157,48 @@ void main() {
     );
   });
 
+  testWidgets('opening the thread marks the lead read, and a note saved in '
+      'place shows who wrote it', (tester) async {
+    var reads = 0;
+    String? saved;
+
+    await _pump(
+      tester,
+      player: _FakePlayer(),
+      recordingGate: Completer()..complete(),
+      onRead: () async => reads++,
+      onNote: (text) async {
+        saved = text;
+        return {
+          'id': 'lead-1',
+          'contact_name': 'Marcus Bell',
+          'phone': '+1 (555) 123-4567',
+          'service': 'fireplace_chimney',
+          'status': 'new',
+          'note': text,
+          'note_by': {'id': 'u-2', 'name': 'Maya'},
+          'note_updated_at': DateTime.now().toUtc().toIso8601String(),
+        };
+      },
+    );
+
+    expect(reads, 1, reason: 'seen once, on opening');
+
+    await tester.tap(find.byKey(const ValueKey('note-add')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('note-box')),
+      'Wants Saturday.',
+    );
+    await tester.tap(find.byKey(const ValueKey('note-save')));
+    await tester.pumpAndSettle();
+
+    expect(saved, 'Wants Saturday.');
+    expect(find.text('Wants Saturday.'), findsOneWidget);
+    expect(find.textContaining('Maya · '), findsOneWidget);
+    expect(find.byKey(const ValueKey('note-edit')), findsOneWidget);
+  });
+
   testWidgets('messages read as a thread: theirs left, yours right, with who '
       'and when', (tester) async {
     await _pump(
@@ -207,6 +249,8 @@ Future<void> _pump(
   required Completer<void> recordingGate,
   bool canReply = true,
   String? refuseSend,
+  Future<void> Function()? onRead,
+  Future<Map<String, dynamic>?> Function(String? note)? onNote,
 }) async {
   _sent.clear();
   tester.view.physicalSize = const Size(600, 900);
@@ -321,6 +365,8 @@ Future<void> _pump(
             'franchise': {'id': 'f-1', 'name': 'Connecticut'},
           },
           onStatusChanged: (_) async {},
+          onRead: onRead,
+          onNote: onNote,
         ),
       ),
     ),
