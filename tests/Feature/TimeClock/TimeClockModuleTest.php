@@ -19,10 +19,43 @@ class TimeClockModuleTest extends TestCase
 
         $this->assertNotNull($module);
         $this->assertSame('Clock in', $module->label);
-        $this->assertSame(['view'], $module->actions);
-        $this->assertSame(['time_clock.view'], $module->permissionKeys());
+        $this->assertSame(['view', 'lock_screen'], $module->actions);
+        $this->assertSame(['time_clock.view', 'time_clock.lock_screen'], $module->permissionKeys());
         $this->assertFalse($module->sidebar);
         $this->assertSame(ModuleDefinition::ROLES_TAB, $module->rolesGroup);
+    }
+
+    public function test_lock_screen_does_not_imply_human_resources(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $locked = $this->userWithRole($alpha, 'Locked', ['time_clock.lock_screen']);
+
+        $this->inTenant($alpha['org'], function () use ($locked) {
+            $this->assertTrue($locked->hasPermission('time_clock.lock_screen'));
+            $this->assertTrue($locked->hasPermission('time_clock.view'), 'any action implies view');
+            $this->assertFalse($locked->hasPermission('hr.view'));
+        });
+    }
+
+    public function test_the_schedule_settings_are_organization_only_with_these_defaults(): void
+    {
+        $registry = app(SettingRegistry::class);
+
+        foreach ([
+            'time_clock.lock_screen'       => [SettingDefinition::TYPE_BOOL, false],
+            'time_clock.warning_minutes'   => [SettingDefinition::TYPE_ENUM, 5],
+            'time_clock.extension_minutes' => [SettingDefinition::TYPE_ENUM, 30],
+            'time_clock.self_schedule'     => [SettingDefinition::TYPE_BOOL, false],
+        ] as $key => [$type, $default]) {
+            $definition = $registry->getOrFail($key);
+            $this->assertSame($type, $definition->type, $key);
+            $this->assertSame($default, $definition->default, $key);
+            $this->assertSame([SettingDefinition::SCOPE_ORGANIZATION], $definition->allowedScopes, $key);
+            $this->assertSame('hr', $registry->groupOf($key)['key'], $key);
+        }
+
+        $this->assertContains(1, $registry->getOrFail('time_clock.warning_minutes')->options);
+        $this->assertContains(120, $registry->getOrFail('time_clock.extension_minutes')->options);
     }
 
     public function test_clock_in_does_not_imply_human_resources(): void

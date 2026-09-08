@@ -832,6 +832,10 @@ Route::prefix('v1')
         // is the only time that counts (design §8).
         Route::post('time-clock/clock-in', [TimeClockController::class, 'clockIn']);
         Route::post('time-clock/clock-out', [TimeClockController::class, 'clockOut']);
+        // Push the scheduled end out by the org's extension length (design 2026-09-08 §7).
+        Route::post('time-clock/extend', [TimeClockController::class, 'extend']);
+        // The same block /me carries, for the once-a-minute poll (design 2026-09-08 §3.12).
+        Route::get('time-clock/me', [TimeClockController::class, 'me']);
 
         // Clock in–out chip on Human Resources. `hr.view` plus the org switch;
         // `?on=` is a calendar date in the current view timezone (design §9).
@@ -849,6 +853,8 @@ Route::prefix('v1')
         // lives next to the person rather than in a privacy module of its own.
         Route::get('hr/people/{user}/consents', [HrPeopleController::class, 'consents']);
         Route::patch('hr/people/{user}', [HrPeopleController::class, 'update']);
+        // Their weekday schedule (design 2026-09-08 §10.3). Zone is the caller's view.
+        Route::patch('hr/people/{user}/schedule', [HrPeopleController::class, 'updateSchedule']);
 
         // Sign-in recovery, gated by hr.security.reset rather than hr.edit — see
         // UserPolicy::resetSecurity for why clearing somebody's second factor is
@@ -1528,6 +1534,8 @@ Route::prefix('v1')
         // record, so there is nobody else to authorize against.
         Route::get('me/profile', [ProfileController::class, 'show']);
         Route::patch('me', [ProfileController::class, 'update']);
+        // Own schedule, only when the organization's self_schedule switch is on.
+        Route::patch('me/schedule', [ProfileController::class, 'updateSchedule']);
 
         // Pictures are served through a controller, never as a public file. A
         // guessable avatar URL leaks who works where, across every tenant.

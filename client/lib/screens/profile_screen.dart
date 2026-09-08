@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../core/theme.dart';
+import '../core/timestamps.dart';
+import '../core/ui_strings.dart';
 import '../widgets/delete_account_card.dart';
 import '../widgets/appearance_card.dart';
 import '../widgets/async_body.dart';
@@ -13,6 +16,7 @@ import '../widgets/two_factor_card.dart';
 import '../widgets/account_facts_card.dart';
 import '../core/phone_numbers.dart';
 import '../widgets/user_avatar.dart';
+import '../widgets/work_schedule_panel.dart';
 
 /// Your own account (plan §2.1 category 6).
 ///
@@ -179,6 +183,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       const SizedBox(height: 12),
       PasswordCard(api: widget.api, session: widget.session),
       const SizedBox(height: 12),
+      _scheduleCard(),
+      const SizedBox(height: 12),
       _sessionsCard(),
       const SizedBox(height: 16),
       DeleteAccountCard(api: widget.api, session: widget.session),
@@ -322,6 +328,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
           }),
         ]),
 
+        _group(context, UiStrings.t('time_clock.work_schedule'), [
+          _row(
+            context,
+            Icons.schedule_outlined,
+            UiStrings.t('time_clock.work_schedule'),
+            _scheduleSummary(),
+            () => _open(
+              context,
+              UiStrings.t('time_clock.work_schedule'),
+              _scheduleCard(),
+            ),
+          ),
+        ]),
+
         _group(context, 'Signed in', [
           _row(
             context,
@@ -344,6 +364,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// them must never be the same instance.
   IdentityCard _identity() =>
       IdentityCard(api: widget.api, session: widget.session);
+
+  // ------------------------------------------------------- work schedule
+
+  Map<String, dynamic>? get _schedule => _profile['work_schedule'] is Map
+      ? Map<String, dynamic>.from(_profile['work_schedule'] as Map)
+      : null;
+
+  Widget _scheduleCard() => _WorkScheduleCard(
+    schedule: _schedule,
+    canEdit: _profile['can_edit_schedule'] == true,
+    onEdit: _editSchedule,
+  );
+
+  /// "Mon–Fri" or "Day off" for the phone row, read without opening it.
+  String _scheduleSummary() {
+    final days = _schedule?['days'];
+    if (days is! Map) return UiStrings.t('time_clock.day_off');
+    final on = _WorkScheduleCard.days.where((d) => days[d] is Map).toList();
+    if (on.isEmpty) return UiStrings.t('time_clock.day_off');
+    return on.map(_WorkScheduleCard.title).join(' ');
+  }
+
+  /// Only offered when the organization allows it (design 2026-09-08 §3.3);
+  /// the server refuses otherwise, so the button is never a lie.
+  Future<void> _editSchedule() async {
+    final days = _schedule?['days'];
+
+    final saved = await showWorkSchedulePanel(
+      context,
+      title: UiStrings.t('time_clock.work_schedule'),
+      days: days is Map ? Map<String, dynamic>.from(days) : null,
+      formats: widget.session.me?.display ?? DisplayFormats.fallback,
+    );
+    if (saved == null || !mounted) return;
+
+    final response = await widget.api.patch('/me/schedule', {'days': saved});
+    if (!mounted) return;
+    if (!response.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response.reason)));
+      return;
+    }
+    final body = response.body;
+    setState(() => _profile['work_schedule'] = body['work_schedule']);
+  }
 
   /// Who you are looking at, before the rows begin.
   ///
@@ -558,5 +624,129 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (ago.inDays < 1) return '${ago.inHours} h ago';
 
     return '${ago.inDays} d ago';
+  }
+}
+
+/// The week at a glance: one row per day, green in and coral out, or
+/// *Day off* (design 2026-09-08 §10.3, Jose's reference layout).
+///
+/// Read-only unless [canEdit]; the organization's self_schedule switch
+/// decides that, and Human Resources can always change it from Records.
+class _WorkScheduleCard extends StatelessWidget {
+  const _WorkScheduleCard({
+    required this.schedule,
+    required this.canEdit,
+    required this.onEdit,
+  });
+
+  final Map<String, dynamic>? schedule;
+  final bool canEdit;
+  final VoidCallback onEdit;
+
+  static const days = [
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
+    'sunday',
+  ];
+
+  static String title(String day) =>
+      day[0].toUpperCase() + day.substring(1, 3);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final week = schedule?['days'];
+    final map = week is Map ? week : const <String, dynamic>{};
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.schedule_outlined, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    UiStrings.t('time_clock.work_schedule'),
+                    style: theme.textTheme.titleSmall,
+                  ),
+                ),
+                if (canEdit)
+                  TextButton.icon(
+                    onPressed: onEdit,
+                    icon: const Icon(Icons.edit_outlined, size: 16),
+                    label: const Text('Edit'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            for (final day in days)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 44,
+                      child: Text(title(day), style: theme.textTheme.titleSmall),
+                    ),
+                    if (map[day] is Map) ...[
+                      _chip(
+                        context,
+                        Icons.login,
+                        (map[day] as Map)['start'] as String? ?? '',
+                        EzBiziTheme.clockIn(context),
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8),
+                        child: Icon(Icons.arrow_forward, size: 14),
+                      ),
+                      _chip(
+                        context,
+                        Icons.logout,
+                        (map[day] as Map)['end'] as String? ?? '',
+                        EzBiziTheme.clockOut(context),
+                      ),
+                    ] else
+                      Text(
+                        UiStrings.t('time_clock.day_off'),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _chip(BuildContext context, IconData icon, String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: TextStyle(color: color, fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
   }
 }

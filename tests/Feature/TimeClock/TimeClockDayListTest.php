@@ -415,4 +415,29 @@ class TimeClockDayListTest extends TestCase
         $this->assertContains($response->status(), [403, 422], $response->getContent());
         $this->assertStringContainsString($sentence, $response->getContent());
     }
+
+    public function test_rows_carry_ended_by_outside_and_extensions(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->enableClockIn($alpha['org']);
+        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.view']);
+        $puncher = $this->userWithRole($alpha, 'Tech', ['time_clock.view']);
+
+        $this->inTenant($alpha['org'], fn () => TimeClockShift::query()->create([
+            'organization_id' => $alpha['org']->id,
+            'user_id' => $puncher->id,
+            'clocked_in_at' => '2026-08-25 12:00:00',
+            'clocked_out_at' => '2026-08-25 22:30:00',
+            'scheduled_end_at' => '2026-08-25 22:30:00',
+            'extensions' => 2,
+            'outside_schedule' => true,
+            'ended_by' => TimeClockShift::ENDED_BY_SCHEDULE,
+        ]));
+
+        $row = $this->signedInAs($viewer)->getJson('/api/v1/hr/time-clock?on=2026-08-25')->assertOk()->json('data.shifts.0');
+
+        $this->assertSame('schedule', $row['ended_by']);
+        $this->assertTrue($row['outside_schedule']);
+        $this->assertSame(2, $row['extensions']);
+    }
 }

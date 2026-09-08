@@ -839,6 +839,11 @@ class TimeClockStatus {
     required this.canClock,
     required this.showButton,
     this.open,
+    this.lock = false,
+    this.scheduledEndAt,
+    this.warningMinutes = 5,
+    this.extensionMinutes = 30,
+    this.today,
   });
 
   /// Key missing on `/me`: an older server. No button.
@@ -856,12 +861,30 @@ class TimeClockStatus {
   final bool showButton;
   final TimeClockOpen? open;
 
+  /// The server's answer to "show the lock screen now" (design 2026-09-08
+  /// §3.8). Never derived from permissions on this side.
+  final bool lock;
+
+  /// Effective end of the open shift after extensions, UTC. Null when today
+  /// has no window, or the shift started after it.
+  final DateTime? scheduledEndAt;
+
+  final int warningMinutes;
+  final int extensionMinutes;
+
+  /// Today's window as wall clock in the schedule's own zone, for display.
+  final TimeClockWindow? today;
+
   factory TimeClockStatus.fromJson(Object? json) {
     if (json is! Map) return absent;
     final map = json is Map<String, dynamic>
         ? json
         : Map<String, dynamic>.from(json);
     final openRaw = map['open'];
+    final todayRaw = map['today'];
+    final endRaw = map['scheduled_end_at'];
+    final warning = map['warning_minutes'];
+    final extension = map['extension_minutes'];
 
     return TimeClockStatus(
       organizationEnabled: map['organization_enabled'] == true,
@@ -872,8 +895,31 @@ class TimeClockStatus {
           : openRaw is Map
           ? TimeClockOpen.fromJson(Map<String, dynamic>.from(openRaw))
           : null,
+      lock: map['lock'] == true,
+      scheduledEndAt: endRaw is String
+          ? DateTime.tryParse(endRaw)?.toUtc()
+          : null,
+      warningMinutes: warning is int ? warning : 5,
+      extensionMinutes: extension is int ? extension : 30,
+      today: todayRaw is Map
+          ? TimeClockWindow.fromJson(Map<String, dynamic>.from(todayRaw))
+          : null,
     );
   }
+}
+
+/// One day's window, wall clock in the schedule's own zone.
+class TimeClockWindow {
+  const TimeClockWindow({required this.start, required this.end});
+
+  final String start;
+  final String end;
+
+  factory TimeClockWindow.fromJson(Map<String, dynamic> json) =>
+      TimeClockWindow(
+        start: json['start'] as String? ?? '',
+        end: json['end'] as String? ?? '',
+      );
 }
 
 class TimeClockOpen {

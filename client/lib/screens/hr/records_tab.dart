@@ -7,12 +7,14 @@ import '../../core/hr.dart';
 import '../../core/onboarding.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
+import '../../core/ui_strings.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/load_more.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
+import '../../widgets/work_schedule_panel.dart';
 import 'onboarding_form.dart';
 
 /// The people (HR plan, "Records").
@@ -348,6 +350,23 @@ class _RecordsTabState extends State<RecordsTab> {
                     reason: noEdit,
                   ),
                   const PopupMenuDivider(),
+                  // Their weekday schedule and the lock-screen exemption
+                  // (design 2026-09-08 §10.3). Same authority as the row.
+                  refusedMenuItem(
+                    context,
+                    value: 'schedule',
+                    label: UiStrings.t('time_clock.work_schedule'),
+                    reason: noEdit,
+                  ),
+                  refusedMenuItem(
+                    context,
+                    value: 'exempt',
+                    label: person['lock_screen_exempt'] == true
+                        ? UiStrings.t('time_clock.exempt_off')
+                        : UiStrings.t('time_clock.exempt_on'),
+                    reason: noEdit,
+                  ),
+                  const PopupMenuDivider(),
                   refusedMenuItem(
                     context,
                     value: 'totp',
@@ -368,6 +387,10 @@ class _RecordsTabState extends State<RecordsTab> {
                 onSelected: (action) => switch (action) {
                   'record' => _openRecord(person),
                   'role' => _changeRole(person),
+                  'schedule' => _editSchedule(person),
+                  'exempt' => _patch(person, {
+                    'lock_screen_exempt': person['lock_screen_exempt'] != true,
+                  }),
                   'totp' => _resetTotp(person),
                   'link' => _resetLink(person),
                   _ => _setActive(person, !active),
@@ -532,6 +555,32 @@ class _RecordsTabState extends State<RecordsTab> {
     if (chosen == null || !mounted || chosen == current) return;
 
     await _patch(person, {'role_id': chosen});
+  }
+
+  Future<void> _editSchedule(Map<String, dynamic> person) async {
+    final schedule = person['work_schedule'];
+    final days = schedule is Map ? schedule['days'] : null;
+
+    final saved = await showWorkSchedulePanel(
+      context,
+      title:
+          '${UiStrings.t('time_clock.work_schedule')} · ${person['name'] ?? ''}',
+      days: days is Map ? Map<String, dynamic>.from(days) : null,
+      formats: widget.session.me?.display ?? DisplayFormats.fallback,
+    );
+
+    if (saved == null || !mounted) return;
+
+    final response = await widget.api.patch(
+      '/hr/people/${person['id']}/schedule',
+      {'days': saved},
+    );
+    if (!mounted) return;
+    if (!response.ok) {
+      _snack(response.reason, isError: true);
+      return;
+    }
+    await _load();
   }
 
   Future<void> _setActive(Map<String, dynamic> person, bool active) async {

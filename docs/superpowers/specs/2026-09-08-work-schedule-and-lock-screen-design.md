@@ -49,8 +49,8 @@ does (`H:\A1Chimney\a1_tools\lib\features\timeclock`); nothing is copied.
 | 4 | Clock In is **never refused** by the schedule. A shift on a day off, or started more than 30 minutes before the scheduled start, is stamped `outside_schedule` and tagged on the day list. |
 | 5 | Reminder lead is an organization setting, default **5 minutes**. Extension length is an organization setting, default **30 minutes**, unlimited repeats. Each Extend moves the end by that length and the reminder returns before the new end. |
 | 6 | Auto clock-out is an ordinary clock out with `ended_by = schedule`: audited, raised as `time_clock.clocked_out`, a normal row on the day list with an **Auto** tag. |
-| 7 | Lock has three levers, all required: organization setting *Lock screen* (off by default), role action `time_clock.lock`, and a per-person **exempt** flag on the user. |
-| 8 | Lock rule: org lock on, role holds `time_clock.lock`, not exempt, **today has a working window** in their schedule, and no open shift. A day off or no schedule never locks. |
+| 7 | Lock has three levers, all required: organization setting *Lock screen* (off by default), role action `time_clock.lock_screen`, and a per-person **exempt** flag on the user. |
+| 8 | Lock rule: org lock on, role holds `time_clock.lock_screen`, not exempt, **today has a working window** in their schedule, and no open shift. A day off or no schedule never locks. |
 | 9 | The lock is computed server side and sent on `/me`; the client never derives it from permissions. |
 | 10 | The reminder is a **barrier dialog** with a countdown. This overrides the "no modal pop-ups" house rule on Jose's explicit instruction of 2026-09-08. The lock screen is a full-screen route, not a dialog. |
 | 11 | `window_manager` is the desktop dependency. Windows is the verified target; macOS ships best-effort through the same package. Web covers the app only. |
@@ -71,7 +71,7 @@ Help text on *Lock screen*: "When on, people whose role includes Lock screen see
 only a Clock In screen while they are not clocked in on a working day. Mark
 somebody exempt on Human Resources › Records."
 
-Module `time_clock` gains action `lock`, label **Lock screen**. The roles editor
+Module `time_clock` gains action `lock_screen`, label **Lock screen**. The key is `lock_screen` so the roles label reads "Lock screen" without a label override. The roles editor
 invariant (any action implies `view`) is right here: a locked person must be
 able to punch. `lock` does **not** imply `hr.view`.
 
@@ -252,7 +252,7 @@ Backend (PHPUnit, MySQL):
 - Extend moves the end by the org length, counts, audits, refuses without a scheduled shift, works after the grant is removed.
 - `close-ended-shifts` closes only past-due open shifts, stamps `ended_by = schedule`, audits, raises `clocked_out`, and leaves unscheduled and future shifts alone.
 - Lock truth table: each of the four gates false ⇒ `lock` false; all true and not clocked in ⇒ true; open shift ⇒ false; day off ⇒ false.
-- `time_clock.lock` does not imply `hr.view`.
+- `time_clock.lock_screen` does not imply `hr.view`.
 - Both new user columns are on the personal-data inventory.
 
 Client (widget tests):
