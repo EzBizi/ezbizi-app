@@ -348,7 +348,7 @@ class LeadsController extends Controller
 
         return response()->json([
             'data' => [
-                'lead'             => $this->present($lead->fresh()->load(['company:id,name', 'franchise:id,name', 'job'])),
+                'lead'             => $this->present($lead->fresh()->load(['company:id,name', 'franchise:id,name', 'job', 'noteBy:id,name'])),
                 'customer'         => $result['customer']->only(['id', 'number', 'name', 'phone', 'email']),
                 'customer_created' => $result['customer_created'],
                 'job'              => $this->presentJob($result['job']),
@@ -521,7 +521,10 @@ class LeadsController extends Controller
         $before        = $lead->status;
 
         if (! $statusChanges && ! $lead->isDirty()) {
-            return response()->json(['data' => $this->present($lead)]);
+            // The same load as the other return path. Without it, starring a
+            // lead that already had a note answered with note_by null and the
+            // byline vanished on screen until the next reload (UI/UX, 2026-09-08).
+            return response()->json(['data' => $this->present($lead->load('noteBy:id,name'))]);
         }
 
         DB::transaction(function () use ($lead, $input, $before, $statusChanges) {

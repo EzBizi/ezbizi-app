@@ -501,9 +501,15 @@ class _LeadThreadState extends State<LeadThread> {
       );
     }
 
+    // The byline goes on the LABEL line - "Note · Maya · 2h ago" - never
+    // after the text: a note is up to 4,000 characters, so a trailing byline
+    // lands wherever the last line ends and the eye cannot learn where to
+    // look. Null shows nothing: a missing author and a relation not loaded
+    // on some path look the same here, and "Unknown" would assert something
+    // about the note when the truth is sometimes about the query.
     final by = (lead['note_by'] as Map?)?['name'] as String?;
     final when = leadWhen(lead['note_updated_at'] as String?);
-    final byline = [?by, if (when.isNotEmpty) when].join(' · ');
+    final label = ['Note', ?by, if (when.isNotEmpty) when].join(' · ');
 
     return Container(
       margin: const EdgeInsets.only(top: 9),
@@ -512,49 +518,38 @@ class _LeadThreadState extends State<LeadThread> {
         color: scheme.secondaryContainer,
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Note',
-            style: theme.textTheme.labelSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: scheme.onSecondaryContainer,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  note,
-                  style: theme.textTheme.bodySmall?.copyWith(
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  key: const ValueKey('note-byline'),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
                     color: scheme.onSecondaryContainer,
                   ),
                 ),
-                if (byline.isNotEmpty)
-                  Text(
-                    byline,
-                    key: const ValueKey('note-byline'),
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: scheme.onSecondaryContainer.withValues(
-                        alpha: 0.75,
-                      ),
-                    ),
-                  ),
-              ],
+              ),
+              if (canEdit)
+                TextButton(
+                  key: const ValueKey('note-edit'),
+                  onPressed: () {
+                    _note.text = note;
+                    setState(() => _editingNote = true);
+                  },
+                  child: const Text('Edit'),
+                ),
+            ],
+          ),
+          Text(
+            note,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSecondaryContainer,
             ),
           ),
-          if (canEdit)
-            TextButton(
-              key: const ValueKey('note-edit'),
-              onPressed: () {
-                _note.text = note;
-                setState(() => _editingNote = true);
-              },
-              child: const Text('Edit'),
-            ),
         ],
       ),
     );

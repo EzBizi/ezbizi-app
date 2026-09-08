@@ -195,7 +195,8 @@ void main() {
 
     expect(saved, 'Wants Saturday.');
     expect(find.text('Wants Saturday.'), findsOneWidget);
-    expect(find.textContaining('Maya · '), findsOneWidget);
+    // On the label line, who then what: "Note · Maya · just now".
+    expect(find.textContaining('Note · Maya · '), findsOneWidget);
     expect(find.byKey(const ValueKey('note-edit')), findsOneWidget);
   });
 

@@ -590,6 +590,13 @@ class LeadConversationsTest extends TestCase
         $starred = $this->signedInAs($t['admin'])->getJson('/api/v1/leads?starred=1')->json('data.*.contact_name');
         $this->assertSame(['Jane Doe'], $starred);
 
+        // The author survives a PATCH that does not touch the note - on BOTH
+        // return paths. Re-sending the same star is the unchanged path.
+        foreach ([['starred' => false], ['starred' => false]] as $body) {
+            $again = $this->signedInAs($t['admin'])->patchJson("/api/v1/leads/{$lead->id}", $body)->assertOk()->json('data');
+            $this->assertSame($t['admin']->name, $again['note_by']['name'], 'starring must not lose the author of the note');
+        }
+
         // Blank clears; unstar clears.
         $data = $this->signedInAs($t['admin'])
             ->patchJson("/api/v1/leads/{$lead->id}", ['starred' => false, 'note' => '   '])
