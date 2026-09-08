@@ -54,7 +54,7 @@ class AutomationEngine
             try {
                 $event->refresh();
                 if ($organization->isReadOnly()) {
-                    $this->stop($event, 'Not run — this organization is read-only because its subscription has ended.');
+                    $this->stop($event, 'Not run: this organization is read-only because its subscription has ended.');
                     return 0;
                 }
                 if ($event->attempts >= AutomationEvent::MAX_ATTEMPTS) {

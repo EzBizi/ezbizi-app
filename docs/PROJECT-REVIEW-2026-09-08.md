@@ -39,6 +39,10 @@ The isolated implementation is undergoing integrated verification. Local fixes d
 
 Observed validation: the final combined backend regression run passed **409 tests/2,167 assertions** with CommonMark 2.10.1 installed and the complete migrations. Full Flutter suite **1,276 passed**, whole-client analysis clean. All **three deployment shell suites passed**. Independent implementation reviews found no remaining blockers. The earlier broad local preflight was stopped during schema changes and is not a pass. The committed release will run the full backend and client gates in isolation before publication; deployment remains pending.
 
+### Full-gate follow-up
+
+The first completed Linux gate ran 2,864 backend tests and caught two additional defects: invalid UTF-8 in the read-only automation refusal, and an omitted newsletter dashboard icon. The message now uses valid text, a PHP source-encoding regression prevents recurrence, and the newsletter has an explicit icon. Targeted verification and a new full gate precede deployment; no production activation occurred during the failed run.
+
 ### Supplemental P1 — dependency security
 
 The scan found CommonMark 2.9.0 affected by high-severity advisories [GHSA-8rr7-cvq3-gmfh](https://github.com/advisories/GHSA-8rr7-cvq3-gmfh), [GHSA-jjv6-8j6v-6j52](https://github.com/advisories/GHSA-jjv6-8j6v-6j52), [GHSA-f8fg-pg57-v4j8](https://github.com/advisories/GHSA-f8fg-pg57-v4j8) and [GHSA-j8pm-gj4c-rq4x](https://github.com/advisories/GHSA-j8pm-gj4c-rq4x). The lock is minimally updated to **2.10.1**, with no other package changes. `composer audit --locked` reports no advisories; installation and combined backend regressions passed; full release gates remain pending.

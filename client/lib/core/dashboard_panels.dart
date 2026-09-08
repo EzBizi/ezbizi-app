@@ -62,6 +62,7 @@ IconData dashboardPanelIcon(String key) {
     'scheduling': Icons.calendar_month_outlined,
     'inspection': Icons.fact_check_outlined,
     'marketing': Icons.campaign_outlined,
+    'newsletter': Icons.newspaper_outlined,
     'web_management': Icons.language_outlined,
     'phone': Icons.phone_outlined,
     'fleet_management': Icons.local_shipping_outlined,
