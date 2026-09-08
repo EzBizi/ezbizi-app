@@ -1844,6 +1844,89 @@ void main() {
     expect(bodies.single['scope_id'], 'org-1');
   });
 
+  /// §4: FILE ON THE VIEW, NOT ON REACH.
+  ///
+  /// ═══════════════════════════════════════════════════════════════
+  ///  The test above proves the ORGANISATION view files on the
+  ///  organisation, which is the easy half — there is only one answer
+  ///  available, so a broken implementation passes it.
+  ///
+  ///  This is the half that can be wrong. Somebody who reaches TWO
+  ///  companies stands in one of them and adds an inbox. The scope on
+  ///  the wire must be the company they are LOOKING AT. A panel that
+  ///  reached for `me.companies.first` — the shape AGENTS.md names,
+  ///  and the shape that has bitten Inventory, Fleet and Phone — would
+  ///  file A-1 Chimney's inbox against Everdoors, and every screen
+  ///  afterwards would agree it belongs there.
+  ///
+  ///  The load-bearing part is that the sibling is REALLY in `/me`.
+  ///  A fixture with one company cannot fail this test however the
+  ///  filing is written, which is why the existing fixture could not
+  ///  catch it.
+  /// ═══════════════════════════════════════════════════════════════
+  testWidgets('standing in one company, a new inbox is filed against THAT '
+      'company and not a sibling', (tester) async {
+    final bodies = <Map<String, dynamic>>[];
+
+    await _pump(
+      tester,
+      _handler(
+        mailboxes: const [],
+        onRequest: (method, path, body) {
+          if (method == 'POST' && body != null) bodies.add(body);
+        },
+      ),
+      me: {
+        // Two real companies, and the view is standing in the SECOND —
+        // deliberately not the first, so that `.first` and "the view" are
+        // different answers and the test can tell them apart.
+        'companies': [
+          {'id': 'co-1', 'name': 'Everdoors', 'parent_company_id': null},
+          {'id': 'co-2', 'name': 'A-1 Chimney', 'parent_company_id': null},
+        ],
+        'scope': {
+          'type': 'company',
+          'id': 'co-2',
+          'label': 'A-1 Chimney',
+          'path': ['A-1 Chimney'],
+        },
+      },
+    );
+
+    await _openSettings(tester);
+    await _tap(tester, find.widgetWithText(FilledButton, 'Add an inbox'));
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Address'),
+      'bookings@a-1chimney.com',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'What to call it'),
+      'Bookings',
+    );
+
+    await _tap(tester, find.widgetWithText(FilledButton, 'Add the address'));
+
+    expect(bodies, hasLength(1));
+
+    expect(
+      bodies.single['scope_type'],
+      'company',
+      reason: 'A company view filed at a level it is not standing at.',
+    );
+    expect(
+      bodies.single['scope_id'],
+      'co-2',
+      reason: 'The inbox was filed against a company the reader was not '
+          'looking at. co-1 means it took the first company it could reach; '
+          'org-1 means it ignored the view entirely.',
+    );
+
+    // Said as an absence too, because "co-2 appears somewhere in the body"
+    // would also be true of a payload that carried both.
+    expect(bodies.single.values, isNot(contains('co-1')));
+  });
+
   testWidgets('Workspace addresses are searched, not dumped in a dropdown, '
       'and Google test-domain aliases never appear', (tester) async {
     final bodies = <Map<String, dynamic>>[];
@@ -2272,12 +2355,13 @@ Future<void> _pump(
   MockClientHandler handler, {
   Size size = const Size(1500, 1000),
   List<String> permissions = const ['email.view', 'email.create', 'email.edit'],
+  Map<String, dynamic>? me,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
-  final api = ApiClient(client: MockClient(_withMe(handler, permissions)));
+  final api = ApiClient(client: MockClient(_withMe(handler, permissions, me: me)));
   final session = Session(api);
 
   await tester.runAsync(() => session.adopt('tok'));
@@ -2637,11 +2721,15 @@ MockClientHandler _handler({
   };
 }
 
-MockClientHandler _withMe(MockClientHandler inner, List<String> permissions) {
+MockClientHandler _withMe(
+  MockClientHandler inner,
+  List<String> permissions, {
+  Map<String, dynamic>? me,
+}) {
   return (request) async {
     if (request.url.path.endsWith('/me')) {
       return _json({
-        'data': {..._me, 'permissions': permissions},
+        'data': {..._me, ...?me, 'permissions': permissions},
       });
     }
 
