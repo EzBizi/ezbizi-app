@@ -130,6 +130,7 @@ use App\Http\Controllers\Api\Web\PublicValuesController as WebPublicValuesContro
 use App\Http\Controllers\Api\Web\SitesController as WebSitesController;
 use App\Http\Controllers\Api\Web\SnippetController as WebSnippetController;
 use App\Http\Controllers\Api\Web\ValuesController as WebValuesController;
+use App\Http\Controllers\Api\Web\WidgetsController as WebWidgetsController;
 use App\Models\PlatformStaffLink;
 use App\Support\Auth\PasswordPolicy;
 use App\Support\Auth\TwoFactorPolicy;
@@ -621,6 +622,9 @@ Route::prefix('v1')
         Route::post('web/sites/{site}/primary', [WebSitesController::class, 'makePrimary']);
         Route::get('web/sites/{site}/values', [WebValuesController::class, 'index']);
         Route::put('web/sites/{site}/values', [WebValuesController::class, 'update']);
+        Route::get('web/sites/{site}/widgets', [WebWidgetsController::class, 'show']);
+        Route::put('web/sites/{site}/widgets', [WebWidgetsController::class, 'update']);
+        Route::delete('web/sites/{site}/widgets', [WebWidgetsController::class, 'destroy']);
         Route::post('inventory/purchase-orders/{purchase_order}/open', [InventoryPurchaseOrdersController::class, 'open']);
         Route::post('inventory/purchase-orders/{purchase_order}/cancel', [InventoryPurchaseOrdersController::class, 'cancel']);
         Route::post('inventory/purchase-orders/{purchase_order}/receives', [InventoryPurchaseOrdersController::class, 'receive']);

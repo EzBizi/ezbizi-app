@@ -245,13 +245,22 @@ class EnquiriesController extends Controller
      */
     private function messagesFor(WebChat $chat): array
     {
+        /*
+         * occurred_at is a second-precision timestamp, so two messages sent
+         * inside the same second tie on it — and a tie's order is whatever the
+         * engine feels like. The visitor's question came back AFTER the
+         * business's answer once the row count around it changed, which is how
+         * the tie showed itself rather than staying theoretical.
+         *
+         * The id breaks it: LeadConversation ids are UUID v7, time-ordered to
+         * the millisecond, so the tiebreak is the real arrival order rather
+         * than an arbitrary-but-stable one. Found and fixed by the Leads module
+         * at 0ca6739b; my own attempt used created_at, which carries the same
+         * second precision and therefore tied in exactly the same place.
+         */
         return LeadConversation::query()
             ->where('lead_id', $chat->lead_id)
             ->orderBy('occurred_at')
-            // Two messages in the same second tie on occurred_at, and a tie's
-            // order is whatever the engine feels like: the visitor's question
-            // came back after the business's answer once the row count around
-            // it changed. The id is a UUID v7, time-ordered to the millisecond.
             ->orderBy('id')
             ->get(['participant', 'text', 'occurred_at'])
             ->map(fn (LeadConversation $row) => [

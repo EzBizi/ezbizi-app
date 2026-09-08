@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Web;
 use App\Http\Controllers\Api\Controller;
 use App\Models\WebSite;
 use App\Models\WebValue;
+use App\Models\WebWidget;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Web\SeoFields;
 use App\Support\Web\ValueResolver;
@@ -83,6 +84,15 @@ class PluginController extends Controller
                  * published values, and nothing else.
                  */
                 'public_key' => $site->public_key,
+
+                /*
+                 * The whole look and shape of the widgets, so a shortcode on
+                 * the customer's site is `[ezbizi_chat]` and nothing else. It
+                 * arrives with the values and refreshes with them, which is why
+                 * changing a colour in EzBizi reaches the site without anybody
+                 * editing a page or updating a plugin.
+                 */
+                'widgets' => WebWidget::resolvedFor($site),
                 /*
                  * So the plugin can revoke its own application password when
                  * EzBizi has let go of the pairing. Without this, unlinking here

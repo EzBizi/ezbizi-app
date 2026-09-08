@@ -21,7 +21,7 @@ use Illuminate\Support\Str;
  * contract, and a static-site build script could hold up the same end of it.
  */
 #[Fillable([
-    'company_id', 'host', 'label',
+    'company_id', 'franchise_id', 'host', 'label',
 ])]
 class WebSite extends Model implements StatesRetention
 {
@@ -53,6 +53,18 @@ class WebSite extends Model implements StatesRetention
             .'and the WordPress application password EzBizi publishes with is a second '
             .'machine credential, encrypted at rest and cleared when the pairing ends.'
         );
+    }
+
+    /**
+     * The branch this site answers for, if it answers for one.
+     *
+     * Null is the ordinary case and means the company itself. It decides where
+     * an enquiry from this website lands in Leads, which is the only thing that
+     * reads it today.
+     */
+    public function franchise(): BelongsTo
+    {
+        return $this->belongsTo(Franchise::class);
     }
 
     /** Whether this site has handed EzBizi an account to publish with. */

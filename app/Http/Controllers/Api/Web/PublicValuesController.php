@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Web;
 use App\Http\Controllers\Api\Controller;
 use App\Models\WebSite;
 use App\Models\WebValue;
+use App\Models\WebWidget;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Web\SeoFields;
 use App\Support\Web\ValueResolver;
@@ -90,6 +91,7 @@ class PublicValuesController extends Controller
 
             return response()->json([
                 'fields' => SeoFields::catalogue(),
+                'widgets' => WebWidget::resolvedFor($site),
                 ...ValueResolver::forReaders($rows, ValueResolver::inheritedRowsFor($site)),
             ])->withHeaders($this->browserHeaders());
         });
