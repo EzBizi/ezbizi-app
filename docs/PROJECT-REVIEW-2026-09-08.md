@@ -62,6 +62,9 @@ The old hook read the received SHA but checked out mutable `main`. The updated h
 
 The inherited-read/upward-write defect extended beyond newsletters. `OwnedScope` centralizes active-user, tenant, assignment and displayed-view checks for owned resources. Dedicated policies retain organization-shared customer semantics. The [ownership contract](OWNERSHIP.md) includes missing-owner and sibling regressions. Independent review also caught and repaired actual franchise inherited-read visibility and newsletter create admission. Those follow-up checks passed with the combined newsletter/ownership regressions. The helper does not replace module permissions or make incomplete owner fields valid.
 
+
+Subsequent deployment observation: another active session deployed API commit `c6bb8e55fc8334af99bb4a75466d40b5491184d3` after this release; UI remains `3a595a85`. Its generated status says no gates ran. The passing counts above belong to this reviewed release, and the newer API changes are not claimed as tested by it. The newer deployment was preserved.
+
 ## Original audit
 
 ## Capabilities and overall assessment

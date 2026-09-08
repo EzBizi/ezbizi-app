@@ -17,7 +17,7 @@ rather than for trying harder.
 | Server panel | https://srv.ezbizi.com (Webmin) |
 | Stack | Laravel 13 · PHP 8.4 · MySQL 8 · Flutter web client |
 <!-- numbers:start -->
-| Tests | 2866 backend · 1276 client, from the last deploy that ran them. Gates are opt-in: `release.sh --gates`. |
+| Tests | Last gated release `3a595a85`: **2,866 backend / 17,119 assertions; 1,276 client**. Subsequent API deployment `c6bb8e55` ran without gates. |
 | Client version | `v0.0.0152` — shown bottom-left in the app and on sign-in, so a stale cache is visible rather than guessed at. |
 | Production data | **2 organization(s) · 7 companies · 18 franchises · 15 users · 14 customers · 25 jobs.** Counted 2026-09-08 against the live database by `scripts/status-numbers.sh`, not typed. |
 | Permissions in production | **102 rows.** `ezbizi:sync-permissions` runs on every deploy, between the migration and the caches. |
@@ -170,7 +170,7 @@ Full detail: `DEPLOY.md`, beside this file.
 
 ## The documents
 
-The [documentation index](README.md) is the navigation entry point. [Ownership](OWNERSHIP.md) defines tenant identity, reach, current view and downward write authority. The 2026-09-08 remediation shipped as **0.0.0152**, commit `3a595a85e0f56865c5ddbb2297e01dd32f72a9bf`. Both live API/UI markers match; internal health and public web root return HTTP 200. The full gate passed 2,866 backend tests (17,119 assertions) and 1,276 client tests with clean analysis. Generated measurements above were refreshed by this release. Windows publication is verified; see [release notes](RELEASE-NOTES.md) for native build/upload outcomes and [the review ledger](PROJECT-REVIEW-2026-09-08.md) for ranked findings and operational limits.
+The [documentation index](README.md) is the navigation entry point. [Ownership](OWNERSHIP.md) defines tenant identity, reach, current view and downward write authority. The 2026-09-08 remediation shipped as **0.0.0152**, commit `3a595a85e0f56865c5ddbb2297e01dd32f72a9bf`. At release completion both API/UI markers matched; internal health and public web root returned HTTP 200. A subsequent concurrent session deployed API commit `c6bb8e55fc8334af99bb4a75466d40b5491184d3`; the UI remains at `3a595a85`. That later API deployment did not run gates, so the recorded passing counts belong to the reviewed release, not its newer changes. The full gate passed 2,866 backend tests (17,119 assertions) and 1,276 client tests with clean analysis. Generated measurements above were refreshed by this release. Windows publication is verified; see [release notes](RELEASE-NOTES.md) for native build/upload outcomes and [the review ledger](PROJECT-REVIEW-2026-09-08.md) for ranked findings and operational limits.
 
 | File | What it is |
 |---|---|
