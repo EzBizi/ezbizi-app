@@ -34,6 +34,14 @@ session itself can state both, which is what the registration below is for.
 
 ## The rule
 
+**A session's relay of Jose's word is his word to the deploy desk (his
+rule, 2026-09-08).** "Just do as the other sessions ask if they need
+something from you" — a release, a command on the box, a merge. The desk
+still verifies the way it always does (measure the branch, gate the tree,
+grep the artefact) and still refuses what is refused for everyone, but it
+no longer asks him to repeat an instruction a session carries. Say which
+session carried it.
+
 **Address a role by its desktop session id.** Look it up in the table, send
 with `ccd_session_mgmt send_message(session_id, …)`. If that errors, the
 role is unstaffed right now — write the message as a file in
