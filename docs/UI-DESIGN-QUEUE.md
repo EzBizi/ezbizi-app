@@ -175,6 +175,42 @@ app asks for that carries no weight of its own. **That test is what found the
 third one; the audit behind the gallery had only looked for the two I had
 already noticed.**
 
+**Audit, 2026-09-08 — the Leads work against Org/Company/Franchise, Automations
+and Roles-Permissions.** Jose's brief on leaving. Measured, not assumed:
+
+- **Scope.** `book()` authorizes `create` on Customer AND Job *scoped to the
+  chosen franchise*, so a booking cannot make either somewhere the person cannot
+  reach. Placement names a franchise only when the reader can reach it, which is
+  why "Placed somewhere you cannot see" exists as a row state. Customers are
+  org-shared by design (`CustomersController` says so), so attaching a
+  Connecticut job to a customer owned elsewhere is correct, not a leak.
+- **Permissions.** Every Leads action is gated — eleven `authorize` calls. There
+  is **no side door**: booking requires `leads.edit` *and* `customers.create`
+  *and* `jobs.create`, so it cannot be used to create a job somebody lacks the
+  permission to create directly.
+- **Automations.** Leads declares five triggers; four are emitted, and the fifth
+  (`lead.classified`) carries `isRaised: false`, which is the honest mechanism
+  rather than a gap. Booking emits `customer.created`, `job.created`,
+  `job.scheduled` and `lead.converted` — checked specifically, because a booking
+  path that skipped `job.created` would make every automation on new jobs
+  silently miss booked ones.
+
+**The one finding, handed to Automations as a prominence fix:** twelve triggers
+carry `isRaised: false`, and the only thing saying so on screen is a sentence at
+the END of the trigger's description. A rule built on one saves, sits enabled and
+never runs, with no error — the exact silent-failure class this app reserves
+`errorContainer` and a count for, after five phone lines went to voicemail for
+months behind grey secondary text.
+
+> **And the mistake I nearly shipped as a security report.** My first read of
+> `book()` was `sed -n '<start>,+22p'` and found one `authorize` call, which
+> looked like booking bypassing the Jobs and Customers permissions entirely. The
+> other two calls are at relative lines 47 and 50 — outside the window. **A
+> windowed read is the worst possible basis for an ABSENCE claim, and a security
+> absence is the worst kind to get wrong**, because it is dramatic enough that
+> people act on it before it is checked. Read the whole method: compute the end
+> with `awk` on the next `function`, never `+N`.
+
 **When two errors are not equally bad, neither one may be the silent default.**
 Booking a lead offers `customer_matches` — customers sharing the lead's last ten
 digits, which the server itself calls *advisory only*. Attaching to the **wrong
