@@ -17,6 +17,7 @@ import '../screens/marketing_screen.dart';
 import '../screens/phone_screen.dart';
 import '../screens/scheduling_screen.dart';
 import '../screens/services_screen.dart';
+import '../screens/training_screen.dart';
 import '../screens/web_screen.dart';
 import 'api_client.dart';
 import 'session.dart';
@@ -107,6 +108,11 @@ final Map<String, ModuleScreen> moduleScreens = {
   'monitoring': ModuleScreen(
     Icons.desktop_windows_outlined,
     (api, session) => MonitoringScreen(api: api, session: session),
+  ),
+  // Matches dashboard_panels.dart's own icon for this module (task 12).
+  'training': ModuleScreen(
+    Icons.school_outlined,
+    (api, session) => TrainingScreen(api: api, session: session),
   ),
   // ── Where a module is drawn is not decided here ────────────────
   //
