@@ -69,6 +69,7 @@ dependencies:
   # across windows/macos/linux/android/ios, and needs no runtime permission.
   file_selector: ^1.0.3
   audioplayers: ^6.7.1
+  window_manager: ^0.5.2
 
 dev_dependencies:
   flutter_test:

@@ -18,6 +18,7 @@ import 'core/session.dart';
 import 'core/staff_session.dart';
 import 'core/theme.dart';
 import 'core/ui_strings.dart';
+import 'core/clock_window.dart';
 import 'core/version_gate.dart';
 import 'screens/development_screen.dart';
 import 'screens/hr/onboarding_form.dart';
@@ -46,6 +47,10 @@ Future<void> main() async {
   // Bindings first: TokenStore.init reaches a platform channel (the keychain),
   // and a channel used before this call throws.
   WidgetsFlutterBinding.ensureInitialized();
+
+  // The desktop window facade, before any screen can ask it for the window.
+  // A no-op on web and phones (core/clock_window.dart).
+  await ClockWindow.init();
 
   // Awaited, deliberately, and it is the only thing between launch and the
   // first frame. Session.restore reads TokenStore synchronously; if that read

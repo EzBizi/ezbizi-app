@@ -76,6 +76,21 @@ class UiStrings {
     'time_clock.off': 'Clock in is switched off for this organization.',
     'time_clock.already_in': 'You are already clocked in.',
     'time_clock.not_in': 'You are not clocked in.',
+    'time_clock.reminder_title': 'Your shift is ending',
+    'time_clock.reminder_body':
+        'Your shift ends at {time}. Clock out, or extend it.',
+    'time_clock.extend': 'Extend {minutes} min',
+    'time_clock.lock_sentence': 'Clock in to start your day.',
+    'time_clock.sign_out': 'Sign out',
+    'time_clock.auto': 'Auto',
+    'time_clock.outside': 'Outside schedule',
+    'time_clock.day_off': 'Day off',
+    'time_clock.work_schedule': 'Work schedule',
+    'time_clock.not_scheduled': 'You are not on a scheduled shift.',
+    'time_clock.overnight':
+        'A shift that crosses midnight is not supported yet.',
+    'time_clock.exempt_on': 'Exempt from lock screen',
+    'time_clock.exempt_off': 'Lock screen applies',
   };
 
   static void adopt(Map<String, dynamic> payload) {
