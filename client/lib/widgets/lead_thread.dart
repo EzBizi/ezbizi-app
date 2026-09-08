@@ -3,8 +3,12 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../core/api_client.dart';
 import '../core/phone_numbers.dart';
+import '../core/session.dart';
+import '../screens/jobs/job_detail_panel.dart';
 import '../screens/phone/recording_player.dart';
 import 'async_body.dart';
+import 'book_lead_panel.dart';
+import 'side_panel.dart';
 
 /// What was said on one enquiry: every call and message, oldest first.
 ///
@@ -31,6 +35,8 @@ class LeadThread extends StatefulWidget {
     this.onRead,
     this.onStar,
     this.onNote,
+    this.session,
+    this.onBooked,
   });
 
   final ApiClient api;
@@ -52,6 +58,16 @@ class LeadThread extends StatefulWidget {
   /// the save was refused.
   final Future<Map<String, dynamic>?> Function(bool starred)? onStar;
   final Future<Map<String, dynamic>?> Function(String? note)? onNote;
+
+  /// Needed to book (the franchise list, the display formats, the job
+  /// panel). Book is drawn only when both this and [onBooked] are given.
+  final Session? session;
+
+  /// The server's booking answer (lead, customer, customer_created, job).
+  /// Returns the lead as the list now holds it, or null to keep the
+  /// answer's own copy.
+  final Future<Map<String, dynamic>?> Function(Map<String, dynamic> result)?
+  onBooked;
 
   @override
   State<LeadThread> createState() => _LeadThreadState();
@@ -77,6 +93,9 @@ class _LeadThreadState extends State<LeadThread> {
   /// Whether Google will take a reply: text enquiries only, account still
   /// connected. The server says; the screen never guesses from lead_type.
   bool _canReply = false;
+
+  /// Customers whose number matches this lead's, for the booking panel.
+  List<Map<String, dynamic>> _matches = const [];
 
   final _compose = TextEditingController();
   bool _sending = false;
@@ -196,7 +215,77 @@ class _LeadThreadState extends State<LeadThread> {
             .cast<Map<String, dynamic>>(),
       );
       _canReply = data['can_reply'] == true;
+      _matches = List<Map<String, dynamic>>.from(
+        (data['customer_matches'] as List? ?? const [])
+            .cast<Map<String, dynamic>>(),
+      );
     });
+  }
+
+  bool get _canBook =>
+      widget.session != null &&
+      widget.onBooked != null &&
+      _lead['job'] == null &&
+      !_loading;
+
+  /// Desktop: the app's own side panel, so Escape, focus return and the
+  /// safe-area fix come free. Phone: a pushed screen with a back bar.
+  Future<void> _openBooking() async {
+    final panel = BookLeadPanel(
+      api: widget.api,
+      session: widget.session!,
+      lead: _lead,
+      matches: _matches,
+      onBooked: (result) async {
+        Navigator.of(context).pop();
+        final fresh = await widget.onBooked!(result);
+        if (!mounted) return;
+        setState(() {
+          _lead = fresh ?? (result['lead'] as Map<String, dynamic>? ?? _lead);
+        });
+      },
+    );
+
+    if (MediaQuery.sizeOf(context).width < 600) {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => Scaffold(
+            appBar: AppBar(title: const Text('Book this lead')),
+            body: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: panel,
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    await showSidePanel<void>(
+      context,
+      builder: (_) => SidePanel(
+        title: 'Book this lead',
+        subtitle: 'Creates a customer and a job, and marks the lead booked.',
+        child: panel,
+      ),
+    );
+  }
+
+  Future<void> _openJob(String id) async {
+    final panel = JobDetailPanel(
+      api: widget.api,
+      session: widget.session!,
+      id: id,
+    );
+
+    if (MediaQuery.sizeOf(context).width < 600) {
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute<void>(builder: (_) => panel));
+      return;
+    }
+
+    await showSidePanel<void>(context, builder: (_) => panel);
   }
 
   Future<void> _play(Map<String, dynamic> c) async {
@@ -260,6 +349,7 @@ class _LeadThreadState extends State<LeadThread> {
     final theme = Theme.of(context);
     final lead = _lead;
     final starred = lead['starred'] == true;
+    final narrow = MediaQuery.sizeOf(context).width < 600;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -294,6 +384,17 @@ class _LeadThreadState extends State<LeadThread> {
                                   : theme.colorScheme.outline,
                             ),
                           ),
+                        // Desktop: Book beside the star. On a phone it is a
+                        // full-width button under the header instead, a
+                        // control you can hit without aiming.
+                        if (_canBook && !narrow) ...[
+                          const SizedBox(width: 4),
+                          OutlinedButton(
+                            key: const ValueKey('book-open'),
+                            onPressed: _openBooking,
+                            child: const Text('Book'),
+                          ),
+                        ],
                       ],
                     ),
                     // The number on its own line only when the title is a
@@ -313,6 +414,21 @@ class _LeadThreadState extends State<LeadThread> {
                       ),
                     ),
                     _noteBlock(theme, lead),
+                    if (lead['job'] is Map)
+                      _bookedLine(theme, lead['job'] as Map),
+                    if (_canBook && narrow)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: FilledButton.icon(
+                          key: const ValueKey('book-open'),
+                          onPressed: _openBooking,
+                          icon: const Icon(
+                            Icons.event_available_outlined,
+                            size: 18,
+                          ),
+                          label: const Text('Book'),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -432,6 +548,41 @@ class _LeadThreadState extends State<LeadThread> {
       ],
     ),
   );
+
+  /// "Booked · Job 0142 · Thu 17 Sep, 2 PM", with the job one tap away.
+  Widget _bookedLine(ThemeData theme, Map job) {
+    final when = formatJobWhen(job['scheduled_for'] as String?);
+    final line = [
+      'Booked',
+      'Job ${job['number'] ?? ''}'.trim(),
+      if (when.isNotEmpty) when,
+    ].join(' · ');
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: [
+          Icon(Icons.check_circle, size: 16, color: theme.colorScheme.primary),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              line,
+              key: const ValueKey('booked-line'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          if (widget.session != null && job['id'] is String)
+            TextButton(
+              key: const ValueKey('booked-open-job'),
+              onPressed: () => _openJob(job['id'] as String),
+              child: const Text('Open the job'),
+            ),
+        ],
+      ),
+    );
+  }
 
   /// One shared line with Edit in place, and a byline: "Maya · 2h ago".
   ///

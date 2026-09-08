@@ -571,6 +571,25 @@ class _LeadsScreenState extends State<LeadsScreen> {
     return fresh;
   }
 
+  /// The lead came back booked and pointing at its job. The row updates at
+  /// once; a status filter that no longer matches sorts itself out on the
+  /// next load, which is a smaller surprise than a row vanishing mid-look.
+  Future<Map<String, dynamic>?> _booked(Map<String, dynamic> result) async {
+    final lead = result['lead'] as Map<String, dynamic>?;
+    if (lead == null) return null;
+    final current = _leads.firstWhere(
+      (l) => l['id'] == lead['id'],
+      orElse: () => const {},
+    );
+    final fresh = {...lead, 'is_unread': current['is_unread'] ?? false};
+    _replace(fresh);
+    final job = result['job'] as Map<String, dynamic>?;
+    setState(() {
+      _notice = job == null ? 'Booked.' : 'Booked as job ${job['number']}.';
+    });
+    return fresh;
+  }
+
   void _replace(Map<String, dynamic> lead) {
     setState(() {
       _leads = [
@@ -609,6 +628,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
                   onStar: (on) => _mark(selected, starred: on),
                   onNote: (text) =>
                       _mark(selected, note: text, clearNote: text == null),
+                  session: widget.session,
+                  onBooked: _booked,
                 ),
         ),
       ],
@@ -633,6 +654,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
             onRead: () => _markRead(lead),
             onStar: (on) => _mark(lead, starred: on),
             onNote: (text) => _mark(lead, note: text, clearNote: text == null),
+            session: widget.session,
+            onBooked: _booked,
           ),
         ),
       ),
