@@ -346,9 +346,11 @@ class _WidgetEditorState extends State<_WidgetEditor> {
             (v) => _set('style', 'accent', v)),
         _text(theme, 'Text on the accent', style['on_accent'],
             (v) => _set('style', 'on_accent', v)),
+        _pair(theme, style['on_accent'], style['accent'], 'the accent'),
         _text(theme, 'Text colour', style['text'], (v) => _set('style', 'text', v)),
         _text(theme, 'Background', style['background'],
             (v) => _set('style', 'background', v)),
+        _pair(theme, style['text'], style['background'], 'the background'),
         _text(theme, 'Font family', style['font'], (v) => _set('style', 'font', v)),
         _text(theme, 'Corner radius', '${style['radius'] ?? 12}',
             (v) => _set('style', 'radius', int.tryParse(v) ?? 12)),
@@ -377,6 +379,75 @@ class _WidgetEditorState extends State<_WidgetEditor> {
           ),
       ],
     );
+  }
+
+  /// What a visitor will actually see: [fg] rendered on [bg], with the WCAG
+  /// contrast of the pair beside it.
+  ///
+  /// Nothing else on this screen shows the colours rendered, so the two boxes
+  /// above are picked blind — and the pair that matters is a *relationship*,
+  /// which no single field can be wrong about on its own.
+  ///
+  /// Derived here and never stored. The ratio is a fact about the two values
+  /// beside it, so a saved copy is a copy that can disagree with them.
+  ///
+  /// **Warn, never block.** A customer's brand may genuinely be low-contrast,
+  /// and this is their website, not ours. Saying what a visitor will see is
+  /// this screen's job; overruling them is not.
+  Widget _pair(ThemeData theme, Object? fg, Object? bg, String what) {
+    final f = _colour(fg), b = _colour(bg);
+    // Mid-typing (`#0b5`, `#`, empty) is not a finding. Say nothing until both
+    // boxes hold a colour the server would actually keep.
+    if (f == null || b == null) return const SizedBox.shrink();
+
+    final lf = f.computeLuminance(), lb = b.computeLuminance();
+    final ratio = ((lf > lb ? lf : lb) + 0.05) / ((lf < lb ? lf : lb) + 0.05);
+    final low = ratio < 4.5;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: b,
+              borderRadius: BorderRadius.circular(6),
+              // The swatch has to read as a swatch even when the colour it
+              // carries is the page's own, or a white-on-white pair shows as
+              // nothing at all and looks like a rendering fault.
+              border: Border.all(color: theme.dividerColor),
+            ),
+            child: Text('Send', style: TextStyle(fontSize: 13, color: f)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              low
+                  ? 'Contrast against $what is ${ratio.toStringAsFixed(1)}:1. '
+                      'Visitors may not be able to read this; 4.5:1 or more is '
+                      'the usual floor.'
+                  : 'Contrast against $what is ${ratio.toStringAsFixed(1)}:1.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: low ? theme.colorScheme.error : null,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Both hex forms the server keeps (`#rgb` and `#rrggbb`), so a colour that
+  /// saves is a colour that gets checked — see `WidgetDefaults::colour`.
+  static Color? _colour(Object? v) {
+    final m = RegExp(r'^#([0-9a-f]{3}|[0-9a-f]{6})$')
+        .firstMatch('${v ?? ''}'.trim().toLowerCase());
+    if (m == null) return null;
+    final h = m.group(1)!;
+    final full = h.length == 3 ? h.split('').map((c) => '$c$c').join() : h;
+    return Color(int.parse('ff$full', radix: 16));
   }
 
   Widget _text(
