@@ -135,7 +135,7 @@ void main() {
   ) async {
     await _pump(
       tester,
-      player: (),
+      player: FakeRecordingPlayer(),
       recordingGate: Completer()..complete(),
       suggestion: 'Hi, yes we can inspect it. Which day suits you?',
     );
@@ -154,7 +154,11 @@ void main() {
   });
 
   testWidgets('without the model there is no Suggest button', (tester) async {
-    await _pump(tester, player: (), recordingGate: Completer()..complete());
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+    );
 
     expect(find.byKey(const ValueKey('reply-suggest')), findsNothing);
     expect(find.byKey(const ValueKey('reply-box')), findsOneWidget);
