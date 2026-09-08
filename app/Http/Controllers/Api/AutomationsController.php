@@ -197,6 +197,30 @@ class AutomationsController extends Controller
                     'key' => $t->key,
                     'label' => $t->label,
                     'description' => $t->description,
+                    /*
+                     * Whether anything actually emits this yet — as a FLAG, not
+                     * only as prose.
+                     *
+                     * `TriggerDefinition` already appends "Nothing raises this
+                     * yet, so a rule built on it will not run" to the
+                     * description, and that sentence says the consequence,
+                     * which a badge cannot. But it arrives as the tail of a
+                     * paragraph, so the row carrying it is indistinguishable
+                     * from the twenty around it until you read to the end of
+                     * one. A rule built on such a trigger saves, sits enabled,
+                     * and never runs — no error, ever.
+                     *
+                     * That is the silent-failure class this app already has a
+                     * vocabulary for; the same argument put five phone lines
+                     * into voicemail for months behind grey secondary text.
+                     * Sending the flag lets the picker mark the row the way it
+                     * already marks an action the engine cannot run.
+                     *
+                     * Raised by the UI/UX session, 2026-09-08. Additive: an
+                     * older client ignores the key and keeps the sentence,
+                     * which is why this could ship without waiting for one.
+                     */
+                    'is_raised' => $t->isRaised,
                 ], $module->triggers),
                 /*
                  * Marked, not merely listed.

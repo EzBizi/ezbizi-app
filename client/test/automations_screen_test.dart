@@ -818,6 +818,48 @@ void main() {
     expect(find.textContaining('a user'), findsWidgets);
   });
 
+  /// A trigger nothing emits looks exactly like one that fires.
+  ///
+  /// The description already ends with "Nothing raises this yet, so a rule
+  /// built on it will not run", and that sentence says the consequence a badge
+  /// cannot. But it is the tail of a paragraph: the row is indistinguishable
+  /// from the twenty around it until you read to the end of one, and the rule
+  /// you build on it saves, sits enabled, and never runs. No error, ever.
+  ///
+  /// Raised by the UI/UX session, 2026-09-08, against the precedent of five
+  /// production phone lines that went to voicemail for months because the
+  /// state was disclosed in grey secondary text.
+  ///
+  /// The row stays SELECTABLE. Refusing the tap would answer nobody's question
+  /// about why an obvious event is missing; the point is to mark it, not to
+  /// hide it.
+  testWidgets('a trigger nothing raises yet is marked, and still choosable', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(catalogue: _catalogueWithAnUnraisedTrigger()));
+    await _tap(tester, find.text('Build'));
+    await _tap(tester, find.text('Inventory'));
+
+    expect(
+      find.text('Not raised yet'),
+      findsOneWidget,
+      reason:
+          'The unraised trigger needs a marker that is not the tail of a '
+          'paragraph. One, not two — the raised row beside it must not carry it.',
+    );
+
+    // And it is still a real choice: tapping it selects the trigger rather
+    // than doing nothing.
+    await _tap(tester, find.text('Stock is low'));
+
+    expect(
+      find.text('Stock is low'),
+      findsWidgets,
+      reason: 'A marked trigger is still selectable; the badge explains, it '
+          'does not forbid.',
+    );
+  });
+
   /// A declared action the builder cannot render is a dead menu entry.
   ///
   /// "Send a message" is the first Phone action that is NOT about the record
@@ -936,6 +978,40 @@ Finder _inStep(Finder finder) =>
 FilledButton _saveButton(WidgetTester tester) => tester.widget<FilledButton>(
   find.widgetWithText(FilledButton, 'Create automation'),
 );
+
+/// A module carrying one trigger nothing emits yet, beside one that fires.
+///
+/// Both in the same module on purpose: the badge has to distinguish them from
+/// each other, which is the whole complaint. A fixture with only the unraised
+/// one would pass while marking every row.
+Map<String, Object?> _catalogueWithAnUnraisedTrigger() => {
+  ..._catalogue,
+  'modules': [
+    ...(_catalogue['modules'] as List),
+    {
+      'key': 'inventory',
+      'label': 'Inventory',
+      'subject': null,
+      'triggers': [
+        {
+          'key': 'item.received',
+          'label': 'Stock received',
+          'description': 'Stock arrived at a location.',
+          'is_raised': true,
+        },
+        {
+          'key': 'item.low',
+          'label': 'Stock is low',
+          'description':
+              'On-hand is at or below the reorder point. Nothing raises this '
+              'yet, so a rule built on it will not run.',
+          'is_raised': false,
+        },
+      ],
+      'declared_actions': [],
+    },
+  ],
+};
 
 /// The catalogue with a User subject that nothing may write to.
 ///

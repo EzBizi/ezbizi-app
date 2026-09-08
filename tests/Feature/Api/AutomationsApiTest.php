@@ -76,6 +76,61 @@ class AutomationsApiTest extends TestCase
      * the contract is asserted key by key rather than "it has some triggers".
      * A field quietly renamed here is a client that renders blanks.
      */
+    /**
+     * The flag, not only the sentence.
+     *
+     * `TriggerDefinition` appends "Nothing raises this yet…" to the
+     * description, which says the consequence. It arrives as the tail of a
+     * paragraph, so the picker could not mark the row without reading prose.
+     * Publishing `is_raised` is what lets it badge one.
+     *
+     * Break it by dropping the key from the catalogue and this goes red on the
+     * false case — the one that matters, because a true that is wrong merely
+     * badges nothing, while a false that is wrong badges every trigger.
+     */
+    public function test_the_catalogue_says_which_triggers_nothing_raises_yet(): void
+    {
+        $data = $this->as()->getJson('/api/v1/automations/catalogue')->assertOk()->json('data');
+
+        $published = [];
+
+        foreach ($data['modules'] as $module) {
+            foreach ($module['triggers'] as $trigger) {
+                $published[$trigger['key']] = $trigger['is_raised'];
+            }
+        }
+
+        $this->assertNotEmpty($published);
+
+        // Against the registry rather than a hand-written list: the set of
+        // unraised triggers shrinks as emitters land, and a literal here would
+        // be a second copy that goes stale the day one does.
+        foreach (app(ModuleRegistry::class)->all() as $module) {
+            foreach ($module->triggers as $trigger) {
+                if (! array_key_exists($trigger->key, $published)) {
+                    continue;   // a module this actor cannot reach
+                }
+
+                $this->assertSame(
+                    $trigger->isRaised,
+                    $published[$trigger->key],
+                    "The catalogue disagrees with the registry about whether "
+                    ."'{$trigger->key}' is raised, so the builder would mark the "
+                    .'wrong row.'
+                );
+            }
+        }
+
+        // And prove the false case is actually exercised — an assertion loop
+        // over triggers that are all raised would pass while testing nothing.
+        $this->assertContains(
+            false,
+            $published,
+            'No unraised trigger reached the catalogue, so this test proved '
+            .'nothing about the flag it exists to check.'
+        );
+    }
+
     public function test_the_catalogue_matches_the_contract(): void
     {
         $data = $this->as()->getJson('/api/v1/automations/catalogue')->assertOk()->json('data');
@@ -103,7 +158,10 @@ class AutomationsApiTest extends TestCase
             }
 
             foreach ($module['triggers'] as $trigger) {
-                $this->assertSame(['key', 'label', 'description'], array_keys($trigger));
+                $this->assertSame(
+                    ['key', 'label', 'description', 'is_raised'],
+                    array_keys($trigger)
+                );
             }
 
             foreach ($module['declared_actions'] as $action) {

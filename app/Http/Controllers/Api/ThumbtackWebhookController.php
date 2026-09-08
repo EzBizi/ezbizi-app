@@ -56,23 +56,55 @@ class ThumbtackWebhookController extends Controller
             return response()->json(['data' => ['handled' => false]], Status::HTTP_OK);
         }
 
-        $connection = SocialConnection::query()
+        /*
+         * ALL of them, because a businessID does not name one connection.
+         *
+         * `social_connections` is unique on (organization_id, provider,
+         * remote_id) — so two organizations may each connect the SAME Thumbtack
+         * business, and that is correct: they are separate tenants who both
+         * have a relationship with it.
+         *
+         * This used to take ->first() and check that one's secret. With two
+         * tenants on one business it picked arbitrarily, so roughly half of a
+         * legitimate tenant's events were answered 401. Thumbtack retries a
+         * 401, then disables the webhook — and their API cannot list
+         * negotiations, so everything missed in between is gone for good. The
+         * bug would only ever have appeared once a second organization
+         * connected, which is to say in front of a customer.
+         */
+        $candidates = SocialConnection::query()
             ->withoutGlobalScopes()
             ->where('provider', SocialProvider::Thumbtack->value)
             ->where('remote_id', $businessId)
-            ->first();
+            ->get();
+
+        $presented = $request->header(ThumbtackWebhooks::AUTH_HEADER);
+
+        /*
+         * THE authentication, and also the disambiguation.
+         *
+         * The secret is per connection, so the one that accepts this header IS
+         * the tenant the event belongs to. Matching on it does both jobs at
+         * once and cannot cross tenants: a credential leaked from one
+         * organization matches only its own row.
+         *
+         * Constant-time inside accepts(). Checking every candidate is not a
+         * timing leak worth worrying about — the count is the number of tenants
+         * sharing one Thumbtack business, which is one.
+         */
+        $connection = $candidates->first(
+            fn (SocialConnection $c) => ThumbtackWebhooks::for($c)->accepts($presented),
+        );
 
         if ($connection === null) {
+            // Nothing matched. If there were candidates, this is a bad
+            // credential and must say so; if there were none, the business is
+            // not connected here and 200 keeps Thumbtack from disabling a
+            // webhook over an account we simply do not have.
+            abort_if($candidates->isNotEmpty(), Status::HTTP_UNAUTHORIZED);
+
             return response()->json(['data' => ['handled' => false]], Status::HTTP_OK);
         }
-
-        // THE authentication. Constant-time, against this connection's own
-        // secret rather than a global one, so a credential leaked from one
-        // tenant cannot be replayed against another.
-        abort_unless(
-            ThumbtackWebhooks::for($connection)->accepts($request->header(ThumbtackWebhooks::AUTH_HEADER)),
-            Status::HTTP_UNAUTHORIZED,
-        );
 
         $organization = Organization::query()
             ->withoutGlobalScopes()

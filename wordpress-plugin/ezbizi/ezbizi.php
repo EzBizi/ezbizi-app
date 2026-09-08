@@ -56,6 +56,7 @@ const EZBIZI_STALE_MAX = 3600;
 const EZBIZI_REFRESHING = 'ezbizi_refreshing';
 
 require_once __DIR__ . '/service-account.php';
+require_once __DIR__ . '/enquiries.php';
 
 /**
  * The host this WordPress install answers on, in the form EzBizi stores.

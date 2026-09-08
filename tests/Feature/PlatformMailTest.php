@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Models\Company;
 use App\Models\Organization;
 use App\Models\SendingIdentity;
+use App\Models\User;
+use App\Notifications\PasswordResetLink;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Mail\CannotSendMail;
 use App\Support\Mail\MailDispatcher;
@@ -14,7 +16,9 @@ use App\Support\Mail\SendingState;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Mail\Mailable;
+use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Support\Facades\Mail;
+use RuntimeException;
 use Tests\TestCase;
 
 /**
@@ -108,6 +112,67 @@ class PlatformMailTest extends TestCase
     }
 
     // ── (3) platform mail is built and handed over ───────────────
+
+    // ── the queue crosses the tenant boundary ─────────────────
+
+    /**
+     * A queued reset renders on a worker that has no tenant, because it carries
+     * everything it needs rather than reading anything back.
+     *
+     * PasswordResetLink is ShouldQueue and its subject is a User, which is
+     * tenant-scoped. The worker has no request and therefore no organization, and
+     * TenantScope REFUSES an unscoped read rather than returning nothing - so the
+     * question "does this survive the queue" has a real answer and it is not
+     * obvious from reading the class.
+     *
+     * It survives for a specific reason: the model is a property of the
+     * NOTIFICATION, not of the queued job, so Laravel serializes it whole instead
+     * of reducing it to a ModelIdentifier it would have to re-query. Nothing
+     * touches the database on the way out, so nothing needs a tenant.
+     *
+     * That is a real constraint on what may ever be added to toMail(). Reading a
+     * relation there - $subject->organization->name, say - would lazy-load on the
+     * worker and throw, and it would throw only in production, only for tenant
+     * users, and never in a sync-queue test. InvitationLink DOES read relations
+     * and is deliberately not queued for exactly this reason; its class docblock
+     * says so.
+     *
+     * The second assertion is the one that gives the first any weight: it proves
+     * a tenant read in this state genuinely throws, so a passing render is
+     * evidence about the notification rather than evidence that the scope was
+     * asleep.
+     */
+    public function test_a_queued_reset_renders_on_a_worker_that_has_no_tenant(): void
+    {
+        $user = $this->inTenant(
+            fn () => User::query()->where('email', 'owner@a1group.test')->firstOrFail()
+        );
+
+        // What the queue actually does to it.
+        $restored = unserialize(serialize(
+            new PasswordResetLink($user, 'a-token', now()->addHour())
+        ));
+
+        // What the worker actually is: no request, no organization.
+        app(TenantContext::class)->forget();
+        $this->assertFalse(app(TenantContext::class)->has());
+
+        // Prove the guard could fire. Without this the test below passes just as
+        // happily against a scope that had stopped working.
+        try {
+            User::query()->count();
+            $this->fail('TenantScope should refuse an unscoped read with no tenant in context.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('No tenant in context', $e->getMessage());
+        }
+
+        // And yet this renders, with the tenant user's own name in it.
+        $mail = $restored->toMail(new AnonymousNotifiable);
+
+        $this->assertSame('Reset your EzBizi password', $mail->subject);
+        $this->assertContains('Hello Owner,', $mail->greeting === null ? [] : [$mail->greeting]);
+        $this->assertStringStartsWith('https://app.ezbizi.test/reset?token=', $mail->actionUrl);
+    }
 
     public function test_platform_mail_is_handed_to_the_transport_with_the_platform_identity(): void
     {

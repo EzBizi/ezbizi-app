@@ -98,7 +98,7 @@ how stale.
 | Suggestions module | `local_cd7e62ef-dcf0-4939-8467-452f94ce3d63` | EzBizi - Suggestion Module | 2026-09-04 | `ezbizi-83 [67ea80]` |
 | UI / UX | `local_f82e74ac-d808-40cd-bc95-ce473619183a` | EzBizi - UI-UX Manager | 2026-09-04 | `ezbizi-e3 [a6b36a]` |
 | Phone system | `local_d95f72da-cef3-4ffb-b8b1-8f4de859e7f3` | EzBizi - Phone System Module | 2026-09-04 | `ezbizi-7e [74574e]` |
-| Google API | `local_8111908f-4bbb-400e-b842-6194f832387f` | EzBizi - Google API Module | 2026-09-04 | `ezbizi-02 [dd7f64]` — **same name as Inventory this minute** |
+| Google API (also the **Leads** module: Google Ads, Local Services, Thumbtack tabs, lead threads, LeadInsights) | `local_8111908f-4bbb-400e-b842-6194f832387f` | EzBizi - Google API Module | 2026-09-04 | `ezbizi-02 [dd7f64]` — **same name as Inventory this minute** |
 | Clock In / Work Hours | `local_8b413ba1-91de-47c8-8a59-92176a3599f7` | EzBizi - Clock In | 2026-09-08 | — (registered 2026-09-08 by message; owns app/Support/TimeClock, TimeClockController, TimeClockShift + policy, client/lib/screens/hr/time_clock_tab.dart, the _ClockButton in main.dart) |
 | API integrations | `local_e76e374a-d27b-405a-a0f5-41853bed9bba` | EzBizi - API Integrations | 2026-09-04 | `ezbizi-60 [a0a79f]` |
 | Amazon SES | `local_39c741ca-78e6-403b-a5e2-4a5d04cb7ed4` | EzBizi - Amazon SES Module | 2026-09-04 | `ezbizi-d2 [59dcdf]` |
@@ -168,3 +168,22 @@ its new hooks on the box by design (the box held the old hook and no
 `receive-release` at 13:20 UTC).
 
 A1 Tools sessions live in `H:\A1Chimney\a1_tools` and are outside this file.
+
+## Three conformances every hand-over states (Jose, 2026-09-08 evening)
+
+Jose's words before leaving: "Make sure everything goes with the Organization -
+Company - Franchise Schema as well as with Automations and Roles-Permissions."
+The desk checks these three on every hand-over before the merge or the cut, and
+a hand-over that states them saves a round trip:
+
+1. **Placement.** Rows and queries are scoped by organization / company /
+   franchise (BelongsToTenant or the equivalent); an id never comes from the
+   caller. Say which model carries the scope and how a public route derives it.
+2. **Permission.** A new thing people can do has a permission, the routes are
+   gated by it, and the hand-over names the role(s) that grant it (or says it
+   is administrator-only until Jose grants it).
+3. **Automations.** A new event or record people would want to react to is a
+   trigger or action in the catalogue, or the hand-over says why not.
+
+A hand-over that cannot answer one goes back to its session with the question,
+never to Jose. Sessions decide as they believe and report; nobody waits for him.

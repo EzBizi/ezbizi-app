@@ -149,6 +149,29 @@ sentence for a screen.
 Livechat and Form in a1leads are website sources, not Google ones — a later
 piece, not this read.
 
+## 4b · What a model can say: classification and a draft reply
+
+Item 5 of the a1tools list, Jose's "as you recommend" (2026-09-08). Amazon
+Bedrock, Claude, through the AWS SDK the app already carries for SES.
+`LeadInsights` (app/Services/Leads) is **off until** `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY` and `BEDROCK_MODEL` are set on the box; `enabled()` is
+false otherwise and nothing on screen depends on it. The model id is the one
+the Bedrock console shows for Claude in `us-east-1`; it is not guessed here.
+
+- **Classification** BOOK / SUPPORT / ARCHIVE plus a one-line `summary`, once,
+  the first time the enquirer has said something in words, from
+  `LeadThread::refresh()` so every source (Google, website chat) is sorted the
+  same way. Stored in `classification` / `classified_at`; never re-run;
+  `status` untouched. Raises `lead.classified` (declared on day one, raised
+  now). On screen: "Looks like work to book · <summary>" under the header.
+- **Suggested reply** `POST leads/{id}/suggest-reply` returns text for the
+  composer; a person reads, edits and presses Send. It stores nothing. Offered
+  only where a reply can go (`can_suggest`).
+- **Not built, on purpose:** auto-reply (a1leads sends without a person; the
+  Lead model forbids it until Jose lifts that by name) and call transcription
+  (needs an S3 bucket and Amazon Transcribe, both his to provision).
+- Cost at A-1 Chimney's volume, measured: single digits a month.
+
 ## 5 · `login-customer-id` is per connection
 
 Never an installation-wide config value. The manager an account sits under is a

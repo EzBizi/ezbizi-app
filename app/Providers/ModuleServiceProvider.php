@@ -1281,6 +1281,14 @@ class ModuleServiceProvider extends ServiceProvider
                         isRaised: true,
                     ),
                     new TriggerDefinition(
+                        key: 'phone.call.tagged',
+                        label: 'A call was tagged',
+                        description: 'Somebody said what a call was about. It carries the tag '
+                            .'name, so a rule can act on complaints without acting on '
+                            .'bookings. Raised when a tag is put on, not when one is removed.',
+                        isRaised: true,
+                    ),
+                    new TriggerDefinition(
                         key: 'phone.voicemail.left',
                         label: 'A voicemail was left',
                         description: 'A caller left a voicemail on one of the phone lines. The '
@@ -1671,10 +1679,16 @@ class ModuleServiceProvider extends ServiceProvider
                     new TriggerDefinition(
                         key: 'lead.received',
                         label: 'Lead received',
-                        description: 'An enquiry arrived from a connected advertising account. It '
-                            .'carries the contact details as the enquirer gave them, which source '
-                            .'and location it came through, and when it arrived — not yet what it '
-                            .'is about.',
+                        // "A connected account", not "a connected ADVERTISING
+                        // account". Thumbtack is a marketplace rather than
+                        // advertising, and it started raising this on
+                        // 2026-09-08 — somebody building a rule off the old
+                        // wording would reasonably conclude it did not cover
+                        // their Thumbtack enquiries, and quietly not build it.
+                        description: 'An enquiry arrived from a connected account — Google Ads or '
+                            .'Thumbtack. It carries the contact details as the enquirer gave them, '
+                            .'which source and location it came through, and when it arrived — not '
+                            .'yet what it is about.',
                     ),
                     new TriggerDefinition(
                         key: 'lead.contact_received',
@@ -1697,7 +1711,6 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A lead was read and categorised — what kind of work it is '
                             .'about, and whether it looks like a real enquiry at all. It fires '
                             .'after "Lead received", once any recording has been transcribed.',
-                        isRaised: false,
                     ),
                     new TriggerDefinition(
                         key: 'lead.status_changed',

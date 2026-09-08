@@ -175,6 +175,42 @@ app asks for that carries no weight of its own. **That test is what found the
 third one; the audit behind the gallery had only looked for the two I had
 already noticed.**
 
+**Audit, 2026-09-08 — the Leads work against Org/Company/Franchise, Automations
+and Roles-Permissions.** Jose's brief on leaving. Measured, not assumed:
+
+- **Scope.** `book()` authorizes `create` on Customer AND Job *scoped to the
+  chosen franchise*, so a booking cannot make either somewhere the person cannot
+  reach. Placement names a franchise only when the reader can reach it, which is
+  why "Placed somewhere you cannot see" exists as a row state. Customers are
+  org-shared by design (`CustomersController` says so), so attaching a
+  Connecticut job to a customer owned elsewhere is correct, not a leak.
+- **Permissions.** Every Leads action is gated — eleven `authorize` calls. There
+  is **no side door**: booking requires `leads.edit` *and* `customers.create`
+  *and* `jobs.create`, so it cannot be used to create a job somebody lacks the
+  permission to create directly.
+- **Automations.** Leads declares five triggers; four are emitted, and the fifth
+  (`lead.classified`) carries `isRaised: false`, which is the honest mechanism
+  rather than a gap. Booking emits `customer.created`, `job.created`,
+  `job.scheduled` and `lead.converted` — checked specifically, because a booking
+  path that skipped `job.created` would make every automation on new jobs
+  silently miss booked ones.
+
+**The one finding, handed to Automations as a prominence fix:** twelve triggers
+carry `isRaised: false`, and the only thing saying so on screen is a sentence at
+the END of the trigger's description. A rule built on one saves, sits enabled and
+never runs, with no error — the exact silent-failure class this app reserves
+`errorContainer` and a count for, after five phone lines went to voicemail for
+months behind grey secondary text.
+
+> **And the mistake I nearly shipped as a security report.** My first read of
+> `book()` was `sed -n '<start>,+22p'` and found one `authorize` call, which
+> looked like booking bypassing the Jobs and Customers permissions entirely. The
+> other two calls are at relative lines 47 and 50 — outside the window. **A
+> windowed read is the worst possible basis for an ABSENCE claim, and a security
+> absence is the worst kind to get wrong**, because it is dramatic enough that
+> people act on it before it is checked. Read the whole method: compute the end
+> with `awk` on the next `function`, never `+N`.
+
 **When two errors are not equally bad, neither one may be the silent default.**
 Booking a lead offers `customer_matches` — customers sharing the lead's last ten
 digits, which the server itself calls *advisory only*. Attaching to the **wrong
@@ -556,6 +592,7 @@ on main may have moved on.
 | 🔨 | **Scheduling · Availability + Settings** | **Layout 7 approved, being built** (Overview + area rail — Jose's own combination of 1 and 2); Availability is **layout 4**. `docs/previews/scheduling-layouts.html` @ `560aed5`. Held by the Scheduling session. |
 | 📬 | **Fleet · vehicle Identity card** | **Layout 2 approved, handed to the deploy desk to route.** `docs/previews/fleet-identity-layouts.html` @ `560aed5`. The Fleet session that briefed it ended before it was drawn. **Not urgent** — nothing in Fleet is broken; the card works and the complaint was a long scroll at 375px. Fold it into the next Fleet work rather than staffing for it. |
 | ⏳ AWAITING JOSE | **Leads · connected accounts** | Six layouts in `docs/previews/leads-accounts-layouts.html` — 3 desktop, 3 mobile. Brief from the Google API session (`local_8111908f`), server done at `c55b3c33`. **22 Google Ads accounts, one shown**: `leads_screen.dart:179` `_connectionFor` returns the first provider match. **Two payload gaps found by reading it and raised with them:** `connectionState()` carries no `leads_franchise_id`, so the placement column cannot render on load; and nothing links a lead to the account that produced it, so no per-account count exists client-side or server-side. The count is not a decoration — it is what separates "2 accounts that matter from 20 quiet ones" from twenty-two identical rows, and layouts marked `needs the count` degrade honestly without it. Design builds it once picked. |
+| ⚠️ **DECIDED IN JOSE'S ABSENCE — reversible in one word** | **Leads · four sources** | Desktop **1** + mobile **4** — `docs/previews/leads-sources-layouts.html`. Jose said *"a new sub tab in Leads"* for website chat and forms; **I recommended ONE LIST with source as a filter instead**, under his 2026-09-08 instruction *"do as you believe or recommend, dont wait for me"*. Layout 2 is his wording drawn properly and buildable as-is — the row, the badges and the sources band are identical in both, so only the strip changes. **If he says "tabs", it is one word and Leads builds 2.** |
 | ✅ APPROVED, **built by Leads** | **Leads · book a job from a lead** | Desktop **1** + mobile **4** — `docs/previews/leads-booking-layouts.html` @ `d1c69cb5`. Jose, 2026-09-08: *"as you recommend for the layouts"*. **Nothing is preselected when `customer_matches` is non-empty**, and Book stays disabled until answered — see the rule below. No match → straight to a new customer, no question. |
 | ✅ APPROVED, **built by Leads** | **Leads · read, star, note** | Desktop **1** + mobile **4** — `docs/previews/leads-triage-layouts.html` @ `18012c74`. Jose, 2026-09-08: *"2 - as u recommend"*. **Unread is WEIGHT, not a second dot** — the dot is unreplied and a leading-edge bar is banned, so the three marks live in three channels: weight (unread, yours), dot (unreplied, everyone's), star (everyone's). Filters narrow TOGETHER. On the same delegation the note gets an **author and an edited-at**, asked of Leads: a shared free-text field that cannot say who or when is one people stop trusting, and silent last-write-wins is the worse half. |
 | ✅ APPROVED, **built by Leads** | **Leads · conversation colour** | Desktop **3** + mobile **6** — `docs/previews/leads-conversation-colour-layouts.html` @ the commit below. Jose, 2026-09-08: *"option 3 for desktop, 6 for mobile"* — the saturated direction, ours filled `primary` with `onPrimary`. **No accent bar anywhere**, per the same message. `primary` inverts between brightnesses (#00708f/white light, #00aeef/near-black dark), so the build must be checked in both. |
