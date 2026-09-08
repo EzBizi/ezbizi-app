@@ -124,6 +124,7 @@ use App\Http\Controllers\Api\VehicleOwnershipController;
 use App\Http\Controllers\Api\VehiclePaymentsController;
 use App\Http\Controllers\Api\VehiclesController;
 use App\Http\Controllers\Api\VehicleServiceController;
+use App\Http\Controllers\Api\Web\EnquiriesController as WebEnquiriesController;
 use App\Http\Controllers\Api\Web\PluginController as WebPluginController;
 use App\Http\Controllers\Api\Web\PublicValuesController as WebPublicValuesController;
 use App\Http\Controllers\Api\Web\SitesController as WebSitesController;
@@ -387,6 +388,28 @@ Route::get('v1/web/plugin/values', [WebPluginController::class, 'values'])
 Route::post('v1/web/plugin/service-account', [WebPluginController::class, 'serviceAccount'])
     ->middleware('throttle:web-plugin')
     ->name('web.plugin.service-account');
+
+/*
+ * The chat widget and the contact form on a customer's own website.
+ *
+ * Public by necessity: a visitor's browser calls these, on a host we do not
+ * run, with nobody signed in. The controller explains what holds the line.
+ */
+Route::post('v1/web/chat', [WebEnquiriesController::class, 'startChat'])
+    ->middleware('throttle:web-enquiry')
+    ->name('web.chat.start');
+
+Route::post('v1/web/chat/{chat}/messages', [WebEnquiriesController::class, 'say'])
+    ->middleware('throttle:web-enquiry')
+    ->name('web.chat.say');
+
+Route::get('v1/web/chat/{chat}/messages', [WebEnquiriesController::class, 'messages'])
+    ->middleware('throttle:web-chat-poll')
+    ->name('web.chat.messages');
+
+Route::post('v1/web/form', [WebEnquiriesController::class, 'submitForm'])
+    ->middleware('throttle:web-enquiry')
+    ->name('web.form.submit');
 
 /*
 |--------------------------------------------------------------------------

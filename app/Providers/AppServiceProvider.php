@@ -2,10 +2,26 @@
 
 namespace App\Providers;
 
+use App\Models\ApiToken;
+use App\Models\InspectionReport;
+use App\Support\Access\ScopeReach;
+use App\Support\Audit\AuditLogger;
+use App\Support\Files\Attachables;
+use App\Support\Modules\ModuleAvailability;
+use App\Support\Phone\HttpTwilioGateway;
+use App\Support\Phone\TwilioGateway;
+use App\Support\Settings\SettingsResolver;
+use App\Support\Subscriptions\SubscriptionGuard;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Foundation\Events\DiagnosingHealth;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Sanctum\Sanctum;
 use Symfony\Component\HttpFoundation\Response;
 
 class AppServiceProvider extends ServiceProvider
@@ -16,7 +32,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         // One instance per process — see plan §5.1
-        $this->app->singleton(\App\Support\Tenancy\TenantContext::class);
+        $this->app->singleton(TenantContext::class);
 
         /*
          * AuditLogger holds per-request state — the correlation id, and whether
@@ -31,7 +47,7 @@ class AppServiceProvider extends ServiceProvider
          * suppressForLeadDeveloper() wrapped around the request pipeline
          * suppresses nothing outside the middleware object itself.
          */
-        $this->app->singleton(\App\Support\Audit\AuditLogger::class);
+        $this->app->singleton(AuditLogger::class);
 
         /*
          * SettingsResolver caches resolved overrides per scope, and set() flushes
@@ -47,7 +63,7 @@ class AppServiceProvider extends ServiceProvider
          * overrides to another even in a long-lived worker — staleness was the
          * risk here, not leakage.
          */
-        $this->app->singleton(\App\Support\Settings\SettingsResolver::class);
+        $this->app->singleton(SettingsResolver::class);
 
         /*
          * Scoped, NOT singleton — the distinction is the whole point.
@@ -62,7 +78,7 @@ class AppServiceProvider extends ServiceProvider
          * `scoped` is reset by Laravel between requests AND between queue jobs,
          * which is precisely the lifetime the cache is allowed to have.
          */
-        $this->app->scoped(\App\Support\Subscriptions\SubscriptionGuard::class);
+        $this->app->scoped(SubscriptionGuard::class);
 
         /*
          * Scoped for the same reason, and it was UNBOUND — which meant its cache
@@ -82,7 +98,7 @@ class AppServiceProvider extends ServiceProvider
          * requests AND between queue jobs — exactly the lifetime this cache is
          * allowed to have. setState() and flushCache() clear it within one.
          */
-        $this->app->scoped(\App\Support\Modules\ModuleAvailability::class);
+        $this->app->scoped(ModuleAvailability::class);
 
         /*
          * Scoped, for the same reason and with the same lifetime.
@@ -99,15 +115,15 @@ class AppServiceProvider extends ServiceProvider
          * a queue worker lives for days. `scoped` is reset between requests AND
          * between jobs, which is exactly as long as the answer stays true.
          */
-        $this->app->scoped(\App\Support\Access\ScopeReach::class);
+        $this->app->scoped(ScopeReach::class);
 
         /*
          * Twilio HTTP seam for Phone. Tests replace this with FakeTwilioGateway
          * so nothing dials the live API from the suite.
          */
         $this->app->singleton(
-            \App\Support\Phone\TwilioGateway::class,
-            \App\Support\Phone\HttpTwilioGateway::class,
+            TwilioGateway::class,
+            HttpTwilioGateway::class,
         );
     }
 
@@ -126,7 +142,7 @@ class AppServiceProvider extends ServiceProvider
          * what that meant while the scope failed open, and why the exemption is
          * one named scope on one relation rather than anything wider.
          */
-        \Laravel\Sanctum\Sanctum::usePersonalAccessTokenModel(\App\Models\ApiToken::class);
+        Sanctum::usePersonalAccessTokenModel(ApiToken::class);
 
         /*
          * `attachments.attachable_type` holds `jobs`, not `App\Models\Job`.
@@ -144,14 +160,14 @@ class AppServiceProvider extends ServiceProvider
          * The map comes from Attachables so the wire name, the stored value and
          * the validation rule are one list rather than three.
          */
-        \Illuminate\Database\Eloquent\Relations\Relation::morphMap(
+        Relation::morphMap(
             [
-                ...\App\Support\Files\Attachables::all(),
+                ...Attachables::all(),
                 // A submitted inspection report is intentionally absent from
                 // Attachables::all() too: its photographs arrive by being
                 // re-pointed from the run at submit, never by an upload naming
                 // the report directly. See Attachables.
-                'inspection_reports' => \App\Models\InspectionReport::class,
+                'inspection_reports' => InspectionReport::class,
             ],
         );
 
@@ -166,10 +182,10 @@ class AppServiceProvider extends ServiceProvider
          * select 1 is cheap and fails closed. Backups, mail and TLS stay on the
          * staff Health screen; this probe does not claim them.
          */
-        \Illuminate\Support\Facades\Event::listen(
-            \Illuminate\Foundation\Events\DiagnosingHealth::class,
+        Event::listen(
+            DiagnosingHealth::class,
             function (): void {
-                \Illuminate\Support\Facades\DB::select('select 1');
+                DB::select('select 1');
             },
         );
     }
@@ -284,6 +300,35 @@ class AppServiceProvider extends ServiceProvider
          * That is a customer's own token being abused, and the answer to it is
          * rotation in the SEO tab rather than a limiter.
          */
+        /*
+         * A stranger's browser creating a Lead. Per KEY so one site cannot be
+         * used to fill a company's list, and per ADDRESS so one machine cannot
+         * walk many sites' keys -- either alone is trivially stepped around.
+         *
+         * ponytail: 20/hour is generous for a human and useless against a
+         * botnet. The fix when that day comes is a challenge on the widget, not
+         * a smaller number: a limit low enough to stop a bot would also lose a
+         * busy afternoon's real enquiries.
+         */
+        RateLimiter::for('web-enquiry', fn (Request $request) => [
+            Limit::perHour(20)
+                ->by('key:'.hash('sha256', (string) $request->input('key')))
+                ->response($this->throttledWith('Too many messages from this website just now. Try again shortly.')),
+            Limit::perHour(40)
+                ->by('addr:'.$request->ip())
+                ->response($this->throttledWith('Too many messages from this address just now.')),
+        ]);
+
+        /*
+         * Reading your own chat back is not the same act as creating one, and
+         * must not share its budget: a visitor waiting for an answer polls
+         * every few seconds, which is exactly the behaviour the limit above
+         * exists to stop.
+         */
+        RateLimiter::for('web-chat-poll', fn (Request $request) => Limit::perMinute(60)
+            ->by('chat:'.hash('sha256', (string) $request->bearerToken()))
+            ->response($this->throttledWith('Asking a little too often. It will catch up shortly.')));
+
         RateLimiter::for('web-plugin', fn (Request $request) => [
             Limit::perHour(60)
                 ->by('token:'.hash('sha256', (string) $request->bearerToken()))
@@ -318,15 +363,15 @@ class AppServiceProvider extends ServiceProvider
             $seconds = (int) ($headers['Retry-After'] ?? 0);
 
             $wait = match (true) {
-                $seconds <= 0    => 'shortly',
-                $seconds < 60    => "in {$seconds} seconds",
-                $seconds < 3600  => 'in '.max(1, (int) round($seconds / 60)).' minutes',
-                default          => 'in '.max(1, (int) round($seconds / 3600)).' hours',
+                $seconds <= 0 => 'shortly',
+                $seconds < 60 => "in {$seconds} seconds",
+                $seconds < 3600 => 'in '.max(1, (int) round($seconds / 60)).' minutes',
+                default => 'in '.max(1, (int) round($seconds / 3600)).' hours',
             };
 
             return response()->json([
-                'message'     => "{$reason} Try again {$wait}.",
-                'code'        => 'throttled',
+                'message' => "{$reason} Try again {$wait}.",
+                'code' => 'throttled',
                 'retry_after' => $seconds ?: null,
             ], Response::HTTP_TOO_MANY_REQUESTS, $headers);
         };

@@ -8,8 +8,8 @@ use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
 use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
-use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -42,14 +42,30 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
     public const SOURCE_THUMBTACK = 'thumbtack';
 
     /**
+     * The customer's own website, through the EzBizi WordPress plugin.
+     *
+     * Two sources rather than one because they behave differently on the
+     * screen: a chat is a conversation somebody may still be waiting in, a form
+     * is one message that has already been said in full. Both are written by
+     * App\Support\Web\WebsiteEnquiries; neither needs a migration, for the
+     * reason given above.
+     */
+    public const SOURCE_WEBSITE_CHAT = 'website_chat';
+
+    public const SOURCE_WEBSITE_FORM = 'website_form';
+
+    /**
      * Ours, not the source's.
      *
      * `NEW` is the absence of a decision rather than a decision, which is why a
      * sync may set it and nothing else may set it back.
      */
-    public const STATUS_NEW        = 'new';
-    public const STATUS_BOOKED     = 'booked';
-    public const STATUS_ARCHIVED   = 'archived';
+    public const STATUS_NEW = 'new';
+
+    public const STATUS_BOOKED = 'booked';
+
+    public const STATUS_ARCHIVED = 'archived';
+
     public const STATUS_NOT_A_LEAD = 'not_a_lead';
 
     /** @var string[] */
@@ -153,10 +169,10 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
     protected function casts(): array
     {
         return [
-            'received_at'     => 'datetime',
-            'synced_at'       => 'datetime',
+            'received_at' => 'datetime',
+            'synced_at' => 'datetime',
             'last_contact_at' => 'datetime',
-            'starred_at'      => 'datetime',
+            'starred_at' => 'datetime',
             'note_updated_at' => 'datetime',
         ];
     }
