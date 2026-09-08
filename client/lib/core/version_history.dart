@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0160',
+      date: '8 Sep 2026',
+      items: [
+        'Lead and message times are now shown in the right hour. Google reports them in the advertising account\'s own time zone, and they were being read as UTC, so everything looked four hours older than it was.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0159',
       date: '8 Sep 2026',
       items: [
