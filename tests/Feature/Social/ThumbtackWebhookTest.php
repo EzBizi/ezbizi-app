@@ -123,6 +123,48 @@ class ThumbtackWebhookTest extends TestCase
         }
     }
 
+    /**
+     * Two organizations on ONE Thumbtack business, which the schema allows.
+     *
+     * social_connections is unique on (organization_id, provider, remote_id),
+     * so both tenants legitimately hold a row for the same businessID. The
+     * webhook used to resolve with ->first() and check that row's secret, which
+     * picked arbitrarily: about half of a real tenant's events were answered
+     * 401, Thumbtack retries a 401 and then disables the webhook, and their API
+     * cannot list negotiations — so everything missed in between is gone.
+     *
+     * It could only ever have shown up once a second organization connected,
+     * which is to say in front of a customer.
+     */
+    public function test_two_organizations_can_share_one_thumbtack_business(): void
+    {
+        $alpha = $this->provisionTenant('A1-Group');
+        $beta  = $this->provisionTenant('Premier');
+
+        // Same business id, different tenants, different secrets.
+        $this->connection($alpha, remoteId: 'shared-biz', secret: 'alpha-secret');
+        $this->connection($beta, remoteId: 'shared-biz', secret: 'beta-secret');
+
+        // Each secret must reach its OWN tenant, whichever row the query
+        // happens to return first.
+        foreach (['alpha-secret', 'beta-secret'] as $secret) {
+            $this->withHeader(ThumbtackWebhooks::AUTH_HEADER, $secret)
+                ->postJson(self::URL, [
+                    'eventType'  => 'NegotiationCreatedV4',
+                    'businessID' => 'shared-biz',
+                ])
+                ->assertOk();
+        }
+
+        // And a secret belonging to neither is still refused.
+        $this->withHeader(ThumbtackWebhooks::AUTH_HEADER, 'gamma-secret')
+            ->postJson(self::URL, [
+                'eventType'  => 'NegotiationCreatedV4',
+                'businessID' => 'shared-biz',
+            ])
+            ->assertUnauthorized();
+    }
+
     // ── registration ─────────────────────────────────────────────
 
     public function test_registering_asks_for_the_events_we_handle_and_no_others(): void

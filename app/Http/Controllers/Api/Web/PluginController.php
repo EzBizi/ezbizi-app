@@ -75,6 +75,14 @@ class PluginController extends Controller
                     'company' => $site->company?->name,
                 ],
                 'fields' => SeoFields::catalogue(),
+
+                /*
+                 * So the chat and form shortcodes can post as this site without
+                 * a second thing for somebody to paste. Safe to hand the plugin
+                 * and safe in page source: it starts an enquiry and reads
+                 * published values, and nothing else.
+                 */
+                'public_key' => $site->public_key,
                 /*
                  * So the plugin can revoke its own application password when
                  * EzBizi has let go of the pairing. Without this, unlinking here

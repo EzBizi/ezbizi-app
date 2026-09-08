@@ -4,24 +4,27 @@ namespace Tests\Feature\Phone;
 
 use App\Models\AutomationEvent;
 use App\Models\Customer;
-use App\Models\Job;
-use App\Models\PhoneCall;
-use App\Models\PhoneConnection;
-use App\Models\PhoneNumber;
 use App\Models\Franchise;
+use App\Models\Job;
 use App\Models\Notification;
+use App\Models\Organization;
+use App\Models\PhoneCall;
+use App\Models\PhoneCallTag;
+use App\Models\PhoneConnection;
 use App\Models\PhoneMessage;
-use App\Support\Notifications\NotificationDispatcher;
+use App\Models\PhoneNumber;
 use App\Models\PhoneNumberGrant;
 use App\Support\Automations\ActionRunner;
 use App\Support\Modules\ModuleRegistry;
+use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Phone\FakeTwilioGateway;
+use App\Support\Phone\SmsCompliance;
 use App\Support\Phone\TwilioGateway;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Testing\TestResponse;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 use Twilio\Security\RequestValidator;
-use App\Support\Phone\SmsCompliance;
 
 /**
  * Phone automation actions and phone.number.broken (Task 14).
@@ -474,7 +477,7 @@ class PhoneAutomationsTest extends TestCase
     }
 
     /**
-     * @param  array{org: \App\Models\Organization, franchise: \App\Models\Franchise}  $tenant
+     * @param  array{org: Organization, franchise: Franchise}  $tenant
      * @return array{0: PhoneConnection, 1: PhoneNumber}
      */
     /**
@@ -551,6 +554,123 @@ class PhoneAutomationsTest extends TestCase
         );
     }
 
+    /**
+     * Tagging a call raises an event a rule can act on, carrying the TAG NAME.
+     *
+     * ── Why this had to exist ────────────────────────────────────
+     *
+     * A tag became compulsory before somebody could hang up, and nothing was
+     * raised when one was set. So the most useful moment in the module — the
+     * instant a call stops being "a call" and becomes "a complaint" — reached
+     * Automations not at all. The field was mandatory to fill in and inert
+     * once filled: a report input, not an event.
+     *
+     * ── Why the name and not just the id ────────────────────────
+     *
+     * A rule is written by a person choosing "Complaint" from a list. An event
+     * carrying only `tag_id` forces every condition to be written against a
+     * uuid, which nobody does, so the trigger would have existed and been
+     * unusable — the shape §8 keeps warning about.
+     *
+     * The franchise scope is asserted too, because a tagged call has to reach
+     * the branch's own rules and not the branch next door's, and that answer
+     * comes from PhoneCall::automationScope().
+     */
+    public function test_tagging_a_call_raises_an_event_carrying_the_tag_name(): void
+    {
+        $t = $this->provisionTenant();
+        $agent = $this->userWithRole($t, 'Dispatch', ['phone.view'], 'tagger@t.test');
+
+        [$call, $tag] = $this->inTenant($t['org'], function () use ($t) {
+            [, $number] = $this->openLine($t, e164: '+12035553055', franchiseScoped: true);
+
+            $tag = PhoneCallTag::query()->create([
+                'organization_id' => $t['org']->id,
+                'name' => 'Complaint',
+                'color' => '#B3261E',
+                'is_active' => true,
+                'position' => 1,
+            ]);
+
+            $call = PhoneCall::create([
+                'connection_id' => $number->connection_id,
+                'number_id' => $number->id,
+                'twilio_sid' => 'CA'.bin2hex(random_bytes(16)),
+                'direction' => PhoneCall::DIRECTION_INBOUND,
+                'from_e164' => '+15551110055',
+                'to_e164' => '+12035553055',
+                'status' => PhoneCall::STATUS_COMPLETED,
+            ]);
+
+            return [$call, $tag];
+        });
+
+        $this->signedInAs($agent)
+            ->patchJson("/api/v1/phone/calls/{$call->id}/tag", ['tag_id' => $tag->id])
+            ->assertOk();
+
+        $this->inTenant($t['org'], function () use ($call, $t) {
+            $event = AutomationEvent::query()
+                ->where('event_key', 'phone.call.tagged')
+                ->where('subject_id', $call->id)
+                ->first();
+
+            $this->assertNotNull($event, 'tagging a call raised nothing');
+
+            $this->assertSame(
+                'Complaint',
+                $event->payload['after']['tag'] ?? null,
+                'the event carried no tag name, so a rule could only be written '
+                .'against a uuid',
+            );
+
+            // The branch's own rules, and nobody else's.
+            $this->assertSame(
+                ['franchise', $t['franchise']->id],
+                $call->fresh('number')->automationScope(),
+            );
+        });
+    }
+
+    /**
+     * Clearing a tag raises nothing.
+     *
+     * "This turned out not to be a complaint" is not something anybody writes
+     * a rule against, and firing on the way out would run the complaint rule
+     * a second time as the tag was removed.
+     */
+    public function test_clearing_a_tag_raises_nothing(): void
+    {
+        $t = $this->provisionTenant();
+        $agent = $this->userWithRole($t, 'Dispatch', ['phone.view'], 'untagger@t.test');
+
+        $call = $this->inTenant($t['org'], function () use ($t) {
+            [, $number] = $this->openLine($t, e164: '+12035553056');
+
+            return PhoneCall::create([
+                'connection_id' => $number->connection_id,
+                'number_id' => $number->id,
+                'twilio_sid' => 'CA'.bin2hex(random_bytes(16)),
+                'direction' => PhoneCall::DIRECTION_INBOUND,
+                'from_e164' => '+15551110056',
+                'to_e164' => '+12035553056',
+                'status' => PhoneCall::STATUS_COMPLETED,
+            ]);
+        });
+
+        $this->signedInAs($agent)
+            ->patchJson("/api/v1/phone/calls/{$call->id}/tag", ['tag_id' => null])
+            ->assertOk();
+
+        $this->inTenant($t['org'], fn () => $this->assertFalse(
+            AutomationEvent::query()
+                ->where('event_key', 'phone.call.tagged')
+                ->where('subject_id', $call->id)
+                ->exists(),
+            'removing a tag raised a tagged event',
+        ));
+    }
+
     private function openLine(array $tenant, string $e164, bool $franchiseScoped = false): array
     {
         $connection = PhoneConnection::factory()->create([
@@ -574,7 +694,7 @@ class PhoneAutomationsTest extends TestCase
     }
 
     /** @param  array<string, string>  $params */
-    private function signedPost(string $url, array $params, string $authToken): \Illuminate\Testing\TestResponse
+    private function signedPost(string $url, array $params, string $authToken): TestResponse
     {
         $signature = (new RequestValidator($authToken))->computeSignature($url, $params);
 

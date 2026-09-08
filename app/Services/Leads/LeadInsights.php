@@ -1,0 +1,189 @@
+<?php
+
+namespace App\Services\Leads;
+
+use App\Models\Lead;
+use App\Models\LeadConversation;
+use Aws\BedrockRuntime\BedrockRuntimeClient;
+use Illuminate\Support\Facades\Log;
+use Throwable;
+
+/**
+ * What a model can say about an enquiry: which of three piles it belongs
+ * on, one line of what it is about, and a draft the desk may send.
+ *
+ * Amazon Bedrock, Claude, through the AWS SDK this application already
+ * carries for SES. Jose's decision of 2026-09-08 ("as you recommend"): the
+ * managed service in the same AWS account, pay per request, nothing to run on
+ * the box. Measured that day on A-1 Chimney's volume - twelve customer texts
+ * and thirty-four leads a day - the bill is single digits a month.
+ *
+ * ── Two things this class never does ─────────────────────────────
+ *
+ * It never sends. A draft comes back as text the composer offers; a person
+ * reads it, changes it, and presses Send - or does not. a1leads auto-replies
+ * without a person; this platform's Lead model was written to forbid exactly
+ * that, and the rule stands until Jose lifts it by name.
+ *
+ * It never runs without keys. `enabled()` is false until AWS credentials and
+ * a Bedrock model id are in the environment, and everything that calls this
+ * checks first, so the screen shows nothing rather than an error.
+ */
+class LeadInsights
+{
+    public const BOOK    = 'BOOK';
+    public const SUPPORT = 'SUPPORT';
+    public const ARCHIVE = 'ARCHIVE';
+
+    public const CLASSIFICATIONS = [self::BOOK, self::SUPPORT, self::ARCHIVE];
+
+    public function __construct(
+        private readonly ?BedrockRuntimeClient $client,
+        private readonly string $model,
+    ) {}
+
+    public function enabled(): bool
+    {
+        return $this->client !== null && $this->model !== '';
+    }
+
+    /**
+     * BOOK / SUPPORT / ARCHIVE and one line, or null when the lead has
+     * nothing said yet, the service is off, or the model did not answer.
+     *
+     * @return array{classification: string, summary: string}|null
+     */
+    public function classify(Lead $lead): ?array
+    {
+        $thread = $this->thread($lead);
+
+        if ($thread === '' || ! $this->enabled()) {
+            return null;
+        }
+
+        $answer = $this->ask(
+            'You sort enquiries for a home-services business (chimneys, fireplaces, '
+            .'inspections). Read the conversation and answer with JSON only: '
+            .'{"classification": "BOOK" | "SUPPORT" | "ARCHIVE", "summary": "<one line>"}. '
+            .'BOOK: a person who wants work done, quoted or scheduled. '
+            .'SUPPORT: an existing customer about a booking, an invoice, a follow-up, or a complaint. '
+            .'ARCHIVE: spam, a wrong number, a vendor selling something, or nothing to act on. '
+            .'The summary is what the person wants, in one plain sentence, no more than 140 characters.',
+            $thread,
+        );
+
+        $json = self::json($answer);
+        $classification = strtoupper(trim((string) ($json['classification'] ?? '')));
+
+        if (! in_array($classification, self::CLASSIFICATIONS, true)) {
+            return null;
+        }
+
+        return [
+            'classification' => $classification,
+            'summary'        => mb_substr(trim((string) ($json['summary'] ?? '')), 0, 255),
+        ];
+    }
+
+    /** A draft for the desk to read, change and send. Null when there is nothing to draft from. */
+    public function suggestReply(Lead $lead): ?string
+    {
+        $thread = $this->thread($lead);
+
+        if ($thread === '' || ! $this->enabled()) {
+            return null;
+        }
+
+        $answer = $this->ask(
+            'You write short text replies on behalf of a home-services business to a person '
+            .'who enquired. Reply to the LAST message from the customer. Be warm, specific and '
+            .'brief: at most three sentences, no greeting longer than their name, no sign-off, '
+            .'no promises of price or time that the conversation does not already contain. '
+            .'Answer with the reply text only.',
+            $thread,
+        );
+
+        $draft = trim($answer);
+
+        return $draft === '' ? null : mb_substr($draft, 0, 1000);
+    }
+
+    /** The conversation as the model reads it: who said what, oldest first, capped. */
+    private function thread(Lead $lead): string
+    {
+        $lines = [];
+
+        if (($lead->contact_name ?? '') !== '') {
+            $lines[] = 'Enquirer: '.$lead->contact_name;
+        }
+
+        $rows = LeadConversation::query()
+            ->where('lead_id', $lead->getKey())
+            ->orderBy('occurred_at')
+            ->get();
+
+        $saidSomething = false;
+
+        foreach ($rows as $row) {
+            if ($row->text === null || trim($row->text) === '') {
+                continue;
+            }
+
+            $who = $row->participant === LeadConversation::FROM_CONSUMER ? 'Customer' : 'Business';
+            $lines[] = "{$who}: ".trim((string) preg_replace('/\s+/', ' ', $row->text));
+            $saidSomething = $saidSomething || $row->participant === LeadConversation::FROM_CONSUMER;
+        }
+
+        if (! $saidSomething) {
+            return '';
+        }
+
+        return mb_substr(implode("\n", $lines), -6000);
+    }
+
+    private function ask(string $system, string $user): string
+    {
+        try {
+            $result = $this->client->converse([
+                'modelId'         => $this->model,
+                'system'          => [['text' => $system]],
+                'messages'        => [['role' => 'user', 'content' => [['text' => $user]]]],
+                'inferenceConfig' => ['maxTokens' => 400, 'temperature' => 0.2],
+            ]);
+        } catch (Throwable $e) {
+            // Nothing on screen depends on this answer; a quiet warning and a
+            // null is the right failure. Never the thread text in the log.
+            Log::warning('Bedrock did not answer for a lead.', ['reason' => mb_substr($e->getMessage(), 0, 200)]);
+
+            return '';
+        }
+
+        $content = (array) ($result['output']['message']['content'] ?? []);
+
+        foreach ($content as $block) {
+            if (is_array($block) && isset($block['text'])) {
+                return (string) $block['text'];
+            }
+        }
+
+        return '';
+    }
+
+    /** @return array<string, mixed> */
+    private static function json(string $text): array
+    {
+        $text = trim($text);
+        $text = preg_replace('/^```(?:json)?\s*|\s*```$/', '', $text) ?? $text;
+
+        $start = strpos($text, '{');
+        $end   = strrpos($text, '}');
+
+        if ($start === false || $end === false || $end < $start) {
+            return [];
+        }
+
+        $decoded = json_decode(substr($text, $start, $end - $start + 1), true);
+
+        return is_array($decoded) ? $decoded : [];
+    }
+}

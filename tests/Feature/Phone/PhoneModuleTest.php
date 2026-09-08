@@ -8,7 +8,10 @@ use Tests\TestCase;
 /**
  * Phone — real module declaration (view/edit, call/SMS/voicemail automations).
  *
- * Call started/ended/missed raise from the Voice webhooks. Voicemail left
+ * Call started/ended/missed raise from the Voice webhooks. Call tagged raises
+ * from CallTagsController when somebody says what a call was about — the
+ * moment a call becomes a complaint or a booking, which is the only moment a
+ * rule about complaints could fire. Voicemail left
  * raises from the recording callback. SMS received/sent raise from the SMS
  * webhook and MessagesController. number.broken raises from PhoneLineHealth
  * on a gateway failure transition. Subject is null (call, SMS, and number —
@@ -27,6 +30,7 @@ class PhoneModuleTest extends TestCase
                 'phone.call.started',
                 'phone.call.ended',
                 'phone.call.missed',
+                'phone.call.tagged',
                 'phone.voicemail.left',
                 'phone.sms.received',
                 'phone.sms.sent',

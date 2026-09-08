@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Phone;
 use App\Http\Controllers\Api\Controller;
 use App\Models\PhoneCall;
 use App\Models\PhoneCallTag;
+use App\Support\Automations\EventEmitter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -20,6 +21,8 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class CallTagsController extends Controller
 {
+    public function __construct(private readonly EventEmitter $events) {}
+
     /** GET /api/v1/phone/tags */
     public function index(Request $request): JsonResponse
     {
@@ -159,6 +162,34 @@ class CallTagsController extends Controller
         $call->tagged_by = $tagId === null ? null : $request->user()->id;
         $call->tagged_at = $tagId === null ? null : now();
         $call->save();
+
+        // Raised only when a tag is PUT ON, never when one is taken off.
+        //
+        // Tagging is now required before somebody can hang up, so this is the
+        // moment a call stops being "a call" and becomes "a complaint" or "a
+        // booking" — which is the only moment a rule about complaints could
+        // possibly fire. Without it the tag was a required field feeding a
+        // report and nothing else: mandatory to enter, inert once entered.
+        //
+        // Clearing a tag raises nothing. "This turned out not to be a
+        // complaint" is not an event anybody writes a rule against, and firing
+        // on it would run the complaint rule a second time on the way out.
+        if ($tagId !== null) {
+            $this->events->emit('phone.call.tagged', $call, ['after' => [
+                'id' => $call->id,
+                'direction' => $call->direction,
+                'from_e164' => $call->from_e164,
+                'to_e164' => $call->to_e164,
+                'number_id' => $call->number_id,
+                'duration_seconds' => $call->duration_seconds,
+
+                // The name as well as the id, because a rule reads "Complaint"
+                // and an id means nothing to the person writing one.
+                'tag_id' => $call->tag_id,
+                'tag' => $tag?->name,
+                'tagged_by' => $call->tagged_by,
+            ]]);
+        }
 
         return response()->json(['data' => [
             'id' => $call->id,

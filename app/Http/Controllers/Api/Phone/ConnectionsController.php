@@ -12,6 +12,7 @@ use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
@@ -367,7 +368,7 @@ class ConnectionsController extends Controller
     /**
      * Org connection plus company connections the caller can act on.
      *
-     * @return \Illuminate\Support\Collection<int, PhoneConnection>
+     * @return Collection<int, PhoneConnection>
      */
     private function scopeName(PhoneConnection $connection): string
     {
@@ -390,7 +391,7 @@ class ConnectionsController extends Controller
      *
      * An organization view still sees everything, because that IS the view.
      */
-    private function inView(\Illuminate\Support\Collection $connections, User $user): \Illuminate\Support\Collection
+    private function inView(Collection $connections, User $user): Collection
     {
         $view = ViewScope::forUser($user);
 
@@ -410,7 +411,7 @@ class ConnectionsController extends Controller
         })->values();
     }
 
-    private function connectionsInReach(User $user): \Illuminate\Support\Collection
+    private function connectionsInReach(User $user): Collection
     {
         if ($user->canActOnOrganization($user->organization)) {
             return PhoneConnection::query()->get();
@@ -452,6 +453,19 @@ class ConnectionsController extends Controller
      */
     public function update(Request $request, PhoneConnection $connection): JsonResponse
     {
+        // The one method in this controller that shipped without this line.
+        //
+        // Everything else here authorizes, and the omission was invisible
+        // because the endpoint works perfectly for the administrator who
+        // built it. What it allowed was a technician holding read-only Phone,
+        // or no Phone permission at all, changing which menu answers every
+        // call, which group rings, and whether calls are recorded — and a
+        // branch manager reaching up to do it to the parent company by naming
+        // its id. §4 reach and `phone.edit`, the same pair connecting needs,
+        // because this decides what the phone DOES all day and connecting only
+        // decides that it exists.
+        $this->authorize('update', $connection);
+
         // `sometimes` throughout, so General can save the answering settings
         // without restating the tag rule and the Tags screen can save the tag
         // rule without restating everything else. A required field here would

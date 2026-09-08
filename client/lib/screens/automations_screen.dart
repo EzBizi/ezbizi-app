@@ -335,6 +335,34 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
               const SizedBox(height: 4),
               Text(description, style: Theme.of(context).textTheme.bodySmall),
             ],
+            /*
+             * A rule that can never run, said loudly, on the screen where
+             * somebody thinks they have finished.
+             *
+             * The picker marks an unraised trigger quietly — there it is
+             * information helping a choice, the same register as "Not built
+             * yet" on an action row. Here it is not a choice any more: the
+             * rule is saved, switched on, looks exactly like the live ones
+             * beside it, and nothing will ever set it off. The fault has
+             * HAPPENED, which is what this register means, and this is the
+             * surface where nobody is looking because the work felt done.
+             *
+             * The volume tracks whether the fault exists yet, not how
+             * important the fact is. Division agreed with the UI/UX session,
+             * 2026-09-08.
+             *
+             * `== false` and not `!`: a null catalogue is still loading and a
+             * trigger it does not carry is one this build cannot judge, and
+             * neither is a licence to call somebody's rule broken.
+             */
+            if (_catalogue?.triggerIsRaised(trigger) == false) ...[
+              const SizedBox(height: 10),
+              ErrorNote(
+                'Nothing sets this off yet. The rule is saved and switched on, '
+                'but the event it waits for is not something EzBizi reports '
+                'today, so it will not run.',
+              ),
+            ],
             // Surfaced, not buried: a rule that switched itself off after
             // repeated failure has to say so where somebody will see it.
             if (disabledReason != null) ...[

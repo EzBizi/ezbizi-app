@@ -747,4 +747,83 @@ class LeadConversationsTest extends TestCase
 
         $this->assertSame(['Old lead, new text', 'New lead, silent'], $names);
     }
+
+    /**
+     * Where a reply goes is the source's business. A source with no channel
+     * cannot be replied to and says so; a source that tags one is used
+     * without the controller learning its name. Web Management's website
+     * chat is the first such source.
+     */
+    public function test_a_reply_goes_through_the_channel_tagged_for_the_leads_source(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+
+        $chat = $this->inTenant($t['org'], fn () => Lead::create([
+            'organization_id' => $t['org']->id,
+            'company_id'      => $t['company']->id,
+            'source'          => 'website_chat',
+            'remote_id'       => 'chat-1',
+            'contact_name'    => 'Visitor',
+            'status'          => Lead::STATUS_NEW,
+            'received_at'     => now(),
+        ]));
+
+        // No channel for website_chat yet: honest refusal, nothing stored.
+        $this->assertFalse($this->signedInAs($t['admin'])->getJson("/api/v1/leads/{$chat->id}")->json('data.can_reply'));
+        $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$chat->id}/messages", ['text' => 'Hi'])->assertStatus(422);
+
+        // A source registers its channel the way Web Management will: a tag.
+        $channel = new class implements \App\Support\Leads\LeadReplyChannel {
+            public array $sent = [];
+            public function source(): string { return 'website_chat'; }
+            public function canReply(Lead $lead): bool { return true; }
+            public function send(Lead $lead, string $text): LeadConversation
+            {
+                $this->sent[] = $text;
+                return LeadConversation::create([
+                    'organization_id' => $lead->organization_id, 'lead_id' => $lead->id,
+                    'remote_id' => 'chat-reply-1', 'channel' => 'LIVECHAT',
+                    'participant' => LeadConversation::FROM_ADVERTISER, 'occurred_at' => now(), 'text' => $text,
+                ]);
+            }
+        };
+        $this->app->instance('test.chat-channel', $channel);
+        $this->app->tag(['test.chat-channel'], \App\Support\Leads\LeadReplies::TAG);
+
+        $this->assertTrue($this->signedInAs($t['admin'])->getJson("/api/v1/leads/{$chat->id}")->json('data.can_reply'));
+
+        $sent = $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/leads/{$chat->id}/messages", ['text' => 'Hello from the desk'])
+            ->assertCreated()
+            ->json('data');
+
+        $this->assertSame(['Hello from the desk'], $channel->sent);
+        $this->assertSame('LIVECHAT', $sent['channel']);
+        $this->assertSame('ADVERTISER', $sent['from']);
+        Http::assertNothingSent();
+    }
+
+    /** Source is the fourth filter: one list across every source, narrowed by chip. */
+    public function test_the_list_narrows_by_source(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $connection = $this->connected($t);
+
+        $this->fakeGoogle([$this->leadRow('111', 'From Google')], []);
+        $this->sync($t, $connection);
+
+        $this->inTenant($t['org'], fn () => Lead::create([
+            'organization_id' => $t['org']->id, 'company_id' => $t['company']->id,
+            'source' => 'website_form', 'remote_id' => 'form-1', 'contact_name' => 'From a form',
+            'status' => Lead::STATUS_NEW, 'received_at' => now(),
+        ]));
+
+        $all  = $this->signedInAs($t['admin'])->getJson('/api/v1/leads')->json('data.*.contact_name');
+        $form = $this->signedInAs($t['admin'])->getJson('/api/v1/leads?source=website_form')->json('data.*.contact_name');
+        $ads  = $this->signedInAs($t['admin'])->getJson('/api/v1/leads?source=local_services')->json('data.*.contact_name');
+
+        $this->assertCount(2, $all);
+        $this->assertSame(['From a form'], $form);
+        $this->assertSame(['From Google'], $ads);
+    }
 }
