@@ -3,8 +3,6 @@
 namespace App\Support\Training;
 
 use App\Models\AutomationEvent;
-use App\Models\Company;
-use App\Models\Franchise;
 use App\Models\Role;
 use App\Models\TrainingAssignment;
 use App\Models\TrainingGuide;
@@ -13,7 +11,6 @@ use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Automations\EventEmitter;
 use App\Support\Inventory\InventoryVisibility;
-use App\Support\Scoping\PlaceInView;
 use App\Support\Scoping\ViewScope;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -168,10 +165,7 @@ final class AssignmentWriter
             Refusal::permission('assign training')->authorize();
         }
 
-        [$guide, $test] = $this->exactlyOneTarget($input['guide_id'] ?? null, $input['test_id'] ?? null);
-
-        // Coherence audit finding 5 — see [assertContentInView]'s own docblock.
-        $this->assertContentInView($assigner, $guide, $test);
+        [$guide, $test] = $this->exactlyOneTarget($assigner, $input['guide_id'] ?? null, $input['test_id'] ?? null);
 
         $assigneeType = $input['assignee_type'] ?? null;
         $assigneeId = $input['assignee_id'] ?? null;
@@ -260,42 +254,55 @@ final class AssignmentWriter
     }
 
     /**
-     * Files this write on the ASSIGNER's current view — coherence audit
-     * finding 5.
+     * Coherence audit finding 5, corrected (this task — a correction to the
+     * fix, not a new finding).
      *
      * [create] has no place field of its own for the caller to name; the
      * assignment's `company_id`/`franchise_id` are copied from whichever
-     * guide or test is being assigned (see the INSERT below). That still
-     * means picking a `guide_id`/`test_id` is the one way this write
-     * chooses a place, and it was the only one of Training's five writes
-     * that let a caller's REACH stand in for their VIEW there:
-     * `GuidesController`/`TestsController` both call `PlaceInView::assert`
-     * against the place a `store`/`update` request names directly, so an
-     * organization-level author standing in Company A's view is refused
-     * when authoring something at Company B even though their reach covers
-     * it. This write skipped that, so the identical author standing in
-     * Company A's view could assign a guide filed at Company B — no
-     * escalation (§4 reach over the assignEE is still required by
-     * [assertLearnerCanSee]/[authorizeRole]), but a write that answered to
-     * reach where every sibling write answers to the view.
+     * guide or test is being assigned (see the INSERT in [create]). The
+     * first fix for finding 5 added `assertContentInView`, which called
+     * `PlaceInView::assert` against that DERIVED place — the identical
+     * check `GuidesController`/`TestsController` make when a `store`/
+     * `update` request directly NAMES a place to file a new record at.
+     * That was the wrong instrument: `PlaceInView::assert` answers "may
+     * you FILE at the place you just named", and its `company === null`
+     * arm refuses a group-level filing from any non-organization view —
+     * correct when a caller CHOSE to park a new record at the group, but
+     * [create] never chooses a place; it only reads one off an EXISTING
+     * row. Asking `PlaceInView` that question made an organization-wide
+     * guide (`company_id === null`) unassignable from any view narrower
+     * than the organization itself, defeating the one point of an
+     * organization-wide guide — that every place below may use it, most of
+     * all a franchise supervisor handing it to their own crew.
      *
-     * Asks the same `PlaceInView::assert` the other four already call,
-     * about the content's own place rather than a place named directly in
-     * the request — the only place value this write has.
+     * The real question was never "may you file here" — it was "can you
+     * SEE this content from where you stand", which
+     * `InventoryVisibility::constrain` already answers for every other
+     * Training read, [assertLearnerCanSee] included. So do not add a
+     * `PlaceInView`-shaped check back here: constrain the LOOKUP itself
+     * (below, in [exactlyOneTarget]) through `InventoryVisibility` instead.
+     * Its organization arm (`whereNull('company_id')`) makes an org-wide
+     * guide visible from every view, and its company/franchise arms still
+     * keep a sibling company's guide invisible from here — the same
+     * outcome the `PlaceInView` fix reached for a MISPLACED guide, without
+     * the collateral refusal for a WIDELY-placed one.
      */
-    private function assertContentInView(User $assigner, ?TrainingGuide $guide, ?TrainingTest $test): void
-    {
-        $companyId = $guide?->company_id ?? $test?->company_id;
-        $franchiseId = $guide?->franchise_id ?? $test?->franchise_id;
 
-        $company = $companyId === null ? null : Company::find($companyId);
-        $franchise = $franchiseId === null ? null : Franchise::find($franchiseId);
-
-        PlaceInView::assert($assigner, $company, $franchise, 'assignment');
-    }
-
-    /** @return array{0: ?TrainingGuide, 1: ?TrainingTest} */
-    private function exactlyOneTarget(?string $guideId, ?string $testId): array
+    /**
+     * @return array{0: ?TrainingGuide, 1: ?TrainingTest}
+     *
+     * Constrained by the ASSIGNER's current view — coherence audit finding
+     * 5, corrected (see the docblock just above this method). A guide or
+     * test outside that view, including a sibling company's, simply does
+     * not match the constrained query and comes back
+     * `ModelNotFoundException` — the identical "not found" a draft or a
+     * nonexistent id already produces below, on purpose: distinguishing
+     * "wrong place" from "does not exist" would tell an assigner a
+     * specific row EXISTS somewhere they cannot see, the same reasoning
+     * `LearnController::showTest`'s own docblock gives for querying through
+     * publication and place at once rather than resolving by id first.
+     */
+    private function exactlyOneTarget(User $assigner, ?string $guideId, ?string $testId): array
     {
         if (($guideId === null) === ($testId === null)) {
             throw ValidationException::withMessages([
@@ -305,14 +312,24 @@ final class AssignmentWriter
             ]);
         }
 
+        $view = ViewScope::forUser($assigner);
+
         // PUBLISHED only — the same "a draft answers the same as one that
         // does not exist" choice `LearnController::showTest` makes, and for
         // the identical reason: a draft is never something a learner could
         // ever be shown, so a row assigning one is a dud from the moment it
         // is written. See this class's own docblock.
         return $guideId !== null
-            ? [TrainingGuide::query()->where('status', TrainingGuide::PUBLISHED)->findOrFail($guideId), null]
-            : [null, TrainingTest::query()->where('status', TrainingTest::PUBLISHED)->findOrFail($testId)];
+            ? [InventoryVisibility::constrain(
+                TrainingGuide::query()->where('status', TrainingGuide::PUBLISHED),
+                $assigner,
+                $view,
+            )->findOrFail($guideId), null]
+            : [null, InventoryVisibility::constrain(
+                TrainingTest::query()->where('status', TrainingTest::PUBLISHED),
+                $assigner,
+                $view,
+            )->findOrFail($testId)];
     }
 
     /**

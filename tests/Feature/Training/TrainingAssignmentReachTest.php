@@ -221,16 +221,69 @@ class TrainingAssignmentReachTest extends TestCase
         );
     }
 
-    // ── Coherence audit finding 5: AssignmentWriter::create files on the view, like every other Training write ──
+    // ── Coherence audit finding 5, corrected: the assigner must SEE the content, never merely FILE at its place ──
+
+    /**
+     * Correction to finding 5's own fix (this task, not a new finding). The
+     * original fix made [create] call `PlaceInView::assert` against the
+     * content's own (possibly null) place — the same check
+     * `GuidesController`/`TestsController` make when a caller directly
+     * NAMES a place to file a new record at. [create] never files
+     * anywhere; the assignment's place is only ever COPIED off the guide
+     * or test being assigned. Asking `PlaceInView` about that derived
+     * place made an ORGANIZATION-WIDE guide (`company_id === null`)
+     * unassignable from any view narrower than the organization itself —
+     * `PlaceInView::assert`'s `$company === null` arm refuses a group-level
+     * place from any non-organization view, and a franchise view is never
+     * the organization view.
+     *
+     * That defeats the one point of an organization-wide guide: it exists
+     * so every place below the organization may use it, most of all a
+     * franchise supervisor handing it to their own crew — the module's
+     * most important flow. `$supervisor` here is a franchise-level
+     * assigner standing in their OWN franchise's view (an explicitly saved
+     * `navigation.scope`, not the organization default), assigning the
+     * org-wide guide to a learner in that same franchise.
+     *
+     * Against the tree at `a3c829d3` this must fail with the exact
+     * `PlaceInView` refusal described above — that is the regression this
+     * test exists to prove, and it must keep failing there for as long as
+     * `assertContentInView` calls `PlaceInView::assert`. Once [create]
+     * asks `InventoryVisibility::constrain` instead (this task's fix), an
+     * organization-wide guide is visible from every view — its
+     * `whereNull('company_id')` arm — and this must succeed.
+     */
+    public function test_a_franchise_supervisor_may_assign_an_organization_wide_guide_to_their_own_crew(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $riverside = $tenant['franchise'];
+
+        $supervisor = $this->userInFranchise($tenant, $riverside, 'Supervisor', ['training.assign']);
+        $learner = $this->userInFranchise($tenant, $riverside, 'Learner', ['training.view']);
+        $guide = $this->aPublishedOrgGuide($tenant);
+
+        $this->inTenant($tenant['org'], function () use ($supervisor, $riverside) {
+            $supervisor->forceFill(['preferences' => ['navigation.scope' => 'franchise:'.$riverside->id]])->save();
+        });
+
+        $this->signedInAs($supervisor)->postJson('/api/v1/training/assignments', [
+            'guide_id' => $guide->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id,
+        ])->assertCreated();
+    }
 
     /**
      * `$admin` has organization-level §4 reach — plenty to reach both
      * companies — but is currently VIEWING Company A, and the guide named
-     * is filed at a SIBLING company's General. Every other Training write
-     * (`GuidesController`/`TestsController` store and update) refuses
-     * authoring something at a place outside the current view via
-     * `PlaceInView::assert`, even when reach would allow it; this write was
-     * the one that let reach stand in for the view.
+     * is filed at a SIBLING company's General. The original finding stays
+     * closed: this must still be refused. What changed is the mechanism —
+     * [create] no longer asks "may you FILE at this place" (`PlaceInView`);
+     * it asks "can you SEE this content from where you stand"
+     * (`InventoryVisibility::constrain`, run against the lookup itself in
+     * `exactlyOneTarget`). A constrained query simply does not match a
+     * sibling company's guide, so this now comes back the same `404` a
+     * nonexistent or draft id already does — see [exactlyOneTarget]'s own
+     * docblock for why that shape, rather than a named validation error,
+     * is the right one here.
      */
     public function test_an_admin_viewing_one_company_cannot_assign_a_guide_filed_at_a_sibling_company(): void
     {
@@ -255,9 +308,13 @@ class TrainingAssignmentReachTest extends TestCase
 
         $this->signedInAs($admin)->postJson('/api/v1/training/assignments', [
             'guide_id' => $guide->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id,
-        ])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors(['company_id']);
+        ])->assertNotFound();
+
+        $this->inTenant($tenant['org'], function () use ($guide, $learner) {
+            $this->assertDatabaseMissing('training_assignments', [
+                'guide_id' => $guide->id, 'assignee_id' => $learner->id,
+            ]);
+        });
     }
 
     /** Viewing the SAME company the guide is filed at still succeeds — the fix narrows to the view, it does not add a blanket refusal. */
