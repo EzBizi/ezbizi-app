@@ -98,7 +98,7 @@ how stale.
 | Suggestions module | `local_cd7e62ef-dcf0-4939-8467-452f94ce3d63` | EzBizi - Suggestion Module | 2026-09-04 | `ezbizi-83 [67ea80]` |
 | UI / UX | `local_f82e74ac-d808-40cd-bc95-ce473619183a` | EzBizi - UI-UX Manager | 2026-09-04 | `ezbizi-e3 [a6b36a]` |
 | Phone system | `local_d95f72da-cef3-4ffb-b8b1-8f4de859e7f3` | EzBizi - Phone System Module | 2026-09-04 | `ezbizi-7e [74574e]` |
-| Google API | `local_8111908f-4bbb-400e-b842-6194f832387f` | EzBizi - Google API Module | 2026-09-04 | `ezbizi-02 [dd7f64]` — **same name as Inventory this minute** |
+| Google API (also the **Leads** module: Google Ads, Local Services, Thumbtack tabs, lead threads, LeadInsights) | `local_8111908f-4bbb-400e-b842-6194f832387f` | EzBizi - Google API Module | 2026-09-04 | `ezbizi-02 [dd7f64]` — **same name as Inventory this minute** |
 | Clock In / Work Hours | `local_8b413ba1-91de-47c8-8a59-92176a3599f7` | EzBizi - Clock In | 2026-09-08 | — (registered 2026-09-08 by message; owns app/Support/TimeClock, TimeClockController, TimeClockShift + policy, client/lib/screens/hr/time_clock_tab.dart, the _ClockButton in main.dart) |
 | API integrations | `local_e76e374a-d27b-405a-a0f5-41853bed9bba` | EzBizi - API Integrations | 2026-09-04 | `ezbizi-60 [a0a79f]` |
 | Amazon SES | `local_39c741ca-78e6-403b-a5e2-4a5d04cb7ed4` | EzBizi - Amazon SES Module | 2026-09-04 | `ezbizi-d2 [59dcdf]` |
