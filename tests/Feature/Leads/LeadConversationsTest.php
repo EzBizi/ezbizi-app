@@ -111,8 +111,12 @@ class LeadConversationsTest extends TestCase
      * One fake, routed on the GAQL in the body: the window read of leads, the
      * window read of conversations, and the by-id recovery of a lead.
      */
-    private function fakeGoogle(array $leads, array $conversations, array $recovered = []): void
-    {
+    private function fakeGoogle(
+        array $leads,
+        array $conversations,
+        array $recovered = [],
+        mixed $append = null,   // what Http::response() returns: a promise, not a Response
+    ): void {
         config([
             'services.google_ads.client_id'       => 'client.apps.googleusercontent.com',
             'services.google_ads.client_secret'   => 'client-secret',
@@ -120,9 +124,17 @@ class LeadConversationsTest extends TestCase
             'services.google_ads.version'         => 'v24',
         ]);
 
-        Http::fake(function (Request $request) use ($leads, $conversations, $recovered) {
+        // One closure, routed on URL and GAQL. A second Http::fake in the same
+        // test STACKS behind this one, and this one's fall-through answers
+        // everything - which is how the first reply test got a lead list back
+        // from the send.
+        Http::fake(function (Request $request) use ($leads, $conversations, $recovered, $append) {
             if (str_contains($request->url(), 'oauth2.googleapis.com/token')) {
                 return Http::response(['access_token' => 'at-fresh', 'expires_in' => 3600]);
+            }
+
+            if (str_contains($request->url(), 'localServices:appendLeadConversation')) {
+                return $append ?? Http::response(['error' => ['message' => 'unexpected send']], 500);
             }
 
             if ($request->url() === self::RECORDING) {
@@ -394,5 +406,114 @@ class LeadConversationsTest extends TestCase
             return str_contains($query, 'FROM local_services_lead ')
                 && str_contains($query, "creation_date_time >= '{$floor}");
         });
+    }
+
+    /**
+     * The one write to Google, and a person's message in the customer's name.
+     * It is sent through localServices:appendLeadConversation, stored as ours
+     * at once under the id Google returns (so the next sync does not store it
+     * twice), and the lead's preview line becomes it.
+     */
+    public function test_a_reply_goes_through_google_and_appears_in_the_thread_as_ours(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $connection = $this->connected($t);
+
+        $this->fakeGoogle(
+            [$this->leadRow('111')],
+            array_slice($this->threadRows('111'), 1, 1),
+            append: Http::response(
+                ['responses' => [['localServicesLeadConversation' => 'customers/4941850746/localServicesLeadConversations/9001']]],
+                200,
+            ),
+        );
+        $this->sync($t, $connection);
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->where('remote_id', '111')->first());
+
+        $sent = $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/leads/{$lead->id}/messages", ['text' => '  Yes, 10am works.  '])
+            ->assertCreated()
+            ->json('data');
+
+        $this->assertSame('ADVERTISER', $sent['from']);
+        $this->assertSame('MESSAGE', $sent['channel']);
+        $this->assertSame('Yes, 10am works.', $sent['text']);
+
+        Http::assertSent(function (Request $request) {
+            $body = (array) $request->data();
+            $conv = (array) (($body['conversations'] ?? [])[0] ?? []);
+
+            return str_contains($request->url(), '/customers/4941850746/localServices:appendLeadConversation')
+                && $request->header('login-customer-id') === ['4941850746']
+                && $conv['localServicesLead'] === 'customers/4941850746/localServicesLeads/111'
+                && $conv['text'] === 'Yes, 10am works.';
+        });
+
+        $stored = $this->inTenant($t['org'], fn () => LeadConversation::query()->where('remote_id', '9001')->first());
+        $this->assertNotNull($stored, 'stored under the id Google returned');
+        $this->assertSame($lead->id, $stored->lead_id);
+
+        $fresh = $this->inTenant($t['org'], fn () => $lead->fresh());
+        $this->assertSame('ADVERTISER', $fresh->last_contact_from);
+        $this->assertSame('Yes, 10am works.', $fresh->last_contact_preview);
+
+        $detail = $this->signedInAs($t['admin'])->getJson("/api/v1/leads/{$lead->id}")->json('data');
+        $this->assertTrue($detail['can_reply']);
+        $this->assertCount(2, $detail['conversations']);
+    }
+
+    public function test_a_call_lead_cannot_be_replied_to_and_nothing_is_sent(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $connection = $this->connected($t);
+
+        $call = $this->leadRow('222', 'Caller');
+        $call['localServicesLead']['leadType'] = 'PHONE_CALL';
+
+        $this->fakeGoogle([$call], []);
+        $this->sync($t, $connection);
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->where('remote_id', '222')->first());
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/leads/{$lead->id}/messages", ['text' => 'Hello?'])
+            ->assertStatus(422);
+
+        Http::assertNotSent(fn (Request $request) => str_contains($request->url(), 'appendLeadConversation'));
+
+        $detail = $this->signedInAs($t['admin'])->getJson("/api/v1/leads/{$lead->id}")->json('data');
+        $this->assertFalse($detail['can_reply']);
+    }
+
+    /**
+     * A refused send stores nothing and says so. And it is NOT retried: an
+     * ambiguous answer after Google has accepted the message must never
+     * become the same sentence arriving twice at a stranger's phone.
+     */
+    public function test_a_reply_google_refuses_is_not_stored_and_not_retried(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $connection = $this->connected($t);
+
+        $this->fakeGoogle(
+            [$this->leadRow('111')],
+            [],
+            append: Http::response(
+                ['error' => ['status' => 'INVALID_ARGUMENT', 'message' => 'The lead is no longer active.']],
+                400,
+            ),
+        );
+        $this->sync($t, $connection);
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->where('remote_id', '111')->first());
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/leads/{$lead->id}/messages", ['text' => 'Hello?'])
+            ->assertStatus(502);
+
+        $this->assertSame(0, $this->inTenant($t['org'], fn () => LeadConversation::query()->count()));
+        $sends = Http::recorded(fn (Request $request) => str_contains($request->url(), 'appendLeadConversation'));
+        $this->assertCount(1, $sends, 'exactly one send: a refusal is never retried');
     }
 }

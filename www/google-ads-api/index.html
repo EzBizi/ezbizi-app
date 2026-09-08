@@ -133,10 +133,12 @@ somebody is watching the screen.</p>
 </table>
 
 <h3>Read and write</h3>
-<p>Usage is predominantly <strong>read</strong>. The single write path is lead status, and it is
-always the direct result of a person acting in the EzBizi interface — marking a lead as booked
-when they take the work on, for example. Every such call is recorded in that organization's audit
-log with the acting user, timestamp and target.</p>
+<p>Usage is predominantly <strong>read</strong>. There is one write to Google: replying to a
+text enquiry, which sends the message through the Local Services conversation for that lead, in
+the customer's own account. It happens only when a person in the EzBizi interface writes the
+message and presses Send — nothing composes or sends a reply automatically. Lead status is kept in
+EzBizi's own database and is never written back. Every reply is recorded in that organization's
+audit log with the acting user, timestamp and target.</p>
 <p>EzBizi does <strong>not</strong> create, modify or pause campaigns; set or adjust bids or
 budgets; manage keywords, assets or creatives; or perform automated bulk mutation of any kind.</p>
 

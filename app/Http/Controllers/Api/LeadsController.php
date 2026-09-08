@@ -125,22 +125,72 @@ class LeadsController extends Controller
         // The thread. Every call and message, oldest first, so the screen reads
         // top to bottom the way the conversation happened.
         $data['conversations'] = $lead->conversations
-            ->map(fn (LeadConversation $c) => [
-                'id'            => $c->id,
-                'channel'       => $c->channel,
-                'from'          => $c->participant,
-                'occurred_at'   => $c->occurred_at?->toIso8601String(),
-                'duration_ms'   => $c->duration_ms,
-                'text'          => $c->text,
-                'attachments'   => $c->attachments ?? [],
-                // Never the URL itself: it is fetched with the connection's
-                // token through the endpoint below.
-                'has_recording' => $c->recording_url !== null,
-            ])
+            ->map(fn (LeadConversation $c) => $this->presentConversation($c))
             ->values()
             ->all();
 
+        // Whether a reply can go anywhere: Google accepts them for text
+        // enquiries only, and only while the account is connected.
+        $data['can_reply'] = $lead->lead_type === 'MESSAGE' && $lead->connection_id !== null;
+
         return response()->json(['data' => $data]);
+    }
+
+    /** @return array<string, mixed> */
+    private function presentConversation(LeadConversation $c): array
+    {
+        return [
+            'id'            => $c->id,
+            'channel'       => $c->channel,
+            'from'          => $c->participant,
+            'occurred_at'   => $c->occurred_at?->toIso8601String(),
+            'duration_ms'   => $c->duration_ms,
+            'text'          => $c->text,
+            'attachments'   => $c->attachments ?? [],
+            // Never the URL itself: it is fetched with the connection's
+            // token through the recording endpoint.
+            'has_recording' => $c->recording_url !== null,
+        ];
+    }
+
+    /**
+     * POST /api/v1/leads/{lead}/messages
+     *
+     * Reply to the enquirer. The message goes through Google into the chat
+     * they wrote in and appears in the thread as ours at once. Audited per
+     * send, because it is a sentence to a stranger in the customer's name.
+     */
+    public function reply(Request $request, Lead $lead): JsonResponse
+    {
+        $this->authorize('update', $lead);
+
+        $input = $request->validate([
+            'text' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $text = trim($input['text']);
+
+        abort_if($text === '', Response::HTTP_UNPROCESSABLE_ENTITY, 'Write something to send.');
+
+        try {
+            $row = $this->localServices->reply($lead, $text);
+        } catch (RuntimeException $e) {
+            // Google's refusal and "this is a call" both arrive here with a
+            // sentence written for the screen. 422 for the ones the person can
+            // act on, 502 for the ones only Google can.
+            $status = $lead->lead_type !== 'MESSAGE' || $lead->connection === null
+                ? Response::HTTP_UNPROCESSABLE_ENTITY
+                : Response::HTTP_BAD_GATEWAY;
+
+            abort($status, $e->getMessage());
+        }
+
+        $this->audit->log('lead.replied', $lead, [
+            'conversation_id' => $row->id,
+            'characters'      => mb_strlen($text),
+        ], actor: $request->user());
+
+        return response()->json(['data' => $this->presentConversation($row)], Response::HTTP_CREATED);
     }
 
     /**

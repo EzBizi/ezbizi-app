@@ -282,6 +282,96 @@ class LocalServicesLeads
         return ['fetched' => $fetched, 'created' => $created, 'leads_recovered' => $recovered];
     }
 
+    /**
+     * Send a reply to the enquirer, through Google, into the chat they wrote in.
+     *
+     * The one write this module makes to Google, and it is a person's message
+     * in the customer's name: it goes because somebody pressed Send, never
+     * from a rule. `localServices:appendLeadConversation` is the call a1leads
+     * has used since it started; Google accepts it for MESSAGE leads only,
+     * so a call lead is refused here before anything is sent.
+     *
+     * No automatic retry. An ambiguous answer - a timeout after Google has
+     * already accepted the message - must never become the same sentence
+     * arriving twice at a stranger's phone. The screen says it failed and the
+     * person decides.
+     *
+     * @throws RuntimeException with a sentence for the screen
+     */
+    public function reply(Lead $lead, string $text): LeadConversation
+    {
+        $connection = $lead->connection;
+
+        if ($connection === null) {
+            throw new RuntimeException(
+                'The account this enquiry came through is no longer connected, so a reply cannot be sent.',
+            );
+        }
+
+        if ($lead->lead_type !== 'MESSAGE') {
+            throw new RuntimeException(
+                'Google only accepts replies to text enquiries. This one came in as a call.',
+            );
+        }
+
+        $token      = GoogleToken::forConnection($connection, 'google_ads');
+        $customerId = preg_replace('/\D/', '', (string) $connection->remote_id) ?? '';
+
+        try {
+            $response = Http::withToken($token)
+                ->withHeaders([
+                    'developer-token'   => (string) config('services.google_ads.developer_token'),
+                    'login-customer-id' => $customerId,
+                ])
+                ->timeout(self::TIMEOUT)
+                ->post(
+                    GoogleAdsOAuth::endpoint()."/customers/{$customerId}/localServices:appendLeadConversation",
+                    ['conversations' => [[
+                        'localServicesLead' => "customers/{$customerId}/localServicesLeads/{$lead->remote_id}",
+                        'text'              => $text,
+                    ]]],
+                );
+        } catch (ConnectionException) {
+            throw new RuntimeException('Google did not answer. The reply was not sent.');
+        }
+
+        if ($response->failed()) {
+            $error  = (array) $response->json('error', []);
+            $detail = is_string($error['message'] ?? null) ? (string) $error['message'] : '';
+
+            Log::warning('Google refused a Local Services reply.', [
+                'http_status'   => $response->status(),
+                'google_status' => is_string($error['status'] ?? null) ? $error['status'] : null,
+                'detail'        => mb_substr($detail, 0, 300),
+            ]);
+
+            throw new RuntimeException(sprintf(
+                'Google refused the reply (HTTP %d). It was not sent.',
+                $response->status(),
+            ));
+        }
+
+        // "customers/123/localServicesLeadConversations/456": the id is the
+        // last segment, and it is the same id the next sync will bring back,
+        // which is what stops the sync storing this message a second time.
+        $name     = (string) ($response->json('responses.0.localServicesLeadConversation') ?? '');
+        $remoteId = trim((string) substr(strrchr($name, '/') ?: '', 1)) ?: ('sent-'.now()->format('YmdHisv'));
+
+        $row = LeadConversation::create([
+            'organization_id' => $lead->organization_id,
+            'lead_id'         => $lead->getKey(),
+            'remote_id'       => $remoteId,
+            'channel'         => LeadConversation::CHANNEL_MESSAGE,
+            'participant'     => LeadConversation::FROM_ADVERTISER,
+            'occurred_at'     => now(),
+            'text'            => $text,
+        ]);
+
+        $this->refreshLastContact($lead);
+
+        return $row;
+    }
+
     private function conversationsSince(SocialConnection $connection): Carbon
     {
         $newest = LeadConversation::query()
