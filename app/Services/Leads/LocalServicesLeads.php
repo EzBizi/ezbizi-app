@@ -6,6 +6,7 @@ use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\SocialConnection;
 use App\Support\Automations\EventEmitter;
+use App\Support\Leads\LeadThread;
 use App\Support\Social\GoogleAdsOAuth;
 use App\Support\Social\GoogleToken;
 use Illuminate\Http\Client\ConnectionException;
@@ -62,6 +63,7 @@ class LocalServicesLeads
     public function __construct(
         private readonly GoogleAdsOAuth $oauth,
         private readonly EventEmitter $events,
+        private readonly LeadThread $threads,
     ) {}
 
     /**
@@ -436,14 +438,13 @@ class LocalServicesLeads
     }
 
     /**
-     * True when the row is new. An existing row is refreshed - Google can
-     * attach a recording URL a little after the call itself appears.
+     * Google's row, in the thread's shape. True when it is new.
      *
      * @param  array<string, mixed>  $raw
      */
     private function storeConversation(Lead $lead, array $raw): bool
     {
-        $fields = [
+        return $this->threads->store($lead, $raw['id'], [
             'channel'       => $raw['channel'],
             'participant'   => $raw['participant'],
             'occurred_at'   => $raw['occurredAt'] !== null
@@ -453,89 +454,14 @@ class LocalServicesLeads
             'recording_url' => $raw['recordingUrl'],
             'text'          => $raw['text'],
             'attachments'   => $raw['attachments'],
-        ];
-
-        $existing = LeadConversation::query()
-            ->where('organization_id', $lead->organization_id)
-            ->where('remote_id', $raw['id'])
-            ->first();
-
-        if ($existing !== null) {
-            $existing->fill($fields)->save();
-
-            return false;
-        }
-
-        $row = LeadConversation::create([
-            'organization_id' => $lead->organization_id,
-            'lead_id'         => $lead->getKey(),
-            'remote_id'       => $raw['id'],
-            ...$fields,
         ]);
-
-        // The enquirer reached out - called, or wrote. The business's own
-        // replies also land here, but they are not something to be told about.
-        if ($row->participant === LeadConversation::FROM_CONSUMER) {
-            $this->events->emitAfterCommit('lead.contact_received', $lead, [
-                'after' => [
-                    'channel'     => $row->channel,
-                    'occurred_at' => $row->occurred_at,
-                    'preview'     => self::preview($row),
-                    'contact_name'=> $lead->contact_name,
-                    'phone'       => $lead->phone,
-                ],
-            ]);
-        }
-
-        return true;
     }
 
-    /** The list's preview line, rewritten from the newest row every sync. */
     private function refreshLastContact(Lead $lead): void
     {
-        $last = LeadConversation::query()
-            ->where('lead_id', $lead->getKey())
-            ->orderByDesc('occurred_at')
-            ->first();
-
-        $lead->forceFill([
-            'last_contact_at'      => $last?->occurred_at,
-            'last_contact_channel' => $last?->channel,
-            'last_contact_from'    => $last?->participant,
-            'last_contact_preview' => $last !== null ? self::preview($last) : null,
-        ])->save();
+        $this->threads->refresh($lead);
     }
 
-    /**
-     * One line. A message is its own first line; a call is its length, because
-     * "Call · 0:00" and "Call · 4:32" are the two things a person wants to
-     * know about it from the list.
-     */
-    public static function preview(LeadConversation $row): ?string
-    {
-        if ($row->text !== null) {
-            $line = trim((string) preg_replace('/\s+/', ' ', $row->text));
-
-            return mb_substr($line, 0, 255);
-        }
-
-        if ($row->channel === LeadConversation::CHANNEL_PHONE_CALL) {
-            $seconds = intdiv((int) ($row->duration_ms ?? 0), 1000);
-
-            return sprintf('Call · %d:%02d', intdiv($seconds, 60), $seconds % 60);
-        }
-
-        return null;
-    }
-
-    /**
-     * The newest lead we already hold, or a bounded window on the first run.
-     *
-     * Deliberately the newest RECEIVED time rather than a stored cursor: a
-     * cursor is a second source of truth that can disagree with the rows, and
-     * when it does the disagreement is silent. The rows cannot lie about what
-     * they contain.
-     */
     /**
      * Google's timestamps are in the ACCOUNT's time zone, with no offset.
      *
@@ -557,6 +483,14 @@ class LocalServicesLeads
         return Carbon::parse($stamp, $timeZone ?: 'UTC')->utc();
     }
 
+    /**
+     * The newest lead we already hold, or a bounded window on the first run.
+     *
+     * Deliberately the newest RECEIVED time rather than a stored cursor: a
+     * cursor is a second source of truth that can disagree with the rows, and
+     * when it does the disagreement is silent. The rows cannot lie about what
+     * they contain.
+     */
     private function since(SocialConnection $connection): Carbon
     {
         $newest = Lead::query()
