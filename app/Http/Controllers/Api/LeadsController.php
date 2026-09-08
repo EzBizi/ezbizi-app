@@ -2,12 +2,16 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Customer;
+use App\Models\Franchise;
+use App\Models\Job;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\SocialConnection;
 use App\Services\Leads\LocalServicesLeads;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Social\GoogleToken;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
@@ -19,6 +23,7 @@ use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -39,6 +44,7 @@ class LeadsController extends Controller
         private readonly AuditLogger $audit,
         private readonly TenantContext $tenant,
         private readonly EventEmitter $events,
+        private readonly RecordNumberGenerator $numbers,
     ) {}
 
     /** GET /api/v1/leads */
@@ -60,7 +66,7 @@ class LeadsController extends Controller
                 $join->on('lead_reads.lead_id', '=', 'leads.id')
                     ->where('lead_reads.user_id', '=', $user->getKey());
             })
-            ->with(['company:id,name', 'franchise:id,name'])
+            ->with(['company:id,name', 'franchise:id,name', 'noteBy:id,name'])
             ->orderByDesc('leads.received_at')
             ->orderByDesc('leads.created_at');
 
@@ -142,7 +148,7 @@ class LeadsController extends Controller
     {
         $this->authorize('view', $lead);
 
-        $data = $this->present($lead->load(['company:id,name', 'franchise:id,name']));
+        $data = $this->present($lead->load(['company:id,name', 'franchise:id,name', 'job', 'noteBy:id,name']));
 
         // The thread. Every call and message, oldest first, so the screen reads
         // top to bottom the way the conversation happened.
@@ -155,7 +161,216 @@ class LeadsController extends Controller
         // enquiries only, and only while the account is connected.
         $data['can_reply'] = $lead->lead_type === 'MESSAGE' && $lead->connection_id !== null;
 
+        // Customers this number already belongs to, so booking can attach to
+        // one instead of making a second Jane Doe. Same digits-only match the
+        // Customers screen uses for its duplicate warning; advisory only.
+        $data['customer_matches'] = $this->customerMatches($lead)
+            ->map(fn (Customer $c) => ['id' => $c->id, 'number' => $c->number, 'name' => $c->name, 'phone' => $c->phone])
+            ->values()
+            ->all();
+
         return response()->json(['data' => $data]);
+    }
+
+    /** @return \Illuminate\Support\Collection<int, Customer> */
+    private function customerMatches(Lead $lead): \Illuminate\Support\Collection
+    {
+        $digits = $lead->phone_digits;
+
+        if ($digits === null || strlen($digits) < 7) {
+            return collect();
+        }
+
+        // Google sends +1 216 555 0100; a customer typed in by hand may be
+        // (216) 555-0100. The country code is the difference, so the last
+        // ten digits decide when both sides have that many.
+        $expr = "REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '')";
+
+        return Customer::query()
+            ->when(
+                strlen($digits) >= 10,
+                fn ($q) => $q->whereRaw("RIGHT({$expr}, 10) = ?", [substr($digits, -10)]),
+                fn ($q) => $q->whereRaw("{$expr} = ?", [$digits]),
+            )
+            ->orderBy('name')
+            ->limit(3)
+            ->get();
+    }
+
+    /**
+     * POST /api/v1/leads/{lead}/book
+     *
+     * The lead becomes a customer and a job. Item 2 of the a1tools list (Jose,
+     * 2026-09-08): what a1leads books into Workiz, EzBizi books into its own
+     * Jobs. One transaction: the customer (attached by id, or created from the
+     * details in the request, which may correct the lead's - the lead itself
+     * stays evidence), the job in the chosen franchise, the lead marked booked
+     * and pointing at the job, and the events every other path raises for a
+     * new customer and a new job, plus lead.converted, declared the day the
+     * module was drawn and raised for the first time here.
+     *
+     * The same shape as JobsController::store and CustomersController::store,
+     * including their two-argument policy checks: booking into a franchise is
+     * creating there, and somebody who cannot open a job in Connecticut
+     * cannot do it through a lead either.
+     */
+    public function book(Request $request, Lead $lead): JsonResponse
+    {
+        $this->authorize('update', $lead);
+
+        $input = $request->validate([
+            // A lead placed in a franchise prefills this; one at company level
+            // has none, and the person picks.
+            'franchise_id'  => ['sometimes', 'uuid', $this->existsInTenant('franchises')],
+            'customer_id'   => ['nullable', 'uuid', $this->existsInTenant('customers')],
+            'customer'      => ['sometimes', 'array'],
+            'customer.name' => ['nullable', 'string', 'max:200'],
+            'customer.phone'=> ['nullable', 'string', 'max:40'],
+            'customer.email'=> ['nullable', 'email', 'max:200'],
+            'customer.address_line1' => ['nullable', 'string', 'max:200'],
+            'customer.address_line2' => ['nullable', 'string', 'max:200'],
+            'customer.city'          => ['nullable', 'string', 'max:100'],
+            'customer.state'         => ['nullable', 'string', 'size:2'],
+            'customer.postal_code'   => ['nullable', 'string', 'max:20'],
+            'title'         => ['required', 'string', 'max:200'],
+            'status'        => ['required', 'string', 'max:60'],
+            'description'   => ['nullable', 'string', 'max:10000'],
+            'scheduled_for' => ['nullable', 'date'],
+        ]);
+
+        $franchiseId = $input['franchise_id'] ?? $lead->franchise_id;
+
+        if ($franchiseId === null) {
+            throw ValidationException::withMessages([
+                'franchise_id' => 'This enquiry is not placed in a franchise. Pick the one that will do the work.',
+            ]);
+        }
+
+        $franchise = Franchise::query()->findOrFail($franchiseId);
+
+        if (! in_array($input['status'], Job::allowedStatuses($franchise), strict: true)) {
+            throw ValidationException::withMessages([
+                'status' => sprintf(
+                    'Not one of this organization\'s job statuses (%s). Change the list in Settings.',
+                    implode(', ', Job::allowedStatuses($franchise)),
+                ),
+            ]);
+        }
+
+        $existing = isset($input['customer_id']) ? Customer::query()->findOrFail($input['customer_id']) : null;
+
+        if ($existing === null) {
+            $this->authorize('create', [Customer::class, $franchise]);
+        }
+
+        $this->authorize('create', [Job::class, $franchise]);
+
+        $user = $request->user();
+
+        $result = DB::transaction(function () use ($lead, $input, $franchise, $existing, $user) {
+            $customer = $existing;
+            $created  = false;
+
+            if ($customer === null) {
+                $details = (array) ($input['customer'] ?? []);
+
+                $customer = Customer::create([
+                    'owning_franchise_id' => $franchise->getKey(),
+                    'number'              => $this->numbers->next(RecordNumberGenerator::CUSTOMERS, $franchise),
+                    'name'                => trim((string) ($details['name'] ?? '')) ?: ($lead->contact_name ?: ($lead->phone ?: 'Enquirer')),
+                    'phone'               => trim((string) ($details['phone'] ?? '')) ?: $lead->phone,
+                    'email'               => trim((string) ($details['email'] ?? '')) ?: $lead->email,
+                    'address_line1'       => $details['address_line1'] ?? null,
+                    'address_line2'       => $details['address_line2'] ?? null,
+                    'city'                => $details['city'] ?? null,
+                    'state'               => isset($details['state']) ? strtoupper($details['state']) : null,
+                    'postal_code'         => $details['postal_code'] ?? null,
+                ]);
+                $created = true;
+
+                $this->audit->log('customer.created', $customer, [
+                    'number'    => $customer->number,
+                    'from_lead' => $lead->getKey(),
+                ], actor: $user);
+
+                $this->events->emit('customer.created', $customer, [
+                    'after' => $customer->only(['name', 'phone', 'email', 'owning_franchise_id']),
+                ]);
+            }
+
+            $job = Job::create([
+                'franchise_id'  => $franchise->getKey(),
+                'customer_id'   => $customer->getKey(),
+                'number'        => $this->numbers->next(RecordNumberGenerator::JOBS, $franchise),
+                'title'         => $input['title'],
+                'status'        => $input['status'],
+                'description'   => $input['description'] ?? null,
+                'scheduled_for' => $input['scheduled_for'] ?? null,
+                'currency'      => strtoupper($franchise->currency ?: 'USD'),
+            ]);
+
+            $this->audit->log('job.created', $job, [
+                'franchise' => $franchise->name,
+                'customer'  => $customer->name,
+                'number'    => $job->number,
+                'from_lead' => $lead->getKey(),
+                'customer_owned_by_other_franchise' => $customer->owning_franchise_id !== $franchise->getKey(),
+            ], actor: $user);
+
+            $this->events->emit('job.created', $job, ['after' => $job->only([
+                'status', 'title', 'franchise_id', 'customer_id', 'amount_minor',
+            ])]);
+
+            if ($job->scheduled_for !== null) {
+                $this->events->emit('job.scheduled', $job, [
+                    'after' => ['scheduled_for' => $job->scheduled_for->toIso8601String()],
+                ]);
+            }
+
+            $before = $lead->status;
+            $lead->status = Lead::STATUS_BOOKED;
+            $lead->job_id = $job->getKey();
+            $this->audit->logChange('lead.converted', $lead);
+            $lead->save();
+
+            $this->events->emit('lead.converted', $lead, [
+                'before' => ['status' => $before],
+                'after'  => [
+                    'status'      => $lead->status,
+                    'source'      => $lead->source,
+                    'job_id'      => $job->getKey(),
+                    'customer_id' => $customer->getKey(),
+                ],
+            ]);
+
+            return ['job' => $job, 'customer' => $customer, 'customer_created' => $created];
+        });
+
+        return response()->json([
+            'data' => [
+                'lead'             => $this->present($lead->fresh()->load(['company:id,name', 'franchise:id,name', 'job'])),
+                'customer'         => $result['customer']->only(['id', 'number', 'name', 'phone', 'email']),
+                'customer_created' => $result['customer_created'],
+                'job'              => $this->presentJob($result['job']),
+            ],
+        ], Response::HTTP_CREATED);
+    }
+
+    /** @return array<string, mixed> */
+    private function presentJob(Job $job): array
+    {
+        return [
+            'id'            => $job->id,
+            'number'        => $job->number,
+            'title'         => $job->title,
+            'status'        => $job->status,
+            'scheduled_for' => $job->scheduled_for?->toIso8601String(),
+        ];
+    }
+
+    private function existsInTenant(string $table): \Illuminate\Validation\Rules\Exists
+    {
+        return Rule::exists($table, 'id')->where('organization_id', $this->tenant->idOrFail());
     }
 
     /** @return array<string, mixed> */
@@ -293,7 +508,13 @@ class LeadsController extends Controller
         }
 
         if (array_key_exists('note', $input)) {
-            $lead->note = trim((string) $input['note']) ?: null;
+            $note = trim((string) $input['note']) ?: null;
+
+            if ($note !== $lead->note) {
+                $lead->note            = $note;
+                $lead->note_by_user_id = $note === null ? null : $request->user()->getKey();
+                $lead->note_updated_at = $note === null ? null : now();
+            }
         }
 
         $statusChanges = array_key_exists('status', $input) && $input['status'] !== $lead->status;
@@ -321,7 +542,7 @@ class LeadsController extends Controller
             }
         });
 
-        return response()->json(['data' => $this->present($lead->fresh())]);
+        return response()->json(['data' => $this->present($lead->fresh()->load('noteBy:id,name'))]);
     }
 
     /**
@@ -581,6 +802,10 @@ class LeadsController extends Controller
             'status'        => $lead->status,
             'starred'       => $lead->starred_at !== null,
             'note'          => $lead->note,
+            'note_by'       => $lead->note_by_user_id !== null && $lead->relationLoaded('noteBy')
+                ? $lead->noteBy?->only(['id', 'name'])
+                : null,
+            'note_updated_at' => $lead->note_updated_at?->toIso8601String(),
 
             // Only known on the list, where the reader's mark was joined in.
             // Null on a single-lead read means "not asked", not "read".
@@ -601,6 +826,12 @@ class LeadsController extends Controller
             'last_contact_preview' => $lead->last_contact_preview,
             'company'       => $lead->company?->only(['id', 'name']),
             'franchise'     => $lead->franchise?->only(['id', 'name']),
+
+            // The job it became, once booked. Loaded lazily here: the list
+            // is not the place this shows, the thread header is.
+            'job'           => $lead->job_id !== null && $lead->relationLoaded('job') && $lead->job !== null
+                ? $this->presentJob($lead->job)
+                : null,
         ];
     }
 }

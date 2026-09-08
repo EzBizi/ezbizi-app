@@ -583,6 +583,8 @@ class LeadConversationsTest extends TestCase
 
         $this->assertTrue($data['starred']);
         $this->assertSame('Wants Saturday.', $data['note']);
+        $this->assertSame($t['admin']->name, $data['note_by']['name'], 'a shared line says who wrote it');
+        $this->assertNotNull($data['note_updated_at']);
         $this->assertSame(Lead::STATUS_NEW, $data['status'], 'marks never move the status');
 
         $starred = $this->signedInAs($t['admin'])->getJson('/api/v1/leads?starred=1')->json('data.*.contact_name');
@@ -596,5 +598,119 @@ class LeadConversationsTest extends TestCase
 
         $this->assertFalse($data['starred']);
         $this->assertNull($data['note']);
+        $this->assertNull($data['note_by'], 'a cleared note has no author');
+    }
+
+    /**
+     * Item 2 of the a1tools list. What a1leads books into Workiz, EzBizi
+     * books into its own Jobs: one call makes the customer and the job, marks
+     * the lead booked and pointing at the job, and raises lead.converted.
+     */
+    public function test_booking_a_lead_makes_a_customer_and_a_job_and_marks_it_booked(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $connection = $this->connected($t);
+
+        $this->fakeGoogle([$this->leadRow('111')], []);
+        $this->sync($t, $connection);
+
+        $lead   = $this->inTenant($t['org'], fn () => Lead::query()->where('remote_id', '111')->first());
+        $status = $this->inTenant($t['org'], fn () => \App\Models\Job::allowedStatuses($t['franchise'])[0]);
+
+        $data = $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/leads/{$lead->id}/book", [
+                'franchise_id'  => $t['franchise']->id,
+                'customer'      => ['name' => 'Jane A. Doe', 'email' => 'jane@example.com', 'city' => 'Cleveland', 'state' => 'oh'],
+                'title'         => 'Fireplace chimney',
+                'status'        => $status,
+                'scheduled_for' => '2026-09-17 14:00:00',
+            ])
+            ->assertCreated()
+            ->json('data');
+
+        $this->assertTrue($data['customer_created']);
+        $this->assertSame('Jane A. Doe', $data['customer']['name'], 'the corrected name, not the lead\'s');
+        $this->assertSame('+1 216 555 0100', $data['customer']['phone'], 'the lead\'s number when none was given');
+        $this->assertSame('Fireplace chimney', $data['job']['title']);
+        $this->assertNotEmpty($data['job']['number']);
+        $this->assertSame('booked', $data['lead']['status']);
+        $this->assertSame($data['job']['id'], $data['lead']['job']['id']);
+
+        $this->inTenant($t['org'], function () use ($lead, $t) {
+            $fresh = $lead->fresh();
+            $this->assertSame(Lead::STATUS_BOOKED, $fresh->status);
+            $this->assertNotNull($fresh->job);
+            $this->assertSame('Jane Doe', $fresh->contact_name, 'the lead stays evidence; the customer carries the correction');
+            $this->assertSame('OH', $fresh->job->customer->state);
+            $this->assertSame($t['franchise']->id, $fresh->job->franchise_id);
+        });
+
+        // The detail now carries the job, so the header can say so.
+        $detail = $this->signedInAs($t['admin'])->getJson("/api/v1/leads/{$lead->id}")->json('data');
+        $this->assertSame('Fireplace chimney', $detail['job']['title']);
+    }
+
+    public function test_booking_can_attach_the_customer_the_number_already_belongs_to(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $connection = $this->connected($t);
+
+        $this->fakeGoogle([$this->leadRow('111')], []);
+        $this->sync($t, $connection);
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->where('remote_id', '111')->first());
+
+        $existing = $this->inTenant($t['org'], fn () => \App\Models\Customer::create([
+            'owning_franchise_id' => $t['franchise']->id,
+            'number'              => 'C-0001',
+            'name'                => 'Jane Doe (existing)',
+            'phone'               => '(216) 555-0100',   // same digits, different punctuation
+        ]));
+
+        $detail = $this->signedInAs($t['admin'])->getJson("/api/v1/leads/{$lead->id}")->json('data');
+        $this->assertSame([$existing->id], array_column($detail['customer_matches'], 'id'));
+
+        $status = $this->inTenant($t['org'], fn () => \App\Models\Job::allowedStatuses($t['franchise'])[0]);
+
+        $data = $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/leads/{$lead->id}/book", [
+                'franchise_id' => $t['franchise']->id,
+                'customer_id'  => $existing->id,
+                'title'        => 'Sweep',
+                'status'      => $status,
+            ])
+            ->assertCreated()
+            ->json('data');
+
+        $this->assertFalse($data['customer_created']);
+        $this->assertSame($existing->id, $data['customer']['id']);
+        $this->assertSame(1, $this->inTenant($t['org'], fn () => \App\Models\Customer::query()->count()), 'no second Jane Doe');
+    }
+
+    public function test_a_company_level_lead_needs_a_franchise_picked_and_a_status_the_tenant_has(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $connection = $this->connected($t);   // company-scoped: leads land with franchise_id null
+
+        $this->fakeGoogle([$this->leadRow('111')], []);
+        $this->sync($t, $connection);
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->where('remote_id', '111')->first());
+        $this->assertNull($lead->franchise_id);
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/leads/{$lead->id}/book", ['title' => 'Sweep', 'status' => 'new'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['franchise_id']);
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/leads/{$lead->id}/book", [
+                'franchise_id' => $t['franchise']->id, 'title' => 'Sweep', 'status' => 'not-a-real-status',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['status']);
+
+        $this->assertSame(0, $this->inTenant($t['org'], fn () => \App\Models\Job::query()->count()));
+        $this->assertSame(Lead::STATUS_NEW, $this->inTenant($t['org'], fn () => $lead->fresh()->status));
     }
 }

@@ -569,6 +569,7 @@ Route::prefix('v1')
         Route::get('leads/{lead}/conversations/{conversation}/recording', [LeadsController::class, 'recording']);
         Route::post('leads/{lead}/messages', [LeadsController::class, 'reply']);
         Route::post('leads/{lead}/read', [LeadsController::class, 'read']);
+        Route::post('leads/{lead}/book', [LeadsController::class, 'book']);
         Route::patch('leads/{lead}', [LeadsController::class, 'update']);
         Route::apiResource('vehicles', VehiclesController::class);
         Route::apiResource('inventory/items', InventoryItemsController::class);

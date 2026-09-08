@@ -1713,7 +1713,6 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A lead was turned into a customer and a booked job, carrying '
                             .'its source through so the work can be attributed back to the '
                             .'advertising that produced it.',
-                        isRaised: false,
                     ),
                 ],
                 automationActions: [

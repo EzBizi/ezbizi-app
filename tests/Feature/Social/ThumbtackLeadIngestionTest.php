@@ -1,0 +1,269 @@
+<?php
+
+namespace Tests\Feature\Social;
+
+use App\Models\Lead;
+use App\Models\LeadConversation;
+use App\Models\SocialConnection;
+use App\Support\Social\SocialProvider;
+use App\Support\Social\ThumbtackWebhooks;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Tests\Concerns\BuildsTenants;
+use Tests\TestCase;
+
+/**
+ * A Thumbtack enquiry becoming a Lead row.
+ *
+ * The entry point is an unauthenticated endpoint and the only delivery path
+ * there is — their API cannot list negotiations, so anything dropped here is
+ * gone permanently. What is pinned is therefore mostly about repeats and
+ * failures: the same event twice, a message arriving before its negotiation,
+ * and what happens when the fetch fails.
+ */
+class ThumbtackLeadIngestionTest extends TestCase
+{
+    use BuildsTenants;
+    use RefreshDatabase;
+
+    private const URL = '/api/v1/social/thumbtack/webhook';
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config()->set('services.thumbtack.api_base', 'https://api.thumbtack.com/api');
+    }
+
+    public function test_a_negotiation_event_becomes_a_lead_with_the_customer_on_it(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->connection($t);
+        $this->fakeThumbtack();
+
+        $this->send($t, ['eventType' => 'NegotiationCreatedV4', 'negotiationID' => 'neg-1'])
+            ->assertOk()
+            ->assertJsonPath('data.handled', true);
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->firstOrFail());
+
+        $this->assertSame(Lead::SOURCE_THUMBTACK, $lead->source);
+        $this->assertSame('neg-1', $lead->remote_id);
+        $this->assertSame('Ada Sweep', $lead->contact_name);
+        $this->assertSame('+15552345678', $lead->phone);
+        $this->assertSame('Chimney Cleaning', $lead->category);
+        $this->assertSame(Lead::STATUS_NEW, $lead->status);
+
+        // The enquiry's own time, not the moment the callback landed. Their
+        // timestamps carry an offset, so no account clock is needed.
+        $this->assertSame('2026-09-08 14:30:00', $lead->received_at->utc()->format('Y-m-d H:i:s'));
+    }
+
+    public function test_the_thread_arrives_with_the_lead_and_the_sides_are_not_swapped(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->connection($t);
+        $this->fakeThumbtack();
+
+        $this->send($t, ['eventType' => 'NegotiationCreatedV4', 'negotiationID' => 'neg-1'])->assertOk();
+
+        $rows = $this->inTenant(
+            $t['org'],
+            fn () => LeadConversation::query()->orderBy('occurred_at')->get(),
+        );
+
+        $this->assertCount(2, $rows);
+
+        // Their vocabulary is Business/Customer and ours is
+        // ADVERTISER/CONSUMER. Swapped, the business's own reply would emit
+        // lead.contact_received and tell somebody the customer had written.
+        $this->assertSame(LeadConversation::FROM_CONSUMER, $rows[0]->participant);
+        $this->assertSame('Do you clean flues?', $rows[0]->text);
+        $this->assertSame(LeadConversation::FROM_ADVERTISER, $rows[1]->participant);
+
+        $this->assertSame(['https://cdn.thumbtack.test/flue.jpg'], $rows[0]->attachments);
+    }
+
+    public function test_the_same_event_twice_does_not_make_a_second_lead(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->connection($t);
+        $this->fakeThumbtack();
+
+        // Thumbtack retries on any non-2xx and can deliver twice regardless.
+        // Nothing upstream dedupes, so the keys have to.
+        foreach (range(1, 3) as $ignored) {
+            $this->send($t, ['eventType' => 'NegotiationCreatedV4', 'negotiationID' => 'neg-1'])->assertOk();
+        }
+
+        $this->inTenant($t['org'], function () {
+            $this->assertSame(1, Lead::query()->count());
+            $this->assertSame(2, LeadConversation::query()->count());
+        });
+    }
+
+    public function test_a_replay_does_not_drag_an_archived_lead_back_to_new(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->connection($t);
+        $this->fakeThumbtack();
+
+        $this->send($t, ['eventType' => 'NegotiationCreatedV4', 'negotiationID' => 'neg-1'])->assertOk();
+
+        $this->inTenant($t['org'], function () {
+            Lead::query()->firstOrFail()->forceFill(['status' => Lead::STATUS_ARCHIVED])->save();
+        });
+
+        $this->send($t, ['eventType' => 'NegotiationCreatedV4', 'negotiationID' => 'neg-1'])->assertOk();
+
+        // Somebody's decision outlives the source's repetition.
+        $this->assertSame(
+            Lead::STATUS_ARCHIVED,
+            $this->inTenant($t['org'], fn () => Lead::query()->firstOrFail())->status,
+        );
+    }
+
+    public function test_a_message_event_files_the_enquiry_it_belongs_to(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->connection($t);
+        $this->fakeThumbtack();
+
+        // A message can be the FIRST thing we hear: the negotiation event can
+        // be missed, or predate the connection. Without absorbing the
+        // negotiation first it would have nowhere to be filed.
+        $this->send($t, ['eventType' => 'MessageCreatedV4', 'negotiationID' => 'neg-1'])
+            ->assertOk()
+            ->assertJsonPath('data.handled', true);
+
+        $this->inTenant($t['org'], function () {
+            $this->assertSame(1, Lead::query()->count());
+            $this->assertSame(2, LeadConversation::query()->count());
+        });
+    }
+
+    public function test_a_failed_fetch_answers_500_so_thumbtack_retries_rather_than_losing_the_lead(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->connection($t);
+
+        Http::fake(['api.thumbtack.com/*' => Http::response(['message' => 'upstream is unwell'], 503)]);
+
+        // The opposite of everywhere else in this controller, and deliberate.
+        // A disabled webhook is recoverable by reconnecting; an acknowledged
+        // enquiry that was never stored is gone, because nothing can list it.
+        // withExceptionHandling, not without: the point is that the FRAMEWORK
+        // turns the failure into a 500 response Thumbtack can see and retry,
+        // not that the exception reaches this test.
+        $this->withExceptionHandling();
+
+        $this->send($t, ['eventType' => 'NegotiationCreatedV4', 'negotiationID' => 'neg-1'])
+            ->assertStatus(500);
+
+        $this->inTenant($t['org'], fn () => $this->assertSame(0, Lead::query()->count()));
+    }
+
+    public function test_a_review_event_is_acknowledged_and_writes_no_lead(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->connection($t);
+        $this->fakeThumbtack();
+
+        // Reviews is its own module. Filing one as a Lead would put it in the
+        // wrong list under a name that is not an enquirer.
+        $this->send($t, ['eventType' => 'ReviewCreatedV4', 'negotiationID' => 'neg-1'])
+            ->assertOk()
+            ->assertJsonPath('data.handled', false);
+
+        $this->inTenant($t['org'], fn () => $this->assertSame(0, Lead::query()->count()));
+        Http::assertNothingSent();
+    }
+
+    public function test_an_event_with_no_negotiation_id_is_acknowledged_and_does_nothing(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->connection($t);
+        $this->fakeThumbtack();
+
+        $this->send($t, ['eventType' => 'NegotiationCreatedV4'])
+            ->assertOk()
+            ->assertJsonPath('data.handled', false);
+
+        $this->inTenant($t['org'], fn () => $this->assertSame(0, Lead::query()->count()));
+    }
+
+    // ── helpers ──────────────────────────────────────────────────
+
+    /** @param  array<string, mixed>  $body */
+    private function send(array $t, array $body): \Illuminate\Testing\TestResponse
+    {
+        return $this->withHeader(ThumbtackWebhooks::AUTH_HEADER, 'the-secret')
+            ->postJson(self::URL, $body + ['businessID' => 'biz-1']);
+    }
+
+    /**
+     * One fake for the whole exchange.
+     *
+     * Seeded in ONE call because a second Http::fake in the same test never
+     * replaces the first — it stacks, and the earlier stub keeps winning.
+     */
+    private function fakeThumbtack(): void
+    {
+        Http::fake([
+            'api.thumbtack.com/*/messages' => Http::response(['data' => [
+                [
+                    'messageID'     => 'msg-1',
+                    'negotiationID' => 'neg-1',
+                    'from'          => 'Customer',
+                    'text'          => 'Do you clean flues?',
+                    'sentAt'        => '2026-09-08T14:31:00Z',
+                    'attachments'   => [['url' => 'https://cdn.thumbtack.test/flue.jpg']],
+                ],
+                [
+                    'messageID'     => 'msg-2',
+                    'negotiationID' => 'neg-1',
+                    'from'          => 'Business',
+                    'text'          => 'We do — when suits you?',
+                    'sentAt'        => '2026-09-08T14:45:00Z',
+                ],
+            ]]),
+            'api.thumbtack.com/*/negotiations/*' => Http::response([
+                'negotiationID' => 'neg-1',
+                'createdAt'     => '2026-09-08T14:30:00Z',
+                'customer'      => [
+                    'customerID' => 'cus-1',
+                    'firstName'  => 'Ada',
+                    'lastName'   => 'Sweep',
+                    'phone'      => '+15552345678',
+                ],
+                'request' => [
+                    'requestID' => 'req-1',
+                    'category'  => ['categoryID' => 'cat-1', 'name' => 'Chimney Cleaning'],
+                ],
+            ]),
+        ]);
+    }
+
+    private function connection(array $t): SocialConnection
+    {
+        return $this->inTenant($t['org'], function () use ($t) {
+            $row = new SocialConnection;
+            $row->forceFill([
+                'organization_id' => $t['org']->getKey(),
+                'scope_type'      => SocialConnection::SCOPE_COMPANY,
+                'scope_id'        => $t['company']->getKey(),
+                'provider'        => SocialProvider::Thumbtack->value,
+                'remote_id'       => 'biz-1',
+                'display_name'    => 'A-1 Chimney on Thumbtack',
+            ]);
+            $row->connect([
+                'access_token'                => 'a-token',
+                'refresh_token'               => 'r-token',
+                ThumbtackWebhooks::SECRET_KEY => 'the-secret',
+            ]);
+            $row->save();
+
+            return $row;
+        });
+    }
+}
