@@ -16,6 +16,7 @@ class VersionHistory {
         'The Leads list now puts the most recent call or message first, so a lead that just wrote is at the top even if it first came in days ago.',
         'Web Management: EzBizi can publish to a WordPress site now, not just be read from it. Connecting creates a restricted account on your site and hands EzBizi a key for it - one that can write posts, pages and images and nothing else, and that you can revoke from either end.',
         'Connecting a Thumbtack account works. It was refused at the last step of sign-in, and the message said nothing that would have helped anyone.',
+        'On the desktop app, voicemails and call recordings play inside EzBizi. Until now Windows saved the recording to a temporary folder, opened it in whatever plays MP3s on the machine, and left the file there afterwards.',
       ],
     ),
     VersionRelease(
