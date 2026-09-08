@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../widgets/address_lookup.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/side_panel.dart';
@@ -1244,6 +1245,14 @@ class _SiteDetailState extends State<_SiteDetail> {
         children: [
           Text('Address', style: theme.textTheme.titleSmall),
           const SizedBox(height: 8),
+          if (widget.canEdit) ...[
+            AddressLookup(
+              api: widget.api,
+              onPicked: _applyAddress,
+              label: 'Full address',
+            ),
+            const SizedBox(height: 12),
+          ],
           _fieldGrid(theme, parts),
           if (composed.isNotEmpty) ...[
             const Divider(height: 20),
@@ -1260,6 +1269,27 @@ class _SiteDetailState extends State<_SiteDetail> {
         ],
       ),
     );
+  }
+
+  /// A picked suggestion, spread across the boxes it belongs to.
+  ///
+  /// The suite is deliberately left alone: no lookup knows one, and clearing a
+  /// typed "Suite 4" because somebody re-searched the street would lose the one
+  /// part of the address only a person can supply.
+  void _applyAddress(Map<String, dynamic> parts) {
+    const map = {
+      'address_line1': 'address_line1',
+      'city': 'city',
+      'state': 'state',
+      'postal_code': 'postal_code',
+    };
+
+    setState(() {
+      map.forEach((key, from) {
+        final value = parts[from];
+        if (value is String) _controllers[key]?.text = value;
+      });
+    });
   }
 
   Widget _confirmRow(ThemeData theme) {
