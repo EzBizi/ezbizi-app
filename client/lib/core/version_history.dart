@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0165',
+      date: '8 Sep 2026',
+      items: [
+        'Leads: the Thumbtack tab shows every connected business. It showed one, so an account with several looked like it had one, and disconnecting appeared to do nothing while it was quietly working.',
+        'Connected accounts that share a name (twelve Thumbtack businesses all called "A1 Chimney") now show their id beside the name until you name them, so you can tell which one you are renaming or disconnecting.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0164',
       date: '8 Sep 2026',
       items: [
