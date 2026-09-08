@@ -36,7 +36,19 @@ final class TwimlRenderer
             $this->startTranscription($response, $context);
         }
 
-        if ($number->resolvedFlag('record')) {
+        // INBOUND ONLY, and that is the whole point.
+        //
+        // Twilio runs this document on the leg it is answering. Inbound that
+        // is the caller, so the customer hears the notice before anybody picks
+        // up — correct. Outbound from the browser it is the EMPLOYEE's leg,
+        // and the customer is bridged afterwards by <Dial> — so this same line
+        // told the person doing the recording and left the person being
+        // recorded unwarned. Exactly inverted, and silent: the call sounds
+        // normal and the recording appears in Records either way.
+        //
+        // Outbound puts it on the callee's leg instead, with <Number url> —
+        // see dialParty(). Eleven US states require every party to consent.
+        if (! $outbound && $number->resolvedFlag('record')) {
             $response->say(RecordingNotice::forNumber($number), ['language' => $language]);
         }
 
@@ -649,12 +661,30 @@ final class TwimlRenderer
 
         $dial = $response->dial(null, $attributes);
         if (str_starts_with($to, 'client:')) {
+            // A colleague's browser. Both ends are ours and both are already
+            // looking at a screen that says the call is recorded, so there is
+            // nobody here who has not been told.
             $dial->client(substr($to, strlen('client:')));
 
             return;
         }
 
-        $dial->number($to);
+        // THE WHISPER. TwiML played to the person we called, when they answer,
+        // before the legs are joined — which is the only way the party being
+        // recorded on an outbound call ever hears that it is.
+        //
+        // Only when the line records. Fetching a document that would say
+        // nothing costs the callee a pause on every single call.
+        $numberAttributes = [];
+        if ($number->resolvedFlag('record')) {
+            $numberAttributes['url'] = route('phone.whisper.webhook', [
+                'organization' => $number->organization_id,
+                'connection' => $number->connection_id,
+                'number' => $number->id,
+            ]);
+        }
+
+        $dial->number($to, $numberAttributes);
     }
 
     /**

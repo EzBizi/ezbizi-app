@@ -818,4 +818,85 @@ class TwimlRendererTest extends TestCase
         );
 
     }
+
+    /**
+     * On an OUTBOUND call the recording notice must reach the CUSTOMER.
+     *
+     * ── Why the obvious code was wrong ───────────────────────────
+     *
+     * The notice is a top-level <Say>. On an inbound call that is exactly
+     * right: Twilio runs this document on the caller's leg, so the customer
+     * hears it before anybody picks up.
+     *
+     * On an outbound browser call the same document runs on the EMPLOYEE's
+     * leg — the browser is what Twilio connected — and the customer is then
+     * bridged in by <Dial>. So the person being recorded heard nothing, and
+     * the person doing the recording heard the warning. Exactly inverted.
+     *
+     * That is not a cosmetic defect. Eleven US states require every party to
+     * consent, and the recording exists to be played back later; a recording
+     * made without the other party informed is one that cannot be used and
+     * should not have been made.
+     *
+     * The fix is a whisper: <Number url="..."> plays TwiML to the called party
+     * when they answer, before the legs are bridged. So the notice goes to
+     * whoever needs to hear it and the employee is not made to sit through it.
+     */
+    public function test_an_outbound_call_says_the_recording_notice_to_the_person_called(): void
+    {
+        $t = $this->provisionTenant();
+
+        $number = $this->inTenant($t['org'], function () use ($t) {
+            $connection = PhoneConnection::factory()->create([
+                'scope_type' => PhoneConnection::SCOPE_COMPANY,
+                'scope_id' => $t['company']->id,
+                'status' => PhoneConnection::STATUS_CONNECTED,
+            ]);
+
+            return PhoneNumber::factory()->create([
+                'connection_id' => $connection->id,
+                'scope_type' => PhoneNumber::SCOPE_COMPANY,
+                'scope_id' => $t['company']->id,
+                'e164' => '+12035558811',
+                'record' => true,
+                'recording_notice' => 'A-1 Chimney records its calls.',
+            ])->fresh();
+        });
+
+        $twiml = $this->inTenant($t['org'], fn () => (new TwimlRenderer)->inbound($number, [
+            'outbound' => true,
+            'dial_to' => '+13055550199',
+            'caller_id' => '+12035558811',
+        ]));
+
+        $document = new DOMDocument;
+        $document->loadXML($twiml);
+
+        $numbers = $document->getElementsByTagName('Number');
+        $this->assertGreaterThan(0, $numbers->length, 'no <Number> was dialled');
+
+        /** @var DOMElement $dialled */
+        $dialled = $numbers->item(0);
+
+        $this->assertNotSame(
+            '',
+            (string) $dialled->getAttribute('url'),
+            'the person being called is bridged with no announcement, so the '
+            .'recording notice reached only the employee who dialled',
+        );
+
+        // And the employee is not read the notice on the way out: the top-level
+        // Say belongs to whoever the document runs on, and on an outbound call
+        // that is the wrong party.
+        $says = [];
+        foreach ($document->getElementsByTagName('Say') as $say) {
+            $says[] = $say->textContent;
+        }
+
+        $this->assertNotContains(
+            'A-1 Chimney records its calls.',
+            $says,
+            'the notice is still being spoken to the employee who dialled',
+        );
+    }
 }

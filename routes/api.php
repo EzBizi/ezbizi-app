@@ -82,6 +82,7 @@ use App\Http\Controllers\Api\Phone\TranscriptionWebhookController as PhoneTransc
 use App\Http\Controllers\Api\Phone\TrustController as PhoneTrustController;
 use App\Http\Controllers\Api\Phone\VoicemailBoxesController as PhoneVoicemailBoxesController;
 use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookController;
+use App\Http\Controllers\Api\Phone\WhisperWebhookController as PhoneWhisperWebhookController;
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ReviewsController;
@@ -488,6 +489,22 @@ Route::post('v1/phone/voice/{organization}/{connection}', PhoneVoiceWebhookContr
 Route::post('v1/phone/sms/{organization}/{connection}', PhoneSmsWebhookController::class)
     ->middleware('throttle:120,1')
     ->name('phone.sms.webhook');
+
+/*
+| What the person we CALLED hears before the legs are joined.
+|
+| Twilio fetches this from <Number url="..."> when the callee answers, and
+| plays it to THEM. It exists because the recording notice is a top-level
+| <Say>, which on an outbound browser call runs on the employee's leg — so
+| without this the party being recorded is the one party who is never told.
+|
+| GET as well as POST: Twilio's <Number url> is fetched with the method the
+| verb attribute names, and it defaults to POST, but a callback that only
+| answers one verb is one nobody can test with a browser.
+*/
+Route::match(['get', 'post'], 'v1/phone/whisper/{organization}/{connection}/{number}', PhoneWhisperWebhookController::class)
+    ->middleware('throttle:120,1')
+    ->name('phone.whisper.webhook');
 
 Route::post('v1/phone/status/{organization}/{connection}', PhoneStatusWebhookController::class)
     ->middleware('throttle:120,1')
