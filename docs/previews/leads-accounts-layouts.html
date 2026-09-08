@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi — Leads › connected accounts</title>
+<style>
+  :root {
+    --primary:#00708F; --cyan:#00AEEF;
+    --ink:#060808; --muted:#5B6672; --line:#E9EDF1; --alt:#F5F8FA; --page:#fff;
+    --ok:#0B8F5B; --err:#E07070; --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 system-ui,"Segoe UI",sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1320px; margin:0 auto; padding:16px 16px 64px; }
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:18px; margin:0 0 4px; }
+  header.picker p { margin:0 0 12px; color:var(--muted); max-width:88ch; }
+  .found,.locked,.ask { font-size:13px; border-radius:8px; padding:10px 12px;
+    margin-bottom:12px; max-width:96ch; }
+  .found { background:var(--err-c); } .locked { background:var(--info-c); } .ask { background:var(--warn-c); }
+  .found strong,.locked strong,.ask strong { display:block; margin-bottom:5px; }
+  .found strong { color:#A33; } .locked strong { color:var(--primary); } .ask strong { color:var(--warn); }
+  .brk { display:block; margin-top:8px; font-weight:700; }
+  code { background:rgba(0,0,0,.06); padding:1px 5px; border-radius:4px; font-size:12px; }
+  .nums { display:flex; flex-wrap:wrap; gap:8px; }
+  .nums button { min-width:44px; min-height:44px; border-radius:8px; padding:0 12px;
+    border:1px solid var(--line); background:var(--page); color:var(--ink); }
+  .nums button[aria-pressed="true"] { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .nums .sep { width:1px; background:var(--line); margin:2px 4px; }
+  .caption { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-width:94ch; }
+  .caption strong { display:block; margin-bottom:4px; }
+  .cond { display:inline-block; font-size:11px; font-weight:700; color:var(--warn);
+    background:var(--warn-c); border-radius:5px; padding:1px 7px; margin-left:6px; vertical-align:middle; }
+
+  .shell { display:grid; grid-template-columns:206px 1fr; min-height:600px;
+    background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .topbar { grid-column:1/-1; display:flex; align-items:center; gap:12px; padding:0 14px;
+    height:46px; border-bottom:1px solid var(--line); }
+  .wm { font-weight:800; letter-spacing:-.4px; } .wm i { color:var(--cyan); font-style:normal; }
+  .topbar .sp { flex:1; }
+  .av { width:24px; height:24px; border-radius:50%; background:linear-gradient(135deg,#c9a,#976); }
+  nav.side { background:var(--alt); border-right:1px solid var(--line); padding:10px; }
+  nav.side a { display:block; padding:7px 10px; border-radius:8px; font-size:13px; text-decoration:none; color:var(--ink); }
+  nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  .page { display:flex; flex-direction:column; min-width:0; position:relative; }
+  .hdr { padding:16px 20px 0; }
+  .hdr h2 { margin:0; font-size:28px; font-weight:800; letter-spacing:-.8px; }
+  .hdr p { margin:4px 0 0; color:var(--muted); }
+  .tabs { display:flex; gap:8px; padding:10px 20px; }
+  .tabs span { padding:6px 13px; border-radius:999px; border:1px solid var(--line);
+    color:var(--muted); font-size:13px; }
+  .tabs span.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .toolbar { display:flex; gap:10px; padding:4px 20px 10px; align-items:center; }
+  .search { flex:1; border:1px solid var(--line); border-radius:9px; padding:9px 12px; color:#9AA5AF; font-size:13px; }
+  .sel { border:1px solid var(--line); border-radius:9px; padding:9px 12px; font-size:13px; min-width:84px; }
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:8px; padding:8px 13px; font-size:13px; }
+  .btn.ghost { background:transparent; color:var(--primary); border:1px solid var(--line); }
+  .btn.sm { padding:4px 10px; font-size:12px; }
+  .btn.danger { color:#A33; border-color:#E4B4B4; background:transparent; }
+
+  /* the account band */
+  .band { display:flex; align-items:center; gap:10px; margin:0 20px 8px;
+    border:1px solid var(--line); border-radius:10px; padding:10px 12px; background:var(--alt); }
+  .band .g { flex:1; min-width:0; }
+  .band b { font-size:13px; } .band span { color:var(--muted); font-size:12px; display:block; margin-top:2px; }
+  .gmark { width:20px; height:20px; border-radius:4px; background:#fff; border:1px solid var(--line);
+    display:grid; place-items:center; font-size:11px; font-weight:800; color:#4285F4; flex:none; }
+
+  .leads { border-top:1px solid var(--line); }
+  .lead { display:flex; align-items:center; gap:12px; padding:11px 20px; border-bottom:1px solid var(--line); }
+  .lead .g { flex:1; min-width:0; }
+  .lead b { font-size:14px; } .lead span { color:var(--muted); font-size:12px; display:block; }
+  .pill { font-size:11px; padding:2px 9px; border-radius:999px; background:var(--alt);
+    border:1px solid var(--line); color:var(--muted); font-weight:600; }
+  .pill.new { background:var(--info-c); color:var(--primary); border-color:transparent; }
+
+  /* account rows */
+  .acct { display:flex; align-items:center; gap:10px; padding:9px 12px; border-bottom:1px solid var(--line); }
+  .acct:last-child { border-bottom:0; }
+  .acct .g { flex:1; min-width:0; }
+  .acct .num { font-size:13px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .acct .where { font-size:12px; color:var(--muted); }
+  .acct .where b { color:var(--primary); font-weight:600; }
+  .acct .cnt { font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums;
+    min-width:66px; text-align:right; }
+  .acct .cnt.zero { opacity:.5; }
+  .quiet { background:var(--alt); }
+  .ghead { font-size:11px; font-weight:700; letter-spacing:.6px; color:var(--muted);
+    padding:9px 12px 5px; text-transform:uppercase; background:var(--alt); }
+
+  /* side panel */
+  .panelwrap { position:absolute; inset:0; background:rgba(0,0,0,.35); display:flex; justify-content:flex-end; }
+  .panel { width:440px; background:var(--page); height:100%; display:flex; flex-direction:column;
+    border-radius:16px 0 0 16px; overflow:hidden; }
+  .panel .ph { padding:16px 18px 12px; border-bottom:1px solid var(--line); display:flex; gap:10px; }
+  .panel .ph h3 { margin:0 0 3px; font-size:17px; } .panel .ph p { margin:0; color:var(--muted); font-size:12.5px; }
+  .panel .pb { flex:1; overflow:auto; }
+  .x { color:var(--muted); font-size:18px; }
+
+  .win { border:1px solid var(--line); border-radius:12px; overflow:hidden; margin-bottom:14px; background:var(--page); }
+  .cap { font-size:12px; color:var(--muted); padding:7px 12px; background:var(--alt);
+    border-bottom:1px solid var(--line); font-weight:600; }
+  .note { color:var(--muted); font-size:12.5px; margin:8px 0 0; max-width:94ch; }
+  .note b { color:var(--ink); }
+  .measure { font-size:12px; color:var(--muted); padding:8px 20px 14px; } .measure b { color:var(--ink); }
+
+  .phones { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
+  .phone { width:375px; border:8px solid var(--ink); border-radius:26px; overflow:hidden;
+    background:#fff; height:640px; display:flex; flex-direction:column; }
+  .phone .bar { display:flex; align-items:center; gap:9px; padding:0 11px; height:44px;
+    border-bottom:1px solid var(--line); flex:none; font-weight:600; font-size:14px; }
+  .phone .bar .back { color:var(--primary); font-weight:500; }
+  .phone .sc { overflow:auto; flex:1; }
+  .phone .mt { padding:12px 16px 0; } .phone .mt h2 { margin:0; font-size:22px; font-weight:800; }
+  .row { display:flex; align-items:center; gap:10px; padding:12px 16px; border-bottom:1px solid var(--line); }
+  .row .g { flex:1; min-width:0; } .row .v { color:var(--muted); font-size:12.5px; text-align:right; }
+  .chev { color:var(--muted); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="picker">
+    <h1>Leads › connected accounts, and where each one's leads go</h1>
+    <p>Six numbered layouts: <b>1–3 desktop, 4–6 mobile</b>, drawn separately. Answer with one from
+      each half.</p>
+
+    <div class="locked">
+      <strong>Measured before drawing, not taken from the brief</strong>
+      <code>c55b3c33</code> is an ancestor of HEAD. <code>routes/api.php:968</code> has the PATCH;
+      <code>placeLeads</code> validates <code>leads_franchise_id</code> as
+      <code>present|nullable|uuid</code>. <code>LeadsController:102</code> puts
+      <code>connections</code> in <code>meta</code>. And the reported symptom is exact, in code:
+      <code>leads_screen.dart:179</code> — <code>_connectionFor</code> returns the <b>first</b>
+      provider match, so one of twenty-two shows and which one is an accident of row order.
+    </div>
+
+    <div class="locked">
+      <strong>Both gaps closed, and verified here rather than taken on report</strong>
+      <code>a83b53d5</code> is an ancestor of HEAD. <code>connectionState()</code> now returns
+      <code>leads_franchise_id</code>, <code>leads_franchise_name</code> and
+      <code>leads_count</code> — the count from <b>one grouped query</b>, not twenty-two. The PATCH
+      returns <code>leads_moved</code>, and the null-versus-zero distinction is real in the code:
+      an unchanged placement returns early, before any counting.
+      <span class="brk">So the count-bearing layouts are simply the layouts. Nothing below is conditional.</span>
+      <span class="brk">And it produced a state that must be drawn: placed somewhere you cannot see.</span>
+      The name resolves only against the reader's own reachable franchises, so an account placed
+      outside their reach comes back with a real id and a <b>null name</b>. That is an answer, not
+      missing data — the row has to say a placement exists without naming it, because naming it
+      would leak the shape of the organization one row at a time. Drawn in layout 1's panel.
+    </div>
+
+    <div class="ask">
+      <strong>The reading every layout is built on: these are settings living in a content header</strong>
+      Twenty-two accounts with per-account placement is a <b>settings surface</b>. It has been
+      sitting in the header of a list of leads, which was fine at one account and is not at
+      twenty-two. The brief's own fourth point is the design constraint that matters most —
+      <em>most accounts will sit at company level and never move; the common case is reading, not
+      editing</em> — so the question is not "how do I show twenty-two rows" but
+      <b>"how little can this cost on the way to the leads?"</b>
+      <span class="brk">Which is why none of the three desktop layouts puts twenty-two rows on the
+      page by default.</span> The one that does is drawn anyway, as layout 2, because it is the
+      cheapest to build and Jose should see what he is turning down.
+    </div>
+
+    <div class="nums" id="nums"></div>
+    <div class="caption" id="caption"></div>
+  </header>
+  <div id="stage"></div>
+</div>
+
+<script>
+const CAPTIONS = {
+ 1:["1 · Desktop — one summary line, the full list in a side panel (recommended)",
+    "A single band above the leads: the Google mark, \"22 Google Ads accounts\", and underneath it the only fact worth a permanent row — how they are placed (\"20 at company level · 2 on franchises\"). One button, Manage, opens a side panel holding all twenty-two with their placement, a change control and Disconnect. Recommended because it costs ONE row on the way to the leads no matter how many accounts exist — twenty-two or two hundred — and because a side panel is what this app already uses for every list-you-occasionally-edit, so it inherits the two-tap disconnect, Escape-to-close and focus handling rather than reinventing them. The panel is also the only one of the three with room for the account's placement AND its count AND two actions on one line without wrapping at any window width."],
+ 2:["2 · Desktop — the accounts expand in place, above the leads",
+    "The same summary line, but Manage expands it downward into the page instead of opening a panel. Cheapest to build by some distance: no panel, no route, just a bool. It is drawn so the trade is visible rather than argued. Weakness, and it is decisive: expanded, twenty-two rows sit between the header and the first lead, so the thing you came to the screen for is below the fold — and the moment you edit a placement you are scrolled away from the list that is supposed to change. It also gives the leads list a second scroll position that moves under you, which is the objection that ruled out the same shape for the Phone panes."],
+ 3:["3 · Desktop — a permanent accounts column beside the leads",
+    "Accounts live in a 280px column on the left, leads fill the rest, and selecting an account filters the leads to it. It is the only layout where placing an account and seeing the leads move happens in one view, which is real — placement is retroactive and that is the moment somebody wants proof. Weaknesses: it spends 280px of permanent width on a surface the brief says most people never touch; it adds a filter nobody asked for; and it puts a second independently-scrolling column on a screen that already scrolls, which at twenty-two rows is a scrollbar beside a scrollbar. Below about 1100px it has to collapse into layout 1 anyway."],
+ 4:["4 · Mobile — one row that opens a screen of its own (recommended)",
+    "In the header, a single row: \"Google Ads · 22 accounts · 2 placed\", with a chevron. It opens a full screen listing them, each with its placement, and tapping one opens that account. Recommended because it is the same shape as Your account on a phone, which is already built and approved — a row that states its value, so most visits end without opening anything. The row carries \"2 placed\" rather than just the count because that is the number that changes, and somebody checking whether their assignment took can see it without opening anything at all."],
+ 5:["5 · Mobile — the accounts as a third tab",
+    "Google Leads · Thumbtack Leads · Accounts. Reachable in one tap from anywhere in the module and it needs no new screen. Weakness: it makes a settings surface a peer of the two content lists, so the tab row stops meaning \"which leads\" and starts meaning \"which leads, or not leads\". It also puts Accounts one tap from a mis-tap on the busiest control on the screen, and there is no reason to visit it monthly, let alone daily."],
+ 6:["6 · Mobile — grouped by count, quiet accounts folded away, and what a change says back",
+    "The account screen from layout 4, but sorted and grouped: the accounts that have produced leads first, then a folded \"18 that have never sent a lead\" the rest live behind. With twenty-two rows this is the difference between a list and a wall. Drawn as a variant of 4 rather than a rival: 4 should look like this. Beside it is the other half — what the app says after a placement changes. The API keeps leads_moved null (nothing changed) and 0 (changed, nothing to carry) apart, so the screen says three different things rather than one hedge covering all of them."]
+};
+
+const NAV=['Dashboard','Customers','Jobs','Scheduling','Marketing','Communication','Leads','Email'];
+const side=()=>`<nav class="side">${NAV.map(n=>`<a class="${n==='Leads'?'on':''}">${n}</a>`).join('')}</nav>`;
+const topbar=()=>`<div class="topbar"><span>&#9776;</span><span class="wm"><i>Ez</i>Bizi</span>
+  <span class="sp"></span><span>&#128276;</span><span class="av"></span></div>`;
+const head=()=>`<div class="hdr"><h2>Leads</h2><p>People who asked about you, before they become customers.</p></div>
+  <div class="tabs"><span class="on">Google Leads</span><span>Thumbtack Leads</span></div>`;
+const toolbar=()=>`<div class="toolbar"><div class="search">&#9906; Search a name or phone number</div>
+  <div class="sel">All &#8645;</div><button class="btn ghost">&#8635; Fetch new</button></div>`;
+
+const LEADS=[['+1 (513) 226-7716','service area business home inspector · 22h ago'],
+             ['+1 (586) 202-0812','service area business home inspector · 23h ago'],
+             ['+1 (734) 934-4772','service area business home inspector · 23h ago'],
+             ['Unnamed enquiry','1d ago']];
+const leads=()=>`<div class="leads">${LEADS.map(l=>`<div class="lead"><div class="g"><b>${l[0]}</b><span>${l[1]}</span></div>
+  <span class="pill new">New</span></div>`).join('')}</div>`;
+
+const band=(action)=>`<div class="band"><span class="gmark">G</span><div class="g">
+  <b>22 Google Ads accounts</b><span>20 at company level · 2 on a franchise</span></div>${action}</div>`;
+
+const ACCTS=[['405-172-9356','Company level',142],['118-904-2210','Connecticut',88],
+  ['772-410-3388','DMV',31],['905-221-7740','Company level',0],['441-092-5512','Company level',0],
+  ['330-887-1204','Company level',0]];
+const acct=(a,showCount)=>`<div class="acct ${a[2]===0?'quiet':''}"><div class="g">
+  <div class="num">${a[0]}</div>
+  <div class="where">${a[1]==='Company level'?'Company level':'<b>'+a[1]+'</b>'}</div></div>
+  ${showCount?`<div class="cnt ${a[2]===0?'zero':''}">${a[2]===0?'no leads':a[2]+' leads'}</div>`:''}
+  <button class="btn ghost sm">Change</button><button class="btn ghost sm danger">Disconnect</button></div>`;
+
+const panel=(showCount)=>`<div class="panelwrap"><div class="panel">
+  <div class="ph"><div style="flex:1"><h3>Google Ads accounts</h3>
+    <p>Where each account's leads go. Changing it moves the leads that account has already produced.</p></div>
+    <span class="x">&#10005;</span></div>
+  <div class="pb">${showCount?'<div class="ghead">Producing leads</div>':''}
+    ${ACCTS.slice(0,3).map(a=>acct(a,showCount)).join('')}
+    ${showCount?'<div class="ghead">No leads yet · 19</div>':''}
+    ${ACCTS.slice(3).map(a=>acct(a,showCount)).join('')}
+    <div class="acct"><div class="g"><div class="num">660-118-9043</div>
+      <div class="where" style="font-style:italic">Placed somewhere you cannot see</div></div>
+      ${showCount?'<div class="cnt zero">no leads</div>':''}
+      <button class="btn ghost sm" disabled style="opacity:.45">Change</button>
+      <button class="btn ghost sm danger">Disconnect</button></div>
+    <div style="padding:12px;color:var(--muted);font-size:12px">…15 more</div></div></div></div>`;
+
+const win=(cap,inner,m)=>`<div class="win"><div class="cap">${cap}</div>${inner}
+  ${m?`<div class="measure">${m}</div>`:''}</div>`;
+
+const D1=()=>win('<b>Layout 1</b> &middot; summary line, full list in a side panel',
+ `<div class="shell" style="border:0;border-radius:0">${topbar()}${side()}
+   <div class="page">${head()}${band('<button class="btn">Manage</button>')}${toolbar()}${leads()}
+   ${panel(true)}</div></div>`,
+ 'Costs <b>one row</b> on the way to the leads, at twenty-two accounts or two hundred. The panel is the app\'s existing surface, so the two-tap disconnect, Escape and focus come free.');
+
+const D2=()=>win('<b>Layout 2</b> &middot; expanded in place, above the leads',
+ `<div class="shell" style="border:0;border-radius:0">${topbar()}${side()}
+   <div class="page">${head()}${band('<button class="btn ghost">Hide</button>')}
+   <div style="margin:0 20px 10px;border:1px solid var(--line);border-radius:10px;overflow:hidden">
+     ${ACCTS.map(a=>acct(a,true)).join('')}
+     <div style="padding:10px 12px;color:var(--muted);font-size:12px">…16 more</div></div>
+   ${toolbar()}<div class="leads"><div class="lead"><div class="g"><b>+1 (513) 226-7716</b>
+     <span>the first lead, now well below the fold</span></div><span class="pill new">New</span></div></div>
+   </div></div>`,
+ 'Cheapest to build: a bool, no panel, no route. And expanded, the first lead is <b>below the fold</b> — so editing a placement scrolls you away from the list that is supposed to change.');
+
+const D3=()=>win('<b>Layout 3</b> &middot; accounts as a permanent left column',
+ `<div class="shell" style="border:0;border-radius:0">${topbar()}${side()}
+   <div class="page">${head()}${toolbar()}
+   <div style="display:flex;flex:1;border-top:1px solid var(--line);min-height:0">
+     <div style="width:280px;border-right:1px solid var(--line);overflow:auto">
+       <div class="ghead">22 accounts</div>${ACCTS.map(a=>acct(a,false)).join('')}
+       <div style="padding:10px 12px;color:var(--muted);font-size:12px">…16 more</div></div>
+     <div style="flex:1;min-width:0">${leads()}</div></div></div></div>`,
+ 'The only layout where placing an account and watching its leads move happens in one view — and placement is retroactive, so that is the moment somebody wants proof. It pays <b>280px permanently</b> for a surface the brief says most people never touch, and collapses into layout 1 below ~1100px anyway.');
+
+const P=(cap,inner)=>`<div style="display:flex;flex-direction:column">
+  <div class="cap" style="border:1px solid var(--line);border-bottom:0;border-radius:10px 10px 0 0">${cap}</div>
+  <div class="phone" style="border-radius:0 0 26px 26px">${inner}</div></div>`;
+
+const M4=()=>`<div class="phones">
+  ${P('<b>Layout 4</b> &middot; a row that states its value',`
+    <div class="bar">&#9776; <span class="wm"><i>Ez</i>Bizi</span></div>
+    <div class="sc"><div class="mt"><h2>Leads</h2></div>
+      <div class="tabs" style="padding:10px 16px"><span class="on">Google</span><span>Thumbtack</span></div>
+      <div class="row"><span class="gmark">G</span><div class="g"><b>Google Ads</b></div>
+        <span class="v">22 accounts<br>2 placed</span><span class="chev">&#8250;</span></div>
+      <div class="row"><div class="g"><b>+1 (513) 226-7716</b><span style="color:var(--muted);font-size:12px">22h ago</span></div>
+        <span class="pill new">New</span></div>
+      <div class="row"><div class="g"><b>+1 (586) 202-0812</b><span style="color:var(--muted);font-size:12px">23h ago</span></div>
+        <span class="pill new">New</span></div></div>`)}
+  ${P('<b>What the row opens</b>',`
+    <div class="bar"><span class="back">&#8249; Leads</span> Google Ads accounts</div>
+    <div class="sc">${ACCTS.map(a=>`<div class="row"><div class="g"><b>${a[0]}</b>
+      <span style="color:var(--muted);font-size:12px">${a[1]}</span></div><span class="chev">&#8250;</span></div>`).join('')}
+      <div style="padding:12px 16px;color:var(--muted);font-size:12px">…16 more</div></div>`)}
+</div>
+<p class="note" style="text-align:center;margin-top:12px">The same shape as Your account on a phone,
+  already built and approved. <b>"2 placed" is the number that changes</b> — somebody checking whether
+  an assignment took can see it without opening anything.</p>`;
+
+const M5=()=>`<div class="phones">
+  ${P('<b>Layout 5</b> &middot; Accounts as a third tab',`
+    <div class="bar">&#9776; <span class="wm"><i>Ez</i>Bizi</span></div>
+    <div class="sc"><div class="mt"><h2>Leads</h2></div>
+      <div class="tabs" style="padding:10px 16px;flex-wrap:nowrap;overflow-x:auto">
+        <span>Google</span><span>Thumbtack</span><span class="on">Accounts</span></div>
+      ${ACCTS.map(a=>`<div class="row"><div class="g"><b>${a[0]}</b>
+        <span style="color:var(--muted);font-size:12px">${a[1]}</span></div><span class="chev">&#8250;</span></div>`).join('')}</div>`)}
+</div>
+<p class="note" style="text-align:center;margin-top:12px">One tap from anywhere, no new screen — and
+  the tab row stops meaning <em>which leads</em> and starts meaning <em>which leads, or not leads</em>.</p>`;
+
+const M6=()=>`<div class="phones">
+  ${P('<b>Layout 6</b> &middot; grouped, quiet accounts folded away',`
+    <div class="bar"><span class="back">&#8249; Leads</span> Google Ads accounts</div>
+    <div class="sc"><div class="ghead">Producing leads · 4</div>
+      ${ACCTS.slice(0,3).map(a=>`<div class="row"><div class="g"><b>${a[0]}</b>
+        <span style="color:var(--muted);font-size:12px">${a[1]}</span></div>
+        <span class="v">${a[2]} leads</span><span class="chev">&#8250;</span></div>`).join('')}
+      <div class="row" style="background:var(--alt)"><div class="g"><b>18 that have never sent a lead</b></div>
+        <span class="chev">&#8250;</span></div></div>`)}
+  ${P('<b>After changing one</b> &middot; three different answers',`
+    <div class="bar"><span class="back">&#8249; Accounts</span> 118-904-2210</div>
+    <div class="sc">
+      <div style="padding:14px 16px;background:var(--ok-c);color:var(--ok);font-size:13px;font-weight:600">
+        14 leads moved to Connecticut</div>
+      <div style="padding:12px 16px;font-size:12.5px;color:var(--muted)">
+        <b style="color:var(--ink)">leads_moved: 14</b> — the number somebody looks for to believe
+        it worked. Placement is retroactive, so this is the whole confirmation.</div>
+      <div style="padding:14px 16px;background:var(--alt);font-size:13px;border-top:1px solid var(--line)">
+        Moved to Connecticut. No leads to move yet.</div>
+      <div style="padding:12px 16px;font-size:12.5px;color:var(--muted)">
+        <b style="color:var(--ink)">leads_moved: 0</b> — the placement took and there was nothing to
+        carry. Silence here would read as failure.</div>
+      <div style="padding:14px 16px;background:var(--alt);font-size:13px;border-top:1px solid var(--line);color:var(--muted)">
+        <i>nothing said</i></div>
+      <div style="padding:12px 16px;font-size:12.5px;color:var(--muted)">
+        <b style="color:var(--ink)">leads_moved: null</b> — the same franchise re-submitted. Nothing
+        happened, so nothing is announced. Saying &ldquo;0 moved&rdquo; here would report a
+        non-event as an outcome.</div>
+    </div>`)}
+</div>
+<p class="note" style="text-align:center;margin-top:12px">A variant of 4 rather than a rival —
+  <b>4 should look like this</b>. Beside it, what the change itself says: the API keeps
+  <code>leads_moved</code> null and 0 apart, so the screen can too. <b>Null and 0 are different
+  facts</b> and collapsing them would either announce a non-event or make a real one look like a
+  failure.</p>`;
+
+const L={1:D1,2:D2,3:D3,4:M4,5:M5,6:M6};
+const nums=document.getElementById('nums'),stage=document.getElementById('stage'),
+      caption=document.getElementById('caption');
+Object.keys(L).forEach((k,i)=>{
+  if(i===3){const s=document.createElement('div');s.className='sep';nums.appendChild(s);}
+  const b=document.createElement('button');
+  b.textContent=(i<3?'Desktop ':'Mobile ')+k; b.dataset.k=k; b.onclick=()=>show(k); nums.appendChild(b);
+});
+function show(k){
+  [...nums.querySelectorAll('button')].forEach(b=>b.setAttribute('aria-pressed',b.dataset.k===String(k)));
+  caption.innerHTML='<strong>'+CAPTIONS[k][0]+'</strong>'+CAPTIONS[k][1];
+  stage.innerHTML=L[k]();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+show(1);
+</script>
+</body>
+</html>
