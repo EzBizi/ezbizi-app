@@ -1671,10 +1671,16 @@ class ModuleServiceProvider extends ServiceProvider
                     new TriggerDefinition(
                         key: 'lead.received',
                         label: 'Lead received',
-                        description: 'An enquiry arrived from a connected advertising account. It '
-                            .'carries the contact details as the enquirer gave them, which source '
-                            .'and location it came through, and when it arrived — not yet what it '
-                            .'is about.',
+                        // "A connected account", not "a connected ADVERTISING
+                        // account". Thumbtack is a marketplace rather than
+                        // advertising, and it started raising this on
+                        // 2026-09-08 — somebody building a rule off the old
+                        // wording would reasonably conclude it did not cover
+                        // their Thumbtack enquiries, and quietly not build it.
+                        description: 'An enquiry arrived from a connected account — Google Ads or '
+                            .'Thumbtack. It carries the contact details as the enquirer gave them, '
+                            .'which source and location it came through, and when it arrived — not '
+                            .'yet what it is about.',
                     ),
                     new TriggerDefinition(
                         key: 'lead.contact_received',
