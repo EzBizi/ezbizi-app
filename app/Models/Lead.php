@@ -97,6 +97,10 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
                 .'what they said. Free text, so it can contain anything they mentioned — an '
                 .'address, a name, a reason for the work.',
                 Erasure::erase()),
+            new PersonalDataEntry('note', PersonalDataEntry::CONTENT,
+                'What somebody at the business wrote down about this enquiry for their own '
+                .'use. Free text about a person, written by somebody else.',
+                Erasure::erase()),
             new PersonalDataEntry('last_contact_preview', PersonalDataEntry::CONTENT,
                 'The first line of the latest message on the enquiry, copied here so the list '
                 .'can show it without a query per row. A copy of conversation text, erased '
@@ -123,8 +127,8 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
     protected $fillable = [
         'organization_id', 'company_id', 'franchise_id', 'connection_id',
         'source', 'remote_id', 'contact_name', 'phone', 'email', 'phone_digits',
-        'lead_type', 'category', 'service', 'locale', 'summary',
-        'status', 'source_status', 'charge_status', 'received_at', 'synced_at',
+        'lead_type', 'category', 'service', 'locale', 'summary', 'note',
+        'status', 'starred_at', 'source_status', 'charge_status', 'received_at', 'synced_at',
         'last_contact_at', 'last_contact_channel', 'last_contact_from', 'last_contact_preview',
     ];
 
@@ -134,6 +138,7 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
             'received_at'     => 'datetime',
             'synced_at'       => 'datetime',
             'last_contact_at' => 'datetime',
+            'starred_at'      => 'datetime',
         ];
     }
 

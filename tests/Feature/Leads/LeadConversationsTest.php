@@ -516,4 +516,85 @@ class LeadConversationsTest extends TestCase
         $sends = Http::recorded(fn (Request $request) => str_contains($request->url(), 'appendLeadConversation'));
         $this->assertCount(1, $sends, 'exactly one send: a refusal is never retried');
     }
+
+    /**
+     * Item 3 of the a1tools list. Read is per PERSON: the dispatcher who
+     * opened the lead has read it, the one who has not has not, and a new
+     * message after the mark makes it unread again. Star and note are shared.
+     */
+    public function test_read_is_per_person_and_a_new_message_makes_a_lead_unread_again(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $connection = $this->connected($t);
+
+        $this->fakeGoogle([$this->leadRow('111'), $this->leadRow('222', 'Other')], []);
+        $this->sync($t, $connection);
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->where('remote_id', '111')->first());
+
+        $list = $this->signedInAs($t['admin'])->getJson('/api/v1/leads')->assertOk()->json('data');
+        $this->assertSame([true, true], array_column($list, 'is_unread'), 'nobody has read anything yet');
+
+        $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/read")->assertOk();
+
+        $mine = collect($this->signedInAs($t['admin'])->getJson('/api/v1/leads?unread=1')->json('data'));
+        $this->assertSame(['Other'], $mine->pluck('contact_name')->all(), 'the one I read is no longer unread for me');
+
+        // A message arrives after my mark: unread again, for me. Seeded
+        // directly (a second Http::fake would stack behind the first), a
+        // minute later so the mark and the message do not share a second.
+        $this->inTenant($t['org'], function () use ($lead) {
+            LeadConversation::create([
+                'organization_id' => $lead->organization_id,
+                'lead_id'         => $lead->id,
+                'remote_id'       => 'later',
+                'channel'         => 'MESSAGE',
+                'participant'     => 'CONSUMER',
+                'occurred_at'     => now()->addMinute(),
+                'text'            => 'Still there?',
+            ]);
+            $lead->forceFill(['last_contact_at' => now()->addMinute(), 'last_contact_from' => 'CONSUMER'])->save();
+        });
+
+        $mine = collect($this->signedInAs($t['admin'])->getJson('/api/v1/leads?unread=1')->json('data'));
+        $this->assertContains('Jane Doe', $mine->pluck('contact_name')->all());
+
+        // Everything, in one go. The clock moves past the seeded message
+        // first: a mark cannot cover a message that has not happened yet.
+        \Illuminate\Support\Carbon::setTestNow(now()->addMinutes(2));
+        $this->signedInAs($t['admin'])->postJson('/api/v1/leads/read-all')->assertOk()->assertJsonPath('data.marked', 2);
+        $this->assertSame([], $this->signedInAs($t['admin'])->getJson('/api/v1/leads?unread=1')->json('data'));
+    }
+
+    public function test_star_and_note_are_marks_on_the_lead_and_starred_filters(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $connection = $this->connected($t);
+
+        $this->fakeGoogle([$this->leadRow('111'), $this->leadRow('222', 'Other')], []);
+        $this->sync($t, $connection);
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->where('remote_id', '111')->first());
+
+        $data = $this->signedInAs($t['admin'])
+            ->patchJson("/api/v1/leads/{$lead->id}", ['starred' => true, 'note' => '  Wants Saturday.  '])
+            ->assertOk()
+            ->json('data');
+
+        $this->assertTrue($data['starred']);
+        $this->assertSame('Wants Saturday.', $data['note']);
+        $this->assertSame(Lead::STATUS_NEW, $data['status'], 'marks never move the status');
+
+        $starred = $this->signedInAs($t['admin'])->getJson('/api/v1/leads?starred=1')->json('data.*.contact_name');
+        $this->assertSame(['Jane Doe'], $starred);
+
+        // Blank clears; unstar clears.
+        $data = $this->signedInAs($t['admin'])
+            ->patchJson("/api/v1/leads/{$lead->id}", ['starred' => false, 'note' => '   '])
+            ->assertOk()
+            ->json('data');
+
+        $this->assertFalse($data['starred']);
+        $this->assertNull($data['note']);
+    }
 }

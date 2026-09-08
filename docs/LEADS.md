@@ -129,6 +129,13 @@ sentence for a screen.
   writes an audit row (`lead.recording_played`).
 - **Trigger `lead.contact_received`** fires for a consumer's call or message,
   never for the business's own reply.
+- **Triage marks (2026-09-08, item 3 of the a1tools list).** `starred_at` and
+  `note` are columns on the lead, shared. Read is per PERSON: `lead_reads`
+  (lead_id, user_id, read_at), no model; unread = no row, or a message newer
+  than the row. `GET leads` joins the reader's mark and carries `is_unread`,
+  `starred`, `note`; filters `unread=1`, `starred=1`, `unreplied=1`.
+  `POST leads/{id}/read`, `POST leads/read-all`, `PATCH leads/{id}` with
+  `starred` / `note`. The screen draws none of it until UI/UX has.
 - **Google's timestamps are in the account's time zone, with no offset.**
   `creation_date_time` and `event_date_time` are bare strings meaning local
   time in `customer.time_zone` (America/New_York for A-1 Chimney). Read as
