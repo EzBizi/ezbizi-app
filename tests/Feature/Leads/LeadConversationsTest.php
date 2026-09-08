@@ -583,6 +583,8 @@ class LeadConversationsTest extends TestCase
 
         $this->assertTrue($data['starred']);
         $this->assertSame('Wants Saturday.', $data['note']);
+        $this->assertSame($t['admin']->name, $data['note_by']['name'], 'a shared line says who wrote it');
+        $this->assertNotNull($data['note_updated_at']);
         $this->assertSame(Lead::STATUS_NEW, $data['status'], 'marks never move the status');
 
         $starred = $this->signedInAs($t['admin'])->getJson('/api/v1/leads?starred=1')->json('data.*.contact_name');
@@ -596,6 +598,7 @@ class LeadConversationsTest extends TestCase
 
         $this->assertFalse($data['starred']);
         $this->assertNull($data['note']);
+        $this->assertNull($data['note_by'], 'a cleared note has no author');
     }
 
     /**

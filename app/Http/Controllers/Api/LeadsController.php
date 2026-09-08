@@ -66,7 +66,7 @@ class LeadsController extends Controller
                 $join->on('lead_reads.lead_id', '=', 'leads.id')
                     ->where('lead_reads.user_id', '=', $user->getKey());
             })
-            ->with(['company:id,name', 'franchise:id,name'])
+            ->with(['company:id,name', 'franchise:id,name', 'noteBy:id,name'])
             ->orderByDesc('leads.received_at')
             ->orderByDesc('leads.created_at');
 
@@ -148,7 +148,7 @@ class LeadsController extends Controller
     {
         $this->authorize('view', $lead);
 
-        $data = $this->present($lead->load(['company:id,name', 'franchise:id,name', 'job']));
+        $data = $this->present($lead->load(['company:id,name', 'franchise:id,name', 'job', 'noteBy:id,name']));
 
         // The thread. Every call and message, oldest first, so the screen reads
         // top to bottom the way the conversation happened.
@@ -508,7 +508,13 @@ class LeadsController extends Controller
         }
 
         if (array_key_exists('note', $input)) {
-            $lead->note = trim((string) $input['note']) ?: null;
+            $note = trim((string) $input['note']) ?: null;
+
+            if ($note !== $lead->note) {
+                $lead->note            = $note;
+                $lead->note_by_user_id = $note === null ? null : $request->user()->getKey();
+                $lead->note_updated_at = $note === null ? null : now();
+            }
         }
 
         $statusChanges = array_key_exists('status', $input) && $input['status'] !== $lead->status;
@@ -536,7 +542,7 @@ class LeadsController extends Controller
             }
         });
 
-        return response()->json(['data' => $this->present($lead->fresh())]);
+        return response()->json(['data' => $this->present($lead->fresh()->load('noteBy:id,name'))]);
     }
 
     /**
@@ -796,6 +802,10 @@ class LeadsController extends Controller
             'status'        => $lead->status,
             'starred'       => $lead->starred_at !== null,
             'note'          => $lead->note,
+            'note_by'       => $lead->note_by_user_id !== null && $lead->relationLoaded('noteBy')
+                ? $lead->noteBy?->only(['id', 'name'])
+                : null,
+            'note_updated_at' => $lead->note_updated_at?->toIso8601String(),
 
             // Only known on the list, where the reader's mark was joined in.
             // Null on a single-lead read means "not asked", not "read".

@@ -111,6 +111,10 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
                 'What somebody at the business wrote down about this enquiry for their own '
                 .'use. Free text about a person, written by somebody else.',
                 Erasure::erase()),
+            new PersonalDataEntry('note_by_user_id, note_updated_at', PersonalDataEntry::ACTIVITY,
+                'Which member of staff wrote the note, and when - so a shared line can say '
+                .'"Maya · 2h ago" and two people cannot overwrite each other unseen.',
+                Erasure::erase()),
             new PersonalDataEntry('last_contact_preview', PersonalDataEntry::CONTENT,
                 'The first line of the latest message on the enquiry, copied here so the list '
                 .'can show it without a query per row. A copy of conversation text, erased '
@@ -131,13 +135,17 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
      */
     public static function personalDataAbout(Model $subject): ?Builder
     {
-        return null;
+        // The enquirer is nobody on this platform (see above). A member of
+        // staff IS, and the one place a lead names one is the note's author.
+        return $subject instanceof User
+            ? static::query()->where('note_by_user_id', $subject->getKey())
+            : null;
     }
 
     protected $fillable = [
         'organization_id', 'company_id', 'franchise_id', 'connection_id', 'job_id',
         'source', 'remote_id', 'contact_name', 'phone', 'email', 'phone_digits',
-        'lead_type', 'category', 'service', 'locale', 'summary', 'note',
+        'lead_type', 'category', 'service', 'locale', 'summary', 'note', 'note_by_user_id', 'note_updated_at',
         'status', 'starred_at', 'source_status', 'charge_status', 'received_at', 'synced_at',
         'last_contact_at', 'last_contact_channel', 'last_contact_from', 'last_contact_preview',
     ];
@@ -149,6 +157,7 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
             'synced_at'       => 'datetime',
             'last_contact_at' => 'datetime',
             'starred_at'      => 'datetime',
+            'note_updated_at' => 'datetime',
         ];
     }
 
@@ -170,6 +179,12 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
     public function connection(): BelongsTo
     {
         return $this->belongsTo(SocialConnection::class, 'connection_id');
+    }
+
+    /** Who last wrote the note. */
+    public function noteBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'note_by_user_id');
     }
 
     /** The job this enquiry became, once somebody booked it. */
