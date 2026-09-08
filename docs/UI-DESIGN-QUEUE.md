@@ -592,8 +592,8 @@ travels without the pairing that made it correct.
 > default's job is to be neutral and legible until they do.
 >
 > What does travel is the **rule, not the token**: a foreground and its background are
-> chosen together and checked together. See the gap below — the pair currently ships
-> unchecked.
+> chosen together and checked together. Queue item 5 is that rule applied — both colour
+> pairs on that screen were shipping unchecked, and now show the ratio a visitor gets.
 
 ---
 
@@ -896,10 +896,9 @@ finished and cannot. That was wrong — it keys off `connected_at != null`, whet
 plugin has ever read the site, which the module answers exactly. The tier decision
 rests on the opposite-facts argument alone, which is sufficient on its own.*
 
-### 5 · Web Management · Widgets — the accent pair ships unchecked
+### 5 · Web Management · Widgets — the colour pairs shipped unchecked — **BUILT `24a5d314`**
 
-`client/lib/screens/web/widgets_tab.dart:345-348` on `session/web-management`, not yet on
-`main`. "Accent colour" and "Text on the accent" are two adjacent free-text hex fields
+`client/lib/screens/web/widgets_tab.dart`. "Accent colour" and "Text on the accent" are two adjacent free-text hex fields
 whose whole job is to be legible against each other, and nothing checks that they are.
 Everything else about that screen is careful — the values are sanitised on the way in
 AND on the way out, colours are `#rgb` or nothing, the font is stripped, the radius
@@ -929,8 +928,31 @@ never stored, per the standing rule that a warning about the system's own capabi
 DERIVED. One caller today, so it belongs in that file — promote it to a shared helper
 when a second colour picker exists, not before.
 
-**Owner: Web Management** — their branch, their file, mid-flight. The rule and the
-measurement are UI/UX's; the paste is theirs. Sent 2026-09-08.
+**Built by UI/UX, 2026-09-08, `24a5d314`.** Written up first as a finding to hand over,
+because the file was on `session/web-management` and mid-flight. It merged and shipped in
+0.0.0167 while that message was being written, so by the time it sent, the reason for
+handing it over had gone: not a peer's private branch any more but main, in a released
+cut, with the pair live and unchecked. Built it and told them, with an offer to back it
+out if they had the same work going.
+
+**Two things only visible from inside the file**, and the reason a finding written from
+the outside should not be trusted to be complete:
+
+- **Two pairs, not one.** `text` on `background` has the identical defect to `accent` on
+  `on_accent`. Fixing the named one would have been the tidier commit and the wrong one.
+- **The screen renders none of its four colours anywhere** — no preview, no swatch. So
+  the customer was not merely unwarned, they were choosing blind, which is why this
+  became a swatch of the real pair rather than a warning line. The ratio shows always;
+  only the advisory is conditional.
+
+Not `ErrorNote`, which documents itself as *"a failure the user needs to read"* — this is
+not one. Nothing failed and nothing is blocked, and **dressing an advisory as a failure is
+its own defect**, the same family as a silent default between two unequal errors.
+
+Accepts `#rgb` as well as `#rrggbb`, matching `WidgetDefaults::colour`: a checker that
+knew only the long form would pass every short one **silently**, since saying nothing is
+also what it correctly does mid-typing. That branch was sabotaged to confirm the test
+fails without it.
 
 
 ### Suggestions · two screens out for decision
