@@ -74,13 +74,31 @@ The consent screen names these:
 |---|---|
 | `gmail.readonly` | Listing, reading and searching a mailbox. Also covers `users.getProfile`. |
 | `gmail.send` | The reply path, and nothing else. |
-| `gmail.modify` | Move a thread to Trash from EzBizi. Not permanent delete. |
+| `gmail.modify` | Two things, both label changes: move a thread to Trash from EzBizi (not permanent delete), and mark a thread read at Google when an inbox has been switched to do that. |
 
 Deliberately **not** requested:
 
 - `https://mail.google.com/` — full account, including permanent deletion.
 
-Opening a message in EzBizi still does not mark it read in Gmail. That is EzBizi's own `message_seen` table, so colleagues are not marked as having read it at Google.
+**Opening a message in EzBizi does not mark it read in Gmail — unless that
+inbox has been switched to do so.** Read state is EzBizi's own `message_seen`
+table, recorded per person, which is what lets a shared inbox say "seen by
+Jenny" rather than carrying one flag for everybody.
+
+Email > Settings has a per-inbox switch, **off by default and off on every
+inbox that has not chosen it**, which also removes Gmail's UNREAD label from
+the conversation when somebody opens it here.
+
+Leave it off on an inbox a team shares. Google's read state is ONE flag for the
+whole mailbox, so turning it on there means one person opening a customer's
+message hides it from a colleague who has not read it — the failure a shared
+inbox exists to prevent. It is meant for the inbox one person reads, where "I
+have read this" and "this mailbox has read this" are the same statement.
+
+This sentence used to say, without qualification, that EzBizi never marks mail
+read at Google. That was true until the switch shipped in 0.0.0151, and it is
+the kind of claim somebody reads BEFORE handing over access to their mail — so
+it is worth keeping honest rather than approximately right.
 
 ### 5. Two environment variables, then deploy
 
