@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.0.2
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -91,8 +91,28 @@ this site — company name, phone number, email, address, opening hours, licence
 number, service area and booking link. These are values you have chosen to
 publish on your own public website.
 
+**The publishing account (optional capability, added in 1.1.0):** Once your
+token has been accepted, the plugin creates a WordPress user named
+"ezbizi-service" on a restricted role, generates an application password for it,
+and sends that application password to EzBizi so EzBizi can publish and edit
+content on this site on your behalf. The role can publish and edit posts and
+pages and upload files; it cannot change settings, manage users, install
+plugins, edit themes, post unfiltered HTML, or delete anything. The application
+password is sent once, over HTTPS only, and is stored encrypted by EzBizi. If
+the handover fails the application password is deleted immediately rather than
+left active.
+
+You can revoke it at any time: delete the "EzBizi" application password under
+Users, delete the ezbizi-service user, or deactivate this plugin — deactivation
+revokes it for you. Changing your site token revokes it too. If EzBizi drops the
+pairing at its end, this plugin deletes its own application password at the next
+refresh.
+
 **Service Provider:** EzBizi
-**API Endpoint:** https://app.ezbizi.com/api/v1/web/plugin/values
+**API Endpoints:**
+- https://app.ezbizi.com/api/v1/web/plugin/values (retrieving your details)
+- https://app.ezbizi.com/api/v1/web/plugin/service-account (handing over the
+  publishing credential described above)
 **Terms of Service:** https://www.ezbizi.com/terms/
 **Privacy Policy:** https://www.ezbizi.com/privacy/
 
@@ -147,6 +167,14 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.1.0 =
+* EzBizi can now publish and edit content on this site. On connecting, the
+  plugin creates a restricted "ezbizi-service" user and hands EzBizi an
+  application password for it. See "External Services" above for exactly what
+  it may do and every way to revoke it.
+* Deactivating the plugin, or changing your site token, now revokes that
+  application password.
 
 = 1.0.2 =
 * The plugin now says when it is installed but not yet connected, instead

@@ -35,6 +35,11 @@ class WebSite extends Model implements StatesRetention
         return [
             'connected_at' => 'datetime',
             'last_seen_at' => 'datetime',
+            'service_linked_at' => 'datetime',
+            // Readable, because we present it TO WordPress rather than
+            // recognising it when somebody presents it to us. See the
+            // migration for why this is the only workable choice.
+            'service_password' => 'encrypted',
         ];
     }
 
@@ -44,8 +49,28 @@ class WebSite extends Model implements StatesRetention
             'A host the company registered and the hashed token its plugin uses. Kept '
             .'while the site is registered — deleting the site, the company, or the '
             .'organization takes the row and every value beneath it. Nothing here is '
-            .'about a person; the token is a machine credential and is stored hashed.'
+            .'about a person; the token is a machine credential and is stored hashed, '
+            .'and the WordPress application password EzBizi publishes with is a second '
+            .'machine credential, encrypted at rest and cleared when the pairing ends.'
         );
+    }
+
+    /** Whether this site has handed EzBizi an account to publish with. */
+    public function isServiceLinked(): bool
+    {
+        return $this->service_user_login !== null && $this->service_password !== null;
+    }
+
+    /** Forget the credential. WordPress revokes its own copy on the next read. */
+    public function unlinkServiceAccount(): void
+    {
+        $this->forceFill([
+            'service_user_login' => null,
+            'service_password' => null,
+            'service_rest_url' => null,
+            'service_capabilities' => null,
+            'service_linked_at' => null,
+        ])->save();
     }
 
     /**

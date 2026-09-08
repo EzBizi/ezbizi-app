@@ -2,10 +2,15 @@
 
 namespace Tests\Feature\Web;
 
+use App\Models\Franchise;
+use App\Models\Organization;
+use App\Models\User;
 use App\Models\WebSite;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Web\SeoFields;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -1196,10 +1201,111 @@ class WebManagementTest extends TestCase
         );
     }
 
+    // ── 9. the WordPress account EzBizi publishes with ──────────────
+
+    public function test_a_site_hands_over_an_account_with_its_own_token(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+
+        $this->serviceAccountPost($site['token'])->assertCreated()->assertJson(['linked' => true]);
+
+        $stored = WebSite::query()->withoutGlobalScopes()->find($site['data']['id']);
+
+        $this->assertSame('ezbizi-service', $stored->service_user_login);
+        $this->assertSame('plain-text-secret', $stored->service_password);
+        $this->assertNotNull($stored->service_linked_at);
+    }
+
+    /**
+     * The credential is readable to us and unreadable to anybody with the disk.
+     *
+     * It cannot be hashed — we present it to WordPress rather than recognise it
+     * — so encryption at rest is the whole protection, and a cast that silently
+     * stopped applying would look identical through the model.
+     */
+    public function test_the_password_is_encrypted_in_the_column(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+
+        $this->serviceAccountPost($site['token'])->assertCreated();
+
+        $raw = DB::table('web_sites')
+            ->where('id', $site['data']['id'])
+            ->value('service_password');
+
+        $this->assertNotSame('plain-text-secret', $raw);
+        $this->assertStringNotContainsString('plain-text-secret', (string) $raw);
+    }
+
+    public function test_a_bad_token_cannot_attach_an_account(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+        $this->registerSite($editor, $tenant, 'a-1chimney.com');
+
+        $this->serviceAccountPost('ezb_not_a_token')->assertUnauthorized();
+    }
+
+    /**
+     * A token names one host, and the REST address has to be on it.
+     *
+     * Without this a site could hand us a credential pointed at somebody else's
+     * WordPress, and every publish afterwards would be a request we make, from
+     * our address, against a third party who never asked to hear from us.
+     */
+    public function test_the_rest_address_must_be_on_the_site_the_token_names(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+
+        $this->serviceAccountPost($site['token'], [
+            'rest_url' => 'https://someone-else.example.com/wp-json/',
+        ])->assertStatus(422);
+
+        $stored = WebSite::query()->withoutGlobalScopes()->find($site['data']['id']);
+
+        $this->assertNull($stored->service_password);
+    }
+
+    /**
+     * The plugin learns from an ordinary read that the pairing is over, which is
+     * the only way it can revoke its own application password — WordPress does
+     * not let one application password delete another.
+     */
+    public function test_the_read_says_whether_the_pairing_still_stands(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+
+        $this->assertFalse(
+            $this->pluginRead($site['token'], 'a-1chimney.com')->json('service_account.linked'),
+        );
+
+        $this->serviceAccountPost($site['token'])->assertCreated();
+
+        $this->assertTrue(
+            $this->pluginRead($site['token'], 'a-1chimney.com')->json('service_account.linked'),
+        );
+
+        $this->inTenant($tenant['org'], function () use ($site) {
+            WebSite::findOrFail($site['data']['id'])->unlinkServiceAccount();
+        });
+
+        $this->assertFalse(
+            $this->pluginRead($site['token'], 'a-1chimney.com')->json('service_account.linked'),
+        );
+    }
+
     // ── helpers ─────────────────────────────────────────────────────
 
-    /** @param array{org: \App\Models\Organization, franchise: \App\Models\Franchise} $tenant */
-    private function editorFor(array $tenant): \App\Models\User
+    /** @param array{org: Organization, franchise: Franchise} $tenant */
+    private function editorFor(array $tenant): User
     {
         return $this->userWithRole(
             $tenant,
@@ -1209,7 +1315,7 @@ class WebManagementTest extends TestCase
     }
 
     /** @return array{data: array<string, mixed>, token: string} */
-    private function registerSite(\App\Models\User $editor, array $tenant, string $host): array
+    private function registerSite(User $editor, array $tenant, string $host): array
     {
         $body = $this->signedInAs($editor)->postJson('/api/v1/web/sites', [
             'company_id' => $tenant['company']->id,
@@ -1220,14 +1326,30 @@ class WebManagementTest extends TestCase
     }
 
     /** @param array<string, string|null> $values */
-    private function setValues(\App\Models\User $editor, string $siteId, array $values): void
+    private function setValues(User $editor, string $siteId, array $values): void
     {
         $this->signedInAs($editor)
             ->putJson("/api/v1/web/sites/{$siteId}/values", ['values' => $values])
             ->assertOk();
     }
 
-    private function pluginRead(string $token, string $host): \Illuminate\Testing\TestResponse
+    /** @param array<string, string> $overrides */
+    private function serviceAccountPost(string $token, array $overrides = []): TestResponse
+    {
+        return $this->postJson(
+            '/api/v1/web/plugin/service-account',
+            array_merge([
+                'host' => 'a-1chimney.com',
+                'user_login' => 'ezbizi-service',
+                'password' => 'plain-text-secret',
+                'rest_url' => 'https://a-1chimney.com/wp-json/',
+                'capabilities' => 'read,publish_pages',
+            ], $overrides),
+            ['Authorization' => 'Bearer '.$token],
+        );
+    }
+
+    private function pluginRead(string $token, string $host): TestResponse
     {
         return $this->getJson(
             '/api/v1/web/plugin/values?host='.urlencode($host),

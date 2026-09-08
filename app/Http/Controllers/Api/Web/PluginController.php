@@ -5,9 +5,9 @@ namespace App\Http\Controllers\Api\Web;
 use App\Http\Controllers\Api\Controller;
 use App\Models\WebSite;
 use App\Models\WebValue;
+use App\Support\Tenancy\TenantContext;
 use App\Support\Web\SeoFields;
 use App\Support\Web\ValueResolver;
-use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -45,41 +45,10 @@ class PluginController extends Controller
     /** GET /api/v1/web/plugin/values */
     public function values(Request $request): JsonResponse
     {
-        $token = $request->bearerToken();
+        $site = $this->siteForToken($request);
 
-        if (! is_string($token) || $token === '') {
-            return $this->refuse('This site has no EzBizi token yet.');
-        }
-
-        /*
-         * No tenant is known until the token resolves — the row is what names
-         * the organization. Same shape as the invitation and OAuth callbacks:
-         * find without a tenant, then enter one for everything after.
-         */
-        $site = $this->tenant->runWithoutTenant(
-            fn () => WebSite::query()
-                ->where('token_hash', hash('sha256', $token))
-                ->with('company:id,name,organization_id')
-                ->first(),
-        );
-
-        if ($site === null) {
-            return $this->refuse('That token is not valid. Rotate it in EzBizi and paste the new one.');
-        }
-
-        $reported = $request->query('host');
-
-        if (is_string($reported) && trim($reported) !== '') {
-            $reportedHost = WebSite::normalizeHost($reported);
-
-            if ($reportedHost !== $site->host) {
-                return $this->refuse(sprintf(
-                    'This token belongs to %s, not %s. Register %s in EzBizi to give it its own token.',
-                    $site->host,
-                    $reportedHost,
-                    $reportedHost,
-                ));
-            }
+        if ($site instanceof JsonResponse) {
+            return $site;
         }
 
         $organization = $this->tenant->runWithoutTenant(
@@ -106,9 +75,111 @@ class PluginController extends Controller
                     'company' => $site->company?->name,
                 ],
                 'fields' => SeoFields::catalogue(),
+                /*
+                 * So the plugin can revoke its own application password when
+                 * EzBizi has let go of the pairing. Without this, unlinking here
+                 * would leave a live credential on the customer's site that
+                 * nothing on our side remembers.
+                 */
+                'service_account' => ['linked' => $site->isServiceLinked()],
                 ...ValueResolver::forReaders($rows, ValueResolver::inheritedRowsFor($site)),
             ]);
         });
+    }
+
+    /**
+     * POST /api/v1/web/plugin/service-account
+     *
+     * The site hands over an account EzBizi can publish with. Authenticated by
+     * the same token the reads use, so a credential can only be attached to the
+     * site that proved it holds that site's token.
+     */
+    public function serviceAccount(Request $request): JsonResponse
+    {
+        $site = $this->siteForToken($request, $request->input('host'));
+
+        if ($site instanceof JsonResponse) {
+            return $site;
+        }
+
+        $input = $request->validate([
+            'user_login' => ['required', 'string', 'max:191'],
+            'password' => ['required', 'string', 'max:255'],
+            'rest_url' => ['required', 'url', 'max:255'],
+            'capabilities' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        /*
+         * The REST endpoint must live on the host this token belongs to. Without
+         * this a site could hand us a credential pointed at somebody else's
+         * WordPress, and every later publish would be a request we make, with
+         * our IP, against a third party who never asked for it.
+         */
+        $restHost = WebSite::normalizeHost((string) parse_url($input['rest_url'], PHP_URL_HOST));
+
+        if ($restHost !== $site->host) {
+            return response()->json([
+                'message' => 'The REST address must be on '.$site->host.'.',
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $organization = $this->tenant->runWithoutTenant(fn () => $site->organization);
+
+        return $this->tenant->run($organization, function () use ($site, $input): JsonResponse {
+            $site->forceFill([
+                'service_user_login' => $input['user_login'],
+                'service_password' => $input['password'],
+                'service_rest_url' => $input['rest_url'],
+                'service_capabilities' => $input['capabilities'] ?? null,
+                'service_linked_at' => now(),
+            ])->save();
+
+            return response()->json(['linked' => true], Response::HTTP_CREATED);
+        });
+    }
+
+    /**
+     * The site a bearer token names, or the refusal to send instead.
+     *
+     * No tenant is known until the token resolves — the row is what names the
+     * organization. Same shape as the invitation and OAuth callbacks: find
+     * without a tenant, then enter one for everything after.
+     */
+    private function siteForToken(Request $request, ?string $reported = null): WebSite|JsonResponse
+    {
+        $token = $request->bearerToken();
+
+        if (! is_string($token) || $token === '') {
+            return $this->refuse('This site has no EzBizi token yet.');
+        }
+
+        $site = $this->tenant->runWithoutTenant(
+            fn () => WebSite::query()
+                ->where('token_hash', hash('sha256', $token))
+                ->with('company:id,name,organization_id')
+                ->first(),
+        );
+
+        if ($site === null) {
+            return $this->refuse('That token is not valid. Rotate it in EzBizi and paste the new one.');
+        }
+
+        $reported ??= $request->query('host');
+
+        if (is_string($reported) && trim($reported) !== '') {
+            $reportedHost = WebSite::normalizeHost($reported);
+
+            if ($reportedHost !== $site->host) {
+                return $this->refuse(sprintf(
+                    'This token belongs to %s, not %s. Register %s in EzBizi to give it its own token.',
+                    $site->host,
+                    $reportedHost,
+                    $reportedHost,
+                ));
+            }
+        }
+
+        return $site;
     }
 
     private function refuse(string $message): JsonResponse

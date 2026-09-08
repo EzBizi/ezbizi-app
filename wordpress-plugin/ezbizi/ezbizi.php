@@ -3,7 +3,7 @@
  * Plugin Name:       EzBizi
  * Plugin URI:        https://ezbizi.com
  * Description:       Publishes your company details — phone, address, licence, hours — from EzBizi, so one change updates every page of this site.
- * Version:           1.0.2
+ * Version:           1.1.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            EzBizi
@@ -46,7 +46,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const EZBIZI_VERSION = '1.0.2';
+const EZBIZI_VERSION = '1.1.0';
 const EZBIZI_CACHE_KEY = 'ezbizi_payload';
 const EZBIZI_LAST_GOOD = 'ezbizi_last_good';
 const EZBIZI_CACHE_TTL = 300;
@@ -54,6 +54,8 @@ const EZBIZI_CACHE_TTL = 300;
 // one. Only reached on sites where WP-Cron never runs.
 const EZBIZI_STALE_MAX = 3600;
 const EZBIZI_REFRESHING = 'ezbizi_refreshing';
+
+require_once __DIR__ . '/service-account.php';
 
 /**
  * The host this WordPress install answers on, in the form EzBizi stores.
@@ -199,6 +201,15 @@ function ezbizi_fetch() {
 
     set_transient(EZBIZI_CACHE_KEY, $payload, EZBIZI_CACHE_TTL);
     update_option(EZBIZI_LAST_GOOD, $payload, false);
+
+    /*
+     * The token has just been proved good by a 200, which is the earliest
+     * moment this site can safely hand EzBizi an account to act as. Does
+     * nothing on every later read, and cannot fail loudly enough to affect the
+     * payload it was called from.
+     */
+    ezbizi_service_link();
+    ezbizi_service_reconcile($payload);
 
     return $payload;
 }

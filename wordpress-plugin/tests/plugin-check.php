@@ -126,6 +126,83 @@ function submit_button() {}
 function wp_nonce_field() {}
 function check_admin_referer() { return true; }
 
+// ── Enough WordPress for the service account ────────────────────
+
+function register_deactivation_hook($f, $cb) { $GLOBALS['deactivate'][] = $cb; }
+function get_rest_url() { return 'https://a-1chimney.com/wp-json/'; }
+function wp_generate_password($len = 12, $special = true, $extra = false) {
+    return substr(str_repeat('x7Kq', 32), 0, $len);
+}
+
+class WP_User {
+    public $ID;
+    public $user_login;
+    public function __construct($id, $login) { $this->ID = $id; $this->user_login = $login; }
+}
+
+function get_user_by($field, $value) {
+    foreach ($GLOBALS['users'] as $user) {
+        if ($field === 'login' && $user->user_login === $value) { return $user; }
+        if ($field === 'id' && $user->ID === $value) { return $user; }
+    }
+    return false;
+}
+
+function wp_insert_user($args) {
+    if (! empty($GLOBALS['insert_user_fails'])) { return new WP_Error(); }
+    $id = count($GLOBALS['users']) + 2;
+    $user = new WP_User($id, $args['user_login']);
+    $GLOBALS['users'][] = $user;
+    $GLOBALS['roles_assigned'][$id] = $args['role'];
+    return $id;
+}
+
+class EzbiziStubRole {
+    public $caps = [];
+    public function add_cap($c) { $this->caps[$c] = true; }
+    public function remove_cap($c) { unset($this->caps[$c]); }
+}
+
+function add_role($slug, $label, $caps) {
+    $role = new EzbiziStubRole();
+    foreach ($caps as $cap => $granted) { if ($granted) { $role->caps[$cap] = true; } }
+    $GLOBALS['roles'][$slug] = $role;
+}
+function get_role($slug) { return $GLOBALS['roles'][$slug] ?? null; }
+
+function wp_is_application_passwords_available() {
+    return $GLOBALS['app_passwords_on'] ?? true;
+}
+
+class WP_Application_Passwords {
+    public static function create_new_application_password($user_id, $args) {
+        $GLOBALS['app_passwords'][] = ['user' => $user_id, 'uuid' => 'uuid-1', 'name' => $args['name']];
+        return ['plain-text-secret', ['uuid' => 'uuid-1']];
+    }
+    public static function delete_application_password($user_id, $uuid) {
+        foreach ($GLOBALS['app_passwords'] as $i => $p) {
+            if ($p['uuid'] === $uuid) { unset($GLOBALS['app_passwords'][$i]); }
+        }
+        $GLOBALS['app_passwords'] = array_values($GLOBALS['app_passwords']);
+        return true;
+    }
+}
+
+function wp_remote_post($url, $args = []) {
+    $GLOBALS['post_calls']++;
+    $GLOBALS['last_post_url'] = $url;
+    $GLOBALS['last_post_args'] = $args;
+    return $GLOBALS['post_next'];
+}
+
+$GLOBALS['users'] = [];
+$GLOBALS['roles'] = [];
+$GLOBALS['roles_assigned'] = [];
+$GLOBALS['app_passwords'] = [];
+$GLOBALS['deactivate'] = [];
+$GLOBALS['post_calls'] = 0;
+$GLOBALS['post_next'] = ['code' => 200, 'body' => '{}'];
+
 require_once __DIR__.'/../ezbizi/ezbizi.php';
 
 // ── Harness ──────────────────────────────────────────────────────
@@ -158,6 +235,13 @@ function reset_site() {
     $GLOBALS['tr'] = [];
     $GLOBALS['scheduled'] = [];
     $GLOBALS['http_calls'] = 0;
+    $GLOBALS['post_calls'] = 0;
+    $GLOBALS['post_next'] = ['code' => 200, 'body' => '{}'];
+    $GLOBALS['users'] = [];
+    $GLOBALS['roles'] = [];
+    $GLOBALS['roles_assigned'] = [];
+    $GLOBALS['app_passwords'] = [];
+    $GLOBALS['app_passwords_on'] = true;
     $_SERVER['REQUEST_URI'] = '/';
 }
 
@@ -295,6 +379,126 @@ echo "\nA blank token field keeps the saved token\n";
 reset_site();
 check('blank means unchanged', ezbizi_keep_saved_token(''), 'ezb_test');
 check('a new one replaces it', ezbizi_keep_saved_token('ezb_other'), 'ezb_other');
+
+echo PHP_EOL . "The service account is created only once the token is proved good" . PHP_EOL;
+reset_site();
+$GLOBALS['opt']['ezbizi_token'] = '';
+ezbizi_fetch();
+check('no token, no account', count($GLOBALS['users']), 0);
+check('no token, no credential', count($GLOBALS['app_passwords']), 0);
+
+reset_site();
+ok_response(['phone' => '555-0100']);
+ezbizi_fetch();
+check('a good read creates the user', count($GLOBALS['users']), 1);
+check('named so a site owner can find it', $GLOBALS['users'][0]->user_login, 'ezbizi-service');
+check('on its own role', $GLOBALS['roles_assigned'][$GLOBALS['users'][0]->ID], 'ezbizi_service');
+check('with one application password', count($GLOBALS['app_passwords']), 1);
+check('handed over once', $GLOBALS['post_calls'], 1);
+check(
+    'to the pairing endpoint',
+    $GLOBALS['last_post_url'],
+    'https://app.ezbizi.com/api/v1/web/plugin/service-account'
+);
+check(
+    'the secret travels in the body, never the query string',
+    str_contains($GLOBALS['last_post_url'], 'plain-text-secret'),
+    false
+);
+check(
+    'and the body carries it',
+    $GLOBALS['last_post_args']['body']['password'],
+    'plain-text-secret'
+);
+
+echo PHP_EOL . "Pairing happens once, not on every page view" . PHP_EOL;
+ok_response(['phone' => '555-0100']);
+ezbizi_fetch();
+ezbizi_fetch();
+check('still one credential', count($GLOBALS['app_passwords']), 1);
+check('and no second handover', $GLOBALS['post_calls'], 1);
+
+echo PHP_EOL . "A credential nobody received must not stay alive" . PHP_EOL;
+reset_site();
+ok_response(['phone' => '555-0100']);
+$GLOBALS['post_next'] = ['code' => 500, 'body' => ''];
+ezbizi_fetch();
+check('the failed handover revokes it', count($GLOBALS['app_passwords']), 0);
+check('and the site is not marked paired', get_option(EZBIZI_SERVICE_LINKED, false), false);
+
+$GLOBALS['post_next'] = ['code' => 200, 'body' => '{}'];
+$GLOBALS['tr'] = [];
+ezbizi_fetch();
+check('a later read retries from nothing', count($GLOBALS['app_passwords']), 1);
+
+echo PHP_EOL . "A secret never crosses plain HTTP" . PHP_EOL;
+reset_site();
+$GLOBALS['opt']['ezbizi_api_base'] = 'http://app.ezbizi.com';
+ok_response(['phone' => '555-0100']);
+ezbizi_fetch();
+check('http is refused', count($GLOBALS['app_passwords']), 0);
+check('and nothing is sent', $GLOBALS['post_calls'], 0);
+
+echo PHP_EOL . "The account may publish and nothing else" . PHP_EOL;
+reset_site();
+ok_response(['phone' => '555-0100']);
+ezbizi_fetch();
+$caps = $GLOBALS['roles']['ezbizi_service']->caps;
+check('it can publish a page', isset($caps['publish_pages']), true);
+check('it can upload an image', isset($caps['upload_files']), true);
+check('it cannot change settings', isset($caps['manage_options']), false);
+check('it cannot touch users', isset($caps['edit_users']), false);
+check('it cannot install plugins', isset($caps['install_plugins']), false);
+check('it cannot post unfiltered html', isset($caps['unfiltered_html']), false);
+check('it cannot delete a page', isset($caps['delete_pages']), false);
+
+echo PHP_EOL . "Changing the token ends the old pairing" . PHP_EOL;
+do_action('update_option_ezbizi_token');
+check('the credential is revoked', count($GLOBALS['app_passwords']), 0);
+check('and the mark is cleared', get_option(EZBIZI_SERVICE_LINKED, false), false);
+
+echo PHP_EOL . "Deactivating the plugin leaves no working key" . PHP_EOL;
+reset_site();
+ok_response(['phone' => '555-0100']);
+ezbizi_fetch();
+check('paired first', count($GLOBALS['app_passwords']), 1);
+foreach ($GLOBALS['deactivate'] as $cb) { $cb(); }
+check('deactivation revokes it', count($GLOBALS['app_passwords']), 0);
+
+echo PHP_EOL . "A site with application passwords switched off simply does not pair" . PHP_EOL;
+reset_site();
+$GLOBALS['app_passwords_on'] = false;
+ok_response(['phone' => '555-0100']);
+$payload = ezbizi_fetch();
+check('no credential', count($GLOBALS['app_passwords']), 0);
+check('and the values still render', $payload['values']['phone'], '555-0100');
+
+echo PHP_EOL . "EzBizi letting go revokes the key on the site too" . PHP_EOL;
+reset_site();
+ok_response(['phone' => '555-0100']);
+ezbizi_fetch();
+check('paired', count($GLOBALS['app_passwords']), 1);
+
+// The server now says it no longer holds the pairing.
+$body = json_decode($GLOBALS['http_next']['body'], true);
+$body['service_account'] = ['linked' => false];
+$GLOBALS['http_next'] = ['code' => 200, 'body' => json_encode($body)];
+$GLOBALS['tr'] = [];
+ezbizi_fetch();
+check('the site revokes its own copy', count($GLOBALS['app_passwords']), 0);
+check('and forgets the pairing', get_option(EZBIZI_SERVICE_LINKED, false), false);
+
+echo PHP_EOL . "A server that still holds the pairing changes nothing" . PHP_EOL;
+reset_site();
+ok_response(['phone' => '555-0100']);
+ezbizi_fetch();
+$body = json_decode($GLOBALS['http_next']['body'], true);
+$body['service_account'] = ['linked' => true];
+$GLOBALS['http_next'] = ['code' => 200, 'body' => json_encode($body)];
+$GLOBALS['tr'] = [];
+ezbizi_fetch();
+check('the credential survives', count($GLOBALS['app_passwords']), 1);
+
 
 echo "\n".($failures === 0
     ? "PASS  {$checks} checks\n\n"
