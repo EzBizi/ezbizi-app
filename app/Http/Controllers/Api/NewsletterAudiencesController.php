@@ -4,8 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\NewsletterAudience;
 use App\Models\SocialConnection;
+use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
+use App\Support\Newsletter\NewsletterAccess;
+use App\Support\Scoping\OwnedScope;
 use App\Support\Scoping\ViewScope;
 use App\Support\Social\SocialConnectionAccess;
 use Illuminate\Http\JsonResponse;
@@ -37,15 +40,14 @@ class NewsletterAudiencesController extends Controller
             Refusal::permission('open Newsletter')->message(),
         );
 
-        $rows = NewsletterAudience::query()->orderBy('name')->get()
-            ->filter(fn (NewsletterAudience $a) => $this->inView($user, $a))
+        $rows = NewsletterAccess::visible(NewsletterAudience::query(), $user)->orderBy('name')->get()
             ->values();
 
         return response()->json([
             'data' => $rows->map(fn (NewsletterAudience $a) => [
-                'id'                => $a->getKey(),
-                'name'              => $a->name,
-                'kind'              => $a->kind,
+                'id' => $a->getKey(),
+                'name' => $a->name,
+                'kind' => $a->kind,
                 'mailchimp_list_id' => $a->mailchimp_list_id,
             ])->all(),
         ]);
@@ -80,6 +82,8 @@ class NewsletterAudiencesController extends Controller
         ]);
 
         $view = ViewScope::forUser($user);
+        abort_unless(OwnedScope::mayWrite($user, $user->organization_id, $view->type, $view->id),
+            Status::HTTP_FORBIDDEN, 'Choose a view where your assignments allow creating mailing lists.');
 
         $audience = new NewsletterAudience($data);
         $audience->forceFill([
@@ -98,13 +102,13 @@ class NewsletterAudiencesController extends Controller
         ], actor: $user);
 
         return response()->json(['data' => [
-            'id'   => $audience->getKey(),
+            'id' => $audience->getKey(),
             'name' => $audience->name,
             'kind' => $audience->kind,
         ]], Status::HTTP_CREATED);
     }
 
-    private function inView(\App\Models\User $user, NewsletterAudience $a): bool
+    private function inView(User $user, NewsletterAudience $a): bool
     {
         $stand = new SocialConnection;
         $stand->forceFill(['scope_type' => $a->scope_type, 'scope_id' => $a->scope_id]);

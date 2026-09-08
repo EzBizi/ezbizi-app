@@ -8,6 +8,25 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0152',
+      date: '8 Sep 2026',
+      items: [
+        'Your selected company or franchise stays with your requests, even '
+            'when another device changes its view. Shared records remain '
+            'readable, with changes limited to the places you manage.',
+        'Newsletters keep the mailing account chosen when scheduled, prevent '
+            'duplicate sends, and respect unsubscribed recipients. Cancel a '
+            'scheduled mailing before changing its content or audience.',
+        'Inventory cancellation and stock movements now agree when they '
+            'happen together. Late phone updates keep completed calls complete.',
+        'Automations preserve where an event happened after a record is '
+            'deleted and retry temporary webhook failures without repeating '
+            'actions that already succeeded.',
+        'Expired sessions clear consistently, and sign-in protection, remote '
+            'image loading, and release verification have been strengthened.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0151',
       date: '4 Sep 2026',
       items: [

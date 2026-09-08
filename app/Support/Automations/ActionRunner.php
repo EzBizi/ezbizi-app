@@ -184,6 +184,7 @@ class ActionRunner
         bool $isTest = false,
         ?Automation $automation = null,
         int $actionIndex = 0,
+        ?string $idempotencyKey = null,
     ): array {
         $type = $action['type'] ?? null;
 
@@ -206,7 +207,7 @@ class ActionRunner
         return match ($type) {
             'update_field' => $this->updateField($action, $event, $subject),
             'change_status' => $this->changeStatus($action, $event, $subject),
-            'webhook' => $this->callWebhook($action, $event, $subject),
+            'webhook' => $this->callWebhook($action, $event, $subject, $idempotencyKey),
             'notify' => $this->notify($action, $event, $subject),
 
             // ActionDefinition::type() keeps everything after the first dot, so
@@ -873,7 +874,7 @@ class ActionRunner
         ];
     }
 
-    private function callWebhook(array $action, AutomationEvent $event, ?Model $subject): array
+    private function callWebhook(array $action, AutomationEvent $event, ?Model $subject, ?string $idempotencyKey): array
     {
         $url = $action['url'] ?? null;
 
@@ -890,12 +891,14 @@ class ActionRunner
             ],
             'payload' => $event->payload,
             // So a receiver can discard a redelivery rather than acting twice.
-            'idempotency_key' => $event->getKey(),
+            'idempotency_key' => $idempotencyKey ?? $event->getKey(),
         ], $action['secret'] ?? null);
 
         return [
             'type' => 'webhook',
             'ok' => $result['ok'],
+            'retryable' => $result['retryable'] ?? (in_array($result['status'] ?? null, [408, 425, 429], true) || ($result['status'] ?? 0) >= 500),
+            'unknown' => ! $result['ok'] && ($result['status'] ?? null) === null && ($result['retryable'] ?? false),
             'detail' => $result['ok']
                 ? "Delivered, HTTP {$result['status']}."
                 : ($result['error'] ?? 'Failed.'),

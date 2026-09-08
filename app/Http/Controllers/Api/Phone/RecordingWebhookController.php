@@ -52,7 +52,7 @@ class RecordingWebhookController extends Controller
         }
 
         DB::transaction(function () use ($request, $sid, $recordingSid) {
-            $call = PhoneCall::query()->where('twilio_sid', $sid)->first();
+            $call = PhoneCall::query()->where('twilio_sid', $sid)->lockForUpdate()->first();
             if ($call === null) {
                 return;
             }

@@ -8,6 +8,7 @@ use App\Models\InventoryLocation;
 use App\Models\InventorySale;
 use App\Models\User;
 use App\Support\Access\Refusal;
+use App\Support\Scoping\OwnedScope;
 use Illuminate\Auth\Access\Response;
 
 /**
@@ -103,16 +104,16 @@ class InventorySalePolicy
             return Response::denyAsNotFound();
         }
 
+        if ($write) {
+            return OwnedScope::mayWrite(
+                $user,
+                $sale->organization_id,
+                $sale->franchise_id !== null ? 'franchise' : ($sale->company_id !== null ? 'company' : 'organization'),
+                $sale->franchise_id ?? $sale->company_id,
+            ) ? Response::allow() : Response::deny('You cannot change this record from your current view or assignments.');
+        }
         if ($sale->company_id === null) {
-            if (! $write) {
-                return Response::allow();
-            }
-
-            $organization = $user->organization;
-
-            return $user->canActOnOrganization($organization)
-                ? Response::allow()
-                : Refusal::noReach($user, Refusal::AT_ORGANIZATION, $act, $organization->name);
+            return Response::allow();
         }
 
         $company = $sale->company;

@@ -118,8 +118,11 @@ class _ScopePickerPanelState extends State<ScopePickerPanel> {
       }
     }
 
+    final reachableIds = me.companies.map((c) => c.id).toSet();
     for (final company in me.companies.where(
-      (c) => c.parentCompanyId == null,
+      (c) =>
+          c.parentCompanyId == null ||
+          !reachableIds.contains(c.parentCompanyId),
     )) {
       addCompany(company, 0, '');
     }

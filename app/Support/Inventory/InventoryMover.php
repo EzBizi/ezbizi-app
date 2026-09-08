@@ -186,6 +186,7 @@ final class InventoryMover
         User $user,
     ): InventoryReceive {
         return DB::transaction(function () use ($order, $location, $lines, $user) {
+            $order = InventoryPurchaseOrder::query()->lockForUpdate()->findOrFail($order->getKey());
             $this->assertLocationOpen($location);
 
             if ($order->status !== InventoryPurchaseOrderStatus::Open) {
@@ -385,6 +386,7 @@ final class InventoryMover
         User $user,
     ): InventorySaleFulfillment {
         return DB::transaction(function () use ($sale, $location, $lines, $user) {
+            $sale = InventorySale::query()->lockForUpdate()->findOrFail($sale->getKey());
             $this->assertLocationOpen($location);
 
             if (! in_array($sale->status, [

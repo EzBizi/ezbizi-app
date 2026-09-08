@@ -7,6 +7,7 @@ use App\Models\Franchise;
 use App\Models\TrainingGuide;
 use App\Models\User;
 use App\Support\Access\Refusal;
+use App\Support\Scoping\OwnedScope;
 use Illuminate\Auth\Access\Response;
 
 /**
@@ -112,16 +113,16 @@ class TrainingGuidePolicy
             return Response::denyAsNotFound();
         }
 
+        if ($write) {
+            return OwnedScope::mayWrite(
+                $user,
+                $guide->organization_id,
+                $guide->franchise_id !== null ? 'franchise' : ($guide->company_id !== null ? 'company' : 'organization'),
+                $guide->franchise_id ?? $guide->company_id,
+            ) ? Response::allow() : Response::deny('You cannot change this record from your current view or assignments.');
+        }
         if ($guide->company_id === null) {
-            if (! $write) {
-                return Response::allow();
-            }
-
-            $organization = $user->organization;
-
-            return $user->canActOnOrganization($organization)
-                ? Response::allow()
-                : Refusal::noReach($user, Refusal::AT_ORGANIZATION, $act, $organization->name);
+            return Response::allow();
         }
 
         // Looked up rather than read off a `company()` relation: TrainingGuide

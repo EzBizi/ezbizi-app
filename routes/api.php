@@ -352,8 +352,9 @@ Route::post('v1/social/thumbtack/webhook', ThumbtackWebhookController::class)
  * GET that unsubscribed people would empty a list silently. POST is what
  * records it. See the controller for what this does and does not defend against.
  */
-Route::get('v1/newsletter/unsubscribe/{newsletter}', [NewsletterUnsubscribeController::class, 'show']);
+Route::get('v1/newsletter/unsubscribe/{newsletter}', [NewsletterUnsubscribeController::class, 'show'])->middleware('throttle:30,1');
 Route::post('v1/newsletter/unsubscribe/{newsletter}', [NewsletterUnsubscribeController::class, 'store'])
+    ->middleware('throttle:30,1')
     ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class]);
 
 Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callback'])

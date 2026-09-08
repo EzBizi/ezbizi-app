@@ -54,9 +54,11 @@ VERSION=$(tr -d '[:space:]' < "$(dirname "$0")/../client/VERSION" 2>/dev/null)
 # so rather than saying zero — "0 organizations" is exactly the false statement
 # this script exists to stop, and it is what a failed query looks like.
 COUNTS=$(ssh -o BatchMode=yes "$REMOTE" '
-  R=$(ls -d /var/www/ezbizi-releases/* 2>/dev/null | tail -1) || exit 1
+  R=$(readlink -f /var/www/ezbizi-current) || exit 1
+  case "$R" in /var/www/ezbizi-releases/*) ;; *) exit 1 ;; esac
+  [ -f "$R/artisan" ] || exit 1
   cd "$R" || exit 1
-  sudo -u ubuntu php artisan tinker --execute="
+  sudo -u ubuntu php8.4 artisan tinker --execute="
     \$n = fn (\$t) => DB::table(\$t)->count();
     printf(\"%d|%d|%d|%d|%d|%d|%d\n\",
       \$n(\"organizations\"), \$n(\"companies\"), \$n(\"franchises\"),

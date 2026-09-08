@@ -164,14 +164,13 @@ worth having. The numbers point at `EZBIZI-TODO.md`, which was renumbered from 1
 
 ## How deployment works
 
-Edit locally → `git push production main`. Never edit on the server; server-side edits are
-for diagnosis only. The post-receive hook builds a timestamped release, runs migrations,
-health-checks it and swaps a symlink. The Flutter build is uploaded separately because it is
-derived and 36 MB.
+Edit locally and release through `scripts/release.sh --gates` (API/web only: `scripts/deploy.sh --gates`). Gates are opt-in, not automatic. The reviewed pipeline pins one commit, serializes API/UI publication and verifies release identity. Server-side access is for diagnosis, not shipping edits. See [DEPLOY](DEPLOY.md) for failure handling and [release notes](RELEASE-NOTES.md) for changes pending deployment.
 
 Full detail: `DEPLOY.md`, beside this file.
 
 ## The documents
+
+The [documentation index](README.md) is the navigation entry point. [Ownership](OWNERSHIP.md) defines tenant identity, reach, current view and downward write authority. The 2026-09-08 remediation is locally under verification; no deployment is claimed by this documentation update. Existing generated numbers above retain their original measurement date.
 
 | File | What it is |
 |---|---|

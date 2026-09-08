@@ -2,13 +2,19 @@
 
 namespace Tests\Feature\Newsletter;
 
+use App\Jobs\SendNewsletter;
 use App\Models\AutomationEvent;
 use App\Models\Company;
 use App\Models\Newsletter;
 use App\Models\NewsletterAudience;
 use App\Models\NewsletterUnsubscribe;
 use App\Models\SocialConnection;
+use App\Models\User;
+use App\Support\Newsletter\MailchimpClient;
+use App\Support\Newsletter\MailchimpSender;
+use App\Support\Newsletter\NewsletterUnsubscribeLink;
 use App\Support\Social\SocialProvider;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsTenants;
@@ -43,8 +49,8 @@ class NewsletterApiTest extends TestCase
         ]);
 
         $id = $this->signedInAs($writer)->postJson(self::ENDPOINT, [
-            'subject'     => 'Autumn sweeps',
-            'blocks'      => [['type' => 'heading', 'text' => 'Autumn sweeps']],
+            'subject' => 'Autumn sweeps',
+            'blocks' => [['type' => 'heading', 'text' => 'Autumn sweeps']],
             'audience_id' => $audience->getKey(),
         ])->assertCreated()->json('data.id');
 
@@ -58,7 +64,7 @@ class NewsletterApiTest extends TestCase
 
     public function test_a_role_without_the_module_cannot_even_look(): void
     {
-        $t      = $this->provisionTenant('A1-Group');
+        $t = $this->provisionTenant('A1-Group');
         $viewer = $this->userWithRole($t, 'Viewer', ['customers.view']);
 
         $this->signedInAs($viewer)->getJson(self::ENDPOINT)->assertForbidden();
@@ -68,10 +74,10 @@ class NewsletterApiTest extends TestCase
 
     public function test_a_newsletter_files_on_the_view_and_a_sibling_company_cannot_see_it(): void
     {
-        $t       = $this->provisionTenant('A1-Group');
+        $t = $this->provisionTenant('A1-Group');
         $premier = $this->inTenant($t['org'], fn () => Company::create([
             'organization_id' => $t['org']->id,
-            'name'            => 'Premier Garage Repair',
+            'name' => 'Premier Garage Repair',
         ]));
 
         // Written while standing in A-1 Chimney.
@@ -99,10 +105,10 @@ class NewsletterApiTest extends TestCase
 
     public function test_a_sibling_company_gets_a_404_rather_than_a_403(): void
     {
-        $t       = $this->provisionTenant('A1-Group');
+        $t = $this->provisionTenant('A1-Group');
         $premier = $this->inTenant($t['org'], fn () => Company::create([
             'organization_id' => $t['org']->id,
-            'name'            => 'Premier Garage Repair',
+            'name' => 'Premier Garage Repair',
         ]));
 
         $this->lookingAt($t['admin'], 'company', $t['company']->id);
@@ -174,8 +180,8 @@ class NewsletterApiTest extends TestCase
         ]);
 
         $id = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, [
-            'subject'     => 'Autumn sweep season',
-            'blocks'      => [['type' => 'heading', 'text' => 'Autumn sweep season']],
+            'subject' => 'Autumn sweep season',
+            'blocks' => [['type' => 'heading', 'text' => 'Autumn sweep season']],
             'audience_id' => $audience->getKey(),
         ])->assertCreated()->json('data.id');
 
@@ -203,8 +209,8 @@ class NewsletterApiTest extends TestCase
         Http::fake();
 
         $id = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, [
-            'subject'       => 'Next week',
-            'audience_id'   => $audience->getKey(),
+            'subject' => 'Next week',
+            'audience_id' => $audience->getKey(),
             'scheduled_for' => now()->addDays(3)->format('Y-m-d H:i'),
         ])->assertCreated()->json('data.id');
 
@@ -232,7 +238,7 @@ class NewsletterApiTest extends TestCase
         ]);
 
         $id = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, [
-            'subject'     => 'Gone already',
+            'subject' => 'Gone already',
             'audience_id' => $audience->getKey(),
         ])->assertCreated()->json('data.id');
 
@@ -304,11 +310,12 @@ class NewsletterApiTest extends TestCase
 
     public function test_the_unsubscribe_link_does_not_unsubscribe_on_a_get(): void
     {
-        $t  = $this->provisionTenant('A1-Group');
+        $t = $this->provisionTenant('A1-Group');
         $id = $this->draft($t);
 
         // Mail clients and scanners fetch every link before a human sees it.
-        $this->get("/api/v1/newsletter/unsubscribe/{$id}?e=someone@example.com")
+        $link = $this->inTenant($t['org'], fn () => NewsletterUnsubscribeLink::for(Newsletter::findOrFail($id), 'someone@example.com'));
+        $this->get($link)
             ->assertOk()
             ->assertSee('Yes, unsubscribe me', false);
 
@@ -319,10 +326,11 @@ class NewsletterApiTest extends TestCase
 
     public function test_a_post_records_the_unsubscribe_and_raises_the_event(): void
     {
-        $t  = $this->provisionTenant('A1-Group');
+        $t = $this->provisionTenant('A1-Group');
         $id = $this->draft($t);
 
-        $this->post("/api/v1/newsletter/unsubscribe/{$id}", ['e' => 'someone@example.com'])
+        $link = $this->inTenant($t['org'], fn () => NewsletterUnsubscribeLink::for(Newsletter::findOrFail($id), 'someone@example.com'));
+        $this->post($link)
             ->assertOk()
             ->assertSee('You have been unsubscribed', false);
 
@@ -333,6 +341,281 @@ class NewsletterApiTest extends TestCase
     }
 
     // ── helpers ─────────────────────────────────────────────────
+
+    public function test_custom_html_survives_creation(): void
+    {
+        $t = $this->provisionTenant('HTML');
+        $id = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, [
+            'subject' => 'Custom', 'html_override' => '<p>Exact copy</p>',
+        ])->assertCreated()->json('data.id');
+        $this->signedInAs($t['admin'])->getJson(self::ENDPOINT."/{$id}/preview")
+            ->assertOk()->assertJsonPath('data.html', '<p>Exact copy</p>');
+    }
+
+    public function test_scope_is_applied_before_the_fifty_row_limit(): void
+    {
+        $t = $this->provisionTenant('Pagination');
+        $this->lookingAt($t['admin'], 'company', $t['company']->id);
+        $id = $this->draft($t);
+        $this->inTenant($t['org'], function () {
+            $other = Company::create(['name' => 'Sibling']);
+            for ($i = 0; $i < 51; $i++) {
+                $row = new Newsletter(['subject' => 'Other '.$i, 'blocks' => [], 'scope_type' => 'company',
+                    'scope_id' => $other->id]);
+                $row->forceFill(['created_at' => now()->addDay()])->save();
+            }
+        });
+        $this->signedInAs($t['admin']->fresh())->getJson(self::ENDPOINT)
+            ->assertOk()->assertJsonPath('data.0.id', $id);
+    }
+
+    public function test_franchise_actor_cannot_create_organization_rows_from_overview(): void
+    {
+        $t = $this->provisionTenant('Create authority');
+        $actor = $this->userWithRole($t, 'Branch writer', ['newsletter.create', 'newsletter.edit'], onlyAt: $t['franchise']);
+        $this->signedInAs($actor)->withHeader('X-EzBizi-View', 'organization');
+        $this->postJson(self::ENDPOINT, ['subject' => 'Upward write'])->assertForbidden();
+        $this->postJson('/api/v1/newsletter/audiences', ['name' => 'Upward audience', 'kind' => 'customers', 'mailchimp_list_id' => 'list'])->assertForbidden();
+        $this->assertDatabaseMissing('newsletters', ['subject' => 'Upward write']);
+        $this->assertDatabaseMissing('newsletter_audiences', ['name' => 'Upward audience']);
+    }
+
+    public function test_franchise_reader_inherits_its_company_newsletters_and_audiences(): void
+    {
+        $t = $this->provisionTenant('Inherited reading');
+        $audience = $this->audience($t, 'company', $t['company']->id);
+        $this->lookingAt($t['admin'], 'company', $t['company']->id);
+        $id = $this->draft($t);
+        $reader = $this->userWithRole($t, 'Branch reader', ['newsletter.view'], onlyAt: $t['franchise']);
+        $this->signedInAs($reader)->withHeader('X-EzBizi-View', 'franchise:'.$t['franchise']->id);
+        $this->getJson(self::ENDPOINT)->assertOk()->assertJsonPath('data.0.id', $id);
+        $this->getJson('/api/v1/newsletter/audiences')->assertOk()->assertJsonPath('data.0.id', $audience->id);
+    }
+
+    public function test_lower_view_cannot_mutate_an_organization_newsletter(): void
+    {
+        $t = $this->provisionTenant('Authority');
+        $id = $this->draft($t);
+        $this->lookingAt($t['admin'], 'company', $t['company']->id);
+        $this->signedInAs($t['admin']->fresh())->putJson(self::ENDPOINT."/{$id}", ['subject' => 'Wrong'])->assertForbidden();
+        $this->signedInAs($t['admin']->fresh())->postJson(self::ENDPOINT."/{$id}/send")->assertForbidden();
+        $this->signedInAs($t['admin']->fresh())->deleteJson(self::ENDPOINT."/{$id}")->assertForbidden();
+    }
+
+    public function test_repeated_scheduling_admits_one_send_and_retains_its_connection(): void
+    {
+        $t = $this->provisionTenant('Admission');
+        $connection = $this->mailchimp($t);
+        $audience = $this->audience($t, 'organization', $t['org']->id);
+        $id = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, [
+            'subject' => 'Later', 'audience_id' => $audience->id,
+            'scheduled_for' => now()->addDay()->format('Y-m-d H:i'),
+        ])->assertCreated()->json('data.id');
+        $this->signedInAs($t['admin'])->postJson(self::ENDPOINT."/{$id}/send")->assertOk();
+        $this->signedInAs($t['admin'])->postJson(self::ENDPOINT."/{$id}/send")->assertUnprocessable();
+        $this->inTenant($t['org'], function () use ($id, $connection) {
+            $send = Newsletter::findOrFail($id)->sends()->sole();
+            $this->assertSame($connection->id, $send->connection_id);
+        });
+    }
+
+    public function test_sweep_fails_a_missing_account_inside_its_tenant_and_continues(): void
+    {
+        $t = $this->provisionTenant('Disconnected');
+        $id = $this->draft($t);
+        $this->inTenant($t['org'], function () use ($id) {
+            $n = Newsletter::findOrFail($id);
+            $n->forceFill(['status' => 'scheduled'])->save();
+            $n->sends()->create(['provider' => 'mailchimp', 'status' => 'queued', 'recipients' => 0]);
+        });
+        app(TenantContext::class)->forget();
+        $this->artisan('ezbizi:send-due-newsletters')->assertSuccessful();
+        $this->inTenant($t['org'], fn () => $this->assertSame('failed', Newsletter::findOrFail($id)->status));
+    }
+
+    public function test_unexpected_sender_failure_is_recorded(): void
+    {
+        $t = $this->provisionTenant('Exception');
+        $this->mailchimp($t);
+        $audience = $this->audience($t, 'organization', $t['org']->id);
+        Http::fake(fn () => throw new \RuntimeException('Synthetic malformed response'));
+        $id = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, [
+            'subject' => 'Fail', 'audience_id' => $audience->id,
+        ])->assertCreated()->json('data.id');
+        $this->signedInAs($t['admin'])->postJson(self::ENDPOINT."/{$id}/send")->assertOk();
+        $this->inTenant($t['org'], fn () => $this->assertSame('failed', Newsletter::findOrFail($id)->sends()->sole()->status));
+    }
+
+    public function test_generated_email_uses_the_providers_recipient_authenticated_unsubscribe(): void
+    {
+        $t = $this->provisionTenant('Footer');
+        $this->mailchimp($t);
+        $audience = $this->audience($t, 'organization', $t['org']->id);
+        Http::fake(['*/campaigns' => Http::response(['id' => 'footer']), '*' => Http::response([])]);
+        $id = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, [
+            'subject' => 'Footer', 'audience_id' => $audience->id,
+        ])->assertCreated()->json('data.id');
+        $this->signedInAs($t['admin'])->postJson(self::ENDPOINT."/{$id}/send")->assertOk();
+        Http::assertSent(fn ($r) => str_ends_with($r->url(), '/content') && str_contains($r['html'], '*|UNSUB|*'));
+    }
+
+    public function test_forged_unsubscribe_cannot_write_or_emit(): void
+    {
+        $t = $this->provisionTenant('Forged');
+        $id = $this->draft($t);
+        $this->post("/api/v1/newsletter/unsubscribe/{$id}", ['e' => 'victim@example.com'])->assertForbidden();
+        $this->inTenant($t['org'], function () {
+            $this->assertSame(0, NewsletterUnsubscribe::query()->count());
+            $this->assertSame(0, AutomationEvent::where('event_key', 'newsletter.unsubscribed')->count());
+        });
+    }
+
+    public function test_local_unsubscribers_are_excluded_from_the_actual_remote_campaign(): void
+    {
+        $t = $this->provisionTenant('Suppression');
+        $this->mailchimp($t);
+        $audience = $this->audience($t, 'organization', $t['org']->id);
+        $this->inTenant($t['org'], fn () => NewsletterUnsubscribe::create([
+            'scope_type' => 'organization', 'scope_id' => $t['org']->id,
+            'email' => 'gone@example.com', 'unsubscribed_at' => now(),
+        ]));
+        Http::fake([
+            '*/members*' => Http::response(['members' => [['email_address' => 'gone@example.com'], ['email_address' => 'stay@example.com']], 'total_items' => 2]),
+            '*/segments' => Http::response(['id' => 123]),
+            '*/campaigns' => Http::response(['id' => 'targeted', 'recipients' => ['recipient_count' => 1]]),
+            '*' => Http::response([]),
+        ]);
+        $id = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, ['subject' => 'Targeted', 'audience_id' => $audience->id])->assertCreated()->json('data.id');
+        $this->signedInAs($t['admin'])->postJson(self::ENDPOINT."/{$id}/send")->assertOk();
+        Http::assertSent(fn ($r) => str_ends_with($r->url(), '/segments') && $r['static_segment'] === ['stay@example.com']);
+        Http::assertSent(fn ($r) => str_ends_with($r->url(), '/campaigns') && ($r['recipients']['segment_opts']['saved_segment_id'] ?? null) === 123);
+    }
+
+    public function test_signed_unsubscribe_survives_deletion_and_cannot_be_replayed_as_an_event(): void
+    {
+        $t = $this->provisionTenant('Proof');
+        $id = $this->draft($t);
+        $link = $this->inTenant($t['org'], fn () => NewsletterUnsubscribeLink::for(Newsletter::findOrFail($id), 'person@example.com'));
+        $this->post($link)->assertOk();
+        $this->post($link)->assertOk();
+        $this->inTenant($t['org'], function () use ($id) {
+            $this->assertSame(1, AutomationEvent::where('event_key', 'newsletter.unsubscribed')->count());
+            Newsletter::findOrFail($id)->delete();
+        });
+        $this->post($link)->assertOk();
+        $this->inTenant($t['org'], fn () => $this->assertSame(1, NewsletterUnsubscribe::query()->count()));
+        $this->post($link.'broken')->assertForbidden();
+    }
+
+    public function test_scheduled_send_uses_its_original_company_account_and_a_job_replay_is_inert(): void
+    {
+        $t = $this->provisionTenant('Two accounts');
+        $this->mailchimp($t); // Another account exists first in the organization.
+        $companyConnection = $this->inTenant($t['org'], function () use ($t) {
+            $c = new SocialConnection;
+            $c->forceFill(['scope_type' => 'company', 'scope_id' => $t['company']->id,
+                'provider' => 'mailchimp', 'remote_id' => 'us21:company', 'display_name' => 'Company']);
+            $c->connect(['api_key' => 'synthetic-us21', 'account_email' => 'company@example.com']);
+            $c->save();
+
+            return $c;
+        });
+        $audience = $this->audience($t, 'company', $t['company']->id);
+        $this->lookingAt($t['admin'], 'company', $t['company']->id);
+        $id = $this->signedInAs($t['admin']->fresh())->postJson(self::ENDPOINT, [
+            'subject' => 'Account identity', 'audience_id' => $audience->id,
+            'scheduled_for' => now()->addDay()->format('Y-m-d H:i'),
+        ])->assertCreated()->json('data.id');
+        $this->signedInAs($t['admin']->fresh())->postJson(self::ENDPOINT."/{$id}/send")->assertOk();
+        Http::fake(['*/campaigns' => Http::response(['id' => 'original-account']), '*' => Http::response([])]);
+        $sendId = $this->inTenant($t['org'], function () use ($id, $companyConnection) {
+            $n = Newsletter::findOrFail($id);
+            $n->forceFill(['scheduled_for' => now()->subDay()->format('Y-m-d H:i:s')])->save();
+            $s = $n->sends()->sole();
+            $this->assertSame($companyConnection->id, $s->connection_id);
+
+            return $s->id;
+        });
+        app(TenantContext::class)->forget();
+        $this->artisan('ezbizi:send-due-newsletters')->assertSuccessful();
+        Http::assertSent(fn ($r) => str_starts_with($r->url(), 'https://us21.api.mailchimp.com/'));
+        Http::assertNotSent(fn ($r) => str_starts_with($r->url(), 'https://us14.api.mailchimp.com/'));
+        $before = Http::recorded()->count();
+        app()->call([new SendNewsletter($sendId, 'wrong-argument'), 'handle']);
+        $this->assertSame($before, Http::recorded()->count());
+    }
+
+    public function test_sending_newsletter_cannot_be_edited_or_deleted_while_a_job_owns_it(): void
+    {
+        $t = $this->provisionTenant('Sending');
+        $id = $this->draft($t);
+        $this->inTenant($t['org'], fn () => Newsletter::findOrFail($id)->forceFill(['status' => 'sending'])->save());
+        $this->signedInAs($t['admin'])->putJson(self::ENDPOINT."/{$id}", ['subject' => 'Changed'])->assertUnprocessable();
+        $this->signedInAs($t['admin'])->deleteJson(self::ENDPOINT."/{$id}")->assertUnprocessable();
+    }
+
+    public function test_customer_recipient_sync_never_resubscribes_and_sends_only_eligible_people(): void
+    {
+        $t = $this->provisionTenant('Customers');
+        $connection = $this->mailchimp($t);
+        $audience = $this->audience($t, 'organization', $t['org']->id);
+        $this->inTenant($t['org'], fn () => $audience->forceFill(['kind' => 'customers'])->save());
+        $id = $this->draft($t);
+        $n = $this->inTenant($t['org'], function () use ($id, $audience) {
+            $n = Newsletter::findOrFail($id);
+            $n->forceFill(['newsletter_audience_id' => $audience->id])->save();
+
+            return $n;
+        });
+        Http::fake(function ($r) {
+            if ($r->method() === 'PUT' && str_contains($r->url(), '/members/')) {
+                return Http::response(['status' => 'unsubscribed']);
+            }
+            if (str_contains($r->url(), '/members?')) {
+                return Http::response(['members' => [['email_address' => 'eligible@example.com'], ['email_address' => 'outsider@example.com']], 'total_items' => 2]);
+            }
+            if (str_ends_with($r->url(), '/segments')) {
+                return Http::response(['id' => 8]);
+            }
+            if (str_ends_with($r->url(), '/campaigns')) {
+                return Http::response(['id' => 'customers', 'recipients' => ['recipient_count' => 1]]);
+            }
+
+            return Http::response([]);
+        });
+        $this->inTenant($t['org'], fn () => app(MailchimpSender::class)->send($connection, $n, '<p>Custom</p>', [
+            ['email' => 'eligible@example.com'], ['email' => 'unsubscribed@example.com'],
+        ]));
+        Http::assertSent(fn ($r) => $r->method() === 'PUT' && str_contains($r->url(), '/members/') && $r['status_if_new'] === 'subscribed' && ! isset($r['status']));
+        Http::assertSent(fn ($r) => str_ends_with($r->url(), '/segments') && $r['static_segment'] === ['eligible@example.com']);
+        Http::assertSent(fn ($r) => str_ends_with($r->url(), '/content') && str_contains($r['html'], '*|UNSUB|*'));
+    }
+
+    public function test_large_recipient_segment_is_added_in_bounded_batches(): void
+    {
+        Http::fake(function ($r) {
+            if (str_ends_with($r->url(), '/segments')) {
+                return Http::response(['id' => 81]);
+            }
+
+            return Http::response(['total_added' => count($r['members_to_add']), 'errors' => []]);
+        });
+        $emails = array_map(fn ($i) => "person{$i}@example.com", range(1, 1201));
+        $this->assertSame(81, app(MailchimpClient::class)->recipientSegment('synthetic-us14', 'list', $emails));
+        Http::assertSentCount(3);
+        $sent = Http::recorded()->map(fn ($pair) => $pair[0])->all();
+        $this->assertCount(500, $sent[0]['static_segment']);
+        $this->assertCount(500, $sent[1]['members_to_add']);
+        $this->assertCount(201, $sent[2]['members_to_add']);
+    }
+
+    public function test_admitted_schedule_cannot_change_its_content_or_audience(): void
+    {
+        $t = $this->provisionTenant('Scheduled content');
+        $id = $this->draft($t);
+        $this->inTenant($t['org'], fn () => Newsletter::findOrFail($id)->forceFill(['status' => 'scheduled'])->save());
+        $this->signedInAs($t['admin'])->putJson(self::ENDPOINT."/{$id}", ['subject' => 'Changed'])->assertUnprocessable();
+    }
 
     private function draft(array $t): string
     {
@@ -345,14 +628,14 @@ class NewsletterApiTest extends TestCase
     {
         return $this->inTenant($t['org'], function () use ($t, $scopeType, $scopeId) {
             $a = new NewsletterAudience([
-                'name'              => 'Everybody',
-                'kind'              => NewsletterAudience::KIND_MAILCHIMP,
+                'name' => 'Everybody',
+                'kind' => NewsletterAudience::KIND_MAILCHIMP,
                 'mailchimp_list_id' => 'list-1',
             ]);
             $a->forceFill([
                 'organization_id' => $t['org']->id,
-                'scope_type'      => $scopeType,
-                'scope_id'        => $scopeId,
+                'scope_type' => $scopeType,
+                'scope_id' => $scopeId,
             ]);
             $a->save();
 
@@ -366,16 +649,16 @@ class NewsletterApiTest extends TestCase
             $c = new SocialConnection;
             $c->forceFill([
                 'organization_id' => $t['org']->id,
-                'scope_type'      => 'organization',
-                'scope_id'        => $t['org']->id,
-                'provider'        => SocialProvider::Mailchimp->value,
-                'remote_id'       => 'us14:mail@a-1chimney.com',
-                'display_name'    => 'A-1 Chimney',
-                'handle'          => 'mail@a-1chimney.com',
+                'scope_type' => 'organization',
+                'scope_id' => $t['org']->id,
+                'provider' => SocialProvider::Mailchimp->value,
+                'remote_id' => 'us14:mail@a-1chimney.com',
+                'display_name' => 'A-1 Chimney',
+                'handle' => 'mail@a-1chimney.com',
             ]);
             $c->connect([
                 'refresh_token' => 'abc-us14',
-                'api_key'       => 'abc-us14',
+                'api_key' => 'abc-us14',
                 'account_email' => 'mail@a-1chimney.com',
             ]);
             $c->save();
@@ -384,7 +667,7 @@ class NewsletterApiTest extends TestCase
         });
     }
 
-    private function lookingAt(\App\Models\User $user, string $type, string $id): void
+    private function lookingAt(User $user, string $type, string $id): void
     {
         $this->inTenant($user->organization, function () use ($user, $type, $id) {
             $user->forceFill([
