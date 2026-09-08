@@ -18,6 +18,7 @@ class VersionHistory {
         'Web Management: the grey panels are gone from the SEO screen. They were on four blocks and not on the rest of the same screen, which read as a mistake rather than a style.',
         'Web Management: SEO has a Social links section - Facebook, Instagram, YouTube, Twitter / X, LinkedIn, TikTok, Yelp, Google Business, Pinterest, BBB, Nextdoor, Houzz, Angi, Thumbtack and HomeAdvisor, each with its own shortcode.',
         'Web Management: a social link follows the primary website like every other detail, and setting one on a branch site overrides just that one link.',
+        'Web Management: the address has a Full address box now. Start typing, pick the match, and the street, city, state and ZIP fill themselves - the same lookup Settings has had, on the screen that was still typing all five by hand.',
       ],
     ),
     VersionRelease(
