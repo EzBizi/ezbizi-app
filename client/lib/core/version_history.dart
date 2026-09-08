@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0164',
+      date: '8 Sep 2026',
+      items: [
+        'Thumbtack: a connected account now receives its enquiries. Connecting used to succeed without telling Thumbtack where to send them, so nothing ever arrived. An account connected before this update needs disconnecting and connecting again once.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0163',
       date: '8 Sep 2026',
       items: [
