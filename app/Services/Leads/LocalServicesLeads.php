@@ -3,6 +3,7 @@
 namespace App\Services\Leads;
 
 use App\Models\Lead;
+use App\Models\LeadConversation;
 use App\Models\SocialConnection;
 use App\Support\Automations\EventEmitter;
 use App\Support\Social\GoogleAdsOAuth;
@@ -85,19 +86,8 @@ class LocalServicesLeads
             foreach ($page['leads'] as $raw) {
                 $fetched++;
 
-                // Outside the transaction on purpose: emitting inside one means
-                // an automation running against a row the emitter has not
-                // committed yet. `emitAfterCommit` exists for the same reason,
-                // and `wasCreated` is what tells us which to raise.
-                $result = $this->store($connection, $raw);
-
-                if ($result['created']) {
+                if ($this->absorb($connection, $raw)['created']) {
                     $created++;
-                    $this->events->emitAfterCommit('lead.received', $result['lead'], [
-                        'after' => $result['lead']->only([
-                            'source', 'contact_name', 'phone', 'category', 'received_at',
-                        ]),
-                    ]);
                 } else {
                     $updated++;
                 }
@@ -106,9 +96,335 @@ class LocalServicesLeads
             $pageToken = $page['next'];
         } while ($pageToken !== null && ++$pages < self::MAX_PAGES);
 
+        $conversations = $this->syncConversations($connection, $token);
+
         $connection->forceFill(['last_reached_at' => now()])->save();
 
-        return ['fetched' => $fetched, 'created' => $created, 'updated' => $updated];
+        return [
+            'fetched'       => $fetched,
+            'created'       => $created,
+            'updated'       => $updated,
+            'conversations' => $conversations,
+        ];
+    }
+
+    /**
+     * Store one lead and, if it is new, say so.
+     *
+     * Outside the transaction on purpose: emitting inside one means an
+     * automation running against a row the emitter has not committed yet.
+     * `emitAfterCommit` exists for the same reason, and `created` is what
+     * tells us whether to raise anything.
+     *
+     * @param  array<string, mixed>  $raw
+     * @return array{lead: Lead, created: bool}
+     */
+    private function absorb(SocialConnection $connection, array $raw): array
+    {
+        $result = $this->store($connection, $raw);
+
+        if ($result['created']) {
+            $this->events->emitAfterCommit('lead.received', $result['lead'], [
+                'after' => $result['lead']->only([
+                    'source', 'contact_name', 'phone', 'category', 'received_at',
+                ]),
+            ]);
+        }
+
+        return $result;
+    }
+
+    /**
+     * What was said: every call and message since the last one we hold.
+     *
+     * A lead row is a header. The substance - the enquirer's message, the
+     * call's length and recording, the business's replies - is a second
+     * resource, `local_services_lead_conversation`, that this platform never
+     * read. Rodrigo's a1leads pulled it from the start, which is why its list
+     * showed "LS Text" and the last message under each name while ours showed
+     * "unnamed enquiry" and nothing. Measured live on 2026-09-08 against
+     * 4941850746 ("A1 Chimney - Cleveland"): eleven rows for three days, with
+     * durations and recording URLs.
+     *
+     * Only for accounts that have produced a lead. Measured on 2026-09-08
+     * across A-1 Chimney's twenty-two accounts: thirteen hold leads (23,875
+     * lifetime between them) and nine hold none, and at one search per
+     * account per five-minute tick this second read would have spent 2,592
+     * of the day's 15,000 operations asking those nine about conversations
+     * on leads they do not have. With it, a tick is 22 lead reads plus 13
+     * conversation reads: 10,080 operations a day, under the quota, with the
+     * remainder left for manual Fetch clicks and connects.
+     *
+     * The window is on the conversation's own time, not the lead's. A message
+     * this week on a lead from two months ago is inside it while the lead is
+     * outside ours; those leads are fetched by id afterwards, so an enquiry
+     * that is still alive is never dropped for being old.
+     *
+     * @return array{fetched: int, created: int, leads_recovered: int}
+     */
+    private function syncConversations(SocialConnection $connection, string $token): array
+    {
+        $none = ['fetched' => 0, 'created' => 0, 'leads_recovered' => 0];
+
+        if (! Lead::query()->where('connection_id', $connection->getKey())->exists()) {
+            return $none;
+        }
+
+        $since   = $this->conversationsSince($connection);
+        $fetched = 0;
+        $created = 0;
+        $pending = [];   // remote lead id => conversations whose lead we do not hold yet
+        $touched = [];   // lead id => Lead, for the preview refresh at the end
+        $pageToken = null;
+        $pages = 0;
+
+        $query = sprintf(
+            'SELECT local_services_lead.id, local_services_lead_conversation.id, '
+            .'local_services_lead_conversation.lead, '
+            .'local_services_lead_conversation.conversation_channel, '
+            .'local_services_lead_conversation.participant_type, '
+            .'local_services_lead_conversation.event_date_time, '
+            .'local_services_lead_conversation.phone_call_details.call_duration_millis, '
+            .'local_services_lead_conversation.phone_call_details.call_recording_url, '
+            .'local_services_lead_conversation.message_details.text, '
+            .'local_services_lead_conversation.message_details.attachment_urls '
+            .'FROM local_services_lead_conversation '
+            ."WHERE local_services_lead_conversation.event_date_time >= '%s'",
+            $since->utc()->format('Y-m-d H:i:s'),
+        );
+
+        do {
+            $found = $this->search($connection, $token, $query, $pageToken, 'conversation');
+
+            foreach ($found['results'] as $row) {
+                $raw = $this->conversationFromRow(is_array($row) ? $row : []);
+
+                if ($raw === null) {
+                    continue;
+                }
+
+                $fetched++;
+
+                $lead = Lead::query()
+                    ->where('organization_id', $connection->organization_id)
+                    ->where('source', Lead::SOURCE_LOCAL_SERVICES)
+                    ->where('remote_id', $raw['leadId'])
+                    ->first();
+
+                if ($lead === null) {
+                    $pending[$raw['leadId']][] = $raw;
+
+                    continue;
+                }
+
+                if ($this->storeConversation($lead, $raw)) {
+                    $created++;
+                }
+
+                $touched[$lead->getKey()] = $lead;
+            }
+
+            $pageToken = $found['next'];
+        } while ($pageToken !== null && ++$pages < self::MAX_PAGES);
+
+        $recovered = 0;
+
+        foreach (array_chunk(array_keys($pending), 100) as $ids) {
+            $ids = array_filter(array_map(fn ($id) => preg_replace('/\D/', '', (string) $id), $ids));
+
+            if ($ids === []) {
+                continue;
+            }
+
+            $found = $this->search(
+                $connection,
+                $token,
+                self::LEAD_FIELDS.' WHERE local_services_lead.id IN ('.implode(', ', $ids).')',
+                null,
+                'lead',
+            );
+
+            foreach ($found['results'] as $row) {
+                $rawLead = $this->fromSearchRow(is_array($row) ? $row : []);
+
+                if ($rawLead === null) {
+                    continue;
+                }
+
+                $result = $this->absorb($connection, $rawLead);
+
+                if ($result['created']) {
+                    $recovered++;
+                }
+
+                foreach ($pending[$rawLead['leadId']] ?? [] as $raw) {
+                    if ($this->storeConversation($result['lead'], $raw)) {
+                        $created++;
+                    }
+                }
+
+                $touched[$result['lead']->getKey()] = $result['lead'];
+            }
+        }
+
+        foreach ($touched as $lead) {
+            $this->refreshLastContact($lead);
+        }
+
+        return ['fetched' => $fetched, 'created' => $created, 'leads_recovered' => $recovered];
+    }
+
+    private function conversationsSince(SocialConnection $connection): Carbon
+    {
+        $newest = LeadConversation::query()
+            ->where('organization_id', $connection->organization_id)
+            ->whereIn('lead_id', Lead::query()
+                ->where('connection_id', $connection->getKey())
+                ->select('id'))
+            ->max('occurred_at');
+
+        return $newest !== null
+            ? Carbon::parse($newest)->subDay()   // one day of overlap; the unique key absorbs it
+            : now()->subDays(self::FIRST_RUN_DAYS);
+    }
+
+    /**
+     * googleAds:search nests both resources under their own camelCase key. The
+     * lead id is read from the attributed `local_services_lead` when Google
+     * sends it and from the conversation's own `lead` resource name when it
+     * does not; a row naming neither cannot be filed and is dropped.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>|null
+     */
+    private function conversationFromRow(array $row): ?array
+    {
+        $c  = (array) ($row['localServicesLeadConversation'] ?? []);
+        $id = trim((string) ($c['id'] ?? ''));
+
+        if ($id === '') {
+            return null;
+        }
+
+        $leadId = trim((string) (((array) ($row['localServicesLead'] ?? []))['id'] ?? ''));
+
+        if ($leadId === '' && is_string($c['lead'] ?? null)) {
+            $leadId = trim((string) substr(strrchr($c['lead'], '/') ?: '', 1));
+        }
+
+        if ($leadId === '') {
+            return null;
+        }
+
+        $call = (array) ($c['phoneCallDetails'] ?? []);
+        $msg  = (array) ($c['messageDetails'] ?? []);
+
+        return [
+            'id'           => $id,
+            'leadId'       => $leadId,
+            'channel'      => trim((string) ($c['conversationChannel'] ?? '')) ?: 'UNKNOWN',
+            'participant'  => trim((string) ($c['participantType'] ?? '')) ?: 'UNKNOWN',
+            'occurredAt'   => $c['eventDateTime'] ?? null,
+            'durationMs'   => isset($call['callDurationMillis']) && is_numeric($call['callDurationMillis'])
+                ? (int) $call['callDurationMillis']
+                : null,
+            'recordingUrl' => trim((string) ($call['callRecordingUrl'] ?? '')) ?: null,
+            'text'         => trim((string) ($msg['text'] ?? '')) ?: null,
+            'attachments'  => isset($msg['attachmentUrls']) && is_array($msg['attachmentUrls']) && $msg['attachmentUrls'] !== []
+                ? array_values(array_map('strval', $msg['attachmentUrls']))
+                : null,
+        ];
+    }
+
+    /**
+     * True when the row is new. An existing row is refreshed - Google can
+     * attach a recording URL a little after the call itself appears.
+     *
+     * @param  array<string, mixed>  $raw
+     */
+    private function storeConversation(Lead $lead, array $raw): bool
+    {
+        $fields = [
+            'channel'       => $raw['channel'],
+            'participant'   => $raw['participant'],
+            'occurred_at'   => $raw['occurredAt'] !== null ? Carbon::parse((string) $raw['occurredAt']) : now(),
+            'duration_ms'   => $raw['durationMs'],
+            'recording_url' => $raw['recordingUrl'],
+            'text'          => $raw['text'],
+            'attachments'   => $raw['attachments'],
+        ];
+
+        $existing = LeadConversation::query()
+            ->where('organization_id', $lead->organization_id)
+            ->where('remote_id', $raw['id'])
+            ->first();
+
+        if ($existing !== null) {
+            $existing->fill($fields)->save();
+
+            return false;
+        }
+
+        $row = LeadConversation::create([
+            'organization_id' => $lead->organization_id,
+            'lead_id'         => $lead->getKey(),
+            'remote_id'       => $raw['id'],
+            ...$fields,
+        ]);
+
+        // The enquirer reached out - called, or wrote. The business's own
+        // replies also land here, but they are not something to be told about.
+        if ($row->participant === LeadConversation::FROM_CONSUMER) {
+            $this->events->emitAfterCommit('lead.contact_received', $lead, [
+                'after' => [
+                    'channel'     => $row->channel,
+                    'occurred_at' => $row->occurred_at,
+                    'preview'     => self::preview($row),
+                    'contact_name'=> $lead->contact_name,
+                    'phone'       => $lead->phone,
+                ],
+            ]);
+        }
+
+        return true;
+    }
+
+    /** The list's preview line, rewritten from the newest row every sync. */
+    private function refreshLastContact(Lead $lead): void
+    {
+        $last = LeadConversation::query()
+            ->where('lead_id', $lead->getKey())
+            ->orderByDesc('occurred_at')
+            ->first();
+
+        $lead->forceFill([
+            'last_contact_at'      => $last?->occurred_at,
+            'last_contact_channel' => $last?->channel,
+            'last_contact_from'    => $last?->participant,
+            'last_contact_preview' => $last !== null ? self::preview($last) : null,
+        ])->save();
+    }
+
+    /**
+     * One line. A message is its own first line; a call is its length, because
+     * "Call · 0:00" and "Call · 4:32" are the two things a person wants to
+     * know about it from the list.
+     */
+    public static function preview(LeadConversation $row): ?string
+    {
+        if ($row->text !== null) {
+            $line = trim((string) preg_replace('/\s+/', ' ', $row->text));
+
+            return mb_substr($line, 0, 255);
+        }
+
+        if ($row->channel === LeadConversation::CHANNEL_PHONE_CALL) {
+            $seconds = intdiv((int) ($row->duration_ms ?? 0), 1000);
+
+            return sprintf('Call · %d:%02d', intdiv($seconds, 60), $seconds % 60);
+        }
+
+        return null;
     }
 
     /**
@@ -167,18 +483,60 @@ class LocalServicesLeads
          *
          * pageToken stays: the response still pages, it just sizes its own.
          */
-        $body = array_filter([
-            'pageToken' => $pageToken,
-            'query'     => sprintf(
-                'SELECT local_services_lead.id, local_services_lead.lead_type, '
-                .'local_services_lead.category_id, local_services_lead.contact_details, '
-                .'local_services_lead.lead_status, local_services_lead.lead_charged, '
-                .'local_services_lead.credit_details.credit_state, '
-                .'local_services_lead.creation_date_time '
-                .'FROM local_services_lead '
-                ."WHERE local_services_lead.creation_date_time >= '%s'",
+        $found = $this->search(
+            $connection,
+            $token,
+            sprintf(
+                self::LEAD_FIELDS." WHERE local_services_lead.creation_date_time >= '%s'",
                 $since->utc()->format('Y-m-d H:i:s'),
             ),
+            $pageToken,
+            'lead',
+        );
+
+        return [
+            'leads' => array_values(array_filter(array_map(
+                fn ($row) => $this->fromSearchRow(is_array($row) ? $row : []),
+                $found['results'],
+            ))),
+            'next'  => $found['next'],
+        ];
+    }
+
+    /**
+     * Everything Google will hand over on a lead. Shared by the window read
+     * and the by-id recovery.
+     *
+     * Not `note`: measured on 2026-09-08 against the live account, GAQL
+     * answers 400 PROHIBITED_FIELD_IN_SELECT_CLAUSE for it - "The following
+     * field may not be used in SELECT clause" - and one refused field fails
+     * the whole request, so every lead fetch would have failed on deploy.
+     * `service_id` and `locale` were verified in the same probe.
+     */
+    private const LEAD_FIELDS = 'SELECT local_services_lead.id, local_services_lead.lead_type, '
+        .'local_services_lead.category_id, local_services_lead.service_id, '
+        .'local_services_lead.contact_details, local_services_lead.lead_status, '
+        .'local_services_lead.lead_charged, local_services_lead.credit_details.credit_state, '
+        .'local_services_lead.creation_date_time, local_services_lead.locale '
+        .'FROM local_services_lead';
+
+    /**
+     * One googleAds:search call. `$what` is only for the log and the message.
+     *
+     * @return array{results: array<int, mixed>, next: ?string}
+     */
+    private function search(
+        SocialConnection $connection,
+        string $token,
+        string $query,
+        ?string $pageToken,
+        string $what,
+    ): array {
+        $customerId = preg_replace('/\D/', '', (string) $connection->remote_id) ?? '';
+
+        $body = array_filter([
+            'pageToken' => $pageToken,
+            'query'     => $query,
         ], fn ($v) => $v !== null);
 
         try {
@@ -214,21 +572,22 @@ class LocalServicesLeads
                     $body,
                 );
         } catch (ConnectionException) {
-            throw new RuntimeException('Google did not answer while fetching leads.');
+            throw new RuntimeException("Google did not answer while fetching {$what}s.");
         }
 
         if ($response->failed()) {
             $error  = (array) $response->json('error', []);
             $detail = is_string($error['message'] ?? null) ? (string) $error['message'] : '';
 
-            Log::warning('Google refused a Local Services lead fetch.', [
+            Log::warning("Google refused a Local Services {$what} fetch.", [
                 'http_status'   => $response->status(),
                 'google_status' => is_string($error['status'] ?? null) ? $error['status'] : null,
                 'detail'        => mb_substr($detail, 0, 300),
             ]);
 
             throw new RuntimeException(sprintf(
-                'Google refused the lead request (HTTP %d).',
+                'Google refused the %s request (HTTP %d).',
+                $what,
                 $response->status(),
             ));
         }
@@ -236,11 +595,8 @@ class LocalServicesLeads
         $next = $response->json('nextPageToken');
 
         return [
-            'leads' => array_values(array_filter(array_map(
-                fn ($row) => $this->fromSearchRow(is_array($row) ? $row : []),
-                (array) $response->json('results', []),
-            ))),
-            'next'  => is_string($next) && $next !== '' ? $next : null,
+            'results' => (array) $response->json('results', []),
+            'next'    => is_string($next) && $next !== '' ? $next : null,
         ];
     }
 
@@ -285,6 +641,8 @@ class LocalServicesLeads
             'chargeStatus'    => $credit['creditState']
                 ?? ((isset($lead['leadCharged']) && $lead['leadCharged']) ? 'CHARGED' : null),
             'creationDateTime'=> $lead['creationDateTime'] ?? null,
+            'service'         => $lead['serviceId'] ?? null,
+            'locale'          => $lead['locale'] ?? null,
             'contactDetails'  => [
                 'phoneNumber'  => $contact['phoneNumber'] ?? null,
                 'consumerName' => $contact['consumerName'] ?? null,
@@ -324,6 +682,8 @@ class LocalServicesLeads
                 'email'         => trim((string) ($contact['email'] ?? '')) ?: null,
                 'lead_type'     => trim((string) ($raw['leadType'] ?? '')) ?: null,
                 'category'      => trim((string) ($raw['leadCategory'] ?? '')) ?: null,
+                'service'       => trim((string) ($raw['service'] ?? '')) ?: null,
+                'locale'        => trim((string) ($raw['locale'] ?? '')) ?: null,
                 'source_status' => trim((string) ($raw['leadStatus'] ?? '')) ?: null,
                 'charge_status' => trim((string) ($raw['chargeStatus'] ?? '')) ?: null,
                 'received_at'   => isset($raw['creationDateTime'])
@@ -338,9 +698,20 @@ class LocalServicesLeads
                     'company_id'      => $connection->scope_type === SocialConnection::SCOPE_COMPANY
                         ? $connection->scope_id
                         : null,
-                    'franchise_id'    => $connection->scope_type === SocialConnection::SCOPE_FRANCHISE
-                        ? $connection->scope_id
-                        : null,
+                    /*
+                     * Placement first, then scope.
+                     *
+                     * `leads_franchise_id` says which franchise OWNS the
+                     * enquiries this account produces, and is set by somebody
+                     * choosing it. It is a different fact from scope_id, which
+                     * says who can SEE the connection — the company keeps
+                     * seeing it either way, which is the whole point of the two
+                     * columns being separate.
+                     */
+                    'franchise_id'    => $connection->leads_franchise_id
+                        ?? ($connection->scope_type === SocialConnection::SCOPE_FRANCHISE
+                            ? $connection->scope_id
+                            : null),
                     'connection_id'   => $connection->getKey(),
                     'source'          => Lead::SOURCE_LOCAL_SERVICES,
                     'remote_id'       => $remoteId,

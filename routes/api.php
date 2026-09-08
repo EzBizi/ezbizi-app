@@ -352,8 +352,9 @@ Route::post('v1/social/thumbtack/webhook', ThumbtackWebhookController::class)
  * GET that unsubscribed people would empty a list silently. POST is what
  * records it. See the controller for what this does and does not defend against.
  */
-Route::get('v1/newsletter/unsubscribe/{newsletter}', [NewsletterUnsubscribeController::class, 'show']);
+Route::get('v1/newsletter/unsubscribe/{newsletter}', [NewsletterUnsubscribeController::class, 'show'])->middleware('throttle:30,1');
 Route::post('v1/newsletter/unsubscribe/{newsletter}', [NewsletterUnsubscribeController::class, 'store'])
+    ->middleware('throttle:30,1')
     ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class]);
 
 Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callback'])
@@ -559,6 +560,7 @@ Route::prefix('v1')
         Route::post('leads/sync', [LeadsController::class, 'sync']);
         Route::get('leads', [LeadsController::class, 'index']);
         Route::get('leads/{lead}', [LeadsController::class, 'show']);
+        Route::get('leads/{lead}/conversations/{conversation}/recording', [LeadsController::class, 'recording']);
         Route::patch('leads/{lead}', [LeadsController::class, 'update']);
         Route::apiResource('vehicles', VehiclesController::class);
         Route::apiResource('inventory/items', InventoryItemsController::class);
@@ -580,6 +582,10 @@ Route::prefix('v1')
         // The browser key. Separate from the token above because they are different
         // credentials with different blast radii — see rotatePublicKey.
         Route::post('web/sites/{site}/public-key', [WebSitesController::class, 'rotatePublicKey']);
+        // The site the company's others inherit from, per key, wherever they
+        // say nothing themselves. `edit` gates it: choosing the primary changes
+        // what every other site publishes.
+        Route::post('web/sites/{site}/primary', [WebSitesController::class, 'makePrimary']);
         Route::get('web/sites/{site}/values', [WebValuesController::class, 'index']);
         Route::put('web/sites/{site}/values', [WebValuesController::class, 'update']);
         Route::post('inventory/purchase-orders/{purchase_order}/open', [InventoryPurchaseOrdersController::class, 'open']);
@@ -964,6 +970,8 @@ Route::prefix('v1')
 
         Route::get('social/posts', [SocialPostsController::class, 'index']);
         Route::post('social/posts', [SocialPostsController::class, 'store']);
+        Route::patch('social/connections/{connection}/leads-franchise', [SocialConnectionsController::class, 'placeLeads']);
+        Route::patch('social/connections/{connection}/label', [SocialConnectionsController::class, 'rename']);
         Route::delete('social/connections/{connection}', [SocialConnectionsController::class, 'destroy']);
         Route::post('social/bluesky/connect', [BlueskyConnectController::class, 'store']);
         Route::post('social/{network}/start', [SocialAuthController::class, 'start'])

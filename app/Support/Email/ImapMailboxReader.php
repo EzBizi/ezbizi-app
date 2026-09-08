@@ -615,6 +615,36 @@ final class ImapMailboxReader implements MailboxReader
     }
 
     /**
+     * No — and this one is a deliberate property of the connection.
+     *
+     * {@see ImapConnection::examine} opens every folder with EXAMINE, which is
+     * SELECT with writing switched off AT THE SERVER. Marking a message read
+     * means SELECT plus `STORE +FLAGS (\Seen)`, so offering this would mean
+     * giving up the guarantee that a bug in this module cannot alter a
+     * customer's mailbox.
+     *
+     * That guarantee is worth more than the convenience. It is also the reason
+     * an IMAP password — which is full access to the account, unlike an OAuth
+     * grant — is safe to hold here.
+     *
+     * ponytail: refused, not built. Doing it means a writable connection and a
+     * second look at every place this module opens a folder.
+     */
+    public function canMarkReadAtSource(Mailbox $mailbox): bool
+    {
+        return false;
+    }
+
+    public function markReadAtSource(Mailbox $mailbox, string $messageId): void
+    {
+        throw new CannotChangeMail(
+            'EzBizi opens a mail server connected by password in read-only mode, so it '
+            .'cannot mark mail as read there. The message is still marked as read in '
+            .'EzBizi.',
+        );
+    }
+
+    /**
      * What this particular server has, which is the only way to know.
      *
      * One LIST, and only when somebody opens the mailbox — not on the inbox

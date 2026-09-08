@@ -121,6 +121,7 @@ class VoiceWebhookController extends Controller
         if ($call !== null && $this->unanswered($dialStatus)
             && ($this->isVoicemailDocument($xml) || $this->isClosedDocument($xml))) {
             DB::transaction(function () use ($call, $xml) {
+                $call = PhoneCall::query()->lockForUpdate()->findOrFail($call->getKey());
                 $this->markMissed($call, voicemail: $this->isVoicemailDocument($xml));
             });
         }
@@ -145,7 +146,9 @@ class VoiceWebhookController extends Controller
         $to = $this->toE164($request);
 
         DB::transaction(function () use ($request, $connection, $number, $outbound, $sid, $from, $to, $miss, $voicemail) {
-            $call = PhoneCall::query()->where('twilio_sid', $sid)->first();
+            // Serialize the initial insert as well as duplicate starts.
+            PhoneConnection::query()->whereKey($connection->id)->lockForUpdate()->firstOrFail();
+            $call = PhoneCall::query()->where('twilio_sid', $sid)->lockForUpdate()->first();
             if ($call === null) {
                 $call = PhoneCall::query()->create([
                     'connection_id' => $connection->id,

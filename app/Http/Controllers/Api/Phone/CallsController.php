@@ -178,6 +178,16 @@ class CallsController extends Controller
         // this resolves the lines pointing at that box and asks for their
         // calls. Doing it here rather than on screen keeps the Voicemails view
         // from having to know how a box is attached to anything.
+        // Every voicemail, however it is filed.
+        //
+        // The Voicemail screen opens on this rather than on a box, because a
+        // box only holds messages once a LINE points at it — and a box nothing
+        // points at is empty forever while the messages sit right there under
+        // no box at all.
+        if ($request->boolean('voicemail_only')) {
+            $query->where('voicemail', true);
+        }
+
         $boxId = (string) $request->query('box_id', '');
         if ($boxId !== '') {
             $query->where('voicemail', true)->whereIn(

@@ -101,6 +101,19 @@ class WebSite extends Model implements StatesRetention
         });
     }
 
+    /**
+     * Primary is not a flag beside the company id — it IS the company id.
+     *
+     * `primary_company_id` holds this row's company when it is the primary and
+     * NULL when it is not, so the unique index on it enforces one per company.
+     * Reading it as a boolean is a convenience over that single fact, which is
+     * why there is nothing to keep in step.
+     */
+    public function getIsPrimaryAttribute(): bool
+    {
+        return $this->primary_company_id !== null;
+    }
+
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);

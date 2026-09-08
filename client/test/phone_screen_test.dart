@@ -1862,6 +1862,59 @@ void main() {
       reason: 'the transcript was not shown on the voicemail',
     );
   });
+
+  /// A box nothing routes to says so, instead of looking like a quiet week.
+  ///
+  /// This is the defect the whole Voicemail screen had: a box only fills once
+  /// a LINE points at it, and on the real account not one line did — so two
+  /// boxes sat there empty while nineteen voicemails were filed against lines
+  /// with no box. An empty list looks exactly like an empty list, which is why
+  /// nobody could have reported it as anything but "clicking does nothing".
+  testWidgets('a voicemail box with no line explains itself', (tester) async {
+    await _pump(
+      tester,
+      approvedCompanyIds: const ['co-1'],
+      connections: const [
+        {
+          'id': 'cx-1',
+          'scope_type': 'company',
+          'scope_id': 'co-1',
+          'scope_name': 'A-1 Chimney',
+          'kind': 'subaccount',
+          'status': 'connected',
+        },
+      ],
+      voicemailBoxes: const [
+        {
+          'id': 'vb-1',
+          'connection_id': 'cx-1',
+          'name': 'A-1 Chimney Mailbox',
+          'owner_type': 'company',
+          'owner_id': null,
+          'owner_name': null,
+          'line_count': 0,
+        },
+      ],
+      calls: const [],
+    );
+
+    await _tap(tester, _tab('Phone'));
+    await _tap(tester, find.widgetWithText(ChoiceChip, 'Voicemail'));
+
+    // Opens on everything, not on a box that cannot fill.
+    expect(find.byKey(const Key('voicemail-box-all')), findsOneWidget);
+
+    // And the name is not repeated back as a subtitle that failed to load.
+    expect(find.text('The company'), findsNothing);
+
+    await _tap(tester, find.byKey(const Key('voicemail-box-vb-1')));
+
+    expect(
+      find.textContaining('No line sends voicemail to this box'),
+      findsOneWidget,
+      reason: 'an unroutable box read as though nobody had rung',
+    );
+  });
 }
 Finder _tab(String label) => find.widgetWithText(ChoiceChip, label);
 

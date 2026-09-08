@@ -29,7 +29,9 @@ class NewsletterSend extends Model implements StatesRetention
     public const STATUS_QUEUED = 'queued';
 
     public const STATUS_SENDING = 'sending';
-    public const STATUS_SENT   = 'sent';
+
+    public const STATUS_SENT = 'sent';
+
     public const STATUS_FAILED = 'failed';
 
     public static function retention(): RetentionPolicy
@@ -41,11 +43,11 @@ class NewsletterSend extends Model implements StatesRetention
         );
     }
 
-    protected $fillable = ['newsletter_id', 'provider', 'recipients', 'status'];
+    protected $fillable = ['newsletter_id', 'connection_id', 'provider', 'recipients', 'status'];
 
     protected function casts(): array
     {
-        return ['sent_at' => 'datetime'];
+        return ['sent_at' => 'datetime', 'started_at' => 'datetime'];
     }
 
     public function newsletter(): BelongsTo
@@ -56,11 +58,11 @@ class NewsletterSend extends Model implements StatesRetention
     public function markSent(?string $remoteId, int $recipients): void
     {
         $this->forceFill([
-            'status'     => self::STATUS_SENT,
-            'remote_id'  => $remoteId,
+            'status' => self::STATUS_SENT,
+            'remote_id' => $remoteId,
             'recipients' => $recipients,
-            'failure'    => null,
-            'sent_at'    => now(),
+            'failure' => null,
+            'sent_at' => now(),
         ])->save();
     }
 

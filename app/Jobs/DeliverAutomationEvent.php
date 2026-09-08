@@ -13,8 +13,8 @@ use Throwable;
  * Delivering one outbox event (plan §5.5).
  *
  * On a queue, never inline — a slow external webhook must not delay a user's
- * save. Retries with backoff, and a permanent failure dead-letters the event
- * rather than retrying forever.
+ * save. The engine persists action retries in the outbox; queue backoff below
+ * handles unexpected worker failures. Both paths have a bounded attempt budget.
  */
 class DeliverAutomationEvent implements ShouldBeUnique, ShouldQueue
 {
@@ -59,15 +59,6 @@ class DeliverAutomationEvent implements ShouldBeUnique, ShouldQueue
             return;   // already handled, or the organization was removed
         }
 
-        // Query builder, not the model. A save() here fires BelongsToTenant's
-        // update guard, and a queue worker has no tenant in context — so the
-        // attempt counter, of all things, would abort the delivery it exists to
-        // count. The guard is right to refuse; this write simply does not belong
-        // inside a tenant.
-        AutomationEvent::withoutGlobalScopes()
-            ->whereKey($this->eventId)
-            ->update(['attempts' => $event->attempts + 1]);
-
         $engine->deliver($event);
     }
 
@@ -80,8 +71,6 @@ class DeliverAutomationEvent implements ShouldBeUnique, ShouldQueue
      */
     public function failed(Throwable $e): void
     {
-        AutomationEvent::withoutGlobalScopes()
-            ->whereKey($this->eventId)
-            ->update(['failed_at' => now(), 'last_error' => $e->getMessage()]);
+        app(AutomationEngine::class)->failDelivery($this->eventId, $e->getMessage());
     }
 }

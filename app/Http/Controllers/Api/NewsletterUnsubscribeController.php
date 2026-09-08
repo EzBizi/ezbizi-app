@@ -6,9 +6,11 @@ use App\Models\Newsletter;
 use App\Models\NewsletterUnsubscribe;
 use App\Models\Organization;
 use App\Support\Automations\EventEmitter;
+use App\Support\Newsletter\NewsletterUnsubscribeLink;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Leaving a mailing list, from the link in the footer.
@@ -27,12 +29,10 @@ use Illuminate\Http\Response;
  * clicked, and the first symptom would be a list quietly emptying. So GET
  * renders a page with a button and POST is what records it.
  *
- * That also blunts the obvious abuse — an open endpoint that could remove any
- * address somebody could guess — without pretending it is solved. It is not
- * fully solved, and the honest reason is that Mailchimp substitutes the address
- * into this URL per recipient, so there is no per-person secret to sign with.
- * Mailchimp's own unsubscribe, which it adds to every campaign, remains the
- * authoritative one; this exists so EzBizi knows too, and so a rule can fire.
+ * This endpoint requires an authenticated recipient proof; an arbitrary email
+ * address is never authority to write or emit an automation. Mailchimp campaigns
+ * use its native recipient-authenticated unsubscribe link instead. A proof carries
+ * the original scope so deleting a newsletter cannot invalidate a genuine opt-out.
  */
 class NewsletterUnsubscribeController extends Controller
 {
@@ -43,13 +43,16 @@ class NewsletterUnsubscribeController extends Controller
 
     public function show(Request $request, string $newsletter): Response
     {
-        $email = (string) $request->query('e', '');
+        $proof = (string) $request->input('proof', '');
+        $payload = NewsletterUnsubscribeLink::read($proof, $newsletter);
+        $email = $payload['email'];
 
         return response($this->page(
             'Unsubscribe',
             'Stop receiving marketing emails'.($email !== '' ? ' at '.e($email) : '').'?',
             '<form method="POST" action="'.e(url('/api/v1/newsletter/unsubscribe/'.$newsletter)).'">'
             .'<input type="hidden" name="e" value="'.e($email).'">'
+            .'<input type="hidden" name="proof" value="'.e($proof).'">'
             .'<button type="submit">Yes, unsubscribe me</button></form>'
             .'<p class="q">You will still receive replies and anything about work you have booked.</p>'
         ));
@@ -57,42 +60,38 @@ class NewsletterUnsubscribeController extends Controller
 
     public function store(Request $request, string $newsletter): Response
     {
-        $email = trim((string) $request->input('e', ''));
-
-        if ($email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            return response($this->page('Unsubscribe',
-                'That link did not carry a working address.',
-                '<p class="q">Use the unsubscribe link in the email itself, or reply and ask to be removed.</p>'), 422);
-        }
+        $payload = NewsletterUnsubscribeLink::read((string) $request->input('proof', ''), $newsletter);
+        $email = $payload['email'];
 
         $row = Newsletter::query()->withoutGlobalScopes()->find($newsletter);
 
         // A link from a deleted mailing still deserves to work: the person
         // asking to leave does not care that we tidied up.
-        if ($row === null) {
-            return response($this->page('Unsubscribe', 'You have been unsubscribed.',
-                '<p class="q">We could not find the mailing this came from, so nothing else was changed.</p>'));
-        }
-
-        $organization = Organization::query()->withoutGlobalScopes()->find($row->organization_id);
+        $organization = Organization::query()->withoutGlobalScopes()->find($payload['organization']);
 
         if ($organization !== null) {
-            $this->tenant->run($organization, function () use ($row, $email) {
-                NewsletterUnsubscribe::query()->updateOrCreate(
-                    [
-                        'organization_id' => $row->organization_id,
-                        'scope_type'      => $row->scope_type,
-                        'scope_id'        => $row->scope_id,
-                        'email'           => $email,
-                    ],
-                    ['unsubscribed_at' => now()],
-                );
+            $this->tenant->run($organization, function () use ($row, $email, $payload, $organization) {
+                DB::transaction(function () use ($row, $email, $payload, $organization) {
+                    // One lock serializes duplicate submissions, including links whose mailing was deleted.
+                    Organization::query()->whereKey($organization->id)->lockForUpdate()->firstOrFail();
+                    $unsubscribe = NewsletterUnsubscribe::query()->firstOrCreate(
+                        [
+                            'organization_id' => $payload['organization'],
+                            'scope_type' => $payload['scope_type'],
+                            'scope_id' => $payload['scope_id'],
+                            'email' => $email,
+                        ],
+                        ['unsubscribed_at' => now()],
+                    );
 
-                $this->events->emit('newsletter.unsubscribed', $row, [
-                    'email'    => $email,
-                    'subject'  => $row->subject,
-                    'audience' => $row->audience?->name,
-                ]);
+                    if ($unsubscribe->wasRecentlyCreated && $row !== null) {
+                        $this->events->emit('newsletter.unsubscribed', $row, [
+                            'email' => $email,
+                            'subject' => $row->subject,
+                            'audience' => $row->audience?->name,
+                        ]);
+                    }
+                });
             });
         }
 

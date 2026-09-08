@@ -2,6 +2,9 @@
 
 namespace App\Support\Email;
 
+use GuzzleHttp\Exception\TransferException;
+use GuzzleHttp\Psr7\FnStream;
+use GuzzleHttp\Psr7\Utils;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 
@@ -44,6 +47,9 @@ final class RemotePictureFetcher
 
     public function fetch(string $url): EmailPicture
     {
+        if (! extension_loaded('curl')) {
+            throw new PictureUnavailable('Pictures require the pinned cURL transport.');
+        }
         $current = $url;
 
         for ($hop = 0; $hop <= self::MAX_REDIRECTS; $hop++) {
@@ -54,16 +60,37 @@ final class RemotePictureFetcher
                 self::HTTP_PORTS,
             );
 
+            // cURL writes decoded bytes here, so compressed and chunked bodies
+            // have the same cap even when Content-Length is missing or dishonest.
+            $buffer = Utils::streamFor(fopen('php://temp', 'w+'));
+            $received = 0;
+            $sink = FnStream::decorate($buffer, [
+                'write' => static function (string $bytes) use ($buffer, &$received): int {
+                    if ($received + strlen($bytes) > self::MAX_BYTES) {
+                        throw new PictureUnavailable('That picture exceeds the size limit.');
+                    }
+                    $received += strlen($bytes);
+
+                    return $buffer->write($bytes);
+                },
+            ]);
             try {
                 $response = Http::withOptions([
                     'allow_redirects' => false,
-                    'verify'          => true,
-                    'curl'            => [
+                    'verify' => true,
+                    'proxy' => '',
+                    'sink' => $sink,
+                    'on_headers' => static function ($response): void {
+                        if ((int) $response->getHeaderLine('Content-Length') > self::MAX_BYTES) {
+                            throw new PictureUnavailable('That picture exceeds the size limit.');
+                        }
+                    },
+                    'curl' => [
                         CURLOPT_RESOLVE => [sprintf(
                             '%s:%d:%s',
                             $approved->host,
                             $approved->port,
-                            $approved->address,
+                            $approved->isIpV6() ? '['.$approved->address.']' : $approved->address,
                         )],
                     ],
                 ])
@@ -71,8 +98,11 @@ final class RemotePictureFetcher
                     ->connectTimeout(RemoteHostGuard::CONNECT_TIMEOUT_SECONDS)
                     ->withHeaders(['Accept' => 'image/jpeg,image/png,image/gif,image/webp'])
                     ->get($current);
-            } catch (ConnectionException|CannotReachHost $e) {
+                $bytes = $response->body();
+            } catch (ConnectionException|CannotReachHost|TransferException $e) {
                 throw new PictureUnavailable('That picture could not be loaded.', previous: $e);
+            } finally {
+                $sink->close();
             }
 
             if ($response->redirect()) {
@@ -96,8 +126,6 @@ final class RemotePictureFetcher
             if (! in_array($mime, self::ALLOWED_TYPES, strict: true)) {
                 throw new PictureUnavailable('That picture could not be loaded.');
             }
-
-            $bytes = $response->body();
 
             if ($bytes === '' || strlen($bytes) > self::MAX_BYTES) {
                 throw new PictureUnavailable('That picture could not be loaded.');
@@ -131,8 +159,8 @@ final class RemotePictureFetcher
             : ($scheme === 'https' ? 443 : 80);
 
         return [
-            'host'   => strtolower((string) $parsed['host']),
-            'port'   => $port,
+            'host' => strtolower((string) $parsed['host']),
+            'port' => $port,
             'scheme' => $scheme,
         ];
     }

@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * An enquiry that arrived through a connected advertising account.
@@ -96,6 +97,11 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
                 .'what they said. Free text, so it can contain anything they mentioned — an '
                 .'address, a name, a reason for the work.',
                 Erasure::erase()),
+            new PersonalDataEntry('last_contact_preview', PersonalDataEntry::CONTENT,
+                'The first line of the latest message on the enquiry, copied here so the list '
+                .'can show it without a query per row. A copy of conversation text, erased '
+                .'with it.',
+                Erasure::erase()),
         ];
     }
 
@@ -117,15 +123,17 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
     protected $fillable = [
         'organization_id', 'company_id', 'franchise_id', 'connection_id',
         'source', 'remote_id', 'contact_name', 'phone', 'email', 'phone_digits',
-        'lead_type', 'category', 'summary', 'status', 'source_status',
-        'charge_status', 'received_at', 'synced_at',
+        'lead_type', 'category', 'service', 'locale', 'summary',
+        'status', 'source_status', 'charge_status', 'received_at', 'synced_at',
+        'last_contact_at', 'last_contact_channel', 'last_contact_from', 'last_contact_preview',
     ];
 
     protected function casts(): array
     {
         return [
-            'received_at' => 'datetime',
-            'synced_at'   => 'datetime',
+            'received_at'     => 'datetime',
+            'synced_at'       => 'datetime',
+            'last_contact_at' => 'datetime',
         ];
     }
 
@@ -147,6 +155,12 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
     public function connection(): BelongsTo
     {
         return $this->belongsTo(SocialConnection::class, 'connection_id');
+    }
+
+    /** Every call and message on this enquiry, oldest first. */
+    public function conversations(): HasMany
+    {
+        return $this->hasMany(LeadConversation::class)->orderBy('occurred_at');
     }
 
     /**

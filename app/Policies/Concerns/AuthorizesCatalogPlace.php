@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\User;
 use App\Support\Access\Refusal;
+use App\Support\Scoping\OwnedScope;
 use Illuminate\Auth\Access\Response;
 use Illuminate\Database\Eloquent\Model;
 
@@ -110,16 +111,16 @@ trait AuthorizesCatalogPlace
             return Response::denyAsNotFound();
         }
 
+        if ($write) {
+            return OwnedScope::mayWrite(
+                $user,
+                $row->organization_id,
+                $row->franchise_id !== null ? 'franchise' : ($row->company_id !== null ? 'company' : 'organization'),
+                $row->franchise_id ?? $row->company_id,
+            ) ? Response::allow() : Response::deny('You cannot change this record from your current view or assignments.');
+        }
         if ($row->company_id === null) {
-            if (! $write) {
-                return Response::allow();
-            }
-
-            $organization = $user->organization;
-
-            return $user->canActOnOrganization($organization)
-                ? Response::allow()
-                : Refusal::noReach($user, Refusal::AT_ORGANIZATION, $act, $organization->name);
+            return Response::allow();
         }
 
         $company = $row->company;

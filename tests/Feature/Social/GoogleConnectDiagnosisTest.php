@@ -188,6 +188,48 @@ class GoogleConnectDiagnosisTest extends TestCase
         $this->assertStringContainsString('Wait a minute', $e->getMessage());
     }
 
+    /**
+     * An account is named the way Google names it, not by its digits.
+     *
+     * listAccessibleCustomers returns resource names and nothing else, so every
+     * connection was stored as "405-172-9356" - and twenty-two of those look
+     * alike. Google holds a descriptive name per customer ("A1 Chimney - Ads
+     * Manager", measured live on 2026-09-08); one GAQL read per account at
+     * connect time fetches it. The digits stay as the fallback, never the
+     * default.
+     */
+    public function test_a_connected_account_is_named_the_way_google_names_it(): void
+    {
+        config(['services.google_ads.developer_token' => 'dev-token', 'services.google_ads.version' => 'v24']);
+
+        Http::fake([
+            'googleads.googleapis.com/v24/customers:listAccessibleCustomers' => Http::response(
+                ['resourceNames' => ['customers/4051729356', 'customers/1111111111']],
+                200,
+            ),
+            'googleads.googleapis.com/v24/customers/4051729356/googleAds:search' => Http::response(
+                ['results' => [['customer' => ['id' => '4051729356', 'descriptiveName' => 'A1 Chimney - Ads Manager']]]],
+                200,
+            ),
+            // The second account's name read fails: the row must still exist,
+            // under its digits, rather than the whole connect falling over.
+            'googleads.googleapis.com/v24/customers/1111111111/googleAds:search' => Http::response(
+                ['error' => ['status' => 'PERMISSION_DENIED']],
+                403,
+            ),
+        ]);
+
+        $accounts = (new GoogleAdsOAuth)->identify($this->grant());
+
+        $byId = [];
+        foreach ($accounts as $a) {
+            $byId[$a->remoteId] = $a->displayName;
+        }
+
+        $this->assertSame('A1 Chimney - Ads Manager', $byId['4051729356']);
+        $this->assertSame('111-111-1111', $byId['1111111111'], 'Digits are the fallback when Google will not name it.');
+    }
+
     public function test_signing_in_with_an_account_that_has_no_ads_accounts_is_not_a_failure_to_identify(): void
     {
         config(['services.google_ads.developer_token' => 'dev-token']);

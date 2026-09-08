@@ -165,17 +165,52 @@ class _SeoTabState extends State<SeoTab> {
     return _sites.first;
   }
 
+  /// The sections inside SEO. General is the first and, today, the only one.
+  ///
+  /// A strip of one looks odd until you know more are coming, and Jose has said
+  /// they are. It is a real tab rather than a heading so the second entry costs
+  /// a list item instead of a refactor — and the module strip above it is a
+  /// single chip too, so one-of-one is already the shape at this level.
+  static const List<String> _sections = ['General'];
+
+  int _section = 0;
+
   @override
   Widget build(BuildContext context) {
-    return AsyncBody(
-      loading: _loading,
-      error: _error,
-      onRetry: _load,
-      child: LayoutBuilder(
-        builder: (context, constraints) => constraints.maxWidth >= _splitFrom
-            ? _split()
-            : _stacked(context),
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+          child: Row(
+            children: [
+              for (var i = 0; i < _sections.length; i++)
+                Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: _SectionTab(
+                    label: _sections[i],
+                    selected: i == _section,
+                    onTap: () => setState(() => _section = i),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: AsyncBody(
+            loading: _loading,
+            error: _error,
+            onRetry: _load,
+            child: LayoutBuilder(
+              builder: (context, constraints) =>
+                  constraints.maxWidth >= _splitFrom
+                      ? _split()
+                      : _stacked(context),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -298,11 +333,27 @@ class _SeoTabState extends State<SeoTab> {
     );
   }
 
+  /// The host this site inherits from — its company's primary, unless it is
+  /// the primary itself, in which case nothing sits above it.
+  String? _primaryHostFor(Map<String, dynamic> site) {
+    if (site['is_primary'] == true) return null;
+
+    for (final other in _sites) {
+      if (other['is_primary'] == true &&
+          other['company']?['id'] == site['company']?['id']) {
+        return other['host'] as String?;
+      }
+    }
+
+    return null;
+  }
+
   Widget _detailFor(Map<String, dynamic> site) => _SiteDetail(
         key: ValueKey('detail-${site['id']}'),
         api: widget.api,
         site: site,
         canEdit: _canEdit,
+        primaryHost: _primaryHostFor(site),
         freshToken: _freshTokens[site['id'] as String],
         onForgetToken: () =>
             setState(() => _freshTokens.remove(site['id'] as String)),
@@ -310,6 +361,53 @@ class _SeoTabState extends State<SeoTab> {
             setState(() => _freshTokens[site['id'] as String] = token),
         onChanged: _load,
       );
+}
+
+/// A section tab inside SEO — underlined when chosen, quiet when not.
+///
+/// Deliberately not a Material `TabBar`: that wants a TabController and a
+/// PageView, which is machinery for swiping between pages this screen does not
+/// do. A row of buttons is the whole behaviour.
+class _SectionTab extends StatelessWidget {
+  const _SectionTab({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              width: 2,
+              color: selected ? theme.colorScheme.primary : Colors.transparent,
+            ),
+          ),
+        ),
+        child: Text(
+          label,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: selected
+                ? theme.colorScheme.primary
+                : theme.colorScheme.outline,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// One row in the rail: host, whether a plugin has ever read it, and nothing
@@ -552,6 +650,7 @@ String firstApiError(ApiResponse response) {
 
 class _SiteDetail extends StatefulWidget {
   const _SiteDetail({
+    this.primaryHost,
     super.key,
     required this.api,
     required this.site,
@@ -565,6 +664,10 @@ class _SiteDetail extends StatefulWidget {
   final ApiClient api;
   final Map<String, dynamic> site;
   final bool canEdit;
+
+  /// The host values fall back to, for the label on an inherited field. Null
+  /// when this company has no primary, or when this site IS the primary.
+  final String? primaryHost;
   final String? freshToken;
   final VoidCallback onForgetToken;
   final void Function(String token) onToken;
@@ -614,6 +717,15 @@ class _SiteDetailState extends State<_SiteDetail> {
     super.dispose();
   }
 
+  /// What this site would publish if it said nothing — the primary's values.
+  ///
+  /// Held apart from `_controllers` on purpose. A blank box on a branch is not
+  /// empty, it is INHERITED, and a screen that cannot tell those apart leaves
+  /// somebody wondering why their footer shows a phone number they never typed.
+  Map<String, String> _inherited = {};
+
+  String? get _primaryHost => widget.primaryHost;
+
   Future<void> _loadValues() async {
     setState(() {
       _loading = _fields.isEmpty;
@@ -645,6 +757,9 @@ class _SiteDetailState extends State<_SiteDetail> {
     try {
       final data = response.body['data'] as Map<String, dynamic>;
       final values = _asMap(data['values']);
+
+      _inherited = _asMap(data['inherited'])
+          .map((k, v) => MapEntry(k, (v as String?) ?? ''));
 
       _fields = (data['fields'] as List<dynamic>? ?? const [])
           .cast<Map<String, dynamic>>();
@@ -782,6 +897,31 @@ class _SiteDetailState extends State<_SiteDetail> {
     if (response.ok) await widget.onChanged();
   }
 
+  /// Make this the site the company's others fall back to.
+  ///
+  /// No confirm row, unlike removing or rotating: nothing is destroyed and it
+  /// is one click to move it elsewhere. What it DOES change is what every other
+  /// site of this company publishes, so the list is reloaded afterwards — their
+  /// inherited values have just moved.
+  Future<void> _makePrimary() async {
+    final response = await widget.api.post('/web/sites/$_id/primary', {});
+
+    if (!mounted) return;
+
+    setState(() {
+      if (response.ok) {
+        _saved = '$_host is now the primary site.';
+      } else {
+        _error = response.message;
+      }
+    });
+
+    if (response.ok) {
+      await widget.onChanged();
+      await _loadValues();
+    }
+  }
+
   Future<void> _remove() async {
     final response = await widget.api.delete('/web/sites/$_id');
 
@@ -811,7 +951,21 @@ class _SiteDetailState extends State<_SiteDetail> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(_host, style: theme.textTheme.titleLarge),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(_host, style: theme.textTheme.titleLarge),
+                        ),
+                        if (widget.site['is_primary'] == true) ...[
+                          const SizedBox(width: 8),
+                          const Chip(
+                            label: Text('Primary'),
+                            visualDensity: VisualDensity.compact,
+                            avatar: Icon(Icons.star, size: 14),
+                          ),
+                        ],
+                      ],
+                    ),
                     Text(
                       _connected
                           ? 'Connected · ${widget.site['company']?['name'] ?? ''}'
@@ -844,7 +998,20 @@ class _SiteDetailState extends State<_SiteDetail> {
              */
             if (!_connected) _installGuide(theme),
 
-            for (final field in _fields) _fieldRow(theme, field),
+            _addressBlock(theme),
+            _fieldGrid(theme, _plainFields),
+            if (_hoursField != null) ...[
+              const SizedBox(height: 4),
+              HoursField(
+                controller: _controllers['hours']!,
+                enabled: widget.canEdit,
+                label: _hoursField!['label'] as String,
+                shortcode: _hoursField!['shortcode'] as String,
+                inherited: _inherited['hours'] ?? '',
+                inheritedFrom: _primaryHost,
+              ),
+              const SizedBox(height: 10),
+            ],
 
             if (_connected) ...[
               const SizedBox(height: 8),
@@ -865,6 +1032,11 @@ class _SiteDetailState extends State<_SiteDetail> {
                               runSpacing: 8,
                               alignment: WrapAlignment.end,
                               children: [
+                                if (widget.site['is_primary'] != true)
+                                  TextButton(
+                                    onPressed: _makePrimary,
+                                    child: const Text('Make primary'),
+                                  ),
                                 TextButton(
                                   onPressed: () =>
                                       setState(() => _confirming = 'remove'),
@@ -887,66 +1059,185 @@ class _SiteDetailState extends State<_SiteDetail> {
     );
   }
 
-  /// One field: its box, its hint, and its shortcode as a button that copies.
+  /// Everything that is a plain box — not the address parts, not the composed
+  /// line, not hours, each of which has its own treatment.
+  List<Map<String, dynamic>> get _plainFields => _fields
+      .where((f) =>
+          !_addressParts.contains(f['key']) &&
+          f['key'] != 'address' &&
+          f['key'] != 'hours')
+      .toList(growable: false);
+
+  Map<String, dynamic>? get _hoursField {
+    for (final f in _fields) {
+      if (f['key'] == 'hours') return f;
+    }
+    return null;
+  }
+
+  /// The five parts of an address, in the order a form asks for them.
   ///
-  /// The shortcode used to sit in the helper text, where it was readable and
-  /// not usable — somebody had to select `[ezbizi_phone]` out of a sentence by
-  /// hand, and selecting text inside a helper line is fiddly on a desktop and
-  /// near impossible on a phone. Making it the control means you click the
-  /// thing you just read.
+  /// Grouped rather than loose among the other fields because they are one
+  /// answer typed in five boxes — and because the composed one-liner sits under
+  /// them, which only reads as a result if the parts are visibly above it.
+  static const List<String> _addressParts = [
+    'address_line1',
+    'address_line2',
+    'city',
+    'state',
+    'postal_code',
+  ];
+
+  /// One field: a small box, its shortcode, and — when the value is not this
+  /// site's own — what it inherits and where from.
   ///
-  /// Hours is the one field that is not a text box; it gets the grid below.
+  /// ── Why inherited values need their own treatment ──
+  ///
+  /// On a branch site most boxes are legitimately empty, because the primary
+  /// answers for them. An empty box that publishes a phone number is a screen
+  /// lying by omission: somebody would clear a field, see it stay blank, and
+  /// find the old number still on their website. So an inherited field shows
+  /// the value it will publish, greyed, with the site it came from — and typing
+  /// over it is what makes this site answer for itself.
   Widget _fieldRow(ThemeData theme, Map<String, dynamic> field) {
     final key = field['key'] as String;
     final controller = _controllers[key]!;
+    final inherited = _inherited[key] ?? '';
+    final isInheriting = controller.text.trim().isEmpty && inherited.isNotEmpty;
 
-    final input = key == 'hours'
-        ? HoursField(
-            controller: controller,
-            enabled: widget.canEdit,
-            label: field['label'] as String,
-            hint: field['hint'] as String,
-          )
-        : TextField(
-            controller: controller,
-            enabled: widget.canEdit,
-            decoration: InputDecoration(
-              labelText: field['label'] as String,
-              helperText: field['hint'] as String,
+    final input = TextField(
+      controller: controller,
+      enabled: widget.canEdit,
+      style: theme.textTheme.bodyMedium,
+      onChanged: (_) => setState(() {}),
+      decoration: InputDecoration(
+        labelText: field['label'] as String,
+        isDense: true,
+        // The inherited value sits in the box as a hint, so what the site
+        // publishes is legible without pretending somebody typed it.
+        hintText: isInheriting ? inherited : null,
+        helperText: isInheriting
+            ? 'From ${_primaryHost ?? 'the primary site'}'
+            : (field['hint'] as String).isEmpty
+                ? null
+                : field['hint'] as String,
+        helperMaxLines: 2,
+      ),
+    );
+
+    return _withShortcode(theme, input, field['shortcode'] as String);
+  }
+
+  /// Beside the field when there is room, underneath when there is not.
+  ///
+  /// `[ezbizi_company_name]` in a monospace chip is about 190 logical pixels,
+  /// so on a phone it would either overflow the row or squeeze the input it
+  /// belongs to down to nothing.
+  Widget _withShortcode(ThemeData theme, Widget input, String code) {
+    final chip = _ShortcodeButton(code: code);
+
+    return LayoutBuilder(
+      builder: (context, constraints) => constraints.maxWidth >= 460
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: input),
+                const SizedBox(width: 8),
+                Padding(padding: const EdgeInsets.only(top: 2), child: chip),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [input, const SizedBox(height: 6), chip],
             ),
+    );
+  }
+
+  /// Two columns where there is room for two, one where there is not.
+  ///
+  /// The fields were full-width rows, which made eight of them a long scroll
+  /// for what is mostly short text — a ZIP code does not need 900 pixels.
+  Widget _fieldGrid(ThemeData theme, List<Map<String, dynamic>> fields) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 760 ? 2 : 1;
+
+        if (columns == 1) {
+          return Column(
+            children: [
+              for (final f in fields)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _fieldRow(theme, f),
+                ),
+            ],
           );
+        }
 
-    final shortcode = _ShortcodeButton(code: field['shortcode'] as String);
+        final rows = <Widget>[];
 
-    /*
-     * Beside the field when there is room, underneath it when there is not.
-     * `[ezbizi_company_name]` in a monospace chip is about 190 logical pixels,
-     * so on a phone it would either overflow the row or squeeze the input it
-     * belongs to down to nothing.
-     */
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: LayoutBuilder(
-        builder: (context, constraints) => constraints.maxWidth >= 520
-            ? Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: input),
-                  const SizedBox(width: 12),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: shortcode,
-                  ),
-                ],
-              )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  input,
-                  const SizedBox(height: 6),
-                  shortcode,
-                ],
+        for (var i = 0; i < fields.length; i += 2) {
+          final left = fields[i];
+          final right = i + 1 < fields.length ? fields[i + 1] : null;
+
+          rows.add(Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: _fieldRow(theme, left)),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: right == null
+                      ? const SizedBox.shrink()
+                      : _fieldRow(theme, right),
+                ),
+              ],
+            ),
+          ));
+        }
+
+        return Column(children: rows);
+      },
+    );
+  }
+
+  /// The address: its parts, then the line they build.
+  Widget _addressBlock(ThemeData theme) {
+    final parts = _fields
+        .where((f) => _addressParts.contains(f['key']))
+        .toList(growable: false);
+
+    final composed = _fields.where((f) => f['key'] == 'address').toList();
+
+    if (parts.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Address', style: theme.textTheme.titleSmall),
+          const SizedBox(height: 8),
+          _fieldGrid(theme, parts),
+          if (composed.isNotEmpty) ...[
+            const Divider(height: 20),
+            Text(
+              'This is the line your website renders. It is built from the '
+              'parts above, so correcting one corrects the footer.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.outline,
               ),
+            ),
+            const SizedBox(height: 8),
+            _fieldRow(theme, composed.first),
+          ],
+        ],
       ),
     );
   }

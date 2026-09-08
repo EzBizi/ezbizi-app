@@ -3,5 +3,6 @@
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    return view('welcome');
+    // Production nginx serves Flutter at /. This identifies the local API server.
+    return response()->json(['service' => 'EzBizi API']);
 });

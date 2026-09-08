@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
+import 'package:ezbizi_client/core/phone_call_service.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/phone/call_tab.dart';
 import 'package:ezbizi_client/screens/phone/voice_device.dart';
@@ -503,29 +504,6 @@ void main() {
     expect(find.textContaining('the network is blocking'), findsOneWidget);
   });
 
-  /// Prepared, and given a frame to mount, before anything registers.
-  ///
-  /// On Windows the microphone prompt is delivered to the mounted WebView2
-  /// widget, and [VoiceDevice.platformView] is null until prepare() has built
-  /// the controller — so registering in the same await left nothing in the tree
-  /// to answer it. getUserMedia went unanswered, Twilio's register() rejected,
-  /// and the desk reported itself disconnected on every desktop launch while
-  /// the browser was fine.
-  testWidgets('the device is prepared before it is asked to register', (
-    tester,
-  ) async {
-    final device = _FakeDevice();
-    addTearDown(device.dispose);
-
-    await _pump(tester, device: device);
-
-    expect(
-      device.prepareCalledBeforeSetup,
-      isTrue,
-      reason: 'setup() registered before the platform view could be mounted',
-    );
-  });
-
   testWidgets(
     'a build with no Voice SDK says so instead of blaming the network',
     (tester) async {
@@ -940,7 +918,13 @@ Future<void> _pump(
         body: CallTab(
           api: api,
           session: session,
-          device: device,
+          // The desk is app-wide now, so a test hands CallTab a service
+          // rather than a device. forTest() skips start() — no
+          // /phone/numbers, no token, no presence, and no frame await to
+          // race — and leaves the phone already up.
+          service: device == null
+              ? null
+              : PhoneCallService.forTest(device, callerId: '+12035550142'),
           view: view,
         ),
       ),

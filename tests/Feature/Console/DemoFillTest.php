@@ -156,6 +156,44 @@ class DemoFillTest extends TestCase
             ->assertFailed();
     }
 
+    public function test_it_never_picks_a_store_review_login(): void
+    {
+        // The bug this exists for, found by a dry run against production on
+        // 2026-09-04: the demo tenant's ONLY eight users were the store review
+        // logins, the selector took the four oldest active users, and the run
+        // proposed giving the vans to "Apple Review", "Google Review" and
+        // "TikTok Review". Those names would have gone onto the App Store
+        // screenshots for an Apple reviewer to find.
+        $tenant = $this->demoTenant();
+        $this->makeVehicle($tenant, 'V-00001');
+
+        $reviewer = app(TenantContext::class)->run($tenant['org'], fn () => User::query()->create([
+            'organization_id' => $tenant['org']->id,
+            'name' => 'Apple Review',
+            'email' => 'apple@ezbizi.com',
+            'password' => 'a-real-password',
+            'is_active' => true,
+        ]));
+
+        $this->artisan('demo:fill')->assertSuccessful();
+
+        $this->assertSame(
+            0,
+            VehicleAssignment::query()->withoutGlobalScopes()->where('user_id', $reviewer->id)->count(),
+            'a store review login must never hold a vehicle',
+        );
+        $this->assertSame(
+            0,
+            TimeClockShift::query()->withoutGlobalScopes()->where('user_id', $reviewer->id)->count(),
+            'a store review login must never appear on the time clock',
+        );
+        $this->assertGreaterThan(
+            0,
+            VehicleAssignment::query()->withoutGlobalScopes()->count(),
+            'and the step must actually have run, or this proves nothing',
+        );
+    }
+
     public function test_dry_run_writes_nothing(): void
     {
         $this->demoTenant();

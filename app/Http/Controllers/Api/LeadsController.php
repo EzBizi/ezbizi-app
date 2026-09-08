@@ -3,16 +3,21 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Lead;
+use App\Models\LeadConversation;
 use App\Models\SocialConnection;
 use App\Services\Leads\LocalServicesLeads;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Social\GoogleToken;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\Rule;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
@@ -73,6 +78,12 @@ class LeadsController extends Controller
             $query->where('status', $status);
         }
 
+        // "Who is waiting on me": the enquirer spoke last. The one filter with
+        // data behind it; Unread and Starred are not drawn until they have some.
+        if ($request->boolean('unreplied')) {
+            $query->where('last_contact_from', LeadConversation::FROM_CONSUMER);
+        }
+
         // One box, two meanings. Somebody looking for a lead has either a name
         // or a phone number in front of them, and asking which they typed is a
         // question the screen should answer for itself. Digits are matched
@@ -109,7 +120,81 @@ class LeadsController extends Controller
     {
         $this->authorize('view', $lead);
 
-        return response()->json(['data' => $this->present($lead->load(['company:id,name', 'franchise:id,name']))]);
+        $data = $this->present($lead->load(['company:id,name', 'franchise:id,name']));
+
+        // The thread. Every call and message, oldest first, so the screen reads
+        // top to bottom the way the conversation happened.
+        $data['conversations'] = $lead->conversations
+            ->map(fn (LeadConversation $c) => [
+                'id'            => $c->id,
+                'channel'       => $c->channel,
+                'from'          => $c->participant,
+                'occurred_at'   => $c->occurred_at?->toIso8601String(),
+                'duration_ms'   => $c->duration_ms,
+                'text'          => $c->text,
+                'attachments'   => $c->attachments ?? [],
+                // Never the URL itself: it is fetched with the connection's
+                // token through the endpoint below.
+                'has_recording' => $c->recording_url !== null,
+            ])
+            ->values()
+            ->all();
+
+        return response()->json(['data' => $data]);
+    }
+
+    /**
+     * GET /api/v1/leads/{lead}/conversations/{conversation}/recording
+     *
+     * The call, played through EzBizi.
+     *
+     * Google's recording URL answers only to a bearer token for the account
+     * the call was billed to, so the client cannot open it and must not be
+     * handed it: the token would go with it. The audio is fetched here with
+     * the connection's credentials and streamed back once, uncached. Somebody
+     * listening to a stranger's voice is worth an audit row.
+     */
+    public function recording(Request $request, Lead $lead, string $conversation): HttpResponse
+    {
+        $this->authorize('view', $lead);
+
+        $row = $lead->conversations()->whereKey($conversation)->first();
+
+        abort_if($row === null || $row->recording_url === null, Response::HTTP_NOT_FOUND);
+
+        $connection = $lead->connection;
+
+        abort_if(
+            $connection === null,
+            Response::HTTP_CONFLICT,
+            'The account this enquiry came through is no longer connected, so its recording cannot be fetched.',
+        );
+
+        try {
+            $audio = Http::withToken(GoogleToken::forConnection($connection, 'google_ads'))
+                ->withHeaders(['developer-token' => (string) config('services.google_ads.developer_token')])
+                ->timeout(30)
+                ->get($row->recording_url);
+        } catch (ConnectionException) {
+            abort(Response::HTTP_BAD_GATEWAY, 'Google did not answer while fetching the recording.');
+        }
+
+        abort_if(
+            $audio->failed(),
+            Response::HTTP_BAD_GATEWAY,
+            sprintf('Google refused the recording (HTTP %d).', $audio->status()),
+        );
+
+        $this->audit->log('lead.recording_played', $lead, [
+            'conversation_id' => $row->id,
+            'occurred_at'     => $row->occurred_at?->toIso8601String(),
+            'duration_ms'     => $row->duration_ms,
+        ], actor: $request->user());
+
+        return response($audio->body(), Response::HTTP_OK, [
+            'Content-Type'  => $audio->header('Content-Type') ?: 'audio/mpeg',
+            'Cache-Control' => 'private, no-store',
+        ]);
     }
 
     /**
@@ -186,16 +271,20 @@ class LeadsController extends Controller
             ], Response::HTTP_CONFLICT);
         }
 
-        $totals = ['fetched' => 0, 'created' => 0, 'updated' => 0];
+        $totals = ['fetched' => 0, 'created' => 0, 'updated' => 0, 'messages' => 0];
         $failures = [];
 
         foreach ($connections as $connection) {
             try {
                 $result = $this->localServices->sync($connection);
 
-                foreach ($totals as $key => $value) {
-                    $totals[$key] = $value + $result[$key];
+                foreach (['fetched', 'created', 'updated'] as $key) {
+                    $totals[$key] += $result[$key];
                 }
+
+                // New calls and messages, so "Fetched 0 new leads" can still
+                // say that three people wrote back.
+                $totals['messages'] += $result['conversations']['created'];
             } catch (RuntimeException $e) {
                 // One broken connection must not hide the leads the others
                 // fetched successfully. Both halves are reported.
@@ -252,7 +341,7 @@ class LeadsController extends Controller
     {
         $user = request()->user();
 
-        return SocialConnection::query()
+        $connections = SocialConnection::query()
             ->whereIn('provider', array_map(
                 fn (SocialProvider $p) => $p->value,
                 SocialProvider::dataSources(),
@@ -268,14 +357,60 @@ class LeadsController extends Controller
              * this way; these three tabs never did.
              */
             ->filter(fn (SocialConnection $c) => $user !== null && $this->access->inView($user, $c))
+            ->values();
+
+        /*
+         * Counted in ONE grouped query, not per row.
+         *
+         * The screen's whole problem is that A-1 Chimney has twenty-two
+         * accounts that look alike, and the only thing that tells them apart is
+         * which ones actually produce enquiries. Two busy accounts and twenty
+         * silent ones is a readable list; twenty-two identical rows in
+         * arbitrary order is not. So the count is what the design is sorted and
+         * grouped by, which is why it is here rather than left to the client -
+         * `present(Lead)` names no connection, so nothing could be counted
+         * client-side at all.
+         */
+        $counts = Lead::query()
+            ->whereIn('connection_id', $connections->map(fn (SocialConnection $c) => $c->getKey()))
+            ->selectRaw('connection_id, COUNT(*) as total')
+            ->groupBy('connection_id')
+            ->pluck('total', 'connection_id');
+
+        /*
+         * Name a franchise only if this person can reach it.
+         *
+         * An account may be placed on a franchise outside the reader's reach -
+         * a company-level placement seen by someone scoped to one branch. The
+         * id still goes out, because the screen needs to know a placement
+         * EXISTS, but the name does not: rendering a bare uuid is worse than
+         * saying nothing, and naming a franchise somebody cannot otherwise see
+         * leaks the shape of the organization one row at a time.
+         *
+         * Null name with a non-null id is therefore a real answer, not missing
+         * data, and the screen renders it as a place the reader cannot see.
+         */
+        $reachable = $user?->reachableFranchises()->pluck('name', 'id') ?? collect();
+
+        return $connections
             ->map(fn (SocialConnection $c) => [
                 // The id is what lets the tab that owns this connection
                 // remove it. Without it the only disconnect was in
                 // Marketing, a module these providers are kept out of.
-                'id'           => $c->getKey(),
-                'provider'     => $c->provider,
-                'display_name' => $c->display_name,
-                'status'       => $c->status,
+                'id'                   => $c->getKey(),
+                'provider'             => $c->provider,
+                'display_name'         => $c->display_name,
+
+                // What a person called it, or null. The screen shows this when
+                // set and display_name when not — twenty-two numbers are not
+                // something anybody remembers the meaning of.
+                'label'                => $c->label,
+                'status'               => $c->status,
+                'leads_franchise_id'   => $c->leads_franchise_id,
+                'leads_franchise_name' => $c->leads_franchise_id === null
+                    ? null
+                    : $reachable->get($c->leads_franchise_id),
+                'leads_count'          => (int) ($counts[$c->getKey()] ?? 0),
             ])
             ->values()
             ->all();
@@ -292,11 +427,21 @@ class LeadsController extends Controller
             'email'         => $lead->email,
             'lead_type'     => $lead->lead_type,
             'category'      => $lead->category,
+            'service'       => $lead->service,
+            'locale'        => $lead->locale,
             'summary'       => $lead->summary,
             'status'        => $lead->status,
             'source_status' => $lead->source_status,
             'charge_status' => $lead->charge_status,
             'received_at'   => $lead->received_at?->toIso8601String(),
+
+            // The preview line: the newest call or message, who it was from,
+            // and one line of it. `last_contact_from` = CONSUMER with nothing
+            // after it is what "unreplied" means.
+            'last_contact_at'      => $lead->last_contact_at?->toIso8601String(),
+            'last_contact_channel' => $lead->last_contact_channel,
+            'last_contact_from'    => $lead->last_contact_from,
+            'last_contact_preview' => $lead->last_contact_preview,
             'company'       => $lead->company?->only(['id', 'name']),
             'franchise'     => $lead->franchise?->only(['id', 'name']),
         ];

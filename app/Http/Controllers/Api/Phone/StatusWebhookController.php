@@ -56,7 +56,7 @@ class StatusWebhookController extends Controller
         }
 
         DB::transaction(function () use ($request, $connection, $sid) {
-            $call = PhoneCall::query()->where('twilio_sid', $sid)->first();
+            $call = PhoneCall::query()->where('twilio_sid', $sid)->lockForUpdate()->first();
             if ($call === null) {
                 return;
             }
@@ -64,7 +64,7 @@ class StatusWebhookController extends Controller
             $status = (string) $request->input('CallStatus', $call->status);
             $duration = $request->input('CallDuration');
             if (is_numeric($duration)) {
-                $call->duration_seconds = (int) $duration;
+                $call->duration_seconds = max((int) $call->duration_seconds, (int) $duration);
             }
 
             $parent = $request->input('ParentCallSid');
@@ -109,7 +109,8 @@ class StatusWebhookController extends Controller
 
             // Voicemail is a recording on the missed call (spec §11). Twilio
             // still posts completed after <Record>; that must not clear the miss.
-            if (! $wasMiss) {
+            if (! $wasMiss && $previous !== PhoneCall::STATUS_COMPLETED
+                && ! ($previous === PhoneCall::STATUS_IN_PROGRESS && $incoming === PhoneCall::STATUS_RINGING)) {
                 $call->status = $incoming;
             }
             $call->save();

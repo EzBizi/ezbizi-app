@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Invoked by deploy.sh as git's receive-pack. stdout belongs to Git's protocol.
+set -euo pipefail
+SHA=${1:?release SHA required}
+UI=${2:?UI stage or code required}
+REPO=${3:?bare repository required}
+[[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || exit 2
+STAGE=$(cd "$(dirname "$0")" && pwd)
+[[ "$STAGE" == /tmp/ezbizi-deploy.* ]] || exit 2
+[[ "$REPO" == /var/repos/ezbizi.git ]] || exit 2
+[[ "$UI" == code || "$UI" == /var/www/ezbizi/public-app.stage.* ]] || exit 2
+exec 9>/var/repos/ezbizi-deploy.lock
+flock -x 9
+export EZBIZI_DEPLOY_LOCKED=1
+
+# Install the reviewed hook atomically, under the same lock that it uses.
+for name in post-receive receive-release; do
+  bash -n "$STAGE/$name"
+  install -m 0755 "$STAGE/$name" "$REPO/hooks/$name.new"
+  mv -f "$REPO/hooks/$name.new" "$REPO/hooks/$name"
+done
+if [[ "$UI" != code ]]; then
+  [[ "$(cat "$UI/.ezbizi-release-sha")" == "$SHA" ]] || exit 1
+  chmod 0755 "$UI"
+fi
+git-receive-pack "$REPO"
+# Retrying a failed hook sees an already-updated ref, so Git calls no hook.
+# Replay only that exact ref; never roll a newer accepted release backwards.
+if [[ "$(git --git-dir="$REPO" rev-parse refs/heads/main)" == "$SHA" ]] \
+    && [[ "$(cat /var/www/ezbizi-current/.ezbizi-release-sha 2>/dev/null || true)" != "$SHA" ]]; then
+  printf '%s %s refs/heads/main\n' "$SHA" "$SHA" | "$REPO/hooks/post-receive" >&2
+fi
+# A failing post-receive hook does not reject the Git ref update. Check reality.
+[[ "$(cat /var/www/ezbizi-current/.ezbizi-release-sha)" == "$SHA" ]] || {
+  echo 'API activation failed; UI unchanged. Inspect the deployment log.' >&2
+  exit 1
+}
+if [[ "$UI" != code ]]; then
+  SHARED=/var/www/ezbizi/public-app
+  OLD="$UI.previous"
+  mv "$SHARED" "$OLD"
+  if ! mv "$UI" "$SHARED"; then
+    mv "$OLD" "$SHARED" || echo 'UI rollback failed; restore the previous directory immediately.' >&2
+    echo 'UI activation failed; API is updated and previous UI restored.' >&2
+    exit 1
+  fi
+  rm -rf -- "$OLD"
+fi
+rm -rf -- "$STAGE"

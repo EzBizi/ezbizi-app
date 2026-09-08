@@ -75,7 +75,7 @@ final class ThumbtackClient
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
-    private function send(string $method, string $path, array $payload = []): array
+    private function send(string $method, string $path, array $payload = [], bool $mayRefresh = true): array
     {
         $url = rtrim((string) config('services.thumbtack.api_base'), '/').$path;
 
@@ -89,11 +89,67 @@ final class ThumbtackClient
             throw new RuntimeException('EzBizi could not reach Thumbtack.');
         }
 
+        /*
+         * An hour-old token, refreshed once and retried.
+         *
+         * HERE rather than in each caller, because everything reaches Thumbtack
+         * through this method: the nightly phone sync, the webhook fetches, the
+         * replies. A Thumbtack access token lasts one hour, so without this a
+         * connection works until lunchtime and then fails at everything.
+         *
+         * ONCE. A second 401 after a successful refresh is not an expiry — it
+         * is revoked access or a missing scope — and retrying would turn a
+         * clear refusal into a loop.
+         */
+        if ($response->status() === 401 && $mayRefresh && $this->refreshToken() !== null) {
+            $this->refreshAccessToken();
+
+            return $this->send($method, $path, $payload, mayRefresh: false);
+        }
+
         if ($response->failed()) {
             throw new RuntimeException('Thumbtack refused it: '.$this->reason($response->json(), $response->status()));
         }
 
         return (array) $response->json();
+    }
+
+    /**
+     * Swap the expired token for a live one and SAVE BOTH halves.
+     *
+     * Saving matters more than it looks: Thumbtack rotates refresh tokens on
+     * every exchange and invalidates the previous one. Keeping the old refresh
+     * token would work once and then permanently fail, an hour later.
+     */
+    private function refreshAccessToken(): void
+    {
+        $refresh = $this->refreshToken();
+
+        if ($refresh === null) {
+            return;
+        }
+
+        $grant = app(ThumbtackOAuth::class)->refresh($refresh);
+
+        $credentials = $this->connection->getAttribute('credentials');
+        $credentials = is_array($credentials) ? $credentials : [];
+
+        $credentials['access_token'] = $grant->accessToken;
+
+        if ($grant->refreshToken !== null && $grant->refreshToken !== '') {
+            $credentials['refresh_token'] = $grant->refreshToken;
+        }
+
+        $this->connection->setAttribute('credentials', $credentials);
+        $this->connection->save();
+    }
+
+    private function refreshToken(): ?string
+    {
+        $credentials = $this->connection->getAttribute('credentials');
+        $token = is_array($credentials) ? ($credentials['refresh_token'] ?? null) : null;
+
+        return is_string($token) && $token !== '' ? $token : null;
     }
 
     /**

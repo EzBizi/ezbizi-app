@@ -63,7 +63,7 @@ class AutomationRun extends Model implements StatesRetention
     protected $fillable = [
         'organization_id', 'automation_id', 'automation_version_id', 'event_id',
         'status', 'condition_trace', 'action_results', 'action_count', 'error',
-        'is_test', 'started_at', 'finished_at',
+        'is_test', 'started_at', 'finished_at', 'actions_snapshot', 'context_snapshot',
     ];
 
     protected function casts(): array
@@ -71,6 +71,8 @@ class AutomationRun extends Model implements StatesRetention
         return [
             'condition_trace' => 'array',
             'action_results'  => 'array',
+            'actions_snapshot' => 'array',
+            'context_snapshot' => 'array',
             'is_test'         => 'boolean',
             'started_at'      => 'datetime',
             'finished_at'     => 'datetime',

@@ -75,7 +75,65 @@ Three things that are easy to get wrong, each having actually gone wrong:
   one the call is 400, without it 200. `pageToken` still works; the response
   sizes its own pages.
 
-## 4 · `login-customer-id` is per connection
+## 4 · What was said: conversations
+
+A lead row is a header — who, which number, when, what category. The substance
+is a second resource, **`local_services_lead_conversation`**: one row per call
+or message, which side spoke, when, the call's duration and recording URL, the
+message's text and attachments. This platform never read it; Rodrigo's a1leads
+did from the start, which is why its list showed *LS Text* / *LS Ads* with the
+last message under each name and ours showed "unnamed enquiry" with nothing.
+
+Since 2026-09-08 every sync reads it after the leads:
+
+```
+SELECT local_services_lead.id, local_services_lead_conversation.id,
+       .lead, .conversation_channel, .participant_type, .event_date_time,
+       .phone_call_details.call_duration_millis, .phone_call_details.call_recording_url,
+       .message_details.text, .message_details.attachment_urls
+FROM local_services_lead_conversation
+WHERE local_services_lead_conversation.event_date_time >= '<newest held − 1 day>'
+```
+
+Measured live against `4941850746` ("A1 Chimney - Cleveland"): eleven rows for
+three days, with durations and recording URLs. The lead SELECT also grew
+`service_id` and `locale`. Not `note`: GAQL answers **400
+`PROHIBITED_FIELD_IN_SELECT_CLAUSE`** for it (measured 2026-09-08), and one
+refused field fails the whole request. `service_id` is an identifier, not a
+label — `fireplace_chimney` — and `category_id` is `xcat:…`; neither is a
+sentence for a screen.
+
+- **Table `lead_conversations`**, unique on `(organization_id, remote_id)`,
+  cascades with its lead. The lead carries four `last_contact_*` columns as a
+  cache of its newest row so the list shows a preview line without a query per
+  row; `last_contact_from = CONSUMER` is what "unreplied" means.
+- **Only accounts that have produced a lead are asked.** Measured 2026-09-08
+  across all twenty-two A-1 Chimney accounts, lifetime, no date filter:
+  **thirteen hold leads, 23,875 between them** (the largest 5,043), nine hold
+  none. A tick is therefore 22 lead reads + 13 conversation reads = 35 calls;
+  **10,080 operations a day against the 15,000 quota**, the rest for manual
+  Fetch and connects. The same probe found one account answering 403 (an
+  account the grant does not reach; it fails alone, the others sync) and only
+  one `service` value on the whole tenant, `fireplace_chimney`.
+- **The 30-day first-run window holds ~400 of those 23,875.** Whether the
+  history behind it should be pulled is Jose's call; it is one flag away
+  (`FIRST_RUN_DAYS`) and a one-off cost of a few pages per account, not a
+  standing one.
+- **The window is on the conversation's time, not the lead's.** A message this
+  week on a lead from two months ago is inside it; that lead is then fetched by
+  id (`WHERE local_services_lead.id IN (…)`) so a live enquiry is never dropped
+  for being old.
+- **Recordings never leave the server as URLs.** Google's URL answers only to
+  the account's bearer token. `GET leads/{lead}/conversations/{id}/recording`
+  fetches it with the connection's credentials, streams it once uncached, and
+  writes an audit row (`lead.recording_played`).
+- **Trigger `lead.contact_received`** fires for a consumer's call or message,
+  never for the business's own reply.
+
+Livechat and Form in a1leads are website sources, not Google ones — a later
+piece, not this read.
+
+## 5 · `login-customer-id` is per connection
 
 Never an installation-wide config value. The manager an account sits under is a
 fact about *that connection*, not about the deployment. A global value set to
@@ -87,7 +145,7 @@ does not manage — one customer fixed, everyone else broken, silently.
 **directly**, and each is stored as its own connection, so the customer's own id
 is the right login customer for every row held.
 
-## 5 · Known rough edge
+## 6 · Known rough edge
 
 **Connecting stores a row for every account the user can reach.** On
 3 September, one connect action by `info@a-1chimney.com` created **22
@@ -98,7 +156,11 @@ Not a correctness bug — the sync tolerates it, and a single failing account no
 longer turns an honest empty result into a 502 — but it is not what anybody
 intended. Fixing it means letting the person pick which account to connect.
 
-## 6 · Compliance
+Softened twice on 2026-09-08: each row is now stored under Google's own
+descriptive name (`leads:name-accounts` backfills the ones connected before),
+and the conversation read skips any account that has never produced a lead.
+
+## 7 · Compliance
 
 `www/google-ads-api/` is written for Google's reviewers and must stay true to
 this file. The rule enforced by `deploy-www.sh`: **the site may not claim EzBizi
@@ -108,7 +170,7 @@ The application declared **Reporting** permissible use and **no write path**.
 That remains true: `LeadsController::update` writes lead status to EzBizi's own
 database with an audit row and is never written back to Google.
 
-## 7 · Outstanding
+## 8 · Outstanding
 
 Everything below the line is shipped. **`0.0.0150` (`3f7f222b`) is live**, and
 carries `bbfeb42d`, `7945fb0`, `2531b601` and `517ef1bf`. Verified 2026-09-04

@@ -43,7 +43,7 @@ class DispatchAutomationEvents extends Command
             ->whereNull('delivered_at')
             ->whereNull('failed_at')
             ->where('available_at', '<=', now())
-            ->where('attempts', '<', AutomationEvent::MAX_ATTEMPTS)
+            // Exhausted leases must still be recovered to record a terminal outcome.
             ->where(fn ($q) => $q->whereNull('queued_at')->orWhere('queued_at', '<', $lease))
             ->orderBy('occurred_at')
             ->limit((int) $this->option('limit'))

@@ -145,10 +145,33 @@ class InspectionSeedDemoReports extends Command
             return self::FAILURE;
         }
 
-        if (! $this->option('force') && ! $this->confirm(
-            'File '.self::HOW_MANY.' inspection reports on "'.self::ORG_NAME.'" in database ['.$database.']?'
-        )) {
-            return self::FAILURE;
+        if (! $this->option('force')) {
+            /*
+             * A confirmation nobody can answer is not a confirmation.
+             *
+             * `confirm()` returns its default — no — when there is no terminal,
+             * so run from a script this printed a question into the void and
+             * refused, and the only clue was the prompt text in the output. The
+             * deploy desk hit exactly that on the first production run: it
+             * filed nothing and did not say why.
+             *
+             * Deliberately NOT treating --no-interaction as yes. This writes to
+             * production; a flag that means "do not ask me" must not silently
+             * become "and go ahead". Saying which flag is missing costs one run
+             * and keeps the answer a human one.
+             */
+            if (! $this->input->isInteractive()) {
+                $this->error('There is no terminal here to confirm on, so nothing has been written.');
+                $this->line('Re-run with --force if you meant this to go ahead unattended.');
+
+                return self::FAILURE;
+            }
+
+            if (! $this->confirm(
+                'File '.self::HOW_MANY.' inspection reports on "'.self::ORG_NAME.'" in database ['.$database.']?'
+            )) {
+                return self::FAILURE;
+            }
         }
 
         return $tenant->run($organization, fn () => $this->fileThem($organization->id));

@@ -99,6 +99,16 @@ final class RecordingMailboxReader implements MailboxReader
         $this->recording($mailbox, fn () => $this->inner->reply($mailbox, $messageId, $body));
     }
 
+    public function canMarkReadAtSource(Mailbox $mailbox): bool
+    {
+        return $this->inner->canMarkReadAtSource($mailbox);
+    }
+
+    public function markReadAtSource(Mailbox $mailbox, string $messageId): void
+    {
+        $this->recording($mailbox, fn () => $this->inner->markReadAtSource($mailbox, $messageId));
+    }
+
     public function availableFolders(Mailbox $mailbox): array
     {
         return $this->recording($mailbox, fn () => $this->inner->availableFolders($mailbox));

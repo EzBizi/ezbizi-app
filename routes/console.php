@@ -73,6 +73,18 @@ Schedule::command('ezbizi:sync-thumbtack-phone-numbers')->dailyAt('04:40')->with
 // Hourly is deliberately slower than the hour a handoff is signed for: this
 // only ever finds files that already stopped working, so racing it against a
 // live post would be the only way to make it dangerous.
+/*
+ * Every five minutes, and that number is a quota decision.
+ *
+ * Google Ads Basic Access is 15,000 operations a day against a ceiling owned by
+ * the whole Cloud project - one number shared by every tenant, not one each. At
+ * one minute an account costs 1,440 calls a day, so the platform could carry
+ * ten accounts; A-1 Chimney alone connected 22 in a single action. Five minutes
+ * is 288 an account, which supports 52 and leaves room for somebody pressing
+ * Fetch new and for Reviews once its own approval lands.
+ */
+Schedule::command('ezbizi:sync-leads')->everyFiveMinutes()->withoutOverlapping(10);
+
 Schedule::command('ezbizi:expire-social-handoffs')->hourly()->withoutOverlapping(10);
 
 // Watching the shared inboxes, so `email.received` can fire (§5.5).

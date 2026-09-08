@@ -207,7 +207,7 @@ final class GoogleAdsOAuth implements SocialOAuth
                 continue;
             }
 
-            $accounts[] = new SocialAccount($id, self::readableId($id), null);
+            $accounts[] = new SocialAccount($id, self::nameOf($grant->accessToken, $id), null);
         }
 
         if ($accounts === []) {
@@ -215,6 +215,47 @@ final class GoogleAdsOAuth implements SocialOAuth
         }
 
         return $accounts;
+    }
+
+    /**
+     * The account's name as Google shows it, or its digits when Google will not say.
+     *
+     * `listAccessibleCustomers` returns resource names and nothing else, so for
+     * a week every connection was stored as "405-172-9356" — and A-1 Chimney
+     * has twenty-two of those, indistinguishable on a screen. Google keeps a
+     * descriptive name per customer: measured live on 2026-09-08, 4051729356 is
+     * "A1 Chimney - Ads Manager" and 4941850746 is "A1 Chimney - Cleveland",
+     * which is also how it became clear that the first produces no leads and
+     * the second produces most of them. One GAQL read per account, at connect
+     * time only.
+     *
+     * A failed read is not a failed connect. The account still exists and its
+     * leads still arrive; it just wears its digits until the next reconnect or
+     * `leads:name-accounts` names it. Throwing here would refuse a whole
+     * connection over a label.
+     */
+    public static function nameOf(string $accessToken, string $customerId): string
+    {
+        try {
+            $response = Http::withToken($accessToken)
+                ->withHeaders([
+                    'developer-token'   => (string) config('services.google_ads.developer_token'),
+                    'login-customer-id' => $customerId,
+                ])
+                ->timeout(self::TIMEOUT)
+                ->post(
+                    self::endpoint()."/customers/{$customerId}/googleAds:search",
+                    ['query' => 'SELECT customer.id, customer.descriptive_name FROM customer'],
+                );
+        } catch (ConnectionException) {
+            return self::readableId($customerId);
+        }
+
+        $name = $response->ok()
+            ? trim((string) ($response->json('results.0.customer.descriptiveName') ?? ''))
+            : '';
+
+        return $name !== '' ? $name : self::readableId($customerId);
     }
 
     /**

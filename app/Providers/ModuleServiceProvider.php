@@ -9,6 +9,7 @@ use App\Models\BusinessLocation;
 use App\Models\InventoryItem;
 use App\Models\Job;
 use App\Models\Lead;
+use App\Models\Newsletter;
 use App\Models\MonitoredDevice;
 use App\Models\Organization;
 use App\Models\Review;
@@ -1107,6 +1108,21 @@ class ModuleServiceProvider extends ServiceProvider
                 parent: 'marketing',
                 auditActionPrefixes: ['newsletter'],
                 actions: ['view', 'create', 'edit', 'delete', 'send'],
+                /*
+                 * One record type, and it really is one: both triggers pass a
+                 * Newsletter. `newsletter.unsubscribed` fires from the public
+                 * unsubscribe page with the MAILING as its subject rather than
+                 * the address, because the address is the payload and a subject
+                 * is a record a rule can be scoped by.
+                 *
+                 * Declaring it is what lets `AutomationSubjectScopeTest` ask
+                 * whether that record can say where it sits — and it could not
+                 * until now, so a `notify` on either trigger reached every
+                 * active user in the organization. That matters most for the
+                 * unsubscribe: its payload carries an email address, so one
+                 * branch's departure was broadcast organization-wide.
+                 */
+                emits: [Newsletter::class],
                 triggers: [
                     new TriggerDefinition(
                         key: 'newsletter.sent',
@@ -1659,6 +1675,14 @@ class ModuleServiceProvider extends ServiceProvider
                             .'carries the contact details as the enquirer gave them, which source '
                             .'and location it came through, and when it arrived — not yet what it '
                             .'is about.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'lead.contact_received',
+                        label: 'Enquirer called or messaged',
+                        description: 'The person behind a lead reached out again — a call, or a '
+                            .'message — and Google recorded it. It carries the channel, when, and '
+                            .'the first line of what they wrote. The business\'s own replies do '
+                            .'not raise it.',
                     ),
                     /*
                      * Separate from "received" because the gap between them is

@@ -205,6 +205,50 @@ class StaffSuggestionsTest extends TestCase
     }
 
     /**
+     * A note attached to `reviewing` would reach the author's screen with no
+     * notification telling them it appeared — the same gap this file's
+     * `test_moving_it_into_review_tells_nobody` proves the bell stays silent
+     * for. The client disables the note box for this combination; this proves
+     * the server refuses it independently of that.
+     */
+    public function test_moving_it_into_review_with_a_note_is_refused(): void
+    {
+        [$id] = $this->oneSuggestion();
+
+        $this->withToken($this->staffToken())
+            ->postJson("/api/v1/staff/suggestions/{$id}/decide", [
+                'status' => Suggestion::STATUS_REVIEWING,
+                'note' => 'Looks promising so far.',
+            ])
+            ->assertStatus(422);
+
+        $this->assertDatabaseHas('suggestions', [
+            'id' => $id, 'status' => Suggestion::STATUS_NEW, 'decision_note' => null,
+        ]);
+    }
+
+    /**
+     * A whitespace-only note is no note at all, exactly as `blank()` treats it
+     * elsewhere in this controller — it must not trip the refusal above.
+     */
+    public function test_moving_it_into_review_with_a_blank_note_is_allowed(): void
+    {
+        [$id, $t] = $this->oneSuggestion();
+
+        $this->withToken($this->staffToken())
+            ->postJson("/api/v1/staff/suggestions/{$id}/decide", [
+                'status' => Suggestion::STATUS_REVIEWING,
+                'note' => '   ',
+            ])
+            ->assertOk();
+
+        $this->assertSame(0, Notification::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $t['admin']->id)
+            ->count());
+    }
+
+    /**
      * Restoring `new` would hand the author back the right to rewrite text a
      * reviewer has already read.
      */

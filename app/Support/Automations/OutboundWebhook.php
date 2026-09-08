@@ -2,6 +2,7 @@
 
 namespace App\Support\Automations;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -24,14 +25,13 @@ use RuntimeException;
  * with is checked. Redirects are not followed for the same reason — a permitted
  * URL that 302s to the metadata endpoint would otherwise walk straight past this.
  *
- * There is a residual DNS-rebinding window between our resolution and the HTTP
- * client's. Closing it properly means pinning the connection to the address we
- * checked; that is a bigger change to the transport and is noted rather than
- * pretended away.
+ * The approved address is pinned for this transfer. The URL retains its hostname
+ * for TLS SNI/certificate verification; no proxy may resolve it a second time.
  */
 class OutboundWebhook
 {
     private const TIMEOUT_SECONDS = 5;
+
     private const MAX_RESPONSE_BYTES = 65536;
 
     /**
@@ -69,16 +69,19 @@ class OutboundWebhook
     public function send(string $url, array $payload, ?string $secret = null): array
     {
         try {
-            $this->assertAllowed($url);
+            $approved = $this->approve($url);
+            if (! extension_loaded('curl')) {
+                throw new RuntimeException('Webhooks require the pinned cURL transport.');
+            }
         } catch (RuntimeException $e) {
-            return ['ok' => false, 'status' => null, 'body' => null, 'error' => $e->getMessage()];
+            return ['ok' => false, 'status' => null, 'body' => null, 'error' => $e->getMessage(), 'retryable' => false];
         }
 
         $body = json_encode($payload, JSON_UNESCAPED_SLASHES);
 
         $headers = [
             'Content-Type' => 'application/json',
-            'User-Agent'   => 'EzBizi-Automations/1.0',
+            'User-Agent' => 'EzBizi-Automations/1.0',
         ];
 
         if ($secret !== null) {
@@ -103,18 +106,21 @@ class OutboundWebhook
                  * instead of surviving it.
                  */
                 ->withOptions([
+                    'verify' => true,
+                    'proxy' => '',
+                    'curl' => [CURLOPT_RESOLVE => [$approved]],
                     'on_headers' => function ($response) {
                         $length = (int) ($response->getHeaderLine('Content-Length') ?: 0);
 
                         if ($length > self::MAX_RESPONSE_BYTES) {
-                            throw new \RuntimeException(
+                            throw new RuntimeException(
                                 "Refused: the endpoint answered with {$length} bytes."
                             );
                         }
                     },
                     'progress' => function ($downloadTotal, $downloaded) {
                         if ($downloaded > self::MAX_RESPONSE_BYTES) {
-                            throw new \RuntimeException('Refused: the response exceeded the size cap.');
+                            throw new RuntimeException('Refused: the response exceeded the size cap.');
                         }
                     },
                 ])
@@ -125,21 +131,28 @@ class OutboundWebhook
                 ->post($url);
 
             return [
-                'ok'     => $response->successful(),
+                'ok' => $response->successful(),
                 'status' => $response->status(),
                 // Truncated: the response is only kept for diagnostics, and an
                 // endpoint returning a gigabyte should not be able to fill the
                 // run log with it.
-                'body'   => substr($response->body(), 0, self::MAX_RESPONSE_BYTES),
-                'error'  => $response->successful() ? null : "HTTP {$response->status()}",
+                'body' => substr($response->body(), 0, self::MAX_RESPONSE_BYTES),
+                'error' => $response->successful() ? null : "HTTP {$response->status()}",
             ];
         } catch (\Throwable $e) {
-            return ['ok' => false, 'status' => null, 'body' => null, 'error' => $e->getMessage()];
+            return ['ok' => false, 'status' => null, 'body' => null, 'error' => $e->getMessage(),
+                'retryable' => $e instanceof ConnectionException];
         }
     }
 
     /** @throws RuntimeException when the URL must not be called */
     public function assertAllowed(string $url): void
+    {
+        $this->approve($url);
+    }
+
+    /** Resolve once, validate every answer, and return cURL's pinned destination. */
+    private function approve(string $url): string
     {
         $parts = parse_url($url);
 
@@ -160,7 +173,8 @@ class OutboundWebhook
         // ordinary public IPv6 host would be refused too.
         $host = trim($parts['host'], '[]');
 
-        foreach ($this->resolve($host) as $ip) {
+        $addresses = $this->resolve($host);
+        foreach ($addresses as $ip) {
             foreach (self::BLOCKED as $range) {
                 if ($this->inRange($ip, $range)) {
                     throw new RuntimeException(
@@ -170,10 +184,14 @@ class OutboundWebhook
                 }
             }
         }
+
+        $address = str_contains($addresses[0], ':') ? '['.$addresses[0].']' : $addresses[0];
+
+        return $host.':'.($parts['port'] ?? 443).':'.$address;
     }
 
     /** @return string[] */
-    private function resolve(string $host): array
+    protected function resolve(string $host): array
     {
         if (filter_var($host, FILTER_VALIDATE_IP)) {
             return [$host];
@@ -198,7 +216,7 @@ class OutboundWebhook
     {
         [$subnet, $bits] = explode('/', $cidr);
 
-        $ipBin     = $this->normalise($ip);
+        $ipBin = $this->normalise($ip);
         $subnetBin = @inet_pton($subnet);
 
         // Different families never match — comparing a v4 address against a v6
@@ -207,9 +225,9 @@ class OutboundWebhook
             return false;
         }
 
-        $bits  = (int) $bits;
+        $bits = (int) $bits;
         $bytes = intdiv($bits, 8);
-        $rest  = $bits % 8;
+        $rest = $bits % 8;
 
         if ($bytes > 0 && strncmp($ipBin, $subnetBin, $bytes) !== 0) {
             return false;
@@ -247,7 +265,7 @@ class OutboundWebhook
             return $packed;
         }
 
-        $mapped     = str_repeat("\x00", 10)."\xff\xff";
+        $mapped = str_repeat("\x00", 10)."\xff\xff";
         $compatible = str_repeat("\x00", 12);
 
         foreach ([$mapped, $compatible] as $prefix) {

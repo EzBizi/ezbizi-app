@@ -39,6 +39,16 @@ final class ThumbtackOAuth implements SocialOAuth
 {
     public const CALLBACK_PATH = '/api/v1/social/thumbtack/callback';
 
+    /**
+     * Thumbtack's non-standard required parameter.
+     *
+     * Their authorization server is ORY Hydra, which uses `audience` to say
+     * which API the token is for. Stock OAuth2 has no such parameter and no
+     * library sends it by default, which is exactly why it is easy to miss:
+     * everything looks right and the consent screen refuses.
+     */
+    public const AUDIENCE = 'urn:partner-api';
+
     private const TIMEOUT = 10;
 
     public function provider(): SocialProvider
@@ -129,6 +139,14 @@ final class ThumbtackOAuth implements SocialOAuth
             'redirect_uri'  => $this->redirectUri(),
             'response_type' => 'code',
             'state'         => $state,
+            // REQUIRED, and not part of stock OAuth2 — Thumbtack's own words:
+            // "audience: Must be set to urn:partner-api." Their authorization
+            // server refuses the request without it, so every connect would
+            // have died at the consent screen with an error about the client
+            // rather than about a missing parameter. Found in their
+            // Authentication guide on 2026-09-08, before the first live
+            // connect, because the OpenAPI document does not mention it at all.
+            'audience' => self::AUDIENCE,
         ];
 
         if ($this->scopes() !== []) {
@@ -184,6 +202,69 @@ final class ThumbtackOAuth implements SocialOAuth
         return new SocialOAuthGrant(
             accessToken: $access,
             refreshToken: $refresh,
+            expiresIn: is_numeric($response->json('expires_in'))
+                ? (int) $response->json('expires_in')
+                : null,
+        );
+    }
+
+    /**
+     * Trade a refresh token for a new pair.
+     *
+     * ── Why this had to exist before the first real connect ──────
+     *
+     * A Thumbtack access token lasts ONE HOUR. Nothing in EzBizi refreshed a
+     * non-Google social connection, so a Thumbtack account would have worked
+     * for an hour and then failed at everything after: the nightly phone sync,
+     * every webhook-triggered fetch, every reply. It would have read as the
+     * connection having broken rather than a token having expired, and the only
+     * fix anybody would find is reconnecting — daily.
+     *
+     * ── The rotation, which is the part that bites ───────────────
+     *
+     * Thumbtack's refresh tokens are SINGLE USE. Each exchange returns a new
+     * one and invalidates the old, with a 60-second grace window for a retry
+     * that failed to save. So the new refresh token MUST be stored: keeping the
+     * old one turns a working connection into a dead one on the SECOND refresh,
+     * an hour after the first, which is the kind of bug that reads as
+     * intermittent and is not.
+     *
+     * Their window is 180 days of inactivity, reset on every exchange.
+     */
+    public function refresh(string $refreshToken): SocialOAuthGrant
+    {
+        try {
+            $response = Http::asForm()
+                ->timeout(self::TIMEOUT)
+                ->post((string) config('services.thumbtack.token_url'), [
+                    'grant_type'    => 'refresh_token',
+                    'refresh_token' => $refreshToken,
+                    'client_id'     => (string) config('services.thumbtack.client_id'),
+                    'client_secret' => (string) config('services.thumbtack.client_secret'),
+                    'audience'      => self::AUDIENCE,
+                ]);
+        } catch (ConnectionException) {
+            throw SocialOAuthRefused::exchangeFailed('Thumbtack');
+        }
+
+        if ($response->failed()) {
+            throw SocialOAuthRefused::exchangeFailed('Thumbtack');
+        }
+
+        $access = $response->json('access_token');
+
+        if (! is_string($access) || $access === '') {
+            throw SocialOAuthRefused::exchangeFailed('Thumbtack');
+        }
+
+        // Rotation means the answer normally carries a NEW refresh token.
+        // Falling back to the one we sent is correct for the grace-window
+        // retry and wrong to assume, so it is a fallback and not the default.
+        $rotated = $response->json('refresh_token');
+
+        return new SocialOAuthGrant(
+            accessToken: $access,
+            refreshToken: is_string($rotated) && $rotated !== '' ? $rotated : $refreshToken,
             expiresIn: is_numeric($response->json('expires_in'))
                 ? (int) $response->json('expires_in')
                 : null,

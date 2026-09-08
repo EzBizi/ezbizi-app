@@ -6,7 +6,7 @@ use App\Http\Controllers\Api\Controller;
 use App\Models\WebSite;
 use App\Models\WebValue;
 use App\Support\Web\SeoFields;
-use App\Support\Web\ValuePayload;
+use App\Support\Web\ValueResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -44,7 +44,10 @@ class ValuesController extends Controller
         return response()->json([
             'data' => [
                 'fields' => SeoFields::catalogue(),
-                ...ValuePayload::forRows($this->rows($site)),
+                ...ValueResolver::forEditor(
+                    $this->rows($site),
+                    ValueResolver::inheritedRowsFor($site),
+                ),
             ],
         ]);
     }
@@ -100,7 +103,10 @@ class ValuesController extends Controller
         return response()->json([
             'data' => [
                 'fields' => SeoFields::catalogue(),
-                ...ValuePayload::forRows($this->rows($site)),
+                ...ValueResolver::forEditor(
+                    $this->rows($site),
+                    ValueResolver::inheritedRowsFor($site),
+                ),
             ],
         ]);
     }

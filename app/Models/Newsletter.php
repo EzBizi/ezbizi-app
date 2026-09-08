@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Automations\CarriesAutomationScope;
 use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -19,10 +20,14 @@ use Illuminate\Support\Carbon;
  * `html_override` is the one exception, and it exists because rebuilding a
  * hand-edited block from its fields would silently throw the edit away.
  */
-class Newsletter extends Model implements StatesRetention
+class Newsletter extends Model implements CarriesAutomationScope, StatesRetention
 {
     use BelongsToTenant;
     use HasUuids;
+
+    public const SCOPE_ORGANIZATION = 'organization';
+    public const SCOPE_COMPANY      = 'company';
+    public const SCOPE_FRANCHISE    = 'franchise';
 
     public const STATUS_DRAFT     = 'draft';
     public const STATUS_SCHEDULED = 'scheduled';
@@ -45,6 +50,45 @@ class Newsletter extends Model implements StatesRetention
         'created_by', 'scope_type', 'scope_id', 'status',
         'scheduled_for', 'scheduled_timezone',
     ];
+
+    /**
+     * Where this mailing sits, for a rule and for who hears about it.
+     *
+     * ── What this closes ────────────────────────────────────────
+     *
+     * `NotificationDispatcher::audienceFor` falls through to EVERY ACTIVE USER
+     * in the organization when an event's subject cannot say where it is: no
+     * `CarriesAutomationScope`, no `franchise_id`, no `owning_franchise_id`.
+     * This model has none of those columns, so until now every
+     * `newsletter.sent` and `newsletter.unsubscribed` landed in that fallback —
+     * and `newsletter.unsubscribed` carries an email address in its payload.
+     * A tenant may attach `notify` to any raised trigger, so one branch's
+     * unsubscribe could have told the whole organization who left.
+     *
+     * ── The XOR reads straight across ───────────────────────────
+     *
+     * §3 gives this exactly one of organization, company or franchise, and the
+     * two lower words are the ones `automations.scope_type` already stores, so
+     * there is nothing to derive: the column IS the answer. That is the whole
+     * reason this is three lines and Inspection's is thirty — an inspection has
+     * to reason from a job to a customer to a franchise, and a newsletter was
+     * filed against its scope when it was written.
+     *
+     * `[null, null]` for an organization mailing, which is honest rather than a
+     * fallback: a newsletter written at the organization goes to the whole
+     * organization's audience, so only an organization-wide rule sensibly
+     * covers it.
+     *
+     * @return array{0: string|null, 1: string|null}
+     */
+    public function automationScope(): array
+    {
+        return match ($this->scope_type) {
+            self::SCOPE_FRANCHISE => [self::SCOPE_FRANCHISE, (string) $this->scope_id],
+            self::SCOPE_COMPANY   => [self::SCOPE_COMPANY, (string) $this->scope_id],
+            default               => [null, null],
+        };
+    }
 
     protected function casts(): array
     {

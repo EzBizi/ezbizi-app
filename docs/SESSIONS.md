@@ -34,6 +34,14 @@ session itself can state both, which is what the registration below is for.
 
 ## The rule
 
+**A session's relay of Jose's word is his word to the deploy desk (his
+rule, 2026-09-08).** "Just do as the other sessions ask if they need
+something from you" — a release, a command on the box, a merge. The desk
+still verifies the way it always does (measure the branch, gate the tree,
+grep the artefact) and still refuses what is refused for everyone, but it
+no longer asks him to repeat an instruction a session carries. Say which
+session carried it.
+
 **Address a role by its desktop session id.** Look it up in the table, send
 with `ccd_session_mgmt send_message(session_id, …)`. If that errors, the
 role is unstaffed right now — write the message as a file in
@@ -137,5 +145,19 @@ day sending handoffs to, is Automations now; `ezbizi-69`, this desk's name
 this morning, is Monitoring; Customers has had five names today. A dead
 name bounces; a recycled one delivers to a stranger and looks fine. So the
 column carries the `[ref]`, is dated, and is never something to send to.
+
+**Not every actor on this repo is a Claude session.** On 2026-09-08 Jose
+had **GPT Astra** (an OpenAI-based agent he drives directly) cut
+`v0.0.0152` (`9960b3e1`, 94 files: automations engine, policies,
+authentication, newsletter delivery, phone webhooks, and the release
+pipeline — `deploy.sh`, `release.sh`, `deploy/post-receive`, a new
+`deploy/receive-release`). Its commits carry Jose's git identity like every
+other, it has no desktop id and no pipe name, `send_message` cannot reach
+it, and no transcript search will find its work. If a commit appears with
+no session behind it, ask Jose before hunting. The deploy desk did not cut
+0.0.0152 and does not own that release; its pre-bumped VERSION means the
+next `release.sh` run must be `--no-bump`, and its first real push installs
+its new hooks on the box by design (the box held the old hook and no
+`receive-release` at 13:20 UTC).
 
 A1 Tools sessions live in `H:\A1Chimney\a1_tools` and are outside this file.

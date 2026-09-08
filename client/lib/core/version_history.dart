@@ -8,14 +8,127 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0157',
+      date: '8 Sep 2026',
+      items: [
+        'Communication - Phone - Messages: texts from the same number are one conversation now. Two messages from one person used to be two rows headed with the same number, which reads as two strangers, and opening one showed that message alone with no idea what came before it. Opening a conversation shows both sides in order, and the list shows the last thing said with "You:" in front of it when it was us.',
+        'Communication - Phone - Voicemail opens on all your voicemails instead of on a box. Boxes only fill once a line is pointed at them, and none were - so every box was empty and the messages that did exist could not be reached from that screen at all. A box nothing is pointed at now says exactly that, rather than showing an empty list that looks like a quiet week.',
+        'A voicemail box no longer prints "The company" under a name that already said which company. That line only appears now when it says something the name does not - whose box it is.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0156',
+      date: '8 Sep 2026',
+      items: [
+        'Leads shows what was said. Each lead carries the last call or message under its name, with a dot when the enquirer is waiting on a reply, and opening a lead shows the whole conversation. Call recordings play from the thread.',
+        'An Unreplied filter lists the leads where the enquirer spoke last.',
+        'The lead\'s service ("Fireplace chimney") replaces the category Google assigned, which was wrong for most leads.',
+        'On phones, the search, status and Fetch controls no longer overflow the screen.',
+        'Your phone now stays on the hook wherever you are in EzBizi. It did '
+            'not before: the phone was switched on by opening Communication '
+            'and switched off again by leaving it, so between signing in and '
+            'going to the phone - and any time you were on Jobs, or '
+            'Customers, or anywhere else - a call had nowhere to arrive and '
+            'nothing said so. The dial pad looked perfectly fine, because '
+            'coming back to it was what turned the phone on.',
+        'A call now appears as a bar across the top of whatever you are '
+            'doing, with Answer, Decline and a way through to the phone '
+            'screen. It is a bar and not a pop-up on purpose: you can answer '
+            'and carry on typing up the job you were in the middle of. Once '
+            'you are on the call the bar stays, so you can hang up from '
+            'wherever you have got to.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0155',
+      date: '8 Sep 2026',
+      items: [
+        'Google Ads accounts are now named the way Google names them ("A1 Chimney - Cleveland") instead of by their digits.',
+        'Google Ads and Business Profile accounts no longer appear under Pages in Social Media Management; nothing can be posted to them.',
+        'Leads now carry every call and message on the enquiry: who spoke, when, call length, and message text. The list shows the latest one under each lead; the detail shows the thread; call recordings play through EzBizi.',
+        'Automations gain a trigger, "Enquirer called or messaged".',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0154',
+      date: '8 Sep 2026',
+      items: [
+        'Web Management: pick a primary website and the others follow it. Set your company name once and every site publishes it, until a site sets its own — which overrides just that one thing, for just that site.',
+        'Web Management: the address is separate boxes now — street, suite, city, state, ZIP — and the single line your website shows is built from them.',
+        'Web Management: hours of operation is a day-by-day grid with a clock and a closed switch, instead of a line of text you had to type in the right shape.',
+        'Web Management: SEO has sections, starting with General, and the fields are smaller so more of them fit on screen at once.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0153',
+      date: '8 Sep 2026',
+      items: [
+        'Leads: every connected Google Ads account is visible, and each one '
+            'can be given a name and pointed at a franchise. One connect made '
+            'twenty-two accounts in the same second, and the screen showed one '
+            'of them - whichever came back first - so twenty-one were '
+            'invisible and the one on screen was arbitrary.',
+        'Leads: an account can be named. Twenty-two rows of phone numbers are '
+            'hard to tell apart, so you can call one Connecticut and it keeps '
+            'its number beside the name for checking against Google Ads.',
+        'Leads: sending an account\'s leads to a franchise moves the leads it '
+            'has already produced, and the screen says how many moved. If '
+            'there were none to move it says that too, rather than going '
+            'quiet and looking like it failed.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0152',
+      date: '8 Sep 2026',
+      items: [
+        'Your selected company or franchise stays with your requests, even '
+            'when another device changes its view. Shared records remain '
+            'readable, with changes limited to the places you manage.',
+        'Newsletters keep the mailing account chosen when scheduled, prevent '
+            'duplicate sends, and respect unsubscribed recipients. Cancel a '
+            'scheduled mailing before changing its content or audience.',
+        'Inventory cancellation and stock movements now agree when they '
+            'happen together. Late phone updates keep completed calls complete.',
+        'Automations preserve where an event happened after a record is '
+            'deleted and retry temporary webhook failures without repeating '
+            'actions that already succeeded.',
+        'Expired sessions clear consistently, and sign-in protection, remote '
+            'image loading, and release verification have been strengthened.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0151',
       date: '4 Sep 2026',
       items: [
+        'Newsletter: write a mailing in blocks or as HTML, with the real email '
+            'shown beside the editor as you type. It sends through the mailing '
+            'account your company connects - Mailchimp - so it goes out on your '
+            'own list and your own sending reputation, not EzBizi\'s.',
+        'Newsletter opens on a dashboard: what has gone out, what is waiting, and '
+            'a month calendar of everything scheduled. Tap a scheduled mailing to '
+            'open and edit it until it goes.',
+        'Settings has an Integrations tab listing every account this view is '
+            'connected to - social, mailing, advertising - and where each is '
+            'managed.',
+        'Suggestions: the tab where you write one has the layout you chose - your '
+            'suggestions listed on the left, the one you are reading beside them. '
+            'And a suggestion marked as in review can no longer carry a note, '
+            'because in review tells the author nothing and the note would never '
+            'have been seen.',
+        'The desktop app opens once. Launching it while it is already open brings '
+            'the running window forward instead of starting a second copy.',
+        'An inspection event says which branch it happened at, so an automation '
+            'rule scoped to one location fires for that location\'s inspections '
+            'and not for everybody\'s.',
         '"Text me my codes" is on the account screen at a desk, not only on a '
             'phone. It was added to the phone layout alone, so the setting '
             'existed on a handset and did not exist on a computer - which is '
             'where most people would have gone looking for it. It now sits '
             'under Two-factor in both.',
+        'Email: an inbox can now mark mail as read in the mail service itself, so '
+            'a message you open here stops being bold in Gmail too. Off unless you '
+            'turn it on, per inbox, on Email > Settings - because on an inbox your '
+            'team shares it would hide mail from a colleague who has not read it.',
       ],
     ),
     VersionRelease(

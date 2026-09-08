@@ -1,25 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Hours of operation — the only field that is not a line of text.
 ///
 /// ── The value on the wire stays a STRING, deliberately ──
 ///
 /// `[ezbizi_hours]` renders into somebody's footer, the plugin caches a string,
-/// and installs in the wild already read one. So this is an input aid over a
+/// and installs in the wild already read one. So the grid is an editor over a
 /// canonical string, NOT a new data type: no migration, no change to the field
 /// catalogue, no change to what any plugin receives. A picker that forced a
 /// structured column would have broken every install to make this screen nicer.
 ///
 /// ── Which means format and parse have to be exact inverses ──
 ///
-/// The box stays editable, because real hours do not always fit a grid — "by
-/// appointment November to March" is a legitimate answer. So reopening the
-/// editor has to read back whatever was stored: `parseWeek` returns null for
-/// anything this file did not write, and the screen then leaves the person in
-/// the text box rather than silently discarding what they typed.
+/// `formatWeek` writes the string the grid means; `parseWeek` reads it back and
+/// returns NULL for anything this file did not write. That null is what keeps a
+/// value typed before the grid existed — "by appointment November to March" —
+/// visible rather than silently replaced, and it is why the two functions are
+/// tested against each other rather than against fixed strings.
 ///
 /// Times are formatted here rather than through MaterialLocalizations for the
-/// same reason — a value formatted in one locale and parsed in another would
+/// same reason: a value formatted in one locale and parsed in another would
 /// round-trip into free text and lose the grid.
 
 /// One day. `closed` wins; the times are kept so unchecking Closed restores
@@ -205,60 +206,89 @@ TimeOfDay? _time(String hour, String minute, String meridiem) {
   return TimeOfDay(hour: h, minute: m);
 }
 
-/// The hours field: a text box that writes itself, and a grid that writes it.
+/// Hours of operation: seven days, two pickers each, and a Closed switch.
 ///
-/// The box stays editable and stays the source of truth, because the value it
-/// holds is what a website renders. The grid is a convenience over it — open
-/// it, set the days, and the box updates. Type something the grid cannot
-/// express and the grid steps aside rather than fighting you for the field.
+/// ── There is no text box any more, and that is deliberate ──
+///
+/// This began as an editable box with the grid as an optional aid. Jose asked
+/// for the grid to BE the field, and he is right: somebody setting opening
+/// hours should not be typing a formatted string, and the box invited typos
+/// into a value that renders on a public page.
+///
+/// The string did not go anywhere. It is still exactly what crosses the wire
+/// and what `[ezbizi_hours]` renders, composed by `formatWeek` from the grid.
+/// That is why this needed no plugin release and no migration: the INPUT
+/// changed, the value did not.
+///
+/// ── What removing the box cost ──
+///
+/// "By appointment, November to March" can no longer be expressed. That was a
+/// real capability and it is worth naming rather than discovering later: a
+/// business whose hours do not fit a seven-day grid now has no way to say so.
+/// If one turns up, the answer is a third per-day state or a free-text escape
+/// hatch beneath the grid — not the box back.
+///
+/// A value this grid cannot parse — one typed before the box was removed —
+/// still opens rather than being silently replaced: `parseWeek` returns null,
+/// the grid falls back to a sensible week, and the original stays on screen
+/// until somebody sets a day.
 class HoursField extends StatefulWidget {
   const HoursField({
     super.key,
     required this.controller,
     required this.enabled,
     required this.label,
-    required this.hint,
+    required this.shortcode,
+    this.inherited = '',
+    this.inheritedFrom,
   });
 
   final TextEditingController controller;
   final bool enabled;
   final String label;
-  final String hint;
+  final String shortcode;
+
+  /// What the primary site publishes, when this site says nothing.
+  final String inherited;
+  final String? inheritedFrom;
 
   @override
   State<HoursField> createState() => _HoursFieldState();
 }
 
 class _HoursFieldState extends State<HoursField> {
-  bool _open = false;
   late List<DayHours> _week;
+
+  /// Text stored before the grid existed that the grid cannot express. Kept
+  /// visible so nobody loses it without being shown it first.
+  String? _unparsed;
+
+  bool get _isInheriting =>
+      widget.controller.text.trim().isEmpty && widget.inherited.isNotEmpty;
 
   @override
   void initState() {
     super.initState();
-    _week = parseWeek(widget.controller.text) ?? defaultWeek();
+    _read();
   }
 
-  /// Reopening reads the BOX, not the last grid state — somebody may have
-  /// typed over it since, and the box is what gets saved.
-  void _toggle() {
-    setState(() {
-      if (!_open) _week = parseWeek(widget.controller.text) ?? defaultWeek();
-      _open = !_open;
-    });
+  void _read() {
+    final text = widget.controller.text.trim();
+    final parsed = parseWeek(text);
+
+    _week = parsed ?? parseWeek(widget.inherited) ?? defaultWeek();
+    _unparsed = parsed == null && text.isNotEmpty ? text : null;
   }
 
   void _write() {
     widget.controller.text = formatWeek(_week);
-    setState(() {});
+    setState(() => _unparsed = null);
   }
 
   Future<void> _pick(int day, {required bool opening}) async {
-    final current = opening ? _week[day].open : _week[day].close;
-
     final picked = await showTimePicker(
       context: context,
-      initialTime: current,
+      initialTime: opening ? _week[day].open : _week[day].close,
       helpText: '${weekdayLongNames[day]} — ${opening ? 'opens' : 'closes'}',
     );
 
@@ -274,116 +304,141 @@ class _HoursFieldState extends State<HoursField> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final freeText = parseWeek(widget.controller.text) == null &&
-        widget.controller.text.trim().isNotEmpty;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: TextField(
-                controller: widget.controller,
-                enabled: widget.enabled,
-                decoration: InputDecoration(
-                  labelText: widget.label,
-                  helperText: widget.hint,
-                  helperMaxLines: 2,
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(widget.label, style: theme.textTheme.titleSmall),
+              ),
+              _ShortcodeChip(code: widget.shortcode),
+            ],
+          ),
+          if (_isInheriting)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Publishing ${widget.inherited}, from '
+                '${widget.inheritedFrom ?? 'the primary site'}. Change a day '
+                'below to give this site its own.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.outline,
                 ),
               ),
             ),
-            if (widget.enabled) ...[
-              const SizedBox(width: 8),
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: OutlinedButton(
-                  onPressed: _toggle,
-                  child: Text(_open ? 'Done' : 'Set hours'),
-                ),
-              ),
-            ],
-          ],
-        ),
-        if (_open) ...[
-          const SizedBox(height: 8),
-          if (freeText)
+          if (_unparsed != null)
             Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.only(top: 4),
               child: Text(
-                'These hours were written by hand. Using the grid will replace '
-                'them.',
+                'Saved as "$_unparsed", which this grid cannot show. Setting '
+                'any day replaces it.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.error,
                 ),
               ),
             ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              border: Border.all(color: theme.colorScheme.outlineVariant),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Column(
+          const SizedBox(height: 6),
+          for (var day = 0; day < 7; day++)
+            Row(
               children: [
-                for (var day = 0; day < 7; day++)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 96,
-                          child: Text(
-                            weekdayLongNames[day],
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: _week[day].closed
-                              ? Text(
-                                  'Closed',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: theme.colorScheme.outline,
-                                  ),
-                                )
-                              : Wrap(
-                                  spacing: 6,
-                                  crossAxisAlignment: WrapCrossAlignment.center,
-                                  children: [
-                                    TextButton(
-                                      onPressed: () =>
-                                          _pick(day, opening: true),
-                                      child: Text(formatTime(_week[day].open)),
-                                    ),
-                                    const Text('to'),
-                                    TextButton(
-                                      onPressed: () =>
-                                          _pick(day, opening: false),
-                                      child: Text(formatTime(_week[day].close)),
-                                    ),
-                                  ],
-                                ),
-                        ),
-                        Switch(
-                          value: !_week[day].closed,
-                          onChanged: (open) {
-                            _week[day] = _week[day].copyWith(closed: !open);
-                            _write();
-                          },
-                        ),
-                      ],
+                SizedBox(
+                  width: 92,
+                  child: Text(
+                    weekdayLongNames[day],
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
+                ),
+                Expanded(
+                  child: _week[day].closed
+                      ? Text(
+                          'Closed',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.outline,
+                          ),
+                        )
+                      : Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            TextButton(
+                              onPressed: widget.enabled
+                                  ? () => _pick(day, opening: true)
+                                  : null,
+                              child: Text(formatTime(_week[day].open)),
+                            ),
+                            const Text('to'),
+                            TextButton(
+                              onPressed: widget.enabled
+                                  ? () => _pick(day, opening: false)
+                                  : null,
+                              child: Text(formatTime(_week[day].close)),
+                            ),
+                          ],
+                        ),
+                ),
+                Switch(
+                  value: !_week[day].closed,
+                  onChanged: widget.enabled
+                      ? (open) {
+                          _week[day] = _week[day].copyWith(closed: !open);
+                          _write();
+                        }
+                      : null,
+                ),
               ],
             ),
-          ),
         ],
-      ],
+      ),
+    );
+  }
+}
+
+/// The same copy-on-click chip the other fields use, kept here so hours does
+/// not have to reach into the SEO screen for one widget.
+class _ShortcodeChip extends StatefulWidget {
+  const _ShortcodeChip({required this.code});
+
+  final String code;
+
+  @override
+  State<_ShortcodeChip> createState() => _ShortcodeChipState();
+}
+
+class _ShortcodeChipState extends State<_ShortcodeChip> {
+  bool _copied = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return OutlinedButton.icon(
+      onPressed: () async {
+        await Clipboard.setData(ClipboardData(text: widget.code));
+        if (!mounted) return;
+        setState(() => _copied = true);
+        await Future<void>.delayed(const Duration(milliseconds: 1200));
+        if (mounted) setState(() => _copied = false);
+      },
+      icon: Icon(_copied ? Icons.check : Icons.copy_outlined, size: 14),
+      label: Text(
+        _copied ? 'Copied' : widget.code,
+        style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+      ),
+      style: OutlinedButton.styleFrom(
+        foregroundColor:
+            _copied ? theme.colorScheme.primary : theme.colorScheme.outline,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        visualDensity: VisualDensity.compact,
+      ),
     );
   }
 }

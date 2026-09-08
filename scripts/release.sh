@@ -163,8 +163,13 @@ if [ "$BUMP" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then
     echo "     The app will show this version with nothing under it."; }
 fi
 
-VERSION=$(tr -d '[:space:]' < client/VERSION)
-COMMIT=$(git rev-parse --short HEAD)
+RELEASE_SHA=$(git rev-parse HEAD)
+VERSION=$(git show "$RELEASE_SHA:client/VERSION" | tr -d '[:space:]')
+if [ -n "${EZBIZI_RELEASE_SHA:-}" ] && [ "$RELEASE_SHA" != "$EZBIZI_RELEASE_SHA" ]; then
+  echo "✗ pinned checkout does not match the requested release SHA" >&2
+  exit 1
+fi
+COMMIT=$(git rev-parse --short "$RELEASE_SHA")
 DIRTY=0
 # docs/ is excluded, as build-app.sh already excludes it. Nothing under docs/
 # reaches an installer or the API, and the pinned worktree below builds from
@@ -215,10 +220,13 @@ fi
 # bump is done; without it the pinned run would bump again, and a detached HEAD
 # cannot carry that commit anywhere.
 if [ -z "${EZBIZI_PINNED:-}" ] && [ "$DRY_RUN" -eq 0 ]; then
-  PIN_SHA=$(git rev-parse HEAD)
-  PIN_DIR="$(dirname "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")")/wt/release-$(git rev-parse --short HEAD)"
+  PIN_SHA="$RELEASE_SHA"
+  PIN_DIR="$(dirname "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")")/wt/release-${PIN_SHA:0:12}"
 
   if [ -d "$PIN_DIR" ]; then
+    [ "$(git -C "$PIN_DIR" rev-parse HEAD)" = "$PIN_SHA" ] || {
+      echo "✗ existing release worktree has a different SHA" >&2; exit 1;
+    }
     echo "→ reusing pinned worktree $PIN_DIR"
   else
     echo "→ pinning the build to ${PIN_SHA:0:7} — $PIN_DIR"
@@ -244,7 +252,7 @@ if [ -z "${EZBIZI_PINNED:-}" ] && [ "$DRY_RUN" -eq 0 ]; then
   # deploy.sh regenerates, hence --force. A failed release keeps its
   # worktree and says where it is.
   set +e
-  EZBIZI_PINNED=1 bash scripts/release.sh --no-bump "${ORIG_ARGS[@]}"
+  EZBIZI_PINNED=1 EZBIZI_RELEASE_SHA="$PIN_SHA" bash scripts/release.sh --no-bump "${ORIG_ARGS[@]}"
   STATUS=$?
   set -e
   cd "$MAIN_DIR"
@@ -382,7 +390,10 @@ GATES=--skip-gates
 if wants web; then
   echo
   echo "→ web — deploy.sh (tests, build, push, UI swap)"
-  run ./scripts/deploy.sh ${SKIP_GATES} || FAILED+=("web")
+  if ! run ./scripts/deploy.sh ${SKIP_GATES} --sha "$RELEASE_SHA"; then
+    echo "✗ web/API deployment failed; native builds and publication stopped" >&2
+    exit 1
+  fi
 else
   # Nothing has tested this commit in this run, so let build-app.sh do it.
   GATES=""

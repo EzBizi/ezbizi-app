@@ -118,6 +118,184 @@ class AutomationEngineTest extends TestCase
 
     // ── the outbox (§5.5) ────────────────────────────────────────
 
+    public function test_deleted_subject_keeps_its_emitted_franchise_scope(): void
+    {
+        $rule = $this->automation('customer.deleted', null, []);
+        $this->inTenant(function () use ($rule) {
+            $rule->update(['scope_type' => 'franchise', 'scope_id' => $this->org['franchise']->id]);
+            $customer = Customer::factory()->create(['owning_franchise_id' => $this->org['franchise']->id]);
+            $event = app(\App\Support\Automations\EventEmitter::class)->emit('customer.deleted', $customer);
+            $customer->delete();
+            app(AutomationEngine::class)->deliver($event);
+            $this->assertSame(1, AutomationRun::where('event_id', $event->id)->count());
+        });
+    }
+
+    public function test_transient_webhook_retries_only_itself_with_original_version_and_key(): void
+    {
+        $rule = $this->automation('job.created', null, [
+            ['type' => 'update_field', 'field' => 'title', 'value' => 'First success'],
+            ['type' => 'webhook', 'url' => 'https://example.com/hook'],
+        ]);
+        $keys = [];
+        $mock = \Mockery::mock(OutboundWebhook::class);
+        $mock->shouldReceive('send')->twice()->andReturnUsing(function ($url, $payload) use (&$keys) {
+            $keys[] = $payload['idempotency_key'];
+            return ['ok' => count($keys) > 1, 'status' => count($keys) > 1 ? 200 : 503, 'error' => 'HTTP 503'];
+        });
+        $this->app->instance(OutboundWebhook::class, $mock);
+        [, $jobId] = $this->makeJob();
+        $this->inTenant(function () use ($rule, $jobId, &$keys) {
+            $event = AutomationEvent::where('event_key', 'job.created')->firstOrFail();
+            app(AutomationEngine::class)->deliver($event);
+            $this->assertNull($event->fresh()->delivered_at);
+            Job::whereKey($jobId)->update(['title' => 'Changed after success']);
+            $replacement = AutomationVersion::create([
+                'automation_id' => $rule->id, 'version' => 2, 'created_at' => now(),
+                'actions' => [['type' => 'update_field', 'field' => 'title', 'value' => 'Wrong version']],
+            ]);
+            $rule->update(['active_version_id' => $replacement->id]);
+            $this->travel(61)->seconds();
+            app(AutomationEngine::class)->deliver($event->fresh());
+            $this->assertNotNull($event->fresh()->delivered_at);
+            $this->assertSame('Changed after success', Job::findOrFail($jobId)->title);
+            $this->assertCount(2, $keys);
+            $this->assertSame($keys[0], $keys[1]);
+            $this->assertNotSame($event->id, $keys[0]);
+            $this->assertSame(1, AutomationRun::where('event_id', $event->id)->count());
+        });
+    }
+
+    public function test_retryable_webhook_is_bounded_and_dead_letters_after_five_attempts(): void
+    {
+        $this->automation('job.created', null, [['type' => 'webhook', 'url' => 'https://example.com/hook']]);
+        $mock = \Mockery::mock(OutboundWebhook::class);
+        $mock->shouldReceive('send')->times(5)->andReturn(['ok' => false, 'status' => 503, 'error' => 'HTTP 503']);
+        $this->app->instance(OutboundWebhook::class, $mock);
+        $this->makeJob();
+        $this->inTenant(function () {
+            $event = AutomationEvent::where('event_key', 'job.created')->firstOrFail();
+            for ($i = 0; $i < 5; $i++) {
+                app(AutomationEngine::class)->deliver($event->fresh());
+                $this->travel(901)->seconds();
+            }
+            $this->assertNotNull($event->fresh()->failed_at);
+            $this->assertNotNull($event->fresh()->delivered_at);
+            $run = AutomationRun::where('event_id', $event->id)->firstOrFail();
+            $this->assertSame('failed', $run->status);
+            $this->assertSame(5, $run->action_results[0]['attempts']);
+            app(AutomationEngine::class)->deliver($event->fresh());
+        });
+    }
+
+    public function test_recovered_worker_never_repeats_an_ambiguous_sms_but_resumes_its_webhook(): void
+    {
+        $actions = [['type' => 'sms.send'], ['type' => 'webhook', 'url' => 'https://example.com/hook']];
+        $rule = $this->automation('job.created', null, $actions);
+        $mock = \Mockery::mock(OutboundWebhook::class);
+        $mock->shouldReceive('send')->once()->andReturn(['ok' => true, 'status' => 200, 'error' => null]);
+        $this->app->instance(OutboundWebhook::class, $mock);
+        $this->makeJob();
+        $this->inTenant(function () use ($rule, $actions) {
+            $event = AutomationEvent::where('event_key', 'job.created')->firstOrFail();
+            $event->forceFill(['version_ids' => [$rule->active_version_id],
+                'processing_until' => now()->subMinute(), 'processing_token' => (string) \Illuminate\Support\Str::uuid(),
+            ])->save();
+            $run = AutomationRun::create([
+                'automation_id' => $rule->id, 'automation_version_id' => $rule->active_version_id,
+                'event_id' => $event->id, 'status' => 'matched', 'started_at' => now()->subMinutes(11),
+                'actions_snapshot' => $actions, 'action_count' => 2,
+                'action_results' => [
+                    ['type' => 'sms.send', 'ok' => false, 'state' => 'started', 'attempts' => 1],
+                    ['type' => 'webhook', 'ok' => false, 'state' => 'started', 'attempts' => 1],
+                ],
+            ]);
+            app(AutomationEngine::class)->deliver($event);
+            $run->refresh();
+            $this->assertSame('unknown', $run->action_results[0]['state']);
+            $this->assertSame(1, $run->action_results[0]['attempts']);
+            $this->assertSame('succeeded', $run->action_results[1]['state']);
+            $this->assertSame('failed', $run->status);
+        });
+    }
+
+    public function test_an_existing_delivery_lease_prevents_overlapping_side_effects(): void
+    {
+        $this->automation('job.created', null, [['type' => 'webhook', 'url' => 'https://example.com/hook']]);
+        $mock = \Mockery::mock(OutboundWebhook::class);
+        $mock->shouldNotReceive('send');
+        $this->app->instance(OutboundWebhook::class, $mock);
+        $this->makeJob();
+        $this->inTenant(function () {
+            $event = AutomationEvent::where('event_key', 'job.created')->firstOrFail();
+            $event->forceFill(['processing_until' => now()->addMinutes(10)])->save();
+            $this->assertSame(0, app(AutomationEngine::class)->deliver($event));
+            $this->assertSame(0, AutomationRun::where('event_id', $event->id)->count());
+        });
+    }
+
+    public function test_disabling_a_rule_between_retries_finishes_its_pending_run(): void
+    {
+        $rule = $this->automation('job.created', null, [['type' => 'webhook', 'url' => 'https://example.com/hook']]);
+        $mock = \Mockery::mock(OutboundWebhook::class);
+        $mock->shouldReceive('send')->once()->andReturn(['ok' => false, 'status' => 503, 'error' => 'HTTP 503']);
+        $this->app->instance(OutboundWebhook::class, $mock);
+        $this->makeJob();
+        $this->inTenant(function () use ($rule) {
+            $event = AutomationEvent::where('event_key', 'job.created')->firstOrFail();
+            app(AutomationEngine::class)->deliver($event);
+            $rule->update(['is_active' => false]);
+            $this->travel(61)->seconds();
+            app(AutomationEngine::class)->deliver($event->fresh());
+            $this->assertNotNull($event->fresh()->delivered_at);
+            $this->assertNotNull($event->fresh()->failed_at);
+            $this->assertSame('failed', AutomationRun::where('event_id', $event->id)->firstOrFail()->status);
+        });
+    }
+
+    public function test_pending_run_keeps_its_original_rule_scope_after_rule_edit(): void
+    {
+        $rule = $this->automation('job.created', null, [['type' => 'webhook', 'url' => 'https://example.com/hook']]);
+        $seen = [];
+        $runner = \Mockery::mock(\App\Support\Automations\ActionRunner::class);
+        $runner->shouldReceive('run')->twice()->andReturnUsing(function ($action, $event, $subject, $isTest = false, $automation = null) use (&$seen) {
+            $seen[] = $automation->scope_type;
+            return ['type' => 'webhook', 'ok' => count($seen) > 1, 'retryable' => true, 'detail' => 'Temporary outage'];
+        });
+        $this->app->instance(\App\Support\Automations\ActionRunner::class, $runner);
+        $this->makeJob();
+        $this->inTenant(function () use ($rule, &$seen) {
+            $event = AutomationEvent::where('event_key', 'job.created')->firstOrFail();
+            app(AutomationEngine::class)->deliver($event);
+            $rule->update(['scope_type' => 'franchise', 'scope_id' => $this->org['franchise']->id]);
+            $this->travel(61)->seconds();
+            app(AutomationEngine::class)->deliver($event->fresh());
+            $this->assertSame([null, null], $seen);
+        });
+    }
+
+    public function test_queue_exhaustion_records_unknown_actions_and_does_not_overwrite_completed_delivery(): void
+    {
+        $rule = $this->automation('job.created', null, []);
+        $this->makeJob();
+        $this->inTenant(function () use ($rule) {
+            $event = AutomationEvent::where('event_key', 'job.created')->firstOrFail();
+            $run = AutomationRun::create([
+                'automation_id' => $rule->id, 'automation_version_id' => $rule->active_version_id,
+                'event_id' => $event->id, 'status' => 'matched', 'started_at' => now(),
+                'actions_snapshot' => [['type' => 'sms.send']],
+                'action_results' => [['type' => 'sms.send', 'state' => 'started', 'ok' => false, 'attempts' => 1]],
+            ]);
+            (new \App\Jobs\DeliverAutomationEvent($event->id))->failed(new \RuntimeException('Worker exhausted'));
+            $this->assertSame('failed', $run->fresh()->status);
+            $this->assertSame('unknown', $run->fresh()->action_results[0]['state']);
+            $this->assertNotNull($event->fresh()->failed_at);
+            $event->refresh()->forceFill(['failed_at' => null, 'last_error' => null, 'delivered_at' => now()])->save();
+            (new \App\Jobs\DeliverAutomationEvent($event->id))->failed(new \RuntimeException('Late failure'));
+            $this->assertNull($event->fresh()->failed_at);
+        });
+    }
+
     public function test_a_business_change_writes_its_event_in_the_same_transaction(): void
     {
         [, $job] = $this->makeJob();

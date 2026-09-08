@@ -17,6 +17,8 @@ import 'package:http/http.dart' as http;
 /// the wrong one is the exact failure this module was built to stop, and it is
 /// invisible in a screenshot.
 void main() {
+  _conversationRowTests();
+
   testWidgets('with nothing connected the empty state says so, rather than '
       'reporting a quiet week', (tester) async {
     await _pump(tester, leads: const [], connections: const []);
@@ -30,6 +32,59 @@ void main() {
           'It means nothing is fetching.',
     );
     expect(find.text('No enquiries yet'), findsNothing);
+  });
+
+  /// THE REPORTED DEFECT. One connect created twenty-two accounts in the same
+  /// second, and the header showed one of them — whichever the query returned
+  /// first. Twenty-one were invisible and the one on screen was arbitrary.
+  ///
+  /// Jose: "I'm seeing only one account, even tho we have 20 somethings
+  /// accounts for a1-chimney."
+  testWidgets('the header counts every connected account, not the first one', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: const [],
+      connections: const [
+        {
+          'id': 'c1',
+          'provider': 'google_ads',
+          'display_name': '405-172-9356',
+          'status': 'connected',
+          'leads_franchise_id': null,
+          'leads_count': 4,
+        },
+        {
+          'id': 'c2',
+          'provider': 'google_ads',
+          'display_name': '118-904-2210',
+          'status': 'connected',
+          'leads_franchise_id': 'fr-1',
+          'leads_franchise_name': 'Connecticut',
+          'leads_count': 2,
+        },
+        {
+          'id': 'c3',
+          'provider': 'google_ads',
+          'display_name': '772-410-3388',
+          'status': 'connected',
+          'leads_franchise_id': null,
+          'leads_count': 0,
+        },
+      ],
+    );
+
+    expect(
+      find.text('3 Google Ads accounts'),
+      findsOneWidget,
+      reason:
+          'The band states how many accounts exist. Naming one of them was the '
+          'defect: it looked correct and was arbitrary.',
+    );
+
+    // And the second line carries the fact that actually changes.
+    expect(find.text('2 at company level · 1 on a franchise'), findsOneWidget);
   });
 
   testWidgets('with an account connected and no leads it says the week was '
@@ -81,8 +136,9 @@ void main() {
   /// This shipped drawing Connect for anybody who could open the tab. Somebody
   /// holding `leads.view` and not `leads.edit` pressed it and got a 403 — the
   /// server check was right, the screen simply never asked.
-  testWidgets('Connect is not offered to somebody who cannot connect',
-      (tester) async {
+  testWidgets('Connect is not offered to somebody who cannot connect', (
+    tester,
+  ) async {
     await _pump(
       tester,
       leads: const [],
@@ -181,13 +237,179 @@ void main() {
   });
 }
 
+const _connected = [
+  {
+    'provider': 'google_ads',
+    'display_name': 'A1 Chimney - Cleveland',
+    'status': 'connected',
+  },
+];
+
+Map<String, dynamic> _lead(
+  String id,
+  String name, {
+  String? from,
+  String? channel,
+  String? preview,
+  String? service = 'fireplace_chimney',
+  String? category = 'xcat:service_area_business_home_inspector',
+}) => {
+  'id': id,
+  'contact_name': name,
+  'phone': '+1 (555) 123-4567',
+  'category': category,
+  'service': service,
+  'status': 'new',
+  'received_at': '2026-09-07T09:00:00Z',
+  'last_contact_at': from == null ? null : '2026-09-07T09:30:00Z',
+  'last_contact_channel': channel,
+  'last_contact_from': from,
+  'last_contact_preview': preview,
+  'franchise': {'id': 'f-1', 'name': 'Connecticut'},
+  'company': {'id': 'c-1', 'name': 'A-1 Chimney'},
+};
+
+/// Approved desktop layout 1: the dot is the only mark for unreplied and it
+/// is on the left; when the business sent last the preview says "You:".
+void _conversationRowTests() {
+  testWidgets('they spoke last gets the dot; you spoke last gets "You:" and '
+      'no dot', (tester) async {
+    await _pump(
+      tester,
+      leads: [
+        _lead(
+          'lead-1',
+          'Dana Whitfield',
+          from: 'CONSUMER',
+          channel: 'MESSAGE',
+          preview: 'Can you come out Thursday morning?',
+        ),
+        _lead(
+          'lead-2',
+          'R. Okonkwo',
+          from: 'ADVERTISER',
+          channel: 'PHONE_CALL',
+          preview: 'Call · 1:08',
+        ),
+      ],
+      connections: _connected,
+    );
+
+    expect(find.byKey(const ValueKey('unreplied-lead-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('unreplied-lead-2')), findsNothing);
+    expect(find.textContaining('You: Call · 1:08'), findsOneWidget);
+    expect(find.textContaining('Can you come out Thursday'), findsOneWidget);
+  });
+
+  testWidgets('the badge says Call or Text, never Google\'s word', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: [
+        _lead(
+          'lead-1',
+          'Marcus Bell',
+          from: 'CONSUMER',
+          channel: 'PHONE_CALL',
+          preview: 'Call · 4:32',
+        ),
+        _lead(
+          'lead-2',
+          'Dana Whitfield',
+          from: 'CONSUMER',
+          channel: 'MESSAGE',
+          preview: 'Thursday?',
+        ),
+      ],
+      connections: _connected,
+    );
+
+    expect(find.text('Call'), findsOneWidget);
+    expect(find.text('Text'), findsOneWidget);
+    expect(find.textContaining('PHONE_CALL'), findsNothing);
+    expect(find.textContaining('LS Ads'), findsNothing);
+  });
+
+  /// 23,686 of 23,875 live leads are classified "home inspector" by Google,
+  /// for a chimney company. The category is a false statement about the
+  /// business and never reaches the screen; the service does, humanised.
+  testWidgets('the category never reaches the screen; the service does, '
+      'humanised', (tester) async {
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell')],
+      connections: _connected,
+    );
+
+    expect(
+      find.text('Fireplace chimney · Google Ads · Connecticut'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('home inspector'), findsNothing);
+    expect(find.textContaining('xcat'), findsNothing);
+    expect(find.textContaining('fireplace_chimney'), findsNothing);
+  });
+
+  /// 1,576 live leads carry no service. The segment is omitted, not replaced
+  /// with "No service given": nobody can supply what Google did not send.
+  testWidgets('a lead with no service omits the segment rather than naming '
+      'the absence', (tester) async {
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell', service: null)],
+      connections: _connected,
+    );
+
+    expect(find.text('Google Ads · Connecticut'), findsOneWidget);
+    expect(find.textContaining('No service'), findsNothing);
+  });
+
+  /// Mobile layout 4: the row states its value, tapping opens the thread
+  /// full screen with a back bar.
+  testWidgets('on a phone, tapping a row opens the thread with a back bar', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: [
+        _lead(
+          'lead-1',
+          'Marcus Bell',
+          from: 'CONSUMER',
+          channel: 'PHONE_CALL',
+          preview: 'Call · 4:32',
+        ),
+      ],
+      connections: _connected,
+      size: const Size(375, 812),
+    );
+
+    expect(find.byType(AppBar), findsNothing);
+
+    await tester.tap(find.text('Marcus Bell'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AppBar), findsOneWidget);
+    expect(find.byType(BackButton), findsOneWidget);
+    expect(
+      find.text(
+        'Nothing said yet. Google has not recorded a call or '
+        'message on this enquiry.',
+      ),
+      findsOneWidget,
+    );
+  });
+}
+
 Future<void> _pump(
   WidgetTester tester, {
   required List<Map<String, dynamic>> leads,
   required List<Map<String, dynamic>> connections,
   List<String> permissions = const ['leads.view', 'leads.edit'],
+  Size size = const Size(1200, 900),
 }) async {
-  tester.view.physicalSize = const Size(1200, 900);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
@@ -220,7 +442,11 @@ Future<void> _pump(
         );
       }
 
-      return http.Response('{}', 200, headers: {'content-type': 'application/json'});
+      return http.Response(
+        '{}',
+        200,
+        headers: {'content-type': 'application/json'},
+      );
     }),
   );
 
@@ -230,7 +456,9 @@ Future<void> _pump(
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
-      home: Scaffold(body: LeadsScreen(api: api, session: session)),
+      home: Scaffold(
+        body: LeadsScreen(api: api, session: session),
+      ),
     ),
   );
   await tester.pumpAndSettle();
