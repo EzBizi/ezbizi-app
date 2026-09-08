@@ -131,9 +131,24 @@
       <code>tv_mounting</code> becomes &ldquo;Tv mounting&rdquo;. That is worse than showing the raw
       identifier — an identifier reads as a system value and people ignore it, while
       &ldquo;Hvac&rdquo; reads as the business having misspelled its own trade, in front of the
-      customer whose trade it is. Nothing in the repo shows which values occur (I grepped
-      <code>database/</code> and <code>tests/</code>), so the answer is the distinct
-      <code>service</code> values off the live account, not a guessed acronym list.
+      customer whose trade it is.
+      <span class="brk">Measured across 23,875 live leads, so this is settled with data.</span>
+      <code>service</code> has exactly two states: <code>fireplace_chimney</code> (22,299) and
+      <b>absent (1,576)</b>. No acronym anywhere, so <b>the mechanical rule ships as written</b> and
+      the ceiling above goes in a comment rather than into code. A second tenant in another trade is
+      the first real test of it, and their real list is when to add a map.
+      <span class="brk">And the absent case is 1,576 leads, which I had not drawn at all.</span>
+      Six per cent of them carry no service. The header <b>omits the segment</b> rather than saying
+      &ldquo;No service given&rdquo;, and that is a departure from the Your account rule that an
+      empty value must say so. The discriminator is whether anybody can close the gap: on Your
+      account a blank phone number is something YOU can fill in, so silence looks like a failed
+      load. Here it is Google's data, nobody can supply it, and a row of &ldquo;not given&rdquo; is a
+      line of type that reports a fact no reader can act on.
+      <span class="brk">One more reason the category never goes on screen: it is WRONG.</span>
+      23,686 of those leads are classified
+      <code>xcat:service_area_business_home_inspector</code> — Google calling a chimney company a
+      home inspector, and 12 more calling it a landscaper. So the line on screen today is not merely
+      a wire value leaking; it is a false statement about the business, shown to that business.
       <span class="brk">Same rule applies to the channel.</span>
       <code>last_contact_channel</code> is Google's word — <code>PHONE_CALL</code>,
       <code>MESSAGE</code>, <code>SMS</code>, <code>WHATSAPP</code>, <code>EMAIL</code>,
@@ -213,7 +228,7 @@ const D1=()=>win('<b>Layout 1</b> &middot; list left, thread right',
    <div class="thread"><div class="thead"><h3>Marcus Bell</h3>
      <p>Fireplace chimney · Google Ads · Connecticut</p></div>
      <div class="tbody">${THREAD}</div></div></div>`,
- 'The dot is the only mark for unreplied and it is on the LEFT, where a thumb or an eye scanning a column passes first. The second call shows the state that matters: <b>fetching</b>. Play is fetch-then-play, so the control has to say so or it looks broken.');
+ 'The dot is the only mark for unreplied and it is on the LEFT, where a thumb or an eye scanning a column passes first. The second call shows the state that matters: <b>fetching</b>. Play is fetch-then-play, so the control has to say so or it looks broken.<br><br>The header line has two shapes, and the second is 1,576 real leads: <b>Fireplace chimney · Google Ads · Connecticut</b> when a service is present, and <b>Google Ads · Connecticut</b> when it is not — the segment is omitted, not replaced with "No service given". Nobody can supply what Google did not send, so naming its absence spends a line to report something no reader can act on.');
 
 const D2=()=>win('<b>Layout 2</b> &middot; full-width list, thread in a panel',
  `<div class="two" style="grid-template-columns:1fr 380px">
