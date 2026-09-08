@@ -99,9 +99,13 @@
     <div class="locked">
       <strong>Measured on main before drawing — 36d3e9ee is an ancestor of HEAD</strong>
       Every lead carries <code>last_contact_at</code>, <code>last_contact_channel</code>,
-      <code>last_contact_from</code>, <code>last_contact_preview</code>, plus <code>service</code>,
-      <code>locale</code> and <code>source_note</code>. <code>GET /leads/{id}</code> adds
-      <code>conversations</code>, and the recording is its own authenticated route.
+      <code>last_contact_from</code>, <code>last_contact_preview</code>, plus <code>service</code>
+      and <code>locale</code>. <code>GET /leads/{id}</code> adds <code>conversations</code>, and the
+      recording is its own authenticated route.
+      <span class="brk">Corrected after drawing, measured rather than taken on report.</span>
+      <code>source_note</code> is <b>gone</b> — Google refuses the field in a query — and it is
+      already absent from <code>LeadsController</code> (<code>da27b76e</code>), so nothing here
+      draws a note from Google.
       <span class="brk">The play control is deliverable, and I checked before drawing one.</span>
       <code>client/lib/screens/phone/recording_player.dart</code> already exists and takes
       <b>bytes, not a URL</b> — the client fetches the authenticated endpoint itself and hands the
@@ -117,8 +121,19 @@
       <strong>A wire value is on screen today, and the fix arrived with this brief</strong>
       The list currently reads <code>+1 (513) 226-7716 · xcat:service area business home inspector ·
       22h ago</code>. <code>xcat:</code> is Google's category identifier leaking to a customer's
-      screen. <code>service</code> is now a field of its own, so the row can say what the person
-      actually asked about.
+      screen. <code>service</code> is a better source — but it is an identifier too:
+      <code>fireplace_chimney</code>. I had drawn &ldquo;Chimney sweep&rdquo;, which was an
+      assumption wearing a field's clothes. It needs humanising on the client — underscores to
+      spaces, first letter up — <code>fireplace_chimney</code> &rarr; <b>Fireplace chimney</b>.
+      <span class="brk">And that humaniser has a ceiling worth naming before it is built.</span>
+      Mechanical sentence-case is right for <code>fireplace_chimney</code> and <b>confidently wrong
+      on any acronym</b>: <code>hvac_repair</code> becomes &ldquo;Hvac repair&rdquo;,
+      <code>tv_mounting</code> becomes &ldquo;Tv mounting&rdquo;. That is worse than showing the raw
+      identifier — an identifier reads as a system value and people ignore it, while
+      &ldquo;Hvac&rdquo; reads as the business having misspelled its own trade, in front of the
+      customer whose trade it is. Nothing in the repo shows which values occur (I grepped
+      <code>database/</code> and <code>tests/</code>), so the answer is the distinct
+      <code>service</code> values off the live account, not a guessed acronym list.
       <span class="brk">Same rule applies to the channel.</span>
       <code>last_contact_channel</code> is Google's word — <code>PHONE_CALL</code>,
       <code>MESSAGE</code>, <code>SMS</code>, <code>WHATSAPP</code>, <code>EMAIL</code>,
@@ -196,7 +211,7 @@ const win=(cap,inner,measure)=>`<div class="win"><div class="cap">${cap}</div>${
 const D1=()=>win('<b>Layout 1</b> &middot; list left, thread right',
  `<div class="two"><div class="lcol">${filters(true)}${list(0)}</div>
    <div class="thread"><div class="thead"><h3>Marcus Bell</h3>
-     <p>Chimney sweep · Google Ads · Connecticut</p></div>
+     <p>Fireplace chimney · Google Ads · Connecticut</p></div>
      <div class="tbody">${THREAD}</div></div></div>`,
  'The dot is the only mark for unreplied and it is on the LEFT, where a thumb or an eye scanning a column passes first. The second call shows the state that matters: <b>fetching</b>. Play is fetch-then-play, so the control has to say so or it looks broken.');
 
@@ -205,7 +220,7 @@ const D2=()=>win('<b>Layout 2</b> &middot; full-width list, thread in a panel',
    <div class="lcol">${filters(false)}${list(-1)}</div>
    <div class="thread" style="box-shadow:-8px 0 24px rgba(0,0,0,.08)">
      <div class="thead" style="display:flex;align-items:flex-start;gap:12px">
-       <div style="flex:1"><h3>Marcus Bell</h3><p>Chimney sweep · Connecticut</p></div>
+       <div style="flex:1"><h3>Marcus Bell</h3><p>Fireplace chimney · Connecticut</p></div>
        <span style="color:var(--muted)">&#10005;</span></div>
      <div class="tbody">${THREAD}</div></div></div>`,
  'Cheaper to build and consistent with the accounts panel. But the panel covers the list it came from, and a thread is the longest read on this screen — the worst fit for a layer that wants dismissing.');
