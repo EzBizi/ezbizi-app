@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0158',
+      date: '8 Sep 2026',
+      items: [
+        'Communication - Settings - Tags: a company can now require a tag after every call. The person who took the call picks one before the desk will start another. It is off unless you turn it on, and the switch tells you to add a tag first if there are none - a requirement with nothing to choose would stop the phone.',
+        'The prompt after a call used to be skippable. It appeared, the desk stayed usable behind it, and the next call went out with the last one still unaccounted for - so reports counted by tag had gaps nobody could see.',
+        'Communication - Settings - Ring groups now says what its two lists are for. "Who it rings" is the people; "Lines it answers" is which main numbers route into the group, which is not the same as the line a person calls out from or their extension - those are set per person on Users. A number already taken now names the group that has it, instead of saying only that another group does.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0157',
       date: '8 Sep 2026',
       items: [
