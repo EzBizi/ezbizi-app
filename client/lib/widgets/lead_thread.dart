@@ -131,6 +131,13 @@ class _LeadThreadState extends State<LeadThread> {
 
     try {
       await _player.play(bytes);
+    } on RecordingPlaybackFailure catch (failure) {
+      if (!mounted) return;
+      setState(() {
+        _fetchingId = null;
+        _playError = failure.message;
+      });
+      return;
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -142,7 +149,10 @@ class _LeadThreadState extends State<LeadThread> {
     if (!mounted) return;
     setState(() {
       _fetchingId = null;
-      _playingId = id;
+      // On a desktop the audio is somebody else's window now (see
+      // RecordingPlayer.playsInApp): nothing here is playing, so nothing here
+      // can be stopped, and saying "Playing" would be the stub's lie again.
+      _playingId = _player.playsInApp ? id : null;
     });
   }
 
@@ -379,13 +389,19 @@ class _LeadThreadState extends State<LeadThread> {
                     )
                   : IconButton(
                       key: ValueKey('play-$id'),
-                      tooltip: playing ? 'Stop' : 'Play',
+                      tooltip: playing
+                          ? 'Stop'
+                          : _player.playsInApp
+                          ? 'Play'
+                          : 'Play in your audio player',
                       padding: EdgeInsets.zero,
                       onPressed: () => _play(c),
                       icon: Icon(
                         playing
                             ? Icons.stop_circle_outlined
-                            : Icons.play_circle_outline,
+                            : _player.playsInApp
+                            ? Icons.play_circle_outline
+                            : Icons.open_in_new,
                         color: theme.colorScheme.primary,
                       ),
                     ),
@@ -408,7 +424,9 @@ class _LeadThreadState extends State<LeadThread> {
                       : playing
                       ? 'Playing'
                       : hasRecording
-                      ? '$who called · $when'
+                      ? (_player.playsInApp
+                            ? '$who called · $when'
+                            : '$who called · $when · opens in your audio player')
                       : '$who called · $when · no recording',
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,

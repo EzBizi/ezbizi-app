@@ -48,6 +48,46 @@ void main() {
     expect(utf8.decode(player.played.single), 'ID3-fake-audio-bytes');
   });
 
+  /// Desktop: the file is handed to the machine's own player (Phone's
+  /// a7214518), so the app is not playing anything and must not say it is.
+  /// This is the shape Jose hit on 0.0.0159, where the button was a stub.
+  testWidgets('on a desktop the control says the audio opens elsewhere and '
+      'never claims to be playing', (tester) async {
+    final player = _FakePlayer(playsInApp: false);
+
+    await _pump(tester, player: player, recordingGate: Completer()..complete());
+
+    expect(find.textContaining('opens in your audio player'), findsOneWidget);
+    expect(find.byTooltip('Play in your audio player'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('play-c-call')));
+    await tester.pumpAndSettle();
+
+    expect(player.played, hasLength(1));
+    expect(find.text('Playing'), findsNothing);
+    expect(find.byTooltip('Stop'), findsNothing);
+  });
+
+  testWidgets('a machine with nothing that plays an MP3 is told so, in the '
+      "player's own words", (tester) async {
+    await _pump(
+      tester,
+      player: _FakePlayer(
+        playsInApp: false,
+        refuses: 'This computer has nothing set up to play an MP3.',
+      ),
+      recordingGate: Completer()..complete(),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('play-c-call')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('This computer has nothing set up to play an MP3.'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('messages read as a thread: theirs left, yours right, with who '
       'and when', (tester) async {
     await _pump(
@@ -66,13 +106,20 @@ void main() {
 }
 
 class _FakePlayer implements RecordingPlayer {
+  _FakePlayer({this.playsInApp = true, this.refuses});
+
   @override
-  bool get playsInApp => true;
+  final bool playsInApp;
+
+  /// When set, play() throws this the way the desktop player does when the
+  /// machine has nothing that opens an MP3.
+  final String? refuses;
 
   final played = <List<int>>[];
 
   @override
   Future<void> play(List<int> bytes) async {
+    if (refuses != null) throw RecordingPlaybackFailure(refuses!);
     played.add(bytes);
   }
 
