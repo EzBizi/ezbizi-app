@@ -9,8 +9,12 @@ class VersionHistory {
   static const List<VersionRelease> releases = [
     VersionRelease(
       version: '0.0.0156',
-      date: '4 Sep 2026',
+      date: '8 Sep 2026',
       items: [
+        'Leads shows what was said. Each lead carries the last call or message under its name, with a dot when the enquirer is waiting on a reply, and opening a lead shows the whole conversation. Call recordings play from the thread.',
+        'An Unreplied filter lists the leads where the enquirer spoke last.',
+        'The lead\'s service ("Fireplace chimney") replaces the category Google assigned, which was wrong for most leads.',
+        'On phones, the search, status and Fetch controls no longer overflow the screen.',
         'Your phone now stays on the hook wherever you are in EzBizi. It did '
             'not before: the phone was switched on by opening Communication '
             'and switched off again by leaving it, so between signing in and '
