@@ -802,4 +802,28 @@ class LeadConversationsTest extends TestCase
         $this->assertSame('ADVERTISER', $sent['from']);
         Http::assertNothingSent();
     }
+
+    /** Source is the fourth filter: one list across every source, narrowed by chip. */
+    public function test_the_list_narrows_by_source(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $connection = $this->connected($t);
+
+        $this->fakeGoogle([$this->leadRow('111', 'From Google')], []);
+        $this->sync($t, $connection);
+
+        $this->inTenant($t['org'], fn () => Lead::create([
+            'organization_id' => $t['org']->id, 'company_id' => $t['company']->id,
+            'source' => 'website_form', 'remote_id' => 'form-1', 'contact_name' => 'From a form',
+            'status' => Lead::STATUS_NEW, 'received_at' => now(),
+        ]));
+
+        $all  = $this->signedInAs($t['admin'])->getJson('/api/v1/leads')->json('data.*.contact_name');
+        $form = $this->signedInAs($t['admin'])->getJson('/api/v1/leads?source=website_form')->json('data.*.contact_name');
+        $ads  = $this->signedInAs($t['admin'])->getJson('/api/v1/leads?source=local_services')->json('data.*.contact_name');
+
+        $this->assertCount(2, $all);
+        $this->assertSame(['From a form'], $form);
+        $this->assertSame(['From Google'], $ads);
+    }
 }

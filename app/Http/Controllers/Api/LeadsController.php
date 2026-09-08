@@ -124,6 +124,13 @@ class LeadsController extends Controller
             $query->whereNotNull('leads.starred_at');
         }
 
+        // Source is the fourth filter, beside the three it narrows with (UI/UX
+        // sources layout 1, 2026-09-08): one list answers "who is waiting on
+        // me" across Google, Thumbtack and the website at once.
+        if (is_string($source = $request->query('source')) && $source !== '') {
+            $query->where('leads.source', $source);
+        }
+
         // One box, two meanings. Somebody looking for a lead has either a name
         // or a phone number in front of them, and asking which they typed is a
         // question the screen should answer for itself. Digits are matched

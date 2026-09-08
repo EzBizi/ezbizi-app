@@ -8,7 +8,7 @@ import '../widgets/connect_account.dart';
 import '../widgets/lead_thread.dart';
 import '../widgets/leads_accounts.dart';
 import '../widgets/side_panel.dart';
-import '../widgets/tab_bar_like.dart';
+import '../widgets/social_network_mark.dart';
 
 /// Leads — enquiries from connected advertising (EZ Leads).
 ///
@@ -37,20 +37,6 @@ class LeadsScreen extends StatefulWidget {
 class _LeadsScreenState extends State<LeadsScreen> {
   final _search = TextEditingController();
 
-  /// Which source tab is open, and which have ever been opened.
-  ///
-  /// The same two fields every other tabbed screen keeps. `_shown` is what
-  /// makes the second tab cost nothing until somebody asks for it — Thumbtack
-  /// does not deliver leads yet, so building it on arrival would be a fetch
-  /// for a list that cannot exist.
-  int _tab = 0;
-  final Set<int> _shown = {0};
-
-  void _select(int tab) => setState(() {
-    _tab = tab;
-    _shown.add(tab);
-  });
-
   bool _loading = true;
   bool _syncing = false;
   String? _error;
@@ -72,6 +58,34 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// is the combination somebody actually wants and "either" cannot say it.
   bool _unread = false;
   bool _starred = false;
+
+  /// The source chip, as the API spells it. Null is every source.
+  String? _source;
+
+  static const _sourceChips = <(String, String)>[
+    ('local_services', 'Google'),
+    ('thumbtack', 'Thumbtack'),
+    ('website_chat', 'Chat'),
+    ('website_form', 'Forms'),
+  ];
+
+  void _setSource(String? source) {
+    if (source == _source) return;
+    setState(() => _source = source);
+    _load();
+  }
+
+  /// All: every filter off, including the source, in one reload.
+  void _clearFilters() {
+    if (!_unread && !_unreplied && !_starred && _source == null) return;
+    setState(() {
+      _unread = false;
+      _unreplied = false;
+      _starred = false;
+      _source = null;
+    });
+    _load();
+  }
 
   /// Desktop layout 1: the lead whose thread is open beside the list. Null
   /// means the first one, so the pane is never blank while there are leads.
@@ -120,6 +134,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
       if (_unreplied) 'unreplied': '1',
       if (_unread) 'unread': '1',
       if (_starred) 'starred': '1',
+      'source': ?_source,
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
     });
 
@@ -195,51 +210,6 @@ class _LeadsScreenState extends State<LeadsScreen> {
     await _load();
   }
 
-  /// The same list, through the door the width calls for.
-  ///
-  /// A side panel on a desktop because that is what this app already uses for
-  /// every list-you-occasionally-edit, so Escape, the scrim and focus handling
-  /// come with it. A pushed screen on a phone, because a panel that is the
-  /// whole window is a screen wearing a costume.
-  Future<void> _openAccounts({
-    required bool pushed,
-    List<Map<String, dynamic>>? connections,
-    String noun = 'Google Ads',
-  }) async {
-    final list = LeadsAccountsList(
-      api: widget.api,
-      session: widget.session,
-      connections: connections ?? _googleAdsAccounts,
-      onChanged: _load,
-    );
-
-    if (pushed) {
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => Scaffold(
-            appBar: AppBar(title: Text('$noun accounts')),
-            body: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: list,
-            ),
-          ),
-        ),
-      );
-      return;
-    }
-
-    await showSidePanel<void>(
-      context,
-      builder: (_) => SidePanel(
-        title: '$noun accounts',
-        subtitle:
-            "Where each account's leads go. Changing it moves the leads that "
-            'account has already produced.',
-        child: list,
-      ),
-    );
-  }
-
   bool get _anyGoogleAds =>
       _connections.any((c) => c['provider'] == 'google_ads');
 
@@ -282,46 +252,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    // The same tab strip as the other sixteen screens, rather than Material's
-    // TabBar. This was the one screen in the app still using the underlined,
-    // full-width version, so Leads looked like a different product from the
-    // page beside it.
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Material(
-          color: Theme.of(context).colorScheme.surface,
-          child: TabBarLike(
-            labels: const [
-              ('Google Leads', Icons.campaign_outlined),
-              ('Thumbtack Leads', Icons.handyman_outlined),
-            ],
-            selected: _tab,
-            onSelected: _select,
-          ),
-        ),
-        const Divider(height: 1),
-        Expanded(
-          // Offstage rather than IndexedStack, and rather than the TabBarView
-          // this replaces. IndexedStack leaves its hidden children in the
-          // semantics tree, so a screen reader would announce the other tab's
-          // contents; Offstage takes them out of layout, painting and
-          // semantics while leaving their State exactly where it was.
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              for (var i = 0; i < 2; i++)
-                Offstage(
-                  offstage: i != _tab,
-                  child: _shown.contains(i)
-                      ? (i == 0 ? _googleTab(theme) : _thumbtackTab(theme))
-                      : const SizedBox.shrink(),
-                ),
-            ],
-          ),
-        ),
-      ],
-    );
+    // One list across every source (UI/UX sources layout 1 / 4, decided in
+    // Jose's absence on 2026-09-08 and reversible in one word: layout 2 is
+    // the same row, badges and band under a tab strip). The triage marks
+    // exist to answer "who is waiting on me", and only one list answers it
+    // once rather than once per source.
+    return _googleTab(theme);
   }
 
   Widget _googleTab(ThemeData theme) {
@@ -414,21 +350,14 @@ class _LeadsScreenState extends State<LeadsScreen> {
             },
           ),
         ),
-        // Desktop layout 1 / mobile layout 4: one row on the way to the leads,
-        // at twenty-two accounts or two hundred. The list itself is the same
-        // widget behind both doors — a side panel here, a pushed screen there.
-        if (_googleAdsAccounts.isNotEmpty)
-          LayoutBuilder(
-            builder: (context, constraints) => constraints.maxWidth < 600
-                ? LeadsAccountsTile(
-                    connections: _googleAdsAccounts,
-                    onOpen: () => _openAccounts(pushed: true),
-                  )
-                : LeadsAccountsBand(
-                    connections: _googleAdsAccounts,
-                    onManage: () => _openAccounts(pushed: false),
-                  ),
-          ),
+        // One "Connected sources" row whatever the number of providers: the
+        // band-to-panel shape Google's accounts shipped with, costing one row
+        // at one provider or four. The panel holds every provider's section.
+        LayoutBuilder(
+          builder: (context, constraints) => constraints.maxWidth < 600
+              ? _sourcesTile(theme)
+              : _sourcesBand(theme),
+        ),
         if (_notice != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -454,13 +383,14 @@ class _LeadsScreenState extends State<LeadsScreen> {
                   runSpacing: 4,
                   children: [
                     ChoiceChip(
+                      key: const ValueKey('filter-all'),
                       label: const Text('All'),
-                      selected: !_unreplied && !_unread && !_starred,
-                      onSelected: (_) => _setFilters(
-                        unread: false,
-                        unreplied: false,
-                        starred: false,
-                      ),
+                      selected:
+                          !_unreplied &&
+                          !_unread &&
+                          !_starred &&
+                          _source == null,
+                      onSelected: (_) => _clearFilters(),
                     ),
                     FilterChip(
                       key: const ValueKey('filter-unread'),
@@ -480,6 +410,15 @@ class _LeadsScreenState extends State<LeadsScreen> {
                       selected: _starred,
                       onSelected: (on) => _setFilters(starred: on),
                     ),
+                    // Source: the fourth filter, in the row with the three it
+                    // narrows with, so "Chat + Unread" is two chips.
+                    for (final (key, word) in _sourceChips)
+                      FilterChip(
+                        key: ValueKey('source-$key'),
+                        label: Text(word),
+                        selected: _source == key,
+                        onSelected: (on) => _setSource(on ? key : null),
+                      ),
                   ],
                 ),
               ),
@@ -684,114 +623,232 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// So the tab says the two things separately: the account is connected, and
   /// enquiries are not being fetched yet. When ingestion lands this becomes the
   /// same list as Google's and this paragraph goes with it.
-  Widget _thumbtackTab(ThemeData theme) {
+  /// Thumbtack's section of the Connected sources panel: the businesses
+  /// when connected (every one of them, the list that told twelve twins
+  /// apart), the door to connect when not.
+  Widget _thumbtackSection(ThemeData theme) {
     final accounts = _thumbtackAccounts;
-    final connection = accounts.isEmpty ? null : accounts.first;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (accounts.isNotEmpty) ...[
+          LeadsAccountsList(
+            api: widget.api,
+            session: widget.session,
+            connections: accounts,
+            onChanged: _load,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Connected — enquiries not fetched yet',
+            style: theme.textTheme.titleSmall,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'EzBizi keeps this business\'s associate phone numbers in step '
+            'with Thumbtack, so calls from your team are recognised as '
+            'coming from the business. Reading enquiries into this list is '
+            'not switched on yet — until it is, your Thumbtack leads are '
+            'on Thumbtack, not missing.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ] else ...[
+          Text(
+            'No Thumbtack account connected',
+            style: theme.textTheme.titleSmall,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Connecting lets EzBizi keep your team\'s phone numbers in step '
+            'with Thumbtack, so a technician calling a customer is shown as '
+            'the business rather than an unknown number.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Same rule as Google's half: a control that is offered must be
+          // a control that works, so somebody holding only `leads.view`
+          // is told who can do it rather than given a button that 403s.
+          if (_canConnect)
+            ConnectAccount(
+              api: widget.api,
+              label: 'Thumbtack',
+              startPath: '/social/thumbtack/start',
+              onConnected: _load,
+            )
+          else
+            Text(
+              'Somebody who can manage Leads needs to connect the account.',
+              style: theme.textTheme.bodySmall,
+            ),
+        ],
+      ],
+    );
+  }
+
+  /// Google's section: every account and where its leads go, or the door in.
+  Widget _googleSection(ThemeData theme) {
+    if (_googleAdsAccounts.isNotEmpty) {
+      return LeadsAccountsList(
+        api: widget.api,
+        session: widget.session,
+        connections: _googleAdsAccounts,
+        onChanged: _load,
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          'No Google Ads account connected',
+          style: theme.textTheme.titleSmall,
+        ),
+        const SizedBox(height: 12),
+        if (_canConnect)
+          ConnectAccount(
+            api: widget.api,
+            label: 'Google Ads',
+            startPath: '/social/google-ads/start',
+            onConnected: _load,
+          )
+        else
+          Text(
+            'Somebody who can manage Leads needs to connect the account.',
+            style: theme.textTheme.bodySmall,
+          ),
+      ],
+    );
+  }
+
+  /// "Google Ads · 22 accounts · Thumbtack · 1 · Website · chat and forms".
+  String _sourcesSummary() {
+    final google = _googleAdsAccounts.length;
+    final thumbtack = _thumbtackAccounts.length;
+
+    return [
+      if (google > 0)
+        'Google Ads · $google ${google == 1 ? 'account' : 'accounts'}',
+      if (thumbtack > 0) 'Thumbtack · $thumbtack',
+      'Website · chat and forms',
+    ].join(' · ');
+  }
+
+  Widget _sourcesBand(ThemeData theme) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+    child: Row(
+      children: [
+        Icon(Icons.link, size: 20, color: theme.colorScheme.onSurfaceVariant),
+        const SizedBox(width: 8),
+        Expanded(
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (connection != null) ...[
-                // The same door Google's half uses, and for the same reason:
-                // one row on the way to the leads whether the login carries one
-                // business or twelve. ConnectedAccount was here and showed
-                // exactly one, which is what made disconnecting look inert.
-                LayoutBuilder(
-                  builder: (context, constraints) => constraints.maxWidth < 600
-                      ? LeadsAccountsTile(
-                          connections: accounts,
-                          network: 'thumbtack',
-                          noun: 'Thumbtack',
-                          onOpen: () => _openAccounts(
-                            pushed: true,
-                            connections: accounts,
-                            noun: 'Thumbtack',
-                          ),
-                        )
-                      : LeadsAccountsBand(
-                          connections: accounts,
-                          network: 'thumbtack',
-                          noun: 'Thumbtack',
-                          onManage: () => _openAccounts(
-                            pushed: false,
-                            connections: accounts,
-                            noun: 'Thumbtack',
-                          ),
-                        ),
+              Text('Connected sources', style: theme.textTheme.bodyMedium),
+              Text(
+                _sourcesSummary(),
+                key: const ValueKey('sources-summary'),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
-                const SizedBox(height: 20),
-                Icon(
-                  Icons.hourglass_empty,
-                  size: 36,
-                  color: theme.colorScheme.outline,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Connected — enquiries not fetched yet',
-                  style: theme.textTheme.titleMedium,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'EzBizi keeps this business\'s associate phone numbers in step '
-                  'with Thumbtack, so calls from your team are recognised as '
-                  'coming from the business. Reading enquiries into this list is '
-                  'not switched on yet — until it is, your Thumbtack leads are '
-                  'on Thumbtack, not missing.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ] else ...[
-                Icon(
-                  Icons.link_off,
-                  size: 40,
-                  color: theme.colorScheme.outline,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'No Thumbtack account connected',
-                  style: theme.textTheme.titleMedium,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Connecting lets EzBizi keep your team\'s phone numbers in step '
-                  'with Thumbtack, so a technician calling a customer is shown as '
-                  'the business rather than an unknown number.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 18),
-                // Same rule as Google's half: a control that is offered must be
-                // a control that works, so somebody holding only `leads.view`
-                // is told who can do it rather than given a button that 403s.
-                if (_canConnect)
-                  ConnectAccount(
-                    api: widget.api,
-                    label: 'Thumbtack',
-                    startPath: '/social/thumbtack/start',
-                    onConnected: _load,
-                  )
-                else
-                  Text(
-                    'Somebody who can manage Leads needs to connect the account.',
-                    style: theme.textTheme.bodySmall,
-                    textAlign: TextAlign.center,
-                  ),
-              ],
+              ),
             ],
           ),
         ),
+        TextButton(
+          key: const ValueKey('sources-manage'),
+          onPressed: () => _openSources(pushed: false),
+          child: const Text('Manage'),
+        ),
+      ],
+    ),
+  );
+
+  Widget _sourcesTile(ThemeData theme) => ListTile(
+    key: const ValueKey('sources-manage'),
+    leading: Icon(
+      Icons.link,
+      size: 20,
+      color: theme.colorScheme.onSurfaceVariant,
+    ),
+    title: Text('Connected sources', style: theme.textTheme.bodyMedium),
+    subtitle: Text(_sourcesSummary(), style: theme.textTheme.bodySmall),
+    trailing: const Icon(Icons.chevron_right, size: 18),
+    onTap: () => _openSources(pushed: true),
+  );
+
+  /// Every provider's section on one surface: a side panel on a desktop, a
+  /// pushed screen on a phone. Web Management's website section arrives as
+  /// a widget of theirs; until then one line says where those leads come from.
+  Future<void> _openSources({required bool pushed}) async {
+    final theme = Theme.of(context);
+
+    Widget section(String title, String network, Widget child) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            SocialNetworkMark(network: network, size: 18),
+            const SizedBox(width: 8),
+            Text(title, style: theme.textTheme.titleMedium),
+          ],
+        ),
+        const SizedBox(height: 10),
+        child,
+        const SizedBox(height: 24),
+      ],
+    );
+
+    final body = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        section('Google Ads', 'google_ads', _googleSection(theme)),
+        section('Thumbtack', 'thumbtack', _thumbtackSection(theme)),
+        section(
+          'Website',
+          'web',
+          Text(
+            'Chat and form enquiries arrive through the EzBizi WordPress '
+            'plugin on your site, into this list.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
+    );
+
+    if (pushed) {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => Scaffold(
+            appBar: AppBar(title: const Text('Connected sources')),
+            body: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: body,
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    await showSidePanel<void>(
+      context,
+      builder: (_) => SidePanel(
+        title: 'Connected sources',
+        subtitle:
+            'Where enquiries come from, and where each account\'s leads go.',
+        child: body,
       ),
     );
   }
@@ -982,6 +1039,13 @@ class _LeadsScreenState extends State<LeadsScreen> {
                           call: channel == 'PHONE_CALL',
                         ),
                       ],
+                      // The source, the fourth mark on the row, in the neutral
+                      // container so it never competes with Call and Text.
+                      const SizedBox(width: 6),
+                      _SourceBadge(
+                        sourceBadgeWord(lead['source'] as String?),
+                        key: ValueKey('source-badge-$id'),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 2),
@@ -1055,6 +1119,42 @@ class _LeadsScreenState extends State<LeadsScreen> {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Google / Thumbtack / Chat / Form: the short word for the row.
+String sourceBadgeWord(String? source) => switch (source) {
+  'thumbtack' => 'Thumbtack',
+  'website_chat' => 'Chat',
+  'website_form' => 'Form',
+  _ => 'Google',
+};
+
+/// The source, in the neutral container: a fourth mark that never competes
+/// with Call and Text for the eye.
+class _SourceBadge extends StatelessWidget {
+  const _SourceBadge(this.text, {super.key});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        text,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: scheme.onSurfaceVariant,
         ),
       ),
     );
