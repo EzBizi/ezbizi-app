@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show FilteringTextInputFormatter;
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
@@ -48,9 +49,10 @@ class TestBuilder extends StatefulWidget {
   final Session session;
   final String testId;
 
-  /// Pops the route by default — set only when a caller wants to do
-  /// something other than pop (there is none yet; this mirrors
-  /// `GuidePlayer`/`TestPlayer`'s own `onLeave` shape for the day there is).
+  /// Pops the route by default — set by `TrainingSettingsTab._openTest`
+  /// (training_screen.dart) to pop the route IT pushed rather than falling
+  /// through to [Navigator.maybePop], the same `onLeave` shape
+  /// `GuidePlayer`/`TestPlayer` already use for the routes they push.
   final VoidCallback? onLeave;
 
   @override
@@ -211,6 +213,32 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
   bool _saving = false;
   String? _saveError;
 
+  /// A per-question/per-choice CLIENT-SIDE id, present on every map in
+  /// [_questions] under `_localId` and never sent to the server (`_save`
+  /// builds a fresh map with only the four server-known fields per
+  /// question/choice). Exists solely so [_QuestionEditorCard]'s text-field
+  /// keys can name the ITEM rather than its current list position.
+  ///
+  /// ── Why list index cannot be the key ────────────────────────────────
+  ///
+  /// `TextFormField`'s `initialValue` seeds its internal editing state only
+  /// ONCE, on the element's first build — a later rebuild with a different
+  /// `initialValue` but the SAME `Key` does not reset it, because Flutter's
+  /// reconciliation treats same-key-same-type as "this is still the same
+  /// field, keep its state." Deleting question 2 of [ALPHA, BRAVO, CHARLIE]
+  /// shifts CHARLIE into index 1's slot, but the field keyed
+  /// `training.question-1-prompt` keeps showing BRAVO's already-typed text —
+  /// so a save at that point overwrites CHARLIE's prompt with text the
+  /// author wrote while looking at BRAVO's. A stable id survives the
+  /// deletion attached to the item it was minted for, so the key for
+  /// whatever is now at index 1 changes, forcing Flutter to tear down the
+  /// old field (and its stale internal state) and mount a fresh one seeded
+  /// from the right data. See `_ScreenEditor`'s own key in guide_builder.dart
+  /// for the same fix applied to a screen's body/title fields.
+  int _nextLocalId = 0;
+
+  String _newLocalId() => 'local-${_nextLocalId++}';
+
   @override
   void initState() {
     super.initState();
@@ -227,10 +255,17 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
         .whereType<Map>()
         .map(
           (q) => {
+            '_localId': _newLocalId(),
             'prompt': q['prompt'] as String? ?? '',
             'choices': (q['choices'] as List? ?? const [])
                 .whereType<Map>()
-                .map((c) => {'text': c['text'] as String? ?? '', 'correct': c['correct'] == true})
+                .map(
+                  (c) => {
+                    '_localId': _newLocalId(),
+                    'text': c['text'] as String? ?? '',
+                    'correct': c['correct'] == true,
+                  },
+                )
                 .toList(),
           },
         )
@@ -251,10 +286,11 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
       _questions = [
         ..._questions,
         {
+          '_localId': _newLocalId(),
           'prompt': '',
           'choices': [
-            {'text': '', 'correct': false},
-            {'text': '', 'correct': false},
+            {'_localId': _newLocalId(), 'text': '', 'correct': false},
+            {'_localId': _newLocalId(), 'text': '', 'correct': false},
           ],
         },
       ];
@@ -264,7 +300,11 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
   void _removeQuestion(int index) => setState(() => _questions.removeAt(index));
 
   void _addChoice(int qIndex) => setState(() {
-    (_questions[qIndex]['choices'] as List).add({'text': '', 'correct': false});
+    (_questions[qIndex]['choices'] as List).add({
+      '_localId': _newLocalId(),
+      'text': '',
+      'correct': false,
+    });
   });
 
   void _removeChoice(int qIndex, int cIndex) =>
@@ -345,6 +385,7 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
         for (var q = 0; q < _questions.length; q++) ...[
           _QuestionEditorCard(
             index: q,
+            questionId: _questions[q]['_localId'] as String,
             question: _questions[q],
             onPromptChanged: (text) => setState(() => _questions[q]['prompt'] = text),
             onSelectCorrect: (c) => _selectCorrect(q, c),
@@ -473,6 +514,19 @@ class _OptionRow extends StatelessWidget {
   }
 }
 
+/// A digits-only field for the three counts `_save` treats a blank as a
+/// LEGITIMATE value for (unlimited retakes, a pass that never expires, or
+/// "keep the stored pass mark") — never a parse failure standing in for one.
+///
+/// `int.tryParse` alone cannot tell "the author left this blank on purpose"
+/// from "the author typed `3o` and never noticed it wasn't a number": both
+/// come back `null`, and before this fix that null was read as the blank
+/// case every time — a green save with `3o` still sitting in the box, and
+/// `max_attempts` sent as unlimited. [FilteringTextInputFormatter.digitsOnly]
+/// makes that ambiguity unreachable rather than trying to word a refusal for
+/// it: a letter is dropped the instant it is typed, so whatever the box
+/// shows IS always either digits or empty, and `_parseInt` (which still only
+/// treats a truly empty box as the blank case) is never asked to guess.
 class _NumberField extends StatelessWidget {
   const _NumberField({super.key, required this.controller, this.suffix});
 
@@ -486,6 +540,7 @@ class _NumberField extends StatelessWidget {
       child: TextField(
         controller: controller,
         keyboardType: TextInputType.number,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
         textAlign: TextAlign.center,
         decoration: InputDecoration(isDense: true, border: const OutlineInputBorder(), suffixText: suffix),
       ),
@@ -503,6 +558,7 @@ class _NumberField extends StatelessWidget {
 class _QuestionEditorCard extends StatelessWidget {
   const _QuestionEditorCard({
     required this.index,
+    required this.questionId,
     required this.question,
     required this.onPromptChanged,
     required this.onSelectCorrect,
@@ -513,6 +569,11 @@ class _QuestionEditorCard extends StatelessWidget {
   });
 
   final int index;
+
+  /// This question's own stable id (`_TestEditorPanelState._newLocalId`),
+  /// never its list position — see that field's own docblock for why the
+  /// prompt/choice text fields below are keyed by this rather than [index].
+  final String questionId;
   final Map<String, dynamic> question;
   final ValueChanged<String> onPromptChanged;
   final ValueChanged<int> onSelectCorrect;
@@ -542,7 +603,7 @@ class _QuestionEditorCard extends StatelessWidget {
             children: [
               Expanded(
                 child: TextFormField(
-                  key: ValueKey('training.question-$index-prompt'),
+                  key: ValueKey('training.question-$questionId-prompt'),
                   initialValue: question['prompt'] as String,
                   onChanged: onPromptChanged,
                   decoration: InputDecoration(
@@ -574,7 +635,10 @@ class _QuestionEditorCard extends StatelessWidget {
                 ),
                 Expanded(
                   child: TextFormField(
-                    key: ValueKey('training.question-$index-choice-$c-text'),
+                    key: ValueKey(
+                      'training.question-$questionId-choice-'
+                      '${(choices[c] as Map)['_localId']}-text',
+                    ),
                     initialValue: (choices[c] as Map)['text'] as String,
                     onChanged: (text) => onChoiceTextChanged(c, text),
                     decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),

@@ -298,6 +298,432 @@ void main() {
     expect(find.text('Pass mark'), findsOneWidget);
     expect(find.byType(Dialog), findsNothing);
   });
+
+  // ── Editors keyed by a stable id, never by list position (review fix) ──
+  //
+  // `TextFormField.initialValue` seeds a field's internal editing state only
+  // ONCE — a later rebuild at the same list INDEX with different data does
+  // not reset it, because the field's own `Key` did not change. Deleting a
+  // MIDDLE item shifts every later item's index, so before this fix the
+  // field that should now show the next item kept showing the deleted
+  // item's own stale text — and a save at that point overwrote the next
+  // item's real data with whatever the author typed while looking at the
+  // wrong field. All three sites below reproduce that with three
+  // distinguishably-named items and delete the MIDDLE one.
+
+  testWidgets(
+    'deleting a middle question leaves each remaining editor showing its OWN prompt, never a stale one',
+    (tester) async {
+      await _pumpTestBuilder(
+        tester,
+        test: _test(
+          id: 't1',
+          title: 'Ladder Safety Quiz',
+          questions: [
+            {
+              'prompt': 'QUESTION-ALPHA',
+              'choices': [
+                {'text': 'A1', 'correct': true},
+                {'text': 'A2', 'correct': false},
+              ],
+            },
+            {
+              'prompt': 'QUESTION-BRAVO',
+              'choices': [
+                {'text': 'B1', 'correct': true},
+                {'text': 'B2', 'correct': false},
+              ],
+            },
+            {
+              'prompt': 'QUESTION-CHARLIE',
+              'choices': [
+                {'text': 'C1', 'correct': true},
+                {'text': 'C2', 'correct': false},
+              ],
+            },
+          ],
+        ),
+      );
+
+      expect(find.text('QUESTION-ALPHA'), findsOneWidget);
+      expect(find.text('QUESTION-BRAVO'), findsOneWidget);
+      expect(find.text('QUESTION-CHARLIE'), findsOneWidget);
+
+      // Remove the MIDDLE question (BRAVO) — CHARLIE slides into its slot.
+      await tester.tap(find.byKey(const ValueKey('training.remove-question-1')));
+      await tester.pumpAndSettle();
+
+      // BRAVO's text must be gone entirely, and CHARLIE's own prompt — not
+      // BRAVO's stale one — must be what the second remaining editor shows.
+      expect(find.text('QUESTION-BRAVO'), findsNothing);
+      expect(find.text('QUESTION-ALPHA'), findsOneWidget);
+      expect(find.text('QUESTION-CHARLIE'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'editing the field that now shows CHARLIE and saving sends CHARLIE\'s edit — never overwrites it with BRAVO\'s',
+    (tester) async {
+      Map<String, dynamic>? sentBody;
+
+      await _pumpTestBuilder(
+        tester,
+        test: _test(
+          id: 't1',
+          title: 'Ladder Safety Quiz',
+          questions: [
+            {
+              'prompt': 'QUESTION-ALPHA',
+              'choices': [
+                {'text': 'A1', 'correct': true},
+                {'text': 'A2', 'correct': false},
+              ],
+            },
+            {
+              'prompt': 'QUESTION-BRAVO',
+              'choices': [
+                {'text': 'B1', 'correct': true},
+                {'text': 'B2', 'correct': false},
+              ],
+            },
+            {
+              'prompt': 'QUESTION-CHARLIE',
+              'choices': [
+                {'text': 'C1', 'correct': true},
+                {'text': 'C2', 'correct': false},
+              ],
+            },
+          ],
+        ),
+        onRequest: (request) {
+          if (request.method == 'PATCH' && request.url.path.endsWith('/training/tests/t1')) {
+            sentBody = jsonDecode(request.body) as Map<String, dynamic>;
+            return _json({'data': _test(id: 't1', title: 'Ladder Safety Quiz')});
+          }
+          return null;
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('training.remove-question-1')));
+      await tester.pumpAndSettle();
+
+      // The author, believing they are fixing what is now on screen,
+      // appends to the field that should be CHARLIE's.
+      await tester.enterText(find.text('QUESTION-CHARLIE'), 'QUESTION-CHARLIE fixed');
+      await tester.tap(find.byKey(const Key('training.save-test')));
+      await tester.pumpAndSettle();
+
+      expect(sentBody, isNotNull);
+      final questions = sentBody!['questions'] as List;
+      expect(questions.length, 2);
+      expect((questions[0] as Map)['prompt'], 'QUESTION-ALPHA');
+      // The stable-id fix: this is CHARLIE's own prompt, edited — never
+      // BRAVO's stale text with the same edit tacked on.
+      expect((questions[1] as Map)['prompt'], 'QUESTION-CHARLIE fixed');
+    },
+  );
+
+  testWidgets(
+    'deleting a middle CHOICE leaves each remaining choice showing its OWN text, never a stale one',
+    (tester) async {
+      await _pumpTestBuilder(
+        tester,
+        test: _test(
+          id: 't1',
+          title: 'Ladder Safety Quiz',
+          questions: [
+            {
+              'prompt': 'How far out does the base go?',
+              'choices': [
+                {'text': 'CHOICE-ALPHA', 'correct': true},
+                {'text': 'CHOICE-BRAVO', 'correct': false},
+                {'text': 'CHOICE-CHARLIE', 'correct': false},
+              ],
+            },
+          ],
+        ),
+      );
+
+      expect(find.text('CHOICE-ALPHA'), findsOneWidget);
+      expect(find.text('CHOICE-BRAVO'), findsOneWidget);
+      expect(find.text('CHOICE-CHARLIE'), findsOneWidget);
+
+      // Remove the MIDDLE choice (BRAVO) — CHARLIE slides into its slot.
+      await tester.tap(find.byKey(const ValueKey('training.remove-choice-0-1')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('CHOICE-BRAVO'), findsNothing);
+      expect(find.text('CHOICE-ALPHA'), findsOneWidget);
+      expect(find.text('CHOICE-CHARLIE'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'deleting the SELECTED middle screen keeps the editor showing the screen that slid into its slot, never the deleted one\'s stale body',
+    (tester) async {
+      await _pumpGuideBuilder(
+        tester,
+        guide: _guide(
+          id: 'g1',
+          title: 'Ladder Safety',
+          screens: [
+            _screen('SCREEN-ALPHA'),
+            _screen('SCREEN-BRAVO'),
+            _screen('SCREEN-CHARLIE'),
+          ],
+        ),
+      );
+
+      // Select the middle screen (BRAVO) — its own body shows in the editor.
+      await tester.tap(find.byKey(const ValueKey('training.screen-card-1')));
+      await tester.pumpAndSettle();
+      expect(find.text('Body for SCREEN-BRAVO.'), findsOneWidget);
+
+      // Delete it from the screen editor's own delete button. `_removeScreen`
+      // deliberately leaves `_selected` at index 1 — CHARLIE slides into
+      // that slot, and the editor must show ITS body, never BRAVO's.
+      await tester.tap(find.byTooltip('Delete screen'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Body for SCREEN-BRAVO.'), findsNothing);
+      expect(find.text('Body for SCREEN-CHARLIE.'), findsOneWidget);
+    },
+  );
+
+  // ── A parse failure must never pass for a legitimate blank (review fix) ──
+  //
+  // Blank is a real, meaningful value for all three of these fields
+  // (unlimited retakes, a pass that never expires, "keep the stored pass
+  // mark") — so `int.tryParse` returning null for a typo must never be
+  // read as that same blank case. The fix keeps the ambiguity from ever
+  // existing: a digits-only `inputFormatter` drops a non-digit the instant
+  // it is typed, so the box can never hold anything `_parseInt` would need
+  // to guess about.
+
+  testWidgets('a letter typed into Pass mark never reaches the box — only digits do', (tester) async {
+    await _pumpTestBuilder(tester, test: _test(id: 't1', title: 'Ladder Safety Quiz', passMark: 80));
+
+    await tester.enterText(find.byKey(const Key('training.option-pass-mark')), 'ab7c');
+    await tester.pump();
+
+    expect(find.text('ab7c'), findsNothing);
+    expect(find.text('7'), findsOneWidget);
+  });
+
+  testWidgets('a letter typed into Retakes allowed never reaches the box either', (tester) async {
+    await _pumpTestBuilder(tester, test: _test(id: 't1', title: 'Ladder Safety Quiz'));
+
+    await tester.enterText(find.byKey(const Key('training.option-max-attempts')), '3o');
+    await tester.pump();
+
+    expect(find.text('3o'), findsNothing);
+    expect(find.text('3'), findsOneWidget);
+  });
+
+  testWidgets('a letter typed into "A pass runs out after" never reaches the box either', (tester) async {
+    await _pumpTestBuilder(tester, test: _test(id: 't1', title: 'Ladder Safety Quiz'));
+
+    await tester.enterText(find.byKey(const Key('training.option-valid-for-days')), '36x5');
+    await tester.pump();
+
+    expect(find.text('36x5'), findsNothing);
+    expect(find.text('365'), findsOneWidget);
+  });
+
+  testWidgets(
+    'typing "3o" into Retakes allowed and saving sends 3 — never silently unlimited',
+    (tester) async {
+      Map<String, dynamic>? sentBody;
+
+      await _pumpTestBuilder(
+        tester,
+        test: _test(id: 't1', title: 'Ladder Safety Quiz'),
+        onRequest: (request) {
+          if (request.method == 'PATCH' && request.url.path.endsWith('/training/tests/t1')) {
+            sentBody = jsonDecode(request.body) as Map<String, dynamic>;
+            return _json({'data': _test(id: 't1', title: 'Ladder Safety Quiz')});
+          }
+          return null;
+        },
+      );
+
+      await tester.enterText(find.byKey(const Key('training.option-max-attempts')), '3o');
+      await tester.tap(find.byKey(const Key('training.save-test')));
+      await tester.pumpAndSettle();
+
+      expect(sentBody, isNotNull);
+      expect(sentBody!['max_attempts'], 3);
+    },
+  );
+
+  // ── The only creation path in the module (review finding) ─────────────
+
+  testWidgets('tapping "New guide" creates one and opens its real builder', (tester) async {
+    var created = false;
+
+    await _pumpScreen(
+      tester,
+      permissions: const ['training.view', 'training.manage'],
+      onRequest: (request) {
+        if (request.method == 'POST' && request.url.path.endsWith('/training/guides')) {
+          created = true;
+          return _json({'data': _guide(id: 'new-g1', title: 'Untitled guide')});
+        }
+        if (request.method == 'GET' && request.url.path.endsWith('/training/guides/new-g1')) {
+          return _json({'data': _guide(id: 'new-g1', title: 'Untitled guide')});
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('New guide'));
+    await tester.pumpAndSettle();
+
+    expect(created, isTrue);
+    // Reached GuideBuilder for real, through the same push Settings' own
+    // rows use — never a dialog.
+    expect(find.byKey(const Key('training.screen-editor')), findsOneWidget);
+    expect(find.byType(Dialog), findsNothing);
+  });
+
+  testWidgets('tapping "New test" creates one and opens its real builder', (tester) async {
+    var created = false;
+
+    await _pumpScreen(
+      tester,
+      permissions: const ['training.view', 'training.manage'],
+      onRequest: (request) {
+        if (request.method == 'POST' && request.url.path.endsWith('/training/tests')) {
+          created = true;
+          return _json({'data': _test(id: 'new-t1', title: 'Untitled test')});
+        }
+        if (request.method == 'GET' && request.url.path.endsWith('/training/tests/new-t1')) {
+          return _json({'data': _test(id: 'new-t1', title: 'Untitled test')});
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('New test'));
+    await tester.pumpAndSettle();
+
+    expect(created, isTrue);
+    expect(find.text('Must finish the guide before the test'), findsOneWidget);
+    expect(find.byType(Dialog), findsNothing);
+  });
+
+  // ── Reorder: move-left/move-right, not drag (ruled finding) ────────────
+
+  testWidgets(
+    'the move-right control swaps a screen with its neighbour, and a save persists the new order',
+    (tester) async {
+      List<dynamic>? sentScreens;
+
+      await _pumpGuideBuilder(
+        tester,
+        guide: _guide(
+          id: 'g1',
+          title: 'Ladder Safety',
+          screens: [_screen('SCREEN-ALPHA'), _screen('SCREEN-BRAVO'), _screen('SCREEN-CHARLIE')],
+        ),
+        onRequest: (request) {
+          if (request.method == 'PATCH' && request.url.path.endsWith('/training/guides/g1')) {
+            sentScreens = (jsonDecode(request.body) as Map)['screens'] as List;
+            return _json({'data': _guide(id: 'g1', title: 'Ladder Safety')});
+          }
+          return null;
+        },
+      );
+
+      expect(find.textContaining('1 · SCREEN-ALPHA'), findsOneWidget);
+      expect(find.textContaining('2 · SCREEN-BRAVO'), findsOneWidget);
+
+      // Move ALPHA (card 0) one step later — it swaps with BRAVO.
+      await tester.tap(find.byKey(const ValueKey('training.screen-move-right-0')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('1 · SCREEN-BRAVO'), findsOneWidget);
+      expect(find.textContaining('2 · SCREEN-ALPHA'), findsOneWidget);
+      expect(find.textContaining('3 · SCREEN-CHARLIE'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('training.save-guide')));
+      await tester.pumpAndSettle();
+
+      expect(sentScreens, isNotNull);
+      expect((sentScreens![0] as Map)['title'], 'SCREEN-BRAVO');
+      expect((sentScreens![1] as Map)['title'], 'SCREEN-ALPHA');
+      expect((sentScreens![2] as Map)['title'], 'SCREEN-CHARLIE');
+    },
+  );
+
+  testWidgets('move-left is disabled on the first card, move-right on the last', (tester) async {
+    await _pumpGuideBuilder(
+      tester,
+      guide: _guide(
+        id: 'g1',
+        title: 'Ladder Safety',
+        screens: [_screen('SCREEN-ALPHA'), _screen('SCREEN-BRAVO')],
+      ),
+    );
+
+    final firstLeft = tester.widget<IconButton>(
+      find.descendant(
+        of: find.byKey(const ValueKey('training.screen-move-left-0')),
+        matching: find.byType(IconButton),
+      ),
+    );
+    expect(firstLeft.onPressed, isNull);
+
+    final lastRight = tester.widget<IconButton>(
+      find.descendant(
+        of: find.byKey(const ValueKey('training.screen-move-right-1')),
+        matching: find.byType(IconButton),
+      ),
+    );
+    expect(lastRight.onPressed, isNull);
+  });
+
+  // ── Minors ───────────────────────────────────────────────────────────
+
+  testWidgets('the screens shelf carries the guide\'s own scope tag', (tester) async {
+    await _pumpGuideBuilder(tester, guide: _guide(id: 'g1', title: 'Ladder Safety'));
+
+    expect(find.text('Organization'), findsOneWidget);
+  });
+
+  testWidgets(
+    'when the 200-test scan cannot find this guide\'s test, it says so honestly rather than claiming none exists',
+    (tester) async {
+      await _pumpGuideBuilder(
+        tester,
+        guide: _guide(id: 'g1', title: 'Ladder Safety'),
+        onRequest: (request) {
+          if (request.method == 'GET' && request.url.path.endsWith('/training/tests')) {
+            return _json({
+              'data': [_test(id: 't-other', title: 'Some other test')],
+              'meta': {'total': 250},
+            });
+          }
+          return null;
+        },
+      );
+
+      expect(find.textContaining('Could not confirm'), findsOneWidget);
+      expect(
+        find.text(
+          'No test is attached to this guide yet. Attach one from the Tests '
+          'list by setting its guide there.',
+        ),
+        findsNothing,
+      );
+    },
+  );
 }
 
 // ── Fixtures ────────────────────────────────────────────────────────────
@@ -445,9 +871,13 @@ Future<void> _pumpScreen(
   required List<String> permissions,
   List<Map<String, dynamic>> guides = const [],
   List<Map<String, dynamic>> tests = const [],
+  http.Response? Function(http.Request request)? onRequest,
 }) async {
   final api = ApiClient(
     client: MockClient((request) async {
+      final override = onRequest?.call(request);
+      if (override != null) return override;
+
       final path = request.url.path;
 
       if (path.endsWith('/me')) {
