@@ -13,18 +13,25 @@ import 'token_store.dart';
 /// request or the reverse. The server refuses both, but the client should not
 /// be trying.
 class StaffSession extends ChangeNotifier {
-  StaffSession(this._api);
+  StaffSession(this._api) {
+    _api.onUnauthorized = signOut;
+  }
 
   final ApiClient _api;
   ApiClient get api => _api;
 
   StaffMe? _me;
+  int _identityGeneration = 0;
+  int _refreshGeneration = 0;
   StaffMe? get me => _me;
   bool get signedIn => _me != null;
 
   Future<bool> adopt(String token, {bool persist = true}) async {
+    final generation = ++_identityGeneration;
+    _me = null;
     _api.setToken(token);
     await refresh();
+    if (generation != _identityGeneration) return false;
 
     if (signedIn && persist) {
       TokenStore.save(staff: token);
@@ -34,6 +41,7 @@ class StaffSession extends ChangeNotifier {
   }
 
   void release() {
+    _identityGeneration++;
     _me = null;
     _api.setToken(null);
     notifyListeners();
@@ -41,6 +49,7 @@ class StaffSession extends ChangeNotifier {
 
   /// Pick up a session left by a refresh, verifying it before trusting it.
   Future<void> restore() async {
+    final generation = ++_identityGeneration;
     final token = TokenStore.staffToken;
 
     if (token == null) {
@@ -51,6 +60,11 @@ class StaffSession extends ChangeNotifier {
 
     _api.setToken(token);
     await refresh();
+    if (generation != _identityGeneration) {
+      _restored = true;
+      notifyListeners();
+      return;
+    }
 
     if (!signedIn) {
       TokenStore.clear();
@@ -64,7 +78,12 @@ class StaffSession extends ChangeNotifier {
   bool get restored => _restored;
 
   Future<void> refresh() async {
+    final identity = _identityGeneration;
+    final generation = ++_refreshGeneration;
     final response = await _api.get('/staff/me');
+    if (identity != _identityGeneration || generation != _refreshGeneration) {
+      return;
+    }
 
     if (response.ok) {
       _me = StaffMe.fromJson(response.data as Map<String, dynamic>);
@@ -77,6 +96,7 @@ class StaffSession extends ChangeNotifier {
   }
 
   void signOut() {
+    _identityGeneration++;
     _me = null;
     _api.setToken(null);
     TokenStore.clear();
@@ -110,11 +130,12 @@ class StaffMe {
   String get tierLabel => isLead ? 'Lead Developer' : 'Developer';
 
   factory StaffMe.fromJson(Map<String, dynamic> json) => StaffMe(
-        id: json['id'] as String,
-        name: json['name'] as String,
-        email: json['email'] as String,
-        tier: json['tier'] as String,
-        mayEnterWithoutApproval: json['may_enter_without_approval'] as bool? ?? false,
-        recoveryCodeCount: json['recovery_code_count'] as int? ?? 0,
-      );
+    id: json['id'] as String,
+    name: json['name'] as String,
+    email: json['email'] as String,
+    tier: json['tier'] as String,
+    mayEnterWithoutApproval:
+        json['may_enter_without_approval'] as bool? ?? false,
+    recoveryCodeCount: json['recovery_code_count'] as int? ?? 0,
+  );
 }

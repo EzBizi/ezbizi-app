@@ -22,6 +22,10 @@ class Session extends ChangeNotifier {
   ApiClient get api => _api;
 
   Me? _me;
+  int _identityGeneration = 0;
+  int _refreshGeneration = 0;
+  int _scopeGeneration = 0;
+  bool _switchingScope = false;
   Me? get me => _me;
   bool get signedIn => _me != null;
 
@@ -57,8 +61,13 @@ class Session extends ChangeNotifier {
   /// when the login succeeded, and the caller has to know so it can stop showing
   /// a spinner and say something.
   Future<bool> adopt(String token, {bool persist = false}) async {
+    final generation = ++_identityGeneration;
+    _scopeGeneration++;
+    _switchingScope = false;
+    _me = null;
     _api.setToken(token);
     await refresh();
+    if (generation != _identityGeneration) return false;
 
     // Written only after /me answered. Saving a token that turns out not to
     // work would mean every future launch tries it, fails, and clears it —
@@ -78,6 +87,7 @@ class Session extends ChangeNotifier {
   /// has since been deactivated. refresh() clears it on any of those, so a stale
   /// token means the sign-in screen rather than a broken shell.
   Future<void> restore() async {
+    final generation = ++_identityGeneration;
     final token = TokenStore.tenantToken;
 
     if (token == null) {
@@ -90,6 +100,11 @@ class Session extends ChangeNotifier {
     _api.setToken(token);
 
     await refresh();
+    if (generation != _identityGeneration) {
+      _restored = true;
+      notifyListeners();
+      return;
+    }
 
     // Only when the server actually refused it. Clearing on an unreachable
     // server means a refresh during an outage permanently loses the session.
@@ -106,12 +121,33 @@ class Session extends ChangeNotifier {
   bool _restored = false;
   bool get restored => _restored;
 
-  Future<void> refresh() async {
-    final response = await _api.get('/me');
+  Future<void> refresh({String? view}) async {
+    // A preference rollback/ordinary refresh must not supersede the explicit
+    // target refresh while the old view is still on screen.
+    if (_switchingScope && view == null) return;
+    final identity = _identityGeneration;
+    final generation = ++_refreshGeneration;
+    final scopeGeneration = _scopeGeneration;
+    final response = await _api.get(
+      '/me',
+      null,
+      view == null ? null : {'X-EzBizi-View': view},
+    );
+    if (identity != _identityGeneration ||
+        generation != _refreshGeneration ||
+        scopeGeneration != _scopeGeneration) {
+      return;
+    }
 
     if (response.ok) {
       final data = response.data as Map<String, dynamic>;
       _me = Me.fromJson(data);
+      final scope = _me!.scope;
+      _api.setView(
+        scope.type == 'organization'
+            ? 'organization'
+            : '${scope.type}:${scope.id}',
+      );
       UiStrings.adopt(data);
       _unreachable = false;
       // Whatever brought them back, they are in now — so the sentence about a
@@ -151,6 +187,7 @@ class Session extends ChangeNotifier {
   /// trip completes looks broken. If the server refuses it, refresh() below puts
   /// the truth back.
   Future<void> setPreference(String key, Object value) async {
+    final identity = _identityGeneration;
     final me = _me;
     if (me == null) return;
 
@@ -160,6 +197,7 @@ class Session extends ChangeNotifier {
     final response = await _api.patch('/me/preferences', {
       'preferences': {key: value},
     });
+    if (identity != _identityGeneration) return;
 
     if (!response.ok) {
       await refresh();
@@ -220,22 +258,39 @@ class Session extends ChangeNotifier {
   /// they arrive with the new scope instead of needing a second call that
   /// somebody would eventually forget to make.
   Future<void> setScope(String value) async {
-    final response = await _api.patch('/me/preferences', {
-      'preferences': {'navigation.scope': value},
-    });
+    final identity = _identityGeneration;
+    final generation = ++_scopeGeneration;
+    _switchingScope = true;
+    try {
+      final response = await _api.patch('/me/preferences', {
+        'preferences': {'navigation.scope': value},
+      });
+      if (identity != _identityGeneration || generation != _scopeGeneration) {
+        return;
+      }
 
-    // Refreshed either way. On success to pick up the resolved scope; on
-    // failure to put back whatever is actually stored, rather than leaving the
-    // switcher showing a view the server never accepted.
-    await refresh();
+      // The old displayed view remains pinned until the requested view resolves.
+      // Failed preference writes must never adopt another device's preference.
+      if (response.ok) await refresh(view: value);
+      if (identity != _identityGeneration || generation != _scopeGeneration) {
+        return;
+      }
 
-    if (!response.ok) {
-      _unreachable = true;
-      notifyListeners();
+      if (!response.ok) {
+        _unreachable = true;
+        notifyListeners();
+      }
+    } finally {
+      if (identity == _identityGeneration && generation == _scopeGeneration) {
+        _switchingScope = false;
+      }
     }
   }
 
   void signOut() {
+    _identityGeneration++;
+    _scopeGeneration++;
+    _switchingScope = false;
     _me = null;
     readOnlyNotice = null;
     staffToken = null;
@@ -279,6 +334,9 @@ class Session extends ChangeNotifier {
   /// it already ended and do nothing, rather than each firing a rebuild.
   void sessionExpired() {
     if (_me == null && !_api.hasToken) return;
+    _identityGeneration++;
+    _scopeGeneration++;
+    _switchingScope = false;
 
     _me = null;
     readOnlyNotice = null;
@@ -484,8 +542,7 @@ class Me {
   }
 
   /// Franchise the current view has already named, or null.
-  String? get filingFranchiseId =>
-      scope.type == 'franchise' ? scope.id : null;
+  String? get filingFranchiseId => scope.type == 'franchise' ? scope.id : null;
 
   /// A company picker only earns its place when the view still leaves a
   /// choice: the group (org vs a company), or a parent with Sub Companies.

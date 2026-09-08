@@ -958,6 +958,86 @@ class TrainingAssignmentReachTest extends TestCase
         );
     }
 
+    /**
+     * `automationScope()` read directly, the shape
+     * `TrainingProgressTest`/`TrainingGradingTest` already hold this
+     * model's siblings to — the test above only proves the audience
+     * narrows for ONE fixture; this proves the two words the method
+     * itself returns, across every shape its own docblock claims:
+     * franchise, company, unassigned, and a ROLE assignment.
+     *
+     * An organization-scoped case cannot stand alone: `[null, null]` is a
+     * CORRECT answer for an unassigned learner and for a role assignment,
+     * so a mapping flattened to `[null, null]` for every case would pass a
+     * test that only ever checked those two. The franchise and company
+     * cases are the ones that must come back with a real place, and they
+     * are asserted first for that reason.
+     */
+    public function test_automation_scope_reads_the_learners_place_or_falls_back(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $riverside = $tenant['franchise'];
+        $guide = $this->aPublishedOrgGuide($tenant);
+
+        $franchiseLearner = $this->userInFranchise($tenant, $riverside, 'FranchiseLearner', ['training.view']);
+        $companyLearner = $this->userAtCompany($tenant, 'CompanyLearner', ['training.view']);
+        $unassignedLearner = $this->userAssignedNowhere($tenant, 'UnassignedLearner');
+        $role = $this->aRole($tenant, 'Trainee', ['training.view']);
+
+        [$franchiseScope, $companyScope, $unassignedScope, $roleScope] = $this->inTenant(
+            $tenant['org'],
+            function () use ($guide, $franchiseLearner, $companyLearner, $unassignedLearner, $role) {
+                $forFranchise = TrainingAssignment::create([
+                    'guide_id' => $guide->id,
+                    'assignee_type' => TrainingAssignment::USER,
+                    'assignee_id' => $franchiseLearner->id,
+                ]);
+                $forCompany = TrainingAssignment::create([
+                    'guide_id' => $guide->id,
+                    'assignee_type' => TrainingAssignment::USER,
+                    'assignee_id' => $companyLearner->id,
+                ]);
+                $forUnassigned = TrainingAssignment::create([
+                    'guide_id' => $guide->id,
+                    'assignee_type' => TrainingAssignment::USER,
+                    'assignee_id' => $unassignedLearner->id,
+                ]);
+                $forRole = TrainingAssignment::create([
+                    'guide_id' => $guide->id,
+                    'assignee_type' => TrainingAssignment::ROLE,
+                    'assignee_id' => $role->id,
+                ]);
+
+                return [
+                    $forFranchise->automationScope(),
+                    $forCompany->automationScope(),
+                    $forUnassigned->automationScope(),
+                    $forRole->automationScope(),
+                ];
+            },
+        );
+
+        $this->assertSame(
+            ['franchise', $riverside->id],
+            $franchiseScope,
+            'A franchise-placed learner must resolve to their own franchise, not [null, null] — '
+                .'the shape a flattened mapping would also produce.',
+        );
+        $this->assertSame(
+            ['company', $tenant['company']->id],
+            $companyScope,
+            'A company-placed learner must resolve to their own company.',
+        );
+        $this->assertSame([null, null], $unassignedScope);
+        $this->assertSame(
+            [null, null],
+            $roleScope,
+            'A role names nobody in particular — User::find on the role id finds nobody, so this '
+                .'must fall through to the same conservative [null, null] an unplaced person gets, '
+                .'not throw and not silently resolve to whoever happens to hold a matching id.',
+        );
+    }
+
     // ── Fixtures ──────────────────────────────────────────────────────
 
     /**

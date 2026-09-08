@@ -31,7 +31,7 @@ final class MailchimpSender implements NewsletterSender
         string $html,
         array $people,
     ): array {
-        $key      = $this->key($connection);
+        $key = $this->key($connection);
         $audience = $newsletter->audience;
 
         if ($audience === null) {
@@ -53,6 +53,23 @@ final class MailchimpSender implements NewsletterSender
             $this->mailchimp->syncMembers($key, $listId, $people);
         }
 
+        $gone = NewsletterSenders::unsubscribedIn($newsletter);
+        $segmentId = null;
+        if ($audience->kind === NewsletterAudience::KIND_CUSTOMERS || $gone !== []) {
+            $emails = $this->mailchimp->subscribedMembers($key, $listId);
+            if ($audience->kind === NewsletterAudience::KIND_CUSTOMERS) {
+                $wanted = array_map(fn (array $p) => mb_strtolower(trim($p['email'])), $people);
+                $emails = array_intersect($emails, $wanted);
+            }
+            $segmentId = $this->mailchimp->recipientSegment($key, $listId, array_diff($emails, $gone));
+        }
+
+        // Custom HTML also needs a working, recipient-authenticated provider footer.
+        if (! preg_match('/href\s*=\s*[\x22\x27]\*\|UNSUB\|\*[\x22\x27]/i', $html)) {
+            $footer = '<p style="text-align:center;font-size:12px"><a href="*|UNSUB|*">Unsubscribe from these emails</a></p>';
+            $html = stripos($html, '</body>') === false ? $html.$footer : str_ireplace('</body>', $footer.'</body>', $html);
+        }
+
         $identity = $this->identityFor($connection);
 
         $result = $this->mailchimp->sendCampaign(
@@ -62,6 +79,7 @@ final class MailchimpSender implements NewsletterSender
             $identity['from_name'],
             $identity['reply_to'],
             $html,
+            $segmentId,
         );
 
         return [
@@ -69,7 +87,7 @@ final class MailchimpSender implements NewsletterSender
             // Mailchimp counts the list; our own count is what we pushed, and
             // the two can differ legitimately (somebody already unsubscribed at
             // their end). Theirs is the number that describes what was sent.
-            'recipients' => $result['recipients'] > 0 ? $result['recipients'] : count($people),
+            'recipients' => $result['recipients'],
         ];
     }
 
@@ -85,7 +103,7 @@ final class MailchimpSender implements NewsletterSender
             // the address the key belongs to is the only one certain to work.
             // A tenant wanting a different one changes it in Mailchimp, where
             // the verification that makes it legitimate also lives.
-            'reply_to'  => $email,
+            'reply_to' => $email,
         ];
     }
 

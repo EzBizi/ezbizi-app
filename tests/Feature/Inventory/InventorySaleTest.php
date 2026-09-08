@@ -20,6 +20,23 @@ class InventorySaleTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
+    public function test_stale_open_sale_cannot_fulfill_after_cancellation(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        [$customer, $item, $location] = $this->customerItemLocation($t);
+        $this->stock($t, $item->id, $location->id, '10');
+        $sale = $this->openSale($t['admin'], $customer, $item, $t);
+        $this->inTenant($t['org'], function () use ($sale, $location, $t) {
+            $stale = \App\Models\InventorySale::findOrFail($sale['id']);
+            $line = $stale->lines()->firstOrFail();
+            \App\Models\InventorySale::whereKey($stale->id)->update(['status' => 'cancelled']);
+            $this->expectException(\Illuminate\Validation\ValidationException::class);
+            app(\App\Support\Inventory\InventoryMover::class)->fulfillSale(
+                $stale, $location, [['line' => $line, 'qty' => '1']], $t['admin'],
+            );
+        });
+    }
+
     public function test_sell_ten_partial_fulfill_then_over_then_full(): void
     {
         $tenant = $this->provisionTenant('Alpha');

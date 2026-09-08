@@ -15,6 +15,7 @@ use App\Models\VehicleServiceVisit;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 /**
  * Fill the demo tenant so its screens have something on them.
@@ -101,6 +102,11 @@ class DemoFill extends Command
 
     private const DEMO_NAME = 'EzBizi Demo';
 
+    /** Every user this command creates, and the only ones it will ever pick. */
+    private const STAFF_DOMAIN = 'demo.ezbizi.invalid';
+
+    private string $organizationId = '';
+
     public function handle(TenantContext $tenant): int
     {
         $organization = Organization::query()->find(self::DEMO_ID);
@@ -123,13 +129,69 @@ class DemoFill extends Command
         $dry = (bool) $this->option('dry-run');
         $this->line(sprintf('%s %s', $dry ? 'Would fill' : 'Filling', $organization->name));
 
+        $this->organizationId = $organization->id;
+
         $tenant->run($organization, function () use ($dry) {
+            $this->staff($dry);
             $this->scheduling($dry);
             $this->fleet($dry);
             $this->timeClock($dry);
         });
 
         return self::SUCCESS;
+    }
+
+    /**
+     * The demo tenant had no staff — only the eight store review logins.
+     *
+     * Everything downstream needs people: a vehicle needs a holder, a shift
+     * needs somebody clocked in, and the HR panel counts heads. Without this
+     * step the only names available were the reviewers' own.
+     *
+     * `.invalid` is reserved by RFC 2606 and resolves nowhere, so these
+     * addresses cannot receive mail however they are used. The password is 32
+     * random bytes that are never printed and never stored anywhere else — these
+     * accounts exist to be NAMED on a screen, not to be signed into, and nobody
+     * including me can sign into them. If a demo login is ever wanted, it should
+     * be made deliberately rather than by reusing one of these.
+     */
+    private function staff(bool $dry): void
+    {
+        $people = [
+            'Ada Vance' => 'ada.vance',
+            'Marcus Iheme' => 'marcus.iheme',
+            'Priya Raghunathan' => 'priya.raghunathan',
+            'Tomas Bergqvist' => 'tomas.bergqvist',
+            'Rosa Delgado' => 'rosa.delgado',
+        ];
+
+        foreach ($people as $name => $handle) {
+            $email = $handle.'@'.self::STAFF_DOMAIN;
+
+            if ($dry) {
+                $exists = User::query()->where('email', $email)->exists();
+                $this->line(sprintf('  staff: %s %s', $exists ? 'already there:' : 'would add', $name));
+
+                continue;
+            }
+
+            $user = User::query()->firstOrNew(['email' => $email]);
+
+            if ($user->exists) {
+                continue;
+            }
+
+            $user->fill([
+                'name' => $name,
+                'is_active' => true,
+                // Never printed, never reused. See the docblock.
+                'password' => bin2hex(random_bytes(32)),
+            ]);
+            $user->organization_id = $this->organizationId;
+            $user->save();
+
+            $this->info(sprintf('  staff: added %s', $name));
+        }
     }
 
     /**
@@ -199,7 +261,7 @@ class DemoFill extends Command
     private function fleet(bool $dry): void
     {
         $vehicles = Vehicle::query()->orderBy('number')->get();
-        $drivers = User::query()->where('is_active', true)->orderBy('created_at')->get();
+        $drivers = $this->demoStaff();
 
         if ($vehicles->isEmpty() || $drivers->isEmpty()) {
             $this->warn('  fleet: no vehicles or no active users, skipped');
@@ -263,9 +325,37 @@ class DemoFill extends Command
      * Shifts are the one line here whose shape is plain columns rather than a
      * json schema owned by another module.
      */
+    /**
+     * The demo tenant's INVENTED staff, and nobody else.
+     *
+     * This is not a refinement, it is the difference between usable screenshots
+     * and unusable ones. The demo organization holds exactly eight users and
+     * every one of them is a store review login — apple@, google@, tiktok@,
+     * meta@, x@, pinterest@, linkedin@, android@. The old selector took the
+     * four oldest active users, so a dry run on 2026-09-04 proposed giving the
+     * vans to "Apple Review", "Google Review" and "TikTok Review" and putting
+     * them on the time clock. Those names would then have appeared in the App
+     * Store screenshots, where an Apple reviewer would meet their own account
+     * driving a truck.
+     *
+     * Matching on the demo email domain rather than excluding @ezbizi.com is
+     * deliberate: an exclusion list is only correct until somebody adds a login
+     * it does not know about, and it fails OPEN — the wrong name ships. This
+     * fails closed. A user this command did not create is never chosen, so the
+     * worst case is that a step skips and says so.
+     */
+    private function demoStaff(): Collection
+    {
+        return User::query()
+            ->where('is_active', true)
+            ->where('email', 'like', '%@'.self::STAFF_DOMAIN)
+            ->orderBy('created_at')
+            ->get();
+    }
+
     private function timeClock(bool $dry): void
     {
-        $staff = User::query()->where('is_active', true)->orderBy('created_at')->take(4)->get();
+        $staff = $this->demoStaff()->take(4);
 
         if ($staff->isEmpty()) {
             $this->warn('  time clock: no active users, skipped');

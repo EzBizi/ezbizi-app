@@ -32,15 +32,17 @@ SHARED=/var/www/ezbizi/public-app
 #
 # --skip-gates is still accepted so existing callers and scripts do not break.
 SKIP_GATES=1
-_args=()
-for _a in "$@"; do
-  case "$_a" in
-    --skip-gates) SKIP_GATES=1 ;;
-    --gates)      SKIP_GATES=0 ;;
-    *) _args+=("$_a") ;;
+CODE_ONLY=""
+DEPLOY_SHA=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --skip-gates) SKIP_GATES=1; shift ;;
+    --gates)      SKIP_GATES=0; shift ;;
+    --code)       CODE_ONLY=--code; shift ;;
+    --sha)        DEPLOY_SHA="${2:?--sha needs a full commit SHA}"; shift 2 ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
-CODE_ONLY=${_args[0]:-}
 
 cd "$(dirname "$0")/.."
 
@@ -68,7 +70,18 @@ cd "$(dirname "$0")/.."
 # and the announcement protocol that was supposed to prevent it relies on
 # everyone being careful at exactly the moment they are busiest. Asking
 # people to be careful is not a control; pinning the SHA is.
-GATED_SHA=$(git rev-parse main)
+if [ -n "$DEPLOY_SHA" ]; then
+  [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "--sha must be a full commit SHA" >&2; exit 2; }
+  GATED_SHA=$(git rev-parse --verify "$DEPLOY_SHA^{commit}")
+  [ "$GATED_SHA" = "$DEPLOY_SHA" ] || exit 2
+else
+  # Standalone deployment intentionally defaults to main. The orchestrator
+  # always supplies its immutable release commit, including from detached HEAD.
+  GATED_SHA=$(git rev-parse main)
+fi
+if [ -n "${EZBIZI_RELEASE_SHA:-}" ] && [ "$GATED_SHA" != "$EZBIZI_RELEASE_SHA" ]; then
+  echo "✗ deploy SHA disagrees with the orchestrator release SHA" >&2; exit 1
+fi
 
 if [ "$SKIP_GATES" -eq 1 ]; then
   echo "⚠ GATES SKIPPED (--skip-gates) — $GATED_SHA is being shipped untested."
@@ -144,10 +157,12 @@ BACKEND_OUT=$(git -c core.autocrlf=false archive "$GATED_SHA" | ssh "$REMOTE" "W
   # Releases install --no-dev and have no phpunit; this sandbox keeps dev deps,
   # its own .env and its own test database.
   composer install --no-interaction -q
-  php8.4 artisan test --compact
+  php8.4 -d memory_limit=1G vendor/bin/phpunit --colors=never --log-junit /opt/ezbizi-test/backend-junit.xml
+  php8.4 scripts/phpunit-count.php /opt/ezbizi-test/backend-junit.xml
 ' 2>&1) || { echo "$BACKEND_OUT"; echo "✗ backend tests failed — nothing deployed"; exit 1; }
 echo "$BACKEND_OUT" | tail -3
-BACKEND_TESTS=$(echo "$BACKEND_OUT" | grep -oE '[0-9]+ passed' | tail -1 | grep -oE '[0-9]+')
+BACKEND_TESTS=$(echo "$BACKEND_OUT" | sed -n 's/^EZBIZI_BACKEND_TESTS=\([0-9][0-9]*\)$/\1/p' | tail -1)
+[ -n "$BACKEND_TESTS" ] || { echo "✗ backend test report missing — nothing deployed"; exit 1; }
 fi
 
 if [ "$CODE_ONLY" != "--code" ]; then
@@ -225,10 +240,7 @@ if [ "$CODE_ONLY" != "--code" ]; then
 
 fi
 
-# Code BEFORE the UI, deliberately. The UI is uploaded straight into the live
-# shared directory with no staging step, so shipping it first would put a new
-# client in front of the old API for however long the push takes — and if the
-# push then fails, permanently.
+# Stage artifacts first; the receive wrapper activates code before UI under one lock.
 echo "→ pushing code"
 # Pinning the SHA closes the window where main MOVES. It does not close the
 # window where main is REWRITTEN. If a session amends or rebases published main
@@ -247,34 +259,20 @@ git merge-base --is-ancestor "$GATED_SHA" main || {
   exit 1
 }
 
-# The pinned SHA, not the branch tip: what shipped is what was gated.
-git push production "$GATED_SHA":main
-
+# Upload immutable artifacts before acquiring the server's API/UI activation lock.
+DEPLOY_STAGE=$(ssh "$REMOTE" "mktemp -d /tmp/ezbizi-deploy.XXXXXXXX")
+[[ "$DEPLOY_STAGE" =~ ^/tmp/ezbizi-deploy\.[a-zA-Z0-9]+$ ]] || exit 1
+git -c core.autocrlf=false archive "$GATED_SHA" deploy/post-receive deploy/receive-release | ssh "$REMOTE" "tar -x --strip-components=1 -C '$DEPLOY_STAGE'"
+UI_STAGE=code
 if [ "$CODE_ONLY" != "--code" ]; then
-  echo "→ uploading UI to shared directory"
-
-  # tar over ssh rather than rsync, for two reasons.
-  #
-  # It is there. rsync is not on a stock Windows Git Bash, and the deploy that
-  # found that out had already pushed the backend — leaving a new API behind an
-  # old UI, which is the exact state the code half is carefully ordered to avoid.
-  # tar ships with every shell this runs in.
-  #
-  # And it swaps rather than syncs. rsync --delete edits the live directory in
-  # place, so for the length of an upload the site is a mix of two builds — and
-  # Flutter's assets are content-addressed, so half of them 404. Unpacking beside
-  # it and renaming makes the change one operation, and leaves the previous build
-  # next door to rename back to.
-  tar -cz -C "$WORKTREE/client/build/web" . | ssh "$REMOTE" "
-    set -e
-    rm -rf '$SHARED.new' '$SHARED.old'
-    mkdir -p '$SHARED.new'
-    tar -xz -C '$SHARED.new'
-    mv '$SHARED' '$SHARED.old'
-    mv '$SHARED.new' '$SHARED'
-  "
+  UI_STAGE=$(ssh "$REMOTE" "mktemp -d '$SHARED.stage.XXXXXXXX'")
+  [[ "$UI_STAGE" =~ ^/var/www/ezbizi/public-app\.stage\.[a-zA-Z0-9]+$ ]] || exit 1
+  printf '%s\n' "$GATED_SHA" > "$WORKTREE/client/build/web/.ezbizi-release-sha"
+  tar -cz -C "$WORKTREE/client/build/web" . | ssh "$REMOTE" "tar -xz -C '$UI_STAGE'"
 fi
-
+# receive-release holds one server flock through the hook and UI activation.
+# Explicit SSH command arguments are restricted above to fixed paths and hex SHA.
+git push --receive-pack="bash $DEPLOY_STAGE/receive-release $GATED_SHA $UI_STAGE" production "$GATED_SHA":main
 # GitHub gets what actually shipped, and only once it has shipped.
 #
 # Until 2026-08-28 every commit in this project existed on one disk. The backup

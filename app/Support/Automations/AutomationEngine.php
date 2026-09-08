@@ -5,8 +5,9 @@ namespace App\Support\Automations;
 use App\Models\Automation;
 use App\Models\AutomationEvent;
 use App\Models\AutomationRun;
-use App\Models\Company;
-use App\Models\Franchise;
+use App\Models\AutomationVersion;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 use App\Support\Audit\AuditLogger;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -33,231 +34,226 @@ class AutomationEngine
      */
     public function deliver(AutomationEvent $event): int
     {
-        // The tenant is established FIRST, around everything — including the loop
-        // guards, which read and write tenant-owned rows. A queue worker has no
-        // tenant of its own, and a worker handling many jobs in one long-lived
-        // process is precisely where an inherited one becomes a cross-tenant
-        // write (§5.1). Nothing below may assume a caller set it.
         $organization = $event->organization()->withoutGlobalScopes()->first();
-
         if ($organization === null) {
-            return 0;   // the organization was removed while this sat in the queue
+            return 0;
         }
 
-        if ($organization->isReadOnly()) {
-            // Checked ONCE here rather than letting each action be refused
-            // individually: §13 says an automation that keeps firing after
-            // expiry means the product works fine without paying, and a rule
-            // that fails action-by-action still burns retries and fills the
-            // log with the same refusal. Stopping the event drains the outbox
-            // and leaves one legible reason somebody can see in the UI.
-            return $this->tenant->run($organization, function () use ($event) {
-                $this->stop($event,
-                    'Not run — this organization is read-only because its subscription '
-                    .'has ended. Rules will resume automatically once billing is updated.'
-                );
-
-                return 0;
-            });
-        }
-
-        return $this->tenant->run($organization, function () use ($event) {
-            // Loop protection (§5.5). Depth catches a rule that feeds itself; the
-            // budget catches one that fans out sideways, and a chain alternating
-            // A→B→A across separate delayed runs — which depth alone does not.
-            if ($event->isTooDeep()) {
-                $this->stop($event, sprintf(
-                    'Stopped at depth %d. An automation action caused another automation '
-                    .'to run, and so on — the chain is looping or longer than intended.',
-                    $event->depth,
-                ));
-
+        return $this->tenant->run($organization, function () use ($event, $organization) {
+            // A durable lease serializes workers without holding a transaction
+            // open across network calls. Abandoned actions remain on the run.
+            $token = (string) Str::uuid();
+            $claimed = AutomationEvent::query()->whereKey($event->id)
+                ->whereNull('delivered_at')->whereNull('failed_at')
+                ->where('available_at', '<=', now())
+                ->where(fn ($q) => $q->whereNull('processing_until')->orWhere('processing_until', '<=', now()))
+                ->update(['processing_token' => $token, 'processing_until' => now()->addMinutes(10)]);
+            if ($claimed !== 1) {
                 return 0;
             }
-
-            if ($event->actionsSpent() >= AutomationEvent::ACTION_BUDGET) {
-                $this->stop($event, sprintf(
-                    'Stopped after %d actions from one originating event. The rules '
-                    .'are fanning out further than anything deliberate would.',
-                    AutomationEvent::ACTION_BUDGET,
-                ));
-
-                return 0;
-            }
-
-            $subject = $this->subjectOf($event);
-
-            // Resolved once. It was read twice — once for the scope and once to
-            // build the company chain — and the two calls have to agree, which
-            // is easier to guarantee than to remember.
-            [$scopeType, $scopeId] = $this->scopeOf($subject);
-
-            $automations = Automation::query()
-                ->where('trigger_key', $event->event_key)
-                ->where('is_active', true)
-                ->whereNull('disabled_at')
-                ->whereNotNull('active_version_id')
-                ->with('activeVersion')
-                ->get()
-                ->filter(fn (Automation $a) => $a->coversScope(
-                    $scopeType,
-                    $scopeId,
-                    companyChain: $this->companyChain($scopeType, $scopeId),
-                ));
-
-            $acted = 0;
-
-            foreach ($automations as $automation) {
-                if ($this->runOne($automation, $event, $subject)) {
-                    $acted++;
+            try {
+                $event->refresh();
+                if ($organization->isReadOnly()) {
+                    $this->stop($event, 'Not run � this organization is read-only because its subscription has ended.');
+                    return 0;
                 }
+                if ($event->attempts >= AutomationEvent::MAX_ATTEMPTS) {
+                    $this->stop($event, 'Stopped: delivery retry budget exhausted.');
+                    return 0;
+                }
+                if ($event->isTooDeep() || $event->actionsSpent() >= AutomationEvent::ACTION_BUDGET) {
+                    $this->stop($event, 'Stopped: this cascade has reached its depth or action budget.');
+                    return 0;
+                }
+                $event->forceFill(['attempts' => $event->attempts + 1])->save();
+                $subject = $this->subjectOf($event);
+                $scope = $event->scope_snapshot ?? EventScope::capture($subject);
+                if ($event->version_ids === null) {
+                    $ids = Automation::query()->where('trigger_key', $event->event_key)
+                        ->where('is_active', true)->whereNull('disabled_at')->whereNotNull('active_version_id')
+                        ->get()->filter(fn (Automation $a) => $a->coversScope(
+                            $scope['type'], $scope['id'], companyChain: $scope['company_chain'],
+                        ))->pluck('active_version_id')->values()->all();
+                    // Freeze the selected versions before the first side effect.
+                    $event->forceFill(['version_ids' => $ids])->save();
+                }
+                $acted = 0;
+                foreach ($event->version_ids as $versionId) {
+                    $version = AutomationVersion::query()->find($versionId);
+                    $automation = $version ? Automation::query()->find($version->automation_id) : null;
+                    if ($automation === null || ! $automation->is_active || $automation->disabled_at !== null) {
+                        $this->finishPending($event, 'Stopped: the automation was disabled or removed.', $versionId);
+                        continue;
+                    }
+                    if ($this->runOne($automation, $version, $event, $subject)) {
+                        $acted++;
+                    }
+                }
+                $runs = AutomationRun::query()->where('event_id', $event->id)->get();
+                $pending = $runs->contains(fn ($r) => $r->status === AutomationRun::MATCHED);
+                $failed = $runs->first(fn ($r) => $r->status === AutomationRun::FAILED);
+                $event->forceFill($pending ? [
+                    'available_at' => now()->addSeconds([10, 60, 300, 900][min(max($event->attempts - 1, 0), 3)]),
+                    'queued_at' => null,
+                    'last_error' => 'A transient webhook failure is waiting for retry.',
+                ] : [
+                    'delivered_at' => now(),
+                    'failed_at' => $failed ? now() : null,
+                    'last_error' => $failed?->error,
+                ])->save();
+                return $acted;
+            } finally {
+                AutomationEvent::query()->whereKey($event->id)->where('processing_token', $event->processing_token ?? $token)
+                    ->update(['processing_token' => null, 'processing_until' => null]);
             }
-
-            $event->forceFill(['delivered_at' => now()])->save();
-
-            return $acted;
         });
     }
 
-    private function runOne(Automation $automation, AutomationEvent $event, $subject): bool
+    /** Resolve a queue failure without overwriting a completed or newer delivery. */
+    public function failDelivery(string $eventId, string $reason): void
     {
-        $version = $automation->activeVersion;
+        $event = AutomationEvent::withoutGlobalScopes()->find($eventId);
+        $organization = $event?->organization()->withoutGlobalScopes()->first();
+        if ($organization === null) {
+            return;
+        }
+        $this->tenant->run($organization, fn () => DB::transaction(function () use ($eventId, $reason) {
+            $event = AutomationEvent::query()->lockForUpdate()->find($eventId);
+            if ($event === null || $event->delivered_at !== null || $event->failed_at !== null) {
+                return;
+            }
+            if ($event->processing_until?->isFuture()) {
+                // A killed worker and a newer active worker look identical to
+                // this hook. Let the durable lease expire before recovery.
+                $event->forceFill(['queued_at' => null, 'available_at' => $event->processing_until,
+                    'last_error' => $reason])->save();
+                return;
+            }
+            $this->stop($event, $reason);
+        }));
+    }
 
-        if ($version === null) {
+    private function runOne(Automation $automation, AutomationVersion $version, AutomationEvent $event, $subject): bool
+    {
+        $run = AutomationRun::query()->where('event_id', $event->id)
+            ->where('automation_version_id', $version->id)->first();
+        if ($run !== null && $run->status !== AutomationRun::MATCHED) {
             return false;
         }
-
-        $started = now();
-
-        try {
-            $verdict = $this->conditions->evaluate($version->conditions, $event, $subject);
-        } catch (Throwable $e) {
-            // A malformed rule is the rule's fault, not the event's. Record it
-            // against this automation and carry on with the others — one broken
-            // automation must not stop everybody else's.
-            $this->record($automation, $version, $event, AutomationRun::FAILED, $started, error: $e->getMessage());
-            $automation->noteFailure($e->getMessage());
-
-            return false;
-        }
-
-        if (! $verdict['matched']) {
-            // Skips ARE recorded. "The rule did not match" and "the rule never
-            // saw it" are completely different answers to give someone asking
-            // why their automation did not fire, and only this tells them apart.
-            $this->record(
-                $automation, $version, $event, AutomationRun::SKIPPED, $started,
-                trace: $verdict['trace'],
-            );
-
-            return false;
-        }
-
-        /*
-         * CLAIM the run before doing anything.
-         *
-         * The unique index on (event, version) was being consulted AFTER the
-         * action loop, which made it a guarantee about the LOG rather than about
-         * the side effect: a redelivered event re-sent every webhook and only
-         * then discovered it had already run. The migration, this class and the
-         * job all claimed otherwise, and the test that was supposed to prove it
-         * passed for the wrong reason — its action set a field to a constant, so
-         * the second run no-opped inside ActionRunner instead of being stopped
-         * here.
-         *
-         * Claiming first moves the index to where it can still prevent the POST.
-         * The residual is a crash mid-request, which no database can close.
-         */
-        $run = $this->claim($automation, $version, $event, $started);
-
         if ($run === null) {
-            return false;   // already claimed — a redelivery, correctly ignored
-        }
-
-        $results = [];
-        $failed = null;
-
-        foreach ($version->actions ?? [] as $actionIndex => $action) {
-            // Re-checked inside the loop: one version with two hundred actions
-            // would otherwise blow through the cascade budget in a single run,
-            // because the budget is only consulted between events.
-            if ($event->actionsSpent() >= AutomationEvent::ACTION_BUDGET) {
-                $results[] = [
-                    'type' => $action['type'] ?? 'unknown',
-                    'ok' => false,
-                    'detail' => 'Stopped: this cascade has spent its action budget.',
-                ];
-                $failed = 'Cascade action budget exhausted.';
-                break;
-            }
-
+            $started = now();
             try {
-                $result = $this->actions->run(
-                    $action,
-                    $event,
-                    $subject,
-                    automation: $automation,
-                    actionIndex: $actionIndex,
-                );
+                $verdict = $this->conditions->evaluate($version->conditions, $event, $subject);
             } catch (Throwable $e) {
-                $result = ['type' => $action['type'] ?? 'unknown', 'ok' => false, 'detail' => $e->getMessage()];
+                $this->record($automation, $version, $event, AutomationRun::FAILED, $started, error: $e->getMessage());
+                $automation->noteFailure($e->getMessage());
+                return false;
             }
-
-            $results[] = $result;
-
-            if (! $result['ok']) {
-                $failed = $result['detail'];
-                // Keep going. Actions are independent, and stopping at the first
-                // failure means a broken webhook silently cancels the field
-                // update that was supposed to happen alongside it.
+            if (! $verdict['matched']) {
+                $this->record($automation, $version, $event, AutomationRun::SKIPPED, $started, trace: $verdict['trace']);
+                return false;
             }
-
-            // Persisted as we go, so a crash halfway through leaves evidence of
-            // what had already happened rather than an empty row.
-            $run->forceFill([
-                'action_results' => $results,
-                'action_count' => count($results),
-            ])->save();
+            $run = AutomationRun::create([
+                'organization_id' => $event->organization_id,
+                'automation_id' => $automation->id, 'automation_version_id' => $version->id,
+                'event_id' => $event->id, 'status' => AutomationRun::MATCHED,
+                'started_at' => $started, 'condition_trace' => $verdict['trace'],
+                'actions_snapshot' => $version->actions ?? [],
+                'context_snapshot' => $automation->only(['scope_type', 'scope_id', 'created_by']),
+            ]);
         }
-
-        $status = $failed === null ? AutomationRun::SUCCEEDED : AutomationRun::FAILED;
-
+        if ($run->actions_snapshot === null) {
+            // Before durable per-action claims, an unfinished run cannot say
+            // whether its unrecorded side effects happened. Never replay it.
+            $this->finishPending($event, 'Unknown outcome from a legacy interrupted run; not replayed.', $version->id);
+            return false;
+        }
+        $executionRule = clone $automation;
+        if ($run->context_snapshot !== null) {
+            $executionRule->forceFill($run->context_snapshot);
+        }
+        $results = $run->action_results ?? [];
+        foreach ($run->actions_snapshot ?? $version->actions ?? [] as $index => $action) {
+            $previous = $results[$index] ?? null;
+            if ($previous !== null && ! in_array($previous['state'] ?? 'terminal', ['retryable', 'started'], true)) {
+                continue; // Success, permanent failure, and unknown never repeat.
+            }
+            $type = $action['type'] ?? 'unknown';
+            if (($previous['state'] ?? null) === 'started' && $type !== 'webhook') {
+                $results[$index] = array_merge($previous, [
+                    'state' => 'unknown', 'ok' => false,
+                    'detail' => 'Worker stopped during this action; delivery outcome is unknown. Not retried.',
+                ]);
+                continue;
+            }
+            $attempts = (int) ($previous['attempts'] ?? 0);
+            if ($attempts >= AutomationEvent::MAX_ATTEMPTS || $event->actionsSpent() >= AutomationEvent::ACTION_BUDGET) {
+                $results[$index] = array_merge($previous ?? ['type' => $type], [
+                    'state' => 'failed', 'ok' => false, 'detail' => 'Stopped: retry or cascade action budget exhausted.',
+                ]);
+                continue;
+            }
+            $renewToken = (string) Str::uuid();
+            $renewed = AutomationEvent::query()->whereKey($event->id)
+                ->where('processing_token', $event->processing_token)
+                ->where('processing_until', '>', now())
+                ->update(['processing_until' => now()->addMinutes(10), 'processing_token' => $renewToken]);
+            if ($renewed !== 1) {
+                throw new \RuntimeException('Automation delivery lease was lost.');
+            }
+            $event->setAttribute('processing_token', $renewToken);
+            $event->syncOriginalAttribute('processing_token');
+            $key = hash('sha256', $event->id.':'.$version->id.':'.$index);
+            $results[$index] = ['type' => $type, 'ok' => false, 'state' => 'started',
+                'detail' => 'Action started; outcome not yet recorded.', 'attempts' => $attempts + 1,
+                'idempotency_key' => $key];
+            $run->forceFill(['action_results' => $results,
+                'action_count' => array_sum(array_map(fn ($r) => $r['attempts'] ?? 1, $results)),
+            ])->save();
+            try {
+                $result = $this->actions->run($action, $event, $subject,
+                    automation: $executionRule, actionIndex: $index, idempotencyKey: $key);
+            } catch (Throwable $e) {
+                $result = ['type' => $type, 'ok' => false, 'detail' => $e->getMessage(),
+                    'unknown' => true];
+            }
+            $retry = $type === 'webhook' && ($result['retryable'] ?? false)
+                && $attempts + 1 < AutomationEvent::MAX_ATTEMPTS;
+            $results[$index] = array_merge($results[$index], $result, [
+                'state' => $result['ok'] ? 'succeeded' : ($retry ? 'retryable' : (($result['unknown'] ?? false) ? 'unknown' : 'failed')),
+            ]);
+            $run->forceFill(['action_results' => $results])->save();
+        }
+        $pending = collect($results)->contains(fn ($r) => ($r['state'] ?? '') === 'retryable');
+        $failure = collect($results)->first(fn ($r) => ! $r['ok']);
         $run->forceFill([
-            'status' => $status,
-            'condition_trace' => $verdict['trace'],
+            'status' => $pending ? AutomationRun::MATCHED : ($failure ? AutomationRun::FAILED : AutomationRun::SUCCEEDED),
             'action_results' => $results ?: null,
-            'action_count' => count($results),
-            'error' => $failed,
-            'finished_at' => now(),
+            'error' => $failure['detail'] ?? null,
+            'finished_at' => $pending ? null : now(),
         ])->save();
-
-        $failed === null ? $automation->noteSuccess() : $automation->noteFailure($failed);
-
+        if (! $pending) {
+            $failure ? $automation->noteFailure($failure['detail']) : $automation->noteSuccess();
+        }
         return true;
     }
 
-    /**
-     * Take the (event, version) pair, or discover somebody already has.
-     *
-     * This is the idempotency guarantee, and it works because it happens BEFORE
-     * any action runs. The insert either wins — and this delivery owns the run —
-     * or it loses to the unique index, and nothing is performed.
-     *
-     * @return AutomationRun|null null when this exact run was already claimed
-     */
-    private function claim(Automation $automation, $version, AutomationEvent $event, $started): ?AutomationRun
+    private function finishPending(AutomationEvent $event, string $reason, ?string $versionId = null): void
     {
-        try {
-            return AutomationRun::create([
-                'organization_id' => $event->organization_id,
-                'automation_id' => $automation->getKey(),
-                'automation_version_id' => $version->getKey(),
-                'event_id' => $event->getKey(),
-                'status' => AutomationRun::MATCHED,
-                'started_at' => $started,
-            ]);
-        } catch (UniqueConstraintViolationException) {
-            return null;
+        $runs = AutomationRun::query()->where('event_id', $event->id)->where('status', AutomationRun::MATCHED)
+            ->when($versionId !== null, fn ($q) => $q->where('automation_version_id', $versionId))->get();
+        foreach ($runs as $run) {
+            $results = array_map(function ($result) use ($reason) {
+                if (in_array($result['state'] ?? '', ['started', 'retryable'], true)) {
+                    $result['state'] = $result['state'] === 'started' ? 'unknown' : 'failed';
+                    $result['detail'] = $reason;
+                    $result['ok'] = false;
+                }
+                return $result;
+            }, $run->action_results ?? []);
+            $run->forceFill(['status' => AutomationRun::FAILED, 'error' => $reason,
+                'action_results' => $results ?: null, 'finished_at' => now(),
+            ])->save();
         }
     }
 
@@ -304,6 +300,7 @@ class AutomationEngine
         // Called from inside deliver()'s tenant block, so this save passes the
         // BelongsToTenant guard. It did not always — that guard caught a real
         // bug where the queue worker had no tenant, which is exactly its job.
+        $this->finishPending($event, $reason);
         $event->forceFill(['delivered_at' => now(), 'failed_at' => now(), 'last_error' => $reason])->save();
 
         $this->audit->logError('automation.cascade_stopped', [
@@ -324,73 +321,6 @@ class AutomationEngine
         // May legitimately be gone — a delete event's subject is the thing that
         // was deleted. Conditions fall back to the event payload for that reason.
         return $event->subject_type::query()->find($event->subject_id);
-    }
-
-    /**
-     * Which scope an event belongs to, for matching franchise- or company-scoped
-     * automations. Read off the subject, because the event itself is deliberately
-     * generic.
-     *
-     * A record that KNOWS where it sits is asked first, and the column names
-     * below are the fallback rather than the rule. CarriesAutomationScope sets
-     * out why: HR's records carry their placement in shapes no attribute name
-     * finds, and a guess that misses answers "no scope", which reads to
-     * `coversScope` as "organization-wide only" — a franchise rule that silently
-     * never matches rather than an error anybody sees.
-     *
-     * @return array{0: string|null, 1: string|null}
-     */
-    private function scopeOf($subject): array
-    {
-        if ($subject === null) {
-            return [null, null];
-        }
-
-        if ($subject instanceof CarriesAutomationScope) {
-            return $subject->automationScope();
-        }
-
-        foreach (['franchise_id', 'owning_franchise_id'] as $attribute) {
-            if ($subject->getAttribute($attribute) !== null) {
-                return ['franchise', $subject->getAttribute($attribute)];
-            }
-        }
-
-        return [null, null];
-    }
-
-    /**
-     * Every company the event's scope sits beneath, nearest first.
-     *
-     * Needed because a company-scoped automation has to fire on its Sub
-     * Companies' franchises too — the same step §6 flags as the one most easily
-     * missed in the settings cascade, and missing it here meant a company-scoped
-     * rule could be saved through the API and then never match anything at all.
-     *
-     * Takes the resolved scope rather than the subject, so it cannot disagree
-     * with the pair `coversScope` is given. It also has to start from a COMPANY
-     * as well as from a franchise: an invitation can be issued at company level,
-     * and until HR raised events nothing that reached here ever had a scope
-     * without a franchise underneath it.
-     *
-     * @return string[] company ids
-     */
-    private function companyChain(?string $scopeType, ?string $scopeId): array
-    {
-        $company = match ($scopeType) {
-            'company' => Company::query()->find($scopeId),
-            'franchise' => Franchise::query()->find($scopeId)?->company,
-            default => null,
-        };
-
-        $chain = [];
-
-        while ($company !== null) {
-            $chain[] = $company->getKey();
-            $company = $company->parent;
-        }
-
-        return $chain;
     }
 
     /**

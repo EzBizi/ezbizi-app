@@ -20,6 +20,8 @@ class ApiClient {
 
   final http.Client _http;
   String? _token;
+  int _tokenGeneration = 0;
+  String? _view;
 
   static const String baseUrl = String.fromEnvironment(
     'API_BASE',
@@ -28,7 +30,14 @@ class ApiClient {
 
   static String get _root => baseUrl.isEmpty ? '' : baseUrl;
 
-  void setToken(String? token) => _token = token;
+  void setToken(String? token) {
+    _token = token;
+    _tokenGeneration++;
+    _view = null;
+  }
+
+  /// The view actually displayed by this client, independent of other devices.
+  void setView(String? view) => _view = view;
   bool get hasToken => _token != null;
 
   /// Called when the server refuses a request from a token we were holding.
@@ -151,6 +160,7 @@ class ApiClient {
   /// a proxy stripped. Suppressing it would make a developer's own build
   /// indistinguishable from a broken one.
   Map<String, String> get _identity => {
+    'X-EzBizi-View': ?_view,
     if (ClientPlatform.name.isNotEmpty) platformHeader: ClientPlatform.name,
     if (BuildInfo.version.isNotEmpty) versionHeader: BuildInfo.version,
   };
@@ -235,6 +245,8 @@ class ApiClient {
     List<int> bytes, {
     Map<String, String>? fields,
   }) async {
+    final tokenGeneration = _tokenGeneration;
+    final authenticated = _token != null;
     try {
       final request = http.MultipartRequest('POST', Uri.parse('$_root/api/v1$path'))
         ..headers['Accept'] = 'application/json'
@@ -264,7 +276,7 @@ class ApiClient {
       final streamed = await _http.send(request);
       final response = await http.Response.fromStream(streamed);
 
-      _noticeUpgradeRequired(response.statusCode, response.body);
+      _noticeResponse(response, tokenGeneration, authenticated);
 
       return ApiResponse(
         statusCode: response.statusCode,
@@ -304,14 +316,21 @@ class ApiClient {
     List<({String name, List<int> bytes})> files, {
     Map<String, String>? fields,
   }) async {
+    final tokenGeneration = _tokenGeneration;
+    final authenticated = _token != null;
     try {
-      final request = http.MultipartRequest('POST', Uri.parse('$_root/api/v1$path'))
-        ..headers['Accept'] = 'application/json'
-        ..headers.addAll(_identity);
+      final request =
+          http.MultipartRequest('POST', Uri.parse('$_root/api/v1$path'))
+            ..headers['Accept'] = 'application/json'
+            ..headers.addAll(_identity);
 
       for (final file in files) {
         request.files.add(
-          http.MultipartFile.fromBytes('$field[]', file.bytes, filename: file.name),
+          http.MultipartFile.fromBytes(
+            '$field[]',
+            file.bytes,
+            filename: file.name,
+          ),
         );
       }
 
@@ -322,7 +341,7 @@ class ApiClient {
       final streamed = await _http.send(request);
       final response = await http.Response.fromStream(streamed);
 
-      _noticeUpgradeRequired(response.statusCode, response.body);
+      _noticeResponse(response, tokenGeneration, authenticated);
 
       return ApiResponse(
         statusCode: response.statusCode,
@@ -357,6 +376,8 @@ class ApiClient {
     String path, [
     Map<String, String>? query,
   ]) async {
+    final tokenGeneration = _tokenGeneration;
+    final authenticated = _token != null;
     try {
       final response = await _http.get(
         Uri.parse('$_root/api/v1$path').replace(queryParameters: query),
@@ -370,11 +391,7 @@ class ApiClient {
         },
       );
 
-      _noticeUpgradeRequired(response.statusCode, response.body);
-
-      if (response.statusCode == 401 && _token != null) {
-        onUnauthorized?.call();
-      }
+      _noticeResponse(response, tokenGeneration, authenticated);
 
       if (response.statusCode == 200) {
         return ApiBytesResponse(
@@ -409,6 +426,8 @@ class ApiClient {
   }
 
   Future<ApiResponse> _send(Future<http.Response> Function() request) async {
+    final tokenGeneration = _tokenGeneration;
+    final authenticated = _token != null;
     try {
       final response = await request();
 
@@ -433,7 +452,7 @@ class ApiClient {
        * that their app is a year old. The status line is the part of a 426 that
        * matters; the sentence is a courtesy on top of it.
        */
-      _noticeUpgradeRequired(response.statusCode, response.body);
+      _noticeResponse(response, tokenGeneration, authenticated);
 
       final body = response.body.isEmpty
           ? <String, dynamic>{}
@@ -452,10 +471,6 @@ class ApiClient {
        * is wrong", which are the same status code and completely different
        * events.
        */
-      if (response.statusCode == 401 && _token != null) {
-        onUnauthorized?.call();
-      }
-
       return ApiResponse(
         statusCode: response.statusCode,
         body: body,
@@ -479,6 +494,21 @@ class ApiClient {
         statusCode: 0,
         body: {'message': 'Could not reach the server. Check your connection.'},
       );
+    }
+  }
+
+  /// Status handling precedes decoding and is identical for every transport.
+  /// A late refusal for an old token must never end a newly adopted session.
+  void _noticeResponse(
+    http.Response response,
+    int generation,
+    bool authenticated,
+  ) {
+    _noticeUpgradeRequired(response.statusCode, response.body);
+    if (response.statusCode == 401 &&
+        authenticated &&
+        generation == _tokenGeneration) {
+      onUnauthorized?.call();
     }
   }
 

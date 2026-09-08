@@ -191,13 +191,14 @@ class InventorySalesController extends Controller
     {
         $this->authorize('update', $sale);
 
-        if ($sale->status !== InventorySaleStatus::Draft) {
-            throw ValidationException::withMessages([
-                'status' => 'This sale is not a draft.',
-            ]);
-        }
-
         DB::transaction(function () use ($sale) {
+            $sale = InventorySale::query()->lockForUpdate()->findOrFail($sale->getKey());
+            if ($sale->status !== InventorySaleStatus::Draft) {
+                throw ValidationException::withMessages([
+                    'status' => 'This sale is not a draft.',
+                ]);
+            }
+
             $sale->status = InventorySaleStatus::Open;
             $sale->sold_on = now('America/New_York')->toDateString();
             $sale->save();
@@ -236,29 +237,32 @@ class InventorySalesController extends Controller
     {
         $this->authorize('update', $sale);
 
-        $cancellable = in_array($sale->status, [
-            InventorySaleStatus::Draft,
-            InventorySaleStatus::Open,
-        ], true);
+        DB::transaction(function () use ($sale) {
+            $sale = InventorySale::query()->lockForUpdate()->findOrFail($sale->getKey());
+            $cancellable = in_array($sale->status, [
+                InventorySaleStatus::Draft,
+                InventorySaleStatus::Open,
+            ], true);
 
-        if (! $cancellable) {
-            throw ValidationException::withMessages([
-                'status' => 'This sale cannot be cancelled.',
-            ]);
-        }
+            if (! $cancellable) {
+                throw ValidationException::withMessages([
+                    'status' => 'This sale cannot be cancelled.',
+                ]);
+            }
 
-        $fulfilled = $sale->lines()
-            ->where('qty_fulfilled', '>', 0)
-            ->exists();
+            $fulfilled = $sale->lines()
+                ->where('qty_fulfilled', '>', 0)
+                ->exists();
 
-        if ($fulfilled) {
-            throw ValidationException::withMessages([
-                'status' => 'This sale has already fulfilled stock, so it cannot be cancelled.',
-            ]);
-        }
+            if ($fulfilled) {
+                throw ValidationException::withMessages([
+                    'status' => 'This sale has already fulfilled stock, so it cannot be cancelled.',
+                ]);
+            }
 
-        $sale->status = InventorySaleStatus::Cancelled;
-        $sale->save();
+            $sale->status = InventorySaleStatus::Cancelled;
+            $sale->save();
+        });
 
         return response()->json([
             'data' => $this->presentSale(

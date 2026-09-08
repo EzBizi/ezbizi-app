@@ -137,6 +137,45 @@ interface MailboxReader
     public function availableFolders(Mailbox $mailbox): array;
 
     /**
+     * Can this provider mark a message read AT THE MAIL SERVICE?
+     *
+     * Asked rather than assumed by the screen, for the same reason
+     * {@see availableFolders} is: a client holding its own table of which
+     * provider can do what is a second dictionary that will one day disagree
+     * with the one that decides.
+     *
+     * It is a question about the CONNECTION, not only the provider — a Gmail
+     * mailbox connected without the modify scope cannot do it either, and
+     * answering true there would offer a switch that fails on first use.
+     */
+    public function canMarkReadAtSource(Mailbox $mailbox): bool;
+
+    /**
+     * Mark ONE message read at the mail service itself.
+     *
+     * ═══════════════════════════════════════════════════════════════
+     *  THIS IS THE ONE PLACE THIS MODULE CHANGES SOMEBODY ELSE'S
+     *  MAILBOX, AND IT ONLY RUNS WHEN ASKED.
+     *
+     *  Everything else here reads. {@see trash} bins on an explicit
+     *  click; this is the only thing that writes as a SIDE EFFECT of
+     *  looking, which is why it is gated on a per-mailbox setting that
+     *  is off by default rather than on a capability check.
+     *
+     *  Read state at a provider is ONE GLOBAL FLAG. `message_seen` is
+     *  per person. On a shared inbox the two are not the same thing,
+     *  and collapsing them means one colleague's reading hides a
+     *  customer's mail from another. That is the whole argument, and
+     *  it is why the caller checks the setting rather than this method
+     *  deciding for itself.
+     * ═══════════════════════════════════════════════════════════════
+     *
+     * @throws CannotChangeMail  when this connection cannot mark mail read
+     * @throws CannotReadMailbox when the mailbox cannot be opened at all
+     */
+    public function markReadAtSource(Mailbox $mailbox, string $messageId): void;
+
+    /**
      * Move this message (and its thread, where the provider groups) to Trash.
      *
      * @throws CannotReadMailbox  when the mailbox cannot be opened at all

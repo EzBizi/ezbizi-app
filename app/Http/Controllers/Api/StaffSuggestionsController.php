@@ -77,6 +77,20 @@ class StaffSuggestionsController extends Controller
             ]);
         }
 
+        /**
+         * This used to be enforced by a disabled button on the queue screen,
+         * and a disabled button is not a guarantee. "In review" tells the
+         * author nothing — the bell stays silent on purpose — so a note
+         * attached to it would land on their screen with no notice that
+         * anything had changed. Approve it or deny it if there is something
+         * to say.
+         */
+        if ($input['status'] === Suggestion::STATUS_REVIEWING && $note !== null) {
+            throw ValidationException::withMessages([
+                'note' => 'In review tells them nothing — this note would show up on their screen with no notice. Approve or deny it if there is something to say.',
+            ]);
+        }
+
         DB::transaction(function () use ($row, $input, $note, $request) {
             $row->status = $input['status'];
             $row->decision_note = $note;

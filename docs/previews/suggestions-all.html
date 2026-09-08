@@ -1,0 +1,2118 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EzBizi &mdash; Suggestions, all six layouts</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#DDE3E8;color:#060808;
+    font:14px/1.45 Inter,system-ui,"Segoe UI",sans-serif}
+  body{display:flex;flex-direction:column}
+  header{background:#fff;border-bottom:1px solid #E9EDF1;padding:10px 18px;flex:0 0 auto}
+  .top{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center}
+  .grp{font-weight:700;text-transform:uppercase;letter-spacing:1.1px;font-size:11px;color:#5B6672}
+  .row{display:flex;gap:5px;align-items:center}
+  button{font:inherit;cursor:pointer;border:1px solid #E9EDF1;background:#fff;color:#060808;
+    border-radius:7px;padding:5px 13px;font-size:13px;line-height:1;position:relative}
+  button:hover{border-color:#00708F;color:#00708F}
+  button[aria-current="true"]{background:#00708F;border-color:#00708F;color:#fff;font-weight:600}
+  button.ship::after{content:"";position:absolute;top:-3px;right:-3px;width:7px;height:7px;
+    border-radius:50%;background:#0B8F5B}
+  .lab{margin-top:8px;font-size:13px;color:#5B6672}
+  .lab b{color:#060808;font-weight:600}
+  .shipnote{color:#0B8F5B;font-weight:700;font-size:11px;text-transform:uppercase;
+    letter-spacing:.8px;margin-left:8px}
+  .key{font-size:11px;color:#5B6672;margin-left:auto;display:flex;align-items:center;gap:5px}
+  .key i{width:7px;height:7px;border-radius:50%;background:#0B8F5B;display:inline-block}
+  iframe{flex:1 1 auto;width:100%;border:0;background:#DDE3E8;display:none}
+  iframe.on{display:block}
+</style></head><body>
+<header>
+  <div class="top" id="nav"><div class="key"><i></i> green dot = in production now</div></div>
+  <div class="lab" id="lab"></div>
+</header>
+<iframe id="f0" class="on" srcdoc="&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;title&gt;EzBizi &amp;mdash; Suggestions, layout 1&lt;/title&gt;
+&lt;style&gt;
+  :root {
+    /* PROVENANCE, because a mockup that says &quot;the real palette&quot; has to mean it.
+       Everything marked (theme) is measured from client/lib/core/theme.dart via
+       EzBiziTheme.light() -- not eyeballed, and nothing invented for this file.
+       What is NOT a theme token is listed at the bottom of this block, in full. */
+    --cyan:#00AEEF;     /* (theme) EzBiziTheme.accent -- brand fills carrying no text */
+    --primary:#00708F;  /* (theme) light colorScheme.primary (_cyanDeep), 5.7:1 on white */
+    --ink:#060808;      /* (theme) _ink */
+    --muted:#5B6672;    /* (theme) _muted */
+    --line:#E9EDF1;     /* (theme) EzBiziTheme.edge, light */
+    --alt:#F5F8FA;      /* (theme) _surfaceAlt */
+    --page:#fff;        /* (theme) light colorScheme.surface */
+    --ok:#0B8F5B;       /* (theme) EzBiziTheme.clockIn, light */
+    --err:#E07070;      /* (theme) EzBiziTheme.clockOut, light -- the punch-out coral.
+                           Used here only as a 4px edge and never as text: it is about
+                           3:1 on white and cannot carry a word. */
+    --deny:#BA1A1A;     /* (theme) light colorScheme.error. MEASURED, not guessed --
+                           EzBiziTheme.light().colorScheme.error prints #BA1A1A, and the
+                           same probe confirmed primary #00708F light / #00AEEF dark.
+                           6.5:1 on white and 5.7:1 on --err-c, so it is the one red here
+                           that may be text; it is also the token development_screen.dart
+                           already uses for the control-plane banner. */
+
+    /* NOT theme tokens, and this is the complete list of them.
+       The four container tints are the docs/previews house convention, carried from the
+       galleries already using them, standing in for Material&#x27;s *Container roles, which a
+       flat mockup cannot compute. The app&#x27;s real light errorContainer is #FFDAD6;
+       #FDECEC is the previews&#x27; lighter stand-in, kept so this gallery matches the twenty
+       beside it rather than being the one that looks different. --warn is convention too
+       -- theme.dart carries no amber -- and it is used only in this gallery&#x27;s own header
+       blocks, never in the drawn app. Four greys are mockup furniture and never app
+       colour: #DDE3E8 the gallery page ground, #9AA5AF placeholder text inside a drawn
+       field, #C9D3DB the drawn keyboard slab and the dashed empty-state border, #3F4A55
+       the label printed on that keyboard. */
+    --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 Inter, system-ui, &quot;Segoe UI&quot;, sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1200px; margin:0 auto; padding:16px 16px 48px; }
+
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:20px; margin:0 0 4px; letter-spacing:-.3px; }
+  .chooser { display:flex; flex-wrap:wrap; gap:6px; align-items:center;
+    padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--line);
+    font-size:12px; color:var(--muted); }
+  .chooser .cg { font-weight:700; text-transform:uppercase; letter-spacing:1.2px;
+    font-size:11px; margin-right:2px; }
+  .chooser a { min-width:30px; text-align:center; padding:4px 9px; border-radius:7px;
+    border:1px solid var(--line); color:var(--primary); text-decoration:none; font-weight:600; }
+  .chooser a.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .chooser .sep { width:18px; }
+
+
+  .viewlab { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--muted); margin:26px 0 8px; }
+  .note { color:var(--muted); font-size:12px; margin:10px 0 0; max-width:96ch; }
+  .note b { color:var(--ink); }
+
+  /* ---- the app&#x27;s own chrome ---- */
+  .shell { display:grid; grid-template-columns:220px 1fr; min-height:620px;
+    background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px;
+    display:flex; flex-direction:column; }
+  nav.side .brand { font-weight:800; letter-spacing:-1px; font-size:20px;
+    margin-bottom:16px; padding:0 8px; color:var(--ink); }
+  nav.side .brand i { color:var(--cyan); font-style:normal; }
+  nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+    text-decoration:none; margin-bottom:2px; font-size:14px; }
+  nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  nav.side .tail { margin-top:auto; padding-top:10px; border-top:1px solid var(--line); }
+  nav.side .staff { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
+
+  .page { display:flex; flex-direction:column; min-width:0; }
+  .paneHead { padding:18px 24px 14px; border-bottom:1px solid var(--line); }
+  .paneHead h2 { font-size:20px; margin:0 0 3px; letter-spacing:-.3px; font-weight:700; }
+  .paneHead p { margin:0; color:var(--muted); font-size:14px; max-width:74ch; }
+  .paneBody { padding:20px 24px 28px; overflow:auto; flex:1; background:var(--page); }
+  .col { max-width:760px; }
+
+  /* ---- compose ---- */
+  .compose { border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .compose .ta { padding:14px 16px; min-height:112px; color:#9AA5AF; font-size:15px;
+    line-height:1.55; }
+  .compose .ta.filled { color:var(--ink); }
+  .compose .cbar { display:flex; align-items:center; gap:10px; padding:10px 14px;
+    background:var(--alt); border-top:1px solid var(--line); }
+  .compose .count { color:var(--muted); font-size:12px; margin-right:auto; }
+  .compose .count b { color:var(--ink); font-weight:600; }
+  .compose.focus { border-color:var(--primary); box-shadow:0 0 0 1px var(--primary); }
+
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:9px;
+    padding:9px 16px; min-height:40px; font-weight:600; }
+  .btn.ghost { background:transparent; color:var(--primary); border:1px solid var(--line); }
+  .btn.sm { min-height:34px; padding:5px 12px; font-size:13px; }
+  .btn.off { background:var(--page); color:var(--muted); border:1px solid var(--line); }
+  .btn.danger { color:var(--deny); }
+
+  /* ---- one suggestion ---- */
+  .sechead { font-size:16px; font-weight:600; margin:26px 0 10px; }
+  .card { border:1px solid var(--line); border-radius:12px; margin-bottom:12px; overflow:hidden; }
+  .ch { display:flex; align-items:center; gap:10px; padding:11px 16px; background:var(--alt);
+    border-bottom:1px solid var(--line); }
+  .ch .when { color:var(--muted); font-size:12px; margin-left:auto; }
+  .cbody { padding:14px 16px; font-size:14px; line-height:1.55; }
+  .cf { display:flex; align-items:center; gap:8px; padding:10px 16px;
+    border-top:1px solid var(--line); }
+  .cf .why { color:var(--muted); font-size:12px; margin-right:auto; max-width:60ch; }
+  .cf.plain { background:var(--alt); }
+
+  .pill { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    padding:3px 9px; border-radius:999px; background:var(--alt); border:1px solid var(--line);
+    color:var(--muted); white-space:nowrap; }
+  .pill.s-new { background:var(--page); border-color:var(--muted); color:var(--ink); }
+  .pill.s-rev { background:var(--info-c); border-color:transparent; color:var(--primary); }
+  .pill.s-app { background:var(--ok-c); border-color:transparent; color:var(--ok); }
+  .pill.s-den { background:var(--err-c); border-color:transparent; color:var(--deny); }
+
+  .reply { border-top:1px solid var(--line); padding:14px 16px 14px 18px; }
+  .reply.app { background:var(--ok-c); box-shadow:inset 4px 0 0 var(--ok); }
+  .reply.den { background:var(--err-c); box-shadow:inset 4px 0 0 var(--err); }
+  .reply .rh { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    margin-bottom:6px; }
+  .reply.app .rh { color:var(--ok); } .reply.den .rh { color:var(--deny); }
+  .reply p { margin:0; font-size:14px; line-height:1.55; }
+
+  .empty { border:1px dashed #C9D3DB; border-radius:12px; padding:26px 24px;
+    text-align:center; margin-bottom:18px; background:var(--alt); }
+  .empty h3 { font-size:18px; margin:0 0 8px; font-weight:700; }
+  .empty p { color:var(--muted); margin:0 auto; max-width:62ch; font-size:14px; }
+
+  /* ---- 375 ---- */
+  .stage { display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; }
+  .phone { width:375px; border:8px solid var(--ink); border-radius:30px; overflow:hidden;
+    background:var(--page); height:700px; display:flex; flex-direction:column; }
+  .phlab { font-size:11px; color:var(--muted); text-align:center; margin-top:7px; width:375px; }
+  .bar { padding:12px 14px; border-bottom:1px solid var(--line); display:flex;
+    align-items:center; gap:9px; font-weight:700; font-size:16px; flex:none; }
+  .bar .back { color:var(--primary); font-weight:500; font-size:14px; }
+  .bar .act { margin-left:auto; color:var(--primary); font-weight:600; font-size:14px; }
+  .scroll { overflow:auto; flex:1; }
+  .kb { flex:none; height:200px; background:#C9D3DB; border-top:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; color:#3F4A55; font-size:12px; }
+&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div class=&quot;app&quot;&gt;
+  &lt;header class=&quot;picker&quot;&gt;
+    
+    &lt;h1&gt;Suggestions &amp;mdash; 1 &amp;middot; Compose first&lt;/h1&gt;
+  &lt;/header&gt;
+
+  &lt;h2 class=&quot;viewlab&quot;&gt;Desktop &amp;mdash; your suggestions, all four states&lt;/h2&gt;
+  &lt;div id=&quot;full&quot;&gt;&lt;/div&gt;
+
+  &lt;h2 class=&quot;viewlab&quot;&gt;Desktop &amp;mdash; the first visit, which is what most people will see&lt;/h2&gt;
+  &lt;div id=&quot;empty&quot;&gt;&lt;/div&gt;
+
+  &lt;h2 class=&quot;viewlab&quot;&gt;Desktop &amp;mdash; correcting one, in place&lt;/h2&gt;
+  &lt;div id=&quot;editing&quot;&gt;&lt;/div&gt;
+
+  &lt;h2 class=&quot;viewlab&quot;&gt;375px &amp;mdash; designed for the phone, not narrowed&lt;/h2&gt;
+  &lt;div class=&quot;stage&quot; id=&quot;mobile&quot;&gt;&lt;/div&gt;
+&lt;/div&gt;
+
+&lt;script&gt;
+const MINE = [
+  { st:&#x27;new&#x27;, sent:&#x27;Sent today, 9:12am&#x27;,
+    body:&quot;Techs get the address on the job card but not the gate code or the dog, so half of them ring the office from the driveway. The access notes are already on the customer -- could they ride along on the job card the way the phone number does?&quot; },
+  { st:&#x27;approved&#x27;, sent:&#x27;Sent 28 August&#x27;, ans:&#x27;1 September&#x27;,
+    body:&quot;Let a tech mark a van out of service from their phone. Right now they ring the office, the office means to write it down, and dispatch finds out by sending somebody to a van that is up on a lift.&quot;,
+    note:&quot;Agreed, and it is going into Fleet next. A tech with fleet access will be able to put a vehicle out of service from the phone, with a reason, and dispatch will see it on the board before they assign anything to it. Thank you for the example -- the lift is the part that made the case.&quot; },
+  { st:&#x27;reviewing&#x27;, sent:&#x27;Sent 26 August&#x27;,
+    body:&quot;When the same customer rings twice in a day we get two entries in the call list and no way to tell it is one job. Could repeat calls from a number group together for the day?&quot; },
+  { st:&#x27;denied&#x27;, sent:&#x27;Sent 12 August&#x27;, ans:&#x27;19 August&#x27;,
+    body:&quot;Could the job list refresh itself every thirty seconds so I am not pressing reload all morning?&quot;,
+    note:&quot;Not this one, and the reason is the moving list rather than the idea. A list that reloads under you moves the row you were about to click, and dispatch is the one screen in this app where that costs a real appointment. What we would rather build is a quiet line at the top saying three jobs have changed, which you press when you are ready. That is on the list; this exact request is not.&quot; }
+];
+
+const LABEL = { new:&#x27;New&#x27;, reviewing:&#x27;In review&#x27;, approved:&#x27;Approved&#x27;, denied:&#x27;Denied&#x27; };
+const CLS   = { new:&#x27;s-new&#x27;, reviewing:&#x27;s-rev&#x27;, approved:&#x27;s-app&#x27;, denied:&#x27;s-den&#x27; };
+const FROZEN = {
+  reviewing:&#x27;Somebody at EzBizi is reading this one, so it is fixed while they do.&#x27;,
+  approved:&#x27;This one has been answered, so it stays as it was written.&#x27;,
+  denied:&#x27;This one has been answered, so it stays as it was written.&#x27;
+};
+
+const card = (s) =&gt; `
+  &lt;article class=&quot;card&quot;&gt;
+    &lt;div class=&quot;ch&quot;&gt;&lt;span class=&quot;pill ${CLS[s.st]}&quot;&gt;${LABEL[s.st]}&lt;/span&gt;
+      &lt;span class=&quot;when&quot;&gt;${s.sent}&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;cbody&quot;&gt;${s.body}&lt;/div&gt;
+    ${s.note ? `&lt;div class=&quot;reply ${s.st === &#x27;approved&#x27; ? &#x27;app&#x27; : &#x27;den&#x27;}&quot;&gt;
+        &lt;div class=&quot;rh&quot;&gt;EzBizi answered &amp;middot; ${s.ans}&lt;/div&gt;&lt;p&gt;${s.note}&lt;/p&gt;&lt;/div&gt;` : &#x27;&#x27;}
+    ${s.st === &#x27;new&#x27;
+      ? `&lt;div class=&quot;cf&quot;&gt;&lt;span class=&quot;why&quot;&gt;Nobody has read it yet, so you can still change it or
+           take it back.&lt;/span&gt;
+           &lt;button class=&quot;btn ghost sm&quot; type=&quot;button&quot;&gt;Edit&lt;/button&gt;
+           &lt;button class=&quot;btn ghost sm danger&quot; type=&quot;button&quot;&gt;Withdraw&lt;/button&gt;&lt;/div&gt;`
+      : `&lt;div class=&quot;cf plain&quot;&gt;&lt;span class=&quot;why&quot;&gt;${FROZEN[s.st]} Send another if there is more to
+           say.&lt;/span&gt;&lt;/div&gt;`}
+  &lt;/article&gt;`;
+
+const compose = (o) =&gt; `
+  &lt;div class=&quot;compose${o.focus ? &#x27; focus&#x27; : &#x27;&#x27;}&quot;&gt;
+    &lt;div class=&quot;ta${o.text ? &#x27; filled&#x27; : &#x27;&#x27;}&quot;&gt;${o.text ||
+      &#x27;What should EzBizi do differently?&#x27;}&lt;/div&gt;
+    &lt;div class=&quot;cbar&quot;&gt;
+      &lt;span class=&quot;count&quot;&gt;&lt;b&gt;${o.text ? &#x27;247&#x27; : &#x27;0&#x27;}&lt;/b&gt; / 2000&lt;/span&gt;
+      ${o.cancel ? &#x27;&lt;button class=&quot;btn ghost sm&quot; type=&quot;button&quot;&gt;Cancel&lt;/button&gt;&#x27; : &#x27;&#x27;}
+      &lt;button class=&quot;btn${o.text ? &#x27;&#x27; : &#x27; off&#x27;}&quot; type=&quot;button&quot;&gt;${o.send || &#x27;Send it&#x27;}&lt;/button&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;`;
+
+const SIDE = `
+  &lt;nav class=&quot;side&quot;&gt;
+    &lt;div class=&quot;brand&quot;&gt;&lt;i&gt;Ez&lt;/i&gt;Bizi&lt;/div&gt;
+    &lt;a&gt;Dashboard&lt;/a&gt;&lt;a&gt;Customers&lt;/a&gt;&lt;a&gt;Jobs&lt;/a&gt;&lt;a&gt;Scheduling&lt;/a&gt;&lt;a&gt;Phone&lt;/a&gt;&lt;a&gt;Fleet&lt;/a&gt;
+    &lt;a&gt;Human Resources&lt;/a&gt;
+    &lt;div class=&quot;tail&quot;&gt;&lt;a class=&quot;on&quot;&gt;Suggestions&lt;/a&gt;&lt;a&gt;Settings&lt;/a&gt;&lt;/div&gt;
+    &lt;div class=&quot;staff&quot;&gt;&lt;a&gt;Development&lt;/a&gt;&lt;/div&gt;
+  &lt;/nav&gt;`;
+
+const shell = (body) =&gt; `&lt;div class=&quot;shell&quot;&gt;${SIDE}&lt;div class=&quot;page&quot;&gt;${body}&lt;/div&gt;&lt;/div&gt;`;
+
+const HEAD = `
+  &lt;div class=&quot;paneHead&quot;&gt;
+    &lt;h2&gt;Suggestions&lt;/h2&gt;
+    &lt;p&gt;Tell EzBizi what the software should do differently. Only you and EzBizi staff can read
+      what you write here &amp;mdash; nobody at your own organization can, not even an
+      administrator.&lt;/p&gt;
+  &lt;/div&gt;`;
+
+document.getElementById(&#x27;full&#x27;).innerHTML = shell(HEAD + `
+  &lt;div class=&quot;paneBody&quot;&gt;&lt;div class=&quot;col&quot;&gt;
+    ${compose({})}
+    &lt;h3 class=&quot;sechead&quot;&gt;What you have sent&lt;/h3&gt;
+    ${MINE.map(card).join(&#x27;&#x27;)}
+  &lt;/div&gt;&lt;/div&gt;`);
+
+document.getElementById(&#x27;empty&#x27;).innerHTML = shell(HEAD + `
+  &lt;div class=&quot;paneBody&quot;&gt;&lt;div class=&quot;col&quot;&gt;
+    &lt;div class=&quot;empty&quot;&gt;
+      &lt;h3&gt;Nothing sent yet&lt;/h3&gt;
+      &lt;p&gt;Anything you would change &amp;mdash; a step that takes too many clicks, a number that is
+        never right, something this app should do and does not. It goes to the people who build
+        EzBizi, and they answer.&lt;/p&gt;
+    &lt;/div&gt;
+    ${compose({ focus:true })}
+    &lt;p class=&quot;note&quot; style=&quot;margin-top:12px&quot;&gt;Up to 2000 characters. You can correct it or take it
+      back until somebody reads it.&lt;/p&gt;
+  &lt;/div&gt;&lt;/div&gt;`);
+
+document.getElementById(&#x27;editing&#x27;).innerHTML = shell(HEAD + `
+  &lt;div class=&quot;paneBody&quot;&gt;&lt;div class=&quot;col&quot;&gt;
+    ${compose({})}
+    &lt;h3 class=&quot;sechead&quot;&gt;What you have sent&lt;/h3&gt;
+    &lt;article class=&quot;card&quot;&gt;
+      &lt;div class=&quot;ch&quot;&gt;&lt;span class=&quot;pill s-new&quot;&gt;New&lt;/span&gt;
+        &lt;span class=&quot;when&quot;&gt;Sent today, 9:12am&lt;/span&gt;&lt;/div&gt;
+      &lt;div style=&quot;padding:12px 14px&quot;&gt;
+        ${compose({ text: MINE[0].body, focus:true, cancel:true, send:&#x27;Save&#x27; })}
+      &lt;/div&gt;
+    &lt;/article&gt;
+    ${MINE.slice(1).map(card).join(&#x27;&#x27;)}
+  &lt;/div&gt;&lt;/div&gt;`);
+
+const phone = (label, inner) =&gt;
+  `&lt;div&gt;&lt;div class=&quot;phone&quot;&gt;${inner}&lt;/div&gt;&lt;div class=&quot;phlab&quot;&gt;${label}&lt;/div&gt;&lt;/div&gt;`;
+
+const prow = (s) =&gt; `
+  &lt;div style=&quot;padding:13px 16px;border-bottom:1px solid var(--line)&quot;&gt;
+    &lt;div style=&quot;display:flex;gap:8px;align-items:center;margin-bottom:6px&quot;&gt;
+      &lt;span class=&quot;pill ${CLS[s.st]}&quot;&gt;${LABEL[s.st]}&lt;/span&gt;
+      &lt;span style=&quot;margin-left:auto;color:var(--muted);font-size:12px&quot;&gt;${
+        s.sent.replace(&#x27;Sent &#x27;,&#x27;&#x27;)}&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div style=&quot;font-size:14px;line-height:1.5&quot;&gt;${
+      s.body.length &gt; 118 ? s.body.slice(0,118) + &#x27;&amp;hellip;&#x27; : s.body}&lt;/div&gt;
+    ${s.note ? `&lt;div style=&quot;margin-top:8px;font-size:13px;font-weight:600;color:${
+      s.st === &#x27;approved&#x27; ? &#x27;var(--ok)&#x27; : &#x27;var(--deny)&#x27;
+      }&quot;&gt;EzBizi answered &amp;middot; read it &amp;rsaquo;&lt;/div&gt;` : &#x27;&#x27;}
+    ${s.st === &#x27;new&#x27; ? `&lt;div style=&quot;margin-top:9px;display:flex;gap:8px&quot;&gt;
+      &lt;button class=&quot;btn ghost sm&quot; type=&quot;button&quot;&gt;Edit&lt;/button&gt;
+      &lt;button class=&quot;btn ghost sm danger&quot; type=&quot;button&quot;&gt;Withdraw&lt;/button&gt;&lt;/div&gt;` : &#x27;&#x27;}
+  &lt;/div&gt;`;
+
+document.getElementById(&#x27;mobile&#x27;).innerHTML =
+  phone(&#x27;The tab &amp;mdash; one wide action, then the list&#x27;, `
+    &lt;div class=&quot;bar&quot;&gt;Suggestions&lt;/div&gt;
+    &lt;div class=&quot;scroll&quot;&gt;
+      &lt;div style=&quot;padding:14px 16px;border-bottom:1px solid var(--line)&quot;&gt;
+        &lt;button class=&quot;btn&quot; style=&quot;width:100%&quot; type=&quot;button&quot;&gt;Write a suggestion&lt;/button&gt;
+        &lt;p class=&quot;note&quot; style=&quot;margin-top:9px&quot;&gt;Only you and EzBizi staff can read these.&lt;/p&gt;
+      &lt;/div&gt;
+      ${MINE.map(prow).join(&#x27;&#x27;)}
+    &lt;/div&gt;`) +
+  phone(&#x27;Composing &amp;mdash; one job, Send in the bar&#x27;, `
+    &lt;div class=&quot;bar&quot;&gt;&lt;span class=&quot;back&quot;&gt;&amp;lsaquo; Suggestions&lt;/span&gt; New
+      &lt;span class=&quot;act&quot;&gt;Send&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;scroll&quot;&gt;
+      &lt;div style=&quot;padding:16px;font-size:15px;line-height:1.55&quot;&gt;Techs get the address on the job
+        card but not the gate code or the dog, so half of them ring the office from the
+        driveway.&lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div style=&quot;padding:8px 16px;border-top:1px solid var(--line);color:var(--muted);
+      font-size:12px&quot;&gt;&lt;b style=&quot;color:var(--ink)&quot;&gt;142&lt;/b&gt; / 2000&lt;/div&gt;
+    &lt;div class=&quot;kb&quot;&gt;the keyboard &amp;mdash; and Send is not under it&lt;/div&gt;`) +
+  phone(&#x27;One you have sent &amp;mdash; the answer in full&#x27;, `
+    &lt;div class=&quot;bar&quot;&gt;&lt;span class=&quot;back&quot;&gt;&amp;lsaquo; Suggestions&lt;/span&gt; Denied&lt;/div&gt;
+    &lt;div class=&quot;scroll&quot;&gt;
+      &lt;div style=&quot;padding:14px 16px;border-bottom:1px solid var(--line)&quot;&gt;
+        &lt;span class=&quot;pill s-den&quot;&gt;Denied&lt;/span&gt;
+        &lt;div style=&quot;margin-top:10px;font-size:15px;line-height:1.55&quot;&gt;${MINE[3].body}&lt;/div&gt;
+        &lt;div style=&quot;margin-top:8px;color:var(--muted);font-size:12px&quot;&gt;Sent 12 August&lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;reply den&quot; style=&quot;box-shadow:none;border-top:0&quot;&gt;
+        &lt;div class=&quot;rh&quot;&gt;EzBizi answered &amp;middot; 19 August&lt;/div&gt;&lt;p&gt;${MINE[3].note}&lt;/p&gt;&lt;/div&gt;
+      &lt;div style=&quot;padding:14px 16px;color:var(--muted);font-size:13px&quot;&gt;
+        This one has been answered, so it stays as it was written. Send another if there is more
+        to say.&lt;/div&gt;
+    &lt;/div&gt;`);
+&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+<iframe id="f1" class="" srcdoc="&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;title&gt;EzBizi &amp;mdash; Suggestions, layout 2&lt;/title&gt;
+&lt;style&gt;
+  :root {
+    /* PROVENANCE, because a mockup that says &quot;the real palette&quot; has to mean it.
+       Everything marked (theme) is measured from client/lib/core/theme.dart via
+       EzBiziTheme.light() -- not eyeballed, and nothing invented for this file.
+       What is NOT a theme token is listed at the bottom of this block, in full. */
+    --cyan:#00AEEF;     /* (theme) EzBiziTheme.accent -- brand fills carrying no text */
+    --primary:#00708F;  /* (theme) light colorScheme.primary (_cyanDeep), 5.7:1 on white */
+    --ink:#060808;      /* (theme) _ink */
+    --muted:#5B6672;    /* (theme) _muted */
+    --line:#E9EDF1;     /* (theme) EzBiziTheme.edge, light */
+    --alt:#F5F8FA;      /* (theme) _surfaceAlt */
+    --page:#fff;        /* (theme) light colorScheme.surface */
+    --ok:#0B8F5B;       /* (theme) EzBiziTheme.clockIn, light */
+    --err:#E07070;      /* (theme) EzBiziTheme.clockOut, light -- the punch-out coral.
+                           Used here only as a 4px edge and never as text: it is about
+                           3:1 on white and cannot carry a word. */
+    --deny:#BA1A1A;     /* (theme) light colorScheme.error. MEASURED, not guessed --
+                           EzBiziTheme.light().colorScheme.error prints #BA1A1A, and the
+                           same probe confirmed primary #00708F light / #00AEEF dark.
+                           6.5:1 on white and 5.7:1 on --err-c, so it is the one red here
+                           that may be text; it is also the token development_screen.dart
+                           already uses for the control-plane banner. */
+
+    /* NOT theme tokens, and this is the complete list of them.
+       The four container tints are the docs/previews house convention, carried from the
+       galleries already using them, standing in for Material&#x27;s *Container roles, which a
+       flat mockup cannot compute. The app&#x27;s real light errorContainer is #FFDAD6;
+       #FDECEC is the previews&#x27; lighter stand-in, kept so this gallery matches the twenty
+       beside it rather than being the one that looks different. --warn is convention too
+       -- theme.dart carries no amber -- and it is used only in this gallery&#x27;s own header
+       blocks, never in the drawn app. Four greys are mockup furniture and never app
+       colour: #DDE3E8 the gallery page ground, #9AA5AF placeholder text inside a drawn
+       field, #C9D3DB the drawn keyboard slab and the dashed empty-state border, #3F4A55
+       the label printed on that keyboard. */
+    --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 Inter, system-ui, &quot;Segoe UI&quot;, sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1240px; margin:0 auto; padding:16px 16px 48px; }
+
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:20px; margin:0 0 4px; letter-spacing:-.3px; }
+  .chooser { display:flex; flex-wrap:wrap; gap:6px; align-items:center;
+    padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--line);
+    font-size:12px; color:var(--muted); }
+  .chooser .cg { font-weight:700; text-transform:uppercase; letter-spacing:1.2px;
+    font-size:11px; margin-right:2px; }
+  .chooser a { min-width:30px; text-align:center; padding:4px 9px; border-radius:7px;
+    border:1px solid var(--line); color:var(--primary); text-decoration:none; font-weight:600; }
+  .chooser a.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .chooser .sep { width:18px; }
+
+
+  .viewlab { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--muted); margin:26px 0 8px; }
+  .note { color:var(--muted); font-size:12px; margin:10px 0 0; max-width:96ch; }
+  .note b { color:var(--ink); }
+
+  .shell { display:grid; grid-template-columns:220px 1fr; min-height:640px;
+    background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px;
+    display:flex; flex-direction:column; }
+  nav.side .brand { font-weight:800; letter-spacing:-1px; font-size:20px;
+    margin-bottom:16px; padding:0 8px; }
+  nav.side .brand i { color:var(--cyan); font-style:normal; }
+  nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+    text-decoration:none; margin-bottom:2px; font-size:14px; }
+  nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  nav.side .tail { margin-top:auto; padding-top:10px; border-top:1px solid var(--line); }
+  nav.side .staff { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
+
+  .page { display:flex; flex-direction:column; min-width:0; }
+  .paneHead { padding:18px 24px 14px; border-bottom:1px solid var(--line); }
+  .paneHead h2 { font-size:20px; margin:0 0 3px; letter-spacing:-.3px; font-weight:700; }
+  .paneHead p { margin:0; color:var(--muted); font-size:14px; max-width:74ch; }
+
+  /* the split */
+  .split { display:grid; grid-template-columns:320px 1fr; flex:1; min-height:0; }
+  .rail { border-right:1px solid var(--line); overflow:auto; display:flex;
+    flex-direction:column; }
+  .railTop { padding:12px; border-bottom:1px solid var(--line); }
+  .grph { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--muted); padding:14px 14px 6px; }
+  .r { padding:11px 14px; border-bottom:1px solid var(--line); cursor:pointer; }
+  .r.on { background:var(--info-c); box-shadow:inset 3px 0 0 var(--primary); }
+  .r .rt { display:flex; align-items:center; gap:8px; margin-bottom:5px; }
+  .r .rw { margin-left:auto; color:var(--muted); font-size:12px; white-space:nowrap; }
+  .r .rb { font-size:13px; line-height:1.45; color:var(--ink); }
+  .r .rm { font-size:12px; margin-top:6px; font-weight:600; }
+
+  .detail { display:flex; flex-direction:column; min-width:0; overflow:auto; }
+  .dHead { padding:18px 24px 14px; border-bottom:1px solid var(--line); display:flex;
+    align-items:center; gap:10px; }
+  .dHead h3 { font-size:18px; margin:0; font-weight:700; }
+  .dHead .when { margin-left:auto; color:var(--muted); font-size:13px; }
+  .dBody { padding:20px 24px; font-size:15px; line-height:1.6; max-width:76ch; }
+  .dFoot { margin-top:auto; border-top:1px solid var(--line); background:var(--alt);
+    padding:12px 24px; display:flex; align-items:center; gap:9px; }
+  .dFoot .why { color:var(--muted); font-size:12px; margin-right:auto; max-width:66ch; }
+
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:9px;
+    padding:9px 16px; min-height:40px; font-weight:600; }
+  .btn.ghost { background:transparent; color:var(--primary); border:1px solid var(--line);
+    background:var(--page); }
+  .btn.sm { min-height:34px; padding:5px 12px; font-size:13px; }
+  .btn.off { background:var(--page); color:var(--muted); border:1px solid var(--line); }
+  .btn.danger { color:var(--deny); }
+  .btn.wide { width:100%; }
+
+  .pill { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    padding:3px 9px; border-radius:999px; background:var(--alt); border:1px solid var(--line);
+    color:var(--muted); white-space:nowrap; }
+  .pill.s-new { background:var(--page); border-color:var(--muted); color:var(--ink); }
+  .pill.s-rev { background:var(--info-c); border-color:transparent; color:var(--primary); }
+  .pill.s-app { background:var(--ok-c); border-color:transparent; color:var(--ok); }
+  .pill.s-den { background:var(--err-c); border-color:transparent; color:var(--deny); }
+
+  .reply { margin:0 24px 22px; border-radius:10px; padding:14px 16px 14px 18px; max-width:76ch; }
+  .reply.app { background:var(--ok-c); box-shadow:inset 4px 0 0 var(--ok); }
+  .reply.den { background:var(--err-c); box-shadow:inset 4px 0 0 var(--err); }
+  .reply .rh { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    margin-bottom:6px; }
+  .reply.app .rh { color:var(--ok); } .reply.den .rh { color:var(--deny); }
+  .reply p { margin:0; font-size:14px; line-height:1.55; }
+
+  .compose { border:1px solid var(--line); border-radius:12px; overflow:hidden;
+    margin:20px 24px; max-width:76ch; }
+  .compose.focus { border-color:var(--primary); box-shadow:0 0 0 1px var(--primary); }
+  .compose .ta { padding:14px 16px; min-height:150px; color:#9AA5AF; font-size:15px;
+    line-height:1.55; }
+  .compose .cbar { display:flex; align-items:center; gap:10px; padding:10px 14px;
+    background:var(--alt); border-top:1px solid var(--line); }
+  .compose .count { color:var(--muted); font-size:12px; margin-right:auto; }
+  .compose .count b { color:var(--ink); font-weight:600; }
+
+  .blank { flex:1; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; text-align:center; padding:40px; }
+  .blank h3 { font-size:18px; margin:0 0 8px; font-weight:700; }
+  .blank p { color:var(--muted); max-width:56ch; margin:0 0 18px; }
+
+  .stage { display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; }
+  .phone { width:375px; border:8px solid var(--ink); border-radius:30px; overflow:hidden;
+    background:var(--page); height:700px; display:flex; flex-direction:column; }
+  .phlab { font-size:11px; color:var(--muted); text-align:center; margin-top:7px; width:375px; }
+  .bar { padding:12px 14px; border-bottom:1px solid var(--line); display:flex;
+    align-items:center; gap:9px; font-weight:700; font-size:16px; flex:none; }
+  .bar .back { color:var(--primary); font-weight:500; font-size:14px; }
+  .bar .act { margin-left:auto; color:var(--primary); font-weight:600; font-size:14px; }
+  .scroll { overflow:auto; flex:1; }
+  .seg { display:flex; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line); }
+  .seg span { flex:1; text-align:center; padding:8px 6px; border-radius:999px;
+    border:1px solid var(--line); font-size:13px; font-weight:600; color:var(--muted);
+    min-height:40px; display:flex; align-items:center; justify-content:center; }
+  .seg span.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .pfoot { flex:none; border-top:1px solid var(--line); background:var(--alt); padding:11px 14px;
+    display:flex; gap:8px; align-items:center; }
+  .pfoot .why { color:var(--muted); font-size:12px; }
+&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div class=&quot;app&quot;&gt;
+  &lt;header class=&quot;picker&quot;&gt;
+    
+    &lt;h1&gt;Suggestions &amp;mdash; 2 &amp;middot; What happened to what you sent&lt;/h1&gt;
+  &lt;/header&gt;
+
+  &lt;h2 class=&quot;viewlab&quot;&gt;Desktop &amp;mdash; a denied one open, so the reviewer&#x27;s words are in full&lt;/h2&gt;
+  &lt;div id=&quot;denied&quot;&gt;&lt;/div&gt;
+
+  &lt;h2 class=&quot;viewlab&quot;&gt;Desktop &amp;mdash; the New one open, which is the only one you can still change&lt;/h2&gt;
+  &lt;div id=&quot;fresh&quot;&gt;&lt;/div&gt;
+
+  &lt;h2 class=&quot;viewlab&quot;&gt;Desktop &amp;mdash; the one being read, which is frozen but not answered&lt;/h2&gt;
+  &lt;div id=&quot;reviewing&quot;&gt;&lt;/div&gt;
+
+  &lt;h2 class=&quot;viewlab&quot;&gt;Desktop &amp;mdash; the first visit&lt;/h2&gt;
+  &lt;div id=&quot;empty&quot;&gt;&lt;/div&gt;
+
+  &lt;h2 class=&quot;viewlab&quot;&gt;375px &amp;mdash; designed for the phone, not narrowed&lt;/h2&gt;
+  &lt;div class=&quot;stage&quot; id=&quot;mobile&quot;&gt;&lt;/div&gt;
+&lt;/div&gt;
+
+&lt;script&gt;
+const MINE = [
+  { id:1, st:&#x27;new&#x27;, sent:&#x27;Sent today, 9:12am&#x27;, short:&#x27;today&#x27;,
+    body:&quot;Techs get the address on the job card but not the gate code or the dog, so half of them ring the office from the driveway. The access notes are already on the customer -- could they ride along on the job card the way the phone number does?&quot; },
+  { id:2, st:&#x27;approved&#x27;, sent:&#x27;Sent 28 August&#x27;, ans:&#x27;1 September&#x27;, short:&#x27;28 Aug&#x27;,
+    body:&quot;Let a tech mark a van out of service from their phone. Right now they ring the office, the office means to write it down, and dispatch finds out by sending somebody to a van that is up on a lift.&quot;,
+    note:&quot;Agreed, and it is going into Fleet next. A tech with fleet access will be able to put a vehicle out of service from the phone, with a reason, and dispatch will see it on the board before they assign anything to it. Thank you for the example -- the lift is the part that made the case.&quot; },
+  { id:3, st:&#x27;reviewing&#x27;, sent:&#x27;Sent 26 August&#x27;, short:&#x27;26 Aug&#x27;,
+    body:&quot;When the same customer rings twice in a day we get two entries in the call list and no way to tell it is one job. Could repeat calls from a number group together for the day?&quot; },
+  { id:4, st:&#x27;denied&#x27;, sent:&#x27;Sent 12 August&#x27;, ans:&#x27;19 August&#x27;, short:&#x27;12 Aug&#x27;,
+    body:&quot;Could the job list refresh itself every thirty seconds so I am not pressing reload all morning?&quot;,
+    note:&quot;Not this one, and the reason is the moving list rather than the idea. A list that reloads under you moves the row you were about to click, and dispatch is the one screen in this app where that costs a real appointment. What we would rather build is a quiet line at the top saying three jobs have changed, which you press when you are ready. That is on the list; this exact request is not.&quot; }
+];
+
+const LABEL = { new:&#x27;New&#x27;, reviewing:&#x27;In review&#x27;, approved:&#x27;Approved&#x27;, denied:&#x27;Denied&#x27; };
+const CLS   = { new:&#x27;s-new&#x27;, reviewing:&#x27;s-rev&#x27;, approved:&#x27;s-app&#x27;, denied:&#x27;s-den&#x27; };
+const FROZEN = {
+  reviewing:&#x27;Somebody at EzBizi is reading this one, so it is fixed while they do. Send another if there is more to say.&#x27;,
+  approved:&#x27;This one has been answered, so it stays as it was written. Send another if there is more to say.&#x27;,
+  denied:&#x27;This one has been answered, so it stays as it was written. Send another if there is more to say.&#x27;
+};
+
+const SIDE = `
+  &lt;nav class=&quot;side&quot;&gt;
+    &lt;div class=&quot;brand&quot;&gt;&lt;i&gt;Ez&lt;/i&gt;Bizi&lt;/div&gt;
+    &lt;a&gt;Dashboard&lt;/a&gt;&lt;a&gt;Customers&lt;/a&gt;&lt;a&gt;Jobs&lt;/a&gt;&lt;a&gt;Scheduling&lt;/a&gt;&lt;a&gt;Phone&lt;/a&gt;&lt;a&gt;Fleet&lt;/a&gt;
+    &lt;a&gt;Human Resources&lt;/a&gt;
+    &lt;div class=&quot;tail&quot;&gt;&lt;a class=&quot;on&quot;&gt;Suggestions&lt;/a&gt;&lt;a&gt;Settings&lt;/a&gt;&lt;/div&gt;
+    &lt;div class=&quot;staff&quot;&gt;&lt;a&gt;Development&lt;/a&gt;&lt;/div&gt;
+  &lt;/nav&gt;`;
+
+const HEAD = `
+  &lt;div class=&quot;paneHead&quot;&gt;
+    &lt;h2&gt;Suggestions&lt;/h2&gt;
+    &lt;p&gt;Tell EzBizi what the software should do differently. Only you and EzBizi staff can read
+      what you write here &amp;mdash; nobody at your own organization can.&lt;/p&gt;
+  &lt;/div&gt;`;
+
+const trim = (t, n) =&gt; t.length &gt; n ? t.slice(0, n) + &#x27;&amp;hellip;&#x27; : t;
+
+const railRow = (s, sel) =&gt; `
+  &lt;div class=&quot;r${sel === s.id ? &#x27; on&#x27; : &#x27;&#x27;}&quot;&gt;
+    &lt;div class=&quot;rt&quot;&gt;&lt;span class=&quot;pill ${CLS[s.st]}&quot;&gt;${LABEL[s.st]}&lt;/span&gt;
+      &lt;span class=&quot;rw&quot;&gt;${s.short}&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;rb&quot;&gt;${trim(s.body, 96)}&lt;/div&gt;
+    ${s.st === &#x27;new&#x27;
+      ? &#x27;&lt;div class=&quot;rm&quot; style=&quot;color:var(--primary)&quot;&gt;You can still change this one&lt;/div&gt;&#x27; : &#x27;&#x27;}
+    ${s.note ? `&lt;div class=&quot;rm&quot; style=&quot;color:${s.st === &#x27;approved&#x27; ? &#x27;var(--ok)&#x27; : &#x27;var(--deny)&#x27;}&quot;&gt;
+        EzBizi answered &amp;middot; ${s.ans}&lt;/div&gt;` : &#x27;&#x27;}
+  &lt;/div&gt;`;
+
+const rail = (sel) =&gt; `
+  &lt;div class=&quot;rail&quot;&gt;
+    &lt;div class=&quot;railTop&quot;&gt;&lt;button class=&quot;btn wide&quot; type=&quot;button&quot;&gt;Write a suggestion&lt;/button&gt;&lt;/div&gt;
+    &lt;div class=&quot;grph&quot;&gt;Waiting on EzBizi &amp;middot; 2&lt;/div&gt;
+    ${MINE.filter(s =&gt; s.st === &#x27;new&#x27; || s.st === &#x27;reviewing&#x27;).map(s =&gt; railRow(s, sel)).join(&#x27;&#x27;)}
+    &lt;div class=&quot;grph&quot;&gt;Answered &amp;middot; 2&lt;/div&gt;
+    ${MINE.filter(s =&gt; s.note).map(s =&gt; railRow(s, sel)).join(&#x27;&#x27;)}
+  &lt;/div&gt;`;
+
+const detail = (s) =&gt; `
+  &lt;div class=&quot;detail&quot;&gt;
+    &lt;div class=&quot;dHead&quot;&gt;&lt;span class=&quot;pill ${CLS[s.st]}&quot;&gt;${LABEL[s.st]}&lt;/span&gt;
+      &lt;h3&gt;Your suggestion&lt;/h3&gt;&lt;span class=&quot;when&quot;&gt;${s.sent}&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;dBody&quot;&gt;${s.body}&lt;/div&gt;
+    ${s.note ? `&lt;div class=&quot;reply ${s.st === &#x27;approved&#x27; ? &#x27;app&#x27; : &#x27;den&#x27;}&quot;&gt;
+        &lt;div class=&quot;rh&quot;&gt;EzBizi answered &amp;middot; ${s.ans}&lt;/div&gt;&lt;p&gt;${s.note}&lt;/p&gt;&lt;/div&gt;` : &#x27;&#x27;}
+    ${s.st === &#x27;new&#x27;
+      ? `&lt;div class=&quot;dFoot&quot;&gt;&lt;span class=&quot;why&quot;&gt;Nobody has read it yet, so you can still change it
+           or take it back.&lt;/span&gt;
+           &lt;button class=&quot;btn ghost sm&quot; type=&quot;button&quot;&gt;Edit&lt;/button&gt;
+           &lt;button class=&quot;btn ghost sm danger&quot; type=&quot;button&quot;&gt;Withdraw&lt;/button&gt;&lt;/div&gt;`
+      : `&lt;div class=&quot;dFoot&quot;&gt;&lt;span class=&quot;why&quot;&gt;${FROZEN[s.st]}&lt;/span&gt;&lt;/div&gt;`}
+  &lt;/div&gt;`;
+
+const shell = (inner) =&gt; `&lt;div class=&quot;shell&quot;&gt;${SIDE}&lt;div class=&quot;page&quot;&gt;${HEAD}
+  &lt;div class=&quot;split&quot;&gt;${inner}&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;`;
+
+document.getElementById(&#x27;denied&#x27;).innerHTML = shell(rail(4) + detail(MINE[3]));
+document.getElementById(&#x27;fresh&#x27;).innerHTML  = shell(rail(1) + detail(MINE[0]));
+document.getElementById(&#x27;reviewing&#x27;).innerHTML = shell(rail(3) + detail(MINE[2]));
+
+document.getElementById(&#x27;empty&#x27;).innerHTML = shell(`
+  &lt;div class=&quot;rail&quot;&gt;
+    &lt;div class=&quot;railTop&quot;&gt;&lt;button class=&quot;btn wide&quot; type=&quot;button&quot;&gt;Write a suggestion&lt;/button&gt;&lt;/div&gt;
+    &lt;div style=&quot;padding:18px 14px;color:var(--muted);font-size:13px&quot;&gt;Nothing here yet.&lt;/div&gt;
+  &lt;/div&gt;
+  &lt;div class=&quot;detail&quot;&gt;
+    &lt;div class=&quot;blank&quot;&gt;
+      &lt;h3&gt;Tell EzBizi what to do differently&lt;/h3&gt;
+      &lt;p&gt;Anything you would change &amp;mdash; a step that takes too many clicks, a number that is
+        never right, something this app should do and does not. It goes to the people who build
+        EzBizi, and they answer.&lt;/p&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;compose focus&quot; style=&quot;margin-top:0&quot;&gt;
+      &lt;div class=&quot;ta&quot;&gt;What should EzBizi do differently?&lt;/div&gt;
+      &lt;div class=&quot;cbar&quot;&gt;&lt;span class=&quot;count&quot;&gt;&lt;b&gt;0&lt;/b&gt; / 2000&lt;/span&gt;
+        &lt;button class=&quot;btn off&quot; type=&quot;button&quot;&gt;Send it&lt;/button&gt;&lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;`);
+
+const phone = (label, inner) =&gt;
+  `&lt;div&gt;&lt;div class=&quot;phone&quot;&gt;${inner}&lt;/div&gt;&lt;div class=&quot;phlab&quot;&gt;${label}&lt;/div&gt;&lt;/div&gt;`;
+
+const prow = (s) =&gt; `
+  &lt;div style=&quot;padding:13px 16px;border-bottom:1px solid var(--line)&quot;&gt;
+    &lt;div style=&quot;display:flex;gap:8px;align-items:center;margin-bottom:6px&quot;&gt;
+      &lt;span class=&quot;pill ${CLS[s.st]}&quot;&gt;${LABEL[s.st]}&lt;/span&gt;
+      &lt;span style=&quot;margin-left:auto;color:var(--muted);font-size:12px&quot;&gt;${s.short}&lt;/span&gt;&lt;/div&gt;
+    &lt;div style=&quot;font-size:14px;line-height:1.5&quot;&gt;${trim(s.body, 112)}&lt;/div&gt;
+    ${s.st === &#x27;new&#x27; ? `&lt;div style=&quot;margin-top:6px;font-size:12px;font-weight:600;
+      color:var(--primary)&quot;&gt;You can still change this one&lt;/div&gt;` : &#x27;&#x27;}
+    ${s.note ? `&lt;div style=&quot;margin-top:6px;font-size:12px;font-weight:600;color:${
+      s.st === &#x27;approved&#x27; ? &#x27;var(--ok)&#x27; : &#x27;var(--deny)&#x27;}&quot;&gt;EzBizi answered &amp;middot; ${s.ans}&lt;/div&gt;` : &#x27;&#x27;}
+  &lt;/div&gt;`;
+
+document.getElementById(&#x27;mobile&#x27;).innerHTML =
+  phone(&#x27;Waiting &amp;mdash; the two nobody has answered&#x27;, `
+    &lt;div class=&quot;bar&quot;&gt;Suggestions &lt;span class=&quot;act&quot;&gt;Write&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;seg&quot;&gt;&lt;span class=&quot;on&quot;&gt;Waiting &amp;middot; 2&lt;/span&gt;&lt;span&gt;Answered &amp;middot; 2&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;scroll&quot;&gt;
+      ${MINE.filter(s =&gt; !s.note).map(prow).join(&#x27;&#x27;)}
+      &lt;p class=&quot;note&quot; style=&quot;padding:14px 16px&quot;&gt;Only you and EzBizi staff can read these.&lt;/p&gt;
+    &lt;/div&gt;`) +
+  phone(&#x27;The New one &amp;mdash; the footer has both buttons&#x27;, `
+    &lt;div class=&quot;bar&quot;&gt;&lt;span class=&quot;back&quot;&gt;&amp;lsaquo; Waiting&lt;/span&gt; New&lt;/div&gt;
+    &lt;div class=&quot;scroll&quot;&gt;
+      &lt;div style=&quot;padding:16px;font-size:15px;line-height:1.6&quot;&gt;${MINE[0].body}&lt;/div&gt;
+      &lt;div style=&quot;padding:0 16px;color:var(--muted);font-size:12px&quot;&gt;Sent today, 9:12am&lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;pfoot&quot; style=&quot;flex-direction:column;align-items:stretch;gap:9px&quot;&gt;
+      &lt;span class=&quot;why&quot;&gt;Nobody has read it yet, so you can still change it or take it back.&lt;/span&gt;
+      &lt;div style=&quot;display:flex;gap:8px&quot;&gt;
+        &lt;button class=&quot;btn ghost&quot; style=&quot;flex:1&quot; type=&quot;button&quot;&gt;Edit&lt;/button&gt;
+        &lt;button class=&quot;btn ghost danger&quot; style=&quot;flex:1&quot; type=&quot;button&quot;&gt;Withdraw&lt;/button&gt;&lt;/div&gt;
+    &lt;/div&gt;`) +
+  phone(&#x27;An answered one &amp;mdash; the same footer, no buttons&#x27;, `
+    &lt;div class=&quot;bar&quot;&gt;&lt;span class=&quot;back&quot;&gt;&amp;lsaquo; Answered&lt;/span&gt; Approved&lt;/div&gt;
+    &lt;div class=&quot;scroll&quot;&gt;
+      &lt;div style=&quot;padding:16px;font-size:15px;line-height:1.6&quot;&gt;${MINE[1].body}&lt;/div&gt;
+      &lt;div style=&quot;padding:0 16px 16px;color:var(--muted);font-size:12px&quot;&gt;Sent 28 August&lt;/div&gt;
+      &lt;div class=&quot;reply app&quot; style=&quot;margin:0 16px 16px&quot;&gt;
+        &lt;div class=&quot;rh&quot;&gt;EzBizi answered &amp;middot; 1 September&lt;/div&gt;&lt;p&gt;${MINE[1].note}&lt;/p&gt;&lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;pfoot&quot;&gt;&lt;span class=&quot;why&quot;&gt;${FROZEN.approved}&lt;/span&gt;&lt;/div&gt;`);
+&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+<iframe id="f2" class="" srcdoc="&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;title&gt;EzBizi &amp;mdash; Suggestions, layout 3&lt;/title&gt;
+&lt;style&gt;
+  :root {
+    /* PROVENANCE, because a mockup that says &quot;the real palette&quot; has to mean it.
+       Everything marked (theme) is measured from client/lib/core/theme.dart via
+       EzBiziTheme.light() -- not eyeballed, and nothing invented for this file.
+       What is NOT a theme token is listed at the bottom of this block, in full. */
+    --cyan:#00AEEF;     /* (theme) EzBiziTheme.accent -- brand fills carrying no text */
+    --primary:#00708F;  /* (theme) light colorScheme.primary (_cyanDeep), 5.7:1 on white */
+    --ink:#060808;      /* (theme) _ink */
+    --muted:#5B6672;    /* (theme) _muted */
+    --line:#E9EDF1;     /* (theme) EzBiziTheme.edge, light */
+    --alt:#F5F8FA;      /* (theme) _surfaceAlt */
+    --page:#fff;        /* (theme) light colorScheme.surface */
+    --ok:#0B8F5B;       /* (theme) EzBiziTheme.clockIn, light */
+    --err:#E07070;      /* (theme) EzBiziTheme.clockOut, light -- the punch-out coral.
+                           Used here only as a 4px edge and never as text: it is about
+                           3:1 on white and cannot carry a word. */
+    --deny:#BA1A1A;     /* (theme) light colorScheme.error. MEASURED, not guessed --
+                           EzBiziTheme.light().colorScheme.error prints #BA1A1A, and the
+                           same probe confirmed primary #00708F light / #00AEEF dark.
+                           6.5:1 on white and 5.7:1 on --err-c, so it is the one red here
+                           that may be text; it is also the token development_screen.dart
+                           already uses for the control-plane banner. */
+
+    /* NOT theme tokens, and this is the complete list of them.
+       The four container tints are the docs/previews house convention, carried from the
+       galleries already using them, standing in for Material&#x27;s *Container roles, which a
+       flat mockup cannot compute. The app&#x27;s real light errorContainer is #FFDAD6;
+       #FDECEC is the previews&#x27; lighter stand-in, kept so this gallery matches the twenty
+       beside it rather than being the one that looks different. --warn is convention too
+       -- theme.dart carries no amber -- and it is used only in this gallery&#x27;s own header
+       blocks, never in the drawn app. Four greys are mockup furniture and never app
+       colour: #DDE3E8 the gallery page ground, #9AA5AF placeholder text inside a drawn
+       field, #C9D3DB the drawn keyboard slab and the dashed empty-state border, #3F4A55
+       the label printed on that keyboard. */
+    --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 Inter, system-ui, &quot;Segoe UI&quot;, sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1200px; margin:0 auto; padding:16px 16px 48px; }
+
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:20px; margin:0 0 4px; letter-spacing:-.3px; }
+  .chooser { display:flex; flex-wrap:wrap; gap:6px; align-items:center;
+    padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--line);
+    font-size:12px; color:var(--muted); }
+  .chooser .cg { font-weight:700; text-transform:uppercase; letter-spacing:1.2px;
+    font-size:11px; margin-right:2px; }
+  .chooser a { min-width:30px; text-align:center; padding:4px 9px; border-radius:7px;
+    border:1px solid var(--line); color:var(--primary); text-decoration:none; font-weight:600; }
+  .chooser a.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .chooser .sep { width:18px; }
+
+
+  .viewlab { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--muted); margin:26px 0 8px; }
+  .note { color:var(--muted); font-size:12px; margin:10px 0 0; max-width:96ch; }
+  .note b { color:var(--ink); }
+
+  .shell { display:grid; grid-template-columns:220px 1fr; height:680px;
+    background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px;
+    display:flex; flex-direction:column; }
+  nav.side .brand { font-weight:800; letter-spacing:-1px; font-size:20px;
+    margin-bottom:16px; padding:0 8px; }
+  nav.side .brand i { color:var(--cyan); font-style:normal; }
+  nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+    text-decoration:none; margin-bottom:2px; font-size:14px; }
+  nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  nav.side .tail { margin-top:auto; padding-top:10px; border-top:1px solid var(--line); }
+  nav.side .staff { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
+
+  .page { display:flex; flex-direction:column; min-width:0; min-height:0; }
+  .paneHead { padding:16px 24px 12px; border-bottom:1px solid var(--line); flex:none; }
+  .paneHead h2 { font-size:20px; margin:0 0 3px; letter-spacing:-.3px; font-weight:700; }
+  .paneHead p { margin:0; color:var(--muted); font-size:14px; max-width:74ch; }
+
+  .stream { flex:1; overflow:auto; padding:22px 24px 8px; background:var(--alt); min-height:0; }
+  .thread { max-width:820px; margin:0 auto; }
+  .daymark { text-align:center; font-size:11px; font-weight:700; letter-spacing:1.2px;
+    text-transform:uppercase; color:var(--muted); margin:20px 0 12px; }
+  .daymark:first-child { margin-top:0; }
+
+  /* yours: offset right. theirs: offset left. Text stays left-aligned in both --
+     a 2000-character bubble set ragged-left is unreadable. */
+  .mine { margin:0 0 6px 72px; background:var(--page); border:1px solid var(--line);
+    border-radius:14px 14px 4px 14px; padding:13px 16px; }
+  .mine .mb { font-size:15px; line-height:1.6; }
+  .meta { display:flex; align-items:center; gap:8px; margin:0 0 14px 72px;
+    font-size:12px; color:var(--muted); }
+  .meta.tight { margin-bottom:6px; }
+  .acts { display:flex; gap:8px; margin:0 0 16px 72px; }
+
+  .theirs { margin:0 72px 6px 0; border-radius:14px 14px 14px 4px; padding:13px 16px 13px 18px; }
+  .theirs.app { background:var(--ok-c); box-shadow:inset 4px 0 0 var(--ok); }
+  .theirs.den { background:var(--err-c); box-shadow:inset 4px 0 0 var(--err); }
+  .theirs .th { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    margin-bottom:6px; display:flex; align-items:center; gap:8px; }
+  .theirs.app .th { color:var(--ok); } .theirs.den .th { color:var(--deny); }
+  .theirs p { margin:0; font-size:15px; line-height:1.6; }
+  .theirmeta { margin:0 72px 18px 0; font-size:12px; color:var(--muted); }
+
+  .waiting { margin:0 72px 18px 0; border-radius:14px; padding:11px 16px;
+    background:var(--info-c); color:var(--primary); font-size:13px; font-weight:600; }
+
+  .composer { flex:none; border-top:1px solid var(--line); background:var(--page);
+    padding:12px 24px 14px; }
+  .cwrap { max-width:820px; margin:0 auto; border:1px solid var(--line); border-radius:12px;
+    overflow:hidden; }
+  .cwrap.focus { border-color:var(--primary); box-shadow:0 0 0 1px var(--primary); }
+  .cwrap .ta { padding:12px 14px; min-height:72px; color:#9AA5AF; font-size:15px;
+    line-height:1.55; }
+  .cwrap .ta.filled { color:var(--ink); }
+  .cwrap .cbar { display:flex; align-items:center; gap:10px; padding:9px 12px;
+    background:var(--alt); border-top:1px solid var(--line); }
+  .cwrap .count { color:var(--muted); font-size:12px; margin-right:auto; }
+  .cwrap .count b { color:var(--ink); font-weight:600; }
+  .clab { max-width:820px; margin:0 auto 8px; font-size:12px; color:var(--muted); }
+
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:9px;
+    padding:9px 16px; min-height:40px; font-weight:600; }
+  .btn.ghost { background:var(--page); color:var(--primary); border:1px solid var(--line); }
+  .btn.sm { min-height:34px; padding:5px 12px; font-size:13px; }
+  .btn.off { background:var(--page); color:var(--muted); border:1px solid var(--line); }
+  .btn.danger { color:var(--deny); }
+
+  .pill { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    padding:3px 9px; border-radius:999px; background:var(--alt); border:1px solid var(--line);
+    color:var(--muted); white-space:nowrap; }
+  .pill.s-new { background:var(--page); border-color:var(--muted); color:var(--ink); }
+  .pill.s-rev { background:var(--info-c); border-color:transparent; color:var(--primary); }
+
+  .blank { text-align:center; padding:60px 24px 30px; max-width:60ch; margin:0 auto; }
+  .blank h3 { font-size:18px; margin:0 0 8px; font-weight:700; }
+  .blank p { color:var(--muted); margin:0; }
+
+  .stage { display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; }
+  .phone { width:375px; border:8px solid var(--ink); border-radius:30px; overflow:hidden;
+    background:var(--page); height:700px; display:flex; flex-direction:column; }
+  .phlab { font-size:11px; color:var(--muted); text-align:center; margin-top:7px; width:375px; }
+  .bar { padding:12px 14px; border-bottom:1px solid var(--line); display:flex;
+    align-items:center; gap:9px; font-weight:700; font-size:16px; flex:none; }
+  .bar .back { color:var(--primary); font-weight:500; font-size:14px; }
+  .scroll { overflow:auto; flex:1; background:var(--alt); padding:14px 12px; min-height:0; }
+  .kb { flex:none; height:200px; background:#C9D3DB; border-top:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; color:#3F4A55; font-size:12px; }
+  .pcomp { flex:none; border-top:1px solid var(--line); padding:9px 12px; display:flex;
+    gap:8px; align-items:flex-end; background:var(--page); }
+  .pcomp .box { flex:1; border:1px solid var(--line); border-radius:18px; padding:9px 13px;
+    color:#9AA5AF; font-size:15px; min-height:42px; }
+  .pcomp .box.filled { color:var(--ink); border-color:var(--primary); }
+  .pcomp .send { width:42px; height:42px; border-radius:50%; background:var(--primary);
+    color:#fff; border:0; font-weight:700; flex:none; }
+&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div class=&quot;app&quot;&gt;
+  &lt;header class=&quot;picker&quot;&gt;
+    
+    &lt;h1&gt;Suggestions &amp;mdash; 3 &amp;middot; Your correspondence with EzBizi&lt;/h1&gt;
+  &lt;/header&gt;
+
+  &lt;h2 class=&quot;viewlab&quot;&gt;Desktop &amp;mdash; the stream, all four states, scrolled to the bottom&lt;/h2&gt;
+  &lt;div id=&quot;full&quot;&gt;&lt;/div&gt;
+
+  &lt;h2 class=&quot;viewlab&quot;&gt;Desktop &amp;mdash; the first visit&lt;/h2&gt;
+  &lt;div id=&quot;empty&quot;&gt;&lt;/div&gt;
+
+  &lt;h2 class=&quot;viewlab&quot;&gt;375px &amp;mdash; designed for the phone, not narrowed&lt;/h2&gt;
+  &lt;div class=&quot;stage&quot; id=&quot;mobile&quot;&gt;&lt;/div&gt;
+&lt;/div&gt;
+
+&lt;script&gt;
+const MINE = [
+  { st:&#x27;denied&#x27;, sent:&#x27;12 August&#x27;, ans:&#x27;19 August&#x27;,
+    body:&quot;Could the job list refresh itself every thirty seconds so I am not pressing reload all morning?&quot;,
+    note:&quot;Not this one, and the reason is the moving list rather than the idea. A list that reloads under you moves the row you were about to click, and dispatch is the one screen in this app where that costs a real appointment. What we would rather build is a quiet line at the top saying three jobs have changed, which you press when you are ready. That is on the list; this exact request is not.&quot; },
+  { st:&#x27;reviewing&#x27;, sent:&#x27;26 August&#x27;,
+    body:&quot;When the same customer rings twice in a day we get two entries in the call list and no way to tell it is one job. Could repeat calls from a number group together for the day?&quot; },
+  { st:&#x27;approved&#x27;, sent:&#x27;28 August&#x27;, ans:&#x27;1 September&#x27;,
+    body:&quot;Let a tech mark a van out of service from their phone. Right now they ring the office, the office means to write it down, and dispatch finds out by sending somebody to a van that is up on a lift.&quot;,
+    note:&quot;Agreed, and it is going into Fleet next. A tech with fleet access will be able to put a vehicle out of service from the phone, with a reason, and dispatch will see it on the board before they assign anything to it. Thank you for the example -- the lift is the part that made the case.&quot; },
+  { st:&#x27;new&#x27;, sent:&#x27;Today, 9:12am&#x27;,
+    body:&quot;Techs get the address on the job card but not the gate code or the dog, so half of them ring the office from the driveway. The access notes are already on the customer -- could they ride along on the job card the way the phone number does?&quot; }
+];
+
+const exchange = (s) =&gt; `
+  &lt;div class=&quot;daymark&quot;&gt;${s.sent}&lt;/div&gt;
+  &lt;div class=&quot;mine&quot;&gt;&lt;div class=&quot;mb&quot;&gt;${s.body}&lt;/div&gt;&lt;/div&gt;
+  &lt;div class=&quot;meta${s.note || s.st === &#x27;new&#x27; ? &#x27; tight&#x27; : &#x27;&#x27;}&quot;&gt;You &amp;middot; ${s.sent}
+    ${s.st === &#x27;new&#x27; ? &#x27;&lt;span class=&quot;pill s-new&quot;&gt;New&lt;/span&gt;&#x27; : &#x27;&#x27;}
+    ${s.st === &#x27;reviewing&#x27; ? &#x27;&lt;span class=&quot;pill s-rev&quot;&gt;In review&lt;/span&gt;&#x27; : &#x27;&#x27;}&lt;/div&gt;
+  ${s.st === &#x27;new&#x27; ? `
+    &lt;div class=&quot;acts&quot;&gt;
+      &lt;button class=&quot;btn ghost sm&quot; type=&quot;button&quot;&gt;Edit&lt;/button&gt;
+      &lt;button class=&quot;btn ghost sm danger&quot; type=&quot;button&quot;&gt;Withdraw&lt;/button&gt;&lt;/div&gt;
+    &lt;div class=&quot;meta&quot;&gt;Nobody has read it yet, so you can still change it or take it back.&lt;/div&gt;` : &#x27;&#x27;}
+  ${s.st === &#x27;reviewing&#x27; ? `
+    &lt;div class=&quot;waiting&quot;&gt;Somebody at EzBizi is reading this one, so it is fixed while they
+      do.&lt;/div&gt;` : &#x27;&#x27;}
+  ${s.note ? `
+    &lt;div class=&quot;theirs ${s.st === &#x27;approved&#x27; ? &#x27;app&#x27; : &#x27;den&#x27;}&quot;&gt;
+      &lt;div class=&quot;th&quot;&gt;EzBizi &amp;middot; ${s.st === &#x27;approved&#x27; ? &#x27;Approved&#x27; : &#x27;Denied&#x27;}&lt;/div&gt;
+      &lt;p&gt;${s.note}&lt;/p&gt;&lt;/div&gt;
+    &lt;div class=&quot;theirmeta&quot;&gt;${s.ans} &amp;middot; This one has been answered, so it stays as it was
+      written. Send another if there is more to say.&lt;/div&gt;` : &#x27;&#x27;}`;
+
+const SIDE = `
+  &lt;nav class=&quot;side&quot;&gt;
+    &lt;div class=&quot;brand&quot;&gt;&lt;i&gt;Ez&lt;/i&gt;Bizi&lt;/div&gt;
+    &lt;a&gt;Dashboard&lt;/a&gt;&lt;a&gt;Customers&lt;/a&gt;&lt;a&gt;Jobs&lt;/a&gt;&lt;a&gt;Scheduling&lt;/a&gt;&lt;a&gt;Phone&lt;/a&gt;&lt;a&gt;Fleet&lt;/a&gt;
+    &lt;a&gt;Human Resources&lt;/a&gt;
+    &lt;div class=&quot;tail&quot;&gt;&lt;a class=&quot;on&quot;&gt;Suggestions&lt;/a&gt;&lt;a&gt;Settings&lt;/a&gt;&lt;/div&gt;
+    &lt;div class=&quot;staff&quot;&gt;&lt;a&gt;Development&lt;/a&gt;&lt;/div&gt;
+  &lt;/nav&gt;`;
+
+const HEAD = `
+  &lt;div class=&quot;paneHead&quot;&gt;
+    &lt;h2&gt;Suggestions&lt;/h2&gt;
+    &lt;p&gt;Tell EzBizi what the software should do differently. Only you and EzBizi staff can read
+      what you write here &amp;mdash; nobody at your own organization can.&lt;/p&gt;
+  &lt;/div&gt;`;
+
+const composer = (filled) =&gt; `
+  &lt;div class=&quot;composer&quot;&gt;
+    &lt;div class=&quot;clab&quot;&gt;Send EzBizi another suggestion&lt;/div&gt;
+    &lt;div class=&quot;cwrap${filled ? &#x27; focus&#x27; : &#x27;&#x27;}&quot;&gt;
+      &lt;div class=&quot;ta&quot;&gt;What should EzBizi do differently?&lt;/div&gt;
+      &lt;div class=&quot;cbar&quot;&gt;&lt;span class=&quot;count&quot;&gt;&lt;b&gt;0&lt;/b&gt; / 2000&lt;/span&gt;
+        &lt;button class=&quot;btn off&quot; type=&quot;button&quot;&gt;Send it&lt;/button&gt;&lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;`;
+
+const shell = (inner) =&gt; `&lt;div class=&quot;shell&quot;&gt;${SIDE}&lt;div class=&quot;page&quot;&gt;${HEAD}${inner}&lt;/div&gt;&lt;/div&gt;`;
+
+document.getElementById(&#x27;full&#x27;).innerHTML = shell(`
+  &lt;div class=&quot;stream&quot;&gt;&lt;div class=&quot;thread&quot;&gt;${MINE.map(exchange).join(&#x27;&#x27;)}&lt;/div&gt;&lt;/div&gt;
+  ${composer(false)}`);
+
+// A stream opens at the bottom, where the newest thing is. Done here so the drawing
+// shows what somebody actually meets: the New one, with its two buttons.
+const toBottom = () =&gt; document.querySelectorAll(&#x27;#full .stream&#x27;)
+  .forEach(s =&gt; { s.scrollTop = s.scrollHeight; });
+toBottom();
+window.addEventListener(&#x27;load&#x27;, toBottom);
+setTimeout(toBottom, 120);
+
+document.getElementById(&#x27;empty&#x27;).innerHTML = shell(`
+  &lt;div class=&quot;stream&quot;&gt;&lt;div class=&quot;blank&quot;&gt;
+    &lt;h3&gt;Nothing here yet&lt;/h3&gt;
+    &lt;p&gt;Anything you would change &amp;mdash; a step that takes too many clicks, a number that is never
+      right, something this app should do and does not. Write it below. It goes to the people who
+      build EzBizi, and they answer.&lt;/p&gt;
+  &lt;/div&gt;&lt;/div&gt;
+  ${composer(true)}`);
+
+const phone = (label, inner) =&gt;
+  `&lt;div&gt;&lt;div class=&quot;phone&quot;&gt;${inner}&lt;/div&gt;&lt;div class=&quot;phlab&quot;&gt;${label}&lt;/div&gt;&lt;/div&gt;`;
+
+const pex = (s) =&gt; `
+  &lt;div style=&quot;text-align:center;font-size:11px;font-weight:700;letter-spacing:1.2px;
+    text-transform:uppercase;color:var(--muted);margin:14px 0 10px&quot;&gt;${s.sent}&lt;/div&gt;
+  &lt;div style=&quot;margin-left:36px;background:var(--page);border:1px solid var(--line);
+    border-radius:14px 14px 4px 14px;padding:11px 13px;font-size:15px;line-height:1.55&quot;&gt;
+    ${s.body}&lt;/div&gt;
+  &lt;div style=&quot;margin:5px 0 10px 36px;font-size:12px;color:var(--muted)&quot;&gt;You
+    ${s.st === &#x27;new&#x27; ? &#x27;&amp;middot; &lt;b style=&quot;color:var(--ink)&quot;&gt;New&lt;/b&gt;&#x27; : &#x27;&#x27;}
+    ${s.st === &#x27;reviewing&#x27; ? &#x27;&amp;middot; &lt;b style=&quot;color:var(--primary)&quot;&gt;In review&lt;/b&gt;&#x27; : &#x27;&#x27;}&lt;/div&gt;
+  ${s.st === &#x27;new&#x27; ? `&lt;div style=&quot;display:flex;gap:8px;margin:0 0 6px 36px&quot;&gt;
+      &lt;button class=&quot;btn ghost sm&quot; type=&quot;button&quot;&gt;Edit&lt;/button&gt;
+      &lt;button class=&quot;btn ghost sm danger&quot; type=&quot;button&quot;&gt;Withdraw&lt;/button&gt;&lt;/div&gt;
+    &lt;div style=&quot;margin:0 0 12px 36px;font-size:12px;color:var(--muted)&quot;&gt;Nobody has read it yet,
+      so you can still change it.&lt;/div&gt;` : &#x27;&#x27;}
+  ${s.st === &#x27;reviewing&#x27; ? `&lt;div style=&quot;margin:0 36px 12px 0;background:var(--info-c);
+      color:var(--primary);border-radius:14px;padding:10px 13px;font-size:13px;font-weight:600&quot;&gt;
+      Somebody at EzBizi is reading this one, so it is fixed while they do.&lt;/div&gt;` : &#x27;&#x27;}
+  ${s.note ? `&lt;div class=&quot;theirs ${s.st === &#x27;approved&#x27; ? &#x27;app&#x27; : &#x27;den&#x27;}&quot;
+      style=&quot;margin:0 36px 5px 0;padding:11px 13px 11px 15px&quot;&gt;
+      &lt;div class=&quot;th&quot;&gt;EzBizi &amp;middot; ${s.st === &#x27;approved&#x27; ? &#x27;Approved&#x27; : &#x27;Denied&#x27;}&lt;/div&gt;
+      &lt;p style=&quot;font-size:14px&quot;&gt;${s.note}&lt;/p&gt;&lt;/div&gt;
+    &lt;div style=&quot;margin:0 36px 12px 0;font-size:12px;color:var(--muted)&quot;&gt;${s.ans} &amp;middot; it stays
+      as it was written. Send another if there is more to say.&lt;/div&gt;` : &#x27;&#x27;}`;
+
+document.getElementById(&#x27;mobile&#x27;).innerHTML =
+  phone(&#x27;The stream, composer docked at the bottom&#x27;, `
+    &lt;div class=&quot;bar&quot;&gt;Suggestions&lt;/div&gt;
+    &lt;div class=&quot;scroll&quot;&gt;${MINE.slice(1).map(pex).join(&#x27;&#x27;)}&lt;/div&gt;
+    &lt;div class=&quot;pcomp&quot;&gt;&lt;div class=&quot;box&quot;&gt;Send another suggestion&lt;/div&gt;
+      &lt;button class=&quot;send&quot; type=&quot;button&quot;&gt;&amp;uarr;&lt;/button&gt;&lt;/div&gt;`) +
+  phone(&#x27;Typing &amp;mdash; the composer rides on the keyboard&#x27;, `
+    &lt;div class=&quot;bar&quot;&gt;Suggestions&lt;/div&gt;
+    &lt;div class=&quot;scroll&quot;&gt;${pex(MINE[3])}&lt;/div&gt;
+    &lt;div class=&quot;pcomp&quot;&gt;&lt;div class=&quot;box filled&quot;&gt;Also, could the gate code show on the map pin
+      &amp;mdash;&lt;/div&gt;&lt;button class=&quot;send&quot; type=&quot;button&quot;&gt;&amp;uarr;&lt;/button&gt;&lt;/div&gt;
+    &lt;div class=&quot;kb&quot;&gt;the keyboard &amp;mdash; the box and Send sit on top of it&lt;/div&gt;`);
+&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+<iframe id="f3" class="" srcdoc="&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;title&gt;EzBizi &amp;mdash; Development &amp;rsaquo; Suggestions, layout 1&lt;/title&gt;
+&lt;style&gt;
+  :root {
+    /* PROVENANCE, because a mockup that says &quot;the real palette&quot; has to mean it.
+       Everything marked (theme) is measured from client/lib/core/theme.dart via
+       EzBiziTheme.light() -- not eyeballed, and nothing invented for this file.
+       What is NOT a theme token is listed at the bottom of this block, in full. */
+    --cyan:#00AEEF;     /* (theme) EzBiziTheme.accent -- brand fills carrying no text */
+    --primary:#00708F;  /* (theme) light colorScheme.primary (_cyanDeep), 5.7:1 on white */
+    --ink:#060808;      /* (theme) _ink */
+    --muted:#5B6672;    /* (theme) _muted */
+    --line:#E9EDF1;     /* (theme) EzBiziTheme.edge, light */
+    --alt:#F5F8FA;      /* (theme) _surfaceAlt */
+    --page:#fff;        /* (theme) light colorScheme.surface */
+    --ok:#0B8F5B;       /* (theme) EzBiziTheme.clockIn, light */
+    --err:#E07070;      /* (theme) EzBiziTheme.clockOut, light -- the punch-out coral.
+                           Used here only as a 4px edge and never as text: it is about
+                           3:1 on white and cannot carry a word. */
+    --deny:#BA1A1A;     /* (theme) light colorScheme.error. MEASURED, not guessed --
+                           EzBiziTheme.light().colorScheme.error prints #BA1A1A, and the
+                           same probe confirmed primary #00708F light / #00AEEF dark.
+                           6.5:1 on white and 5.7:1 on --err-c, so it is the one red here
+                           that may be text; it is also the token development_screen.dart
+                           already uses for the control-plane banner. */
+
+    /* NOT theme tokens, and this is the complete list of them.
+       The four container tints are the docs/previews house convention, carried from the
+       galleries already using them, standing in for Material&#x27;s *Container roles, which a
+       flat mockup cannot compute. The app&#x27;s real light errorContainer is #FFDAD6;
+       #FDECEC is the previews&#x27; lighter stand-in, kept so this gallery matches the twenty
+       beside it rather than being the one that looks different. --warn is convention too
+       -- theme.dart carries no amber -- and it is used only in this gallery&#x27;s own header
+       blocks, never in the drawn app. Four greys are mockup furniture and never app
+       colour: #DDE3E8 the gallery page ground, #9AA5AF placeholder text inside a drawn
+       field, #C9D3DB the drawn keyboard slab and the dashed empty-state border, #3F4A55
+       the label printed on that keyboard. */
+    --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 Inter, system-ui, &quot;Segoe UI&quot;, sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1280px; margin:0 auto; padding:16px 16px 48px; }
+
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:20px; margin:0 0 4px; letter-spacing:-.3px; }
+  .chooser { display:flex; flex-wrap:wrap; gap:6px; align-items:center;
+    padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--line);
+    font-size:12px; color:var(--muted); }
+  .chooser .cg { font-weight:700; text-transform:uppercase; letter-spacing:1.2px;
+    font-size:11px; margin-right:2px; }
+  .chooser a { min-width:30px; text-align:center; padding:4px 9px; border-radius:7px;
+    border:1px solid var(--line); color:var(--primary); text-decoration:none; font-weight:600; }
+  .chooser a.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .chooser .sep { width:18px; }
+
+
+  .viewlab { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--muted); margin:26px 0 8px; }
+  .note { color:var(--muted); font-size:12px; margin:10px 0 0; max-width:98ch; }
+  .note b { color:var(--ink); }
+
+  .shell { display:grid; grid-template-columns:220px 1fr;
+    background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px;
+    display:flex; flex-direction:column; }
+  nav.side .brand { font-weight:800; letter-spacing:-1px; font-size:20px;
+    margin-bottom:16px; padding:0 8px; }
+  nav.side .brand i { color:var(--cyan); font-style:normal; }
+  nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+    text-decoration:none; margin-bottom:2px; font-size:14px; }
+  nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  nav.side .tail { margin-top:auto; padding-top:10px; border-top:1px solid var(--line); }
+  nav.side .staff { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
+
+  .page { display:flex; flex-direction:column; min-width:0; }
+  .devbar { background:var(--err-c); color:var(--deny); font-size:12px; padding:8px 20px; }
+  .tabs { display:flex; flex-wrap:wrap; gap:8px; padding:10px 16px;
+    border-bottom:1px solid var(--line); }
+  .tabs span { padding:7px 13px; border-radius:999px; border:1px solid var(--line);
+    background:var(--page); color:var(--muted); font-size:13px; }
+  .tabs span.on { background:var(--primary); color:#fff; border-color:var(--primary);
+    font-weight:600; }
+  .body { padding:16px 20px 24px; }
+
+  .qhead { display:flex; align-items:baseline; gap:10px; margin-bottom:12px; }
+  .qhead h2 { font-size:18px; margin:0; font-weight:700; }
+  .qhead p { margin:0; color:var(--muted); font-size:13px; }
+
+  .band { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--muted); margin:20px 0 7px; display:flex; align-items:center; gap:8px; }
+  .band:first-of-type { margin-top:0; }
+  .band .ct { background:var(--alt); border:1px solid var(--line); border-radius:999px;
+    padding:1px 8px; letter-spacing:0; }
+
+  table.q { width:100%; border-collapse:collapse; border:1px solid var(--line);
+    border-radius:10px; overflow:hidden; }
+  table.q th { background:var(--alt); color:var(--muted); font-size:11px; font-weight:700;
+    letter-spacing:1.2px; text-transform:uppercase; text-align:left; padding:9px 12px;
+    border-bottom:1px solid var(--line); }
+  table.q td { padding:11px 12px; border-bottom:1px solid var(--line); vertical-align:top;
+    font-size:13px; }
+  table.q tr:last-child td { border-bottom:0; }
+  .who b { display:block; font-size:14px; font-weight:600; }
+  .who span { color:var(--muted); font-size:12px; }
+  .txt { line-height:1.5; }
+  .when { color:var(--muted); font-size:12px; white-space:nowrap; }
+  .rowact { text-align:right; white-space:nowrap; }
+  tr.open td { background:var(--info-c); }
+  tr.open td.exp { background:var(--page); }
+
+  .exp { padding:0 !important; }
+  .expin { border-top:1px solid var(--line); padding:16px 18px 18px;
+    box-shadow:inset 3px 0 0 var(--primary); }
+  .full { font-size:15px; line-height:1.6; max-width:82ch; margin-bottom:16px; }
+  .decide { border:1px solid var(--line); border-radius:10px; overflow:hidden; max-width:82ch; }
+  .decide .dh { background:var(--alt); border-bottom:1px solid var(--line); padding:9px 13px;
+    font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--muted); }
+  .decide .din { padding:13px; }
+  .decide label { display:block; font-size:14px; font-weight:600; margin-bottom:5px; }
+  .decide .hint { color:var(--muted); font-size:12px; margin:0 0 8px; }
+  .ta { border:1px solid var(--line); border-radius:9px; padding:11px 13px; min-height:78px;
+    color:#9AA5AF; font-size:14px; line-height:1.55; background:var(--page); }
+  .ta.filled { color:var(--ink); }
+  .ta.bad { border-color:var(--err); box-shadow:0 0 0 1px var(--err); }
+  .errline { color:var(--deny); font-size:13px; font-weight:600; margin-top:7px; }
+  .cnt { color:var(--muted); font-size:12px; margin-top:6px; }
+  .acts { display:flex; align-items:center; gap:8px; margin-top:13px; flex-wrap:wrap; }
+  .acts .sp { margin-left:auto; }
+
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:9px;
+    padding:9px 16px; min-height:40px; font-weight:600; }
+  .btn.ghost { background:var(--page); color:var(--primary); border:1px solid var(--line); }
+  .btn.sm { min-height:34px; padding:5px 12px; font-size:13px; }
+  .btn.ok { background:var(--ok); }
+  .btn.no { background:var(--page); color:var(--deny); border:1px solid var(--deny); }
+  .btn.plain { background:var(--page); color:var(--ink); border:1px solid var(--line); }
+
+  .pill { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    padding:3px 9px; border-radius:999px; background:var(--alt); border:1px solid var(--line);
+    color:var(--muted); white-space:nowrap; }
+  .pill.s-new { background:var(--page); border-color:var(--muted); color:var(--ink); }
+  .pill.s-rev { background:var(--info-c); border-color:transparent; color:var(--primary); }
+  .pill.s-app { background:var(--ok-c); border-color:transparent; color:var(--ok); }
+  .pill.s-den { background:var(--err-c); border-color:transparent; color:var(--deny); }
+  .ansline { margin-top:7px; font-size:12px; color:var(--muted); max-width:80ch; }
+  .ansline b { color:var(--ink); }
+
+  .stage { display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; }
+  .phone { width:375px; border:8px solid var(--ink); border-radius:30px; overflow:hidden;
+    background:var(--page); height:720px; display:flex; flex-direction:column; }
+  .phlab { font-size:11px; color:var(--muted); text-align:center; margin-top:7px; width:375px; }
+  .bar { padding:12px 14px; border-bottom:1px solid var(--line); display:flex;
+    align-items:center; gap:9px; font-weight:700; font-size:16px; flex:none; }
+  .bar .back { color:var(--primary); font-weight:500; font-size:14px; }
+  .scroll { overflow:auto; flex:1; min-height:0; }
+  .kb { flex:none; height:190px; background:#C9D3DB; border-top:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; color:#3F4A55; font-size:12px; }
+  .pfoot { flex:none; border-top:1px solid var(--line); background:var(--alt); padding:10px 12px;
+    display:flex; gap:8px; }
+  .wrapdemo span { display:inline-block; }
+&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div class=&quot;app&quot;&gt;
+  &lt;header class=&quot;picker&quot;&gt;
+    
+    &lt;h1&gt;Development &amp;rsaquo; Suggestions &amp;mdash; 1 &amp;middot; A worklist you go down&lt;/h1&gt;
+  &lt;/header&gt;
+
+  &lt;h2 class=&quot;viewlab&quot;&gt;Desktop &amp;mdash; the queue, with one row open to be answered&lt;/h2&gt;
+  &lt;div id=&quot;main&quot;&gt;&lt;/div&gt;
+
+  &lt;h2 class=&quot;viewlab&quot;&gt;Desktop &amp;mdash; Deny pressed with an empty note, and refused&lt;/h2&gt;
+  &lt;div id=&quot;refused&quot;&gt;&lt;/div&gt;
+
+  &lt;h2 class=&quot;viewlab&quot;&gt;375px &amp;mdash; designed for the phone, not narrowed&lt;/h2&gt;
+  &lt;div class=&quot;stage&quot; id=&quot;mobile&quot;&gt;&lt;/div&gt;
+&lt;/div&gt;
+
+&lt;script&gt;
+const ROWS = [
+  { st:&#x27;new&#x27;, org:&#x27;A-1 Chimney&#x27;, who:&#x27;Marisol Ortega&#x27;, sent:&#x27;Today, 9:12am&#x27;,
+    body:&quot;Techs get the address on the job card but not the gate code or the dog, so half of them ring the office from the driveway. The access notes are already on the customer -- could they ride along on the job card the way the phone number does?&quot; },
+  { st:&#x27;new&#x27;, org:&#x27;Bluepoint HVAC&#x27;, who:&#x27;Ray Nakashima&#x27;, sent:&#x27;Today, 7:40am&#x27;,
+    body:&quot;Our techs cover two counties and the day sorts by appointment time, so a van crosses the river twice before lunch. Could a day be ordered by drive time and still keep the windows we promised?&quot; },
+  { st:&#x27;new&#x27;, org:&#x27;Kearny Fireplace &amp; Stove&#x27;, who:&#x27;Karen Boyle&#x27;, sent:&#x27;Yesterday, 4:55pm&#x27;,
+    body:&quot;The estimate PDF says Quote across the top and customers keep ringing to ask whether it is a bill. Could that word be ours to set?&quot; },
+  { st:&#x27;reviewing&#x27;, org:&#x27;A-1 Chimney&#x27;, who:&#x27;Marisol Ortega&#x27;, sent:&#x27;26 August&#x27;,
+    body:&quot;When the same customer rings twice in a day we get two entries in the call list and no way to tell it is one job. Could repeat calls from a number group together for the day?&quot; },
+  { st:&#x27;reviewing&#x27;, org:&#x27;Hearth &amp; Home Services&#x27;, who:&#x27;Priya Raghunathan&#x27;, sent:&#x27;24 August&#x27;,
+    body:&quot;Inspection photos upload one at a time and the tech sits in the driveway waiting for a bar of signal. Could they queue and send themselves when there is service?&quot; },
+  { st:&#x27;approved&#x27;, org:&#x27;A-1 Chimney&#x27;, who:&#x27;Marisol Ortega&#x27;, sent:&#x27;28 August&#x27;, ans:&#x27;1 September&#x27;,
+    body:&quot;Let a tech mark a van out of service from their phone. Right now they ring the office, the office means to write it down, and dispatch finds out by sending somebody to a van that is up on a lift.&quot;,
+    note:&quot;Agreed, and it is going into Fleet next. A tech with fleet access will be able to put a vehicle out of service from the phone, with a reason, and dispatch will see it on the board before they assign anything to it.&quot; },
+  { st:&#x27;approved&#x27;, org:&#x27;A-1 Chimney&#x27;, who:&#x27;Tommy Delgado&#x27;, sent:&#x27;20 August&#x27;, ans:&#x27;22 August&#x27;,
+    body:&quot;Put the date of the last inspection on the customer card. We ask on the phone and then go and look it up anyway.&quot;,
+    note:&quot;Done -- it lands with the next client build. The card shows the last completed inspection and its date, and the date links to the report.&quot; },
+  { st:&#x27;denied&#x27;, org:&#x27;Summit Air Mechanical&#x27;, who:&#x27;Angela Ruiz&#x27;, sent:&#x27;12 August&#x27;, ans:&#x27;19 August&#x27;,
+    body:&quot;Could we text every customer on a route at 7am with the tech&#x27;s photo and an arrival window?&quot;,
+    note:&quot;Not in that shape, and it is the 7am blast rather than the idea. Sending a whole route at once means one wrong route texts fifty people and there is no way to pull it back. We would rather build it as a message the tech sends when they leave the stop before yours -- same photo, same window, one customer at a time. Say if that would work and it goes on the list.&quot; },
+  { st:&#x27;approved&#x27;, org:&#x27;Hearth &amp; Home Services&#x27;, who:&#x27;Somebody who has since left&#x27;,
+    sent:&#x27;4 August&#x27;, ans:&#x27;8 August&#x27;,
+    body:&quot;Let us print a route sheet for the day. Half our techs will not use a phone for the schedule and never will.&quot;,
+    note:&quot;Approved. Jobs prints a day per tech with addresses, windows and access notes.&quot; },
+  { st:&#x27;approved&#x27;, org:&#x27;Unknown&#x27;, who:&#x27;Somebody who has since left&#x27;,
+    sent:&#x27;22 July&#x27;, ans:&#x27;24 July&#x27;,
+    body:&quot;Could the invoice list total the month at the bottom? We reconcile by hand every month and the number is sitting right there.&quot;,
+    note:&quot;Approved -- the month total sits at the foot of the invoice list, and it follows whatever filter you have on rather than always totalling everything.&quot; }
+];
+
+const LABEL = { new:&#x27;New&#x27;, reviewing:&#x27;In review&#x27;, approved:&#x27;Approved&#x27;, denied:&#x27;Denied&#x27; };
+const CLS   = { new:&#x27;s-new&#x27;, reviewing:&#x27;s-rev&#x27;, approved:&#x27;s-app&#x27;, denied:&#x27;s-den&#x27; };
+const trim = (t, n) =&gt; t.length &gt; n ? t.slice(0, n) + &#x27;&amp;hellip;&#x27; : t;
+
+const SIDE = `
+  &lt;nav class=&quot;side&quot;&gt;
+    &lt;div class=&quot;brand&quot;&gt;&lt;i&gt;Ez&lt;/i&gt;Bizi&lt;/div&gt;
+    &lt;a&gt;Dashboard&lt;/a&gt;&lt;a&gt;Customers&lt;/a&gt;&lt;a&gt;Jobs&lt;/a&gt;&lt;a&gt;Scheduling&lt;/a&gt;&lt;a&gt;Phone&lt;/a&gt;&lt;a&gt;Fleet&lt;/a&gt;
+    &lt;a&gt;Human Resources&lt;/a&gt;
+    &lt;div class=&quot;tail&quot;&gt;&lt;a&gt;Suggestions&lt;/a&gt;&lt;a&gt;Settings&lt;/a&gt;&lt;/div&gt;
+    &lt;div class=&quot;staff&quot;&gt;&lt;a class=&quot;on&quot;&gt;Development&lt;/a&gt;&lt;/div&gt;
+  &lt;/nav&gt;`;
+
+const TABS = `
+  &lt;div class=&quot;tabs&quot;&gt;&lt;span&gt;Organizations&lt;/span&gt;&lt;span&gt;Modules&lt;/span&gt;&lt;span&gt;Client versions&lt;/span&gt;
+    &lt;span&gt;Client access&lt;/span&gt;&lt;span&gt;Health&lt;/span&gt;&lt;span&gt;Staff&lt;/span&gt;
+    &lt;span class=&quot;on&quot;&gt;Suggestions&lt;/span&gt;&lt;/div&gt;`;
+
+const CHROME = (body) =&gt; `
+  &lt;div class=&quot;shell&quot;&gt;${SIDE}&lt;div class=&quot;page&quot;&gt;
+    &lt;div class=&quot;devbar&quot;&gt;Platform control plane &amp;mdash; every organization, not just this one.
+      Your ordinary activity here is not written to the business audit trail; sign-ins, staff
+      changes and client access always are.&lt;/div&gt;
+    ${TABS}
+    &lt;div class=&quot;body&quot;&gt;
+      &lt;div class=&quot;qhead&quot;&gt;&lt;h2&gt;Suggestions&lt;/h2&gt;
+        &lt;p&gt;Everything every customer has asked for. 10 of at most 200 loaded.&lt;/p&gt;&lt;/div&gt;
+      ${body}
+    &lt;/div&gt;&lt;/div&gt;&lt;/div&gt;`;
+
+const decideBox = (o) =&gt; `
+  &lt;div class=&quot;decide&quot;&gt;
+    &lt;div class=&quot;dh&quot;&gt;Answer ${o.who}&lt;/div&gt;
+    &lt;div class=&quot;din&quot;&gt;
+      &lt;label&gt;Say why, in a sentence&lt;/label&gt;
+      &lt;p class=&quot;hint&quot;&gt;${o.who} reads this word for word, and approving or denying sends it to
+        them. Nobody else at ${o.org} can see any of this.&lt;/p&gt;
+      &lt;div class=&quot;ta${o.noteText ? &#x27; filled&#x27; : &#x27;&#x27;}${o.bad ? &#x27; bad&#x27; : &#x27;&#x27;}&quot;&gt;${o.noteText ||
+        &#x27;What you decided, and why.&#x27;}&lt;/div&gt;
+      ${o.bad ? &#x27;&lt;div class=&quot;errline&quot;&gt;Say why, in a sentence. The person who sent it reads it.&lt;/div&gt;&#x27; : &#x27;&#x27;}
+      &lt;div class=&quot;cnt&quot;&gt;&lt;b style=&quot;color:var(--ink)&quot;&gt;${o.noteText ? &#x27;214&#x27; : &#x27;0&#x27;}&lt;/b&gt; / 2000&lt;/div&gt;
+      &lt;div class=&quot;acts&quot;&gt;
+        &lt;button class=&quot;btn ok&quot; type=&quot;button&quot;&gt;Approve&lt;/button&gt;
+        &lt;button class=&quot;btn no&quot; type=&quot;button&quot;&gt;Deny&lt;/button&gt;
+        &lt;span class=&quot;sp&quot;&gt;&lt;/span&gt;
+        ${o.st === &#x27;new&#x27;
+          ? &#x27;&lt;button class=&quot;btn plain&quot; type=&quot;button&quot;&gt;Mark in review&lt;/button&gt;&#x27; : &#x27;&#x27;}
+      &lt;/div&gt;
+      ${o.st === &#x27;new&#x27; ? `&lt;p class=&quot;hint&quot; style=&quot;margin:10px 0 0&quot;&gt;Marking it in review tells
+        ${o.who} nothing &amp;mdash; it only stops them rewriting it while you read.&lt;/p&gt;` : &#x27;&#x27;}
+    &lt;/div&gt;
+  &lt;/div&gt;`;
+
+const row = (r, i, open, bad) =&gt; {
+  const head = `
+    &lt;tr class=&quot;${open ? &#x27;open&#x27; : &#x27;&#x27;}&quot;&gt;
+      &lt;td style=&quot;width:104px&quot;&gt;&lt;span class=&quot;pill ${CLS[r.st]}&quot;&gt;${LABEL[r.st]}&lt;/span&gt;&lt;/td&gt;
+      &lt;td class=&quot;who&quot; style=&quot;width:230px&quot;&gt;&lt;b&gt;${r.org}&lt;/b&gt;&lt;span&gt;${r.who}&lt;/span&gt;&lt;/td&gt;
+      &lt;td class=&quot;txt&quot;&gt;${open ? &#x27;&#x27; : trim(r.body, 132)}
+        ${r.note &amp;&amp; !open ? `&lt;div class=&quot;ansline&quot;&gt;&lt;b&gt;Answered ${r.ans}:&lt;/b&gt;
+          ${trim(r.note, 96)}&lt;/div&gt;` : &#x27;&#x27;}&lt;/td&gt;
+      &lt;td class=&quot;when&quot; style=&quot;width:104px&quot;&gt;${r.sent}&lt;/td&gt;
+      &lt;td class=&quot;rowact&quot; style=&quot;width:150px&quot;&gt;${open
+        ? &#x27;&lt;button class=&quot;btn ghost sm&quot; type=&quot;button&quot;&gt;Close&lt;/button&gt;&#x27;
+        : r.note
+          ? &#x27;&lt;button class=&quot;btn ghost sm&quot; type=&quot;button&quot;&gt;Change the answer&lt;/button&gt;&#x27;
+          : &#x27;&lt;button class=&quot;btn sm&quot; type=&quot;button&quot;&gt;Read and answer&lt;/button&gt;&#x27;}&lt;/td&gt;
+    &lt;/tr&gt;`;
+  if (!open) return head;
+  return head + `
+    &lt;tr class=&quot;open&quot;&gt;&lt;td class=&quot;exp&quot; colspan=&quot;5&quot;&gt;&lt;div class=&quot;expin&quot;&gt;
+      &lt;div class=&quot;full&quot;&gt;${r.body}&lt;/div&gt;
+      ${decideBox({ who:r.who.split(&#x27; &#x27;)[0], org:r.org, st:r.st,
+        noteText: bad ? &#x27;&#x27; : &#x27;&#x27;, bad })}
+    &lt;/div&gt;&lt;/td&gt;&lt;/tr&gt;`;
+};
+
+const band = (title, list, sel, bad) =&gt; `
+  &lt;div class=&quot;band&quot;&gt;${title}&lt;span class=&quot;ct&quot;&gt;${list.length}&lt;/span&gt;&lt;/div&gt;
+  &lt;table class=&quot;q&quot;&gt;
+    &lt;tr&gt;&lt;th style=&quot;width:104px&quot;&gt;State&lt;/th&gt;&lt;th style=&quot;width:230px&quot;&gt;Who asked&lt;/th&gt;
+      &lt;th&gt;What they asked for&lt;/th&gt;&lt;th style=&quot;width:104px&quot;&gt;Sent&lt;/th&gt;&lt;th&gt;&lt;/th&gt;&lt;/tr&gt;
+    ${list.map((r, i) =&gt; row(r, i, sel === r, bad)).join(&#x27;&#x27;)}
+  &lt;/table&gt;`;
+
+const NEW = ROWS.filter(r =&gt; r.st === &#x27;new&#x27;);
+const REV = ROWS.filter(r =&gt; r.st === &#x27;reviewing&#x27;);
+const DEC = ROWS.filter(r =&gt; r.st === &#x27;approved&#x27; || r.st === &#x27;denied&#x27;);
+
+const table = (sel, bad) =&gt;
+  band(&#x27;Waiting &amp;mdash; nobody has read these&#x27;, NEW, sel, bad) +
+  band(&#x27;Being read&#x27;, REV, sel, bad) +
+  band(&#x27;Answered&#x27;, DEC, sel, bad);
+
+document.getElementById(&#x27;main&#x27;).innerHTML = CHROME(table(NEW[0], false));
+document.getElementById(&#x27;refused&#x27;).innerHTML = CHROME(table(NEW[1], true));
+
+const phone = (label, inner) =&gt;
+  `&lt;div&gt;&lt;div class=&quot;phone&quot;&gt;${inner}&lt;/div&gt;&lt;div class=&quot;phlab&quot;&gt;${label}&lt;/div&gt;&lt;/div&gt;`;
+
+const pcard = (r) =&gt; `
+  &lt;div style=&quot;padding:13px 16px;border-bottom:1px solid var(--line)&quot;&gt;
+    &lt;div style=&quot;display:flex;gap:8px;align-items:center;margin-bottom:6px&quot;&gt;
+      &lt;span class=&quot;pill ${CLS[r.st]}&quot;&gt;${LABEL[r.st]}&lt;/span&gt;
+      &lt;span style=&quot;margin-left:auto;color:var(--muted);font-size:12px&quot;&gt;${r.sent}&lt;/span&gt;&lt;/div&gt;
+    &lt;div style=&quot;font-size:14px;font-weight:600&quot;&gt;${r.org}&lt;/div&gt;
+    &lt;div style=&quot;font-size:12px;color:var(--muted);margin-bottom:6px&quot;&gt;${r.who}&lt;/div&gt;
+    &lt;div style=&quot;font-size:14px;line-height:1.5&quot;&gt;${trim(r.body, 104)}&lt;/div&gt;
+  &lt;/div&gt;`;
+
+document.getElementById(&#x27;mobile&#x27;).innerHTML =
+  phone(&#x27;The queue &amp;mdash; cards, in the server bands&#x27;, `
+    &lt;div class=&quot;bar&quot;&gt;&lt;span class=&quot;back&quot;&gt;&amp;lsaquo; Development&lt;/span&gt; Suggestions&lt;/div&gt;
+    &lt;div class=&quot;scroll&quot;&gt;
+      &lt;div class=&quot;band&quot; style=&quot;padding:12px 16px 4px;margin:0&quot;&gt;Waiting&lt;span class=&quot;ct&quot;&gt;3&lt;/span&gt;&lt;/div&gt;
+      ${NEW.map(pcard).join(&#x27;&#x27;)}
+      &lt;div class=&quot;band&quot; style=&quot;padding:12px 16px 4px;margin:0&quot;&gt;Being read&lt;span class=&quot;ct&quot;&gt;2&lt;/span&gt;&lt;/div&gt;
+      ${REV.map(pcard).join(&#x27;&#x27;)}
+      &lt;div class=&quot;band&quot; style=&quot;padding:12px 16px 4px;margin:0&quot;&gt;Answered&lt;span class=&quot;ct&quot;&gt;5&lt;/span&gt;&lt;/div&gt;
+      ${DEC.slice(0,2).map(pcard).join(&#x27;&#x27;)}
+    &lt;/div&gt;`) +
+  phone(&#x27;Answering one &amp;mdash; actions above the keyboard&#x27;, `
+    &lt;div class=&quot;bar&quot;&gt;&lt;span class=&quot;back&quot;&gt;&amp;lsaquo; Queue&lt;/span&gt; Answer&lt;/div&gt;
+    &lt;div class=&quot;scroll&quot;&gt;
+      &lt;div style=&quot;padding:14px 16px;border-bottom:1px solid var(--line)&quot;&gt;
+        &lt;span class=&quot;pill s-new&quot;&gt;New&lt;/span&gt;
+        &lt;div style=&quot;margin-top:9px;font-size:14px;font-weight:600&quot;&gt;Bluepoint HVAC&lt;/div&gt;
+        &lt;div style=&quot;font-size:12px;color:var(--muted)&quot;&gt;Ray Nakashima &amp;middot; today, 7:40am&lt;/div&gt;
+        &lt;div style=&quot;margin-top:9px;font-size:15px;line-height:1.55&quot;&gt;${ROWS[1].body}&lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div style=&quot;padding:14px 16px&quot;&gt;
+        &lt;label style=&quot;display:block;font-size:14px;font-weight:600;margin-bottom:5px&quot;&gt;Say why,
+          in a sentence&lt;/label&gt;
+        &lt;div class=&quot;ta filled&quot;&gt;Yes -- drive order is coming, but it has to keep the promised
+          windows, so it will&lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;pfoot&quot;&gt;
+      &lt;button class=&quot;btn ok&quot; style=&quot;flex:1&quot; type=&quot;button&quot;&gt;Approve&lt;/button&gt;
+      &lt;button class=&quot;btn no&quot; style=&quot;flex:1&quot; type=&quot;button&quot;&gt;Deny&lt;/button&gt;&lt;/div&gt;
+    &lt;div class=&quot;kb&quot;&gt;the keyboard &amp;mdash; Approve and Deny sit above it&lt;/div&gt;`);
+&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+<iframe id="f4" class="" srcdoc="&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;title&gt;EzBizi &amp;mdash; Development &amp;rsaquo; Suggestions, layout 2&lt;/title&gt;
+&lt;style&gt;
+  :root {
+    /* PROVENANCE, because a mockup that says &quot;the real palette&quot; has to mean it.
+       Everything marked (theme) is measured from client/lib/core/theme.dart via
+       EzBiziTheme.light() -- not eyeballed, and nothing invented for this file.
+       What is NOT a theme token is listed at the bottom of this block, in full. */
+    --cyan:#00AEEF;     /* (theme) EzBiziTheme.accent -- brand fills carrying no text */
+    --primary:#00708F;  /* (theme) light colorScheme.primary (_cyanDeep), 5.7:1 on white */
+    --ink:#060808;      /* (theme) _ink */
+    --muted:#5B6672;    /* (theme) _muted */
+    --line:#E9EDF1;     /* (theme) EzBiziTheme.edge, light */
+    --alt:#F5F8FA;      /* (theme) _surfaceAlt */
+    --page:#fff;        /* (theme) light colorScheme.surface */
+    --ok:#0B8F5B;       /* (theme) EzBiziTheme.clockIn, light */
+    --err:#E07070;      /* (theme) EzBiziTheme.clockOut, light -- the punch-out coral.
+                           Used here only as a 4px edge and never as text: it is about
+                           3:1 on white and cannot carry a word. */
+    --deny:#BA1A1A;     /* (theme) light colorScheme.error. MEASURED, not guessed --
+                           EzBiziTheme.light().colorScheme.error prints #BA1A1A, and the
+                           same probe confirmed primary #00708F light / #00AEEF dark.
+                           6.5:1 on white and 5.7:1 on --err-c, so it is the one red here
+                           that may be text; it is also the token development_screen.dart
+                           already uses for the control-plane banner. */
+
+    /* NOT theme tokens, and this is the complete list of them.
+       The four container tints are the docs/previews house convention, carried from the
+       galleries already using them, standing in for Material&#x27;s *Container roles, which a
+       flat mockup cannot compute. The app&#x27;s real light errorContainer is #FFDAD6;
+       #FDECEC is the previews&#x27; lighter stand-in, kept so this gallery matches the twenty
+       beside it rather than being the one that looks different. --warn is convention too
+       -- theme.dart carries no amber -- and it is used only in this gallery&#x27;s own header
+       blocks, never in the drawn app. Four greys are mockup furniture and never app
+       colour: #DDE3E8 the gallery page ground, #9AA5AF placeholder text inside a drawn
+       field, #C9D3DB the drawn keyboard slab and the dashed empty-state border, #3F4A55
+       the label printed on that keyboard. */
+    --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 Inter, system-ui, &quot;Segoe UI&quot;, sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1280px; margin:0 auto; padding:16px 16px 48px; }
+
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:20px; margin:0 0 4px; letter-spacing:-.3px; }
+  .chooser { display:flex; flex-wrap:wrap; gap:6px; align-items:center;
+    padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--line);
+    font-size:12px; color:var(--muted); }
+  .chooser .cg { font-weight:700; text-transform:uppercase; letter-spacing:1.2px;
+    font-size:11px; margin-right:2px; }
+  .chooser a { min-width:30px; text-align:center; padding:4px 9px; border-radius:7px;
+    border:1px solid var(--line); color:var(--primary); text-decoration:none; font-weight:600; }
+  .chooser a.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .chooser .sep { width:18px; }
+
+
+  .viewlab { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--muted); margin:26px 0 8px; }
+  .note { color:var(--muted); font-size:12px; margin:10px 0 0; max-width:98ch; }
+  .note b { color:var(--ink); }
+
+  .shell { display:grid; grid-template-columns:220px 1fr; height:720px;
+    background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px;
+    display:flex; flex-direction:column; }
+  nav.side .brand { font-weight:800; letter-spacing:-1px; font-size:20px;
+    margin-bottom:16px; padding:0 8px; }
+  nav.side .brand i { color:var(--cyan); font-style:normal; }
+  nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+    text-decoration:none; margin-bottom:2px; font-size:14px; }
+  nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  nav.side .tail { margin-top:auto; padding-top:10px; border-top:1px solid var(--line); }
+  nav.side .staff { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
+
+  .page { display:flex; flex-direction:column; min-width:0; min-height:0; }
+  .devbar { background:var(--err-c); color:var(--deny); font-size:12px; padding:8px 20px; flex:none; }
+  .tabs { display:flex; flex-wrap:wrap; gap:8px; padding:10px 16px;
+    border-bottom:1px solid var(--line); flex:none; }
+  .tabs span { padding:7px 13px; border-radius:999px; border:1px solid var(--line);
+    background:var(--page); color:var(--muted); font-size:13px; }
+  .tabs span.on { background:var(--primary); color:#fff; border-color:var(--primary);
+    font-weight:600; }
+
+  .split { display:grid; grid-template-columns:360px 1fr; flex:1; min-height:0; }
+  .rail { border-right:1px solid var(--line); overflow:auto; }
+  .band { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--muted); padding:14px 14px 6px; display:flex; align-items:center; gap:8px; }
+  .band .ct { background:var(--alt); border:1px solid var(--line); border-radius:999px;
+    padding:1px 8px; letter-spacing:0; }
+  .r { padding:11px 14px; border-bottom:1px solid var(--line); cursor:pointer; }
+  .r.on { background:var(--info-c); box-shadow:inset 3px 0 0 var(--primary); }
+  .r .rt { display:flex; align-items:center; gap:8px; margin-bottom:5px; }
+  .r .rw { margin-left:auto; color:var(--muted); font-size:12px; white-space:nowrap; }
+  .r .org { font-size:14px; font-weight:600; }
+  .r .au { font-size:12px; color:var(--muted); margin-bottom:5px; }
+  .r .rb { font-size:13px; line-height:1.45; }
+
+  .detail { display:flex; flex-direction:column; min-width:0; min-height:0; }
+  .dHead { padding:16px 22px 13px; border-bottom:1px solid var(--line); flex:none;
+    display:flex; align-items:flex-start; gap:12px; }
+  .dHead h3 { font-size:18px; margin:0 0 2px; font-weight:700; }
+  .dHead .sub { color:var(--muted); font-size:13px; }
+  .dHead .rt { margin-left:auto; text-align:right; }
+  .dBody { padding:20px 22px; font-size:15px; line-height:1.6; overflow:auto; flex:1;
+    min-height:0; }
+  .dBody .maxw { max-width:78ch; }
+
+  .answered { margin-top:18px; border-radius:10px; padding:14px 16px 14px 18px; max-width:78ch; }
+  .answered.app { background:var(--ok-c); box-shadow:inset 4px 0 0 var(--ok); }
+  .answered.den { background:var(--err-c); box-shadow:inset 4px 0 0 var(--err); }
+  .answered .ah { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    margin-bottom:6px; }
+  .answered.app .ah { color:var(--ok); } .answered.den .ah { color:var(--deny); }
+  .answered p { margin:0; font-size:14px; line-height:1.55; }
+
+  .foot { flex:none; border-top:1px solid var(--line); background:var(--alt);
+    padding:13px 22px 15px; }
+  .foot .fl { display:flex; align-items:baseline; gap:10px; margin-bottom:6px; }
+  .foot label { font-size:14px; font-weight:600; }
+  .foot .hint { color:var(--muted); font-size:12px; margin:0; }
+  .ta { border:1px solid var(--line); border-radius:9px; padding:11px 13px; min-height:74px;
+    color:#9AA5AF; font-size:14px; line-height:1.55; background:var(--page); max-width:78ch; }
+  .ta.filled { color:var(--ink); }
+  .ta.bad { border-color:var(--err); box-shadow:0 0 0 1px var(--err); }
+  .errline { color:var(--deny); font-size:13px; font-weight:600; margin-top:7px; }
+  .cnt { color:var(--muted); font-size:12px; margin-top:6px; }
+  .cnt b { color:var(--ink); }
+  .acts { display:flex; align-items:center; gap:8px; margin-top:12px; flex-wrap:wrap; }
+  .acts .sp { margin-left:auto; }
+
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:9px;
+    padding:9px 16px; min-height:40px; font-weight:600; }
+  .btn.ghost { background:var(--page); color:var(--primary); border:1px solid var(--line); }
+  .btn.sm { min-height:34px; padding:5px 12px; font-size:13px; }
+  .btn.ok { background:var(--ok); }
+  .btn.no { background:var(--page); color:var(--deny); border:1px solid var(--deny); }
+  .btn.plain { background:var(--page); color:var(--ink); border:1px solid var(--line); }
+
+  .pill { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    padding:3px 9px; border-radius:999px; background:var(--alt); border:1px solid var(--line);
+    color:var(--muted); white-space:nowrap; }
+  .pill.s-new { background:var(--page); border-color:var(--muted); color:var(--ink); }
+  .pill.s-rev { background:var(--info-c); border-color:transparent; color:var(--primary); }
+  .pill.s-app { background:var(--ok-c); border-color:transparent; color:var(--ok); }
+  .pill.s-den { background:var(--err-c); border-color:transparent; color:var(--deny); }
+
+  .stage { display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; }
+  .phone { width:375px; border:8px solid var(--ink); border-radius:30px; overflow:hidden;
+    background:var(--page); height:720px; display:flex; flex-direction:column; }
+  .phlab { font-size:11px; color:var(--muted); text-align:center; margin-top:7px; width:375px; }
+  .bar { padding:12px 14px; border-bottom:1px solid var(--line); display:flex;
+    align-items:center; gap:9px; font-weight:700; font-size:16px; flex:none; }
+  .bar .back { color:var(--primary); font-weight:500; font-size:14px; }
+  .scroll { overflow:auto; flex:1; min-height:0; }
+  .pfoot { flex:none; border-top:1px solid var(--line); background:var(--alt); padding:10px 12px; }
+&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div class=&quot;app&quot;&gt;
+  &lt;header class=&quot;picker&quot;&gt;
+    
+    &lt;h1&gt;Development &amp;rsaquo; Suggestions &amp;mdash; 2 &amp;middot; List beside the answer&lt;/h1&gt;
+  &lt;/header&gt;
+
+  &lt;h2 class=&quot;viewlab&quot;&gt;Desktop &amp;mdash; a new one selected, the answer box in the footer&lt;/h2&gt;
+  &lt;div id=&quot;main&quot;&gt;&lt;/div&gt;
+
+  &lt;h2 class=&quot;viewlab&quot;&gt;Desktop &amp;mdash; Deny pressed with an empty note, and refused&lt;/h2&gt;
+  &lt;div id=&quot;refused&quot;&gt;&lt;/div&gt;
+
+  &lt;h2 class=&quot;viewlab&quot;&gt;Desktop &amp;mdash; an answered one, and the reversal the API allows&lt;/h2&gt;
+  &lt;div id=&quot;decided&quot;&gt;&lt;/div&gt;
+
+  &lt;h2 class=&quot;viewlab&quot;&gt;375px &amp;mdash; designed for the phone, not narrowed&lt;/h2&gt;
+  &lt;div class=&quot;stage&quot; id=&quot;mobile&quot;&gt;&lt;/div&gt;
+&lt;/div&gt;
+
+&lt;script&gt;
+const ROWS = [
+  { st:&#x27;new&#x27;, org:&#x27;A-1 Chimney&#x27;, who:&#x27;Marisol Ortega&#x27;, sent:&#x27;Today, 9:12am&#x27;,
+    body:&quot;Techs get the address on the job card but not the gate code or the dog, so half of them ring the office from the driveway. The access notes are already on the customer -- could they ride along on the job card the way the phone number does?&quot; },
+  { st:&#x27;new&#x27;, org:&#x27;Bluepoint HVAC&#x27;, who:&#x27;Ray Nakashima&#x27;, sent:&#x27;Today, 7:40am&#x27;,
+    body:&quot;Our techs cover two counties and the day sorts by appointment time, so a van crosses the river twice before lunch. Could a day be ordered by drive time and still keep the windows we promised?&quot; },
+  { st:&#x27;new&#x27;, org:&#x27;Kearny Fireplace &amp; Stove&#x27;, who:&#x27;Karen Boyle&#x27;, sent:&#x27;Yesterday, 4:55pm&#x27;,
+    body:&quot;The estimate PDF says Quote across the top and customers keep ringing to ask whether it is a bill. Could that word be ours to set?&quot; },
+  { st:&#x27;reviewing&#x27;, org:&#x27;A-1 Chimney&#x27;, who:&#x27;Marisol Ortega&#x27;, sent:&#x27;26 August&#x27;,
+    body:&quot;When the same customer rings twice in a day we get two entries in the call list and no way to tell it is one job. Could repeat calls from a number group together for the day?&quot; },
+  { st:&#x27;reviewing&#x27;, org:&#x27;Hearth &amp; Home Services&#x27;, who:&#x27;Priya Raghunathan&#x27;, sent:&#x27;24 August&#x27;,
+    body:&quot;Inspection photos upload one at a time and the tech sits in the driveway waiting for a bar of signal. Could they queue and send themselves when there is service?&quot; },
+  { st:&#x27;approved&#x27;, org:&#x27;A-1 Chimney&#x27;, who:&#x27;Marisol Ortega&#x27;, sent:&#x27;28 August&#x27;, ans:&#x27;1 September&#x27;,
+    body:&quot;Let a tech mark a van out of service from their phone. Right now they ring the office, the office means to write it down, and dispatch finds out by sending somebody to a van that is up on a lift.&quot;,
+    note:&quot;Agreed, and it is going into Fleet next. A tech with fleet access will be able to put a vehicle out of service from the phone, with a reason, and dispatch will see it on the board before they assign anything to it.&quot; },
+  { st:&#x27;approved&#x27;, org:&#x27;A-1 Chimney&#x27;, who:&#x27;Tommy Delgado&#x27;, sent:&#x27;20 August&#x27;, ans:&#x27;22 August&#x27;,
+    body:&quot;Put the date of the last inspection on the customer card. We ask on the phone and then go and look it up anyway.&quot;,
+    note:&quot;Done -- it lands with the next client build. The card shows the last completed inspection and its date, and the date links to the report.&quot; },
+  { st:&#x27;denied&#x27;, org:&#x27;Summit Air Mechanical&#x27;, who:&#x27;Angela Ruiz&#x27;, sent:&#x27;12 August&#x27;, ans:&#x27;19 August&#x27;,
+    body:&quot;Could we text every customer on a route at 7am with the tech&#x27;s photo and an arrival window?&quot;,
+    note:&quot;Not in that shape, and it is the 7am blast rather than the idea. Sending a whole route at once means one wrong route texts fifty people and there is no way to pull it back. We would rather build it as a message the tech sends when they leave the stop before yours -- same photo, same window, one customer at a time. Say if that would work and it goes on the list.&quot; },
+  { st:&#x27;approved&#x27;, org:&#x27;Hearth &amp; Home Services&#x27;, who:&#x27;Somebody who has since left&#x27;,
+    sent:&#x27;4 August&#x27;, ans:&#x27;8 August&#x27;,
+    body:&quot;Let us print a route sheet for the day. Half our techs will not use a phone for the schedule and never will.&quot;,
+    note:&quot;Approved. Jobs prints a day per tech with addresses, windows and access notes.&quot; },
+  { st:&#x27;approved&#x27;, org:&#x27;Unknown&#x27;, who:&#x27;Somebody who has since left&#x27;,
+    sent:&#x27;22 July&#x27;, ans:&#x27;24 July&#x27;,
+    body:&quot;Could the invoice list total the month at the bottom? We reconcile by hand every month and the number is sitting right there.&quot;,
+    note:&quot;Approved -- the month total sits at the foot of the invoice list, and it follows whatever filter you have on rather than always totalling everything.&quot; }
+];
+
+const LABEL = { new:&#x27;New&#x27;, reviewing:&#x27;In review&#x27;, approved:&#x27;Approved&#x27;, denied:&#x27;Denied&#x27; };
+const CLS   = { new:&#x27;s-new&#x27;, reviewing:&#x27;s-rev&#x27;, approved:&#x27;s-app&#x27;, denied:&#x27;s-den&#x27; };
+const trim = (t, n) =&gt; t.length &gt; n ? t.slice(0, n) + &#x27;&amp;hellip;&#x27; : t;
+
+const SIDE = `
+  &lt;nav class=&quot;side&quot;&gt;
+    &lt;div class=&quot;brand&quot;&gt;&lt;i&gt;Ez&lt;/i&gt;Bizi&lt;/div&gt;
+    &lt;a&gt;Dashboard&lt;/a&gt;&lt;a&gt;Customers&lt;/a&gt;&lt;a&gt;Jobs&lt;/a&gt;&lt;a&gt;Scheduling&lt;/a&gt;&lt;a&gt;Phone&lt;/a&gt;&lt;a&gt;Fleet&lt;/a&gt;
+    &lt;a&gt;Human Resources&lt;/a&gt;
+    &lt;div class=&quot;tail&quot;&gt;&lt;a&gt;Suggestions&lt;/a&gt;&lt;a&gt;Settings&lt;/a&gt;&lt;/div&gt;
+    &lt;div class=&quot;staff&quot;&gt;&lt;a class=&quot;on&quot;&gt;Development&lt;/a&gt;&lt;/div&gt;
+  &lt;/nav&gt;`;
+
+const TABS = `
+  &lt;div class=&quot;tabs&quot;&gt;&lt;span&gt;Organizations&lt;/span&gt;&lt;span&gt;Modules&lt;/span&gt;&lt;span&gt;Client versions&lt;/span&gt;
+    &lt;span&gt;Client access&lt;/span&gt;&lt;span&gt;Health&lt;/span&gt;&lt;span&gt;Staff&lt;/span&gt;
+    &lt;span class=&quot;on&quot;&gt;Suggestions&lt;/span&gt;&lt;/div&gt;`;
+
+const railRow = (r, sel) =&gt; `
+  &lt;div class=&quot;r${r === sel ? &#x27; on&#x27; : &#x27;&#x27;}&quot;&gt;
+    &lt;div class=&quot;rt&quot;&gt;&lt;span class=&quot;pill ${CLS[r.st]}&quot;&gt;${LABEL[r.st]}&lt;/span&gt;
+      &lt;span class=&quot;rw&quot;&gt;${r.sent}&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;org&quot;&gt;${r.org}&lt;/div&gt;
+    &lt;div class=&quot;au&quot;&gt;${r.who}&lt;/div&gt;
+    &lt;div class=&quot;rb&quot;&gt;${trim(r.body, 84)}&lt;/div&gt;
+  &lt;/div&gt;`;
+
+const NEW = ROWS.filter(r =&gt; r.st === &#x27;new&#x27;);
+const REV = ROWS.filter(r =&gt; r.st === &#x27;reviewing&#x27;);
+const DEC = ROWS.filter(r =&gt; r.note);
+
+const rail = (sel) =&gt; `
+  &lt;div class=&quot;rail&quot;&gt;
+    &lt;div class=&quot;band&quot;&gt;Waiting&lt;span class=&quot;ct&quot;&gt;${NEW.length}&lt;/span&gt;&lt;/div&gt;
+    ${NEW.map(r =&gt; railRow(r, sel)).join(&#x27;&#x27;)}
+    &lt;div class=&quot;band&quot;&gt;Being read&lt;span class=&quot;ct&quot;&gt;${REV.length}&lt;/span&gt;&lt;/div&gt;
+    ${REV.map(r =&gt; railRow(r, sel)).join(&#x27;&#x27;)}
+    &lt;div class=&quot;band&quot;&gt;Answered&lt;span class=&quot;ct&quot;&gt;${DEC.length}&lt;/span&gt;&lt;/div&gt;
+    ${DEC.map(r =&gt; railRow(r, sel)).join(&#x27;&#x27;)}
+  &lt;/div&gt;`;
+
+const footer = (r, o) =&gt; {
+  const first = r.who.split(&#x27; &#x27;)[0];
+  const decided = !!r.note;
+  return `
+  &lt;div class=&quot;foot&quot;&gt;
+    &lt;div class=&quot;fl&quot;&gt;&lt;label&gt;${decided ? &#x27;Change the answer&#x27; : &#x27;Say why, in a sentence&#x27;}&lt;/label&gt;
+      &lt;p class=&quot;hint&quot;&gt;${first} reads this word for word. Nobody else at ${r.org} sees any of
+        it.&lt;/p&gt;&lt;/div&gt;
+    &lt;div class=&quot;ta${o.text ? &#x27; filled&#x27; : &#x27;&#x27;}${o.bad ? &#x27; bad&#x27; : &#x27;&#x27;}&quot;&gt;${o.text ||
+      &#x27;What you decided, and why.&#x27;}&lt;/div&gt;
+    ${o.bad ? &#x27;&lt;div class=&quot;errline&quot;&gt;Say why, in a sentence. The person who sent it reads it.&lt;/div&gt;&#x27; : &#x27;&#x27;}
+    &lt;div class=&quot;cnt&quot;&gt;&lt;b&gt;${o.text ? String(o.text.length) : &#x27;0&#x27;}&lt;/b&gt; / 2000&lt;/div&gt;
+    &lt;div class=&quot;acts&quot;&gt;
+      &lt;button class=&quot;btn ok&quot; type=&quot;button&quot;&gt;${decided ? &#x27;Approve instead&#x27; : &#x27;Approve&#x27;}&lt;/button&gt;
+      &lt;button class=&quot;btn no&quot; type=&quot;button&quot;&gt;${decided ? &#x27;Deny instead&#x27; : &#x27;Deny&#x27;}&lt;/button&gt;
+      &lt;span class=&quot;sp&quot;&gt;&lt;/span&gt;
+      ${r.st === &#x27;new&#x27;
+        ? `&lt;button class=&quot;btn plain&quot; type=&quot;button&quot;&gt;Mark in review&lt;/button&gt;
+           &lt;span class=&quot;hint&quot;&gt;tells ${first} nothing &amp;mdash; it only stops them rewriting
+             it&lt;/span&gt;` : &#x27;&#x27;}
+    &lt;/div&gt;
+  &lt;/div&gt;`;
+};
+
+const detail = (r, o) =&gt; `
+  &lt;div class=&quot;detail&quot;&gt;
+    &lt;div class=&quot;dHead&quot;&gt;
+      &lt;div&gt;&lt;h3&gt;${r.org}&lt;/h3&gt;&lt;div class=&quot;sub&quot;&gt;${r.who} &amp;middot; sent ${r.sent}&lt;/div&gt;&lt;/div&gt;
+      &lt;div class=&quot;rt&quot;&gt;&lt;span class=&quot;pill ${CLS[r.st]}&quot;&gt;${LABEL[r.st]}&lt;/span&gt;
+        ${r.ans ? `&lt;div class=&quot;sub&quot; style=&quot;margin-top:6px&quot;&gt;answered ${r.ans}&lt;/div&gt;` : &#x27;&#x27;}&lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;dBody&quot;&gt;&lt;div class=&quot;maxw&quot;&gt;${r.body}
+      ${r.note ? `&lt;div class=&quot;answered ${r.st === &#x27;approved&#x27; ? &#x27;app&#x27; : &#x27;den&#x27;}&quot;&gt;
+        &lt;div class=&quot;ah&quot;&gt;What ${r.who.split(&#x27; &#x27;)[0]} was told &amp;middot; ${r.ans}&lt;/div&gt;
+        &lt;p&gt;${r.note}&lt;/p&gt;&lt;/div&gt;` : &#x27;&#x27;}
+    &lt;/div&gt;&lt;/div&gt;
+    ${footer(r, o)}
+  &lt;/div&gt;`;
+
+const CHROME = (inner) =&gt; `
+  &lt;div class=&quot;shell&quot;&gt;${SIDE}&lt;div class=&quot;page&quot;&gt;
+    &lt;div class=&quot;devbar&quot;&gt;Platform control plane &amp;mdash; every organization, not just this one.
+      Your ordinary activity here is not written to the business audit trail; sign-ins, staff
+      changes and client access always are.&lt;/div&gt;
+    ${TABS}
+    &lt;div class=&quot;split&quot;&gt;${inner}&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;`;
+
+document.getElementById(&#x27;main&#x27;).innerHTML =
+  CHROME(rail(ROWS[0]) + detail(ROWS[0], {}));
+document.getElementById(&#x27;refused&#x27;).innerHTML =
+  CHROME(rail(ROWS[1]) + detail(ROWS[1], { bad:true }));
+document.getElementById(&#x27;decided&#x27;).innerHTML =
+  CHROME(rail(ROWS[7]) + detail(ROWS[7], { text: ROWS[7].note }));
+
+const phone = (label, inner) =&gt;
+  `&lt;div&gt;&lt;div class=&quot;phone&quot;&gt;${inner}&lt;/div&gt;&lt;div class=&quot;phlab&quot;&gt;${label}&lt;/div&gt;&lt;/div&gt;`;
+
+const prow = (r) =&gt; `
+  &lt;div style=&quot;padding:12px 16px;border-bottom:1px solid var(--line)&quot;&gt;
+    &lt;div style=&quot;display:flex;gap:8px;align-items:center;margin-bottom:5px&quot;&gt;
+      &lt;span class=&quot;pill ${CLS[r.st]}&quot;&gt;${LABEL[r.st]}&lt;/span&gt;
+      &lt;span style=&quot;margin-left:auto;color:var(--muted);font-size:12px&quot;&gt;${r.sent}&lt;/span&gt;&lt;/div&gt;
+    &lt;div style=&quot;font-size:14px;font-weight:600&quot;&gt;${r.org}&lt;/div&gt;
+    &lt;div style=&quot;font-size:12px;color:var(--muted);margin-bottom:5px&quot;&gt;${r.who}&lt;/div&gt;
+    &lt;div style=&quot;font-size:14px;line-height:1.5&quot;&gt;${trim(r.body, 92)}&lt;/div&gt;
+  &lt;/div&gt;`;
+
+document.getElementById(&#x27;mobile&#x27;).innerHTML =
+  phone(&#x27;The rail becomes the screen&#x27;, `
+    &lt;div class=&quot;bar&quot;&gt;&lt;span class=&quot;back&quot;&gt;&amp;lsaquo; Development&lt;/span&gt; Suggestions&lt;/div&gt;
+    &lt;div class=&quot;scroll&quot;&gt;
+      &lt;div class=&quot;band&quot; style=&quot;padding:12px 16px 5px&quot;&gt;Waiting&lt;span class=&quot;ct&quot;&gt;3&lt;/span&gt;&lt;/div&gt;
+      ${NEW.map(prow).join(&#x27;&#x27;)}
+      &lt;div class=&quot;band&quot; style=&quot;padding:12px 16px 5px&quot;&gt;Being read&lt;span class=&quot;ct&quot;&gt;2&lt;/span&gt;&lt;/div&gt;
+      ${REV.map(prow).join(&#x27;&#x27;)}
+      &lt;div class=&quot;band&quot; style=&quot;padding:12px 16px 5px&quot;&gt;Answered&lt;span class=&quot;ct&quot;&gt;5&lt;/span&gt;&lt;/div&gt;
+      ${DEC.slice(0,1).map(prow).join(&#x27;&#x27;)}
+    &lt;/div&gt;`) +
+  phone(&#x27;The suggestion stays above the box you answer in&#x27;, `
+    &lt;div class=&quot;bar&quot;&gt;&lt;span class=&quot;back&quot;&gt;&amp;lsaquo; Queue&lt;/span&gt; A-1 Chimney&lt;/div&gt;
+    &lt;div class=&quot;scroll&quot;&gt;
+      &lt;div style=&quot;padding:13px 16px;border-bottom:1px solid var(--line)&quot;&gt;
+        &lt;span class=&quot;pill s-new&quot;&gt;New&lt;/span&gt;
+        &lt;div style=&quot;margin-top:8px;font-size:12px;color:var(--muted)&quot;&gt;Marisol Ortega &amp;middot;
+          today, 9:12am&lt;/div&gt;
+        &lt;div style=&quot;margin-top:8px;font-size:15px;line-height:1.55&quot;&gt;${ROWS[0].body}&lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div style=&quot;padding:13px 16px&quot;&gt;
+        &lt;label style=&quot;display:block;font-size:14px;font-weight:600;margin-bottom:4px&quot;&gt;Say why, in
+          a sentence&lt;/label&gt;
+        &lt;p class=&quot;hint&quot; style=&quot;margin:0 0 7px;color:var(--muted);font-size:12px&quot;&gt;Marisol reads
+          this word for word.&lt;/p&gt;
+        &lt;div class=&quot;ta&quot;&gt;What you decided, and why.&lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;pfoot&quot; style=&quot;display:flex;gap:8px;flex-wrap:wrap&quot;&gt;
+      &lt;button class=&quot;btn ok&quot; style=&quot;flex:1&quot; type=&quot;button&quot;&gt;Approve&lt;/button&gt;
+      &lt;button class=&quot;btn no&quot; style=&quot;flex:1&quot; type=&quot;button&quot;&gt;Deny&lt;/button&gt;
+      &lt;button class=&quot;btn plain&quot; style=&quot;width:100%&quot; type=&quot;button&quot;&gt;Mark in review&lt;/button&gt;&lt;/div&gt;`);
+&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+<iframe id="f5" class="" srcdoc="&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;title&gt;EzBizi &amp;mdash; Development &amp;rsaquo; Suggestions, layout 3&lt;/title&gt;
+&lt;style&gt;
+  :root {
+    /* PROVENANCE, because a mockup that says &quot;the real palette&quot; has to mean it.
+       Everything marked (theme) is measured from client/lib/core/theme.dart via
+       EzBiziTheme.light() -- not eyeballed, and nothing invented for this file.
+       What is NOT a theme token is listed at the bottom of this block, in full. */
+    --cyan:#00AEEF;     /* (theme) EzBiziTheme.accent -- brand fills carrying no text */
+    --primary:#00708F;  /* (theme) light colorScheme.primary (_cyanDeep), 5.7:1 on white */
+    --ink:#060808;      /* (theme) _ink */
+    --muted:#5B6672;    /* (theme) _muted */
+    --line:#E9EDF1;     /* (theme) EzBiziTheme.edge, light */
+    --alt:#F5F8FA;      /* (theme) _surfaceAlt */
+    --page:#fff;        /* (theme) light colorScheme.surface */
+    --ok:#0B8F5B;       /* (theme) EzBiziTheme.clockIn, light */
+    --err:#E07070;      /* (theme) EzBiziTheme.clockOut, light -- the punch-out coral.
+                           Used here only as a 4px edge and never as text: it is about
+                           3:1 on white and cannot carry a word. */
+    --deny:#BA1A1A;     /* (theme) light colorScheme.error. MEASURED, not guessed --
+                           EzBiziTheme.light().colorScheme.error prints #BA1A1A, and the
+                           same probe confirmed primary #00708F light / #00AEEF dark.
+                           6.5:1 on white and 5.7:1 on --err-c, so it is the one red here
+                           that may be text; it is also the token development_screen.dart
+                           already uses for the control-plane banner. */
+
+    /* NOT theme tokens, and this is the complete list of them.
+       The four container tints are the docs/previews house convention, carried from the
+       galleries already using them, standing in for Material&#x27;s *Container roles, which a
+       flat mockup cannot compute. The app&#x27;s real light errorContainer is #FFDAD6;
+       #FDECEC is the previews&#x27; lighter stand-in, kept so this gallery matches the twenty
+       beside it rather than being the one that looks different. --warn is convention too
+       -- theme.dart carries no amber -- and it is used only in this gallery&#x27;s own header
+       blocks, never in the drawn app. Four greys are mockup furniture and never app
+       colour: #DDE3E8 the gallery page ground, #9AA5AF placeholder text inside a drawn
+       field, #C9D3DB the drawn keyboard slab and the dashed empty-state border, #3F4A55
+       the label printed on that keyboard. */
+    --warn:#B5730B;
+    --err-c:#FDECEC; --warn-c:#FFF4D6; --info-c:#E6F7FD; --ok-c:#E5F6EE;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:#DDE3E8; color:var(--ink);
+    font:14px/1.45 Inter, system-ui, &quot;Segoe UI&quot;, sans-serif; }
+  button { font:inherit; cursor:pointer; }
+  .app { max-width:1280px; margin:0 auto; padding:16px 16px 48px; }
+
+  header.picker { background:var(--page); border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+  header.picker h1 { font-size:20px; margin:0 0 4px; letter-spacing:-.3px; }
+  .chooser { display:flex; flex-wrap:wrap; gap:6px; align-items:center;
+    padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--line);
+    font-size:12px; color:var(--muted); }
+  .chooser .cg { font-weight:700; text-transform:uppercase; letter-spacing:1.2px;
+    font-size:11px; margin-right:2px; }
+  .chooser a { min-width:30px; text-align:center; padding:4px 9px; border-radius:7px;
+    border:1px solid var(--line); color:var(--primary); text-decoration:none; font-weight:600; }
+  .chooser a.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .chooser .sep { width:18px; }
+
+
+  .viewlab { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--muted); margin:26px 0 8px; }
+  .note { color:var(--muted); font-size:12px; margin:10px 0 0; max-width:98ch; }
+  .note b { color:var(--ink); }
+
+  .shell { display:grid; grid-template-columns:220px 1fr;
+    background:var(--page); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  nav.side { background:var(--alt); border-right:1px solid var(--line); padding:16px 12px;
+    display:flex; flex-direction:column; }
+  nav.side .brand { font-weight:800; letter-spacing:-1px; font-size:20px;
+    margin-bottom:16px; padding:0 8px; }
+  nav.side .brand i { color:var(--cyan); font-style:normal; }
+  nav.side a { display:block; padding:8px 10px; border-radius:8px; color:var(--ink);
+    text-decoration:none; margin-bottom:2px; font-size:14px; }
+  nav.side a.on { background:#fff; box-shadow:inset 3px 0 0 var(--primary); font-weight:600; }
+  nav.side .tail { margin-top:auto; padding-top:10px; border-top:1px solid var(--line); }
+  nav.side .staff { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
+
+  .page { display:flex; flex-direction:column; min-width:0; }
+  .devbar { background:var(--err-c); color:var(--deny); font-size:12px; padding:8px 20px; }
+  .tabs { display:flex; flex-wrap:wrap; gap:8px; padding:10px 16px;
+    border-bottom:1px solid var(--line); }
+  .tabs span { padding:7px 13px; border-radius:999px; border:1px solid var(--line);
+    background:var(--page); color:var(--muted); font-size:13px; }
+  .tabs span.on { background:var(--primary); color:#fff; border-color:var(--primary);
+    font-weight:600; }
+  .body { padding:16px 20px 26px; background:var(--alt); }
+  .feed { max-width:880px; }
+
+  .qhead { display:flex; align-items:baseline; gap:10px; margin-bottom:4px; }
+  .qhead h2 { font-size:18px; margin:0; font-weight:700; }
+  .qhead p { margin:0; color:var(--muted); font-size:13px; }
+
+  .band { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--muted); margin:22px 0 9px; display:flex; align-items:center; gap:8px; }
+  .band .ct { background:var(--page); border:1px solid var(--line); border-radius:999px;
+    padding:1px 8px; letter-spacing:0; }
+  .band .rule { flex:1; height:1px; background:var(--line); }
+
+  .card { background:var(--page); border:1px solid var(--line); border-radius:12px;
+    margin-bottom:14px; overflow:hidden; }
+  .ch { display:flex; align-items:center; gap:10px; padding:12px 18px;
+    border-bottom:1px solid var(--line); }
+  .ch .org { font-size:16px; font-weight:600; }
+  .ch .au { color:var(--muted); font-size:13px; }
+  .ch .when { margin-left:auto; color:var(--muted); font-size:12px; white-space:nowrap; }
+  .cb { padding:16px 18px; font-size:15px; line-height:1.6; max-width:78ch; }
+
+  .answered { margin:0 18px 16px; border-radius:10px; padding:13px 15px 13px 17px;
+    max-width:78ch; }
+  .answered.app { background:var(--ok-c); box-shadow:inset 4px 0 0 var(--ok); }
+  .answered.den { background:var(--err-c); box-shadow:inset 4px 0 0 var(--err); }
+  .answered .ah { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    margin-bottom:6px; }
+  .answered.app .ah { color:var(--ok); } .answered.den .ah { color:var(--deny); }
+  .answered p { margin:0; font-size:14px; line-height:1.55; }
+
+  .foot { border-top:1px solid var(--line); background:var(--alt); padding:13px 18px 15px; }
+  .foot .fl { display:flex; align-items:baseline; gap:10px; margin-bottom:6px; flex-wrap:wrap; }
+  .foot label { font-size:14px; font-weight:600; }
+  .foot .hint { color:var(--muted); font-size:12px; margin:0; }
+  .ta { border:1px solid var(--line); border-radius:9px; padding:11px 13px; min-height:70px;
+    color:#9AA5AF; font-size:14px; line-height:1.55; background:var(--page); max-width:78ch; }
+  .ta.filled { color:var(--ink); }
+  .ta.bad { border-color:var(--err); box-shadow:0 0 0 1px var(--err); }
+  .ta.focus { border-color:var(--primary); box-shadow:0 0 0 1px var(--primary); }
+  .errline { color:var(--deny); font-size:13px; font-weight:600; margin-top:7px; }
+  .cnt { color:var(--muted); font-size:12px; margin-top:6px; }
+  .cnt b { color:var(--ink); }
+  .acts { display:flex; align-items:center; gap:8px; margin-top:12px; flex-wrap:wrap; }
+  .acts .sp { margin-left:auto; }
+
+  .btn { background:var(--primary); color:#fff; border:0; border-radius:9px;
+    padding:9px 16px; min-height:40px; font-weight:600; }
+  .btn.ghost { background:var(--page); color:var(--primary); border:1px solid var(--line); }
+  .btn.sm { min-height:34px; padding:5px 12px; font-size:13px; }
+  .btn.ok { background:var(--ok); }
+  .btn.no { background:var(--page); color:var(--deny); border:1px solid var(--deny); }
+  .btn.plain { background:var(--page); color:var(--ink); border:1px solid var(--line); }
+
+  .pill { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    padding:3px 9px; border-radius:999px; background:var(--alt); border:1px solid var(--line);
+    color:var(--muted); white-space:nowrap; }
+  .pill.s-new { background:var(--page); border-color:var(--muted); color:var(--ink); }
+  .pill.s-rev { background:var(--info-c); border-color:transparent; color:var(--primary); }
+  .pill.s-app { background:var(--ok-c); border-color:transparent; color:var(--ok); }
+  .pill.s-den { background:var(--err-c); border-color:transparent; color:var(--deny); }
+
+  .solo { max-width:880px; }
+
+  .stage { display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; }
+  .phone { width:375px; border:8px solid var(--ink); border-radius:30px; overflow:hidden;
+    background:var(--page); height:720px; display:flex; flex-direction:column; }
+  .phlab { font-size:11px; color:var(--muted); text-align:center; margin-top:7px; width:375px; }
+  .bar { padding:12px 14px; border-bottom:1px solid var(--line); display:flex;
+    align-items:center; gap:9px; font-weight:700; font-size:16px; flex:none; }
+  .bar .back { color:var(--primary); font-weight:500; font-size:14px; }
+  .bar .pos { margin-left:auto; color:var(--muted); font-size:12px; font-weight:600; }
+  .scroll { overflow:auto; flex:1; min-height:0; }
+  .pfoot { flex:none; border-top:1px solid var(--line); background:var(--alt); padding:10px 12px;
+    display:flex; gap:8px; flex-wrap:wrap; }
+  .kb { flex:none; height:190px; background:#C9D3DB; border-top:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; color:#3F4A55; font-size:12px; }
+&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div class=&quot;app&quot;&gt;
+  &lt;header class=&quot;picker&quot;&gt;
+    
+    &lt;h1&gt;Development &amp;rsaquo; Suggestions &amp;mdash; 3 &amp;middot; Everything, in full, in one column&lt;/h1&gt;
+  &lt;/header&gt;
+
+  &lt;h2 class=&quot;viewlab&quot;&gt;Desktop &amp;mdash; the feed, every body in full, an answer box on every card&lt;/h2&gt;
+  &lt;div id=&quot;main&quot;&gt;&lt;/div&gt;
+
+  &lt;h2 class=&quot;viewlab&quot;&gt;Desktop &amp;mdash; Deny pressed with an empty note, and refused&lt;/h2&gt;
+  &lt;div id=&quot;refused&quot;&gt;&lt;/div&gt;
+
+  &lt;h2 class=&quot;viewlab&quot;&gt;375px &amp;mdash; designed for the phone, not narrowed&lt;/h2&gt;
+  &lt;div class=&quot;stage&quot; id=&quot;mobile&quot;&gt;&lt;/div&gt;
+&lt;/div&gt;
+
+&lt;script&gt;
+const ROWS = [
+  { st:&#x27;new&#x27;, org:&#x27;A-1 Chimney&#x27;, who:&#x27;Marisol Ortega&#x27;, sent:&#x27;Today, 9:12am&#x27;,
+    body:&quot;Techs get the address on the job card but not the gate code or the dog, so half of them ring the office from the driveway. The access notes are already on the customer -- could they ride along on the job card the way the phone number does?&quot; },
+  { st:&#x27;new&#x27;, org:&#x27;Bluepoint HVAC&#x27;, who:&#x27;Ray Nakashima&#x27;, sent:&#x27;Today, 7:40am&#x27;,
+    body:&quot;Our techs cover two counties and the day sorts by appointment time, so a van crosses the river twice before lunch. Could a day be ordered by drive time and still keep the windows we promised?&quot; },
+  { st:&#x27;new&#x27;, org:&#x27;Kearny Fireplace &amp; Stove&#x27;, who:&#x27;Karen Boyle&#x27;, sent:&#x27;Yesterday, 4:55pm&#x27;,
+    body:&quot;The estimate PDF says Quote across the top and customers keep ringing to ask whether it is a bill. Could that word be ours to set?&quot; },
+  { st:&#x27;reviewing&#x27;, org:&#x27;A-1 Chimney&#x27;, who:&#x27;Marisol Ortega&#x27;, sent:&#x27;26 August&#x27;,
+    body:&quot;When the same customer rings twice in a day we get two entries in the call list and no way to tell it is one job. Could repeat calls from a number group together for the day?&quot; },
+  { st:&#x27;reviewing&#x27;, org:&#x27;Hearth &amp; Home Services&#x27;, who:&#x27;Priya Raghunathan&#x27;, sent:&#x27;24 August&#x27;,
+    body:&quot;Inspection photos upload one at a time and the tech sits in the driveway waiting for a bar of signal. Could they queue and send themselves when there is service?&quot; },
+  { st:&#x27;approved&#x27;, org:&#x27;A-1 Chimney&#x27;, who:&#x27;Marisol Ortega&#x27;, sent:&#x27;28 August&#x27;, ans:&#x27;1 September&#x27;,
+    body:&quot;Let a tech mark a van out of service from their phone. Right now they ring the office, the office means to write it down, and dispatch finds out by sending somebody to a van that is up on a lift.&quot;,
+    note:&quot;Agreed, and it is going into Fleet next. A tech with fleet access will be able to put a vehicle out of service from the phone, with a reason, and dispatch will see it on the board before they assign anything to it.&quot; },
+  { st:&#x27;approved&#x27;, org:&#x27;A-1 Chimney&#x27;, who:&#x27;Tommy Delgado&#x27;, sent:&#x27;20 August&#x27;, ans:&#x27;22 August&#x27;,
+    body:&quot;Put the date of the last inspection on the customer card. We ask on the phone and then go and look it up anyway.&quot;,
+    note:&quot;Done -- it lands with the next client build. The card shows the last completed inspection and its date, and the date links to the report.&quot; },
+  { st:&#x27;denied&#x27;, org:&#x27;Summit Air Mechanical&#x27;, who:&#x27;Angela Ruiz&#x27;, sent:&#x27;12 August&#x27;, ans:&#x27;19 August&#x27;,
+    body:&quot;Could we text every customer on a route at 7am with the tech&#x27;s photo and an arrival window?&quot;,
+    note:&quot;Not in that shape, and it is the 7am blast rather than the idea. Sending a whole route at once means one wrong route texts fifty people and there is no way to pull it back. We would rather build it as a message the tech sends when they leave the stop before yours -- same photo, same window, one customer at a time. Say if that would work and it goes on the list.&quot; },
+  { st:&#x27;approved&#x27;, org:&#x27;Hearth &amp; Home Services&#x27;, who:&#x27;Somebody who has since left&#x27;,
+    sent:&#x27;4 August&#x27;, ans:&#x27;8 August&#x27;,
+    body:&quot;Let us print a route sheet for the day. Half our techs will not use a phone for the schedule and never will.&quot;,
+    note:&quot;Approved. Jobs prints a day per tech with addresses, windows and access notes.&quot; },
+  { st:&#x27;approved&#x27;, org:&#x27;Unknown&#x27;, who:&#x27;Somebody who has since left&#x27;,
+    sent:&#x27;22 July&#x27;, ans:&#x27;24 July&#x27;,
+    body:&quot;Could the invoice list total the month at the bottom? We reconcile by hand every month and the number is sitting right there.&quot;,
+    note:&quot;Approved -- the month total sits at the foot of the invoice list, and it follows whatever filter you have on rather than always totalling everything.&quot; }
+];
+
+const LABEL = { new:&#x27;New&#x27;, reviewing:&#x27;In review&#x27;, approved:&#x27;Approved&#x27;, denied:&#x27;Denied&#x27; };
+const CLS   = { new:&#x27;s-new&#x27;, reviewing:&#x27;s-rev&#x27;, approved:&#x27;s-app&#x27;, denied:&#x27;s-den&#x27; };
+
+const footer = (r, o) =&gt; {
+  const first = r.who.split(&#x27; &#x27;)[0];
+  const decided = !!r.note;
+  return `
+  &lt;div class=&quot;foot&quot;&gt;
+    &lt;div class=&quot;fl&quot;&gt;&lt;label&gt;${decided ? &#x27;Change the answer&#x27; : &#x27;Say why, in a sentence&#x27;}&lt;/label&gt;
+      &lt;p class=&quot;hint&quot;&gt;${decided ? first + &#x27; has already been told the answer above.&#x27;
+        : first + &#x27; reads this word for word.&#x27;} Nobody else at ${r.org} sees any of it.&lt;/p&gt;&lt;/div&gt;
+    &lt;div class=&quot;ta${o.text ? &#x27; filled&#x27; : &#x27;&#x27;}${o.bad ? &#x27; bad&#x27; : &#x27;&#x27;}${o.focus ? &#x27; focus&#x27; : &#x27;&#x27;}&quot;&gt;${
+      o.text || &#x27;What you decided, and why.&#x27;}&lt;/div&gt;
+    ${o.bad ? &#x27;&lt;div class=&quot;errline&quot;&gt;Say why, in a sentence. The person who sent it reads it.&lt;/div&gt;&#x27; : &#x27;&#x27;}
+    &lt;div class=&quot;cnt&quot;&gt;&lt;b&gt;${o.text ? String(o.text.length) : &#x27;0&#x27;}&lt;/b&gt; / 2000&lt;/div&gt;
+    &lt;div class=&quot;acts&quot;&gt;
+      &lt;button class=&quot;btn ok&quot; type=&quot;button&quot;&gt;${decided ? &#x27;Approve instead&#x27; : &#x27;Approve&#x27;}&lt;/button&gt;
+      &lt;button class=&quot;btn no&quot; type=&quot;button&quot;&gt;${decided ? &#x27;Deny instead&#x27; : &#x27;Deny&#x27;}&lt;/button&gt;
+      &lt;span class=&quot;sp&quot;&gt;&lt;/span&gt;
+      ${r.st === &#x27;new&#x27;
+        ? `&lt;button class=&quot;btn plain&quot; type=&quot;button&quot;&gt;Mark in review&lt;/button&gt;
+           &lt;span class=&quot;hint&quot;&gt;tells ${first} nothing &amp;mdash; it only stops them rewriting
+             it&lt;/span&gt;` : &#x27;&#x27;}
+    &lt;/div&gt;
+  &lt;/div&gt;`;
+};
+
+const card = (r, o) =&gt; `
+  &lt;article class=&quot;card&quot;&gt;
+    &lt;div class=&quot;ch&quot;&gt;&lt;span class=&quot;pill ${CLS[r.st]}&quot;&gt;${LABEL[r.st]}&lt;/span&gt;
+      &lt;span class=&quot;org&quot;&gt;${r.org}&lt;/span&gt;&lt;span class=&quot;au&quot;&gt;${r.who}&lt;/span&gt;
+      &lt;span class=&quot;when&quot;&gt;sent ${r.sent}${r.ans ? &#x27; &amp;middot; answered &#x27; + r.ans : &#x27;&#x27;}&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;cb&quot;&gt;${r.body}&lt;/div&gt;
+    ${r.note ? `&lt;div class=&quot;answered ${r.st === &#x27;approved&#x27; ? &#x27;app&#x27; : &#x27;den&#x27;}&quot;&gt;
+      &lt;div class=&quot;ah&quot;&gt;What ${r.who.split(&#x27; &#x27;)[0]} was told &amp;middot; ${r.ans}&lt;/div&gt;
+      &lt;p&gt;${r.note}&lt;/p&gt;&lt;/div&gt;` : &#x27;&#x27;}
+    ${footer(r, o || {})}
+  &lt;/article&gt;`;
+
+const SIDE = `
+  &lt;nav class=&quot;side&quot;&gt;
+    &lt;div class=&quot;brand&quot;&gt;&lt;i&gt;Ez&lt;/i&gt;Bizi&lt;/div&gt;
+    &lt;a&gt;Dashboard&lt;/a&gt;&lt;a&gt;Customers&lt;/a&gt;&lt;a&gt;Jobs&lt;/a&gt;&lt;a&gt;Scheduling&lt;/a&gt;&lt;a&gt;Phone&lt;/a&gt;&lt;a&gt;Fleet&lt;/a&gt;
+    &lt;a&gt;Human Resources&lt;/a&gt;
+    &lt;div class=&quot;tail&quot;&gt;&lt;a&gt;Suggestions&lt;/a&gt;&lt;a&gt;Settings&lt;/a&gt;&lt;/div&gt;
+    &lt;div class=&quot;staff&quot;&gt;&lt;a class=&quot;on&quot;&gt;Development&lt;/a&gt;&lt;/div&gt;
+  &lt;/nav&gt;`;
+
+const TABS = `
+  &lt;div class=&quot;tabs&quot;&gt;&lt;span&gt;Organizations&lt;/span&gt;&lt;span&gt;Modules&lt;/span&gt;&lt;span&gt;Client versions&lt;/span&gt;
+    &lt;span&gt;Client access&lt;/span&gt;&lt;span&gt;Health&lt;/span&gt;&lt;span&gt;Staff&lt;/span&gt;
+    &lt;span class=&quot;on&quot;&gt;Suggestions&lt;/span&gt;&lt;/div&gt;`;
+
+const CHROME = (body) =&gt; `
+  &lt;div class=&quot;shell&quot;&gt;${SIDE}&lt;div class=&quot;page&quot;&gt;
+    &lt;div class=&quot;devbar&quot;&gt;Platform control plane &amp;mdash; every organization, not just this one.
+      Your ordinary activity here is not written to the business audit trail; sign-ins, staff
+      changes and client access always are.&lt;/div&gt;
+    ${TABS}
+    &lt;div class=&quot;body&quot;&gt;${body}&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;`;
+
+const NEW = ROWS.filter(r =&gt; r.st === &#x27;new&#x27;);
+const REV = ROWS.filter(r =&gt; r.st === &#x27;reviewing&#x27;);
+const DEC = ROWS.filter(r =&gt; r.note);
+
+const band = (t, n) =&gt;
+  `&lt;div class=&quot;band&quot;&gt;${t}&lt;span class=&quot;ct&quot;&gt;${n}&lt;/span&gt;&lt;span class=&quot;rule&quot;&gt;&lt;/span&gt;&lt;/div&gt;`;
+
+document.getElementById(&#x27;main&#x27;).innerHTML = CHROME(`
+  &lt;div class=&quot;feed&quot;&gt;
+    &lt;div class=&quot;qhead&quot;&gt;&lt;h2&gt;Suggestions&lt;/h2&gt;
+      &lt;p&gt;Everything every customer has asked for, in full. 10 of at most 200 loaded.&lt;/p&gt;&lt;/div&gt;
+    ${band(&#x27;Waiting &amp;mdash; nobody has read these&#x27;, NEW.length)}
+    ${card(NEW[0], { focus:true })}
+    ${card(NEW[1])}
+    ${card(NEW[2])}
+    ${band(&#x27;Being read&#x27;, REV.length)}
+    ${card(REV[0])}
+    ${band(&#x27;Answered&#x27;, DEC.length)}
+    ${card(DEC[2])}
+    ${card(DEC[3])}
+    ${card(DEC[4])}
+  &lt;/div&gt;`);
+
+document.getElementById(&#x27;refused&#x27;).innerHTML = CHROME(`
+  &lt;div class=&quot;solo&quot;&gt;${card(NEW[1], { bad:true })}&lt;/div&gt;`);
+
+const phone = (label, inner) =&gt;
+  `&lt;div&gt;&lt;div class=&quot;phone&quot;&gt;${inner}&lt;/div&gt;&lt;div class=&quot;phlab&quot;&gt;${label}&lt;/div&gt;&lt;/div&gt;`;
+
+document.getElementById(&#x27;mobile&#x27;).innerHTML =
+  phone(&#x27;One at a time &amp;mdash; the whole thing, then the answer&#x27;, `
+    &lt;div class=&quot;bar&quot;&gt;&lt;span class=&quot;back&quot;&gt;&amp;lsaquo; Development&lt;/span&gt; Waiting
+      &lt;span class=&quot;pos&quot;&gt;1 of 3&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;scroll&quot;&gt;
+      &lt;div style=&quot;padding:14px 16px;border-bottom:1px solid var(--line)&quot;&gt;
+        &lt;span class=&quot;pill s-new&quot;&gt;New&lt;/span&gt;
+        &lt;div style=&quot;margin-top:9px;font-size:16px;font-weight:600&quot;&gt;A-1 Chimney&lt;/div&gt;
+        &lt;div style=&quot;font-size:12px;color:var(--muted)&quot;&gt;Marisol Ortega &amp;middot; today, 9:12am&lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div style=&quot;padding:16px;font-size:16px;line-height:1.6&quot;&gt;${ROWS[0].body}&lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;pfoot&quot;&gt;
+      &lt;button class=&quot;btn ok&quot; style=&quot;flex:1&quot; type=&quot;button&quot;&gt;Approve&lt;/button&gt;
+      &lt;button class=&quot;btn no&quot; style=&quot;flex:1&quot; type=&quot;button&quot;&gt;Deny&lt;/button&gt;
+      &lt;button class=&quot;btn plain&quot; style=&quot;width:100%&quot; type=&quot;button&quot;&gt;Mark in review&lt;/button&gt;
+      &lt;button class=&quot;btn ghost&quot; style=&quot;width:100%&quot; type=&quot;button&quot;&gt;Skip to the next one&lt;/button&gt;
+    &lt;/div&gt;`) +
+  phone(&#x27;Answering &amp;mdash; the buttons stay above the keyboard&#x27;, `
+    &lt;div class=&quot;bar&quot;&gt;&lt;span class=&quot;back&quot;&gt;&amp;lsaquo; Waiting&lt;/span&gt; Deny
+      &lt;span class=&quot;pos&quot;&gt;1 of 3&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;scroll&quot;&gt;
+      &lt;div style=&quot;padding:13px 16px;border-bottom:1px solid var(--line);font-size:13px;
+        line-height:1.5;color:var(--muted)&quot;&gt;${ROWS[0].body}&lt;/div&gt;
+      &lt;div style=&quot;padding:13px 16px&quot;&gt;
+        &lt;label style=&quot;display:block;font-size:14px;font-weight:600;margin-bottom:4px&quot;&gt;Say why, in
+          a sentence&lt;/label&gt;
+        &lt;p style=&quot;margin:0 0 7px;color:var(--muted);font-size:12px&quot;&gt;Marisol reads this word for
+          word.&lt;/p&gt;
+        &lt;div class=&quot;ta filled focus&quot;&gt;Access notes are coming to the job card, but they belong to
+          the customer rather than the job, so what you will see is&lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;pfoot&quot;&gt;
+      &lt;button class=&quot;btn no&quot; style=&quot;flex:1&quot; type=&quot;button&quot;&gt;Deny&lt;/button&gt;
+      &lt;button class=&quot;btn ghost&quot; style=&quot;flex:1&quot; type=&quot;button&quot;&gt;Cancel&lt;/button&gt;&lt;/div&gt;
+    &lt;div class=&quot;kb&quot;&gt;the keyboard &amp;mdash; the buttons sit above it&lt;/div&gt;`);
+&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+<script>const OPTS=[{"i": 0, "grp": "Your suggestions", "num": "1", "label": "Compose first", "ship": true}, {"i": 1, "grp": "Your suggestions", "num": "2", "label": "What happened to what you sent", "ship": false}, {"i": 2, "grp": "Your suggestions", "num": "3", "label": "Your correspondence with EzBizi", "ship": false}, {"i": 3, "grp": "Development queue", "num": "1", "label": "A worklist you go down", "ship": false}, {"i": 4, "grp": "Development queue", "num": "2", "label": "List beside the answer", "ship": true}, {"i": 5, "grp": "Development queue", "num": "3", "label": "Everything, in full", "ship": false}];
+
+const nav=document.getElementById('nav'), lab=document.getElementById('lab');
+const key=nav.firstElementChild; let cur=null;
+function draw(o,btn){
+  OPTS.forEach(x=>document.getElementById('f'+x.i).classList.remove('on'));
+  document.getElementById('f'+o.i).classList.add('on');
+  [...nav.querySelectorAll('button')].forEach(b=>b.setAttribute('aria-current','false'));
+  btn.setAttribute('aria-current','true');
+  lab.innerHTML='<b>'+o.grp+' '+o.num+'</b> · '+o.label+(o.ship?'<span class="shipnote">in production now</span>':'');
+}
+let last=null,row=null;
+OPTS.forEach((o,idx)=>{
+  if(o.grp!==last){
+    const wrap=document.createElement('div');wrap.className='row';
+    const g=document.createElement('span');g.className='grp';g.textContent=o.grp;wrap.appendChild(g);
+    nav.insertBefore(wrap,key); row=wrap; last=o.grp;
+  }
+  const b=document.createElement('button');
+  b.textContent=o.num; b.title=o.label+(o.ship?' - in production now':'');
+  if(o.ship) b.classList.add('ship');
+  b.setAttribute('aria-current', idx===0?'true':'false');
+  b.onclick=()=>draw(o,b);
+  row.appendChild(b);
+  if(idx===0) setTimeout(()=>draw(o,b),0);
+});
+</script></body></html>

@@ -3,10 +3,18 @@
 ## The short version
 
 ```bash
-git push production main
+scripts/release.sh --gates
 ```
 
-That's it. The hook on the app box does the rest.
+This orchestrates web, Windows, Android, iOS and macOS, deploying API/web first. `client/VERSION` is the version source; the orchestrator normally commits a bump. Use `--no-bump` only when intentionally releasing the version already chosen.
+
+For API/web alone use `scripts/deploy.sh --gates`; add `--code` to omit Flutter web. Gates are **off by default**, per the standing release policy. `--gates` runs them; `--skip-gates` skips them. Build success does not imply test success. A bare production push bypasses the local gate and does not publish a matching UI.
+
+The orchestrator passes its exact commit as `--sha <full-sha>` to `deploy.sh`, which rejects disagreement with `EZBIZI_RELEASE_SHA`. Standalone deployment defaults to the commit at `main`. Archives, client builds and the version stamp use that pinned tree, not uncommitted edits.
+
+`deploy.sh` stages the pinned `post-receive` and `receive-release` helpers and optional UI in unique directories. Its receive wrapper holds `/var/repos/ezbizi-deploy.lock` across hook installation, API activation and UI swap. The hook archives the received commit into a unique release directory and writes `.ezbizi-release-sha`; the wrapper checks API/UI identity. A failed UI swap restores the previous UI and reports failure. API activation is not automatically rolled back. A same-SHA retry may replay a failed hook only while production's ref still names that SHA.
+
+The separate `/opt/ezbizi-test/.deploy-gate.lock` serializes sandbox tests. It is not the production deployment lock. Normal script deployments install the pinned helpers automatically; editing only the versioned hook without running deployment does not change the live hook.
 
 nginx vhosts are **not** swapped by the hook. After a change under `deploy/nginx-*.conf`:
 
@@ -24,9 +32,9 @@ Production `.env` should have `EZBIZI_SIGNUP_ENABLED=false` until mail can verif
 
 ## What actually happens
 
-`git push production main` → `/var/repos/ezbizi.git` → `hooks/post-receive`:
+The deploy script pushes its pinned SHA to production `main` through the receive wrapper, invoking `/var/repos/ezbizi.git/hooks/post-receive`:
 
-1. Check out `main` into a **new timestamped release directory**
+1. Archive the exact received commit into a **new unique release directory** and record its SHA
 2. Copy `.env` from the live app (it never lives in the repo) and set it to
    `ubuntu:www-data` mode `0640` — see [The `.env` trap](#the-env-trap)
 3. Symlink `storage/` to the shared one (uploads and logs survive releases)
@@ -64,8 +72,7 @@ rm -rf /var/www/ezbizi-releases/<stamp>    # once you have restored
 destructive — one drops every enrolled TOTP column — so rolling back destroys
 data the failed migration never touched. Restore the dump.
 
-> Still missing from §11.2: a **deployment lock**. Two pushes landing at once
-> will still interleave. Not fixed here.
+The receive wrapper and hook serialize production deployment. Direct pushes still bypass local gates and coordinated UI upload; use the scripts for normal releases. The wrapper's identity checks are separate from application health checks.
 
 ## Why releases rather than pulling in place
 
@@ -100,15 +107,9 @@ installed and md5 differs). The refresh runs **after** the release is live and
 cannot abort the deploy: a failed copy warns and leaves the box on the older
 script. It does not first-install those units, does not touch the
 `peer-url.conf` drop-in, and does not update `watch-peer-app.sh` on the
-websites box. The Windows, Android, iOS and macOS builds are made by
-`scripts/build-app.sh` and distributed through the public app stores, which is
-account work rather than deploy work — so it lives on its own in
-**[STORES.md](STORES.md)**.
+websites box. `scripts/release.sh` orchestrates Windows, Android, iOS and macOS using the build/signing helpers. Artifacts go under the main checkout's `Distribution/`. Build success is separate from store review and availability; account/submission work lives in **[STORES.md](STORES.md)**.
 
-Read it before the first submission, not after. Two things in there are cheap
-now and permanent later: the bundle identifiers are still `flutter create`
-defaults, and a bundle identifier cannot be changed once a build carrying it has
-been accepted.
+Read it before submissions; preserve registered application identifiers and signing identities. Do not raise minimum installed-client versions as part of a release; read [active constraints](ACTIVE-CONSTRAINTS.md).
 
 ## Where things are
 
@@ -451,7 +452,7 @@ ssh app 'systemctl is-active ezbizi-scheduler.timer ezbizi-worker'
 
 ## Rules
 
-**Edit locally, push to deploy. Never edit on the server.**
+**Edit locally, deploy through the scripts. Never edit on the server as shipping.**
 
 Server-side edits are for diagnosis only. Editing there means the repo and the
 running app disagree, everything passes on the box, and the next clean deploy
@@ -462,16 +463,14 @@ To check the two are in step:
 
 ```bash
 # on the box
-cd /var/www/ezbizi-current && git --git-dir=/var/repos/ezbizi.git log --oneline -1
+cat /var/www/ezbizi-current/.ezbizi-release-sha
 # locally
-git log --oneline -1
+git show --no-patch <pinned-release-sha>
 ```
 
 ## Not yet done
 
-- **No CI.** `scripts/deploy.sh` runs the suite against `git archive main` in the
-  sandbox at `/opt/ezbizi-test` before pushing, so the gate tests exactly what
-  ships — but a bare `git push production main` still bypasses it entirely.
-- **No staging.** `dev.ezbizi.com` exists and is the obvious home for one.
+- **No mandatory CI gate.** `scripts/deploy.sh --gates` checks the pinned backend tree in `/opt/ezbizi-test` and the client. Gates remain opt-in; a bare push bypasses them.
+- **No staging.** `dev.ezbizi.com` is the production control plane, not a test environment.
 - **No automatic rollback.** The hook refuses to ship a broken build, but if a
   bad release passes its health check, rolling back is the manual step above.

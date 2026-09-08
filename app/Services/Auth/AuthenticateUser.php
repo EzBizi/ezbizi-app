@@ -6,7 +6,9 @@ use App\Models\PlatformStaff;
 use App\Models\PlatformStaffLink;
 use App\Models\User;
 use App\Services\Staff\StaffAuthenticator;
+use App\Support\Auth\FactorAttempts;
 use App\Support\Auth\PasswordTiming;
+use App\Support\Auth\TotpEnrolment;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Support\Facades\Hash;
 
@@ -112,6 +114,7 @@ class AuthenticateUser
                     // the server has asked for one, which never happened.
                     $needsSecondFactor = true;
                     $awaitingCode[] = $account;
+
                     continue;
                 }
 
@@ -125,12 +128,12 @@ class AuthenticateUser
                  *
                  * Staff are not tenant-scoped, so theirs needs no such thing.
                  */
-                $verified = $staff !== null
+                $verified = app(FactorAttempts::class)->verify($staff ?? $account, $code, fn () => $staff !== null
                     ? $this->staffAuth->verifySecondFactor($staff, $code)
                     : $this->tenant->run(
                         $account->organization,
-                        fn () => app(\App\Support\Auth\TotpEnrolment::class)->verify($account, $code),
-                    );
+                        fn () => app(TotpEnrolment::class)->verify($account, $code),
+                    ));
 
                 if (! $verified) {
                     // Distinct from a missing code. Falling through to the
@@ -139,6 +142,7 @@ class AuthenticateUser
                     // digit — which sends people resetting a password that was
                     // never the problem.
                     $codeWasWrong = true;
+
                     continue;
                 }
             }
@@ -220,14 +224,15 @@ class AuthenticateUser
         }
 
         if ($staff !== null) {
-            if (! $this->staffAuth->verifySecondFactor($staff, (string) $code)) {
+            if (! app(FactorAttempts::class)->verify($staff, (string) $code,
+                fn () => $this->staffAuth->verifySecondFactor($staff, (string) $code))) {
                 return AuthenticationResult::failed();
             }
         } elseif ($user->hasTotp()) {
-            $verified = $this->tenant->run(
+            $verified = app(FactorAttempts::class)->verify($user, (string) $code, fn () => $this->tenant->run(
                 $user->organization,
-                fn () => app(\App\Support\Auth\TotpEnrolment::class)->verify($user, (string) $code),
-            );
+                fn () => app(TotpEnrolment::class)->verify($user, (string) $code),
+            ));
 
             if (! $verified) {
                 return AuthenticationResult::failed();

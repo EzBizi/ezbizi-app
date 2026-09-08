@@ -51,6 +51,7 @@ class EventEmitter
             'event_key'       => $eventKey,
             'subject_type'    => $subject ? $subject::class : null,
             'subject_id'      => $subject?->getKey(),
+            'scope_snapshot'  => EventScope::capture($subject),
             // Same redaction rules as the audit log. An event payload carrying a
             // password because somebody added a field is exactly as bad here as
             // it is there, and this table is read by tenant-authored rules.

@@ -27,6 +27,22 @@ class InventoryPurchaseTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
+    public function test_stale_open_order_cannot_receive_after_cancellation(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        [$vendor, $item, $location] = $this->vendorItemLocation($t);
+        $po = $this->openOrder($t['admin'], $vendor, $item, $t, 10);
+        $this->inTenant($t['org'], function () use ($po, $location, $t) {
+            $stale = InventoryPurchaseOrder::findOrFail($po['id']);
+            $line = $stale->lines()->firstOrFail();
+            InventoryPurchaseOrder::whereKey($stale->id)->update(['status' => 'cancelled']);
+            $this->expectException(\Illuminate\Validation\ValidationException::class);
+            app(\App\Support\Inventory\InventoryMover::class)->receive(
+                $stale, $location, [['line' => $line, 'qty' => '1']], $t['admin'],
+            );
+        });
+    }
+
     public function test_order_ten_partial_receive_then_over_receive_then_full(): void
     {
         $tenant = $this->provisionTenant('Alpha');

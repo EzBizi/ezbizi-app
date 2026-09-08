@@ -344,6 +344,33 @@ final class MicrosoftMailboxReader implements MailboxReader
         ));
     }
 
+    /**
+     * No — and the reason is a scope decision, not a Graph limitation.
+     *
+     * Graph marks a message read with a PATCH on `isRead`, which needs
+     * `Mail.ReadWrite`. We hold `Mail.Read` and `Mail.Send`, and
+     * {@see MicrosoftOAuth} says plainly that ReadWrite is NOT asked for —
+     * it also permits modifying and deleting mail, which is a much larger
+     * thing to hold than "mark this one read".
+     *
+     * So the switch is not offered on Outlook rather than offered and broken.
+     * Turning it on would mean fresh consent from every connected mailbox.
+     */
+    public function canMarkReadAtSource(Mailbox $mailbox): bool
+    {
+        return false;
+    }
+
+    public function markReadAtSource(Mailbox $mailbox, string $messageId): void
+    {
+        throw new CannotChangeMail(
+            'EzBizi cannot mark mail as read in Outlook. Doing so needs a wider permission '
+            .'than this inbox was connected with - one that also allows changing and '
+            .'deleting mail - so it is not asked for. The message is still marked as read '
+            .'in EzBizi.',
+        );
+    }
+
     public function send(Mailbox $mailbox, array $to, string $subject, string $body, array $attachments = []): void
     {
         $message = [

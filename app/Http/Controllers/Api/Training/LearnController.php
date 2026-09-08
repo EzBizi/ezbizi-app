@@ -13,6 +13,7 @@ use App\Support\Access\Refusal;
 use App\Support\Automations\EventEmitter;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
+use App\Support\Training\LapsedPasses;
 use App\Support\Training\LearnerView;
 use App\Support\Training\TestGrader;
 use Illuminate\Database\Eloquent\Builder;
@@ -69,6 +70,41 @@ use Illuminate\Support\Facades\DB;
  * that would not appear in `library` cannot appear in `assigned` either,
  * because they are drawn from the identical set — and a row's inclusion and
  * its rendered content are now the same lookup, not two.
+ *
+ * ── A lapsed pass reappears here (training task-11 brief) ──────────
+ *
+ * §14 of the spec promises "a pass past `valid_for_days` reappears in Learn
+ * as due for retaking" — and until task 11, nothing kept that promise:
+ * `assigned` reads `training_assignments` only, and a lapsed pass writes no
+ * new assignment row of its own unless a tenant happens to have authored a
+ * `training.expired` → re-assign rule. Most tenants have not, and
+ * `training.expired`'s own published description already says a pass
+ * reappearing here is what the trigger MEANS — so a learner with no such
+ * rule simply never saw their own lapsed test again.
+ *
+ * [lapsedTestIds] answers "which of the tests THIS learner can even see are
+ * ones their own current pass has lapsed on" — `LapsedPasses::currentlyLapsedQuery`,
+ * the IDENTICAL definition `ExpireTrainingPasses`'s nightly sweep and
+ * `DashboardController`'s `retaking` count use, narrowed to `$tests` (the
+ * same InventoryVisibility-constrained, published-only set [library] and
+ * [assigned] already draw from) and to this one user. Every test-shaped
+ * entry this controller ever renders — in `library`, in a real `assigned`
+ * row, or in the synthetic one below — carries `due_for_retaking` off this
+ * SAME set, via [presentTest]'s own parameter, so the three can never
+ * disagree about which tests are lapsed for this person.
+ *
+ * `assigned` is where it reappears, not merely `library`: a lapsed pass is
+ * something this person has to act on, the same shelf a real assignment
+ * already occupies for exactly that reason. [assigned] adds one synthetic
+ * row — no `assignment_id`, no `due_on`, because there is no real
+ * assignment row backing it — for every lapsed test NOT already covered by
+ * a genuine `training_assignments` row for that same test (an automation
+ * rule, or a monitor re-assigning it by hand, either one already puts it on
+ * this shelf). Checked against the SAME resolution [presentAssignment]
+ * itself uses — test tried first when a row names both — so "was this test
+ * already shown by a real assignment" can never drift from what
+ * [presentAssignment] actually rendered. That is the double-count [assigned]
+ * exists to prevent: one row, not two, for the same test.
  */
 class LearnController extends Controller
 {
@@ -83,10 +119,11 @@ class LearnController extends Controller
         $scope = ViewScope::forUser($user);
         $guides = $this->readableGuides($user, $scope);
         $tests = $this->readableTests($user, $scope);
+        $lapsedTestIds = $this->lapsedTestIds($user, $tests);
 
         return response()->json([
-            'assigned' => $this->assigned($user, $guides, $tests),
-            'library' => $this->library($guides, $tests),
+            'assigned' => $this->assigned($user, $guides, $tests, $lapsedTestIds),
+            'library' => $this->library($guides, $tests, $lapsedTestIds),
         ]);
     }
 
@@ -111,7 +148,11 @@ class LearnController extends Controller
             $scope,
         )->findOrFail($test);
 
-        return response()->json(['data' => $this->presentTest($row)]);
+        $lapsedTestIds = LapsedPasses::currentlyLapsedQuery($row->id)
+            ->where('training_attempts.user_id', $user->getKey())
+            ->exists() ? [$row->id] : [];
+
+        return response()->json(['data' => $this->presentTest($row, $lapsedTestIds)]);
     }
 
     /**
@@ -287,12 +328,13 @@ class LearnController extends Controller
     /**
      * @param  Collection<string, TrainingGuide>  $guides
      * @param  Collection<string, TrainingTest>  $tests
+     * @param  list<string>  $lapsedTestIds  see this class's own docblock, "A lapsed pass reappears here"
      * @return array<int, array<string, mixed>>
      */
-    private function library(Collection $guides, Collection $tests): array
+    private function library(Collection $guides, Collection $tests, array $lapsedTestIds): array
     {
         return $guides->map(fn (TrainingGuide $g) => $this->presentGuide($g))
-            ->concat($tests->map(fn (TrainingTest $t) => $this->presentTest($t)))
+            ->concat($tests->map(fn (TrainingTest $t) => $this->presentTest($t, $lapsedTestIds)))
             ->values()
             ->all();
     }
@@ -315,14 +357,66 @@ class LearnController extends Controller
      *
      * @param  Collection<string, TrainingGuide>  $guides
      * @param  Collection<string, TrainingTest>  $tests
+     * @param  list<string>  $lapsedTestIds  see this class's own docblock, "A lapsed pass reappears here"
      * @return array<int, array<string, mixed>>
      */
-    private function assigned(User $user, Collection $guides, Collection $tests): array
+    private function assigned(User $user, Collection $guides, Collection $tests, array $lapsedTestIds): array
     {
-        return $this->assignedQuery($user)
-            ->get()
-            ->map(fn (TrainingAssignment $a) => $this->presentAssignment($a, $guides, $tests))
+        $rawAssignments = $this->assignedQuery($user)->get();
+
+        $rows = $rawAssignments
+            ->map(fn (TrainingAssignment $a) => $this->presentAssignment($a, $guides, $tests, $lapsedTestIds))
             ->filter()
+            ->values();
+
+        // The exact same resolution [presentAssignment] itself applies —
+        // test tried first — so "already shown by a real assignment row"
+        // can never drift from what was actually rendered above.
+        $alreadyShownTestIds = $rawAssignments
+            ->filter(fn (TrainingAssignment $a) => $a->test_id !== null && $tests->has($a->test_id))
+            ->pluck('test_id')
+            ->all();
+
+        foreach (array_diff($lapsedTestIds, $alreadyShownTestIds) as $testId) {
+            // No real assignment row backs this one — there is nothing to
+            // name here, unlike a genuine row's own `assignment_id`/`due_on`.
+            $rows->push([
+                'assignment_id' => null,
+                'due_on' => null,
+                'assignee_type' => null,
+                ...$this->presentTest($tests->get($testId), $lapsedTestIds),
+            ]);
+        }
+
+        return $rows->values()->all();
+    }
+
+    /**
+     * This learner's own currently-lapsed passes, among the tests THIS read
+     * can even show — published, place-visible ($tests, the same
+     * InventoryVisibility-constrained collection [library] and [assigned]
+     * both draw from). See this class's own docblock, "A lapsed pass
+     * reappears here", for why `assigned` is where this surfaces and how it
+     * avoids a second row for a test a real assignment already shows.
+     *
+     * `LapsedPasses::currentlyLapsedQuery` — never a second, hand-rolled
+     * "passed AND expires_on <= today" here — is the identical definition
+     * `ExpireTrainingPasses`'s nightly sweep and `DashboardController`'s
+     * `retaking` count both read, so a test cannot reappear here while the
+     * Dashboard disagrees about whether it has lapsed.
+     *
+     * @return list<string>
+     */
+    private function lapsedTestIds(User $user, Collection $tests): array
+    {
+        if ($tests->isEmpty()) {
+            return [];
+        }
+
+        return LapsedPasses::currentlyLapsedQuery($tests->keys()->all())
+            ->where('training_attempts.user_id', $user->getKey())
+            ->pluck('training_attempts.test_id')
+            ->unique()
             ->values()
             ->all();
     }
@@ -364,13 +458,14 @@ class LearnController extends Controller
      *
      * @param  Collection<string, TrainingGuide>  $guides
      * @param  Collection<string, TrainingTest>  $tests
+     * @param  list<string>  $lapsedTestIds  see this class's own docblock, "A lapsed pass reappears here"
      * @return array<string, mixed>|null
      */
-    private function presentAssignment(TrainingAssignment $assignment, Collection $guides, Collection $tests): ?array
+    private function presentAssignment(TrainingAssignment $assignment, Collection $guides, Collection $tests, array $lapsedTestIds): ?array
     {
         $content = match (true) {
             $assignment->test_id !== null && $tests->has($assignment->test_id)
-                => $this->presentTest($tests->get($assignment->test_id)),
+                => $this->presentTest($tests->get($assignment->test_id), $lapsedTestIds),
             $assignment->guide_id !== null && $guides->has($assignment->guide_id)
                 => $this->presentGuide($guides->get($assignment->guide_id)),
             default => null,
@@ -409,9 +504,18 @@ class LearnController extends Controller
      * It is always the return of {@see LearnerView::stripAnswerKey}, here and
      * everywhere else in this controller that mentions a test.
      *
+     * `due_for_retaking` — never "due for re-certification" or any other
+     * spelling carrying the word this module's output must never contain
+     * (see this class's own docblock) — is this learner's own current lapse
+     * state for THIS test, off the same `$lapsedTestIds` set every caller of
+     * this method already computed once in [index]; see "A lapsed pass
+     * reappears here" above for why it is a field here rather than a
+     * separately-shaped entry.
+     *
+     * @param  list<string>  $lapsedTestIds
      * @return array<string, mixed>
      */
-    private function presentTest(TrainingTest $test): array
+    private function presentTest(TrainingTest $test, array $lapsedTestIds = []): array
     {
         return [
             'type' => 'test',
@@ -424,6 +528,7 @@ class LearnController extends Controller
             'pass_mark' => $test->pass_mark,
             'max_attempts' => $test->max_attempts,
             'valid_for_days' => $test->valid_for_days,
+            'due_for_retaking' => in_array($test->id, $lapsedTestIds, true),
             'question_count' => $test->questionCount(),
             'questions' => LearnerView::stripAnswerKey($test->questions ?? []),
         ];

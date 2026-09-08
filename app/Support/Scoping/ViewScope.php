@@ -32,12 +32,11 @@ use Illuminate\Database\Eloquent\Model;
  * a company they can no longer reach because their last visit is still on file.
  * Every set of ids returned here is intersected with what §4 already allows.
  *
- * ── Why it comes from the preference, not a header ───────────────
- *
- * The chosen view persists across reloads and devices, so it has to be stored
- * anyway. Reading it here as well means one source of truth: no request can
- * claim a scope the user has not actually selected, and there is no second path
- * to keep in step.
+ * X-EzBizi-View binds a request to the view its originating client displays.
+ * The saved preference only initializes legacy clients and a new session;
+ * another device changing it cannot redirect an in-progress draft. A header
+ * is untrusted input: explicit inaccessible/invalid views are refused rather
+ * than silently widened. This narrows reads; write authority remains with policies.
  */
 class ViewScope
 {
@@ -64,6 +63,32 @@ class ViewScope
      */
     public static function forUser(User $user): self
     {
+        $request = request();
+        $actor = $request->user();
+        // Callers also resolve other users (e.g. training learners), and jobs
+        // resolve stored scope without a request. The actor's header is never
+        // a scope override for those identities.
+        if ($actor instanceof User && $actor->id === $user->id
+            && $actor->organization_id === $user->organization_id
+            && $request->headers->has('X-EzBizi-View')) {
+            $value = $request->header('X-EzBizi-View');
+            if ($value === self::ORGANIZATION) {
+                return new self(self::ORGANIZATION, null, $user);
+            }
+            if (! is_string($value) || ! preg_match('/^(company|franchise):([^:]+)$/D', $value, $parts)) {
+                throw new AuthorizationException('That view is not available. Choose a view again.');
+            }
+            [$type, $id] = [$parts[1], $parts[2]];
+            $reachable = $type === self::COMPANY
+                ? $user->reachableCompanies()->contains(fn ($c) => $c->id === $id)
+                : $user->reachableFranchises()->contains(fn ($f) => $f->id === $id);
+            if (! $reachable) {
+                throw new AuthorizationException('That view is not available. Choose a view again.');
+            }
+
+            return new self($type, $id, $user);
+        }
+
         $stored = $user->preferences['navigation.scope'] ?? null;
 
         if (! is_string($stored) || ! str_contains($stored, ':')) {

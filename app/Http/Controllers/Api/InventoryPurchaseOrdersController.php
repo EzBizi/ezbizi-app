@@ -186,13 +186,14 @@ class InventoryPurchaseOrdersController extends Controller
     {
         $this->authorize('update', $purchaseOrder);
 
-        if ($purchaseOrder->status !== InventoryPurchaseOrderStatus::Draft) {
-            throw ValidationException::withMessages([
-                'status' => 'This order is not a draft.',
-            ]);
-        }
-
         DB::transaction(function () use ($purchaseOrder) {
+            $purchaseOrder = InventoryPurchaseOrder::query()->lockForUpdate()->findOrFail($purchaseOrder->getKey());
+            if ($purchaseOrder->status !== InventoryPurchaseOrderStatus::Draft) {
+                throw ValidationException::withMessages([
+                    'status' => 'This order is not a draft.',
+                ]);
+            }
+
             $purchaseOrder->status = InventoryPurchaseOrderStatus::Open;
             $purchaseOrder->ordered_on = $this->calendarDayForPo($purchaseOrder);
             $purchaseOrder->save();
@@ -231,29 +232,32 @@ class InventoryPurchaseOrdersController extends Controller
     {
         $this->authorize('update', $purchaseOrder);
 
-        $cancellable = in_array($purchaseOrder->status, [
-            InventoryPurchaseOrderStatus::Draft,
-            InventoryPurchaseOrderStatus::Open,
-        ], true);
+        DB::transaction(function () use ($purchaseOrder) {
+            $purchaseOrder = InventoryPurchaseOrder::query()->lockForUpdate()->findOrFail($purchaseOrder->getKey());
+            $cancellable = in_array($purchaseOrder->status, [
+                InventoryPurchaseOrderStatus::Draft,
+                InventoryPurchaseOrderStatus::Open,
+            ], true);
 
-        if (! $cancellable) {
-            throw ValidationException::withMessages([
-                'status' => 'This order cannot be cancelled.',
-            ]);
-        }
+            if (! $cancellable) {
+                throw ValidationException::withMessages([
+                    'status' => 'This order cannot be cancelled.',
+                ]);
+            }
 
-        $received = $purchaseOrder->lines()
-            ->where('qty_received', '>', 0)
-            ->exists();
+            $received = $purchaseOrder->lines()
+                ->where('qty_received', '>', 0)
+                ->exists();
 
-        if ($received) {
-            throw ValidationException::withMessages([
-                'status' => 'This order has already received stock, so it cannot be cancelled.',
-            ]);
-        }
+            if ($received) {
+                throw ValidationException::withMessages([
+                    'status' => 'This order has already received stock, so it cannot be cancelled.',
+                ]);
+            }
 
-        $purchaseOrder->status = InventoryPurchaseOrderStatus::Cancelled;
-        $purchaseOrder->save();
+            $purchaseOrder->status = InventoryPurchaseOrderStatus::Cancelled;
+            $purchaseOrder->save();
+        });
 
         return response()->json([
             'data' => $this->presentOrder(

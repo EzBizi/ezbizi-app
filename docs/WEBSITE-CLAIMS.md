@@ -208,19 +208,41 @@ judgement. Pull them the same way if that changes.
 ## Store listings — check the store, not a session
 
 **Android is live on Google Play** (`com.ezbizi.app`), linked from `/download/`
-since 2026-09-01. **iOS is not published.** Neither fact should ever be taken from
-a message; both are one command, and they are the cheapest way to notice that a
-listing went live and the page did not:
+since 2026-09-01. **iOS is live too — INVERTED 2026-09-08.** Neither fact should
+ever be taken from a message; both are one command, and they are the cheapest way
+to notice that a listing went live and the page did not:
 
 ```
 curl -sI "https://play.google.com/store/apps/details?id=com.ezbizi.app"   # 200 = live
 curl -s  "https://itunes.apple.com/lookup?bundleId=com.ezbizi.app"        # resultCount
 ```
 
-The iOS card claims only what is checkable — built and signed, not on the store —
-because its actual review status has been contested between two repo files since
-August. **It owes the public a link the moment that lookup returns a result**, and
-nothing else about it should change before then.
+**The debt this section recorded is paid, and the page paid it first.** The card
+used to claim only what was checkable — built and signed, not on the store — and
+this section said it owed the public a link the moment the lookup returned a
+result. Measured 2026-09-08: `resultCount` is **1** — `trackId` 6805979795,
+`trackName` EzBizi, `version` 0.0.0150, `releaseDate` 2026-09-04,
+`currentVersionReleaseDate` 2026-09-05, `minimumOsVersion` 15.0, seller
+EzBizi LLC. The `/download/` card already reads *"On the App Store"* and links
+`apps.apple.com/app/id6805979795` from both the button and the
+`SoftwareApplication` JSON-LD, and the **live page carries that link twice**
+(`curl https://www.ezbizi.com/download/ | grep -c id6805979795` -> 2), so this
+file was the stale one, not the site. Nothing to publish; only this row needed
+correcting.
+
+**Both commands stay, and the Apple one has a second failure mode now.**
+`resultCount` 0 no longer means "not approved" — it would mean a pulled listing.
+And **`curl -sI https://apps.apple.com/app/id6805979795` answered `429 Too Many
+Requests` during this very run**, while the lookup API kept answering normally:
+Apple rate-limits the storefront HTML. **A 429 is not a dead link — take the
+verdict from the `itunes.apple.com/lookup` JSON, never from a `HEAD` of the
+storefront.**
+
+**What would put this row back the other way:** the lookup returning
+`resultCount` 0 for more than a day, which is a pulled or rejected listing rather
+than propagation. Then the card's App Store button and the JSON-LD
+`downloadUrl` *and* `installUrl` come down the same day — three places on one
+page, plus the `og:` and `twitter:` descriptions, which both say "App Store".
 
 ## `/download/windows.json` tracks PRODUCTION, not `client/VERSION`
 
@@ -339,6 +361,27 @@ not four dead desks — they were one live desk and the wrong kind of name.
 `CLAUDE.md` already says so. **Read `docs/SESSIONS.md` instead**, and fall through
 when the id errors — that file's own header warns the session column can go stale
 within the hour, and an unstaffed role takes a file in `docs/agents/inbox/`.
+
+### And when the daily check runs on its schedule, the id is not the problem either
+
+**Measured 2026-09-08, and it is structural rather than a bad day.** The catalog
+is a *scheduled task*, and `ccd_session_mgmt send_message` refuses every call from
+one: *"This tool is unavailable in unattended sessions (scheduled-task runs and
+remote-dispatched trees)."* The correct desktop id was in hand and never got as
+far as being wrong. **So the fix above — right id, right tool — does not rescue
+this check on the days nobody is watching it, which is most days.**
+
+Do not spend a run rediscovering this, and in particular **do not read the refusal
+as a dead desk**: a dead id and a disabled tool produce the same silence, and they
+want opposite responses. The distinction is in the error text — an id that has
+gone stale errors about the *session*, this one errors about the *caller*.
+
+**`docs/agents/inbox/` is not the fallback here; it is the only channel.** Write
+the ask to the protocol in `docs/agents/README.md` — `NNNN-<from>-to-<to>-<slug>.md`
+with `from: to: date: subject: needs:` — and **say in the message that a reply must
+also be a file**, because the next run is another scheduled one and cannot receive
+a `send_message` either. A desk that answers in its own window is answering into a
+room this check will never enter. First one written that way: `0034`, 2026-09-08.
 
 **Write that file to the protocol or it is just a file.** `docs/agents/README.md`
 specifies a filename `NNNN-<from>-to-<to>-<slug>.md` and YAML frontmatter — `---`

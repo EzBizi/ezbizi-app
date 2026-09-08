@@ -4,6 +4,7 @@ namespace App\Support\Newsletter;
 
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 /**
  * Mailchimp, spoken to with the tenant's own API key.
@@ -44,8 +45,8 @@ class MailchimpClient
 
         return [
             'account_name' => (string) ($body['account_name'] ?? 'Mailchimp'),
-            'email'        => (string) ($body['email'] ?? ''),
-            'dc'           => $this->datacentre($apiKey),
+            'email' => (string) ($body['email'] ?? ''),
+            'dc' => $this->datacentre($apiKey),
             'total_subscribers' => (int) ($body['total_subscribers'] ?? 0),
         ];
     }
@@ -60,8 +61,8 @@ class MailchimpClient
         $body = $this->call($apiKey, 'get', '/lists', ['count' => 100, 'fields' => 'lists.id,lists.name,lists.stats.member_count']);
 
         return array_map(fn (array $l) => [
-            'id'      => (string) ($l['id'] ?? ''),
-            'name'    => (string) ($l['name'] ?? 'Untitled audience'),
+            'id' => (string) ($l['id'] ?? ''),
+            'name' => (string) ($l['name'] ?? 'Untitled audience'),
             'members' => (int) ($l['stats']['member_count'] ?? 0),
         ], (array) ($body['lists'] ?? []));
     }
@@ -69,16 +70,10 @@ class MailchimpClient
     /**
      * Put addresses into one of the account's audiences.
      *
-     * Used only by a `customers` audience, where the list lives in EzBizi and
-     * has to reach Mailchimp before a campaign can go to it. `status: subscribed`
-     * rather than `pending` because these are the company's own customers, whose
-     * relationship predates this feature — a double opt-in email to somebody who
-     * has been buying from you for six years is not consent hygiene, it is a
-     * confusing email.
-     *
-     * `skip_merge_validation` is not set, and `update_existing` is: somebody
-     * already on the list must not be re-added or reset, which would resurrect a
-     * person who had unsubscribed AT MAILCHIMP.
+     * Only new members receive a subscription status. Existing provider opt-outs
+     * must survive an address refresh. Mailchimp's PUT member endpoint defines
+     * status_if_new for exactly this distinction; status would resubscribe them.
+     * https://mailchimp.com/developer/marketing/api/list-members/add-or-update-list-member/
      *
      * @param  array<int, array{email: string, first_name?: string, last_name?: string}>  $people
      * @return int how many were accepted
@@ -89,24 +84,79 @@ class MailchimpClient
             return 0;
         }
 
-        $body = $this->call($apiKey, 'post', "/lists/{$listId}", [
-            'members' => array_map(fn (array $p) => [
-                'email_address' => $p['email'],
-                'status'        => 'subscribed',
-                'merge_fields'  => array_filter([
+        $accepted = 0;
+        foreach ($people as $p) {
+            $email = mb_strtolower(trim($p['email']));
+            $body = $this->call($apiKey, 'put', '/lists/'.rawurlencode($listId).'/members/'.md5($email), [
+                'email_address' => $email,
+                // Mailchimp PUT: existing subscription status remains untouched.
+                'status_if_new' => 'subscribed',
+                'merge_fields' => array_filter([
                     'FNAME' => $p['first_name'] ?? null,
                     'LNAME' => $p['last_name'] ?? null,
                 ], fn ($v) => $v !== null && $v !== ''),
-            ], $people),
-            'update_existing' => true,
-        ]);
+            ]);
+            $accepted += ($body['status'] ?? null) === 'subscribed' ? 1 : 0;
+        }
 
-        /*
-         * Mailchimp answers 200 with per-address errors rather than failing the
-         * request, so a silent partial success is the normal case. The count of
-         * what it actually took is the only honest number to report back.
-         */
-        return (int) ($body['total_created'] ?? 0) + (int) ($body['total_updated'] ?? 0);
+        return $accepted;
+    }
+
+    /** @return list<string> Current subscribed addresses, all pages; other statuses stay excluded. */
+    public function subscribedMembers(string $apiKey, string $listId): array
+    {
+        $emails = [];
+        $offset = 0;
+        do {
+            $body = $this->call($apiKey, 'get', '/lists/'.rawurlencode($listId).'/members', [
+                'status' => 'subscribed', 'count' => 1000, 'offset' => $offset,
+                'fields' => 'members.email_address,total_items',
+            ]);
+            $members = $body['members'] ?? [];
+            if (! is_array($members) || ! isset($body['total_items'])) {
+                throw new NewsletterSendFailed('Mailchimp did not return the recipient list. Nothing was sent.');
+            }
+            foreach ($members as $member) {
+                $email = mb_strtolower(trim((string) ($member['email_address'] ?? '')));
+                if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                    $emails[] = $email;
+                }
+            }
+            $offset += count($members);
+            if ($members === [] && $offset < (int) $body['total_items']) {
+                throw new NewsletterSendFailed('Mailchimp returned an incomplete recipient list. Nothing was sent.');
+            }
+        } while ($offset < (int) $body['total_items']);
+
+        return array_values(array_unique($emails));
+    }
+
+    /** A separate immutable segment per send prevents simultaneous mailings changing each other's recipients. */
+    public function recipientSegment(string $apiKey, string $listId, array $emails): int
+    {
+        if ($emails === []) {
+            throw new NewsletterSendFailed('Nobody in this audience is currently subscribed. Nothing was sent.');
+        }
+        $chunks = array_chunk(array_values(array_unique($emails)), 500);
+        $body = $this->call($apiKey, 'post', '/lists/'.rawurlencode($listId).'/segments', [
+            'name' => 'EzBizi '.Str::uuid(),
+            'static_segment' => array_shift($chunks),
+        ]);
+        $id = (int) ($body['id'] ?? 0);
+        if ($id <= 0) {
+            throw new NewsletterSendFailed('Mailchimp did not create the recipient segment. Nothing was sent.');
+        }
+        // Official Marketing API: batchSegmentMembers allows at most 500 addresses.
+        foreach ($chunks as $chunk) {
+            $added = $this->call($apiKey, 'post', '/lists/'.rawurlencode($listId).'/segments/'.$id, [
+                'members_to_add' => $chunk,
+            ]);
+            if (! empty($added['errors']) || (int) ($added['total_added'] ?? -1) !== count($chunk)) {
+                throw new NewsletterSendFailed('Mailchimp did not accept the complete recipient segment. Nothing was sent.');
+            }
+        }
+
+        return $id;
     }
 
     /**
@@ -127,15 +177,18 @@ class MailchimpClient
         string $fromName,
         string $replyTo,
         string $html,
+        ?int $segmentId = null,
     ): array {
         $campaign = $this->call($apiKey, 'post', '/campaigns', [
-            'type'       => 'regular',
-            'recipients' => ['list_id' => $listId],
-            'settings'   => [
+            'type' => 'regular',
+            'recipients' => $segmentId === null ? ['list_id' => $listId] : [
+                'list_id' => $listId, 'segment_opts' => ['saved_segment_id' => $segmentId],
+            ],
+            'settings' => [
                 'subject_line' => $subject,
-                'title'        => $subject,
-                'from_name'    => $fromName,
-                'reply_to'     => $replyTo,
+                'title' => $subject,
+                'from_name' => $fromName,
+                'reply_to' => $replyTo,
             ],
         ]);
 
@@ -166,7 +219,7 @@ class MailchimpClient
     public function datacentre(string $apiKey): string
     {
         $parts = explode('-', trim($apiKey));
-        $dc    = count($parts) > 1 ? end($parts) : '';
+        $dc = count($parts) > 1 ? end($parts) : '';
 
         if ($dc === '' || ! preg_match('/^[a-z]{2}[0-9]{1,3}$/', $dc)) {
             throw new NewsletterSendFailed(
@@ -192,12 +245,12 @@ class MailchimpClient
                 ->acceptJson();
 
             $response = match ($method) {
-                'get'  => $request->get($url, $payload),
-                'put'  => $request->put($url, $payload),
+                'get' => $request->get($url, $payload),
+                'put' => $request->put($url, $payload),
                 default => $request->post($url, $payload),
             };
         } catch (ConnectionException) {
-            throw new NewsletterSendFailed('EzBizi could not reach Mailchimp.');
+            throw new NewsletterSendFailed('Mailchimp did not confirm the request outcome. Check the account before sending again.');
         }
 
         if ($response->status() === 401) {

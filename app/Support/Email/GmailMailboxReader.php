@@ -728,6 +728,64 @@ final class GmailMailboxReader implements MailboxReader
     }
 
     /**
+     * Gmail can, because the modify scope is already held for Trash.
+     *
+     * Not "Gmail can" in the abstract — the whole reason this takes a Mailbox
+     * is that the answer is about the CONNECTION. {@see unavailableBecause}
+     * covers the installation having no OAuth client and the mailbox having no
+     * refresh token, both of which make the switch a promise we cannot keep.
+     */
+    public function canMarkReadAtSource(Mailbox $mailbox): bool
+    {
+        return $this->unavailableBecause($mailbox) === null;
+    }
+
+    /**
+     * Remove the UNREAD label — which is what "read" IS in Gmail.
+     *
+     * No new scope: `gmail.modify` is already requested and already spent by
+     * {@see trash}. That is the entire reason this arrived on Gmail first and
+     * not on the other two — Graph would need `Mail.ReadWrite` and a fresh
+     * consent from every connected mailbox, and IMAP would mean opening the
+     * folder writable instead of with EXAMINE.
+     *
+     * Only the UNREAD label, and nothing else on the message.
+     *
+     * ── The THREAD, for the same reason trash() uses it ──────────
+     *
+     * Gmail's UNREAD is per message, but a conversation shows as unread if ANY
+     * message in it is. EzBizi marks every part of an opened thread seen
+     * locally — see the loop in MailboxMessagesController::show — so marking
+     * only the one message would leave the conversation bold in Gmail and the
+     * setting would look broken on exactly the threads people notice.
+     *
+     * It is also one call rather than one per part, and it is what Gmail's own
+     * interface does when you open a conversation.
+     */
+    public function markReadAtSource(Mailbox $mailbox, string $messageId): void
+    {
+        try {
+            $meta = $this->get($mailbox, self::API.'/messages/'.rawurlencode($messageId), [
+                'format'          => 'metadata',
+                'metadataHeaders' => ['From'],
+            ]);
+
+            $threadId = (string) ($meta['threadId'] ?? $messageId);
+
+            $this->postModify(
+                $mailbox,
+                self::API.'/threads/'.rawurlencode($threadId).'/modify',
+                ['removeLabelIds' => ['UNREAD']],
+            );
+        } catch (CannotReadMailbox) {
+            throw new CannotChangeMail(
+                'Google would not mark that message as read. Nothing else has changed, and '
+                .'it is still marked as read in EzBizi.',
+            );
+        }
+    }
+
+    /**
      * A new message — the same endpoint as a reply, without the thread.
      *
      * No `threadId`, so Gmail files it as a new conversation rather than under

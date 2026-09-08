@@ -854,6 +854,16 @@ class ScriptedMailboxReader implements MailboxReader
         return ['INBOX'];
     }
 
+    public function canMarkReadAtSource(Mailbox $mailbox): bool
+    {
+        return false;
+    }
+
+    public function markReadAtSource(Mailbox $mailbox, string $messageId): void
+    {
+        $this->answerOrFail();
+    }
+
     public function trash(Mailbox $mailbox, string $messageId): void
     {
         $this->answerOrFail();

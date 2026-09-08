@@ -715,6 +715,49 @@ class VoiceWebhookTest extends TestCase
         });
     }
 
+    public function test_terminal_status_survives_delayed_callbacks_and_duplicate_completion(): void
+    {
+        $t = $this->provisionTenant();
+        [$connection, , $authToken] = $this->inTenant($t['org'], function () use ($t) {
+            return $this->openLine($t, e164: '+12035551007');
+        });
+
+        $voice = $this->voiceUrl($t['org']->id, $connection->id);
+        $params = $this->inboundParams(
+            callSid: 'CA11111111111111111111111111111111',
+            from: '+15550005555',
+            to: '+12035551007',
+        );
+        $this->signedPost($voice, $params, $authToken)->assertOk();
+
+        $status = $this->statusUrl($t['org']->id, $connection->id);
+        $this->signedPost($status, array_merge($params, [
+            'CallStatus' => 'completed',
+            'CallDuration' => '42',
+        ]), $authToken)->assertOk();
+
+        foreach (['ringing', 'in-progress', 'busy', 'completed'] as $late) {
+            $this->signedPost($status, array_merge($params, [
+                'CallStatus' => $late,
+                'CallDuration' => '0',
+            ]), $authToken)->assertOk();
+        }
+
+        $this->inTenant($t['org'], function () {
+            $call = PhoneCall::query()->first();
+            $this->assertNotNull($call);
+            $this->assertSame('completed', $call->status);
+            $this->assertSame(42, $call->duration_seconds);
+
+            $keys = AutomationEvent::query()->orderBy('occurred_at')->pluck('event_key')->all();
+            $this->assertContains('phone.call.started', $keys);
+            $this->assertContains('phone.call.ended', $keys);
+            $this->assertSame(1, AutomationEvent::query()
+                ->where('event_key', 'phone.call.ended')
+                ->count());
+        });
+    }
+
     public function test_outbound_from_the_twiml_app_skips_hours_and_ivr(): void
     {
         $t = $this->provisionTenant();
