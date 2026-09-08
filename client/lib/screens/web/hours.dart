@@ -27,18 +27,23 @@ import 'package:flutter/services.dart';
 /// what was there rather than snapping to a default nobody chose.
 @immutable
 class DayHours {
-  const DayHours({required this.closed, required this.open, required this.close});
+  const DayHours({
+    required this.closed,
+    required this.open,
+    required this.close,
+  });
 
   const DayHours.shut()
-      : closed = true,
-        open = const TimeOfDay(hour: 9, minute: 0),
-        close = const TimeOfDay(hour: 17, minute: 0);
+    : closed = true,
+      open = const TimeOfDay(hour: 9, minute: 0),
+      close = const TimeOfDay(hour: 17, minute: 0);
 
   final bool closed;
   final TimeOfDay open;
   final TimeOfDay close;
 
-  DayHours copyWith({bool? closed, TimeOfDay? open, TimeOfDay? close}) => DayHours(
+  DayHours copyWith({bool? closed, TimeOfDay? open, TimeOfDay? close}) =>
+      DayHours(
         closed: closed ?? this.closed,
         open: open ?? this.open,
         close: close ?? this.close,
@@ -81,15 +86,15 @@ const List<String> weekdayLongNames = [
 /// A week nobody has edited yet: weekdays open, weekend shut. A guess, but a
 /// guess somebody can correct in two clicks beats seven empty rows.
 List<DayHours> defaultWeek() => [
-      for (var i = 0; i < 5; i++)
-        const DayHours(
-          closed: false,
-          open: TimeOfDay(hour: 8, minute: 0),
-          close: TimeOfDay(hour: 17, minute: 0),
-        ),
-      const DayHours.shut(),
-      const DayHours.shut(),
-    ];
+  for (var i = 0; i < 5; i++)
+    const DayHours(
+      closed: false,
+      open: TimeOfDay(hour: 8, minute: 0),
+      close: TimeOfDay(hour: 17, minute: 0),
+    ),
+  const DayHours.shut(),
+  const DayHours.shut(),
+];
 
 String _hhmm(TimeOfDay t) =>
     '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
@@ -115,8 +120,7 @@ String formatWeek(List<DayHours> week) {
   var runStart = 0;
 
   for (var i = 1; i <= 7; i++) {
-    final sameAsRun =
-        i < 7 && week[i].signature == week[runStart].signature;
+    final sameAsRun = i < 7 && week[i].signature == week[runStart].signature;
 
     if (sameAsRun) continue;
 
@@ -126,9 +130,11 @@ String formatWeek(List<DayHours> week) {
 
     final day = week[runStart];
 
-    parts.add(day.closed
-        ? '$span closed'
-        : '$span ${formatTime(day.open)} – ${formatTime(day.close)}');
+    parts.add(
+      day.closed
+          ? '$span closed'
+          : '$span ${formatTime(day.open)} – ${formatTime(day.close)}',
+    );
 
     runStart = i;
   }
@@ -380,8 +386,9 @@ class _HoursFieldState extends State<HoursField> {
                      * that grows is better than content nobody can see.
                      */
                     constraints: const BoxConstraints(minHeight: 48),
-                    padding: const EdgeInsets.symmetric(vertical: 2)
-                        .add(const EdgeInsets.only(left: 12, right: 8)),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 2,
+                    ).add(const EdgeInsets.only(left: 12, right: 8)),
                     decoration: BoxDecoration(
                       // Every row but the last carries a rule, so the seven
                       // read as one table rather than seven loose lines.
@@ -412,31 +419,63 @@ class _HoursFieldState extends State<HoursField> {
                                     color: theme.colorScheme.onSurfaceVariant,
                                   ),
                                 )
-                              : Wrap(
-                                  crossAxisAlignment:
-                                      WrapCrossAlignment.center,
-                                  children: [
-                                    _TimeButton(
-                                      label: formatTime(_week[day].open),
-                                      onPressed: widget.enabled
-                                          ? () => _pick(day, opening: true)
-                                          : null,
-                                    ),
-                                    Text(
-                                      'to',
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                        color:
-                                            theme.colorScheme.onSurfaceVariant,
+                              /*
+                               * A Row that may SHRINK, and neither of the two
+                               * obvious alternatives - all three were measured
+                               * at 375 on 2026-09-08.
+                               *
+                               *   plain Row  -> 78px off the right edge, into
+                               *                 space nobody can see or tap.
+                               *   Wrap       -> no overflow, but it takes a
+                               *                 second line, so an open day
+                               *                 measured 61 against a closed
+                               *                 day's 48. That is a 13px step
+                               *                 per row: the very "floating"
+                               *                 this grid was fixed for, still
+                               *                 live on a phone while desk
+                               *                 width looked perfect.
+                               *   FittedBox  -> one line at every width.
+                               *
+                               * scaleDown does nothing until it has to, so at
+                               * desk width these are ordinary buttons at full
+                               * size; at 375 they give up a little size rather
+                               * than a line, and every row stays equal.
+                               *
+                               * The height above stays a MINIMUM rather than
+                               * becoming fixed: a minimum still floors the
+                               * short states, and nothing here can now exceed
+                               * it, so there is no reason to add a cap that
+                               * would clip if the text ever grew.
+                               */
+                              : FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      _TimeButton(
+                                        label: formatTime(_week[day].open),
+                                        onPressed: widget.enabled
+                                            ? () => _pick(day, opening: true)
+                                            : null,
                                       ),
-                                    ),
-                                    _TimeButton(
-                                      label: formatTime(_week[day].close),
-                                      onPressed: widget.enabled
-                                          ? () => _pick(day, opening: false)
-                                          : null,
-                                    ),
-                                  ],
+                                      Text(
+                                        'to',
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: theme
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
+                                            ),
+                                      ),
+                                      _TimeButton(
+                                        label: formatTime(_week[day].close),
+                                        onPressed: widget.enabled
+                                            ? () => _pick(day, opening: false)
+                                            : null,
+                                      ),
+                                    ],
+                                  ),
                                 ),
                         ),
                         Switch(
@@ -447,8 +486,9 @@ class _HoursFieldState extends State<HoursField> {
                               MaterialTapTargetSize.shrinkWrap,
                           onChanged: widget.enabled
                               ? (open) {
-                                  _week[day] =
-                                      _week[day].copyWith(closed: !open);
+                                  _week[day] = _week[day].copyWith(
+                                    closed: !open,
+                                  );
                                   _write();
                                 }
                               : null,
@@ -497,8 +537,9 @@ class _ShortcodeChipState extends State<_ShortcodeChip> {
         style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
       ),
       style: OutlinedButton.styleFrom(
-        foregroundColor:
-            _copied ? theme.colorScheme.primary : theme.colorScheme.outline,
+        foregroundColor: _copied
+            ? theme.colorScheme.primary
+            : theme.colorScheme.outline,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         visualDensity: VisualDensity.compact,
       ),

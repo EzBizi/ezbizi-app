@@ -81,6 +81,47 @@ void main() {
       );
     });
 
+    /*
+     * The same comparison at phone width, which is where it can come back.
+     *
+     * Copied from Phone's client/test/phone_hours_pane_test.dart (418ad958),
+     * which runs its comparison at 1280 AND 375. Mine ran at 900 only, and 900
+     * is the width where nothing wraps — so it could only ever have proved the
+     * easy half.
+     *
+     * 375 is the interesting one because the times are in a `Wrap`. When the
+     * Wrap takes a second line the open row grows, and a MINIMUM height floors
+     * a row without capping it — so the two states can diverge again at exactly
+     * the width where the original overflow lived, and the desk-width test
+     * would still be green.
+     */
+    testWidgets('an open day and a closed day match at phone width too', (
+      tester,
+    ) async {
+      await pump(tester, width: 375);
+
+      final monday = tester.getSize(
+        find.ancestor(
+          of: find.text('Monday'),
+          matching: find.byType(Container),
+        ).first,
+      );
+      final sunday = tester.getSize(
+        find.ancestor(
+          of: find.text('Sunday'),
+          matching: find.byType(Container),
+        ).first,
+      );
+
+      expect(
+        monday.height,
+        sunday.height,
+        reason: 'the rows match at 900 but not at 375 — the Wrap takes a '
+            'second line and the open day grows, so the defect Jose reported '
+            'is still there on a phone',
+      );
+    });
+
     testWidgets('every one of the seven rows is the same height', (
       tester,
     ) async {
