@@ -253,6 +253,31 @@ rule between them"* names no new element — that is craft, and it ships. *"Ther
 is now a panel that opens"* names one — that is design. Jose reported it as a
 defect and left; routing it would have meant it sat overnight.
 
+**A second badge must say something the first does not.** Leads' rows carry a
+channel badge (Call / Text / Chat / Form) and, since the sources merge, a source
+badge (Google / Thumbtack / Chat / Forms). Independent for Google and Thumbtack —
+"Call · Google" is two facts. But `LIVECHAT → Chat` beside `website_chat → Chat`
+renders **"Chat · Chat"**, and `FORM` beside `website_form` renders "Form · Form".
+
+> Stated so it survives the next source: **draw the channel badge only when it
+> would not render the same word as the source badge.** No list of special cases,
+> and a fifth single-channel source gets the right answer for free.
+
+This is the third instance of one shape on this screen — the module name printed
+by both the shell and the panel header, "At a glance" under a lit *Dashboard*
+chip, and now a badge echoing a badge. **A row that gains a mark should be asked
+what the marks it already has are saying**, not just where the new one fits.
+
+**A summary line belongs to the question the surface now asks.** The Google
+accounts band carried "20 at company level · 2 on franchises" — called at the
+time "the only fact worth a permanent row". When the band became the *Connected
+sources* roster, that line did not come with it, and should not: placement does
+not generalise across sources that have none, and the need behind it is met
+better inside the panel, where a placement change already answers "14 leads moved
+to Connecticut" on the surface you are looking at when you make it. **A fact
+earns a permanent row against the question its surface asks, and that question
+can change under it.**
+
 **When two errors are not equally bad, neither one may be the silent default.**
 Booking a lead offers `customer_matches` — customers sharing the lead's last ten
 digits, which the server itself calls *advisory only*. Attaching to the **wrong
