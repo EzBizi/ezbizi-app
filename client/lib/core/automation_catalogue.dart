@@ -409,6 +409,17 @@ class AutomationCatalogue {
   CatalogueSubject? subjectOf(String? triggerKey) =>
       triggerKey == null ? null : locate(triggerKey)?.$1.subject;
 
+  /// Does anything emit [triggerKey] yet?
+  ///
+  /// TRUE when nothing here declares it, for the same reason
+  /// [CatalogueTrigger.isRaised] defaults true: a trigger this build cannot
+  /// find is a question this build cannot answer, and answering "broken" would
+  /// mark every saved rule during a deploy, or any rule built on a module the
+  /// reader cannot reach. Only a trigger the catalogue HAS, and says is
+  /// unraised, is unraised.
+  bool triggerIsRaised(String? triggerKey) =>
+      triggerKey == null || (locate(triggerKey)?.$2.isRaised ?? true);
+
   /// The fields a rule on [triggerKey] may set. Empty for "nothing may be set"
   /// AND for "we cannot tell" — the caller distinguishes them by asking for the
   /// subject, because the two need different words on screen.

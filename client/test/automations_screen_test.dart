@@ -818,6 +818,59 @@ void main() {
     expect(find.textContaining('a user'), findsWidgets);
   });
 
+  /// A saved rule that can never run says so, in the loud register.
+  ///
+  /// The picker marks an unraised trigger quietly, because there it is
+  /// information helping a choice. Once the rule is SAVED the fault has
+  /// happened: it is switched on, sits among the live ones, and nothing will
+  /// ever set it off. That is what this register is for, and this is the
+  /// surface where nobody is looking because the work felt finished.
+  ///
+  /// Two rules in the list on purpose — one on a raised trigger, one not — so
+  /// the note has to tell them apart rather than appear on every row.
+  testWidgets('a saved rule on a trigger nothing raises says it will not run', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        catalogue: _catalogueWithAnUnraisedTrigger(),
+        list: const [
+          {
+            'id': 'a-1',
+            'name': 'Tell the office when stock arrives',
+            'description': null,
+            'trigger_key': 'item.received',
+            'is_active': true,
+            'is_live': true,
+            'disabled_reason': null,
+            'runs_count': 4,
+            'version': 1,
+          },
+          {
+            'id': 'a-2',
+            'name': 'Reorder when we run low',
+            'description': null,
+            'trigger_key': 'item.low',
+            'is_active': true,
+            'is_live': true,
+            'disabled_reason': null,
+            'runs_count': 0,
+            'version': 1,
+          },
+        ],
+      ),
+    );
+
+    expect(
+      find.textContaining('Nothing sets this off yet'),
+      findsOneWidget,
+      reason:
+          'The rule on item.low can never run and has to say so. One, not two '
+          '— the rule on item.received beside it is fine.',
+    );
+  });
+
   /// A trigger nothing emits looks exactly like one that fires.
   ///
   /// The description already ends with "Nothing raises this yet, so a rule
@@ -1173,6 +1226,7 @@ MockClientHandler _handler({
   void Function(String path)? onActivate,
   Map<String, dynamic> detail = _detail,
   Object catalogue = _catalogue,
+  List<Map<String, Object?>> list = _list,
   // Null leaves the endpoint unanswered, which is what every test written
   // before the field picker expects: the form falls back to a text box.
   List<String>? triggerFields,
@@ -1243,7 +1297,7 @@ MockClientHandler _handler({
         return _json({'data': <String, dynamic>{}}, 201);
       }
 
-      return _json({'data': _list});
+      return _json({'data': list});
     }
 
     if (path.endsWith('/phone/numbers') && request.method == 'GET') {
