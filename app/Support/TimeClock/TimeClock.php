@@ -21,6 +21,9 @@ use Illuminate\Validation\ValidationException;
 
 final class TimeClock
 {
+    /** How early a punch may be before it is "outside schedule" (design 2026-09-08 §6). */
+    private const EARLY_GRACE_MINUTES = 30;
+
     public function __construct(
         private readonly SettingsResolver $settings,
         private readonly EventEmitter $events,
@@ -51,9 +54,21 @@ final class TimeClock
      */
     public function payload(User $user): array
     {
-        $enabled = $this->organizationEnabled($user->organization);
+        $organization = $user->organization;
+        $enabled = $this->organizationEnabled($organization);
         $canClock = $user->hasPermission('time_clock.view');
         $open = TimeClockShift::openFor($user);
+        $window = WorkSchedule::windowFor($user->work_schedule, now());
+
+        // The four gates of design 2026-09-08 §3.8, plus the org's own Clock
+        // in switch. A day off never locks; after the scheduled end on a
+        // working day still does.
+        $lock = $open === null
+            && $enabled
+            && (bool) $this->settings->get('time_clock.lock_screen', $organization)
+            && $user->hasPermission('time_clock.lock_screen')
+            && ! $user->lock_screen_exempt
+            && $window !== null;
 
         return [
             'organization_enabled' => $enabled,
@@ -63,6 +78,11 @@ final class TimeClock
                 'id' => $open->id,
                 'clocked_in_at' => $this->instant($open->clocked_in_at),
             ],
+            'lock' => $lock,
+            'scheduled_end_at' => $this->instant($open?->scheduled_end_at),
+            'warning_minutes' => (int) $this->settings->get('time_clock.warning_minutes', $organization),
+            'extension_minutes' => (int) $this->settings->get('time_clock.extension_minutes', $organization),
+            'today' => $window === null ? null : ['start' => $window['start'], 'end' => $window['end']],
         ];
     }
 
@@ -105,11 +125,21 @@ final class TimeClock
                     ]);
                 }
 
+                $now = now();
+                $window = WorkSchedule::windowFor($user->work_schedule, $now);
+
                 $shift = TimeClockShift::query()->create([
                     'organization_id' => $user->organization_id,
                     'user_id' => $user->getKey(),
-                    'clocked_in_at' => now(),
+                    'clocked_in_at' => $now,
                     'clocked_out_at' => null,
+                    // After the scheduled end there is nothing to count down
+                    // to: they are working late, and the chip carries them.
+                    'scheduled_end_at' => $window !== null && $now->lt($window['end_at']) ? $window['end_at'] : null,
+                    // A day off, or well before the start. Informational —
+                    // Clock In is never refused by the schedule (design §3.4).
+                    'outside_schedule' => $window === null
+                        || $now->lt($window['start_at']->copy()->subMinutes(self::EARLY_GRACE_MINUTES)),
                 ]);
 
                 $this->audit->log('time_clock.clocked_in', $shift);
@@ -140,9 +170,12 @@ final class TimeClock
      *
      * @return array{organization_enabled: bool, can_clock: bool, show_button: bool, open: null|array{id: string, clocked_in_at: string}}
      */
-    public function clockOut(User $user, ?AutomationEvent $causedBy = null): array
-    {
-        return DB::transaction(function () use ($user, $causedBy) {
+    public function clockOut(
+        User $user,
+        ?AutomationEvent $causedBy = null,
+        string $endedBy = TimeClockShift::ENDED_BY_PERSON,
+    ): array {
+        return DB::transaction(function () use ($user, $causedBy, $endedBy) {
             $open = TimeClockShift::query()
                 ->open()
                 ->where('user_id', $user->getKey())
@@ -156,6 +189,8 @@ final class TimeClock
             }
 
             $open->clocked_out_at = now();
+            // A rule's punch is an automation's, whatever the caller said.
+            $open->ended_by = $causedBy !== null ? TimeClockShift::ENDED_BY_AUTOMATION : $endedBy;
             $open->save();
 
             $this->audit->log('time_clock.clocked_out', $open);
@@ -234,6 +269,8 @@ final class TimeClock
             'user_id' => $shift->user_id,
             'clocked_in_at' => $this->instant($shift->clocked_in_at),
             'clocked_out_at' => $this->instant($shift->clocked_out_at),
+            'scheduled_end_at' => $this->instant($shift->scheduled_end_at),
+            'ended_by' => $shift->ended_by,
         ];
     }
 

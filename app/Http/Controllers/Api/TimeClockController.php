@@ -44,6 +44,14 @@ class TimeClockController extends Controller
         ]);
     }
 
+    /** The `/me` block on its own, for the 60-second poll (design 2026-09-08 §3.12). */
+    public function me(Request $request): JsonResponse
+    {
+        return response()->json([
+            'data' => ['time_clock' => $this->timeClock->payload($request->user())],
+        ]);
+    }
+
     public function clockOut(Request $request): JsonResponse
     {
         return response()->json([
