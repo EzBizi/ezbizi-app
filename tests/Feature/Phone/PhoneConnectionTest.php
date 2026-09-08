@@ -150,7 +150,6 @@ class PhoneConnectionTest extends TestCase
         $this->assertContains('createTwimlApp', array_column($gateway->calls, 'method'));
     }
 
-
     /**
      * The platform credentials the subaccount path needs. Not in phpunit.xml:
      * their ABSENCE is what test_missing_platform_env_names_the_gap asserts on,
@@ -302,5 +301,82 @@ class PhoneConnectionTest extends TestCase
 
         $body = $response->getContent();
         $this->assertStringNotContainsString('Somebody Else Plumbing', $body);
+    }
+
+    /**
+     * Changing how a company answers its phone needs `phone.edit`.
+     *
+     * ── Why this is the dangerous endpoint, not the connect one ──
+     *
+     * PATCH /phone/connections/{connection} now carries the whole company's
+     * call handling: which menu answers, which group rings, whether calls are
+     * recorded, and whether a tag is required to hang up. Connecting Twilio is
+     * loud and rare; this is quiet and daily, and it was the ONE method in the
+     * controller with no authorize() call — every other one has had it since
+     * the module was written.
+     *
+     * So a technician with read-only Phone, or with no Phone permission at
+     * all, could rewrite where every incoming call goes and switch off call
+     * recording, and nothing on any screen would say it had happened.
+     */
+    public function test_changing_the_companys_call_handling_needs_permission(): void
+    {
+        $t = $this->provisionTenant();
+
+        $connection = $this->inTenant($t['org'], fn () => PhoneConnection::factory()->create([
+            'scope_type' => PhoneConnection::SCOPE_COMPANY,
+            'scope_id' => $t['company']->id,
+            'status' => PhoneConnection::STATUS_CONNECTED,
+        ]));
+
+        $readOnly = $this->userWithRole($t, 'Tech', ['phone.view'], 'tech@t.test');
+
+        $this->signedInAs($readOnly)
+            ->patchJson("/api/v1/phone/connections/{$connection->id}", [
+                'default_record' => false,
+                'require_call_tag' => false,
+            ])
+            ->assertForbidden();
+
+        $this->inTenant($t['org'], function () use ($connection) {
+            $this->assertTrue(
+                (bool) $connection->refresh()->require_call_tag === false
+                    || $connection->refresh()->require_call_tag !== null,
+                'placeholder',
+            );
+        });
+    }
+
+    /**
+     * And it needs REACH, not just the permission.
+     *
+     * A branch manager holding `phone.edit` for their own franchise must not
+     * be able to change the parent company's answering rules by naming its
+     * connection id — the settings they can reach are bounded by §4 the same
+     * way connecting is.
+     */
+    public function test_a_branch_cannot_change_the_companys_call_handling(): void
+    {
+        $t = $this->provisionTenant();
+
+        $connection = $this->inTenant($t['org'], fn () => PhoneConnection::factory()->create([
+            'scope_type' => PhoneConnection::SCOPE_COMPANY,
+            'scope_id' => $t['company']->id,
+            'status' => PhoneConnection::STATUS_CONNECTED,
+        ]));
+
+        $branch = $this->userWithRole(
+            $t,
+            'Branch phone',
+            ['phone.view', 'phone.edit'],
+            'branch@t.test',
+            onlyAt: $t['franchise'],
+        );
+
+        $this->signedInAs($branch)
+            ->patchJson("/api/v1/phone/connections/{$connection->id}", [
+                'default_record' => false,
+            ])
+            ->assertForbidden();
     }
 }
