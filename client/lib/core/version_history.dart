@@ -8,6 +8,21 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0167',
+      date: '8 Sep 2026',
+      items: [
+        'Inspection: a report filed without a job now follows the same branch rules as every other report - visible only to people who can see the branch it belongs to. It used to appear in every branch\'s list, and anyone in the organization could open it, download its PDF or archive it by id.',
+        'Business hours can be opened and edited again. If the hours were created from a line belonging to a branch, the screen took the branch\'s own clock - and that clock was not among the ones the screen offered, so the editor came up blank. Nothing was lost; it could not be opened.',
+        'The clock list is places now, not offsets: Eastern - New York rather than UTC-5. Offsets ignore daylight saving, so hours set that way answered an hour early for half the year. Existing hours keep whatever they were set to and are still shown, so nothing changes underneath you - but hours on a fixed offset are worth setting to a place.',
+        'The week no longer steps up and down as days are opened and closed, and the form fits a phone. "24-hour" is said once above the week instead of twice on every open day.',
+        'Web Management: a Widgets tab. The chat bubble and the contact form are dressed here - colours, wording, and the questions the form asks - and every site that follows the primary changes with it. Nobody edits a WordPress page to change a colour any more.',
+        'Web Management: a website can say which branch it answers for, so an enquiry from a branch subdomain lands on that branch instead of at company level.',
+        'Leads: replying to a website chat from the thread reaches the person on the page, the same way replying to a Google lead reaches them.',
+        'Automations: a rule can now run when somebody starts a live chat or sends a contact form on one of your websites, and can tell which website it was.',
+        'A lead\'s conversation always reads oldest first, even when two messages arrived in the same second.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0166',
       date: '8 Sep 2026',
       items: [
