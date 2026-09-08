@@ -342,56 +342,123 @@ class _HoursFieldState extends State<HoursField> {
               ),
             ),
           const SizedBox(height: 6),
-          for (var day = 0; day < 7; day++)
-            Row(
+          /*
+           * -- Why the rows are boxed and ruled rather than stacked --
+           *
+           * Jose, 2026-09-08: "feels like its floating". It did, and the cause
+           * was measurable rather than a matter of taste.
+           *
+           * Every OPEN day drew two `TextButton`s, and a TextButton carries
+           * Material's 48dp minimum tap target plus its own padding - so an
+           * open day was a tall box with the weekday stranded in whitespace
+           * beside it. A CLOSED day drew a single line of text and was about
+           * half that height. Seven rows alternating between two heights, with
+           * nothing ruling them, gives the eye no grid to sit on, and that is
+           * what reads as floating.
+           *
+           * So: one fixed height for all seven whatever the day says, a
+           * hairline between them, and the times stripped of the padding that
+           * caused it. The tap target is not lost - the ROW is 44 high and the
+           * button fills it, so shrinking the button's own minimum does not
+           * make a time harder to hit.
+           */
+          DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border.all(color: theme.colorScheme.outlineVariant),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
               children: [
-                SizedBox(
-                  width: 92,
-                  child: Text(
-                    weekdayLongNames[day],
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w600,
+                for (var day = 0; day < 7; day++)
+                  Container(
+                    /*
+                     * MINIMUM, not fixed. Fixed was the first attempt and it
+                     * clipped: at phone width the two times and their
+                     * separator run 78px past the edge, and a fixed height
+                     * gives the Wrap below nowhere to put the second line.
+                     * 48 clears the tallest row (an open day measures 45), so all seven agree at any pane wide enough for one line. Uniform where it fits, honest where it does not — a row
+                     * that grows is better than content nobody can see.
+                     */
+                    constraints: const BoxConstraints(minHeight: 48),
+                    padding: const EdgeInsets.symmetric(vertical: 2)
+                        .add(const EdgeInsets.only(left: 12, right: 8)),
+                    decoration: BoxDecoration(
+                      // Every row but the last carries a rule, so the seven
+                      // read as one table rather than seven loose lines.
+                      border: day == 6
+                          ? null
+                          : Border(
+                              bottom: BorderSide(
+                                color: theme.colorScheme.outlineVariant,
+                              ),
+                            ),
+                    ),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 92,
+                          child: Text(
+                            weekdayLongNames[day],
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: _week[day].closed
+                              ? Text(
+                                  'Closed',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                )
+                              : Wrap(
+                                  crossAxisAlignment:
+                                      WrapCrossAlignment.center,
+                                  children: [
+                                    _TimeButton(
+                                      label: formatTime(_week[day].open),
+                                      onPressed: widget.enabled
+                                          ? () => _pick(day, opening: true)
+                                          : null,
+                                    ),
+                                    Text(
+                                      'to',
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                        color:
+                                            theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                    _TimeButton(
+                                      label: formatTime(_week[day].close),
+                                      onPressed: widget.enabled
+                                          ? () => _pick(day, opening: false)
+                                          : null,
+                                    ),
+                                  ],
+                                ),
+                        ),
+                        Switch(
+                          value: !_week[day].closed,
+                          // Without this the switch asserts its own 48dp tap
+                          // target and fights the row height set above.
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          onChanged: widget.enabled
+                              ? (open) {
+                                  _week[day] =
+                                      _week[day].copyWith(closed: !open);
+                                  _write();
+                                }
+                              : null,
+                        ),
+                      ],
                     ),
                   ),
-                ),
-                Expanded(
-                  child: _week[day].closed
-                      ? Text(
-                          'Closed',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.outline,
-                          ),
-                        )
-                      : Wrap(
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            TextButton(
-                              onPressed: widget.enabled
-                                  ? () => _pick(day, opening: true)
-                                  : null,
-                              child: Text(formatTime(_week[day].open)),
-                            ),
-                            const Text('to'),
-                            TextButton(
-                              onPressed: widget.enabled
-                                  ? () => _pick(day, opening: false)
-                                  : null,
-                              child: Text(formatTime(_week[day].close)),
-                            ),
-                          ],
-                        ),
-                ),
-                Switch(
-                  value: !_week[day].closed,
-                  onChanged: widget.enabled
-                      ? (open) {
-                          _week[day] = _week[day].copyWith(closed: !open);
-                          _write();
-                        }
-                      : null,
-                ),
               ],
             ),
+          ),
         ],
       ),
     );
@@ -435,6 +502,33 @@ class _ShortcodeChipState extends State<_ShortcodeChip> {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         visualDensity: VisualDensity.compact,
       ),
+    );
+  }
+}
+
+/// A time, tappable, without Material's 48dp tap target driving the row.
+///
+/// `TextButton` defaults to a 48dp minimum height and 16dp of horizontal
+/// padding. Seven rows of those is what made this grid float, so this keeps the
+/// look and the behaviour of a button while letting the ROW decide how tall it
+/// is. The row is 44 and the button fills it, so the target is comfortable.
+class _TimeButton extends StatelessWidget {
+  const _TimeButton({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        minimumSize: Size.zero,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        textStyle: Theme.of(context).textTheme.bodyMedium,
+      ),
+      child: Text(label),
     );
   }
 }
