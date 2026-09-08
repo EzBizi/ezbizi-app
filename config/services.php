@@ -272,9 +272,24 @@ return [
          * endpoint at all — only create. That is why the Help Center article
          * does not claim either.
          */
+        /*
+         * `supply::users.read` was here and is gone (2026-09-08). It backed
+         * ThumbtackAccount::self(), which nothing ever called — the "view your
+         * business profile and account details" the Help Center article
+         * promises is served by businesses.list, in identify(). A scope with no
+         * caller is the Meta over-scoping again, in miniature.
+         *
+         * `supply::negotiations.write` STAYS despite having no caller either,
+         * and the difference is worth stating. It backs setJobStatus(), which
+         * is written, tested, and claimed in Thumbtack's published article. It
+         * cannot be wired yet for a reason outside this integration: nothing in
+         * EzBizi turns a lead into a job, so there is no job whose status could
+         * be reported. `lead.converted` says the same thing in the module
+         * registry — declared, and marked not raised. Dropping the scope now
+         * would mean re-consenting every connected business the day that lands.
+         */
         'scopes' => env('THUMBTACK_SCOPES', implode(',', [
             'offline_access',
-            'supply::users.read',
             'supply::users.disconnect',
             'supply::businesses.list',
             'supply::businesses/associate-phone-numbers.read',
