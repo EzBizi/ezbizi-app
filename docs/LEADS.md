@@ -8,7 +8,7 @@
 | Where it is drawn | Inside Marketing, via `ModuleDefinition::$parent`. It is **not** a part of Marketing the way Newsletter and Social Media Management are — those have no permission of their own. Somebody with `leads.view` and nothing else in Marketing gets this tab and no Newsletter. |
 | Google product | Google Ads API |
 | Host | `googleads.googleapis.com` |
-| Access | **Basic Access — APPROVED 3 September 2026**; Standard Access applied for 8 September 2026 (answers in `H:\Development\Leads\GOOGLE-ADS-API-STANDARD-ACCESS-ANSWERS.md`; case number arrives by email, not recorded until read) |
+| Access | **Basic Access — APPROVED 3 September 2026**; Standard Access applied for 8 September 2026 (answers in `H:\Development\Leads\GOOGLE-ADS-API-STANDARD-ACCESS-ANSWERS.md`; case **3-8972000040872**, read off the confirmation email 2026-09-08) |
 | Quota | 15,000 operations/day |
 | Permissible use | Reporting; one write, a person's reply to a text enquiry (see §7) |
 | Manager account | 706-109-4046 |
