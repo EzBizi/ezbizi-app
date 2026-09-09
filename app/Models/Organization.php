@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Automations\CarriesAutomationScope;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -14,7 +15,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * Deliberately does NOT use BelongsToTenant: it *is* the tenant. Scoping it by
  * organization_id would be circular.
  */
-class Organization extends Model
+class Organization extends Model implements CarriesAutomationScope
 {
     use HasFactory;
     use HasUuids;      // Laravel 13: UUIDv7 — verified, time-ordered (§5)
@@ -33,6 +34,21 @@ class Organization extends Model
             'is_demo'       => 'boolean',
             'trial_ends_at' => 'datetime',
         ];
+    }
+
+    /**
+     * The tenant root sits above every franchise, so only an organization-wide
+     * rule covers an event about it.
+     *
+     * Said out loud rather than left to the sniff: without this interface
+     * `NotificationDispatcher::audienceFor` finds no `franchise_id` column here
+     * and falls through to EVERY ACTIVE USER, and `notify` is not gated per
+     * trigger. `[null, null]` narrows that to the people who stand at the
+     * organization — which is who an organization-level event is for.
+     */
+    public function automationScope(): array
+    {
+        return [null, null];
     }
 
     // ── relations ────────────────────────────────────────────────

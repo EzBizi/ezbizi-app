@@ -123,16 +123,18 @@ class ModuleServiceProvider extends ServiceProvider
                 // itself. Self-serve signup and staff creation both live in the
                 // control plane (§4.2), outside tenant permissions.
                 actions: ['view', 'edit'],
+                // SettingsController files every settings event against the
+                // tenant root, whatever level the value was written at, because
+                // that is the one of the three that can say where it sits.
+                emits: [Organization::class],
                 triggers: [
                     new TriggerDefinition(
                         key: 'organization.settings_changed',
                         label: 'Setting changed',
                         description: 'Somebody saved a different value for a setting, at '
-                            .'whichever level they set it.',
-                        // Settings are saved without going through the outbox.
-                        // Shown anyway: a tenant who can build a rule on it and
-                        // watch it never fire is worse off than one who is told.
-                        isRaised: false,
+                            .'whichever level they set it — or dropped an override and let '
+                            .'it inherit again. The payload carries the key, the level it '
+                            .'was set at, and the value before and after.',
                     ),
                 ],
                 automationActions: [

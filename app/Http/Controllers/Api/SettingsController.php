@@ -9,6 +9,7 @@ use App\Models\Organization;
 use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
+use App\Support\Automations\EventEmitter;
 use App\Support\Settings\SettingDefinition;
 use App\Support\Settings\SettingRegistry;
 use App\Support\Settings\SettingsResolver;
@@ -35,6 +36,7 @@ class SettingsController extends Controller
         private readonly SettingsResolver $resolver,
         private readonly TenantContext $tenant,
         private readonly AuditLogger $audit,
+        private readonly EventEmitter $events,
     ) {}
 
     /**
@@ -97,6 +99,8 @@ class SettingsController extends Controller
 
                 $this->resolver->set($key, $scope, $request->input('value'));
 
+                $after = $this->resolver->get($key, $scope);
+
                 // Inside the transaction — the change and its record commit
                 // together or not at all (§10, R-11).
                 $this->audit->log(
@@ -105,9 +109,11 @@ class SettingsController extends Controller
                     changes: [
                         'key'    => $key,
                         'before' => $definition->isSensitive ? '[redacted]' : $before,
-                        'after'  => $definition->isSensitive ? '[redacted]' : $this->resolver->get($key, $scope),
+                        'after'  => $definition->isSensitive ? '[redacted]' : $after,
                     ],
                 );
+
+                $this->announce($key, $definition, $scope, $before, $after);
             });
         } catch (InvalidArgumentException $e) {
             // Definition-level validation: bad enum value, wrong scope, wrong type.
@@ -140,9 +146,19 @@ class SettingsController extends Controller
         $scope = $this->resolveScope($request);
         $this->authorizeEdit($request, $definition, $scope, 'reset');
 
-        DB::transaction(function () use ($key, $scope) {
+        DB::transaction(function () use ($key, $scope, $definition) {
+            $before = $this->resolver->get($key, $scope);
+
             $this->resolver->forget($key, $scope);
+
             $this->audit->log('settings.reset', $scope, ['key' => $key]);
+
+            // A reset is a change to the effective value as surely as a write
+            // is — dropping a company's override of `security.require_two_factor`
+            // turns it off for that company just as convincingly as setting it
+            // to false. A rule watching for setting changes that could not see
+            // that would have a hole in exactly the shape somebody would use.
+            $this->announce($key, $definition, $scope, $before, $this->resolver->get($key, $scope));
         });
 
         return response()->json([
@@ -152,6 +168,59 @@ class SettingsController extends Controller
     }
 
     // ── helpers ──────────────────────────────────────────────────
+
+    /**
+     * Tell the automation engine a setting moved (`organization.settings_changed`).
+     *
+     * ── Emitted only when the EFFECTIVE value actually moved ─────
+     *
+     * Saving the value that is already there, and resetting an override that
+     * matched what it inherited, are both no-ops to everybody except the audit
+     * log. A rule firing on those is noise, and noise is how a tenant learns to
+     * ignore the rule they built for the one change they cared about.
+     *
+     * ── Why the subject is the organization ──────────────────────
+     *
+     * A setting can be written at a company or a franchise, and the natural
+     * reading is that the event is about that scope. It is not filed that way,
+     * because `NotificationDispatcher::audienceFor` reads the subject to decide
+     * who hears — and neither Company nor Franchise carries
+     * `CarriesAutomationScope` today, so either would fall through to EVERY
+     * ACTIVE USER in the organization. The tenant root does carry it, and
+     * answers "organization-wide", so this reaches the people who stand at the
+     * organization and nobody else.
+     *
+     * The scope is in the payload instead, so a rule filters on `scope_type` /
+     * `scope_id` rather than being scoped to them.
+     *
+     * ponytail: per-scope routing needs the interface on Company and Franchise,
+     * which also narrows `company.created` and `franchise.created` — both of
+     * which reach everybody today. That is those modules' call, not this one's.
+     */
+    private function announce(
+        string $key,
+        SettingDefinition $definition,
+        Model $scope,
+        mixed $before,
+        mixed $after,
+    ): void {
+        if ($before === $after) {
+            return;
+        }
+
+        $this->events->emit('organization.settings_changed', $this->tenant->get(), [
+            'key'        => $key,
+            'setting'    => $definition->label,
+            'scope_type' => $this->scopeTypeOf($scope),
+            'scope_id'   => $scope->getKey(),
+            // Nested under before/after because that is the shape
+            // `ConditionEvaluator` reads "changed to" and "changed from" from.
+            // A sensitive setting is redacted here for the same reason it is in
+            // the audit log: this payload is read by tenant-authored rules.
+            'before'     => ['value' => $definition->isSensitive ? '[redacted]' : $before],
+            'after'      => ['value' => $definition->isSensitive ? '[redacted]' : $after],
+        ]);
+    }
 
     /**
      * One setting, in the single shape every endpoint here answers with.
