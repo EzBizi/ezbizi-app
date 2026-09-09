@@ -163,7 +163,7 @@ void main() {
     await _pump(tester, _handler(empty: true));
 
     expect(find.byType(DashboardChart), findsNothing);
-    expect(find.text('Nobody on the books yet.'), findsOneWidget);
+    expect(find.text('Nobody in this view.'), findsOneWidget);
   });
 
   /// Configured but nothing in it: real categories, a zero in every one. The
@@ -338,7 +338,7 @@ MockClientHandler _handler({
           'data': empty
               ? {
                   'empty': true,
-                  'sentence': 'Nobody on the books yet.',
+                  'sentence': 'Nobody in this view.',
                 }
               : {
                   'empty': false,
