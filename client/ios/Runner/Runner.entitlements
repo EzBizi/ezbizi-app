@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  What lets Twilio wake this app for an incoming call.
+
+	  Without aps-environment the device registers with Twilio, outgoing calls
+	  work, every screen says the desk is connected, and an incoming call
+	  simply never arrives — which is exactly what Jose saw on TestFlight on
+	  2026-09-09. There is no error anywhere, because outgoing needs only the
+	  TwiML application.
+
+	  PRODUCTION, not development. Sandbox APNs is a different service, not a
+	  gentler one: TestFlight and the App Store are both production, and only a
+	  Debug build run from Xcode is sandbox. A credential on the wrong side of
+	  that line accepts every push and rings nothing.
+
+	  This file is wired into the RELEASE configuration only — see
+	  project.pbxproj. Debug and Profile deliberately claim nothing, because a
+	  binary claiming an entitlement its provisioning profile does not carry is
+	  a hard signing failure, and the only profile that carries this one is
+	  "EzBizi App Store" (UUID 3268e69f, aps-environment = production), which
+	  Release is the only configuration to use.
+	-->
+	<key>aps-environment</key>
+	<string>production</string>
+</dict>
+</plist>
