@@ -7,6 +7,7 @@ use App\Support\Social\SocialProvider;
 use App\Support\Social\ThumbtackWebhooks;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -163,6 +164,69 @@ class ThumbtackWebhookTest extends TestCase
                 'businessID' => 'shared-biz',
             ])
             ->assertUnauthorized();
+    }
+
+    /**
+     * An authenticated event that writes nothing must SAY so.
+     *
+     * On 2026-09-09 Thumbtack sent two real events to a connected business.
+     * Both authenticated, both were answered 200 handled:false, and nothing was
+     * written and nothing logged. From outside, that is identical to Thumbtack
+     * never having sent anything — and because their API cannot list
+     * negotiations, there is no second way to find what was missed. The only
+     * reason it was noticed at all is that Jose said no leads were showing up.
+     */
+    public function test_a_lead_event_with_no_negotiation_id_says_so_in_the_log(): void
+    {
+        Log::spy();
+
+        $t = $this->provisionTenant('A1-Group');
+        $this->connection($t, secret: 'the-secret');
+
+        $this->withHeader(ThumbtackWebhooks::AUTH_HEADER, 'the-secret')
+            ->postJson(self::URL, [
+                'eventType'  => 'NegotiationCreatedV4',
+                'businessID' => 'biz-1',
+                // Their id, somewhere we do not read.
+                'payload'    => ['negotiation' => ['id' => 'n-1']],
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.handled', false);
+
+        Log::shouldHaveReceived('warning')->withArgs(function ($message, $context) {
+            // The SHAPE is what is wrong and what is safe to write down; the
+            // values are a customer's name and phone number.
+            return str_contains($message, 'no negotiation id')
+                && in_array('payload.negotiation.id', $context['payload_keys'], true)
+                && $context['business'] === 'biz-1';
+        })->once();
+    }
+
+    public function test_an_unhandled_event_type_says_so_but_a_review_stays_quiet(): void
+    {
+        Log::spy();
+
+        $t = $this->provisionTenant('A1-Group');
+        $this->connection($t, secret: 'the-secret');
+
+        // Reviews reaching here is normal: subscribed on purpose, not a lead.
+        $this->withHeader(ThumbtackWebhooks::AUTH_HEADER, 'the-secret')
+            ->postJson(self::URL, ['eventType' => 'ReviewCreatedV4', 'businessID' => 'biz-1'])
+            ->assertOk();
+
+        Log::shouldNotHaveReceived('warning');
+
+        // Anything else is either a type missing from their own enum or a type
+        // we are reading from the wrong key, and both look like a working
+        // integration receiving nothing.
+        $this->withHeader(ThumbtackWebhooks::AUTH_HEADER, 'the-secret')
+            ->postJson(self::URL, ['eventType' => 'SomethingNewV5', 'businessID' => 'biz-1'])
+            ->assertOk();
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn ($message, $context) => str_contains($message, 'does not handle')
+                && $context['event'] === 'SomethingNewV5')
+            ->once();
     }
 
     // ── registration ─────────────────────────────────────────────
