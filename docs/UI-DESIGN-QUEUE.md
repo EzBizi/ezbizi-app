@@ -775,6 +775,38 @@ joining established house vocabulary, not introducing a word.
 > would change the meaning to "none exists". Different reader, different job.
 > (`ActionRunner:643` is a docblock, not copy: the count is eleven, not twelve.)
 
+> **FOURTH pass, and the ruling is SIXTEEN not ten. The deploy desk stopped the sweep to say
+> my decisive fact was wrong, and it was — I cited as precedent the very form my own rule
+> forbids.** I justified dropping "in reach" by pointing at *"No enquiries yet."* and *"No
+> reviews yet."* as the board's plain form. **"Yet" describes the organization**, which is
+> precisely the claim I said a scoped box cannot support. Fleet and Services found it; Inspection
+> gave the case that settles it — their glance is franchise-scoped and closed two leaks
+> yesterday, so *"No inspections yet"* would be actively false to a franchise reader.
+>
+> **The board has FOUR habits, not two**, read off `'sentence' =>` on main:
+> *in reach* (5) · *yet* (6) · **to show / to track** (Phone, Training) · **in this view**
+> (Marketing). **The form I recommended was already on the board** — `PhoneGlance` says *"No
+> phone lines to show."* — so this is not a new convention, and Phone is already compliant
+> rather than a target, which the hand-count had wrong.
+>
+> **All six "yet" boxes are scoped, so there is no exemption.** I nearly granted Marketing one:
+> a grep for `reachable|franchise|company_id` returned **zero** for `MarketingGlance`, and it
+> scopes with `$this->access->inView($user, $c)`. **A fifth false absence from a pattern that
+> did not know the word** — and the one that would have exempted a box from a rule it needs.
+> Marketing's own file proves the rule: *"No accounts connected in this view."* sits beside
+> *"Nothing posted or scheduled yet."* in the same glance.
+>
+> **"In this view" stays and is arguably the best of the four.** The rule is not "no
+> qualifier" — it is *no qualifier the reader cannot parse, and no claim about the world*.
+> "In this view" says the count is scoped, in words a customer already owns; "in reach" says
+> the same thing in ours.
+>
+> **Count lines take Services' participle form** — *"No services listed." / "3 services
+> listed."* Services measured all 23 count sentences across 13 glances: **every one carries a
+> qualifier and not one is bare**, so the desk's proposed *"12 vehicles."* would have been the
+> only bare count on the board. Their shape also matches Reviews' existing *"1 review
+> unanswered."* Adopted as the house form.
+
 > **The measurement lesson, which is new and is the reusable part: the pattern was right, the
 > file was right, and the CORPUS was wrong.** Dashboard copy is split across Dart and PHP, so a
 > clean search of one language can miss most of the thing and return a confident zero. Before
