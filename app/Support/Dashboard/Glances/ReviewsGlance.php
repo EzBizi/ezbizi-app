@@ -57,8 +57,20 @@ final class ReviewsGlance extends DescribedGlance
 
             if ($total === 0) {
                 return $this->payload([
-                    'empty'    => true,
-                    'sentence' => 'No reviews yet.',
+                    'empty' => true,
+                    /*
+                     * "In this view", because this box is scoped and the
+                     * sentence it carried was not.
+                     *
+                     * "No reviews yet." says the BUSINESS has none, from a box
+                     * that saw the part of it this reader may see. Board-wide
+                     * ruling, UI/UX 30ff2369 — and this string is the one that
+                     * sent that ruling the wrong way for two hours, cited to
+                     * UI/UX as proof the board already wrote the compliant
+                     * plain form. It was not compliant; it was the defect,
+                     * standing where the proof should have been.
+                     */
+                    'sentence' => 'No reviews in this view.',
                 ]);
             }
 
@@ -92,11 +104,25 @@ final class ReviewsGlance extends DescribedGlance
             $inPeriod = array_sum($counts);
 
             $sentences = [
+                /*
+                 * The good news is the one that must not overreach. "Every
+                 * review has been answered." to a franchise reader means every
+                 * review THEY can see, and reads as nothing needs attention
+                 * anywhere — the most expensive false reassurance this
+                 * dashboard could give, since an unanswered one-star sits in
+                 * public at the top of the listing.
+                 */
                 $unanswered === 0
-                    ? 'Every review has been answered.'
+                    ? 'Every review in this view has been answered.'
                     : ($unanswered === 1 ? '1 review unanswered.' : "{$unanswered} reviews unanswered."),
+                /*
+                 * Not "No star ratings yet.": these reviews are here and carry
+                 * no stars, which is a fact about the rows the box is holding
+                 * rather than a wait for something to arrive. Parallel with
+                 * the rated form so the slot reads the same either way.
+                 */
                 $average === null
-                    ? 'No star ratings yet.'
+                    ? 'No star ratings across '.$total.'.'
                     : number_format((float) $average, 1).' stars across '.$total.'.',
                 $inPeriod === 1
                     ? "1 arrived this {$period->key}."
