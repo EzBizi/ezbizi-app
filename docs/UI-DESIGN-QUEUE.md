@@ -993,7 +993,7 @@ cannot land on an unreadable button.
 > Sent to Web Management with the numbers. **Do not build this picker until it lands**,
 > or the preview will disagree with the widget for exactly those brands.
 
-### 6 · HR · HR record: Training card — **CHOSEN: desktop 3 + mobile 6** (`hr-record--training-card`)
+### 6 · HR · HR record: Training card — **BUILT, one ruling outstanding** (`hr-record--training-card`)
 
 `docs/previews/hr-record-training-card-layouts.html`, committed `f3aaf3b7`. Three desktop,
 three mobile, plus the refused state on a toggle that applies to whichever option is open.
@@ -1014,6 +1014,33 @@ three mobile, plus the refused state on a toggle that applies to whichever optio
 > between two panels on one screen that only the owner of both can see while working. HR
 > asked for it, named the file and committed to building it.
 >
+**Built by HR and verified against the drawing 2026-09-09** (`client/lib/screens/hr/training_card.dart`,
+on main). Footnote present in the gallery's words; refusal a lock plus the server's sentence;
+strip on desktop, absent on the phone; urgency ordering as specified.
+
+**HR improved on the drawing in one place and it should not be collapsed later:** they split
+`forbidden` from `!ok`, so a refusal gets the lock and a genuine failure gets `ErrorNote`. I had
+only said "never an empty card". That is [[an advisory must not wear the failure component]] and
+its converse — **a real failure must not be dressed as a polite note.**
+
+> ⚠️ **RULING, against the build: the strip must account for every row it sits above.**
+> Five states exist (`lapsed`, `notPassed`, `notStarted`, `inProgress`, `passed`); the strip
+> counts three, and `notPassed` — flagged `bad` — is not one of them. **A person with two failed
+> tests and nothing lapsed gets a strip reading 0 · 0 · 0 above two red rows.** The strip's whole
+> job is answering "is anything wrong with this person" before the detail, and there it answers
+> no while the answer is yes, twice — failing hardest for the person most worth catching.
+>
+> **My drawing was incomplete, not HR's build.** I drew three states because the gallery's sample
+> data had three. Fix: keep three cells, partition all five — `lapsed + notPassed` (boxed),
+> `notStarted + inProgress`, `passed`. Rows keep their exact pills; the strip summarises.
+>
+> **Do not widen "Due for retaking" to cover a failed test** — "retaking" implies a pass that
+> lapsed, and someone who never passed is not retaking anything. That word is Training's. Use a
+> summary word for the cell ("Needs a pass"). The label is negotiable; the completeness is not.
+>
+> Test to add with it: assert the cells sum to the row count on a fixture carrying all five
+> states, so a sixth state added later fails here instead of silently going uncounted.
+
 > **UI/UX keeps the verification**, which is the half that actually answers the rule: HR
 > sends a SHA, and it is checked against the drawing — the three counts, the lapsed one
 > boxed in the error colour, per-guide cards in urgency order, the ownership footnote
