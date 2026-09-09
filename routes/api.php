@@ -1051,6 +1051,7 @@ Route::prefix('v1')
         Route::patch('social/connections/{connection}/leads-franchise', [SocialConnectionsController::class, 'placeLeads']);
         Route::patch('social/connections/{connection}/label', [SocialConnectionsController::class, 'rename']);
         Route::delete('social/connections/{connection}', [SocialConnectionsController::class, 'destroy']);
+        Route::delete('social/providers/{provider}/connections', [SocialConnectionsController::class, 'destroyProvider']);
         Route::post('social/bluesky/connect', [BlueskyConnectController::class, 'store']);
         Route::post('social/{network}/start', [SocialAuthController::class, 'start'])
             ->where('network', SocialProvider::oauthRoutePattern());

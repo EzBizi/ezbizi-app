@@ -17,13 +17,19 @@ import '../../widgets/error_note.dart';
 /// own docblock) — because writing a question means seeing which choice is
 /// already marked right.
 ///
-/// ── The four options Jose named, and nothing invented beyond them ──────
+/// ── The five options, and nothing invented beyond them ──────────────
 ///
 /// `requires_guide` ("Must finish the guide before the test"), `pass_mark`
 /// ("Pass mark"), `max_attempts` ("Retakes allowed" — blank means
 /// unlimited), `valid_for_days` ("A pass runs out after" — blank means a
-/// pass never expires). [TestEditorPanel] edits exactly these four plus the
-/// questions themselves; nothing else on this screen is a fifth option
+/// pass never expires), and `count_attempts_after_pass` ("Every retake
+/// counts toward the limit" — off, the default, is the fifth-option
+/// brief's own answer to "if somebody already passed and wants a better
+/// score, does that use one of their attempts?": no, as long as their pass
+/// is still good; the exemption itself ends the day that pass runs out,
+/// which is what the row's hint now says rather than leaving an author to
+/// guess). [TestEditorPanel] edits exactly these five plus the
+/// questions themselves; nothing else on this screen is a sixth option
 /// dressed up as one.
 ///
 /// ── The server's sentence, never this client's own wording ─────────────
@@ -206,6 +212,7 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
   late TextEditingController _maxAttempts;
   late TextEditingController _validForDays;
   late bool _requiresGuide;
+  late bool _countAttemptsAfterPass;
   String? _guideId;
 
   late List<Map<String, dynamic>> _questions;
@@ -249,6 +256,7 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
     _maxAttempts = TextEditingController(text: test['max_attempts']?.toString() ?? '');
     _validForDays = TextEditingController(text: test['valid_for_days']?.toString() ?? '');
     _requiresGuide = test['requires_guide'] == true;
+    _countAttemptsAfterPass = test['count_attempts_after_pass'] == true;
     _guideId = widget.guideIdFixed ?? test['guide_id'] as String?;
 
     _questions = (test['questions'] as List? ?? const [])
@@ -332,6 +340,7 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
       'pass_mark': _parseInt(_passMark.text) ?? (widget.test['pass_mark'] as num?)?.toInt() ?? 80,
       'max_attempts': _parseInt(_maxAttempts.text),
       'valid_for_days': _parseInt(_validForDays.text),
+      'count_attempts_after_pass': _countAttemptsAfterPass,
       'questions': [
         for (final q in _questions)
           {
@@ -471,6 +480,15 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
             key: const Key('training.option-valid-for-days'),
             controller: _validForDays,
             suffix: 'days',
+          ),
+        ),
+        _OptionRow(
+          label: 'Every retake counts toward the limit',
+          hint: 'Off spares retakes only until that pass runs out',
+          trailing: Switch(
+            key: const Key('training.option-count-attempts-after-pass'),
+            value: _countAttemptsAfterPass,
+            onChanged: (value) => setState(() => _countAttemptsAfterPass = value),
           ),
         ),
         const SizedBox(height: 14),

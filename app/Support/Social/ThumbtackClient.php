@@ -4,6 +4,7 @@ namespace App\Support\Social;
 
 use App\Models\SocialConnection;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -115,33 +116,116 @@ final class ThumbtackClient
     }
 
     /**
-     * Swap the expired token for a live one and SAVE BOTH halves.
+     * Swap the expired token for a live one, and give it to EVERY row holding it.
      *
-     * Saving matters more than it looks: Thumbtack rotates refresh tokens on
-     * every exchange and invalidates the previous one. Keeping the old refresh
-     * token would work once and then permanently fail, an hour later.
+     * ── One grant, many rows ─────────────────────────────────────
+     *
+     * This is the part that is not obvious and that cost a day. One Thumbtack
+     * login administers several businesses, and `identify()` returns one account
+     * per BUSINESS — so a single connect writes N connection rows, all carrying
+     * THE SAME token pair. Jose's connect on 2026-09-09 made twelve.
+     *
+     * Thumbtack rotates the refresh token on every exchange and invalidates the
+     * one just used. So when this saved to `$this->connection` alone, the first
+     * row to refresh spent the shared token and left the other eleven holding a
+     * value that was already dead. Measured an hour later: eleven rows sharing
+     * one fingerprint, one row with a rotated pair, seventeen `invalid_grant`
+     * refusals in the log, and eventually the whole family revoked — reuse
+     * detection reading eleven replays of a spent token as a stolen one.
+     *
+     * The rotated pair therefore goes to every row in this organization that
+     * held the token we just spent. Compared in PHP because `credentials` is an
+     * encrypted cast: the ciphertext differs per row even for identical values,
+     * so no WHERE clause can find them.
+     *
+     * ── Why a lock, and why re-read inside it ────────────────────
+     *
+     * Two workers can hit 401 on the same shared token at the same moment —
+     * likely here, because a webhook burst is exactly when several rows go stale
+     * together. Both would exchange it, one would win, and the loser would
+     * trigger the same reuse detection this exists to avoid.
+     *
+     * The lock alone only narrows that. The RE-READ inside it closes it: by the
+     * time we hold the lock somebody else may have rotated already, in which
+     * case our token is spent and asking again would be the very replay we are
+     * avoiding. So we reload, and if the stored token is no longer the one we
+     * queued with, we take theirs instead of asking for another.
      */
     private function refreshAccessToken(): void
     {
-        $refresh = $this->refreshToken();
+        $spent = $this->refreshToken();
 
-        if ($refresh === null) {
+        if ($spent === null) {
             return;
         }
 
-        $grant = app(ThumbtackOAuth::class)->refresh($refresh);
+        $organizationId = $this->connection->organization_id;
 
-        $credentials = $this->connection->getAttribute('credentials');
-        $credentials = is_array($credentials) ? $credentials : [];
+        // 30s is longer than the exchange and short enough that a killed worker
+        // does not strand the others behind a lock nobody will release.
+        Cache::lock('thumbtack-refresh:'.$organizationId, 30)->block(15, function () use ($spent, $organizationId) {
+            $this->connection->refresh();
 
-        $credentials['access_token'] = $grant->accessToken;
+            $current = $this->refreshToken();
 
-        if ($grant->refreshToken !== null && $grant->refreshToken !== '') {
-            $credentials['refresh_token'] = $grant->refreshToken;
-        }
+            if ($current !== null && $current !== $spent) {
+                // Somebody rotated while we queued. Their result is the live
+                // one; asking again with our spent token is the replay that
+                // gets the whole family revoked.
+                return;
+            }
 
-        $this->connection->setAttribute('credentials', $credentials);
-        $this->connection->save();
+            $grant = app(ThumbtackOAuth::class)->refresh($spent);
+
+            $rows = SocialConnection::query()
+                ->withoutGlobalScopes()
+                ->where('organization_id', $organizationId)
+                ->where('provider', SocialProvider::Thumbtack->value)
+                ->get()
+                ->filter(function (SocialConnection $row) use ($spent) {
+                    $credentials = $row->getAttribute('credentials');
+
+                    return is_array($credentials)
+                        && ($credentials['refresh_token'] ?? null) === $spent;
+                });
+
+            foreach ($rows as $row) {
+                $credentials = $row->getAttribute('credentials');
+                $credentials = is_array($credentials) ? $credentials : [];
+
+                $credentials['access_token'] = $grant->accessToken;
+
+                if ($grant->refreshToken !== null && $grant->refreshToken !== '') {
+                    $credentials['refresh_token'] = $grant->refreshToken;
+                }
+
+                /*
+                 * Expiry lives INSIDE credentials, not in a column.
+                 *
+                 * `social_connections` has no `expires_at`; SocialConnection::connect()
+                 * takes it as a key in the tokens array. Two of us read
+                 * `$row->expires_at` while diagnosing this and both saw null —
+                 * not an empty value but a missing attribute, which Eloquent
+                 * answers with null rather than an error. That is worth the
+                 * sentence: a null from a column that does not exist looks
+                 * exactly like a null from one that does.
+                 *
+                 * Behaviour today is unchanged either way, because the 401 is
+                 * what drives the retry. It is written so a later
+                 * refresh-before-expiry sweep has something true to read.
+                 */
+                if ($grant->expiresIn !== null) {
+                    $credentials['expires_at'] = now()->addSeconds($grant->expiresIn)->toIso8601String();
+                }
+
+                $row->setAttribute('credentials', $credentials);
+                $row->save();
+            }
+
+            // This instance holds one of those rows; take the new value rather
+            // than the copy loaded before the exchange.
+            $this->connection->refresh();
+        });
     }
 
     private function refreshToken(): ?string

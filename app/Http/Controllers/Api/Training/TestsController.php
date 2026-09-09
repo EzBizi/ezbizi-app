@@ -21,8 +21,20 @@ use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Training tests — list, create, show, update, destroy, and the four
- * per-test options (decision 4) that decide how a test is passed.
+ * Training tests — list, create, show, update, destroy, and the five
+ * per-test options (decision 4, plus the fifth-option brief 2026-09-09)
+ * that decide how a test is passed.
+ *
+ * The fifth, `count_attempts_after_pass`, answers "does a retake taken
+ * while somebody already holds a valid pass spend one of their
+ * `max_attempts`?" — default `false` (it does not), because the owner's own
+ * framing was that the cap is "meant for failures," not for someone
+ * improving on a pass they already have. `true` is the old, strict
+ * behaviour: every attempt counts, whatever it comes after. Validated and
+ * stored exactly like the other four in [rules]/[store]/[update]; the
+ * definition of "still holds a valid pass" is never re-derived here — see
+ * `LearnController::submit` and `App\Support\Training\LapsedPasses`, the one
+ * place that fact is decided.
  *
  * Mirrors GuidesController closely: same place-scope engine, same
  * store/update place-handling shape, same audit shape (see
@@ -135,6 +147,7 @@ class TestsController extends Controller
                 'pass_mark' => $input['pass_mark'] ?? 80,
                 'max_attempts' => $input['max_attempts'] ?? null,
                 'valid_for_days' => $input['valid_for_days'] ?? null,
+                'count_attempts_after_pass' => $input['count_attempts_after_pass'] ?? false,
             ]);
 
             $this->audit->log('test.created', $test);
@@ -440,6 +453,7 @@ class TestsController extends Controller
             'pass_mark' => ['sometimes', 'integer', 'min:1', 'max:100'],
             'max_attempts' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:99'],
             'valid_for_days' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:3650'],
+            'count_attempts_after_pass' => ['sometimes', 'boolean'],
             'questions' => ['sometimes', 'array', 'max:200'],
             'questions.*.prompt' => ['required', 'string', 'max:1000'],
             'questions.*.choices' => ['required', 'array', 'min:2', 'max:10'],
@@ -462,6 +476,7 @@ class TestsController extends Controller
             'pass_mark' => $test->pass_mark,
             'max_attempts' => $test->max_attempts,
             'valid_for_days' => $test->valid_for_days,
+            'count_attempts_after_pass' => $test->count_attempts_after_pass,
             'question_count' => $test->questionCount(),
             'questions' => $test->questions,
         ];

@@ -106,6 +106,37 @@ class PreferenceRegistry
             ],
 
             /*
+             * The two panes on Web Management → Widgets.
+             *
+             * Registered rather than kept in the screen because the screen is
+             * rebuilt from scratch on every website click, and the whole point
+             * of dragging a pane is that it stays where it was put. Same shape
+             * as `navigation.width` directly above, for the same reason: a
+             * width is an int with bounds, and the bounds belong beside the
+             * value rather than only in the client that happens to write it.
+             *
+             * Set by dragging, so neither appears in Settings — the client asks
+             * for these two keys by name, the way it asks for the sidebar's.
+             */
+            'web.widgets.list_width' => [
+                'label' => 'Website list width',
+                'type' => 'int',
+                'default' => 260,
+                'min' => 180,
+                'max' => 460,
+                'help' => 'Drag the line beside the website list to change it.',
+            ],
+
+            'web.widgets.preview_width' => [
+                'label' => 'Widget preview width',
+                'type' => 'int',
+                'default' => 360,
+                'min' => 280,
+                'max' => 640,
+                'help' => 'Drag the line beside the preview to change it.',
+            ],
+
+            /*
              * Which part of the business you are looking at (§3 roll-ups).
              *
              * "organization", or "company:<uuid>", or "franchise:<uuid>". A

@@ -14,7 +14,58 @@ import 'package:http/testing.dart';
 /// The defect this exists for: one connect created twenty-two accounts in the
 /// same second and the screen showed one of them, chosen by whichever the query
 /// returned first. Twenty-one were invisible.
+final _deleted = <String>[];
+
 void main() {
+  /// Twelve Thumbtack rows are one consent. Letting them all go is one
+  /// question and one call, not twelve of each.
+  testWidgets('Disconnect all asks once, then lets every account of the '
+      'provider go in one call', (tester) async {
+    var reloaded = 0;
+    await _pump(
+      tester,
+      connections: [
+        for (var i = 0; i < 3; i++)
+          {
+            'id': 'tb-$i',
+            'provider': 'thumbtack',
+            'display_name': 'A1 Chimney',
+            'remote_id': '5812668784914432$i',
+            'leads_count': 0,
+          },
+      ],
+      onChanged: () async => reloaded++,
+    );
+
+    expect(
+      find.byKey(const ValueKey('accounts-disconnect-all')),
+      findsOneWidget,
+    );
+    expect(_deleted, isEmpty);
+
+    await tester.tap(find.byKey(const ValueKey('accounts-disconnect-all')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Disconnect all 3 accounts?'), findsOneWidget);
+    expect(_deleted, isEmpty, reason: 'asking is not doing');
+
+    await tester.tap(
+      find.byKey(const ValueKey('accounts-disconnect-all-confirm')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_deleted, ['/api/v1/social/providers/thumbtack/connections']);
+    expect(reloaded, 1);
+  });
+
+  testWidgets('a single account has no Disconnect all; its own row is enough', (
+    tester,
+  ) async {
+    await _pump(tester, connections: _many(1));
+
+    expect(find.byKey(const ValueKey('accounts-disconnect-all')), findsNothing);
+  });
+
   testWidgets('every account is listed, not the first one the query returned', (
     tester,
   ) async {
@@ -299,7 +350,9 @@ Future<void> _pump(
   WidgetTester tester, {
   required List<Map<String, dynamic>> connections,
   int? moved,
+  Future<void> Function()? onChanged,
 }) async {
+  _deleted.clear();
   tester.view.physicalSize = const Size(1200, 2400);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -312,6 +365,13 @@ Future<void> _pump(
             ..._me,
             'permissions': const ['leads.view', 'leads.edit'],
           },
+        });
+      }
+      if (request.method == 'DELETE' &&
+          request.url.path.contains('/social/providers/')) {
+        _deleted.add(request.url.path);
+        return _json({
+          'data': {'provider': 'thumbtack', 'disconnected': 3, 'problems': []},
         });
       }
       if (request.url.path.contains('leads-franchise')) {
@@ -344,7 +404,7 @@ Future<void> _pump(
             api: api,
             session: session,
             connections: connections,
-            onChanged: () async {},
+            onChanged: onChanged ?? () async {},
           ),
         ),
       ),

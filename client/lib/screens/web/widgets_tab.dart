@@ -32,6 +32,20 @@ class _WidgetsTabState extends State<WidgetsTab> {
   List<Map<String, dynamic>> _sites = const [];
   String? _selected;
 
+  /// Pane widths, held HERE rather than in the editor.
+  ///
+  /// The editor is keyed by site id, so its state is thrown away every time
+  /// somebody clicks a different website — a width kept there would snap back
+  /// on every click, which is worse than not being draggable.
+  ///
+  /// Seeded from the person's saved preference and written back when a drag
+  /// settles, the way the app's own sidebar does it. During the drag the value
+  /// lives here so the pane follows the pointer at frame rate; a PATCH per
+  /// pixel would be a request per frame for a value nobody has finished
+  /// choosing.
+  late double _listWidth = widget.session.me?.webWidgetsListWidth ?? 260;
+  late double _previewWidth = widget.session.me?.webWidgetsPreviewWidth ?? 360;
+
   @override
   void initState() {
     super.initState();
@@ -120,19 +134,159 @@ class _WidgetsTabState extends State<WidgetsTab> {
             api: widget.api,
             siteId: _selected!,
             canEdit: _canEdit,
+            previewWidth: _previewWidth,
+            onPreviewSettled: () => widget.session.setPreference(
+              'web.widgets.preview_width',
+              _previewWidth.round(),
+            ),
+            onPreviewDelta: (delta) => setState(
+              () => _previewWidth = (_previewWidth - delta).clamp(280.0, 640.0),
+            ),
           );
 
     if (!wide) {
       return _selected == null ? list : detail;
     }
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(width: 260, child: list),
-        const VerticalDivider(width: 1),
-        Expanded(child: detail),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(width: _listWidth, child: list),
+            _DragHandle(
+              tooltip: 'Drag to resize the list',
+              onSettled: () => widget.session.setPreference(
+                'web.widgets.list_width',
+                _listWidth.round(),
+              ),
+              onDelta: (delta) => setState(() {
+                // 180 still shows a subdomain without truncating it; past 460
+                // the list is wider than the longest host anybody registers and
+                // the space is simply taken from the editor.
+                _listWidth = (_listWidth + delta).clamp(180.0, 460.0);
+              }),
+            ),
+            Expanded(
+              child: _selected == null
+                  ? detail
+                  : _WidgetEditor(
+                      key: ValueKey(_selected),
+                      api: widget.api,
+                      siteId: _selected!,
+                      canEdit: _canEdit,
+                      previewWidth: _previewWidth,
+                      onPreviewSettled: () => widget.session.setPreference(
+                        'web.widgets.preview_width',
+                        _previewWidth.round(),
+                      ),
+                      onPreviewDelta: (delta) => setState(() {
+                        // Dragging LEFT widens the preview, so the sign flips.
+                        // The upper bound leaves the form its 560: below that
+                        // the question rows start wrapping, and a form that
+                        // wraps to make room for a preview of itself is the
+                        // wrong trade.
+                        final room = constraints.maxWidth - _listWidth - 560;
+                        final most = room < 300.0 ? 300.0 : room;
+                        _previewWidth =
+                            (_previewWidth - delta).clamp(280.0, most);
+                      }),
+                    ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// The line between two panes, which you can also pull.
+///
+/// ── Why this is not a plain [VerticalDivider] ──
+///
+/// The widths on this screen were mine: 260 for the site list, 360 for the
+/// preview. Both are guesses about somebody else's monitor, their site count
+/// and whether they are reading the form or the preview at that moment — and a
+/// guess about all three at once is a guess that is wrong for most people.
+/// Pulling the line is how they say which.
+///
+/// ── What it refuses to do ──
+///
+/// It clamps rather than letting a pane be dragged to nothing. A pane collapsed
+/// to two pixels is not a smaller pane, it is a lost one, and the way back is
+/// a hairline somebody has to find. The caller supplies the bounds because only
+/// it knows what its own content stops working at.
+///
+/// ── The invisible part that matters most ──
+///
+/// The hit area is wider than the line. A one-pixel divider is a one-pixel
+/// target, which is a fight with the mouse rather than a control; the divider
+/// stays a hairline and the grab area around it is twelve.
+class _DragHandle extends StatefulWidget {
+  const _DragHandle({
+    required this.onDelta,
+    required this.onSettled,
+    this.tooltip = 'Drag to resize',
+  });
+
+  /// Pixels the pointer moved since the last frame, positive to the right.
+  final void Function(double delta) onDelta;
+
+  /// The drag has stopped. Separate from [onDelta] because the value is worth
+  /// saving once, not sixty times a second while somebody is still choosing.
+  final VoidCallback onSettled;
+
+  final String tooltip;
+
+  @override
+  State<_DragHandle> createState() => _DragHandleState();
+}
+
+class _DragHandleState extends State<_DragHandle> {
+  bool _hovering = false;
+  bool _dragging = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final lit = _hovering || _dragging;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeLeftRight,
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        // Opaque, so the twelve pixels of padding are draggable rather than
+        // only the hairline drawn inside them.
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragStart: (_) => setState(() => _dragging = true),
+        onHorizontalDragEnd: (_) {
+          setState(() => _dragging = false);
+          widget.onSettled();
+        },
+        // A cancelled drag still settled somewhere: the pane is at whatever
+        // width the last frame left it, so that width is the one to keep.
+        onHorizontalDragCancel: () {
+          setState(() => _dragging = false);
+          widget.onSettled();
+        },
+        onHorizontalDragUpdate: (details) => widget.onDelta(details.delta.dx),
+        child: Tooltip(
+          message: widget.tooltip,
+          waitDuration: const Duration(milliseconds: 700),
+          child: SizedBox(
+            width: 12,
+            child: Center(
+              child: Container(
+                width: lit ? 3 : 1,
+                color: lit
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.outlineVariant,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -144,11 +298,23 @@ class _WidgetEditor extends StatefulWidget {
     required this.api,
     required this.siteId,
     required this.canEdit,
+    required this.previewWidth,
+    required this.onPreviewDelta,
+    required this.onPreviewSettled,
   });
 
   final ApiClient api;
   final String siteId;
   final bool canEdit;
+
+  /// Owned by the parent, because this widget is rebuilt from scratch whenever
+  /// a different website is selected.
+  final double previewWidth;
+  final void Function(double delta) onPreviewDelta;
+
+  /// Called once the drag stops, so the width is saved rather than the
+  /// hundred values it passed through on the way.
+  final VoidCallback onPreviewSettled;
 
   @override
   State<_WidgetEditor> createState() => _WidgetEditorState();
@@ -287,7 +453,7 @@ class _WidgetEditorState extends State<_WidgetEditor> {
     final form = _section('form');
     final style = _section('style');
 
-    return ListView(
+    final formPane = ListView(
       padding: const EdgeInsets.all(20),
       children: [
         if (!_own)
@@ -405,6 +571,276 @@ class _WidgetEditorState extends State<_WidgetEditor> {
             ],
           ),
       ],
+    );
+
+    /*
+     * The preview sits BESIDE the form, not above it.
+     *
+     * Everything on this screen is a value that only means something once it
+     * is rendered — a hex, a radius, a line of wording — and the page it
+     * renders on is one nobody at EzBizi will ever load. Above the form it
+     * would scroll away exactly when somebody started changing things.
+     *
+     * Below 920 there is no room for both: the form needs about 560 before the
+     * question rows start wrapping, and a preview narrower than 320 stops
+     * resembling the thing it previews. So the form keeps the width and the
+     * preview steps aside rather than both being cramped.
+     */
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 920) return formPane;
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: formPane),
+            _DragHandle(
+              tooltip: 'Drag to resize the preview',
+              onDelta: widget.onPreviewDelta,
+              onSettled: widget.onPreviewSettled,
+            ),
+            SizedBox(width: widget.previewWidth, child: _preview(theme)),
+          ],
+        );
+      },
+    );
+  }
+
+  /// The widgets as a visitor meets them, drawn from the values being edited.
+  ///
+  /// ── What it is honest about ──
+  ///
+  /// It cannot be pixel-exact and does not pretend to be: the customer's own
+  /// theme supplies the typeface, the page background and the spacing around
+  /// anything embedded in it, and none of that is ours to know. What it IS
+  /// exact about is every value on this screen — the colours, the corner
+  /// radius, the wording, and the questions in the order the form asks them.
+  /// Those are the things somebody is changing while they look at it.
+  ///
+  /// ── Why a switched-off widget still draws ──
+  ///
+  /// Dressing one before turning it on is the ordinary order of doing this. A
+  /// preview that stayed blank until the switch flipped would hide the thing
+  /// during the exact minutes somebody was working on it, so an off widget
+  /// draws and says that it is off.
+  Widget _preview(ThemeData theme) {
+    final chat = _section('chat');
+    final form = _section('form');
+    final style = _section('style');
+
+    final accent = _colour(style['accent']) ?? theme.colorScheme.primary;
+    final onAccent = _colour(style['on_accent']) ?? theme.colorScheme.onPrimary;
+    final text = _colour(style['text']) ?? theme.colorScheme.onSurface;
+    final surface = _colour(style['background']) ?? theme.colorScheme.surface;
+    final radius =
+        (((style['radius'] as num?) ?? 12).toDouble()).clamp(0.0, 40.0);
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
+      children: [
+        Text('Preview', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 4),
+        Text(
+          'Your colours, wording and questions, exactly as set. The typeface '
+          'and the page around them come from your own website.',
+          style: theme.textTheme.bodySmall,
+        ),
+        const SizedBox(height: 16),
+        _previewHeading(theme, 'Live chat', chat['enabled'] == true),
+        const SizedBox(height: 8),
+        _mockPage(
+          theme,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _mockPanel(
+                surface: surface,
+                radius: radius,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _line(chat['title']),
+                      style: TextStyle(
+                        color: text,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    if (_line(chat['intro']).isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        _line(chat['intro']),
+                        style: TextStyle(color: text, fontSize: 12),
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    _mockInput(_line(chat['placeholder']), radius, text),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: _mockButton(
+                        _line(chat['send']),
+                        accent,
+                        onAccent,
+                        radius,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              // The closed bubble, which is what most visitors ever see of it.
+              _mockButton(_line(chat['button']), accent, onAccent, radius),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        _previewHeading(theme, 'Contact form', form['enabled'] == true),
+        const SizedBox(height: 8),
+        _mockPage(
+          theme,
+          child: _mockPanel(
+            surface: surface,
+            radius: radius,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final field in (form['fields'] as List? ?? const []))
+                  if (field is Map && _line(field['label']).isNotEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        _line(field['label']) +
+                            (field['required'] == true ? ' *' : ''),
+                        style: TextStyle(color: text, fontSize: 12),
+                      ),
+                    ),
+                    _mockInput(
+                      '',
+                      radius,
+                      text,
+                      // A textarea is taller, which changes how long the whole
+                      // form looks — the thing being judged when a question is
+                      // added.
+                      tall: field['type'] == 'textarea',
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: _mockButton(
+                    _line(form['button']),
+                    accent,
+                    onAccent,
+                    radius,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  static String _line(Object? value) => '${value ?? ''}';
+
+  Widget _previewHeading(ThemeData theme, String label, bool on) {
+    /*
+     * A Wrap, not a Row. The pane is a fixed 360 and the pair here is a section
+     * name beside a sentence — "Contact form" and "off on your site" overflowed
+     * it by 6.6 pixels, which a widget test caught and an eye would not have.
+     * Wrapping keeps the whole sentence; ellipsising it would leave "off on
+     * your…" on the one line that has to be unambiguous.
+     */
+    return Wrap(
+      spacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text(label, style: theme.textTheme.bodyMedium),
+        if (!on)
+          Text(
+            'off on your site',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.outline,
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// A stand-in for the customer's page, so the widget is not judged against
+  /// EzBizi's own background — the one background it will never be on.
+  Widget _mockPage(ThemeData theme, {required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _mockPanel({
+    required Color surface,
+    required double radius,
+    required Widget child,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: const Color(0x22000000)),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _mockButton(
+    String label,
+    Color accent,
+    Color onAccent,
+    double radius,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: accent,
+        borderRadius: BorderRadius.circular(radius),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: onAccent,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Widget _mockInput(
+    String placeholder,
+    double radius,
+    Color text, {
+    bool tall = false,
+  }) {
+    return Container(
+      height: tall ? 52 : 30,
+      alignment: Alignment.topLeft,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular((radius - 6).clamp(0.0, 40.0)),
+        border: Border.all(color: const Color(0x33000000)),
+      ),
+      child: Text(
+        placeholder,
+        style: TextStyle(color: text.withValues(alpha: 0.45), fontSize: 12),
+      ),
     );
   }
 
@@ -592,6 +1028,11 @@ class _WidgetEditorState extends State<_WidgetEditor> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: DropdownButtonFormField<String>(
+        // Sizes to its slot and ellipsises, rather than to its longest option.
+        // Without it the button keeps its intrinsic width and overflows the row
+        // by 13px once a pane is dragged narrow — which nothing could do until
+        // the panes became draggable.
+        isExpanded: true,
         initialValue: options.contains(value) ? value : options.first,
         decoration: InputDecoration(labelText: label, isDense: true),
         items: [
@@ -658,6 +1099,9 @@ class _FieldList extends StatelessWidget {
                 Expanded(
                   flex: 2,
                   child: DropdownButtonFormField<String>(
+                    // See the note on the other one: sizes to its slot, so a
+                    // narrowed pane ellipsises instead of overflowing.
+                    isExpanded: true,
                     initialValue: types.contains(fields[i]['type'])
                         ? '${fields[i]['type']}'
                         : types.first,

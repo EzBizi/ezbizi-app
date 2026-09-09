@@ -8,15 +8,28 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0175',
+      date: '9 Sep 2026',
+      items: [
+        'Web Management: the website list and the preview can be dragged wider or narrower, and the screen opens the way you left it.',
+        'Leads: an account disconnected inside the Connected sources panel now leaves the panel at once, instead of staying until the panel was closed and reopened.',
+        'Leads: Disconnect all, on any provider with more than one account, lets every account go after one confirmation; for Thumbtack the twelve businesses of one consent are tidied one by one and the grant revoked once.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0174',
       date: '9 Sep 2026',
       items: [
         'Thumbtack: an enquiry is filed from what Thumbtack sends in the moment, so a slow or failed follow-up read no longer loses it, and a conversation that cannot be read yet arrives as a lead with no messages rather than not at all.',
+        'Thumbtack: connecting one account that covers several businesses now keeps every one of them signed in. Thumbtack replaces the sign-in key on every refresh; it was being saved to one business and the others kept the old key until Thumbtack cut all of them off. An account connected before this update needs connecting again once.',
+        'Training: a retake no longer uses up an attempt while somebody\'s pass is still valid. This applies to every test already written; authors who want the stricter counting can switch it back on per test.',
         'Scheduling: you can add a service area while looking at a company or the whole organization. It used to refuse and tell you to change the switcher at the top first, which meant the one screen that could have asked which branch the area belonged to was the screen refusing to open. It asks now.',
         'Scheduling: zip codes are separate items you add one at a time and remove individually, instead of one long line of commas where a single mistyped separator could take the whole list with it. Each one saves on its own, so a zip another area already covers is refused on its own rather than refusing every other edit with it.',
         'Scheduling: a zip code can carry the city it is in, and Availability can then be searched by city - useful when somebody on the phone knows the town and not the postcode.',
         'Scheduling: the Availability search suggests as you type, and says whether each suggestion is a service area, a city or a zip code. It used to guess from what you typed - all digits meant a zip, anything else meant an area name - so a city found nothing and said "we do not cover that", which was a wrong answer in the right answer\'s words.',
         'Scheduling: the list of service areas is grouped under the branch that owns each one, with the company named too when two branches share a name. Twenty-six areas from several branches used to arrive as one flat list with nothing saying which belonged to what.',
+        'Human Resources: a guide in progress on the Training card now says the screen the person has actually reached, matching what they see in Training.',
+        'Web Management: the chat bubble and contact form are drawn beside their settings now, so you can see what a visitor will see while you change it - colours, wording and questions, updating as you type.',
       ],
     ),
     VersionRelease(

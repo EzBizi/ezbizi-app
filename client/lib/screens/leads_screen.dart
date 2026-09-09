@@ -51,6 +51,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   List<Map<String, dynamic>> _leads = [];
   List<Map<String, dynamic>> _connections = [];
+
+  /// The open Connected sources panel, when there is one. A panel is its own
+  /// route: the screen's setState does not reach it, so a row disconnected
+  /// from inside it stayed on screen until the panel was closed and opened
+  /// again (Jose, 2026-09-09). Every reload pokes it.
+  StateSetter? _redrawSources;
   int _total = 0;
   String _status = '';
   int _request = 0;
@@ -189,6 +195,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
         (meta['connections'] as List? ?? const []).cast<Map<String, dynamic>>(),
       );
     });
+    _redrawSources?.call(() {});
   }
 
   Future<void> _sync() async {
@@ -890,24 +897,31 @@ class _LeadsScreenState extends State<LeadsScreen> {
       ],
     );
 
-    final body = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        section('Google Ads', 'google_ads', _googleSection(theme)),
-        section('Thumbtack', 'thumbtack', _thumbtackSection(theme)),
-        section(
-          'Website',
-          'web',
-          Text(
-            'Chat and form enquiries arrive through the EzBizi WordPress '
-            'plugin on your site, into this list.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+    // Built on every redraw, not once at open: the sections read the
+    // screen's connections, and a disconnect changes them.
+    Widget body() => StatefulBuilder(
+      builder: (context, redraw) {
+        _redrawSources = redraw;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            section('Google Ads', 'google_ads', _googleSection(theme)),
+            section('Thumbtack', 'thumbtack', _thumbtackSection(theme)),
+            section(
+              'Website',
+              'web',
+              Text(
+                'Chat and form enquiries arrive through the EzBizi WordPress '
+                'plugin on your site, into this list.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
             ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
 
     if (pushed) {
@@ -917,11 +931,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
             appBar: AppBar(title: const Text('Connected sources')),
             body: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
-              child: body,
+              child: body(),
             ),
           ),
         ),
       );
+      _redrawSources = null;
       return;
     }
 
@@ -931,9 +946,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
         title: 'Connected sources',
         subtitle:
             'Where enquiries come from, and where each account\'s leads go.',
-        child: body,
+        child: body(),
       ),
     );
+    _redrawSources = null;
   }
 
   /// Two different nothings, and they must not read the same.

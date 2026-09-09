@@ -229,4 +229,76 @@ class ThumbtackAuthTest extends TestCase
             return $row;
         });
     }
+
+    /**
+     * One login, twelve businesses, ONE token pair — and a rotation that must
+     * reach all of them.
+     *
+     * identify() returns an account per BUSINESS from a single OAuth grant, so
+     * a connect writes N rows all carrying the same tokens. Thumbtack rotates
+     * the refresh token on every exchange and kills the old one.
+     *
+     * Saving the rotated pair to one row left the others holding a dead value.
+     * Measured in production on 2026-09-09, an hour after Jose connected:
+     * eleven rows on one fingerprint, one rotated, seventeen invalid_grant
+     * refusals, then the whole family revoked — reuse detection reading eleven
+     * replays of a spent token as a stolen one. Every connection dead, and only
+     * a reconnect could fix it.
+     */
+    public function test_one_grant_shared_by_many_rows_rotates_for_all_of_them(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+
+        // Three businesses, one login: identical tokens, as a connect writes them.
+        $rows = collect(['biz-1', 'biz-2', 'biz-3'])->map(
+            fn (string $id) => $this->storedConnection($t, $id, 'shared-access', 'shared-refresh'),
+        );
+
+        Http::fake([
+            'auth.thumbtack.com/oauth2/token' => Http::response([
+                'access_token'  => 'rotated-access',
+                'refresh_token' => 'rotated-refresh',
+                'expires_in'    => 3600,
+            ]),
+            // The first call 401s, forcing the refresh; the retry succeeds.
+            'api.thumbtack.com/*' => Http::sequence()
+                ->push(['title' => 'Unauthorized'], 401)
+                ->push(['data' => []]),
+        ]);
+
+        $this->inTenant($t['org'], function () use ($rows) {
+            (new ThumbtackClient($rows->first()))->get('/v4/businesses');
+        });
+
+        // ALL of them, not just the one that did the exchange. The other two
+        // are what died in production.
+        $this->inTenant($t['org'], function () {
+            $stored = SocialConnection::query()
+                ->where('provider', SocialProvider::Thumbtack->value)
+                ->get()
+                ->map(fn ($r) => $r->getAttribute('credentials')['refresh_token'] ?? null)
+                ->unique();
+
+            $this->assertSame(['rotated-refresh'], $stored->values()->all());
+        });
+    }
+
+    private function storedConnection(array $t, string $remoteId, string $access, string $refresh): SocialConnection
+    {
+        return $this->inTenant($t['org'], function () use ($t, $remoteId, $access, $refresh) {
+            $row = new SocialConnection;
+            $row->forceFill([
+                'organization_id' => $t['org']->getKey(),
+                'scope_type'      => SocialConnection::SCOPE_COMPANY,
+                'scope_id'        => $t['company']->getKey(),
+                'provider'        => SocialProvider::Thumbtack->value,
+                'remote_id'       => $remoteId,
+                'display_name'    => 'A-1 Chimney',
+            ]);
+            $row->connect(['access_token' => $access, 'refresh_token' => $refresh]);
+            $row->save();
+
+            return $row;
+        });
+    }
 }

@@ -24,7 +24,21 @@ void main() {
       matching: find.byType(Text),
     );
     final cells = tester.widgetList<Text>(strip).map((t) => t.data).toList();
-    expect(cells, ['2', 'Needs a pass', '3', 'Outstanding', '2', 'Passed']);
+    expect(cells, ['2', 'Needs a pass', '4', 'Outstanding', '2', 'Passed']);
+
+    // `last_screen` is a 0-indexed high-water mark: 3 means the fourth screen
+    // was reached, and 0 means the first was — started, not "0 of 6".
+    expect(find.text('screen 4 of 9'), findsOneWidget);
+    expect(find.text('screen 1 of 6'), findsOneWidget);
+    expect(find.textContaining('screen 0 of'), findsNothing);
+
+    // `passed` is a tri-state: null is never attempted, and must not read as
+    // "Not passed" — that is a claim about a person, on their HR record.
+    expect(find.text('Not passed'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Fall arrest')).dy,
+      greaterThan(tester.getTopLeft(find.text('Flue sizing')).dy),
+    );
 
     // The three cells PARTITION the rows — every state counted once. A strip
     // that skipped a state read all zeros above red rows (UI/UX, 2026-09-09),
@@ -46,7 +60,6 @@ void main() {
     expect(find.text('lapsed 2026-03-12'), findsOneWidget);
     expect(find.text('92% · runs out 2027-06-04'), findsOneWidget);
     expect(find.text('completed 2026-08-01'), findsOneWidget);
-    expect(find.text('screen 3 of 9'), findsOneWidget);
 
     // Never that word for a state: it is the dashboard's, for a different
     // table. The one place it appears is the footnote naming that panel.
@@ -257,6 +270,15 @@ const _records = [
         'passed': null,
         'expires_on': null,
         'due_for_retaking': false,
+      },
+      {
+        'type': 'guide',
+        'id': 'g-4',
+        'title': 'Flue liners',
+        'assigned': true,
+        'last_screen': 0,
+        'screen_count': 6,
+        'completed_at': null,
       },
       {
         'type': 'test',

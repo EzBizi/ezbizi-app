@@ -104,10 +104,84 @@ class _LeadsAccountsListState extends State<LeadsAccountsList> {
   /// defect this exists to avoid.
   bool _showQuiet = false;
 
+  /// Disconnect all: asked once, then done in one call. One Thumbtack
+  /// consent is twelve rows sharing one grant, and twelve confirmations for
+  /// one account is the wrong number (Jose, 2026-09-09).
+  bool _confirmAll = false;
+  bool _lettingGo = false;
+  String? _allError;
+
   @override
   void dispose() {
     _search.dispose();
     super.dispose();
+  }
+
+  Future<void> _disconnectAll() async {
+    final provider = '${widget.connections.first['provider']}';
+
+    setState(() {
+      _lettingGo = true;
+      _allError = null;
+    });
+
+    final response = await widget.api.delete(
+      '/social/providers/$provider/connections',
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _lettingGo = false;
+      _confirmAll = false;
+      _allError = response.ok ? null : response.reason;
+    });
+
+    if (response.ok) await widget.onChanged();
+  }
+
+  Widget _disconnectAllRow(ThemeData theme) {
+    final n = widget.connections.length;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              _confirmAll
+                  ? 'Disconnect all $n accounts? Nothing already in EzBizi is '
+                        'deleted, and you can connect again afterwards.'
+                  : (_allError ?? ''),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: _allError != null && !_confirmAll
+                    ? theme.colorScheme.error
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          if (_confirmAll) ...[
+            TextButton(
+              key: const ValueKey('accounts-keep-all'),
+              onPressed: _lettingGo
+                  ? null
+                  : () => setState(() => _confirmAll = false),
+              child: const Text('Keep'),
+            ),
+            TextButton(
+              key: const ValueKey('accounts-disconnect-all-confirm'),
+              onPressed: _lettingGo ? null : _disconnectAll,
+              child: Text(_lettingGo ? 'Disconnecting…' : 'Disconnect all'),
+            ),
+          ] else
+            TextButton(
+              key: const ValueKey('accounts-disconnect-all'),
+              onPressed: () => setState(() => _confirmAll = true),
+              child: const Text('Disconnect all'),
+            ),
+        ],
+      ),
+    );
   }
 
   bool _matches(Map<String, dynamic> c) {
@@ -142,6 +216,7 @@ class _LeadsAccountsListState extends State<LeadsAccountsList> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (widget.connections.length > 1) _disconnectAllRow(theme),
         if (widget.connections.length > 6)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),

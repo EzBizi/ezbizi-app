@@ -161,6 +161,60 @@ class ThumbtackConnectTest extends TestCase
     }
 
     /**
+     * One consent, twelve rows, one grant between them. Disconnecting the
+     * whole provider tidies every business and revokes ONCE, on the last —
+     * revoking on the first would make the other eleven's tidy-up impossible.
+     */
+    public function test_disconnecting_the_provider_lets_every_business_go_and_revokes_once(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->storedConnection($t);
+        $this->storedConnection($t, 'biz-2');
+        $this->storedConnection($t, 'biz-3');
+
+        Http::fake([
+            '*/associate-phone-numbers' => Http::response(['phoneNumbers' => []]),
+            '*/webhooks/wh-1'           => Http::response([]),
+            '*/webhooks'                => Http::response(['data' => [
+                ['webhookID' => 'wh-1', 'webhookURL' => 'https://app.ezbizi.test/hook'],
+            ]]),
+            '*/users/disconnect' => Http::response([]),
+        ]);
+
+        $this->signedInAs($t['admin'])
+            ->deleteJson('/api/v1/social/providers/thumbtack/connections')
+            ->assertOk()
+            ->assertJsonPath('data.disconnected', 3)
+            ->assertJsonPath('data.problems', []);
+
+        $this->inTenant($t['org'], function () {
+            $this->assertSame(0, SocialConnection::query()
+                ->where('provider', SocialProvider::Thumbtack->value)
+                ->count());
+        });
+
+        // Each business's webhook, and the grant once.
+        Http::assertSentCount(3 + 3 + 3 + 1);
+        $this->assertSame(1, Http::recorded(
+            fn ($request) => str_ends_with($request->url(), '/users/disconnect'),
+        )->count());
+    }
+
+    public function test_a_provider_nobody_can_reach_disconnects_nothing_and_says_so(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+
+        $this->signedInAs($t['admin'])
+            ->deleteJson('/api/v1/social/providers/thumbtack/connections')
+            ->assertOk()
+            ->assertJsonPath('data.disconnected', 0);
+
+        $this->signedInAs($t['admin'])
+            ->deleteJson('/api/v1/social/providers/not-a-provider/connections')
+            ->assertNotFound();
+    }
+
+    /**
      * The far end being unreachable must not trap somebody in the connection.
      *
      * The account most likely to fail here — an expired token, a business
@@ -188,16 +242,16 @@ class ThumbtackConnectTest extends TestCase
         });
     }
 
-    private function storedConnection(array $t): SocialConnection
+    private function storedConnection(array $t, string $businessId = 'biz-1'): SocialConnection
     {
-        return $this->inTenant($t['org'], function () use ($t) {
+        return $this->inTenant($t['org'], function () use ($t, $businessId) {
             $row = new SocialConnection;
             $row->forceFill([
                 'organization_id' => $t['org']->getKey(),
                 'scope_type'      => SocialConnection::SCOPE_COMPANY,
                 'scope_id'        => $t['company']->getKey(),
                 'provider'        => SocialProvider::Thumbtack->value,
-                'remote_id'       => 'biz-1',
+                'remote_id'       => $businessId,
                 'display_name'    => 'A-1 Chimney on Thumbtack',
             ]);
             $row->connect(['access_token' => 'a-token', 'refresh_token' => 'r-token']);

@@ -22,7 +22,12 @@ void main() {
     bool own = false,
     Map<String, Object?>? style,
     String? brand,
+    bool twoSites = false,
+    Map<String, Object?> preferences = const {},
+    Map<String, Object?>? saved,
   }) async {
+    final writes = saved ?? <String, Object?>{};
+
     final client = MockClient((request) async {
       // Matched on the WHOLE path. ApiClient prefixes /api/v1, and a suffix
       // match once let a typo'd path fall through to a fixture that happened
@@ -47,7 +52,7 @@ void main() {
                 'reachable': true,
               },
             ],
-            'preferences': <String, dynamic>{},
+            'preferences': preferences,
             'organization': {
               'id': 'org-1',
               'name': 'A-1 Chimney Group',
@@ -69,9 +74,20 @@ void main() {
               'company': {'id': 'c1', 'name': 'A-1'},
               'franchise': null,
             },
+            if (twoSites)
+              {
+                'id': 'site-2',
+                'host': 'nj.a-1chimney.com',
+                'label': null,
+                'is_primary': false,
+                'public_key': 'pk_y',
+                'company': {'id': 'c1', 'name': 'A-1'},
+                'franchise': null,
+              },
           ],
         };
-      } else if (path == '/api/v1/web/sites/site-1/widgets') {
+      } else if (path == '/api/v1/web/sites/site-1/widgets' ||
+          path == '/api/v1/web/sites/site-2/widgets') {
         body = {
           'own': own,
           'config': {
@@ -110,6 +126,12 @@ void main() {
           'brand': brand,
           'field_types': const ['text', 'textarea', 'email', 'tel', 'select'],
         };
+      } else if (path == '/api/v1/me/preferences') {
+        writes.addAll(
+          (jsonDecode(request.body) as Map<String, dynamic>)['preferences']
+              as Map<String, dynamic>,
+        );
+        body = {'data': writes};
       } else {
         return http.Response('{}', 404,
             headers: {'content-type': 'application/json'});
@@ -342,6 +364,233 @@ void main() {
     await pump(tester, permissions: ['web_management.view']);
 
     expect(find.byTooltip('#00838f'), findsNothing);
+  });
+
+  /// Every value on this screen only means something once it is rendered, and
+  /// the page it renders on is one nobody at EzBizi will ever load.
+  testWidgets('the preview shows the wording and questions being edited', (
+    tester,
+  ) async {
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+
+    // TWO of each is the assertion: the box somebody types in, and the preview
+    // drawing the same value. One would mean the preview never rendered it.
+    expect(find.text('Talk to A-1'), findsNWidgets(2));
+    expect(find.text('We answer fast.'), findsNWidgets(2));
+    expect(find.text('Chat'), findsNWidgets(2));
+    expect(find.text('Send it'), findsNWidgets(2));
+
+    // The form section sits below the preview's own fold, and a ListView does
+    // not build what it has not scrolled to — so reach it rather than assert
+    // from where it cannot be seen.
+    // Dragged rather than scrollUntilVisible: every heading in the preview also
+    // appears in the editor beside it, so there is no unique target to scroll
+    // TO — and a finder that matches both panes cannot say which one moved.
+    await tester.drag(find.byType(Scrollable).last, const Offset(0, -420));
+    await tester.pumpAndSettle();
+
+    // 'Name *' rather than 'Name': the preview marks a required question the
+    // way the visitor's form does, which is part of what is being previewed.
+    expect(find.text('Name *'), findsOneWidget);
+    expect(find.textContaining('What needs doing?'), findsWidgets);
+  });
+
+  /// Dressing a widget before switching it on is the ordinary order of doing
+  /// this, so the preview must not go blank during exactly those minutes.
+  testWidgets('a switched-off widget still draws, and says it is off', (
+    tester,
+  ) async {
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+
+    expect(find.text('Preview'), findsOneWidget);
+
+    // The fixture has both switched ON, so nothing should claim otherwise.
+    expect(find.text('off on your site'), findsNothing);
+
+    await tester.tap(find.byType(Switch).first);
+    await tester.pumpAndSettle();
+
+    // Off now — said once, and the chat is still drawn in both places.
+    expect(find.text('off on your site'), findsOneWidget);
+    expect(find.text('Talk to A-1'), findsNWidgets(2));
+  });
+
+  /// The preview is what makes a colour mean something, so it has to follow the
+  /// pick rather than the saved value.
+  testWidgets('the preview follows a preset before anything is saved', (
+    tester,
+  ) async {
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+
+    final swatch = find.byTooltip('#6a1b9a');
+    await tester.scrollUntilVisible(swatch, 200,
+        scrollable: find.byType(Scrollable).first);
+    await tester.tap(swatch);
+    await tester.pumpAndSettle();
+
+    // The preview's buttons are painted containers, so the accent reaching them
+    // is the assertion — not the hex in the box beside it.
+    final painted = tester.widgetList<Container>(find.byType(Container)).where(
+      (c) => (c.decoration is BoxDecoration) &&
+          (c.decoration as BoxDecoration).color == const Color(0xff6a1b9a),
+    );
+
+    expect(painted, isNotEmpty, reason: 'The preview never took the new accent.');
+  });
+
+  /// The 260 and the 360 were my guesses about somebody else's monitor.
+  testWidgets('both panes can be dragged wider and narrower', (tester) async {
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+
+    double widthOf(Finder f) => tester.getSize(f).width;
+
+    final listHandle = find.byTooltip('Drag to resize the list');
+    final previewHandle = find.byTooltip('Drag to resize the preview');
+
+    expect(listHandle, findsOneWidget);
+    expect(previewHandle, findsOneWidget);
+
+    // The site list, dragged right, gets wider.
+    final list = find.ancestor(
+      of: find.text('a-1chimney.com'),
+      matching: find.byType(SizedBox),
+    );
+    final listBefore = widthOf(list.first);
+
+    await tester.drag(listHandle, const Offset(60, 0));
+    await tester.pumpAndSettle();
+
+    expect(widthOf(list.first), greaterThan(listBefore));
+
+    // The preview, dragged LEFT, gets wider — the sign flips because the pane
+    // is on the other side of its handle.
+    final preview = find.ancestor(
+      of: find.text('Preview'),
+      matching: find.byType(SizedBox),
+    );
+    final previewBefore = widthOf(preview.first);
+
+    await tester.drag(previewHandle, const Offset(-80, 0));
+    await tester.pumpAndSettle();
+
+    expect(widthOf(preview.first), greaterThan(previewBefore));
+  });
+
+  /// A pane dragged to nothing is not a smaller pane, it is a lost one, and the
+  /// way back is a hairline somebody has to find.
+  testWidgets('a pane cannot be dragged away entirely', (tester) async {
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+
+    // Shove both handles far past any sane width.
+    await tester.drag(
+        find.byTooltip('Drag to resize the list'), const Offset(-2000, 0));
+    await tester.pumpAndSettle();
+    await tester.drag(
+        find.byTooltip('Drag to resize the preview'), const Offset(2000, 0));
+    await tester.pumpAndSettle();
+
+    // Both panes are still there and still usable.
+    expect(find.text('a-1chimney.com'), findsOneWidget);
+    expect(find.text('Preview'), findsOneWidget);
+
+    final list = find.ancestor(
+      of: find.text('a-1chimney.com'),
+      matching: find.byType(SizedBox),
+    );
+
+    expect(tester.getSize(list.first).width, greaterThanOrEqualTo(180.0));
+  });
+
+  /// The editor is keyed by site id, so anything held inside it is thrown away
+  /// on every click. A width that snapped back would be worse than none.
+  testWidgets('a resized preview survives switching website', (tester) async {
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      twoSites: true,
+    );
+
+    final preview = find.ancestor(
+      of: find.text('Preview'),
+      matching: find.byType(SizedBox),
+    );
+
+    await tester.drag(
+        find.byTooltip('Drag to resize the preview'), const Offset(-90, 0));
+    await tester.pumpAndSettle();
+
+    final resized = tester.getSize(preview.first).width;
+
+    await tester.tap(find.text('nj.a-1chimney.com'));
+    await tester.pumpAndSettle();
+
+    expect(tester.getSize(preview.first).width, resized);
+  });
+
+  /// A width that is forgotten on restart is a width somebody sets once and
+  /// then stops bothering with.
+  testWidgets('a dragged width is saved when the drag settles', (tester) async {
+    final saved = <String, Object?>{};
+
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      saved: saved,
+    );
+
+    // Nothing written while nobody has dragged anything.
+    expect(saved, isEmpty);
+
+    await tester.drag(
+        find.byTooltip('Drag to resize the preview'), const Offset(-70, 0));
+    await tester.pumpAndSettle();
+
+    expect(saved['web.widgets.preview_width'], isA<int>());
+    expect(saved['web.widgets.preview_width'] as int, greaterThan(360));
+
+    await tester.drag(
+        find.byTooltip('Drag to resize the list'), const Offset(50, 0));
+    await tester.pumpAndSettle();
+
+    expect(saved['web.widgets.list_width'] as int, greaterThan(260));
+  });
+
+  /// The saved value is what the screen opens on, or saving it was pointless.
+  testWidgets('a saved width is what the screen opens with', (tester) async {
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      preferences: const {
+        'web.widgets.list_width': 300,
+        'web.widgets.preview_width': 500,
+      },
+    );
+
+    final preview = find.ancestor(
+      of: find.text('Preview'),
+      matching: find.byType(SizedBox),
+    );
+
+    expect(tester.getSize(preview.first).width, 500.0);
+  });
+
+  /// A stored value from an older build, or one whose bounds have since been
+  /// tightened, must not be able to render a pane nobody can use.
+  testWidgets('an impossible saved width is clamped rather than obeyed', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      preferences: const {'web.widgets.preview_width': 9999},
+    );
+
+    final preview = find.ancestor(
+      of: find.text('Preview'),
+      matching: find.byType(SizedBox),
+    );
+
+    expect(tester.getSize(preview.first).width, 640.0);
   });
 
   testWidgets('view alone can look and cannot change', (tester) async {

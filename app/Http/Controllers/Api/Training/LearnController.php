@@ -123,10 +123,11 @@ class LearnController extends Controller
         $guideProgress = $this->guideProgress($user, $guides);
         $lastAttempts = $this->lastAttempts($user, $tests);
         $attemptCounts = $this->attemptCounts($user, $tests);
+        $attemptsTowardCap = $this->attemptsTowardCap($user, $tests);
 
         return response()->json([
-            'assigned' => $this->assigned($user, $guides, $tests, $lapsedTestIds, $guideProgress, $lastAttempts, $attemptCounts),
-            'library' => $this->library($guides, $tests, $lapsedTestIds, $guideProgress, $lastAttempts, $attemptCounts),
+            'assigned' => $this->assigned($user, $guides, $tests, $lapsedTestIds, $guideProgress, $lastAttempts, $attemptCounts, $attemptsTowardCap),
+            'library' => $this->library($guides, $tests, $lapsedTestIds, $guideProgress, $lastAttempts, $attemptCounts, $attemptsTowardCap),
         ]);
     }
 
@@ -170,17 +171,26 @@ class LearnController extends Controller
             ->orderByDesc('id')
             ->first();
 
-        // The exact count [_capReached] (test_player.dart) needs and the
-        // learner-facing read never used to send — see [attemptCounts]'s
-        // own docblock. One more query scoped to this single (user, test)
-        // pair, same reasoning as $lastAttempt just above: no N+1 risk on
-        // an endpoint that already does two.
+        // The exact count [_capReached] (test_player.dart) USED to gate on
+        // — see [attemptCounts]'s own docblock — and the learner-facing
+        // read never used to send at all. One more query scoped to this
+        // single (user, test) pair, same reasoning as $lastAttempt just
+        // above: no N+1 risk on an endpoint that already does two.
         $attemptsTaken = TrainingAttempt::query()
             ->where('user_id', $user->getKey())
             ->where('test_id', $row->id)
             ->count();
 
-        return response()->json(['data' => $this->presentTest($row, $lapsedTestIds, $lastAttempt, $attemptsTaken)]);
+        // [attemptsTowardCap]'s own docblock: the SEPARATE number
+        // [_capReached] actually gates on since the fifth-option brief —
+        // never $attemptsTaken above, which stays the plain historical
+        // total (`TrainingLearnProgressFieldsTest`'s own contract) and can
+        // now read HIGHER than what the cap is actually counting.
+        $attemptsTowardCap = $this->attemptsTowardCapForOne($user, $row);
+
+        return response()->json([
+            'data' => $this->presentTest($row, $lapsedTestIds, $lastAttempt, $attemptsTaken, $attemptsTowardCap),
+        ]);
     }
 
     /**
@@ -215,6 +225,16 @@ class LearnController extends Controller
      * might not exist yet.
      * Read-then-write with nothing in between is not a uniqueness rule, it
      * is a race (StaffAccountsController::update's docblock).
+     *
+     * ── The fifth option changes what is counted, never the lock ─────
+     *
+     * `count_attempts_after_pass` (fifth-option brief, 2026-09-09) only
+     * decides which attempts the count below includes — `LapsedPasses`'s
+     * definition of "taken while an earlier pass was still valid" versus a
+     * plain `COUNT(*)`. It never changes that the count is taken against the
+     * SAME locked test row, inside the SAME transaction, before the SAME
+     * insert: the race this section documents is closed by the lock, not by
+     * which attempts get counted, and stays closed identically either way.
      *
      * ── The event, and why it is an INSERT and not a dispatch ────────
      *
@@ -257,10 +277,20 @@ class LearnController extends Controller
             $lockedTest = TrainingTest::query()->whereKey($row->getKey())->lockForUpdate()->firstOrFail();
 
             if ($lockedTest->max_attempts !== null) {
-                $taken = TrainingAttempt::query()
-                    ->where('user_id', $user->getKey())
-                    ->where('test_id', $lockedTest->getKey())
-                    ->count();
+                // Fifth-option brief: `count_attempts_after_pass` decides
+                // WHICH attempts this count includes, never whether the lock
+                // or the count-then-compare shape above them changes — see
+                // this method's own docblock, "The retake cap is a race".
+                // `true` (today's behaviour) is the same plain COUNT(*) this
+                // always was; `false` (the default) asks LapsedPasses for
+                // the one definition of "taken while a pass was still
+                // valid" instead of a second copy of it here.
+                $taken = $lockedTest->count_attempts_after_pass
+                    ? TrainingAttempt::query()
+                        ->where('user_id', $user->getKey())
+                        ->where('test_id', $lockedTest->getKey())
+                        ->count()
+                    : LapsedPasses::attemptsCountingTowardCap($user->getKey(), $lockedTest->getKey());
 
                 if ($taken >= $lockedTest->max_attempts) {
                     Refusal::trainingAttemptCapReached($lockedTest->max_attempts)->authorize();
@@ -360,6 +390,7 @@ class LearnController extends Controller
      * @param  Collection<string, TrainingProgress>  $guideProgress  see [guideProgress]
      * @param  Collection<string, TrainingAttempt>  $lastAttempts  see [lastAttempts]
      * @param  Collection<string, int>  $attemptCounts  see [attemptCounts]
+     * @param  Collection<string, int>  $attemptsTowardCap  see [attemptsTowardCap]
      * @return array<int, array<string, mixed>>
      */
     private function library(
@@ -369,11 +400,13 @@ class LearnController extends Controller
         Collection $guideProgress,
         Collection $lastAttempts,
         Collection $attemptCounts,
+        Collection $attemptsTowardCap,
     ): array {
         return $guides->map(fn (TrainingGuide $g) => $this->presentGuide($g, $guideProgress->get($g->id)))
             ->concat($tests->map(
                 fn (TrainingTest $t) => $this->presentTest(
                     $t, $lapsedTestIds, $lastAttempts->get($t->id), $attemptCounts->get($t->id, 0),
+                    $attemptsTowardCap->get($t->id, 0),
                 )
             ))
             ->values()
@@ -402,6 +435,7 @@ class LearnController extends Controller
      * @param  Collection<string, TrainingProgress>  $guideProgress  see [guideProgress]
      * @param  Collection<string, TrainingAttempt>  $lastAttempts  see [lastAttempts]
      * @param  Collection<string, int>  $attemptCounts  see [attemptCounts]
+     * @param  Collection<string, int>  $attemptsTowardCap  see [attemptsTowardCap]
      * @return array<int, array<string, mixed>>
      */
     private function assigned(
@@ -412,12 +446,13 @@ class LearnController extends Controller
         Collection $guideProgress,
         Collection $lastAttempts,
         Collection $attemptCounts,
+        Collection $attemptsTowardCap,
     ): array {
         $rawAssignments = $this->assignedQuery($user)->get();
 
         $rows = $rawAssignments
             ->map(fn (TrainingAssignment $a) => $this->presentAssignment(
-                $a, $guides, $tests, $lapsedTestIds, $guideProgress, $lastAttempts, $attemptCounts,
+                $a, $guides, $tests, $lapsedTestIds, $guideProgress, $lastAttempts, $attemptCounts, $attemptsTowardCap,
             ))
             ->filter()
             ->values();
@@ -439,6 +474,7 @@ class LearnController extends Controller
                 'assignee_type' => null,
                 ...$this->presentTest(
                     $tests->get($testId), $lapsedTestIds, $lastAttempts->get($testId), $attemptCounts->get($testId, 0),
+                    $attemptsTowardCap->get($testId, 0),
                 ),
             ]);
         }
@@ -545,15 +581,21 @@ class LearnController extends Controller
      * This learner's own COUNT of attempts at every test THIS read can even
      * show — the field the review that opened task-13's report flagged as
      * missing: `last_taken_at` only ever says "at least one, or none", which
-     * cannot tell one prior attempt from several. Under `max_attempts: 3`
-     * and three prior attempts from an earlier sitting, a client computing
-     * its own client-side gate from `last_taken_at` alone under-counts —
-     * `_capReached` in `test_player.dart` used to do exactly that — and
-     * offers a Submit the server then refuses with a 403.
+     * cannot tell one prior attempt from several.
      *
      * Batched once per request against `$tests->keys()`, the same
      * one-query-per-collection-read shape [lastAttempts] and [lapsedTestIds]
      * already use — never N+1 per card.
+     *
+     * The plain historical total, unconditionally — never split by
+     * `count_attempts_after_pass`. `TrainingLearnProgressFieldsTest`'s own
+     * contract for this field is "the exact number of attempts taken",
+     * full stop; see [attemptsTowardCap] for the SEPARATE, fifth-option-aware
+     * number `_capReached` (test_player.dart) actually gates Submit on since
+     * the fifth-option brief — the two can legitimately disagree (a passer's
+     * free retake still shows up here, in the count of what they DID, even
+     * on a test where it never touched their `max_attempts`), and conflating
+     * them was tried and reverted — see [attemptsTowardCap]'s own docblock.
      *
      * @param  Collection<string, TrainingTest>  $tests
      * @return Collection<string, int>
@@ -573,6 +615,72 @@ class LearnController extends Controller
             ->get()
             ->keyBy('test_id')
             ->map(fn ($row) => (int) $row->taken);
+    }
+
+    /**
+     * The SEPARATE number `_capReached` (test_player.dart) actually gates
+     * Submit on, since the fifth-option brief (2026-09-09) — never
+     * [attemptCounts]'s plain historical total, which a passer's free retake
+     * still raises even on a test where it spends none of their
+     * `max_attempts`. A client comparing THAT number against `max_attempts`
+     * would grey out Submit for exactly the person this option exists to
+     * free — with `max_attempts: 1`, a single pass already raises the plain
+     * total to 1, and would stay stuck there forever if this were the number
+     * compared, which is the reported bug reappearing one layer up, in the
+     * client's own gate instead of the server's.
+     *
+     * Split by each test's OWN `count_attempts_after_pass` rather than one
+     * query for the whole set: a `true` test keeps the plain grouped
+     * `COUNT(*)` [attemptCounts] itself uses; a `false` test needs
+     * `LapsedPasses::attemptsCountingTowardCapBatch`'s definition instead,
+     * the SAME one `showTest`/`submit` read off a single test, so this
+     * batched number can never disagree with what either of those would say
+     * about the identical (user, test) pair. Two queries at most — never one
+     * per test — whatever the mix of the two settings in `$tests`.
+     *
+     * @param  Collection<string, TrainingTest>  $tests
+     * @return Collection<string, int>
+     */
+    private function attemptsTowardCap(User $user, Collection $tests): Collection
+    {
+        if ($tests->isEmpty()) {
+            return collect();
+        }
+
+        $strictIds = $tests->filter(fn (TrainingTest $t) => $t->count_attempts_after_pass)->keys()->all();
+        $lenientIds = $tests->reject(fn (TrainingTest $t) => $t->count_attempts_after_pass)->keys()->all();
+
+        $strictCounts = $strictIds === [] ? collect() : TrainingAttempt::query()
+            ->select('test_id')
+            ->selectRaw('COUNT(*) AS taken')
+            ->where('user_id', $user->getKey())
+            ->whereIn('test_id', $strictIds)
+            ->groupBy('test_id')
+            ->get()
+            ->keyBy('test_id')
+            ->map(fn ($row) => (int) $row->taken);
+
+        $lenientCounts = LapsedPasses::attemptsCountingTowardCapBatch($user->getKey(), $lenientIds);
+
+        return $strictCounts->merge($lenientCounts);
+    }
+
+    /**
+     * [attemptsTowardCap], for a SINGLE (user, test) pair — `showTest`'s own
+     * read, same split as the batched version for the identical reason:
+     * `count_attempts_after_pass` true keeps a plain `COUNT(*)`, false asks
+     * `LapsedPasses::attemptsCountingTowardCap` instead.
+     */
+    private function attemptsTowardCapForOne(User $user, TrainingTest $test): int
+    {
+        if ($test->count_attempts_after_pass) {
+            return TrainingAttempt::query()
+                ->where('user_id', $user->getKey())
+                ->where('test_id', $test->id)
+                ->count();
+        }
+
+        return LapsedPasses::attemptsCountingTowardCap($user->getKey(), $test->id);
     }
 
     /** Just the assignee union (decision 2). Place scope and publication are decided in [presentAssignment]. */
@@ -616,6 +724,7 @@ class LearnController extends Controller
      * @param  Collection<string, TrainingProgress>  $guideProgress  see [guideProgress]
      * @param  Collection<string, TrainingAttempt>  $lastAttempts  see [lastAttempts]
      * @param  Collection<string, int>  $attemptCounts  see [attemptCounts]
+     * @param  Collection<string, int>  $attemptsTowardCap  see [attemptsTowardCap]
      * @return array<string, mixed>|null
      */
     private function presentAssignment(
@@ -626,6 +735,7 @@ class LearnController extends Controller
         Collection $guideProgress,
         Collection $lastAttempts,
         Collection $attemptCounts,
+        Collection $attemptsTowardCap,
     ): ?array {
         $content = match (true) {
             $assignment->test_id !== null && $tests->has($assignment->test_id)
@@ -634,6 +744,7 @@ class LearnController extends Controller
                     $lapsedTestIds,
                     $lastAttempts->get($assignment->test_id),
                     $attemptCounts->get($assignment->test_id, 0),
+                    $attemptsTowardCap->get($assignment->test_id, 0),
                 ),
             $assignment->guide_id !== null && $guides->has($assignment->guide_id)
                 => $this->presentGuide($guides->get($assignment->guide_id), $guideProgress->get($assignment->guide_id)),
@@ -702,10 +813,24 @@ class LearnController extends Controller
      * `attempts_taken` (task-13 review) is the exact count of this
      * learner's own attempts at this test — batched once per request by
      * [attemptCounts], same shape as `$lastAttempt`. Added because
-     * `last_taken_at` alone cannot tell one prior attempt from several, and
-     * a client gating Submit on `max_attempts` needs the real number to
-     * avoid offering a control the server's own cap
-     * (`submit()`'s `Refusal::trainingAttemptCapReached`) would 403.
+     * `last_taken_at` alone cannot tell one prior attempt from several. This
+     * is the plain historical total, unconditionally — it does NOT say
+     * whether the next attempt is actually blocked; see `attempts_toward_cap`
+     * just below for that.
+     *
+     * `attempts_toward_cap` (fifth-option brief, 2026-09-09) is the SEPARATE
+     * number a client must actually gate Submit on — batched once per
+     * request by [attemptsTowardCap], that method's own docblock. Equal to
+     * `attempts_taken` on a `count_attempts_after_pass: true` test (every
+     * attempt counts, same as before this option existed), but can read
+     * LOWER on a `false` one: a retake taken while an existing pass is still
+     * valid raised `attempts_taken` (it genuinely happened) without spending
+     * a `max_attempts` slot, and this is 0 whenever the person currently
+     * holds a still-good pass, however many attempts they have actually
+     * made — see `LapsedPasses::walkCountingTowardCap`'s own docblock for
+     * why 0, not merely "one fewer". A client comparing `attempts_taken`
+     * here instead would grey out Submit for exactly the person this option
+     * exists to free.
      *
      * @param  list<string>  $lapsedTestIds
      * @return array<string, mixed>
@@ -715,6 +840,7 @@ class LearnController extends Controller
         array $lapsedTestIds = [],
         ?TrainingAttempt $lastAttempt = null,
         int $attemptsTaken = 0,
+        int $attemptsTowardCap = 0,
     ): array {
         return [
             'type' => 'test',
@@ -727,7 +853,9 @@ class LearnController extends Controller
             'pass_mark' => $test->pass_mark,
             'max_attempts' => $test->max_attempts,
             'attempts_taken' => $attemptsTaken,
+            'attempts_toward_cap' => $attemptsTowardCap,
             'valid_for_days' => $test->valid_for_days,
+            'count_attempts_after_pass' => $test->count_attempts_after_pass,
             'due_for_retaking' => in_array($test->id, $lapsedTestIds, true),
             'question_count' => $test->questionCount(),
             'questions' => LearnerView::stripAnswerKey($test->questions ?? []),
