@@ -211,6 +211,75 @@ class SchedulingApiTest extends TestCase
         $this->assertSame(0, ServiceAreaZip::where('service_area_id', $houston->id)->count());
     }
 
+    /**
+     * The exact payload a pre-0.0.0174 client sends after the read shape
+     * changed, and it must be refused rather than stored.
+     *
+     * That client renders `zips` into a text field with `join(', ')`. Once the
+     * server started returning `[{zip, city}]` it rendered
+     *
+     *     {zip: 75201, city: Dallas}
+     *
+     * and split it on commas and spaces on Save. Every fragment is under
+     * sixteen characters, so `max:16` accepted all four and replaced the
+     * area's coverage with pieces of its own serialisation — silently.
+     *
+     * The tolerance for bare strings exists so an older client can still
+     * WRITE. This test is the other half: it must not be able to write
+     * nonsense.
+     */
+    public function test_fragments_of_a_serialised_object_are_not_stored_as_zips(): void
+    {
+        [$tenant, $editor] = $this->tenantWithEditor();
+        $area = $this->area($tenant, 'Dallas');
+
+        $this->signedInAs($editor)
+            ->putJson("/api/v1/scheduling/areas/{$area->id}/zips", [
+                'zips' => ['75201'],
+            ])
+            ->assertOk();
+
+        // What the old client actually sends.
+        $this->signedInAs($editor)
+            ->putJson("/api/v1/scheduling/areas/{$area->id}/zips", [
+                'zips' => ['{zip:', '75201', 'city:', 'Dallas}'],
+            ])
+            ->assertStatus(422);
+
+        app(TenantContext::class)->set($tenant['org']);
+
+        // Refused as a whole, so the real coverage is untouched.
+        $held = ServiceAreaZip::where('service_area_id', $area->id)
+            ->pluck('zip')
+            ->all();
+
+        $this->assertSame(['75201'], $held);
+    }
+
+    /** Real postal codes from more than one country still go in. */
+    public function test_hyphenated_and_spaced_postal_codes_are_accepted(): void
+    {
+        [$tenant, $editor] = $this->tenantWithEditor();
+        $area = $this->area($tenant, 'Dallas');
+
+        $this->signedInAs($editor)
+            ->putJson("/api/v1/scheduling/areas/{$area->id}/zips", [
+                'zips' => [
+                    ['zip' => '75201-1234', 'city' => 'Dallas'],
+                    ['zip' => 'SW1A 1AA', 'city' => 'London'],
+                    ['zip' => 'K1A 0B1', 'city' => 'Ottawa'],
+                ],
+            ])
+            ->assertOk();
+
+        app(TenantContext::class)->set($tenant['org']);
+
+        $this->assertSame(
+            3,
+            ServiceAreaZip::where('service_area_id', $area->id)->count(),
+        );
+    }
+
     public function test_a_role_without_scheduling_cannot_read_or_write_capacity(): void
     {
         $tenant = $this->provisionTenant('Alpha');
