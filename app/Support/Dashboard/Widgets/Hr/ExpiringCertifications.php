@@ -94,8 +94,18 @@ class ExpiringCertifications implements Widget
 
         usort($rows, fn (array $a, array $b) => strcmp($a['expires_on'], $b['expires_on']));
 
+        // `$marked` is counted over the onboardings THIS READER CAN SEE, so the
+        // old wording — "None of the contract questions are marked as an
+        // expiry" — claimed the organization's templates from a view-scoped
+        // number. A franchise manager whose visible onboardings happen to use a
+        // template without an expiry field was told none exists anywhere, and a
+        // reader with no onboardings at all got the same sentence about
+        // questions they simply cannot see. Same class as UI/UX's sixteen
+        // (2026-09-09); this one is a widget note rather than an empty state,
+        // which is why the sweep did not catch it. The remedy stays, because
+        // whoever can act on it is reading the same box.
         $note = $marked === 0
-            ? 'None of the contract questions are marked as an expiry, so there is nothing to list yet. Mark a date field as an expiry on a contract template.'
+            ? 'No contract question in this view is marked as an expiry, so there is nothing to track. A date field on a contract template can be marked as one.'
             : null;
 
         return [

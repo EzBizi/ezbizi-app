@@ -133,7 +133,15 @@ final class HrGlance extends DescribedGlance
 
             if (! empty($certifications['note'])) {
                 $sentences[] = $certifications['note'];
-            } elseif (($certTotal = (int) ($certifications['total'] ?? 0)) > 0) {
+            } else {
+                // Zero renders, like the five lines above it. It used to be the
+                // only one that vanished when the news was good, so a reader
+                // could not tell "nothing is coming due" from "nobody is
+                // watching" — and absence is the one thing a box cannot use to
+                // say it looked (UI/UX, 602e9716). The note above is the other
+                // branch, for when there is genuinely nothing to count.
+                $certTotal = (int) ($certifications['total'] ?? 0);
+
                 $sentences[] = $certTotal === 1
                     ? '1 certification is coming due.'
                     : "{$certTotal} certifications are coming due.";
