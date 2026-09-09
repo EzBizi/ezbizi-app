@@ -344,6 +344,78 @@ void main() {
     expect(find.byTooltip('#00838f'), findsNothing);
   });
 
+  /// Every value on this screen only means something once it is rendered, and
+  /// the page it renders on is one nobody at EzBizi will ever load.
+  testWidgets('the preview shows the wording and questions being edited', (
+    tester,
+  ) async {
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+
+    // TWO of each is the assertion: the box somebody types in, and the preview
+    // drawing the same value. One would mean the preview never rendered it.
+    expect(find.text('Talk to A-1'), findsNWidgets(2));
+    expect(find.text('We answer fast.'), findsNWidgets(2));
+    expect(find.text('Chat'), findsNWidgets(2));
+    expect(find.text('Send it'), findsNWidgets(2));
+
+    // The form section sits below the preview's own fold, and a ListView does
+    // not build what it has not scrolled to — so reach it rather than assert
+    // from where it cannot be seen.
+    // Dragged rather than scrollUntilVisible: every heading in the preview also
+    // appears in the editor beside it, so there is no unique target to scroll
+    // TO — and a finder that matches both panes cannot say which one moved.
+    await tester.drag(find.byType(Scrollable).last, const Offset(0, -420));
+    await tester.pumpAndSettle();
+
+    // 'Name *' rather than 'Name': the preview marks a required question the
+    // way the visitor's form does, which is part of what is being previewed.
+    expect(find.text('Name *'), findsOneWidget);
+    expect(find.textContaining('What needs doing?'), findsWidgets);
+  });
+
+  /// Dressing a widget before switching it on is the ordinary order of doing
+  /// this, so the preview must not go blank during exactly those minutes.
+  testWidgets('a switched-off widget still draws, and says it is off', (
+    tester,
+  ) async {
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+
+    expect(find.text('Preview'), findsOneWidget);
+
+    // The fixture has both switched ON, so nothing should claim otherwise.
+    expect(find.text('off on your site'), findsNothing);
+
+    await tester.tap(find.byType(Switch).first);
+    await tester.pumpAndSettle();
+
+    // Off now — said once, and the chat is still drawn in both places.
+    expect(find.text('off on your site'), findsOneWidget);
+    expect(find.text('Talk to A-1'), findsNWidgets(2));
+  });
+
+  /// The preview is what makes a colour mean something, so it has to follow the
+  /// pick rather than the saved value.
+  testWidgets('the preview follows a preset before anything is saved', (
+    tester,
+  ) async {
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+
+    final swatch = find.byTooltip('#6a1b9a');
+    await tester.scrollUntilVisible(swatch, 200,
+        scrollable: find.byType(Scrollable).first);
+    await tester.tap(swatch);
+    await tester.pumpAndSettle();
+
+    // The preview's buttons are painted containers, so the accent reaching them
+    // is the assertion — not the hex in the box beside it.
+    final painted = tester.widgetList<Container>(find.byType(Container)).where(
+      (c) => (c.decoration is BoxDecoration) &&
+          (c.decoration as BoxDecoration).color == const Color(0xff6a1b9a),
+    );
+
+    expect(painted, isNotEmpty, reason: 'The preview never took the new accent.');
+  });
+
   testWidgets('view alone can look and cannot change', (tester) async {
     await pump(tester, permissions: ['web_management.view']);
 

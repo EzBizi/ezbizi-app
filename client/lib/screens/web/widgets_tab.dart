@@ -287,7 +287,7 @@ class _WidgetEditorState extends State<_WidgetEditor> {
     final form = _section('form');
     final style = _section('style');
 
-    return ListView(
+    final formPane = ListView(
       padding: const EdgeInsets.all(20),
       children: [
         if (!_own)
@@ -405,6 +405,272 @@ class _WidgetEditorState extends State<_WidgetEditor> {
             ],
           ),
       ],
+    );
+
+    /*
+     * The preview sits BESIDE the form, not above it.
+     *
+     * Everything on this screen is a value that only means something once it
+     * is rendered — a hex, a radius, a line of wording — and the page it
+     * renders on is one nobody at EzBizi will ever load. Above the form it
+     * would scroll away exactly when somebody started changing things.
+     *
+     * Below 920 there is no room for both: the form needs about 560 before the
+     * question rows start wrapping, and a preview narrower than 320 stops
+     * resembling the thing it previews. So the form keeps the width and the
+     * preview steps aside rather than both being cramped.
+     */
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 920) return formPane;
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: formPane),
+            const VerticalDivider(width: 1),
+            SizedBox(width: 360, child: _preview(theme)),
+          ],
+        );
+      },
+    );
+  }
+
+  /// The widgets as a visitor meets them, drawn from the values being edited.
+  ///
+  /// ── What it is honest about ──
+  ///
+  /// It cannot be pixel-exact and does not pretend to be: the customer's own
+  /// theme supplies the typeface, the page background and the spacing around
+  /// anything embedded in it, and none of that is ours to know. What it IS
+  /// exact about is every value on this screen — the colours, the corner
+  /// radius, the wording, and the questions in the order the form asks them.
+  /// Those are the things somebody is changing while they look at it.
+  ///
+  /// ── Why a switched-off widget still draws ──
+  ///
+  /// Dressing one before turning it on is the ordinary order of doing this. A
+  /// preview that stayed blank until the switch flipped would hide the thing
+  /// during the exact minutes somebody was working on it, so an off widget
+  /// draws and says that it is off.
+  Widget _preview(ThemeData theme) {
+    final chat = _section('chat');
+    final form = _section('form');
+    final style = _section('style');
+
+    final accent = _colour(style['accent']) ?? theme.colorScheme.primary;
+    final onAccent = _colour(style['on_accent']) ?? theme.colorScheme.onPrimary;
+    final text = _colour(style['text']) ?? theme.colorScheme.onSurface;
+    final surface = _colour(style['background']) ?? theme.colorScheme.surface;
+    final radius =
+        (((style['radius'] as num?) ?? 12).toDouble()).clamp(0.0, 40.0);
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
+      children: [
+        Text('Preview', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 4),
+        Text(
+          'Your colours, wording and questions, exactly as set. The typeface '
+          'and the page around them come from your own website.',
+          style: theme.textTheme.bodySmall,
+        ),
+        const SizedBox(height: 16),
+        _previewHeading(theme, 'Live chat', chat['enabled'] == true),
+        const SizedBox(height: 8),
+        _mockPage(
+          theme,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _mockPanel(
+                surface: surface,
+                radius: radius,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _line(chat['title']),
+                      style: TextStyle(
+                        color: text,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    if (_line(chat['intro']).isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        _line(chat['intro']),
+                        style: TextStyle(color: text, fontSize: 12),
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    _mockInput(_line(chat['placeholder']), radius, text),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: _mockButton(
+                        _line(chat['send']),
+                        accent,
+                        onAccent,
+                        radius,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              // The closed bubble, which is what most visitors ever see of it.
+              _mockButton(_line(chat['button']), accent, onAccent, radius),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        _previewHeading(theme, 'Contact form', form['enabled'] == true),
+        const SizedBox(height: 8),
+        _mockPage(
+          theme,
+          child: _mockPanel(
+            surface: surface,
+            radius: radius,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final field in (form['fields'] as List? ?? const []))
+                  if (field is Map && _line(field['label']).isNotEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        _line(field['label']) +
+                            (field['required'] == true ? ' *' : ''),
+                        style: TextStyle(color: text, fontSize: 12),
+                      ),
+                    ),
+                    _mockInput(
+                      '',
+                      radius,
+                      text,
+                      // A textarea is taller, which changes how long the whole
+                      // form looks — the thing being judged when a question is
+                      // added.
+                      tall: field['type'] == 'textarea',
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: _mockButton(
+                    _line(form['button']),
+                    accent,
+                    onAccent,
+                    radius,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  static String _line(Object? value) => '${value ?? ''}';
+
+  Widget _previewHeading(ThemeData theme, String label, bool on) {
+    /*
+     * A Wrap, not a Row. The pane is a fixed 360 and the pair here is a section
+     * name beside a sentence — "Contact form" and "off on your site" overflowed
+     * it by 6.6 pixels, which a widget test caught and an eye would not have.
+     * Wrapping keeps the whole sentence; ellipsising it would leave "off on
+     * your…" on the one line that has to be unambiguous.
+     */
+    return Wrap(
+      spacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text(label, style: theme.textTheme.bodyMedium),
+        if (!on)
+          Text(
+            'off on your site',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.outline,
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// A stand-in for the customer's page, so the widget is not judged against
+  /// EzBizi's own background — the one background it will never be on.
+  Widget _mockPage(ThemeData theme, {required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _mockPanel({
+    required Color surface,
+    required double radius,
+    required Widget child,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: const Color(0x22000000)),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _mockButton(
+    String label,
+    Color accent,
+    Color onAccent,
+    double radius,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: accent,
+        borderRadius: BorderRadius.circular(radius),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: onAccent,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Widget _mockInput(
+    String placeholder,
+    double radius,
+    Color text, {
+    bool tall = false,
+  }) {
+    return Container(
+      height: tall ? 52 : 30,
+      alignment: Alignment.topLeft,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular((radius - 6).clamp(0.0, 40.0)),
+        border: Border.all(color: const Color(0x33000000)),
+      ),
+      child: Text(
+        placeholder,
+        style: TextStyle(color: text.withValues(alpha: 0.45), fontSize: 12),
+      ),
     );
   }
 
