@@ -100,6 +100,7 @@ how stale.
 | Phone system | `local_d95f72da-cef3-4ffb-b8b1-8f4de859e7f3` | EzBizi - Phone System Module | 2026-09-04 | `ezbizi-7e [74574e]` |
 | Google API (also the **Leads** module: Google Ads, Local Services, Thumbtack tabs, lead threads, LeadInsights) | `local_8111908f-4bbb-400e-b842-6194f832387f` | EzBizi - Google API Module | 2026-09-04 | `ezbizi-02 [dd7f64]` — **same name as Inventory this minute** |
 | Clock In / Work Hours | `local_8b413ba1-91de-47c8-8a59-92176a3599f7` | EzBizi - Clock In | 2026-09-08 | — (registered 2026-09-08 by message; owns app/Support/TimeClock, TimeClockController, TimeClockShift + policy, client/lib/screens/hr/time_clock_tab.dart, the _ClockButton in main.dart) |
+| Human Resources module (HR) | `local_4c933357-6550-4e60-972d-fc7715faef92` | EzBizi - Human Resources Module | 2026-09-09 | — (registered 2026-09-09 12:14 UTC by message; owns app/Http/Controllers/Api/Hr*Controller.php, app/Services/Hr, app/Support/Hr, app/Support/Dashboard/Glances/HrGlance.php, app/Support/Dashboard/Widgets/Hr, client/lib/screens/hr/* except time_clock_tab.dart, which Clock In owns) |
 | API integrations | `local_e76e374a-d27b-405a-a0f5-41853bed9bba` | EzBizi - API Integrations | 2026-09-04 | `ezbizi-60 [a0a79f]` |
 | Amazon SES | `local_39c741ca-78e6-403b-a5e2-4a5d04cb7ed4` | EzBizi - Amazon SES Module | 2026-09-04 | `ezbizi-d2 [59dcdf]` |
 | Automations | `local_44b29c1e-d2ee-49db-9bde-6a428bd30354` | EzBizi - Automation Module | 2026-09-04 | `ezbizi-a1 [3b8cb3]` — **the old deploy desk's name; a stale note reaches Automations now** |
