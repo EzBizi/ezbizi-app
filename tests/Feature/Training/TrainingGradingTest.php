@@ -301,6 +301,53 @@ class TrainingGradingTest extends TestCase
             ->assertOk();
     }
 
+    /**
+     * The exact boundary the two tests above straddle but never sit on: a
+     * retake taken on the SAME calendar date the sheltering pass's own
+     * `expires_on` names. [walkCountingTowardCap]'s `>` (line 251) agrees
+     * with `currentlyLapsedQuery`'s `<= today` — a pass is already lapsed ON
+     * its expiry date, not the day after — so this retake is NOT sheltered
+     * and counts toward the cap, same as the day-91 case the review finding
+     * describes for an author reading the option's own label.
+     */
+    public function test_an_attempt_taken_on_the_exact_expiry_date_counts_toward_the_cap(): void
+    {
+        [$learner, $test, $tenant] = $this->aTwoQuestionTest(passMark: 40, maxAttempts: 2, countAttemptsAfterPass: false);
+
+        $this->inTenant($tenant['org'], function () use ($learner, $test) {
+            // Passed 10 days ago, expiring today — "today" is the boundary.
+            TrainingAttempt::create([
+                'user_id' => $learner->id,
+                'test_id' => $test->id,
+                'answers' => [1, 0],
+                'score' => 50,
+                'passed' => true,
+                'taken_at' => now()->subDays(10),
+                'expires_on' => now()->toDateString(),
+            ]);
+
+            // Sat today — the exact same calendar date as the expiry above,
+            // not before it and not after it.
+            TrainingAttempt::create([
+                'user_id' => $learner->id,
+                'test_id' => $test->id,
+                'answers' => [0, 0],
+                'score' => 0,
+                'passed' => false,
+                'taken_at' => now(),
+                'expires_on' => null,
+            ]);
+        });
+
+        // Both seeded attempts count (the pass on its own account, the
+        // same-day retake because the pass is already lapsed on its own
+        // expiry date) — max_attempts: 2 is already spent.
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [1, 0]])
+            ->assertStatus(403)
+            ->assertJsonPath('message', fn (string $m) => str_contains($m, '2'));
+    }
+
     public function test_null_max_attempts_means_unlimited_retakes_with_the_option_on_too(): void
     {
         [$learner, $test] = $this->aTwoQuestionTest(passMark: 100, maxAttempts: null, countAttemptsAfterPass: true);

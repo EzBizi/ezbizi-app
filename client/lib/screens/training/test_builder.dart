@@ -22,11 +22,13 @@ import '../../widgets/error_note.dart';
 /// `requires_guide` ("Must finish the guide before the test"), `pass_mark`
 /// ("Pass mark"), `max_attempts` ("Retakes allowed" — blank means
 /// unlimited), `valid_for_days` ("A pass runs out after" — blank means a
-/// pass never expires), and `count_attempts_after_pass` ("Retakes after a
-/// pass count toward the limit" — off, the default, is the fifth-option
+/// pass never expires), and `count_attempts_after_pass` ("Every retake
+/// counts toward the limit" — off, the default, is the fifth-option
 /// brief's own answer to "if somebody already passed and wants a better
 /// score, does that use one of their attempts?": no, as long as their pass
-/// is still good). [TestEditorPanel] edits exactly these five plus the
+/// is still good; the exemption itself ends the day that pass runs out,
+/// which is what the row's hint now says rather than leaving an author to
+/// guess). [TestEditorPanel] edits exactly these five plus the
 /// questions themselves; nothing else on this screen is a sixth option
 /// dressed up as one.
 ///
@@ -481,8 +483,8 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
           ),
         ),
         _OptionRow(
-          label: 'Retakes after a pass count toward the limit',
-          hint: 'Off lets someone who already passed retry for a better score for free',
+          label: 'Every retake counts toward the limit',
+          hint: 'Off spares retakes only until that pass runs out',
           trailing: Switch(
             key: const Key('training.option-count-attempts-after-pass'),
             value: _countAttemptsAfterPass,
