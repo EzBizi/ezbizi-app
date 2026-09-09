@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0178',
+      date: '9 Sep 2026',
+      items: [
+        'Communication - Settings - Ring groups is about people now. The editor used to carry a second list of every phone number on the account with tick boxes, which read as putting numbers into the group. Which group answers a number is set on that number, under Numbers, or as the company default under General.',
+        'A ring group that no number reaches now says so, in red, and says where to choose one. It used to look like a working group and never ring.',
+        'A group that IS reached names what reaches it - "Rings when a call comes to General Use" - so you can see what a group does without opening every line.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0177',
       date: '9 Sep 2026',
       items: [
