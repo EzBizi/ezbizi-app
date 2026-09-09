@@ -993,7 +993,7 @@ cannot land on an unreadable button.
 > Sent to Web Management with the numbers. **Do not build this picker until it lands**,
 > or the preview will disagree with the widget for exactly those brands.
 
-### 6 · HR · HR record: Training card — **BUILT, one ruling outstanding** (`hr-record--training-card`)
+### 6 · HR · HR record: Training card — **DONE, verified `539d459c`** (`hr-record--training-card`)
 
 `docs/previews/hr-record-training-card-layouts.html`, committed `f3aaf3b7`. Three desktop,
 three mobile, plus the refused state on a toggle that applies to whichever option is open.
@@ -1022,6 +1022,22 @@ strip on desktop, absent on the phone; urgency ordering as specified.
 `forbidden` from `!ok`, so a refusal gets the lock and a genuine failure gets `ErrorNote`. I had
 only said "never an empty card". That is [[an advisory must not wear the failure component]] and
 its converse — **a real failure must not be dressed as a polite note.**
+
+**CLOSED 2026-09-09.** HR applied the ruling at `cc48b3d1`; verified at `539d459c` by reading
+`_counts`, not the hand-over. Three cells partition all five — `{lapsed, notPassed}` → **"Needs a
+pass"** boxed, `{notStarted, inProgress}` → **"Outstanding"**, `{passed}`. The test asserts the
+exact cell contents AND that the figures sum to the row count on a fixture carrying all five
+states (2 + 3 + 2 = 7), so a sixth state going uncounted fails there rather than shipping.
+
+> **"Outstanding" is HR's word and it is better than the bucket I specified.** I named the
+> grouping and left the label, which quietly made it their problem — and *"Not started"* over
+> somebody on screen 3 of 9 would have been a small lie repeated on every record. Same class as
+> the strip reading zero, just cheaper. **Specify the bucket AND the word, or the person who has
+> to write it inherits a decision you did not know you were making.**
+
+> **STILL OPEN, non-blocking, HR's call:** the breakpoint is `MediaQuery.sizeOf(context).width`
+> — the window's, not the card's. See the second finding below; recorded so it does not
+> evaporate rather than held against the build.
 
 > ⚠️ **RULING, against the build: the strip must account for every row it sits above.**
 > Five states exist (`lapsed`, `notPassed`, `notStarted`, `inProgress`, `passed`); the strip
