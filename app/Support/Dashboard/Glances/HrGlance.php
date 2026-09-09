@@ -140,11 +140,31 @@ final class HrGlance extends DescribedGlance
                 // watching" — and absence is the one thing a box cannot use to
                 // say it looked (UI/UX, 602e9716). The note above is the other
                 // branch, for when there is genuinely nothing to count.
+                //
+                // BOTH QUALIFIERS, and I put this line in without either of
+                // them an hour before Marketing's finding arrived (their
+                // 011f54a5, carried by the desk). At zero this is an ALL-CLEAR,
+                // and an all-clear that omits its bounds is worse than an empty
+                // state that does: an overclaiming empty state sends somebody
+                // to look, an overclaiming all-clear stops them looking. The
+                // query is scoped by placesInView AND windowed, so the sentence
+                // says "in this view" and names the window rather than implying
+                // it checked everywhere, forever.
+                //
+                // "has lapsed or expires within" rather than "is coming due",
+                // because the row set is not only the future: the widget keeps
+                // anything that expired within the past year alongside anything
+                // expiring inside the window. "Coming due" quietly reclassified
+                // a licence that ran out in March as something still ahead of
+                // them.
                 $certTotal = (int) ($certifications['total'] ?? 0);
+                $days = (int) ($certifications['days'] ?? 60);
 
-                $sentences[] = $certTotal === 1
-                    ? '1 certification is coming due.'
-                    : "{$certTotal} certifications are coming due.";
+                $sentences[] = match (true) {
+                    $certTotal === 0 => "Nothing in this view has lapsed or expires within {$days} days.",
+                    $certTotal === 1 => "1 certification has lapsed or expires within {$days} days.",
+                    default => "{$certTotal} certifications have lapsed or expire within {$days} days.",
+                };
             }
 
             return new GlancePayload(

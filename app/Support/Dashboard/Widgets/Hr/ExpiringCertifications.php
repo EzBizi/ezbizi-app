@@ -36,7 +36,8 @@ class ExpiringCertifications implements Widget
     public function resolve(User $user, array $options): array
     {
         $places = $this->placesInView($user);
-        $until  = now()->addDays(max(1, min((int) ($options['days'] ?? 60), 365)))->startOfDay();
+        $days   = max(1, min((int) ($options['days'] ?? 60), 365));
+        $until  = now()->addDays($days)->startOfDay();
 
         $onboardings = Onboarding::query()
             ->with(['contractVersion', 'user:id,name'])
@@ -112,6 +113,11 @@ class ExpiringCertifications implements Widget
             'rows'  => array_slice($rows, 0, 12),
             'total' => count($rows),
             'note'  => $note,
+            // The window this answer was computed over, so a sentence naming it
+            // cannot drift from the query it describes. `days` is an option, so
+            // a caller that widens it and a sentence that says "60" would
+            // disagree silently — and the sentence is the half people act on.
+            'days'  => $days,
         ];
     }
 }

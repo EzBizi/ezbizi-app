@@ -143,13 +143,181 @@ class HrGlanceTest extends TestCase
             ->resolve($this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), [])
             ->toArray()['data']['sentences'];
 
-        $this->assertContains('0 certifications are coming due.', $sentences);
+        $this->assertContains(
+            'Nothing in this view has lapsed or expires within 60 days.',
+            $sentences,
+        );
 
         // And it is not the other branch wearing a different hat: the note
         // fires only when nothing is marked at all, and something is.
         $this->assertNotContains(
             'No contract question in this view is marked as an expiry, so there is nothing to track. A date field on a contract template can be marked as one.',
             $sentences,
+        );
+    }
+
+    /**
+     * The all-clear, asserted from BOTH sides of the boundary it claims.
+     *
+     * Marketing's pattern (011f54a5, carried by the desk): from inside the
+     * branch, the reassurance and the bug are identical — a reader told
+     * "nothing has lapsed" cannot tell a clean view from a glance that has
+     * stopped counting. So the same fixture is read twice, and the second
+     * reading is the one that gives the first its meaning: the certification
+     * this franchise reader is reassured about DOES exist, one franchise over,
+     * and the administrator is told so.
+     *
+     * A lapsed one rather than an expiring one, deliberately: it is the case
+     * "coming due" used to describe wrongly, and it is the case where being
+     * wrongly reassured costs the most.
+     */
+    public function test_the_all_clear_is_scoped_and_the_thing_it_reassures_about_exists(): void
+    {
+        $elsewhere = $this->inTenant(fn () => \App\Models\Franchise::create([
+            'organization_id' => $this->alpha['org']->id,
+            'company_id'      => $this->alpha['company']->id,
+            'name'            => 'F2',
+        ]));
+
+        $this->inTenant(function () use ($elsewhere) {
+            $contract = \App\Models\Contract::create([
+                'organization_id' => $this->alpha['org']->id,
+                'name'            => 'Sweep',
+                'created_by'      => $this->alpha['admin']->id,
+            ]);
+
+            $version = \App\Models\ContractVersion::create([
+                'organization_id' => $this->alpha['org']->id,
+                'contract_id'     => $contract->id,
+                'version'         => 1,
+                'body'            => '',
+                'created_by'      => $this->alpha['admin']->id,
+                'fields'          => [[
+                    'key' => 'ticket', 'label' => 'Gas ticket', 'type' => 'date',
+                    'options' => [], 'filled_by' => 'either', 'required' => false,
+                    'sensitive' => false, 'retired' => false, 'is_expiry' => true,
+                ]],
+            ]);
+
+            // Filed at F1 through its invitation, which is where an onboarding
+            // gets its place from.
+            // token_hash is deliberately not fillable — it is a live credential
+            // — so it is forced in before the insert rather than after.
+            $invitation = new Invitation;
+            $invitation->forceFill([
+                'organization_id'       => $this->alpha['org']->id,
+                'email'                 => 'sweep@alpha.test',
+                'role_id'               => $this->alpha['admin']->role_id,
+                'invited_by_user_id'    => $this->alpha['admin']->id,
+                'assigned_franchise_id' => $this->alpha['franchise']->id,
+                'sent_at'               => now(),
+                'expires_at'            => now()->addWeek(),
+                'token_hash'            => hash('sha256', 'sweep'),
+            ]);
+            $invitation->save();
+
+            $onboarding = \App\Models\Onboarding::create([
+                'organization_id'     => $this->alpha['org']->id,
+                'invitation_id'       => $invitation->id,
+                'contract_version_id' => $version->id,
+                'status'              => 'in_progress',
+                'started_at'          => now(),
+                'started_by_user_id'  => $this->alpha['admin']->id,
+            ]);
+
+            // Ran out a month ago: inside the widget's one-year backstop, and
+            // firmly not "coming due".
+            \App\Models\OnboardingAnswer::create([
+                'organization_id' => $this->alpha['org']->id,
+                'onboarding_id'   => $onboarding->id,
+                'field_key'       => 'ticket',
+                'value'           => now()->subMonth()->toDateString(),
+                'set_by_user_id'  => $this->alpha['admin']->id,
+                'set_at'          => now(),
+            ]);
+
+            // And the same shape one franchise over, with a date well outside
+            // the window. Without this the near reader would see no expiry
+            // question at all and get the NOTE instead — a different sentence
+            // with a different meaning, which would have made this test agree
+            // with itself for the wrong reason. They must be somebody who IS
+            // tracking certifications and has none in trouble.
+            $theirs = new Invitation;
+            $theirs->forceFill([
+                'organization_id'       => $this->alpha['org']->id,
+                'email'                 => 'f2hire@alpha.test',
+                'role_id'               => $this->alpha['admin']->role_id,
+                'invited_by_user_id'    => $this->alpha['admin']->id,
+                'assigned_franchise_id' => $elsewhere->id,
+                'sent_at'               => now(),
+                'expires_at'            => now()->addWeek(),
+                'token_hash'            => hash('sha256', 'f2hire'),
+            ]);
+            $theirs->save();
+
+            $theirOnboarding = \App\Models\Onboarding::create([
+                'organization_id'     => $this->alpha['org']->id,
+                'invitation_id'       => $theirs->id,
+                'contract_version_id' => $version->id,
+                'status'              => 'in_progress',
+                'started_at'          => now(),
+                'started_by_user_id'  => $this->alpha['admin']->id,
+            ]);
+
+            \App\Models\OnboardingAnswer::create([
+                'organization_id' => $this->alpha['org']->id,
+                'onboarding_id'   => $theirOnboarding->id,
+                'field_key'       => 'ticket',
+                'value'           => now()->addDays(200)->toDateString(),
+                'set_by_user_id'  => $this->alpha['admin']->id,
+                'set_at'          => now(),
+            ]);
+        });
+
+        $reader = $this->inTenant(function () use ($elsewhere) {
+            $role = \App\Models\Role::create([
+                'organization_id' => $this->alpha['org']->id,
+                'name'            => 'Branch manager',
+                'is_system'       => false,
+            ]);
+            $role->syncPermissionKeys(['hr.view']);
+
+            $user = User::create([
+                'organization_id' => $this->alpha['org']->id,
+                'role_id'         => $role->id,
+                'name'            => 'Branch manager',
+                'email'           => 'f2@alpha.test',
+                'password'        => 'a-real-password',
+                'is_active'       => true,
+            ]);
+
+            Assignment::create([
+                'organization_id'       => $this->alpha['org']->id,
+                'user_id'               => $user->id,
+                'assigned_franchise_id' => $elsewhere->id,
+            ]);
+
+            return $user;
+        });
+
+        $sentencesFor = fn (User $who) => app(HrGlance::class)
+            ->resolve($who, DashboardPeriod::for($who), [])
+            ->toArray()['data']['sentences'];
+
+        // The far side of the boundary: it is real, and somebody is told.
+        $this->assertContains(
+            '1 certification has lapsed or expires within 60 days.',
+            $sentencesFor($this->alpha['admin']),
+            'The administrator reaches F1, so the lapsed ticket must be counted for them.',
+        );
+
+        // The near side: reassured, and entitled to be — because the sentence
+        // says which view it is talking about rather than claiming the company.
+        $this->assertContains(
+            'Nothing in this view has lapsed or expires within 60 days.',
+            $sentencesFor($reader),
+            'A reader who cannot reach F1 must be told about their own view, not '
+            .'about a company they cannot see.',
         );
     }
 
