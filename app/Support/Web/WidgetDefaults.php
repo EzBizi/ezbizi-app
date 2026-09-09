@@ -100,7 +100,7 @@ final class WidgetDefaults
          * put white on yellow for anybody with a bright brand — warning them
          * about a pair they never chose.
          */
-        $accent = $brand ?? '#0b5cad';
+        $accent = $brand ?? Branding::FALLBACK_COLOUR;
 
         return [
             'accent' => $accent,
@@ -149,10 +149,10 @@ final class WidgetDefaults
                 'fields' => self::fields($form['fields'] ?? []),
             ],
             'style' => [
-                'accent' => self::colour($style['accent'] ?? '', $brand ?? '#0b5cad'),
+                'accent' => self::colour($style['accent'] ?? '', $brand ?? Branding::FALLBACK_COLOUR),
                 'on_accent' => self::colour(
                     $style['on_accent'] ?? '',
-                    Branding::readableOn($brand ?? '#0b5cad'),
+                    Branding::readableOn($brand ?? Branding::FALLBACK_COLOUR),
                 ),
                 'text' => self::colour($style['text'] ?? '', '#1b1b1b'),
                 'background' => self::colour($style['background'] ?? '', '#ffffff'),

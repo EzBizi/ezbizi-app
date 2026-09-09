@@ -179,12 +179,7 @@ class BrandingController extends Controller
     {
         $organization = $request->user()->organization;
 
-        return [
-            'data' => [
-                'organization' => $organization->brand_colour,
-                'effective' => Branding::colour(null, $organization),
-            ],
-        ];
+        return ['data' => $this->colourState($organization)];
     }
 
     /** PUT /branding/colour — null clears it and returns the business to no stated colour. */
@@ -211,11 +206,42 @@ class BrandingController extends Controller
             : strtolower($input['colour']);
         $organization->save();
 
+        return ['data' => $this->colourState($organization)];
+    }
+
+    /**
+     * Everything a screen needs to draw the colour, computed in one place.
+     *
+     * ── Why the derived text colour is here and not in the client ──
+     *
+     * The picker's preview is a button in the brand colour with its automatic
+     * text on it. If the client derived that itself, there would be two
+     * definitions of readable — and the day the threshold moved, the preview
+     * and the customer's actual website would disagree, with a customer the
+     * first to notice. Same string, computed once, sent to both.
+     *
+     * ── The three values, and why `effective` is not enough on its own ──
+     *
+     * `effective` answers "has this business told us a colour", and null is a
+     * real answer rather than a missing one. `rendered` answers the different
+     * question a visitor's eye asks — what colour is actually on the page —
+     * which for a business that has told us nothing is the fallback. A screen
+     * needs both: the first decides whether to show the not-set state, the
+     * second is what it draws either way.
+     *
+     * @return array<string, string|null>
+     */
+    private function colourState(Organization $organization): array
+    {
+        $effective = Branding::colour(null, $organization);
+        $rendered = $effective ?? Branding::FALLBACK_COLOUR;
+
         return [
-            'data' => [
-                'organization' => $organization->brand_colour,
-                'effective' => Branding::colour(null, $organization),
-            ],
+            'organization' => $organization->brand_colour,
+            'effective' => $effective,
+            'on_effective' => $effective === null ? null : Branding::readableOn($effective),
+            'rendered' => $rendered,
+            'on_rendered' => Branding::readableOn($rendered),
         ];
     }
 
