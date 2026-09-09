@@ -95,9 +95,4 @@ class MonitoringFloorPlan extends Model implements StatesRetention
     {
         return $this->belongsTo(Franchise::class, 'assigned_franchise_id');
     }
-
-    public function creator(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'created_by');
-    }
 }

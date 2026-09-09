@@ -217,6 +217,19 @@ class _GeneralTabState extends State<GeneralTab> {
   bool _loadingPeople = false;
   String? _peopleError;
 
+  /// The scopes this viewer may CREATE a plan at, straight from
+  /// `GET /monitoring/floor-plans/scope-options` — the server's own answer, not
+  /// a guess assembled from the session. Null means "never asked"; fetched once
+  /// and reused, exactly like [_people], and for the same reason: it is the
+  /// same grant, and it does not change while the tab is open.
+  List<Map<String, dynamic>>? _scopeRows;
+  bool _loadingScopes = false;
+
+  /// What the server said if the scope list could not be fetched. Shown in the
+  /// create panel INSTEAD of a scope list — a guessed list is how the panel
+  /// came to offer a level the actor could not use.
+  String? _scopesError;
+
   Timer? _pollTimer;
 
   /// Bumped every time a plan fetch STARTS (a select, a poll tick, a manual
@@ -768,12 +781,16 @@ class _GeneralTabState extends State<GeneralTab> {
       _saveError = null;
     });
 
-    final body = <String, dynamic>{'layout': layout};
-    final name = _selectedPlan?['name'] as String?;
-    if (name != null) body['name'] = name;
-
-    final response =
-        await widget.api.put('/monitoring/floor-plans/$planId', body);
+    // LAYOUT ONLY, and deliberately no `name`. `update` takes `name` as
+    // `sometimes`, and the only name this screen holds is the one that came
+    // with the plan LIST — which can be minutes old and is not re-read while
+    // you edit. Sending it back would let a layout save quietly revert somebody
+    // else's rename to a name nobody typed. The editor has no name field, so
+    // the name was not edited here and there is nothing to send.
+    final response = await widget.api
+        .put('/monitoring/floor-plans/$planId', <String, dynamic>{
+      'layout': layout,
+    });
 
     if (!mounted) return;
 
@@ -801,36 +818,74 @@ class _GeneralTabState extends State<GeneralTab> {
 
   // ── the plans themselves: create, rename, delete ───────────────────
 
-  /// The scopes this viewer may put a plan at, in org-tree order.
+  /// Fetch the levels this viewer may create a plan at, once.
   ///
-  /// Straight off the session — `me.organization`, `me.companies`,
-  /// `me.franchises` — which is REACH, the same question `ScopeReach::assertCovers`
-  /// answers on the write. Not `companiesInView`: that narrows by the switcher's
-  /// current position, and a plan is created for a place, not for the place you
-  /// happen to be looking at. The franchise heading uses the organization's own
-  /// word for a franchise (§8), never the literal one.
+  /// `GET /monitoring/floor-plans/scope-options` is gated on the same grant the
+  /// POST is (`monitoring.map.manage`) and answers from `ScopeReach::optionsFor`,
+  /// the object `store` is judged against — so every row it returns saves.
+  Future<void> _loadScopes() async {
+    if (_scopeRows != null || _loadingScopes) return;
+
+    setState(() {
+      _loadingScopes = true;
+      _scopesError = null;
+    });
+
+    final response =
+        await widget.api.get('/monitoring/floor-plans/scope-options');
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() {
+        _loadingScopes = false;
+        // The server's own sentence. NOT a fallback list: guessing is the bug
+        // this endpoint exists to fix, and a guess that is wrong here is a
+        // create that cannot succeed however carefully it is filled in.
+        _scopesError = response.message;
+      });
+      return;
+    }
+
+    setState(() {
+      _loadingScopes = false;
+      _scopeRows = (response.data as List<dynamic>).cast<Map<String, dynamic>>();
+    });
+  }
+
+  /// The scopes this viewer may put a plan at, in the order the server sent.
+  ///
+  /// From [_scopeRows] — the server's answer — and NOT from the session. It was
+  /// built here once, off `me.organization`, `me.companies` and `me.franchises`;
+  /// two of those three are reach, but `me.organization` is not. It is the org
+  /// you are IN, which everybody has, so an "Organization" row was offered to
+  /// every actor and preselected for them, while `store`'s
+  /// `ScopeReach::assertCovers` needs `canActOnOrganization` — a company or
+  /// franchise manager who took the offered row got a guaranteed 422, under a
+  /// sentence promising they were only offered levels they could act on.
+  ///
+  /// Not `me.scope.type` either: that is the VIEW SWITCHER's position, which
+  /// falls back to the organization, so it answers a different question again.
+  ///
+  /// The server sends each row's plain name; the wording is this side's, and
+  /// the franchise row uses the organization's own word for a franchise (§8).
   List<_ScopeOption> _scopeOptions() {
-    final me = widget.session.me;
-    if (me == null) return const [];
+    final rows = _scopeRows;
+    if (rows == null) return const [];
+
+    final franchiseWord =
+        widget.session.me?.organization.franchiseLabel ?? 'Franchise';
 
     return [
-      _ScopeOption(
-        type: 'organization',
-        id: me.organization.id,
-        label: 'Organization · ${me.organization.name}',
-      ),
-      for (final company in me.companies)
-        _ScopeOption(
-          type: 'company',
-          id: company.id,
-          label: 'Company · ${company.name}',
-        ),
-      for (final franchise in me.franchises)
-        _ScopeOption(
-          type: 'franchise',
-          id: franchise.id,
-          label: '${me.organization.franchiseLabel} · ${franchise.name}',
-        ),
+      for (final row in rows)
+        if (row['type'] is String && row['id'] is String)
+          _ScopeOption(
+            type: row['type'] as String,
+            id: row['id'] as String,
+            label: row['type'] == 'franchise'
+                ? '$franchiseWord · ${row['label'] ?? ''}'
+                : '${_typeTitle(row['type'] as String)} · ${row['label'] ?? ''}',
+          ),
     ];
   }
 
@@ -845,7 +900,11 @@ class _GeneralTabState extends State<GeneralTab> {
   /// the actor's level with a 422 on `scope`, and that sentence is the only part
   /// of the refusal anybody can act on.
   Future<void> _createPlan() async {
-    final scopes = _scopeOptions();
+    // The levels come from the server, so they are asked for before the panel
+    // is up rather than assembled from the session while it draws.
+    await _loadScopes();
+
+    if (!mounted) return;
 
     final result = await showSidePanel<Map<String, dynamic>>(
       context,
@@ -853,7 +912,8 @@ class _GeneralTabState extends State<GeneralTab> {
         title: 'New floor plan',
         submitLabel: 'Create plan',
         initialName: '',
-        scopes: scopes,
+        scopes: _scopeOptions(),
+        scopesError: _scopesError,
       ),
     );
 
@@ -921,6 +981,7 @@ class _GeneralTabState extends State<GeneralTab> {
         // A plan's scope does not move: `update` does not accept one, so
         // offering the picker here would be a control with nowhere to go.
         scopes: const [],
+        scopesError: null,
       ),
     );
 
@@ -1004,6 +1065,23 @@ class _GeneralTabState extends State<GeneralTab> {
     // before the list is even re-read — a tick against a deleted id would 404.
     _pollTimer?.cancel();
     _pollTimer = null;
+
+    // And the generation is bumped, so a fetch ALREADY IN FLIGHT for this plan
+    // (a tick that fired a moment before the cancel, or the load from the
+    // select) cannot land and apply against the plan that has just been
+    // deleted. Every other path that leaves a plan does this; delete was the
+    // one that did not.
+    //
+    // No test pins this, deliberately, and the reason is worth writing down:
+    // today it changes NOTHING you can see. `_selectedArea` is gated on
+    // `_selectedPlanId`, which the setState below clears, so a late answer only
+    // writes `_layout` where nothing reads it — a widget test asserting "the
+    // deleted plan does not repaint" passes with this line deleted, which makes
+    // it a test of nothing. What the line buys is the invariant the rest of
+    // this file keeps ("never apply an answer for a plan you have left"), so
+    // the next thing that reads `_layout` without asking about the selection
+    // does not quietly reintroduce the bug.
+    _loadGeneration++;
 
     setState(() {
       _planBusy = false;
@@ -1428,12 +1506,22 @@ class _PlanFormPanel extends StatefulWidget {
     required this.submitLabel,
     required this.initialName,
     required this.scopes,
+    required this.scopesError,
   });
 
   final String title;
   final String submitLabel;
   final String initialName;
+
+  /// The levels the SERVER said this actor may create at, already worded. An
+  /// empty list means the panel is not choosing a scope at all (the rename),
+  /// which is a different thing from a fetch that failed — see [scopesError].
   final List<_ScopeOption> scopes;
+
+  /// The server's sentence, if the scope list could not be fetched. Shown
+  /// instead of a list: this panel does not invent levels, because a level it
+  /// invented is one the create would be refused for.
+  final String? scopesError;
 
   @override
   State<_PlanFormPanel> createState() => _PlanFormPanelState();
@@ -1454,6 +1542,7 @@ class _PlanFormPanelState extends State<_PlanFormPanel> {
 
   bool get _ready =>
       _name.text.trim().isNotEmpty &&
+      widget.scopesError == null &&
       (widget.scopes.isEmpty || _scope != null);
 
   void _submit() {
@@ -1500,11 +1589,19 @@ class _PlanFormPanelState extends State<_PlanFormPanel> {
             onChanged: (_) => setState(() {}),
             onSubmitted: (_) => _submit(),
           ),
+          if (widget.scopesError != null) ...[
+            const SizedBox(height: 16),
+            ErrorNote(widget.scopesError!),
+          ],
           if (widget.scopes.isNotEmpty) ...[
             const SizedBox(height: 16),
             Text('Who this plan is for', style: theme.textTheme.titleSmall),
             const SizedBox(height: 4),
             Text(
+              // True as of the scope-options endpoint: the rows below are
+              // ScopeReach::optionsFor's answer, the same object the create is
+              // judged against, so nothing offered here can be refused for
+              // being above this actor's level.
               'Everyone at that level and below can see it. You are only '
               'offered the levels you can act on.',
               style: theme.textTheme.bodySmall

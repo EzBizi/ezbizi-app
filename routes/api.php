@@ -1558,6 +1558,12 @@ Route::prefix('v1')
         // constrainToVisiblePeople — see FloorPlansController.
         Route::get('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'index']);
         Route::post('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'store']);
+        // BEFORE the {id} GET, deliberately: registered after it, "scope-options"
+        // would match {id} first and 404 as a plan that does not exist. Gated on
+        // monitoring.map.manage (the policy's `create`) and answered straight
+        // from ScopeReach::optionsFor, so the create panel offers exactly the
+        // levels `store`'s assertCovers will accept.
+        Route::get('monitoring/floor-plans/scope-options', [MonitoringFloorPlansController::class, 'scopeOptions']);
         Route::get('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'show']);
         Route::put('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'update']);
         Route::delete('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'destroy']);

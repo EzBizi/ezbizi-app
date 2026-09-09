@@ -131,6 +131,67 @@ class FloorPlanWriteTest extends TestCase
         $this->assertSame(0, $this->inTenant($alpha['org'], fn () => MonitoringFloorPlan::query()->count()));
     }
 
+    // ── the create panel's scope list ────────────────────────────────
+
+    /**
+     * GET /monitoring/floor-plans/scope-options answers with exactly the levels
+     * `store`'s assertCovers will accept - which is why it exists.
+     *
+     * The panel used to build the list itself from `me.organization`, which is
+     * "the org I am in", not reach: every actor got an Organization row, and a
+     * company manager who took the preselected one hit a guaranteed 422. This
+     * endpoint is `ScopeReach::optionsFor`, the object that NULLS organization
+     * for exactly that reason.
+     *
+     * The company row is the positive control: without it, an endpoint that
+     * returned nothing at all would read exactly like a working filter.
+     */
+    public function test_scope_options_offer_the_organization_only_to_an_org_level_actor(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $companyA = $alpha['company'];
+
+        $orgManager = $this->userWithRole($alpha, 'Org Mgr', ['monitoring.map.manage']);
+
+        $orgRows = $this->signedInAs($orgManager)
+            ->getJson('/api/v1/monitoring/floor-plans/scope-options')
+            ->assertOk()->json('data');
+
+        $this->assertContains('organization', array_column($orgRows, 'type'));
+        $this->assertSame($alpha['org']->id, collect($orgRows)->firstWhere('type', 'organization')['id']);
+
+        $manager = $this->companyManager($alpha, $companyA, 'Company A Mgr');
+
+        $rows = $this->signedInAs($manager)
+            ->getJson('/api/v1/monitoring/floor-plans/scope-options')
+            ->assertOk()->json('data');
+
+        $this->assertNotContains('organization', array_column($rows, 'type'));
+
+        // Positive control: their own company IS offered, with its plain name.
+        $company = collect($rows)->firstWhere('id', $companyA->id);
+        $this->assertNotNull($company, 'A company manager must still be offered their own company.');
+        $this->assertSame('company', $company['type']);
+        $this->assertSame($companyA->name, $company['label']);
+
+        // And the list agrees with the write: the offered company scope saves.
+        $this->signedInAs($manager)->postJson('/api/v1/monitoring/floor-plans', [
+            'name' => 'From the offered scope',
+            'scope' => ['type' => $company['type'], 'id' => $company['id']],
+        ])->assertCreated();
+    }
+
+    public function test_scope_options_without_map_manage_are_refused_with_a_sentence(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        $viewer = $this->userWithRole($alpha, 'Viewer', ['monitoring.view']);
+
+        $this->signedInAs($viewer)
+            ->getJson('/api/v1/monitoring/floor-plans/scope-options')
+            ->assertForbidden()->assertJsonStructure(['message']);
+    }
+
     // ── update / destroy outside reach → 404 ─────────────────────────
 
     public function test_update_and_destroy_of_a_plan_outside_reach_404(): void
@@ -203,6 +264,73 @@ class FloorPlanWriteTest extends TestCase
                 ['id' => 'n1', 'x' => 1, 'y' => 1, 'label' => 'PC1', 'user_id' => $unseen->id],
             ]),
         ])->assertStatus(422)->assertJsonValidationErrors(['layout']);
+    }
+
+    /**
+     * The narrower editor's plan is SAVABLE even though one of its tiles names
+     * somebody they cannot see - and the person stays put.
+     *
+     * `show` hands the layout back verbatim, unseeable assignee id included,
+     * and the editor PUTs that document back with whatever it changed. Before
+     * the fix, validating every non-null user_id from scratch made such a plan
+     * permanently unsavable for the narrower editor: moving an unrelated tile,
+     * or renaming the plan, 422d on a node they can neither see nor identify.
+     *
+     * The second assertion is the one that stops the "fix" from being a
+     * silent unassignment: the stored user_id for that node must be EXACTLY
+     * what it was, not null. Dropping the person would also pass a 200 check.
+     */
+    public function test_an_unrelated_edit_saves_when_a_tile_names_a_person_the_editor_cannot_see(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $companyA = $alpha['company'];
+        $franchiseA = $alpha['franchise'];
+
+        $franchiseB = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $c = Company::create(['organization_id' => $alpha['org']->id, 'name' => 'Company B', 'is_active' => true]);
+
+            return Franchise::create([
+                'organization_id' => $alpha['org']->id, 'company_id' => $c->id, 'name' => 'B F1', 'is_active' => true,
+            ]);
+        });
+
+        $visible = $this->userWithRole($alpha, 'Visible Person', [], onlyAt: $franchiseA);
+
+        // Placed on the plan by somebody with wider reach; out of the company-A
+        // manager's reach entirely.
+        $unseen = $this->userWithRole($alpha, 'Unseen Person', [], onlyAt: $franchiseB);
+
+        $plan = $this->makePlan($alpha, 'Ground Floor', ['assigned_company_id' => $companyA->id], $this->layout([
+            ['id' => 'n1', 'x' => 1, 'y' => 1, 'label' => 'PC1', 'user_id' => $visible->id],
+            ['id' => 'n3', 'x' => 3, 'y' => 3, 'label' => 'PC3', 'user_id' => $unseen->id],
+        ]));
+
+        $manager = $this->companyManager($alpha, $companyA, 'Company A Mgr');
+
+        // n1 is dragged; n3 is echoed back exactly as it was read.
+        $this->signedInAs($manager)->putJson('/api/v1/monitoring/floor-plans/'.$plan->id, [
+            'layout' => $this->layout([
+                ['id' => 'n1', 'x' => 5, 'y' => 5, 'label' => 'PC1', 'user_id' => $visible->id],
+                ['id' => 'n3', 'x' => 3, 'y' => 3, 'label' => 'PC3', 'user_id' => $unseen->id],
+            ]),
+        ])->assertOk();
+
+        // A rename of the same plan, which re-sends the layout, is fine too.
+        $this->signedInAs($manager)->putJson('/api/v1/monitoring/floor-plans/'.$plan->id, [
+            'name' => 'First Floor',
+            'layout' => $this->layout([
+                ['id' => 'n1', 'x' => 5, 'y' => 5, 'label' => 'PC1', 'user_id' => $visible->id],
+                ['id' => 'n3', 'x' => 3, 'y' => 3, 'label' => 'PC3', 'user_id' => $unseen->id],
+            ]),
+        ])->assertOk();
+
+        $fresh = $this->inTenant($alpha['org'], fn () => MonitoringFloorPlan::find($plan->id));
+
+        $nodes = collect($fresh->layout['nodes'])->keyBy('id');
+        $this->assertSame(5, $nodes['n1']['x']);
+        // The load-bearing one: the out-of-reach person was NOT quietly dropped.
+        $this->assertSame($unseen->getKey(), $nodes['n3']['user_id']);
+        $this->assertSame('First Floor', $fresh->name);
     }
 
     // ── malformed layout ─────────────────────────────────────────────

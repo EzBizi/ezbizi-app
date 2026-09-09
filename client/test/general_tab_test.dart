@@ -11,8 +11,8 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 /// The Monitoring "General" tab — the floor-plan picker and the load/poll path
-/// that feeds the map. The canvas itself arrives in Task 6, so the area under
-/// test here is the placeholder, keyed the same as the canvas that replaces it.
+/// that feeds the map. The map area itself is FloorPlanCanvas (keyed
+/// floor-plan-canvas); these tests cover the load path around it.
 ///
 /// The load-bearing test is the last one: a response for a plan the viewer has
 /// SINCE LEFT must never paint. Two GETs in flight have no ordering guarantee,
@@ -96,6 +96,98 @@ void main() {
   );
 
   testWidgets(
+    'the create panel offers exactly the levels the server returned',
+    (tester) async {
+      var fetched = 0;
+
+      await _pumpTab(
+        tester,
+        plans: const [],
+        grantManage: true,
+        onScopeOptionsFetch: () => fetched++,
+      );
+
+      await tester.tap(find.byKey(const Key('general-add-plan')));
+      await tester.pumpAndSettle();
+
+      expect(
+        fetched,
+        1,
+        reason: 'The levels are the server answer, so the panel has to ask '
+            'for them — without this the assertions below could pass on a '
+            'panel that simply drew nothing.',
+      );
+
+      // The positive control: the one row the endpoint DID return is offered,
+      // so the absence below is the endpoint talking and not an empty panel.
+      expect(
+        find.byKey(const ValueKey('plan-scope-company-co-1')),
+        findsOneWidget,
+      );
+
+      // The bug: `me.organization` is "the org I am in", not reach, and this
+      // actor's session carries org-1 (and a `scope` of organization). An
+      // unconditional Organization row would be here, preselected, and every
+      // create would 422 on a level this actor cannot act on.
+      expect(
+        find.byKey(const ValueKey('plan-scope-organization-org-1')),
+        findsNothing,
+        reason: 'scope-options did not offer the organization, so the panel '
+            'must not either — store would refuse it.',
+      );
+
+      // And the sentence the panel makes is now a true one.
+      expect(
+        find.textContaining('You are only offered the levels you can act on.'),
+        findsOneWidget,
+      );
+
+      // The first OFFERED row is the preselected one — not "the organization,
+      // whatever happened to be first".
+      final tile = tester.widget<ListTile>(
+        find.byKey(const ValueKey('plan-scope-company-co-1')),
+      );
+      expect((tile.leading as Icon).icon, Icons.radio_button_checked);
+    },
+  );
+
+  testWidgets(
+    'a scope list the server refused is said out loud, not guessed at',
+    (tester) async {
+      await _pumpTab(
+        tester,
+        plans: const [],
+        grantManage: true,
+        scopeOptionsStatus: 403,
+      );
+
+      await tester.tap(find.byKey(const Key('general-add-plan')));
+      await tester.pumpAndSettle();
+
+      expect(find.text(_scopesRefusal), findsOneWidget);
+
+      // No invented levels, and no way to submit one: a guessed list is the
+      // thing that produced a preselected level the create always refused.
+      expect(find.byKey(const ValueKey('plan-scope-company-co-1')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('plan-scope-organization-org-1')),
+        findsNothing,
+      );
+
+      await tester.enterText(find.byKey(const Key('plan-name')), 'Head office');
+      await tester.pumpAndSettle();
+
+      final save = tester.widget<FilledButton>(find.byKey(const Key('plan-save')));
+      expect(
+        save.onPressed,
+        isNull,
+        reason: 'With no levels to choose from there is nothing to create; a '
+            'live button here would post a plan with no scope.',
+      );
+    },
+  );
+
+  testWidgets(
     'a late answer for the plan you left never paints over the one you chose',
     (tester) async {
       // Each plan fetch is held open on its own Completer, so the test — not
@@ -154,7 +246,24 @@ void main() {
       );
     },
   );
+
 }
+
+/// What the scope-options endpoint answers for the actor these tests sign in
+/// as: ONE company row, and no organization row.
+///
+/// The session fixture below says `organization: org-1` and
+/// `scope.type: organization` — so this actor is exactly the case the old
+/// client-side list got wrong. `me.organization` is the org you are IN, which
+/// everybody has, and `me.scope` is the view switcher's position, which falls
+/// back to the org; neither is reach. Only the server knows, and here it says
+/// no.
+const _companyOnlyScopes = [
+  {'type': 'company', 'id': 'co-1', 'label': 'A-1 Chimney'},
+];
+
+const _scopesRefusal =
+    'Your role does not include monitoring.map.manage.';
 
 const _companyPlan = {
   'id': 'fp-1',
@@ -209,6 +318,10 @@ Future<void> _pumpTab(
   Map<String, dynamic> Function(String planId)? planBody,
   Future<http.Response> Function(String planId)? planResponder,
   void Function(String planId)? onPlanFetch,
+  List<Map<String, dynamic>> scopeOptions = _companyOnlyScopes,
+  int scopeOptionsStatus = 200,
+  String scopeOptionsMessage = _scopesRefusal,
+  VoidCallback? onScopeOptionsFetch,
   bool settle = true,
   Size size = const Size(1280, 900),
 }) async {
@@ -220,6 +333,10 @@ Future<void> _pumpTab(
     if (grantView) 'monitoring.view',
     if (grantManage) 'monitoring.map.manage',
   ];
+
+  // The fake server's own copy, so a DELETE really removes the row and the
+  // re-read that follows it answers with a shorter list.
+  final live = [...plans];
 
   final api = ApiClient(
     client: MockClient((request) async {
@@ -233,7 +350,25 @@ Future<void> _pumpTab(
 
       if (request.method == 'GET' && path.endsWith('/monitoring/floor-plans')) {
         onPlansFetch?.call();
-        return _json({'data': plans});
+        return _json({'data': live});
+      }
+
+      if (request.method == 'DELETE' &&
+          path.contains('/monitoring/floor-plans/')) {
+        final id = path.split('/').last;
+        live.removeWhere((plan) => plan['id'] == id);
+        return http.Response('', 204);
+      }
+
+      // Registered before the {id} GET here for the same reason it is on the
+      // server: "scope-options" would otherwise be read as a plan id.
+      if (request.method == 'GET' &&
+          path.endsWith('/monitoring/floor-plans/scope-options')) {
+        onScopeOptionsFetch?.call();
+        if (scopeOptionsStatus != 200) {
+          return _json({'message': scopeOptionsMessage}, scopeOptionsStatus);
+        }
+        return _json({'data': scopeOptions});
       }
 
       if (request.method == 'GET' &&

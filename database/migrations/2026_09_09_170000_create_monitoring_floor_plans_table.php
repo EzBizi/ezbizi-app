@@ -46,10 +46,19 @@ return new class extends Migration
             // franchise are set only for narrower plans.
             $table->foreignUuid('assigned_organization_id')
                 ->constrained('organizations')->cascadeOnDelete();
+            //
+            // cascadeOnDelete, NOT nullOnDelete, and that is the whole point:
+            // nulling `assigned_company_id` when a company is deleted would
+            // leave `assigned_organization_id` standing alone, which is exactly
+            // the shape of an ORGANIZATION-scoped plan - so deleting a company
+            // would silently WIDEN its plans to the whole org and show them to
+            // everyone. A plan belonging to a deleted company goes with it.
+            // `invitations` carries the same trio and cascades all three for
+            // the same reason (2026_08_11_000000_create_invitations_table).
             $table->foreignUuid('assigned_company_id')->nullable()
-                ->constrained('companies')->nullOnDelete();
+                ->constrained('companies')->cascadeOnDelete();
             $table->foreignUuid('assigned_franchise_id')->nullable()
-                ->constrained('franchises')->nullOnDelete();
+                ->constrained('franchises')->cascadeOnDelete();
 
             $table->string('name');
 

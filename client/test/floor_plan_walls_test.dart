@@ -222,8 +222,9 @@ void main() {
       await tester.tap(find.byKey(const Key('general-add-plan')));
       await tester.pumpAndSettle();
 
-      // The scopes are the session's own reach: the organization, each company
-      // and each franchise this person holds.
+      // The scopes are whatever `scope-options` answered — the server's own
+      // reach, not a list assembled here from the session.
+      expect(fake.scopeOptionFetches, 1);
       expect(find.byKey(const ValueKey('plan-scope-organization-org-1')),
           findsOneWidget);
       expect(
@@ -418,6 +419,16 @@ const _fixtureWalls = [
   {'x1': 2, 'y1': 18, 'x2': 12, 'y2': 18},
 ];
 
+/// What `GET /monitoring/floor-plans/scope-options` answers here — an
+/// ORG-LEVEL actor, so all three levels are offered. The panel shows what this
+/// list says and nothing else; the narrower case (no organization row) is
+/// general_tab_test's.
+const _scopeOptions = [
+  {'type': 'organization', 'id': 'org-1', 'label': 'A-1 Chimney'},
+  {'type': 'company', 'id': 'co-1', 'label': 'A-1 Chimney'},
+  {'type': 'franchise', 'id': 'fr-1', 'label': 'North Shore'},
+];
+
 const _scopeRefusal =
     'You can only create a floor plan for your own level or below.';
 
@@ -457,6 +468,7 @@ Map<String, dynamic> _planBody(String id) => {
 /// press produced rather than trusting the screen about what was sent.
 class _Fake {
   int planListFetches = 0;
+  int scopeOptionFetches = 0;
   final List<Map<String, dynamic>> posts = [];
   final List<Map<String, dynamic>> puts = [];
   final List<String> deletes = [];
@@ -561,6 +573,13 @@ Future<_Fake> _pumpTab(
 
         fake.plans.add(_createdPlan);
         return _json({'data': _createdPlan}, 201);
+      }
+
+      // Before the {id} GET, exactly as the route is registered server-side.
+      if (request.method == 'GET' &&
+          path.endsWith('/monitoring/floor-plans/scope-options')) {
+        fake.scopeOptionFetches++;
+        return _json({'data': _scopeOptions});
       }
 
       if (request.method == 'GET' &&

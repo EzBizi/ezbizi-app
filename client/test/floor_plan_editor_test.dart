@@ -129,6 +129,18 @@ void main() {
       reason: 'The control: a move that stored the ORIGINAL cell would satisfy '
           'a shape-only assertion.',
     );
+
+    // A layout save sends NO name. `update` takes `name` as `sometimes`, and
+    // the only name this screen holds came with the plan LIST, which is not
+    // re-read while you edit — so re-sending it would let a tile drag quietly
+    // revert somebody else's rename to a name nobody typed here.
+    expect(
+      fake.puts.single.containsKey('name'),
+      isFalse,
+      reason: 'The editor has no name field, so a save has no name to send; '
+          'sending a stale one would undo a concurrent rename.',
+    );
+    expect(fake.puts.single.keys, ['layout']);
   });
 
   testWidgets('a tile is assigned to the person chosen, and to no other', (

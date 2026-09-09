@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Monitoring;
 
+use App\Models\Company;
 use App\Models\MonitoringFloorPlan;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
@@ -54,5 +55,55 @@ class FloorPlanModelTest extends TestCase
         // Created without naming an organization, yet the scope column ScopeReach
         // reads is the tenant org — stamped, never passed.
         $this->assertSame($alpha['org']->id, $plan->assigned_organization_id);
+    }
+
+    /**
+     * Deleting a company takes its plans with it - it does not WIDEN them.
+     *
+     * `assigned_company_id` cascades rather than nulling on delete, and that
+     * distinction is a visibility one, not a tidiness one: a plan whose company
+     * column went null would still carry `assigned_organization_id` (always
+     * stamped), which is exactly the shape of an ORGANIZATION-scoped plan - so
+     * a company deletion would quietly publish that company's floor plans to
+     * everyone in the org. `invitations` cascades the same trio for the same
+     * reason.
+     *
+     * The org-level plan is the control: without it, a cascade that deleted
+     * every plan in the tenant would read exactly like a correct one.
+     *
+     * `forceDelete`, because Company soft-deletes: an ordinary delete leaves
+     * the row (and the foreign key) in place, so it exercises no referential
+     * rule at all. What is pinned here is what happens when the company row
+     * actually goes - which is the only moment either rule could fire.
+     */
+    public function test_deleting_a_company_deletes_its_plans_and_leaves_the_org_plan(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $companyA = $alpha['company'];
+
+        [$companyPlan, $orgPlan] = $this->inTenant($alpha['org'], fn () => [
+            MonitoringFloorPlan::create([
+                'name' => 'Company floor',
+                'layout' => ['grid' => ['cols' => 10, 'rows' => 10], 'walls' => [], 'nodes' => []],
+                'assigned_company_id' => $companyA->getKey(),
+            ]),
+            MonitoringFloorPlan::create([
+                'name' => 'Org floor',
+                'layout' => ['grid' => ['cols' => 10, 'rows' => 10], 'walls' => [], 'nodes' => []],
+            ]),
+        ]);
+
+        $this->inTenant($alpha['org'], fn () => Company::findOrFail($companyA->getKey())->forceDelete());
+
+        $this->inTenant($alpha['org'], function () use ($companyPlan, $orgPlan) {
+            $this->assertNull(
+                MonitoringFloorPlan::find($companyPlan->id),
+                'A deleted company must take its plans with it, not widen them to the organization.'
+            );
+
+            $survivor = MonitoringFloorPlan::find($orgPlan->id);
+            $this->assertNotNull($survivor);
+            $this->assertNull($survivor->assigned_company_id);
+        });
     }
 }

@@ -179,6 +179,66 @@ class FloorPlansController extends Controller
     }
 
     /**
+     * GET /api/v1/monitoring/floor-plans/scope-options
+     *
+     * The levels this editor may CREATE a plan at - `{type, id, label}` rows,
+     * in org-tree order, and nothing else.
+     *
+     * ---- Why the client cannot work this out for itself ---------------
+     *
+     * The create panel used to build its own list off the session: an
+     * "Organization" row from `me.organization`, then `me.companies` and
+     * `me.franchises`. Two of those three are reach; `me.organization` is not.
+     * It is the org the person is IN, which everybody has, so every actor was
+     * offered - and preselected on - an Organization row, while `store`'s
+     * `ScopeReach::assertCovers` needs `canActOnOrganization` and 422s a
+     * company or franchise manager for choosing it. The panel then told them
+     * they were "only offered the levels you can act on", which was false.
+     *
+     * So the list comes from the same object the write is judged by:
+     * `ScopeReach::optionsFor`, which NULLS `organization` for precisely this
+     * reason ("a company manager who could hand out an organization-wide
+     * assignment would be granting reach over companies they cannot see
+     * themselves"). One rule, two endpoints, the same shape the assign picker
+     * and `validatedLayout` keep: everything offered here saves, and anything
+     * missing here would have been refused.
+     *
+     * Gated on `create` (`monitoring.map.manage`) - the grant the POST needs -
+     * rather than `viewAny`: a viewer who cannot create a plan has no use for
+     * the levels they could create one at.
+     *
+     * `label` is the place's plain NAME, the same way `scope()` presents one;
+     * the panel words the row ("Company - A-1 Chimney"), including the org's
+     * own word for a franchise (§8), which is a client-side fact.
+     */
+    public function scopeOptions(Request $request): JsonResponse
+    {
+        $this->authorize('create', MonitoringFloorPlan::class);
+
+        $options = $this->reach->optionsFor($request->user());
+
+        $rows = [];
+
+        if ($options['organization'] !== null) {
+            $rows[] = [
+                'type' => 'organization',
+                'id' => $options['organization']['id'],
+                'label' => $options['organization']['name'],
+            ];
+        }
+
+        foreach ($options['companies'] as $company) {
+            $rows[] = ['type' => 'company', 'id' => $company['id'], 'label' => $company['name']];
+        }
+
+        foreach ($options['franchises'] as $franchise) {
+            $rows[] = ['type' => 'franchise', 'id' => $franchise['id'], 'label' => $franchise['name']];
+        }
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /**
      * POST /api/v1/monitoring/floor-plans
      *
      * Create a plan at a scope the caller may act on. Two gates, both §4:
@@ -241,6 +301,9 @@ class FloorPlansController extends Controller
      * plan outside reach reads as "does not exist". Scope is NOT changed by an
      * update in v1 — a `scope` key is simply not accepted, so it cannot move a
      * plan to a level the actor could not otherwise choose.
+     *
+     * The layout's assignees are validated against what is ALREADY STORED, not
+     * from scratch: see `storedAssignees` and `validatedLayout`.
      */
     public function update(Request $request, string $id): JsonResponse
     {
@@ -260,7 +323,7 @@ class FloorPlansController extends Controller
         }
 
         if (array_key_exists('layout', $data)) {
-            $plan->layout = $this->validatedLayout($data['layout'], $actor);
+            $plan->layout = $this->validatedLayout($data['layout'], $actor, $this->storedAssignees($plan));
         }
 
         $changed = array_keys($plan->getDirty());
@@ -335,11 +398,33 @@ class FloorPlansController extends Controller
      * to somebody outside the actor's reach (which would leak that person the
      * moment the plan is read). Any id absent from the visible set is a 422.
      *
+     * ---- Stored vs incoming: only a NEW assignee is checked ----------
+     *
+     * `show` returns `layout` verbatim, an assignee the caller cannot see
+     * included (an opaque id and nothing else - no name, no state, so no §3
+     * breach), and the editor deep-copies that document and PUTs it back. So
+     * validating every non-null `user_id` from scratch would make a plan the
+     * caller may REACH permanently unsavable the moment one of its tiles names
+     * somebody outside their reach: dragging an unrelated tile, or renaming the
+     * plan, would 422 on a node they cannot see, cannot fix and cannot even
+     * identify. `$storedAssignees` is `[nodeId => user_id]` read off the plan's
+     * current layout, and an incoming `user_id` that EQUALS the stored one FOR
+     * THAT SAME NODE ID is exempt: it is being echoed back, not chosen.
+     *
+     * Everything else still goes through the check. A `store` passes no map at
+     * all, so every assignee on a new plan must be visible; and REASSIGNING an
+     * existing tile is an incoming id that differs from the stored one for that
+     * node, so it is refused exactly as before. Exempting the stored id also
+     * means the fix cannot quietly UNASSIGN the person instead - the id is
+     * written back to the layout untouched.
+     *
+     * @param  array<string, ?string>  $storedAssignees  [nodeId => user_id] as currently stored, empty on create
+     *
      * @return array{grid: array{cols: int, rows: int}, walls: list<array>, nodes: list<array>}
      *
      * @throws ValidationException
      */
-    private function validatedLayout(mixed $layout, User $actor): array
+    private function validatedLayout(mixed $layout, User $actor, array $storedAssignees = []): array
     {
         $fail = fn (string $message) => throw ValidationException::withMessages(['layout' => $message]);
 
@@ -393,7 +478,11 @@ class FloorPlansController extends Controller
             if ($userId === '') {
                 $userId = null;
             }
-            if ($userId !== null) {
+            // Only an assignee that is NEW FOR THIS NODE is checked. An id
+            // that equals what is already stored under the same node id was
+            // put there by somebody with wider reach and is being echoed back
+            // untouched, not chosen now - see the block below the loop.
+            if ($userId !== null && ($storedAssignees[(string) $node['id']] ?? null) !== $userId) {
                 $assigneeIds[$userId] = true;
             }
 
@@ -428,6 +517,36 @@ class FloorPlansController extends Controller
             'walls' => $cleanWalls,
             'nodes' => $cleanNodes,
         ];
+    }
+
+    /**
+     * The plan's assignees as they stand RIGHT NOW, `[nodeId => user_id]`.
+     *
+     * The exemption `validatedLayout` reads: a node id whose incoming assignee
+     * matches the value here was not chosen by this actor, it was already on
+     * the plan. Nodes with no assignee are left out, so a null incoming id can
+     * never match anything and unassigning is not a check either way.
+     *
+     * @return array<string, string>
+     */
+    private function storedAssignees(MonitoringFloorPlan $plan): array
+    {
+        $stored = [];
+
+        foreach ($plan->layout['nodes'] ?? [] as $node) {
+            if (! is_array($node)) {
+                continue;
+            }
+
+            $nodeId = $node['id'] ?? null;
+            $userId = $node['user_id'] ?? null;
+
+            if (is_string($nodeId) && $nodeId !== '' && is_string($userId) && $userId !== '') {
+                $stored[$nodeId] = $userId;
+            }
+        }
+
+        return $stored;
     }
 
     /** True only for a genuine integer — a numeric string is not one (a coord must be typed). */
