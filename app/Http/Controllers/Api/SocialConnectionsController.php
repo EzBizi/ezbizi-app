@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\Franchise;
 use App\Models\Lead;
 use App\Models\SocialConnection;
+use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Social\Publishing\Publishers;
@@ -292,24 +293,81 @@ class SocialConnectionsController extends Controller
             Status::HTTP_NOT_FOUND,
         );
 
-        /*
-         * The row is found FIRST because the permission depends on which
-         * provider it is, and this used to be one blanket `marketing.edit` for
-         * everything the controller can delete.
-         *
-         * That was half a fix left behind. connectPermission() moved the two
-         * Google providers to the modules that actually read them — Google Ads
-         * to Leads, Business Profile to Reviews — but disconnecting stayed with
-         * Marketing, so the desk that could connect an account could not remove
-         * it, and a desk with no access to Leads at all could. Jose connected
-         * the wrong Google Ads account and had to go to a module he was not
-         * working in to undo it.
-         *
-         * Asking the provider keeps the two ends symmetrical by construction:
-         * a provider added later is gated the same way at both, and the nine
-         * publishing networks are untouched because theirs already answers
-         * `marketing.edit`.
-         */
+        $this->mayDisconnect($user, $row);
+
+        $problems = $this->letGo($user, $row);
+
+        return response()->json(['data' => [
+            'id' => $connection,
+            // Additive. The disconnection succeeded either way; this says
+            // whether anything is left behind on Thumbtack for a person to
+            // remove there.
+            'problems' => $problems,
+        ]]);
+    }
+
+    /**
+     * Every connection of one provider in view, gone in one action.
+     *
+     * One Thumbtack consent makes a row per business — twelve for A-1 Chimney
+     * on 2026-09-09 — and they share one grant. Disconnecting them one at a
+     * time is twelve confirmations, and the first one revokes the grant the
+     * other eleven still need for their own tidy-up. Jose, same day: "we
+     * should have a disconnect all instead, so it disconnected the entire
+     * thumbtack account". So: numbers and webhook per business, the grant
+     * revoked once, on the last row.
+     */
+    public function destroyProvider(Request $request, string $provider): JsonResponse
+    {
+        $user     = $request->user();
+        $provider = SocialProvider::tryFrom($provider);
+
+        abort_if($provider === null, Status::HTTP_NOT_FOUND);
+
+        $rows = SocialConnection::query()
+            ->where('provider', $provider->value)
+            ->orderBy('created_at')
+            ->get()
+            ->filter(fn (SocialConnection $c) => $this->access->inView($user, $c))
+            ->values();
+
+        if ($rows->isNotEmpty()) {
+            $this->mayDisconnect($user, $rows->first());
+        }
+
+        $problems = [];
+
+        foreach ($rows as $i => $row) {
+            $problems = [...$problems, ...$this->letGo($user, $row, revoke: $i === $rows->count() - 1)];
+        }
+
+        return response()->json(['data' => [
+            'provider'     => $provider->value,
+            'disconnected' => $rows->count(),
+            'problems'     => array_values(array_unique($problems)),
+        ]]);
+    }
+
+    /**
+     * The row is found FIRST because the permission depends on which
+     * provider it is, and this used to be one blanket `marketing.edit` for
+     * everything the controller can delete.
+     *
+     * That was half a fix left behind. connectPermission() moved the two
+     * Google providers to the modules that actually read them — Google Ads
+     * to Leads, Business Profile to Reviews — but disconnecting stayed with
+     * Marketing, so the desk that could connect an account could not remove
+     * it, and a desk with no access to Leads at all could. Jose connected
+     * the wrong Google Ads account and had to go to a module he was not
+     * working in to undo it.
+     *
+     * Asking the provider keeps the two ends symmetrical by construction:
+     * a provider added later is gated the same way at both, and the nine
+     * publishing networks are untouched because theirs already answers
+     * `marketing.edit`.
+     */
+    private function mayDisconnect(User $user, SocialConnection $row): void
+    {
         $provider = SocialProvider::tryFrom($row->provider);
 
         abort_unless(
@@ -317,34 +375,39 @@ class SocialConnectionsController extends Controller
             Status::HTTP_FORBIDDEN,
             Refusal::permission('disconnect a social account')->message(),
         );
+    }
 
-        /*
-         * Thumbtack is told, before the row goes.
-         *
-         * Deleting our own row is the easy half. Until 2026-09-08 it was the
-         * only half: the webhook stayed registered and firing at an endpoint
-         * that no longer recognised it, the associate phone numbers stayed on
-         * Thumbtack still claiming that a departed company's handsets answer
-         * for that business, and the grant stayed listed on the Pro's Thumbtack
-         * account as an app with access.
-         *
-         * The Help Center article Thumbtack published for EzBizi states plainly
-         * that disconnecting does all three. `ThumbtackAccount::tidyUp()` was
-         * written to do it and nothing called it — it had tests, and tests on a
-         * method say nothing about whether anything reaches it.
-         *
-         * INLINE, and it has to be: queued, this would run after the row is
-         * deleted, and the tokens it needs go with the row. The alternative is
-         * copying credentials into a job payload, which is worse.
-         *
-         * Never fatal. tidyUp() reports rather than throws, because the account
-         * most likely to fail here — an expired token, a business removed on
-         * Thumbtack's side — is exactly the one somebody is trying to be rid
-         * of. Refusing to let go because the far end will not answer would trap
-         * them in a broken connection with no way out but the database.
-         */
-        $problems = $provider === SocialProvider::Thumbtack
-            ? ThumbtackAccount::tidyUp($row)
+    /**
+     * Thumbtack is told, before the row goes.
+     *
+     * Deleting our own row is the easy half. Until 2026-09-08 it was the
+     * only half: the webhook stayed registered and firing at an endpoint
+     * that no longer recognised it, the associate phone numbers stayed on
+     * Thumbtack still claiming that a departed company's handsets answer
+     * for that business, and the grant stayed listed on the Pro's Thumbtack
+     * account as an app with access.
+     *
+     * The Help Center article Thumbtack published for EzBizi states plainly
+     * that disconnecting does all three. `ThumbtackAccount::tidyUp()` was
+     * written to do it and nothing called it — it had tests, and tests on a
+     * method say nothing about whether anything reaches it.
+     *
+     * INLINE, and it has to be: queued, this would run after the row is
+     * deleted, and the tokens it needs go with the row. The alternative is
+     * copying credentials into a job payload, which is worse.
+     *
+     * Never fatal. tidyUp() reports rather than throws, because the account
+     * most likely to fail here — an expired token, a business removed on
+     * Thumbtack's side — is exactly the one somebody is trying to be rid
+     * of. Refusing to let go because the far end will not answer would trap
+     * them in a broken connection with no way out but the database.
+     *
+     * @return string[] what could not be undone on the far end
+     */
+    private function letGo(User $user, SocialConnection $row, bool $revoke = true): array
+    {
+        $problems = SocialProvider::tryFrom($row->provider) === SocialProvider::Thumbtack
+            ? ThumbtackAccount::tidyUp($row, revoke: $revoke)
             : [];
 
         $this->audit->log('social.disconnected', $row, [
@@ -359,12 +422,6 @@ class SocialConnectionsController extends Controller
 
         $row->delete();
 
-        return response()->json(['data' => [
-            'id' => $connection,
-            // Additive. The disconnection succeeded either way; this says
-            // whether anything is left behind on Thumbtack for a person to
-            // remove there.
-            'problems' => $problems,
-        ]]);
+        return $problems;
     }
 }

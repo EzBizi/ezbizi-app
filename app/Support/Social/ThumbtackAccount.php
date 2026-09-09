@@ -60,7 +60,12 @@ final class ThumbtackAccount
      *
      * @return string[] what could not be undone, in sentences, or empty
      */
-    public static function tidyUp(SocialConnection $connection): array
+    /**
+     * @param  bool  $revoke  false for every business but the last when several
+     *                        rows share one grant: revoking on the first would
+     *                        make the others' tidy-up impossible
+     */
+    public static function tidyUp(SocialConnection $connection, bool $revoke = true): array
     {
         $problems = [];
 
@@ -90,10 +95,12 @@ final class ThumbtackAccount
             },
         );
 
-        $problems[] = self::attempt(
-            'revoke EzBizi\'s access on Thumbtack',
-            static fn () => self::for($connection)->revoke(),
-        );
+        if ($revoke) {
+            $problems[] = self::attempt(
+                'revoke EzBizi\'s access on Thumbtack',
+                static fn () => self::for($connection)->revoke(),
+            );
+        }
 
         return array_values(array_filter($problems));
     }

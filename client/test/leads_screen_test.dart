@@ -406,6 +406,51 @@ void main() {
     expect(find.text('Thumbtack · A1 Chimney'), findsNothing);
   });
 
+  /// The panel is its own route, so the screen's reload did not reach it: a
+  /// row disconnected from inside it stayed until the panel was closed and
+  /// opened again (Jose, 2026-09-09: "after clicking it the item remains").
+  testWidgets('a row disconnected inside the open panel leaves the panel', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: const [],
+      connections: [
+        for (var i = 0; i < 2; i++)
+          {
+            'id': 'c$i',
+            'provider': 'thumbtack',
+            'display_name': 'A1 Chimney',
+            'remote_id': '58126687849144320$i',
+            'status': 'connected',
+          },
+      ],
+    );
+
+    await tester.tap(find.byKey(const ValueKey('sources-manage')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('2 that have never sent a lead'));
+    await tester.pumpAndSettle();
+
+    final row = find.byKey(const ValueKey('leads-account-c0'));
+    expect(row, findsOneWidget);
+
+    await tester.tap(
+      find.descendant(of: row, matching: find.text('Disconnect')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(of: row, matching: find.text('Disconnect')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Connected sources'), findsWidgets, reason: 'still open');
+    expect(find.byKey(const ValueKey('leads-account-c0')), findsNothing);
+    expect(find.byKey(const ValueKey('leads-account-c1')), findsOneWidget);
+    expect(find.textContaining('Thumbtack · 1'), findsOneWidget);
+  });
+
   testWidgets('without leads.edit the sources panel names who can connect '
       'instead of offering a button that would be refused', (tester) async {
     await _pump(
@@ -745,6 +790,19 @@ Future<void> _pump(
                 'note_updated_at': '2026-09-08T18:00:00Z',
             },
           }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
+      // A disconnect takes the row out of what the next list read returns,
+      // the way the real endpoint does.
+      if (request.method == 'DELETE' &&
+          request.url.path.startsWith('/api/v1/social/connections/')) {
+        final id = request.url.path.split('/').last;
+        connections.removeWhere((c) => c['id'] == id);
+        return http.Response(
+          '{"data":{}}',
           200,
           headers: {'content-type': 'application/json'},
         );
