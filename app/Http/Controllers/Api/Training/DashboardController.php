@@ -354,6 +354,21 @@ class DashboardController extends Controller
             ->get(['training_attempts.test_id', 'training_attempts.score', 'training_attempts.passed', 'training_attempts.expires_on'])
             ->keyBy('test_id');
 
+        // The whole history, same ruling as the pane's (owner, "all"). Kept
+        // here as well as there because these two reads answer the SAME
+        // question about the same person on the same day — the in-tab pane
+        // and HR's record card — and one of them showing three attempts
+        // while the other shows one is the drift this module has spent its
+        // life avoiding. HR's card is not built yet, so it is cheaper to
+        // ship the shape now than to change it under a consumer later.
+        $historyByTest = $testIds === [] ? collect() : TrainingAttempt::query()
+            ->where('user_id', $subject->getKey())
+            ->whereIn('test_id', $testIds)
+            ->orderByDesc('taken_at')
+            ->orderByDesc('id')
+            ->get(['test_id', 'score', 'passed', 'taken_at', 'expires_on'])
+            ->groupBy('test_id');
+
         $today = now()->toDateString();
 
         $data = [];
@@ -380,9 +395,15 @@ class DashboardController extends Controller
         foreach ($tests as $test) {
             $isAssigned = in_array($test->id, $assignedTestIds, true);
             $s = $standing->get($test->id);
+            $attempts = $historyByTest->get($test->id, collect());
             $lapsed = $s !== null && $s->passed && $s->expires_on !== null && $s->expires_on->toDateString() <= $today;
 
-            if (! $isAssigned && $s === null) {
+            // `$standing` is the latest PASSED attempt, so testing it alone
+            // dropped anybody who has only ever FAILED an unassigned test —
+            // exactly the person a record card is most wanted for. Asking
+            // the history instead is what "all" means here: any attempt at
+            // all earns a row.
+            if (! $isAssigned && $s === null && $attempts->isEmpty()) {
                 continue;
             }
 
@@ -395,6 +416,12 @@ class DashboardController extends Controller
                 'passed' => $s?->passed,
                 'expires_on' => $s?->expires_on?->toDateString(),
                 'due_for_retaking' => $lapsed,
+                'attempts' => $attempts->map(fn (TrainingAttempt $a) => [
+                    'taken_at' => $a->taken_at?->toIso8601String(),
+                    'score' => $a->score,
+                    'passed' => $a->passed,
+                    'expires_on' => $a->expires_on?->toDateString(),
+                ])->values()->all(),
             ];
         }
 
@@ -762,22 +789,44 @@ class DashboardController extends Controller
             return [];
         }
 
-        // Every attempt, latest first, so the first one kept per user in
-        // the map below is their most recent — the same "what does this
-        // person see right now" question the row states already answer,
-        // just carrying the score and pass flag alongside it.
+        // Every attempt, latest first — the whole history, not just the
+        // current standing (owner, 2026-09-09, asked whether this pane shows
+        // a person's whole history or only where they stand now; his answer
+        // was "all").
+        //
+        // The top-level `score`/`passed`/`expires_on` still describe the
+        // LATEST attempt and are unchanged, because the row's own `state`
+        // is built from current standing and the two must not disagree in
+        // the same row. `attempts` is added ALONGSIDE them rather than
+        // replacing them: a reader wanting "where are they now" keeps the
+        // answer it already had, and one wanting "how did they get here"
+        // now has it too.
+        //
+        // `groupBy` preserves each group's original sequence (Laravel's own
+        // contract), so every list stays taken_at/id descending — the same
+        // property `LapsedPasses::attemptsCountingTowardCapBatch` relies on.
         return TrainingAttempt::query()
             ->where('test_id', $testId)
             ->whereIn('user_id', $userIds)
             ->orderByDesc('taken_at')
             ->orderByDesc('id')
-            ->get(['user_id', 'score', 'passed', 'expires_on'])
-            ->unique('user_id')
-            ->mapWithKeys(fn (TrainingAttempt $a) => [$a->user_id => [
-                'score' => $a->score,
-                'passed' => $a->passed,
-                'expires_on' => $a->expires_on?->toDateString(),
-            ]])
+            ->get(['user_id', 'score', 'passed', 'taken_at', 'expires_on'])
+            ->groupBy('user_id')
+            ->map(function (Collection $attempts) {
+                $latest = $attempts->first();
+
+                return [
+                    'score' => $latest->score,
+                    'passed' => $latest->passed,
+                    'expires_on' => $latest->expires_on?->toDateString(),
+                    'attempts' => $attempts->map(fn (TrainingAttempt $a) => [
+                        'taken_at' => $a->taken_at?->toIso8601String(),
+                        'score' => $a->score,
+                        'passed' => $a->passed,
+                        'expires_on' => $a->expires_on?->toDateString(),
+                    ])->values()->all(),
+                ];
+            })
             ->all();
     }
 

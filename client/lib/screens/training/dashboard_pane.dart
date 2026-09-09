@@ -577,6 +577,18 @@ class _PersonRow extends StatelessWidget {
   final Map<String, dynamic> person;
   final Session session;
 
+  /// One attempt as one line: when it was sat, what it scored, and whether
+  /// it passed. `score` may legitimately be null -- `testDetailByUser` sends
+  /// it for an attempt that recorded none -- so it says so rather than
+  /// printing "null%".
+  static String _attemptLine(Map attempt, DisplayFormats formats) {
+    final when = formatStamp(attempt['taken_at'], 'Undated', formats: formats);
+    final score = attempt['score'] is num ? '${(attempt['score'] as num).toInt()}%' : 'No score';
+    final outcome = attempt['passed'] == true ? 'Passed' : 'Failed';
+
+    return '$when  -  $score  -  $outcome';
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -602,6 +614,18 @@ class _PersonRow extends StatelessWidget {
     final hasScore = person.containsKey('score');
     final score = person['score'] is num ? (person['score'] as num).toInt() : null;
 
+    // Every attempt, newest first (owner, 2026-09-09: asked whether this
+    // pane shows a person's whole history or only where they stand now, he
+    // said "all"). Absent on a GUIDE row, which has no attempts to carry --
+    // its history is the progress bar below.
+    //
+    // Drawn only from the SECOND attempt onward. With exactly one, the score
+    // tag above already IS the history, and repeating it under a heading
+    // would say the same fact twice in one row.
+    final attempts = person['attempts'] is List
+        ? (person['attempts'] as List).whereType<Map>().toList()
+        : const <Map>[];
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Column(
@@ -618,6 +642,18 @@ class _PersonRow extends StatelessWidget {
               if (hasScore) Tag(score == null ? 'No score yet' : '$score%'),
             ],
           ),
+          if (attempts.length > 1) ...[
+            const SizedBox(height: 8),
+            Text('Attempts', style: theme.textTheme.labelSmall),
+            const SizedBox(height: 2),
+            for (final attempt in attempts)
+              Text(
+                _attemptLine(attempt, me.display),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+          ],
           if (fraction != null) ...[
             const SizedBox(height: 8),
             ClipRRect(
