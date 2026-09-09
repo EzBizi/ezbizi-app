@@ -1,17 +1,25 @@
 /// Which clock a schedule was filed against, in words a person can act on.
 ///
 /// The server already names the zone on every scheduled newsletter and post
-/// (`scheduled_timezone`), and until now nothing in this client read it. That
-/// left the composer promising "the time you pick is the time it goes out
-/// there" while naming the PLACE — and above franchise scope the clock is the
-/// platform default `Etc/GMT+5`, a fixed offset that does not move with
-/// daylight saving the way the place does. Same wall time, an hour apart from
-/// March to November, with nothing on screen saying so.
+/// (`scheduled_timezone`), and until this existed nothing in this client read
+/// it. That left the composer promising "the time you pick is the time it goes
+/// out there" while naming the PLACE, when the clock the server had actually
+/// filed against might be a fixed offset — which stands still while the place
+/// it is named after moves an hour in March. Same wall time, an hour apart
+/// from March to November, with nothing on screen saying so.
 ///
-/// This does not fix that. Choosing between real zones and fixed offsets is a
-/// platform decision on Jose's list, and quietly resolving it inside Marketing
-/// is how two modules come to disagree about what time it is. What this does
-/// is stop the app from hiding which of the two you got.
+/// **This names the condition, not a value, deliberately.** An earlier version
+/// of this docblock said "the platform default `Etc/GMT+5`", and it was false
+/// within a day: Phone measured the setting, Jose chose Miami's clock, and the
+/// default became `America/New_York` (SettingRegistry). A comment pinned to
+/// somebody else's current value is a comment with an expiry date on it.
+///
+/// The hazard did NOT go away with the default, which is the reason to say it
+/// this way. Fixed offsets are still selectable — twenty-seven of them, now
+/// labelled "fixed, no daylight saving" — so a view can still resolve one,
+/// deliberately or by inheritance. Whether that is the right offering is a
+/// platform decision and not Marketing's. Naming which clock you actually got
+/// is not a decision at all, and that is all this does.
 library;
 
 final RegExp _fixed = RegExp(r'^Etc/GMT([+-])(\d{1,2})$');
