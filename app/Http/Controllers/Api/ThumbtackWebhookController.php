@@ -10,6 +10,7 @@ use App\Support\Social\ThumbtackWebhooks;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response as Status;
 use Throwable;
 
@@ -139,6 +140,28 @@ class ThumbtackWebhookController extends Controller
             $negotiationId = $this->negotiationIdFrom($payload);
 
             if ($negotiationId === null) {
+                /*
+                 * An authenticated lead event that produced nothing, which is
+                 * the worst thing this endpoint can do quietly.
+                 *
+                 * On 2026-09-09 Thumbtack sent two real events to a connected
+                 * business, both authenticated, both answered 200 with
+                 * handled:false, and nothing was written or logged. From the
+                 * outside that is indistinguishable from Thumbtack never having
+                 * sent anything — and their API cannot list negotiations, so
+                 * there is no second way to find what was missed.
+                 *
+                 * The keys are logged, never the values: a negotiation payload
+                 * carries a customer's name and phone number, and this is a
+                 * diagnostic, not a copy of the lead.
+                 */
+                Log::warning('Thumbtack sent a lead event with no negotiation id.', [
+                    'event'        => $event,
+                    'connection'   => $connection->getKey(),
+                    'business'     => $connection->remote_id,
+                    'payload_keys' => $this->shapeOf($payload),
+                ]);
+
                 return false;
             }
 
@@ -177,7 +200,61 @@ class ThumbtackWebhookController extends Controller
          * stays so the event is not lost when that module grows a Thumbtack
          * source; answering false says plainly that nothing was written.
          */
+        if ($event !== 'ReviewCreatedV4') {
+            /*
+             * An event type we did not expect at all.
+             *
+             * Reviews reaching here is normal and silent. Anything else means
+             * either Thumbtack sends a type absent from their own webhook enum,
+             * or the type sits under a key we do not read — and both look
+             * exactly like a working integration receiving nothing, because
+             * that is what this endpoint reports.
+             *
+             * Logged as a warning rather than dropped, because it is the first
+             * thing worth reading when somebody says "I connected it and no
+             * leads are showing up".
+             */
+            Log::warning('Thumbtack sent an event type EzBizi does not handle.', [
+                'event'        => $event === '' ? '(none found in payload)' : $event,
+                'connection'   => $connection->getKey(),
+                'business'     => $connection->remote_id,
+                'payload_keys' => $this->shapeOf($payload),
+            ]);
+        }
+
         return false;
+    }
+
+    /**
+     * The nesting of a payload, without any of its values.
+     *
+     * "negotiation.business.businessID" rather than the customer's phone
+     * number. It is the shape that is wrong when an id cannot be found, and the
+     * shape is the part that is safe to write down.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return string[]
+     */
+    private function shapeOf(array $payload, string $prefix = '', int $depth = 0): array
+    {
+        $keys = [];
+
+        foreach ($payload as $key => $value) {
+            $path = $prefix === '' ? (string) $key : $prefix.'.'.$key;
+
+            // Three deep is past where any documented id sits; deeper than that
+            // is a message body or an attachment list, and listing it would be
+            // noise in a log somebody reads in a hurry.
+            if (is_array($value) && $depth < 3) {
+                $keys = [...$keys, ...$this->shapeOf($value, $path, $depth + 1)];
+
+                continue;
+            }
+
+            $keys[] = $path;
+        }
+
+        return $keys;
     }
 
     /**

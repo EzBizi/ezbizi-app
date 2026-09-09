@@ -66,7 +66,10 @@ class TimeClockExtendTest extends TestCase
         $this->assertSame(422, $response->status());
         $this->assertStringContainsString('You are not on a scheduled shift.', $response->getContent());
 
-        // Open but unscheduled (no work_schedule at all): same sentence.
+        // Open but unscheduled: a Saturday, when the business hours the
+        // fallback reads (2026-09-09) are closed. On a weekday a person with
+        // no personal schedule IS scheduled, by those hours.
+        Carbon::setTestNow(Carbon::parse('2026-09-12 15:00:00', 'UTC'));
         $this->signedInAs($person)->postJson('/api/v1/time-clock/clock-in')->assertOk();
         $this->signedInAs($person)->postJson('/api/v1/time-clock/extend')->assertStatus(422);
     }

@@ -8,6 +8,20 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0171',
+      date: '9 Sep 2026',
+      items: [
+        'Clock in: people with no personal schedule now follow their branch\'s Business hours, so the lock screen, the end-of-shift reminder and the automatic clock-out work as soon as the organization turns them on.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0170',
+      date: '9 Sep 2026',
+      items: [
+        'Leads now has a row of source tabs - All, Google, Thumbtack, Chat, Forms - instead of the source sitting among the filter chips. It is still one list underneath: a tab narrows it, the same as the filter did.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0169',
       date: '8 Sep 2026',
       items: [

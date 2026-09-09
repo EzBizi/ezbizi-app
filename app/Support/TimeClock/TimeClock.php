@@ -2,6 +2,7 @@
 
 namespace App\Support\TimeClock;
 
+use App\Models\Assignment;
 use App\Models\AutomationEvent;
 use App\Models\Organization;
 use App\Models\TimeClockShift;
@@ -11,6 +12,7 @@ use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Scoping\ViewScope;
+use App\Support\Settings\SettingDefinition;
 use App\Support\Settings\SettingRegistry;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Database\Eloquent\Builder;
@@ -58,7 +60,7 @@ final class TimeClock
         $enabled = $this->organizationEnabled($organization);
         $canClock = $user->hasPermission('time_clock.view');
         $open = TimeClockShift::openFor($user);
-        $window = WorkSchedule::windowFor($user->work_schedule, now());
+        $window = WorkSchedule::windowFor($this->scheduleFor($user), now());
 
         // The four gates of design 2026-09-08 §3.8, plus the org's own Clock
         // in switch. A day off never locks; after the scheduled end on a
@@ -126,7 +128,7 @@ final class TimeClock
                 }
 
                 $now = now();
-                $window = WorkSchedule::windowFor($user->work_schedule, $now);
+                $window = WorkSchedule::windowFor($this->scheduleFor($user), $now);
 
                 $shift = TimeClockShift::query()->create([
                     'organization_id' => $user->organization_id,
@@ -293,6 +295,52 @@ final class TimeClock
             'timezone' => $tz,
             'timezone_label' => SettingRegistry::timezoneLabel($tz),
             'shifts' => $shifts->map(fn (TimeClockShift $shift) => $this->presentShift($shift, $tz, $timeFormat))->all(),
+        ];
+    }
+
+    /**
+     * The person's own schedule, or their place's Business hours when they
+     * have none (2026-09-09: the lock did nothing for anybody until HR typed a
+     * personal schedule, even with hours set on the organization).
+     *
+     * Place is the FIRST assignment: franchise, then company, then the
+     * organization, resolved through the settings cascade so a branch with
+     * its own hours and clock gets them. ponytail: a person assigned to two
+     * places takes the first; a per-assignment choice waits for somebody
+     * needing it.
+     *
+     * @return null|array{timezone: string, days: array<string, null|array{start: string, end: string}>}
+     */
+    private function scheduleFor(User $user): ?array
+    {
+        if (is_array($user->work_schedule)) {
+            return $user->work_schedule;
+        }
+
+        $assignment = $user->assignments()->orderBy('created_at')->first();
+        $scope = match ($assignment?->scopeType()) {
+            Assignment::SCOPE_FRANCHISE => $assignment->assignedFranchise,
+            Assignment::SCOPE_COMPANY => $assignment->assignedCompany,
+            default => null,
+        } ?? $user->organization;
+
+        $hours = $this->settings->get('ops.business_hours', $scope);
+
+        if (! is_array($hours)) {
+            return null;
+        }
+
+        $days = [];
+        foreach (SettingDefinition::WEEKDAYS as $day) {
+            $window = $hours[$day] ?? null;
+            $days[$day] = is_array($window) && isset($window['open'], $window['close'])
+                ? ['start' => (string) $window['open'], 'end' => (string) $window['close']]
+                : null;
+        }
+
+        return [
+            'timezone' => (string) $this->settings->get('timezone', $scope),
+            'days' => $days,
         ];
     }
 

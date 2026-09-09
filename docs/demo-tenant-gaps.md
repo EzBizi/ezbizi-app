@@ -46,10 +46,10 @@ Ordered by what it would buy on a store page.
 
 | Module | Zero rows | Screen today |
 |---|---|---|
-| **Scheduling** | `ServiceArea`, `ServiceAreaZip` | "Search a zip code or an area name to see its week" — nothing else on screen |
+| ~~**Scheduling**~~ | ✅ filled 2026-09-09 | 3 areas, 10 zips, 15 weekday slots |
 | **Inspection** | `InspectionReport`, `InspectionRun` | New Inspection is a search box over nothing; Generated Reports correctly shows none. The definition exists, so only filed work is missing |
-| **HR** | ~~`Contract`~~ (done, see below), `ContractSignature`, `Onboarding`, `TimeClockShift`, `TrainingGuide`, `Invitation` | Eight people on the books and every other line reads 0 |
-| **Fleet** | `VehicleAssignment`, `VehicleServiceVisit` | Five real vehicles, all five captioned "Nobody has the keys" |
+| **HR** | ~~`Contract`~~ ✅, ~~`TimeClockShift`~~ ✅, still open: `ContractSignature`, `Onboarding`, `TrainingGuide`, `Invitation` | 13 people now, 5 of them invented staff; 10 shifts |
+| ~~**Fleet**~~ | ✅ filled 2026-09-09 | 5 assignments, 5 service visits; "Nobody has the keys" is gone |
 | **Phone** | `PhoneNumber` and everything below it | "No phone lines yet. Add one in Settings." |
 | **Marketing** | `Newsletter`, `NewsletterAudience`, `SocialPost` | Newsletter still carries a "Not built yet" badge, which is a build gap, not a data one |
 | **Web / Email** | `WebSite`, `Mailbox` | Both are connection-backed |
@@ -98,3 +98,36 @@ Still open in HR: `Onboarding` and `TrainingGuide`. Onboarding is a workflow
 somebody walks through rather than a row to plant, and `training_guides.screens`
 is still an unread json shape. `demo:fill` (committed, not yet deployed) covers
 Scheduling, Fleet assignments and the time clock.
+
+## Filled, 2026-09-09
+
+`demo:fill` ran on production (release 20260909005217), twice. Measured before
+and after rather than after only:
+
+| | before | after |
+|---|---|---|
+| Users / Assignments | 8 / 8 | **13 / 13** — none unplaced |
+| ServiceArea / Zip / Slot | 0 / 0 / 0 | **3 / 10 / 15** |
+| VehicleAssignment / ServiceVisit | 0 / 0 | **5 / 5** |
+| TimeClockShift | 0 | **10** |
+
+**A1-Group unchanged**, measured both sides: User=7, Assignment=7,
+TimeClockShift=11. The baseline is the point — the contracts entry above could
+only ever claim this from timestamps, because no before-reading was taken.
+
+Idempotent on production, not only under test: a second full run left every
+count identical. It still PRINTS write-looking lines, because `firstOrCreate`
+reports the row whether it created it or not. The counts are the fact.
+
+Two things the run does that the dry run cannot show. Staff are created first,
+so on a `--dry-run` the fleet and time-clock steps report "no active users,
+skipped" — they are reading a tenant where the staff do not exist yet. And the
+five staff are PLACED at the franchise; a user with no `Assignment` is
+"unplaced", visible only to somebody standing at the organization, and would
+have shown on the HR dashboard as its own "Not assigned to a place" row.
+
+Still open: HR's `Onboarding` (a workflow somebody walks, not a row to plant)
+and `TrainingGuide` (unread `screens` json). Screenshots have NOT been re-shot
+— Jose 2026-09-09: not unless Apple asks. When they are, run from a CLEAN
+worktree: store-screenshots.sh syncs the caller's checkout, and this shared tree
+usually carries other sessions' work in progress.
