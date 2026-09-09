@@ -14,6 +14,8 @@ class VersionHistory {
         'Clock in: people with no personal schedule now follow their branch\'s Business hours, so the lock screen, the end-of-shift reminder and the automatic clock-out work as soon as the organization turns them on.',
         'Web Management: your chat bubble and contact form start from your own brand colour now, not ours - they appear on your website, so they should look like you. Set it once and every site follows; a site that wants its own still overrides it.',
         'Web Management: the text on the button picks itself, black or white, so it stays readable whatever colour you choose.',
+        'On a phone, Your account - Work schedule now opens with today at the top and the hours large, with the rest of the week beneath it. The desktop card is unchanged.',
+        'Monitoring now records who added, changed or removed a camera, and who took control of a machine and when, in the same audit trail every other action leaves.',
       ],
     ),
     VersionRelease(
