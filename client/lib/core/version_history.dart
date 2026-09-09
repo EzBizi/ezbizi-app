@@ -18,6 +18,7 @@ class VersionHistory {
         'Scheduling: a zip code can carry the city it is in, and Availability can then be searched by city - useful when somebody on the phone knows the town and not the postcode.',
         'Scheduling: the Availability search suggests as you type, and says whether each suggestion is a service area, a city or a zip code. It used to guess from what you typed - all digits meant a zip, anything else meant an area name - so a city found nothing and said "we do not cover that", which was a wrong answer in the right answer\'s words.',
         'Scheduling: the list of service areas is grouped under the branch that owns each one, with the company named too when two branches share a name. Twenty-six areas from several branches used to arrive as one flat list with nothing saying which belonged to what.',
+        'Human Resources: a guide in progress on the Training card now says the screen the person has actually reached, matching what they see in Training.',
       ],
     ),
     VersionRelease(
