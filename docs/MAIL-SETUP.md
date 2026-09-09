@@ -252,6 +252,33 @@ for character. Delegated scopes `Mail.Read` `Mail.Send` `offline_access`
 optional `MICROSOFT_MAIL_REDIRECT_URI`. Until those exist, Email refuses to
 start a sign-in and says so. Shared team inboxes only.
 
+**Every value above was checked against the code on 2026-09-09** —
+`MicrosoftOAuth::CALLBACK_PATH` and the four `SCOPE_` constants — rather than
+trusted from this page. They match.
+
+### The one choice on the form that this page did not name
+
+**Supported account types must be MULTI-TENANT** — *"Accounts in any
+organizational directory (Any Microsoft Entra ID tenant - Multitenant)"*.
+
+Not the default. Azure's registration form defaults to single-tenant, which is
+the right answer for an app your own staff sign into and the wrong one here: a
+customer's Outlook mailbox lives in the CUSTOMER'S tenant, not ours. Pick
+single-tenant and it will work perfectly when tested with a company address and
+refuse every customer who is not us, with an error about the account not
+existing in the directory — which reads like their problem and is ours.
+
+The code is already committed to this and cannot be talked out of it:
+`MicrosoftOAuth` authorises, exchanges and revokes against
+`login.microsoftonline.com/common/...`, and `/common` is the multi-tenant
+endpoint. A single-tenant registration and a `/common` endpoint disagree, and
+the sign-in is where that disagreement surfaces.
+
+Personal Microsoft accounts (the "and personal Microsoft accounts" variant) are
+not needed. This module connects shared team inboxes on Microsoft 365, and
+offering Outlook.com would widen the consent screen for a case the module does
+not serve.
+
 ---
 
 ## Still to come
