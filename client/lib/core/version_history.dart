@@ -13,6 +13,9 @@ class VersionHistory {
       items: [
         'Monitoring: the Lead Developer\'s own machine is never screen-captured, live-viewed, or remote-controlled - it still shows online with its specs, but its screen is off-limits, since that account handles credentials.',
         'The desktop app opens at the size and position you left it, maximized if it was maximized, including after an update. It used to come back at the default size every time.',
+        'The incoming call bar goes away when the call does. If the caller hung up, or a colleague answered first, the bar stayed across the top of every screen offering to answer a call that had already ended, until the app was reloaded.',
+        'Answering a call no longer leaves you marked "on a call" afterwards. That mattered more than it looked: ring groups skip anybody who is on a call, so the line stopped ringing for that person until they signed out and back in - and the availability control could not clear it, because it deliberately refuses to overwrite a live call.',
+        'The availability icon in the top bar keeps up with what you are doing. It read your status once when the app opened and never again, so it showed what was true at sign-in for the rest of the session.',
       ],
     ),
     VersionRelease(
