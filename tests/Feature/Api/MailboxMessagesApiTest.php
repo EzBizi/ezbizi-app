@@ -6,6 +6,7 @@ use App\Models\AuditEvent;
 use App\Models\AutomationEvent;
 use App\Models\Mailbox;
 use App\Models\MailboxGrant;
+use App\Models\MessageDealt;
 use App\Models\MessageSeen;
 use App\Models\Role;
 use App\Models\User;
@@ -899,6 +900,182 @@ class MailboxMessagesApiTest extends TestCase
             ->assertForbidden();
 
         $this->assertSame([], FakeMailboxReader::$replies);
+    }
+
+    // ══ 4. DEALT WITH — the inbox's fact, not a person's ═════════
+
+    /**
+     * THE DISTINCTION THE WHOLE FEATURE RESTS ON.
+     *
+     * ═══════════════════════════════════════════════════════════════
+     *  Marking a message handled must NOT record that anybody read
+     *  it. "Seen by Jenny" is a claim about a person, and a rule —
+     *  or a colleague clicking Dealt with from the list without
+     *  opening anything — has not read it.
+     *
+     *  If these two ever merge, the failure is quiet and expensive:
+     *  a colleague sees a name against a message, believes it was
+     *  looked at, and skips a customer who was never answered.
+     * ═══════════════════════════════════════════════════════════════
+     */
+    public function test_marking_dealt_does_not_claim_anybody_read_it(): void
+    {
+        $this->withFakeProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/dealt")
+            ->assertOk()
+            ->assertJsonPath('data.dealt.by', $t['admin']->name);
+
+        $this->inTenant($t['org'], function () use ($mailbox) {
+            $this->assertSame(1, MessageDealt::where('mailbox_id', $mailbox->getKey())->count());
+
+            // The control, and the point: no read mark was invented.
+            $this->assertSame(
+                0,
+                MessageSeen::where('mailbox_id', $mailbox->getKey())->count(),
+                'Marking a message handled recorded that somebody READ it. '
+                .'"Seen by" is a statement about a person and this was not one.',
+            );
+        });
+    }
+
+    /** One row for the inbox, however many people press it. */
+    public function test_marking_dealt_twice_is_one_fact(): void
+    {
+        $this->withFakeProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view'], email: 'jenny@a1.test');
+
+        $this->grant($t, $mailbox, 'Front desk');
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/dealt")->assertOk();
+        $this->signedInAs($jenny)
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/dealt")->assertOk();
+
+        $this->inTenant($t['org'], function () use ($mailbox) {
+            $this->assertSame(1, MessageDealt::where('mailbox_id', $mailbox->getKey())->count());
+        });
+    }
+
+    /**
+     * ANYBODY who can read the inbox may undo it — unlike "seen".
+     *
+     * `unsee` takes off only the caller's own mark, because that is their fact.
+     * This is the inbox's fact: when the customer turns out not to have been
+     * answered, whoever notices must be able to say so without tracking down
+     * whoever marked it.
+     */
+    public function test_somebody_else_can_undo_a_dealt_mark(): void
+    {
+        $this->withFakeProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view'], email: 'jenny@a1.test');
+
+        $this->grant($t, $mailbox, 'Front desk');
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/dealt")->assertOk();
+
+        $this->signedInAs($jenny)
+            ->deleteJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/dealt")
+            ->assertOk()
+            ->assertJsonPath('data.dealt', null);
+
+        $this->inTenant($t['org'], function () use ($mailbox) {
+            $this->assertSame(0, MessageDealt::where('mailbox_id', $mailbox->getKey())->count());
+        });
+    }
+
+    public function test_somebody_who_cannot_open_an_inbox_cannot_mark_it_dealt(): void
+    {
+        $this->withFakeProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+        $clerk   = $this->userWithRole($t, 'Clerk', ['email.view']);
+
+        $this->signedInAs($clerk)
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/dealt")
+            ->assertForbidden();
+
+        $this->inTenant($t['org'], function () use ($mailbox) {
+            $this->assertSame(0, MessageDealt::where('mailbox_id', $mailbox->getKey())->count());
+        });
+    }
+
+    /** The list carries it, so a busy inbox shows what still needs answering. */
+    public function test_the_list_says_which_messages_are_handled(): void
+    {
+        $this->withFakeProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+
+        FakeMailboxReader::$page = new MessagePage([$this->summary(), $this->summary('m-2', 'Second')], null);
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/dealt")->assertOk();
+
+        FakeMailboxReader::$page = new MessagePage([$this->summary(), $this->summary('m-2', 'Second')], null);
+
+        $body = $this->signedInAs($t['admin'])
+            ->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages")
+            ->assertOk()->json('data');
+
+        $this->assertArrayHasKey('m-1', $body['dealt']);
+
+        // The control: the OTHER message is absent rather than the map being
+        // full of everything or empty of everything.
+        $this->assertArrayNotHasKey('m-2', $body['dealt']);
+    }
+
+    /**
+     * Item 2: the two settings are one intent.
+     *
+     * An inbox told to mirror its read state to Gmail is one where "handled
+     * here" should mean "handled there" — marking it twice, in two
+     * applications, is what that switch exists to stop.
+     */
+    public function test_marking_dealt_also_marks_read_at_the_service_when_switched_on(): void
+    {
+        $this->withFakeProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+
+        $this->inTenant($t['org'], fn () => $mailbox->update(['mark_read_at_source' => true]));
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/dealt")
+            ->assertOk()
+            ->assertJsonPath('data.at_source', true);
+
+        $this->assertSame(['m-1'], FakeMailboxReader::$markedAtSource);
+    }
+
+    /** And leaves it alone when the mailbox never asked. */
+    public function test_marking_dealt_leaves_the_service_alone_by_default(): void
+    {
+        $this->withFakeProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/dealt")
+            ->assertOk()
+            ->assertJsonPath('data.at_source', null);
+
+        $this->assertSame([], FakeMailboxReader::$markedAtSource);
     }
 
     // ══ 4a. MARKING READ AT THE MAIL SERVICE ═════════════════════

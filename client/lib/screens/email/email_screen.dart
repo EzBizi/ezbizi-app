@@ -113,6 +113,15 @@ class _EmailScreenState extends State<EmailScreen> {
   bool _loadingList = true;
   String? _listError;
   List<MessageHeader> _messages = const [];
+
+  /// Which messages on screen are handled: id -> {at, by}.
+  ///
+  /// Kept beside the rows rather than folded into MessageHeader, for the same
+  /// reason the server keeps it out of the message shape: a header describes
+  /// what a PROVIDER returned, and "somebody here has handled this" is a fact
+  /// about EzBizi that no provider knows. `by` is null when an automation did
+  /// it, which the chip says in words.
+  Map<String, Map<String, dynamic>> _dealt = const {};
   int _page = 1;
   int _lastPage = 1;
   String? _nextCursor;
@@ -283,9 +292,68 @@ class _EmailScreenState extends State<EmailScreen> {
         mailbox: mailbox,
       );
       _messages = appending ? [..._messages, ...parsed.rows] : parsed.rows;
+      _dealt = appending ? {..._dealt, ..._dealtFrom(response.data)} : _dealtFrom(response.data);
       _page = parsed.page;
       _lastPage = parsed.lastPage;
       _nextCursor = parsed.nextCursor;
+    });
+  }
+
+  /// The handled map off a page response, or empty when it carried none.
+  ///
+  /// Empty rather than null: "no message on this page is handled" and "this
+  /// build asked a server that does not send it" both mean the same thing HERE
+  /// — draw no chips — and inventing a third state for a shape that is simply
+  /// absent would put a nullable through every row for nothing.
+  Map<String, Map<String, dynamic>> _dealtFrom(Object? data) {
+    if (data is! Map || data['dealt'] is! Map) return const {};
+
+    final out = <String, Map<String, dynamic>>{};
+
+    (data['dealt'] as Map).forEach((key, value) {
+      if (key is String && value is Map) {
+        out[key] = Map<String, dynamic>.from(value);
+      }
+    });
+
+    return out;
+  }
+
+  /// Mark the open message handled, or take it back.
+  ///
+  /// The list is what shows it, so the map is updated in place rather than
+  /// re-fetching the page: a refetch would cost a provider round trip to learn
+  /// something this client already knows, and on a slow mailbox the chip would
+  /// appear a second after the click.
+  Future<void> _toggleDealt(Mailbox mailbox, String messageId) async {
+    final wasDealt = _dealt.containsKey(messageId);
+
+    final response = wasDealt
+        ? await widget.api.delete('/email/mailboxes/${mailbox.id}/messages/$messageId/dealt')
+        : await widget.api.post('/email/mailboxes/${mailbox.id}/messages/$messageId/dealt', const {});
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(response.reason)),
+      );
+      return;
+    }
+
+    setState(() {
+      final next = {..._dealt};
+
+      if (wasDealt) {
+        next.remove(messageId);
+      } else {
+        final data = response.data;
+        next[messageId] = data is Map && data['dealt'] is Map
+            ? Map<String, dynamic>.from(data['dealt'] as Map)
+            : <String, dynamic>{'at': null, 'by': null};
+      }
+
+      _dealt = next;
     });
   }
 
@@ -1199,6 +1267,8 @@ class _EmailScreenState extends State<EmailScreen> {
                             formats: widget.session.me!.display,
                             refusal: _replyRefusal(mailbox, _open!),
                             onReply: () => _reply(mailbox, _open!),
+                            dealt: _dealt.containsKey(_open!.id),
+                            onToggleDealt: () => _toggleDealt(mailbox, _open!.id),
                             api: widget.api,
                           ),
                   ),
@@ -1294,6 +1364,8 @@ class _MessageView extends StatelessWidget {
     required this.formats,
     required this.refusal,
     required this.onReply,
+    required this.dealt,
+    required this.onToggleDealt,
     required this.api,
   });
 
@@ -1303,6 +1375,12 @@ class _MessageView extends StatelessWidget {
   final DisplayFormats formats;
   final String? refusal;
   final VoidCallback onReply;
+
+  /// Is this message already marked handled?
+  final bool dealt;
+
+  /// Toggle it. The screen owns the map, so the pane only reports the press.
+  final VoidCallback onToggleDealt;
   final ApiClient api;
 
   @override
@@ -1364,19 +1442,45 @@ class _MessageView extends StatelessWidget {
               // button next to a subject line is the arrangement that squeezes
               // the subject into a two-word column at 375px — PanelHeader's own
               // bug, twice, and the fix there was the same shape as this.
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Refused(
-                  reason: refusal,
-                  child: FilledButton.icon(
-                    onPressed: refusal == null ? onReply : null,
-                    icon: const Icon(Icons.reply, size: 18),
-                    // The address on the control that opens the composer, so
-                    // the answer to "who will this come from" is on screen
-                    // before anybody starts typing rather than after.
-                    label: Text('Reply as ${mailbox.address}'),
+              // Wrap, not Row: "Reply as bookings@a-1chimney.com" beside a
+              // second control overflows a 375px pane, and a button pushed off
+              // the edge is an action somebody cannot reach.
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Refused(
+                    reason: refusal,
+                    child: FilledButton.icon(
+                      onPressed: refusal == null ? onReply : null,
+                      icon: const Icon(Icons.reply, size: 18),
+                      // The address on the control that opens the composer, so
+                      // the answer to "who will this come from" is on screen
+                      // before anybody starts typing rather than after.
+                      label: Text('Reply as ${mailbox.address}'),
+                    ),
                   ),
-                ),
+
+                  /*
+                   * Handled, which is NOT the same as read.
+                   *
+                   * Opening this message already marked it seen — that is what
+                   * "Seen by" reads, and it is a fact about the person looking.
+                   * This is the inbox's fact: the customer has been answered,
+                   * or needed nothing. A busy shared inbox needs the second
+                   * one, because "somebody glanced at it" does not tell the
+                   * next colleague whether to act.
+                   */
+                  OutlinedButton.icon(
+                    onPressed: onToggleDealt,
+                    icon: Icon(
+                      dealt ? Icons.check_circle : Icons.check_circle_outline,
+                      size: 18,
+                    ),
+                    label: Text(dealt ? 'Handled' : 'Mark handled'),
+                  ),
+                ],
               ),
             ],
           ),

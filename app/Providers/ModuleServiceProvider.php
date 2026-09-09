@@ -2207,12 +2207,40 @@ class ModuleServiceProvider extends ServiceProvider
                  * nothing to anybody outside it.
                  */
                 automationActions: [
+                    /*
+                     * THIS USED TO BE `email.mark_seen`, AND THE RENAME IS THE
+                     * WHOLE POINT.
+                     *
+                     * The old key said "seen" while its own label said "dealt
+                     * with", and nothing implemented it — which was lucky,
+                     * because the obvious implementation was to write a
+                     * `message_seen` row. That table is per person and is what
+                     * "Seen by Jenny" reads. A rule writing to it would assert
+                     * that somebody had READ a message nobody read, and a
+                     * colleague would then skip a customer's mail on the
+                     * strength of a name that was never there.
+                     *
+                     * A rule has no eyes, so it cannot have seen anything. It
+                     * can perfectly well have HANDLED something, which is a
+                     * different fact with a different grain — one per message
+                     * for the whole inbox rather than one per reader. That fact
+                     * now has its own table, and this is the action that writes
+                     * it. Jose's decision, 2026-09-09.
+                     *
+                     * Three segments, not two: ActionDefinition::type() keeps
+                     * everything after the FIRST dot, so `email.mark_dealt`
+                     * would execute as a bare `mark_dealt` in the namespace
+                     * every module shares — the trap `time_clock.clock_in`
+                     * documents one block above.
+                     */
                     new ActionDefinition(
-                        key: 'email.mark_seen',
+                        key: 'email.message.mark_dealt',
                         label: 'Mark a message as dealt with',
-                        description: 'Records that a message in a shared inbox has been picked '
-                            .'up, so it stops showing as waiting for somebody. It changes what '
-                            .'the team sees in EzBizi and sends nothing to anyone.',
+                        description: 'Records that a message in a shared inbox has been handled, '
+                            .'so it stops showing as waiting for somebody. It does NOT record '
+                            .'that anyone read it — "Seen by" stays a statement about people. '
+                            .'It changes what the team sees in EzBizi and sends nothing to '
+                            .'anyone.',
                     ),
                 ],
             ),
