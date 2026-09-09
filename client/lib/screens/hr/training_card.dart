@@ -139,11 +139,19 @@ class _TrainingCardState extends State<TrainingCard> {
   }
 
   /// Desktop 3's strip: is anything wrong with this person, before what they
-  /// have done. The lapsed count is boxed and in the error colour.
+  /// have done. The first cell is boxed and in the error colour.
+  ///
+  /// Three cells that PARTITION the five states (UI/UX ruling, 2026-09-09):
+  /// a strip that counted only the drawn three read "0 · 0 · 0" above two
+  /// failed tests, answering "nothing wrong" while the list said otherwise.
+  /// The rows keep their exact pills; the strip summarises. The first cell is
+  /// not "due for retaking" — that word is Training's and means a LAPSED
+  /// pass, and somebody who never passed is not retaking anything.
   Widget _counts(BuildContext context, List<_Row> rows) {
     final scheme = Theme.of(context).colorScheme;
 
-    int of(_State state) => rows.where((r) => r.state == state).length;
+    int of(Set<_State> states) =>
+        rows.where((r) => states.contains(r.state)).length;
 
     Widget cell(int n, String label, {bool bad = false}) => Expanded(
       child: Container(
@@ -174,16 +182,14 @@ class _TrainingCardState extends State<TrainingCard> {
       ),
     );
 
-    // ponytail: three counts as drawn; not passed and in progress are listed
-    // below but not counted. Add a cell if Jose asks for one.
     return Row(
       key: TrainingCard.countsKey,
       children: [
-        cell(of(_State.lapsed), 'Due for retaking', bad: true),
+        cell(of({_State.lapsed, _State.notPassed}), 'Needs a pass', bad: true),
         const SizedBox(width: 8),
-        cell(of(_State.passed), 'Passed'),
+        cell(of({_State.notStarted, _State.inProgress}), 'Outstanding'),
         const SizedBox(width: 8),
-        cell(of(_State.notStarted), 'Not started'),
+        cell(of({_State.passed}), 'Passed'),
       ],
     );
   }
