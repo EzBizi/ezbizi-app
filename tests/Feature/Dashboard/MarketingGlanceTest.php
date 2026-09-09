@@ -242,6 +242,48 @@ class MarketingGlanceTest extends TestCase
     }
 
     /**
+     * An all-clear must be true from BOTH sides of the scope boundary.
+     *
+     * This is the pattern Leads built and it matters more than the wording. A
+     * test that only checks the scoped reader passes for an implementation
+     * that always says everything is fine — the reassurance and the bug look
+     * identical from inside the branch. So one fixture is asserted twice: the
+     * branch reader is reassured, and a reader who CAN see the trouble is told
+     * it exists.
+     *
+     * Why this class is worse than an empty state that overclaims: that one
+     * tells somebody there is nothing and they go and look. An all-clear tells
+     * them nothing needs their attention, and they do not.
+     */
+    public function test_an_all_clear_is_true_from_both_sides_of_the_boundary(): void
+    {
+        [$second, $branch] = $this->secondBranch();
+
+        $head = $this->connection(SocialConnection::SCOPE_FRANCHISE, $this->alpha['franchise']->id, 'head');
+        $theirs = $this->connection(SocialConnection::SCOPE_FRANCHISE, $second->id, 'branch');
+
+        // The branch's own account is quiet and healthy.
+        $this->target($theirs, SocialPostTarget::STATUS_SENT, now()->subDay()->toDateTimeString());
+
+        // Head office has a refusal and a post still queued, on an account the
+        // branch cannot see.
+        $this->target($head, SocialPostTarget::STATUS_FAILED, now()->subDay()->toDateTimeString());
+        $this->target($head, SocialPostTarget::STATUS_SCHEDULED, null, now()->addMonths(2)->format('Y-m-d H:i'));
+
+        $inBranch = $this->payloadFor($this->standIn($branch, 'franchise:'.$second->id))['data'];
+
+        $this->assertSame('Nothing in this view failed this month.', $inBranch['sentences'][0]);
+        $this->assertSame('Nothing in this view is waiting to go out.', $inBranch['sentences'][1]);
+
+        // The other side of the same fixture. Without this the two assertions
+        // above pass for a glance that has stopped counting failures at all.
+        $inOrg = $this->payloadFor($this->standIn($branch, null))['data'];
+
+        $this->assertSame('1 post did not reach its account.', $inOrg['sentences'][0]);
+        $this->assertSame('1 post is waiting to go out.', $inOrg['sentences'][1]);
+    }
+
+    /**
      * Waiting is a fact about the FUTURE, so it must not move with the chips.
      *
      * A scheduled post sits outside every window the dashboard can show. If it
