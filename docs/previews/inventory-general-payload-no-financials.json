@@ -8,7 +8,7 @@
         "locations": 9,
         "open_purchase_orders": 1,
         "links": {
-            "low": "stock?low=1",
+            "low": "stock?low_items=1",
             "items": "items",
             "locations": "locations",
             "open_purchase_orders": "orders"
@@ -18,14 +18,13 @@
         {
             "key": "out_of_stock",
             "count": 5,
-            "sentence": "5 items are out of stock.",
-            "link": "stock"
+            "sentence": "5 items are out of stock."
         },
         {
             "key": "below_reorder",
             "count": 1,
             "sentence": "1 item is at or below its reorder point.",
-            "link": "stock?low=1"
+            "link": "stock?low_items=1"
         },
         {
             "key": "purchase_order_open_a_long_time",
@@ -52,8 +51,8 @@
                 "label": "Received",
                 "internal": false,
                 "points": [
-                    0,
-                    0
+                    0.0,
+                    0.0
                 ]
             },
             {
@@ -61,8 +60,8 @@
                 "label": "Issued and sold",
                 "internal": false,
                 "points": [
-                    0,
-                    8
+                    0.0,
+                    8.0
                 ]
             },
             {
@@ -70,8 +69,8 @@
                 "label": "Adjusted",
                 "internal": false,
                 "points": [
-                    0,
-                    -6
+                    0.0,
+                    -6.0
                 ]
             },
             {
@@ -79,8 +78,8 @@
                 "label": "Transferred",
                 "internal": true,
                 "points": [
-                    0,
-                    10
+                    0.0,
+                    10.0
                 ]
             }
         ]
