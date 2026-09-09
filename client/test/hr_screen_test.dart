@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/screens/hr/training_card.dart';
 import 'package:ezbizi_client/screens/hr_screen.dart';
 import 'package:ezbizi_client/widgets/tab_bar_like.dart';
 import 'package:flutter/material.dart';
@@ -354,6 +355,29 @@ void main() {
     );
   });
 
+  testWidgets('opening a record shows their Training card, asked about them', (
+    tester,
+  ) async {
+    String? askedAbout;
+
+    await _pump(tester, _handler(onTraining: (user) => askedAbout = user));
+    await _tap(tester, _tab('Records'));
+    await _tap(tester, find.byType(PopupMenuButton<String>).last);
+    await _tap(tester, find.text('What onboarding collected'));
+
+    // The record page, and beneath it Training's card about the PERSON —
+    // the counts strip at this width, the lapsed row, and the line saying
+    // whose it is to act on.
+    expect(find.text('All records'), findsOneWidget);
+    expect(find.byKey(TrainingCard.countsKey), findsOneWidget);
+    expect(find.text('Ladder safety'), findsOneWidget);
+    expect(
+      find.textContaining('is ours to re-assign', findRichText: true),
+      findsOneWidget,
+    );
+    expect(askedAbout, 'u-2');
+  });
+
   testWidgets('changing a role sends the role and nothing else', (
     tester,
   ) async {
@@ -700,6 +724,7 @@ MockClientHandler _handler({
   void Function(String path)? onResend,
   void Function(String path, Map<String, dynamic> body)? onPatchPerson,
   void Function(String path)? onPostPerson,
+  void Function(String? user)? onTraining,
   // The signed-in person, so a test can hold or lack a key. Defaults to the
   // administrator every other test in this file drives.
   Map<String, Object?> me = _me,
@@ -758,9 +783,37 @@ MockClientHandler _handler({
     // against a form written to catch a client deciding for itself who may
     // fill in what — a second copy of that fixture here would be a second
     // thing to keep in step.
+    // Bea has one record, so opening it goes straight to the page. The form
+    // itself is defended in hr_onboarding_test.dart; this one is the least a
+    // record can be, there so the Training card beneath it has a page to be on.
+    if (path.endsWith('/hr/onboardings/o-2')) {
+      return _json({'data': _beaRecord});
+    }
+
+    if (path.endsWith('/training/records')) {
+      onTraining?.call(request.url.queryParameters['user']);
+      return _json({
+        'user': {'id': 'u-2', 'name': 'Bea Okafor'},
+        'data': [
+          {
+            'type': 'test',
+            'id': 't-1',
+            'title': 'Ladder safety',
+            'assigned': true,
+            'score': 88,
+            'passed': true,
+            'expires_on': '2026-03-12',
+            'due_for_retaking': true,
+          },
+        ],
+      });
+    }
+
     if (path.endsWith('/hr/onboardings')) {
       return _json({
-        'data': <Map<String, Object?>>[],
+        'data': request.url.queryParameters['user_id'] == 'u-2'
+            ? [_beaRecord]
+            : <Map<String, Object?>>[],
         'meta': {'total': 0, 'per_page': 50, 'current_page': 1, 'last_page': 1},
       });
     }
@@ -1026,6 +1079,18 @@ const _resent = {
   'expires_at': '2026-08-25T09:00:00+00:00',
   'accept_url': 'https://app.ezbizi.com/invite?token=raw-token-2',
   'emailed': false,
+};
+
+const _beaRecord = {
+  'id': 'o-2',
+  'user_id': 'u-2',
+  'status': 'completed',
+  'person': {'id': 'u-2', 'name': 'Bea Okafor'},
+  'contract': {'id': 'c-1', 'name': 'Technician', 'version': 1},
+  'started_at': '2026-02-01T09:00:00+00:00',
+  'completed_at': '2026-02-03T09:00:00+00:00',
+  'fields': <Object?>[],
+  'signatures': <Object?>[],
 };
 
 const _people = [

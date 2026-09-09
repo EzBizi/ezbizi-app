@@ -638,9 +638,16 @@ travels without the pairing that made it correct.
 > brand surface, not ours.** These tokens exist to make EzBizi look like EzBizi; putting
 > them on A-1 Chimney's website makes A-1 Chimney's website look like EzBizi. Their
 > default `#0b5cad` (6.67:1 on white) is right *because* it is not our brand colour —
-> it reads as "a form", not as any particular company. We hold `logo_path` on
-> Organization and no brand colour anywhere, so the customer types their own; the
-> default's job is to be neutral and legible until they do.
+> it reads as "a form", not as any particular company.
+>
+> **Stale as of 2026-09-09, and left visible rather than rewritten.** This paragraph
+> used to say we hold `logo_path` and *no brand colour anywhere*. That was true when
+> measured and is the fact that decided the question — it is why the answer required
+> BUILDING a field rather than reading one. Jose then chose customer-brand-first, and
+> Web Management added `brand_colour` beside `logo_path` at `a4e9c016`. So `#0b5cad`
+> is now the **fallback**, not the default, and it keeps this entry's reasoning: a
+> business that has told us no colour still gets something legible that is nobody's
+> brand. See item 7.
 >
 > What does travel is the **rule, not the token**: a foreground and its background are
 > chosen together and checked together. Queue item 5 is that rule applied — both colour
@@ -947,14 +954,71 @@ finished and cannot. That was wrong — it keys off `connected_at != null`, whet
 plugin has ever read the site, which the module answers exactly. The tier decision
 rests on the opposite-facts argument alone, which is sufficient on its own.*
 
-### 6 · HR · HR record: Training card — **CHOSEN: desktop 3 + mobile 6** (`hr-record-training-card`)
+### 7 · Organization · Brand colour picker — **DRAWN, with Jose**
+
+`docs/previews/brand-colour-picker-layouts.html`, committed `f38e797f`. Three desktop,
+three mobile, plus the "not set yet" state on a toggle. UI/UX designs AND builds this one;
+it lands on `organization_screen.dart` beside the logo.
+
+**Why it is the critical path rather than a nicety.** Jose chose customer-brand-first;
+Web Management built `brand_colour`, the company-then-organization resolution and
+`PUT /branding/colour` (`organizations.edit`, `#rrggbb` only). But `brand_colour` has
+**zero references in `client/lib`** — measured with a pattern proven to fire server-side
+— so no customer can set a colour and every site renders the fallback. **The decision is
+inert until this exists.** A field with no way to write its first value is the same defect
+as a list with no way to add its first row.
+
+Hence the "not set yet" state being a toggle rather than an afterthought: it is every
+customer today, and it says plainly that the colour on their website is legible but not
+theirs.
+
+**Two things in the drawing that are the design, not decoration:**
+
+- **One colour, never a pair.** The text on the button is derived, and the card names
+  which it chose and at what ratio. This is why item 5's `_pair` helper must NOT be
+  reused here — see the sharpened trigger above.
+- **Companies inherit unless they set their own**, in the language the Widgets screen
+  already uses for a site following the primary.
+
+The seven presets were measured rather than eyeballed: each clears 4.5:1 against its own
+derived text, tightest `#00838f` at 4.64:1, so a customer who picks instead of typing
+cannot land on an unreadable button.
+
+> ⚠️ **BLOCKED ON A ONE-CHARACTER FIX THAT IS NOT MINE.** The drawing derives the text
+> with **pure black**; `Branding::readableOn` still returns `#111111` (checked
+> 2026-09-09, unchanged since `a4e9c016`). The 0.179 threshold is the crossover for pure
+> black, so with `#111111` the worst case anywhere is **4.12:1** instead of **4.58:1**,
+> and a band of ordinary mid-tones lands under 4.5 — `#00838F` gives 4.18:1, which would
+> have **our own default trip our own warning on a pair the customer never chose**.
+> Sent to Web Management with the numbers. **Do not build this picker until it lands**,
+> or the preview will disagree with the widget for exactly those brands.
+
+### 6 · HR · HR record: Training card — **CHOSEN: desktop 3 + mobile 6** (`hr-record--training-card`)
 
 `docs/previews/hr-record-training-card-layouts.html`, committed `f3aaf3b7`. Three desktop,
 three mobile, plus the refused state on a toggle that applies to whichever option is open.
 **Jose chose desktop 3 (three counts, then the guides) and mobile 6 (a card per guide, most urgent first) on 2026-09-09.** Sent to HR to build, copying Training for the wording.
 
-**Owner: HR** (`local_4c933357-…`), whose `docs/SESSIONS.md` row names
-`client/lib/screens/hr/*` — and `records_tab.dart` is in it. Training owns the data and the
+**Built by HR** (`local_4c933357-…`), whose `docs/SESSIONS.md` row names
+`client/lib/screens/hr/*` — and `records_tab.dart` is in it.
+
+> **This is a DELEGATION and it is deliberate, so it is logged rather than assumed.**
+> The standing rule is that the UI/UX owner builds what Jose approves and does not hand
+> it back — written after an audit of 28 galleries found the sidebar search, the account
+> profile and the call-desk proportions all approved and never built, one with a release
+> note claiming it had shipped. **The rot is not "someone else typed it", it is "everyone
+> assumed someone else typed it".**
+>
+> Delegated here because HR owns the *neighbour*: the load-bearing part of this design is
+> that the card must not look like their Expiring certifications, which is a relationship
+> between two panels on one screen that only the owner of both can see while working. HR
+> asked for it, named the file and committed to building it.
+>
+> **UI/UX keeps the verification**, which is the half that actually answers the rule: HR
+> sends a SHA, and it is checked against the drawing — the three counts, the lapsed one
+> boxed in the error colour, per-guide cards in urgency order, the ownership footnote
+> present, the refused state showing the server's sentence. **Not delivered until that
+> check passes.** Jose can reverse the delegation in one word; he has been told. Training owns the data and the
 wording; HR owns the screen and builds the card. Endpoint `GET /training/records?user=`
 is live at `routes/api.php:732`, `training.monitor`-gated and bounded by reach over the
 **person**, not the content — that bound was the fix for an audit finding of cross-franchise
@@ -1010,7 +1074,15 @@ be low-contrast, and this is their site, not ours; the screen's job is to tell t
 a visitor will see, not to overrule them. Derived at render from the two fields and
 never stored, per the standing rule that a warning about the system's own capability is
 DERIVED. One caller today, so it belongs in that file — promote it to a shared helper
-when a second colour picker exists, not before.
+when a second screen NEEDS THE CHECK, not before.
+
+> **Sharpened 2026-09-09, by the case that nearly mis-fired it.** This first read "when
+> a second colour picker exists". A second colour picker now does exist — the brand
+> colour picker, item 7 — and it must **not** use this helper: there, the text on the
+> colour is DERIVED rather than chosen, so there is no pair a person can get wrong and
+> nothing to warn about. The trigger is a second consumer of the CHECK, not a second
+> screen with a colour in it. A rule worded by the surface it appeared on would have
+> promoted a helper to serve a caller that should never call it.
 
 **Built by UI/UX, 2026-09-08, `24a5d314`.** Written up first as a finding to hand over,
 because the file was on `session/web-management` and mid-flight. It merged **to main**

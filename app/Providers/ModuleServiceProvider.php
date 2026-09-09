@@ -2207,12 +2207,40 @@ class ModuleServiceProvider extends ServiceProvider
                  * nothing to anybody outside it.
                  */
                 automationActions: [
+                    /*
+                     * THIS USED TO BE `email.mark_seen`, AND THE RENAME IS THE
+                     * WHOLE POINT.
+                     *
+                     * The old key said "seen" while its own label said "dealt
+                     * with", and nothing implemented it — which was lucky,
+                     * because the obvious implementation was to write a
+                     * `message_seen` row. That table is per person and is what
+                     * "Seen by Jenny" reads. A rule writing to it would assert
+                     * that somebody had READ a message nobody read, and a
+                     * colleague would then skip a customer's mail on the
+                     * strength of a name that was never there.
+                     *
+                     * A rule has no eyes, so it cannot have seen anything. It
+                     * can perfectly well have HANDLED something, which is a
+                     * different fact with a different grain — one per message
+                     * for the whole inbox rather than one per reader. That fact
+                     * now has its own table, and this is the action that writes
+                     * it. Jose's decision, 2026-09-09.
+                     *
+                     * Three segments, not two: ActionDefinition::type() keeps
+                     * everything after the FIRST dot, so `email.mark_dealt`
+                     * would execute as a bare `mark_dealt` in the namespace
+                     * every module shares — the trap `time_clock.clock_in`
+                     * documents one block above.
+                     */
                     new ActionDefinition(
-                        key: 'email.mark_seen',
+                        key: 'email.message.mark_dealt',
                         label: 'Mark a message as dealt with',
-                        description: 'Records that a message in a shared inbox has been picked '
-                            .'up, so it stops showing as waiting for somebody. It changes what '
-                            .'the team sees in EzBizi and sends nothing to anyone.',
+                        description: 'Records that a message in a shared inbox has been handled, '
+                            .'so it stops showing as waiting for somebody. It does NOT record '
+                            .'that anyone read it — "Seen by" stays a statement about people. '
+                            .'It changes what the team sees in EzBizi and sends nothing to '
+                            .'anyone.',
                     ),
                 ],
             ),
@@ -2486,16 +2514,14 @@ class ModuleServiceProvider extends ServiceProvider
                 // must be able to grant one without the other — see
                 // RemoteControlController's docblock (2026-09-02-monitoring-remote-control).
                 actions: ['view', 'specs.view', 'screenshots.view', 'cameras.view', 'cameras.manage', 'control'],
-                // Asked for the first time on 2026-09-09, when writesRecords()
-                // stopped matching only the literals create/edit/delete:
-                // cameras.manage and control change records and device state
-                // (CamerasController, RemoteControlController) and write no
-                // audit_events row and no monitoring_activity row.
-                auditExemptBecause: 'NOT AUDITED. cameras.manage and control change a camera '
-                    .'or drive another machine and leave no audit_events row, so there is '
-                    .'no record of who did it or when. This states a defect, not a decision, '
-                    .'and it is not permission to stay this way — the Monitoring session owns '
-                    .'closing it and deleting this line.',
+                // cameras.manage and control write records / drive a machine, so
+                // §2.2 requires an audit trail (writesRecords() flags them as
+                // writes since 2026-09-09). CamerasController logs
+                // monitoring.camera.{created,updated,deleted}; RemoteControlController
+                // logs monitoring.control.started once per control session. Declared
+                // here so the gate resolves the 'monitoring' prefix to those calls
+                // (ModuleRegistryTest §2.2 asks the source, not this list).
+                auditActionPrefixes: ['monitoring'],
                 triggers: [
                     new TriggerDefinition(
                         key: 'monitoring.new_device_seen',

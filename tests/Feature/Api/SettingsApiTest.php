@@ -68,13 +68,30 @@ class SettingsApiTest extends TestCase
             'Etc/GMT+5',
             array_column($timezone['options'], 'value'),
         );
-        $this->assertNotContains(
+        // Places are offered now, and this used to assert they were not.
+        //
+        // The old line was `assertNotContains('America/New_York')`. It pinned a
+        // list of 27 fixed offsets and nothing else, which meant no caller
+        // could choose a timezone that observes daylight saving — so every
+        // clock built on this setting ran an hour out from March to November.
+        // Changed on 2026-09-09 with Jose's word. The DEFAULT is deliberately
+        // still Etc/GMT+5 — moving it means rewriting seventeen test files
+        // across five modules — so this only makes a place choosable. The
+        // reasoning is on
+        // SettingRegistryTest::test_timezone_offers_places_as_well_as_offsets.
+        $this->assertContains(
             'America/New_York',
             array_column($timezone['options'], 'value'),
         );
+
+        // Labelled as fixed, so the offsets read as the exception they are.
         $this->assertSame(
             ['value' => 'Etc/GMT+5', 'label' => 'UTC-5'],
             collect($timezone['options'])->firstWhere('value', 'Etc/GMT+5'),
+        );
+        $this->assertSame(
+            ['value' => 'America/New_York', 'label' => 'Eastern — New York'],
+            collect($timezone['options'])->firstWhere('value', 'America/New_York'),
         );
     }
 

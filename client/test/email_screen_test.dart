@@ -625,6 +625,36 @@ void main() {
     );
   });
 
+  /// "Handled" is a different button from "Reply", and a different fact.
+  ///
+  /// Opening a message already marked it SEEN — that is what "Seen by" reads,
+  /// and it is a claim about the person looking. This says the customer has
+  /// been dealt with, which is the inbox's fact and the one a colleague needs
+  /// in order to know whether to act.
+  testWidgets('marking a message handled posts to the dealt endpoint',
+      (tester) async {
+    final posted = <String>[];
+
+    await _pump(tester, _handler(onDealt: posted.add));
+
+    await _tap(tester, find.text('Chimney sweep quote').first);
+
+    expect(find.text('Mark handled'), findsOneWidget);
+
+    await _tap(tester, find.text('Mark handled'));
+
+    expect(
+      posted.single,
+      '/api/v1/email/mailboxes/mb-1/messages/m-1/dealt',
+      reason: 'The handled button reached a different endpoint from the one '
+          'that records it.',
+    );
+
+    // And the control flips, so somebody can see it took.
+    expect(find.text('Handled'), findsOneWidget);
+    expect(find.text('Mark handled'), findsNothing);
+  });
+
   /// Gate four of four: if the answer would be 403, the button is not drawn.
   testWidgets('an inbox somebody may read and not answer offers no New '
       'message button', (tester) async {
@@ -951,6 +981,7 @@ MockClientHandler _handler({
   void Function(String path, Map<String, dynamic> body)? onReply,
   void Function(String path, Map<String, dynamic> body)? onSend,
   void Function(http.Request request)? onSendRequest,
+  void Function(String path)? onDealt,
   void Function(String url)? onFile,
   List<String>? folders,
 }) {
@@ -1004,6 +1035,20 @@ MockClientHandler _handler({
         'data': {
           'ids': body['ids'],
           'action': body['action'],
+        },
+      });
+    }
+
+    if (path.endsWith('/dealt')) {
+      onDealt?.call(path);
+
+      return _json({
+        'data': {
+          'message_id': parts[parts.length - 2],
+          'dealt': request.method == 'POST'
+              ? {'at': '2026-09-09T10:00:00Z', 'by': 'Jose Silva'}
+              : null,
+          'at_source': null,
         },
       });
     }

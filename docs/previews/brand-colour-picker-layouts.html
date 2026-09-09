@@ -1,0 +1,205 @@
+<!doctype html><meta charset="utf-8">
+<title>Organization &rsaquo; Brand colour &mdash; layouts</title>
+<style>
+/* Palette from client/lib/core/theme.dart, light brightness: _ink #060808,
+   _muted #5B6672, _line #060808 @ 10%, primary (_cyanDeep) #00708f.
+   The neutral fallback #0b5cad is WidgetDefaults' own, 6.67:1 on white.
+   Button text is DERIVED in the drawing exactly as Branding::readableOn
+   derives it -- sRGB luminance, black above the crossover, white below --
+   using pure black, which is the value that keeps the pair at 4.58:1 or
+   better for every possible brand. */
+:root{--ink:#060808;--muted:#5B6672;--line:rgba(6,8,8,.10);--primary:#00708f;
+      --paper:#fff;--ground:#f4f6f7}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+     font:14px/1.45 -apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:20px 24px 8px}
+h1{margin:0;font-size:18px;font-weight:700;letter-spacing:-.3px}
+#nums{display:flex;flex-wrap:wrap;gap:8px;padding:12px 24px 6px}
+#nums button{font:inherit;font-weight:600;background:var(--paper);color:var(--ink);
+  border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
+#nums button[aria-current=true]{background:var(--primary);color:#fff;border-color:var(--primary)}
+#tog{padding:4px 24px 18px;font-size:13px}
+#tog label{cursor:pointer;user-select:none;font-weight:600}
+#stage{padding:0 24px 48px}
+.cap{font-size:13px;color:var(--muted);margin:0 0 14px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:16px}
+.desk{max-width:600px}
+.phone{width:352px;border:1px solid var(--line);border-radius:26px;background:var(--paper);
+       padding:14px 12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.hd{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.hd .t{font-weight:600;flex:1}
+.ic{width:18px;height:18px;flex:none;stroke:var(--ink);fill:none;stroke-width:1.7}
+.note{font-size:12px;color:var(--muted);margin:0 0 12px 26px}
+.field{display:flex;align-items:center;gap:8px;border:1px solid var(--line);
+       border-radius:9px;padding:8px 10px;font-family:ui-monospace,Menlo,Consolas,monospace;
+       font-weight:600}
+.field .dot{width:18px;height:18px;border-radius:5px;border:1px solid var(--line);flex:none}
+.sw{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.sw i{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);display:block;
+      cursor:pointer}
+.sw i.on{outline:2px solid var(--primary);outline-offset:2px}
+.btn{display:inline-block;border-radius:8px;padding:10px 18px;font-weight:700;font-size:14px}
+.site{border:1px solid var(--line);border-radius:10px;padding:14px;background:#fbfcfc}
+.site .k{font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.4px;
+         text-transform:uppercase;margin-bottom:8px}
+.bub{display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:10px 16px;
+     font-weight:700;font-size:14px}
+.two{display:flex;gap:12px}.two>*{flex:1}
+.row{display:flex;align-items:center;gap:12px;padding:10px 0}
+.row .lg{width:52px;height:52px;border-radius:10px;border:1px solid var(--line);
+         display:flex;align-items:center;justify-content:center;color:var(--muted);flex:none}
+.row .co{width:52px;height:52px;border-radius:10px;border:1px solid var(--line);flex:none}
+.row .tx{flex:1}
+.row .tx b{display:block}
+.row .tx span{font-size:12px;color:var(--muted)}
+.link{color:var(--primary);font-weight:600;font-size:13px;cursor:pointer}
+.unset{border:1px dashed rgba(6,8,8,.22);border-radius:10px;padding:12px 14px;
+       font-size:13px;color:var(--muted);margin-bottom:12px}
+.unset b{color:var(--ink)}
+.inh{font-size:12px;color:var(--muted);margin-top:10px;padding-top:10px;
+     border-top:1px solid var(--line)}
+.inh b{color:var(--ink);font-weight:600}
+.step{border:1px solid var(--line);border-radius:10px;padding:11px 12px;margin-bottom:8px;
+      display:flex;align-items:center;gap:10px;font-weight:600}
+.step .n{width:20px;height:20px;border-radius:50%;background:var(--primary);color:#fff;
+         font-size:12px;display:flex;align-items:center;justify-content:center;flex:none}
+</style>
+<header><h1>Organization &rsaquo; Brand colour &mdash; pick one desktop and one mobile</h1></header>
+<div id="nums"></div>
+<div id="tog"><label><input type="checkbox" id="unset"> Show the &ldquo;not set yet&rdquo; state
+&mdash; which is every customer today</label></div>
+<div id="stage"></div>
+<script>
+var BRAND = '#00838f';               // a plausible customer teal
+var FALLBACK = '#0b5cad';            // WidgetDefaults' neutral
+/* Seven, so the row does not wrap and orphan one. Every preset clears 4.5:1
+   against its own derived text, so a customer who picks rather than types
+   cannot land on an unreadable button. */
+var PRESETS = ['#00838f','#0b5cad','#b3261e','#2e7d32','#6a1b9a','#e65100','#37474f'];
+var PAINT = '<svg class="ic" viewBox="0 0 24 24"><path d="M12 3a9 9 0 100 18h2a3 3 0 003-3 2 2 0 012-2h1a2 2 0 002-2 9 9 0 00-9-9z"/><circle cx="8" cy="10" r="1.2"/><circle cx="12" cy="7.5" r="1.2"/><circle cx="16" cy="10" r="1.2"/></svg>';
+
+/* Branding::readableOn, drawn: sRGB luminance, pure black above the crossover. */
+function lum(h){
+  h = h.replace('#','');
+  var c = [0,2,4].map(function(i){ return parseInt(h.substr(i,2),16)/255; })
+    .map(function(x){ return x <= 0.03928 ? x/12.92 : Math.pow((x+0.055)/1.055, 2.4); });
+  return 0.2126*c[0] + 0.7152*c[1] + 0.0722*c[2];
+}
+function on(h){ return lum(h) > 0.179 ? '#000000' : '#ffffff'; }
+function ratio(a,b){
+  var x = lum(a), y = lum(b);
+  return ((Math.max(x,y)+0.05)/(Math.min(x,y)+0.05)).toFixed(2);
+}
+function isUnset(){ return document.getElementById('unset').checked; }
+function colour(){ return isUnset() ? FALLBACK : BRAND; }
+
+function head(sub){
+  return '<div class="hd">'+PAINT+'<div class="t">Brand colour</div></div>'+
+         (sub ? '<p class="note">'+sub+'</p>' : '');
+}
+function unsetNote(){
+  return isUnset()
+    ? '<div class="unset"><b>You have not set a colour.</b> Your website widgets are '+
+      'using a neutral blue until you do &mdash; it is legible, but it is not yours.</div>'
+    : '';
+}
+function button(label){
+  var c = colour();
+  return '<span class="btn" style="background:'+c+';color:'+on(c)+'">'+(label||'Send')+'</span>';
+}
+function bubble(){
+  var c = colour();
+  return '<span class="bub" style="background:'+c+';color:'+on(c)+'">Chat with us</span>';
+}
+function field(){
+  var c = colour();
+  return '<div class="field"><span class="dot" style="background:'+c+'"></span>'+c+'</div>';
+}
+function swatches(){
+  var c = colour();
+  return '<div class="sw">'+PRESETS.map(function(p){
+    return '<i class="'+(p===c?'on':'')+'" style="background:'+p+'"></i>';
+  }).join('')+'</div>';
+}
+function derived(){
+  var c = colour();
+  return '<div class="inh">The text on it is chosen for you &mdash; '+
+    '<b>'+(on(c)==='#000000'?'black':'white')+'</b> on this colour, '+
+    ratio(c,on(c))+':1. You pick one colour, not a pair.</div>';
+}
+function inherit(){
+  return '<div class="inh">Companies follow this unless they set their own. '+
+         '<b>Everdoors North</b> sets its own; two others follow.</div>';
+}
+
+function D1(){
+  return '<div class="card desk">'+head('')+unsetNote()+
+    '<div class="two"><div>'+field()+swatches()+'</div>'+
+    '<div class="site"><div class="k">On your website</div>'+button()+'</div></div>'+
+    derived()+inherit()+'</div>';
+}
+function D2(){
+  return '<div class="card desk">'+head('')+unsetNote()+
+    '<div class="site"><div class="k">On your website</div>'+bubble()+
+    '<div style="margin-top:10px">'+button('Send enquiry')+'</div></div>'+
+    '<div style="margin-top:12px">'+field()+'</div>'+swatches()+derived()+inherit()+'</div>';
+}
+function D3(){
+  var c = colour();
+  return '<div class="card desk">'+head('How you look, in one place.')+unsetNote()+
+    '<div class="row"><div class="lg">LOGO</div><div class="tx"><b>Logo</b>'+
+      '<span>Shown on documents and the app</span></div><span class="link">Replace</span></div>'+
+    '<div class="row"><div class="co" style="background:'+c+'"></div><div class="tx">'+
+      '<b>Brand colour</b><span>'+c+(isUnset()?' &middot; not set, using a neutral blue':'')+
+      '</span></div><span class="link">Change</span></div>'+
+    '<div class="site" style="margin-top:6px"><div class="k">On your website</div>'+
+      button()+'</div>'+derived()+inherit()+'</div>';
+}
+function M4(){
+  return '<div class="phone">'+head('')+unsetNote()+
+    '<div class="site"><div class="k">On your website</div>'+button('Send enquiry')+'</div>'+
+    '<div style="margin-top:12px">'+field()+'</div>'+swatches()+derived()+'</div>';
+}
+function M5(){
+  var c = colour();
+  return '<div class="phone">'+head('')+
+    '<div class="row"><div class="co" style="background:'+c+'"></div><div class="tx">'+
+      '<b>Brand colour</b><span>'+(isUnset()?'Not set &mdash; a neutral blue':c)+
+      '</span></div><span class="link">Change</span></div>'+
+    '<div class="site"><div class="k">On your website</div>'+button()+'</div>'+
+    derived()+'</div>';
+}
+function M6(){
+  return '<div class="phone">'+head('')+unsetNote()+
+    '<div class="step"><span class="n">1</span>Pick a colour</div>'+swatches()+
+    '<div class="step"><span class="n">2</span>Or enter a hex code</div>'+field()+
+    '<div class="site" style="margin-top:12px"><div class="k">On your website</div>'+
+    button()+'</div>'+derived()+'</div>';
+}
+var OPT = {
+  1:['1 &middot; Desktop &mdash; swatches and hex, the button beside them', D1],
+  2:['2 &middot; Desktop &mdash; the website first, the controls under it', D2],
+  3:['3 &middot; Desktop &mdash; a peer of the logo: one row each, edited in place', D3],
+  4:['4 &middot; Mobile &mdash; preview on top, hex, then swatches', M4],
+  5:['5 &middot; Mobile &mdash; one row that opens; the swatch is the control', M5],
+  6:['6 &middot; Mobile &mdash; swatches first, hex second, so no keyboard opens', M6]
+};
+var nums = document.getElementById('nums'), stage = document.getElementById('stage'),
+    unset = document.getElementById('unset'), cur = 1;
+function show(k){
+  cur = k;
+  stage.innerHTML = '<p class="cap">'+OPT[k][0]+'</p>' + OPT[k][1]();
+  Array.prototype.forEach.call(nums.children, function(b){
+    if (b.dataset) b.setAttribute('aria-current', b.dataset.k === String(k));
+  });
+}
+Object.keys(OPT).forEach(function(k){
+  var b = document.createElement('button');
+  b.textContent = (k < 4 ? 'Desktop ' : 'Mobile ') + k;
+  b.dataset.k = k; b.onclick = function(){ show(k); };
+  nums.appendChild(b);
+});
+unset.onchange = function(){ show(cur); };
+show(1);
+</script>

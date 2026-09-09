@@ -115,7 +115,40 @@ class ThumbtackWebhookController extends Controller
             return response()->json(['data' => ['handled' => false]], Status::HTTP_OK);
         }
 
-        $event = (string) ($request->input('eventType') ?? $request->input('type') ?? '');
+        /*
+         * `event.eventType`, which is where Thumbtack actually puts it.
+         *
+         * This read `eventType` and `type` at the top level until 2026-09-09,
+         * and neither exists. Their real body is an ENVELOPE:
+         *
+         *     { "event": { "eventType": "NegotiationCreatedV4", "webhookID": …,
+         *                  "triggeredAt": … },
+         *       "data":  { "negotiationID": …, "customer": …,
+         *                  "business": { "businessID": … } } }
+         *
+         * So $event came out as an empty string, fell past both lead branches,
+         * and returned handled:false. The businessID and negotiationID keys
+         * were guessed correctly — `data.business.businessID` and
+         * `data.negotiationID` are both in the lists below — which is why every
+         * event authenticated perfectly and then did nothing at all. Two real
+         * enquiries were lost that way, and their API has no list endpoint to
+         * go back for them.
+         *
+         * The shape is documented, in the `webhooks` section of their own
+         * OpenAPI 3.1 document (api.thumbtack.com/docs/thumbtack_api_latest.json)
+         * — a top-level key beside `paths`, which is why reading the endpoint
+         * reference never showed it.
+         *
+         * The flat forms are kept behind it. They cost one array lookup and
+         * they are the difference between a changed envelope losing every
+         * enquiry and it losing none.
+         */
+        $event = (string) (
+            $request->input('event.eventType')
+            ?? $request->input('eventType')
+            ?? $request->input('type')
+            ?? ''
+        );
 
         $handled = $tenant->run(
             $organization,

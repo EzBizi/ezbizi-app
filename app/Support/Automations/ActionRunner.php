@@ -7,12 +7,14 @@ use App\Models\AutomationEvent;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
+use App\Models\Mailbox;
 use App\Models\PhoneCall;
 use App\Models\PhoneNumber;
 use App\Models\TrainingAssignment;
 use App\Models\User;
 use App\Models\Vehicle;
 use App\Support\Audit\AuditLogger;
+use App\Support\Email\DealtState;
 use App\Support\Fleet\VehicleStatus;
 use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Numbering\RecordNumberGenerator;
@@ -172,6 +174,7 @@ class ActionRunner
         private readonly SmsCompliance $smsCompliance,
         private readonly TwilioGateway $twilio,
         private readonly AssignmentWriter $trainingAssignments,
+        private readonly DealtState $dealt,
     ) {}
 
     /**
@@ -213,6 +216,7 @@ class ActionRunner
             // ActionDefinition::type() keeps everything after the first dot, so
             // phone.voicemail.mark_dealt arrives here as voicemail.mark_dealt.
             'voicemail.mark_dealt' => $this->markVoicemailDealt($event, $subject),
+            'message.mark_dealt' => $this->markMessageDealt($event, $subject),
             'missed.create_job' => $this->createJobFromMissed($event, $subject),
             'sms.send' => $this->sendSms($action, $event, $automation),
 
@@ -526,6 +530,69 @@ class ActionRunner
             'type' => 'training.assign',
             'ok' => true,
             'detail' => "{$verb} {$assigneeType}:{$assigneeId} training {$assignment->id}.",
+        ];
+    }
+
+    /**
+     * Mark a message in a shared inbox as handled.
+     *
+     * ── The message id comes from the PAYLOAD, not the subject ───
+     *
+     * Every `email.*` trigger carries a Mailbox as its subject, because that is
+     * the record §4 scoping hangs off — see MailboxWatcher, which emits the
+     * mailbox and puts `message_id` in the payload beside the subject and
+     * sender. So this action reads the mailbox from the subject and the message
+     * from the event, and refuses plainly when either is missing rather than
+     * marking the wrong thing.
+     *
+     * ── It writes `message_dealt`, never `message_seen` ──────────
+     *
+     * A rule has no eyes. Recording that it "read" a message would make
+     * "Seen by" claim a person saw something nobody saw, and a colleague would
+     * skip a customer's mail on the strength of it. Handled and read are
+     * different facts at different grains, which is why the table is separate.
+     */
+    private function markMessageDealt(AutomationEvent $event, ?Model $subject): array
+    {
+        if (! $subject instanceof Mailbox) {
+            return [
+                'type' => 'message.mark_dealt',
+                'ok' => false,
+                'detail' => 'That record is not a shared inbox, so no message can be marked '
+                    .'dealt with.',
+            ];
+        }
+
+        $messageId = $event->payload['message_id'] ?? null;
+
+        if (! is_string($messageId) || $messageId === '') {
+            return [
+                'type' => 'message.mark_dealt',
+                'ok' => false,
+                // Says WHICH triggers can carry it, because the fix is to move
+                // the rule rather than to change anything about this one.
+                'detail' => 'That event does not name a message, so there is nothing to mark. '
+                    .'Rules using this action belong on "an email arrived".',
+            ];
+        }
+
+        $already = $this->dealt->dealtWith($subject, [$messageId]) !== [];
+
+        $this->dealt->markDealt($subject, $messageId, null);
+
+        $this->audit->log(
+            action: 'email.message_marked_dealt_by_automation',
+            target: $subject,
+            changes: ['after' => ['message_id' => $messageId]],
+            metadata: ['caused_by_event' => $event->getKey(), 'trigger' => $event->event_key],
+        );
+
+        return [
+            'type' => 'message.mark_dealt',
+            'ok' => true,
+            'detail' => $already
+                ? 'That message was already marked dealt with.'
+                : 'Marked the message dealt with.',
         ];
     }
 

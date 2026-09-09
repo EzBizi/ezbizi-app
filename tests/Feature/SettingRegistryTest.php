@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use DateTimeImmutable;
+use DateTimeZone;
 use App\Support\Settings\SettingDefinition;
 use App\Support\Settings\SettingRegistry;
 use App\Support\Settings\SettingsResolver;
@@ -75,20 +77,48 @@ class SettingRegistryTest extends TestCase
         }
     }
 
-    public function test_timezone_is_a_utc_offset_selector(): void
+    /**
+     * A timezone that observes daylight saving can be CHOSEN.
+     *
+     * ── What this test used to assert, and why it changed ────────
+     *
+     * It pinned the opposite: `assertNotContains('America/New_York')` and
+     * `assertCount(27)` — twenty-seven fixed UTC offsets and not one real
+     * place, deliberately, with no docblock saying why.
+     *
+     * Marketing measured what that cost on 2026-09-08. `Etc/GMT+5` is UTC-5 in
+     * January and UTC-5 in July, while New York is UTC-4 in July, so a
+     * newsletter set for 09:00 went out at 10:00 local from March to November.
+     * The same value reaches Clock In, Companies, Franchises, dashboard periods
+     * and Phone reports, where it moves which DAY a near-midnight call is in.
+     *
+     * The important part is that this was not a badly chosen default. There was
+     * no non-drifting value to choose, so "set your timezone properly" was
+     * advice nobody could take.
+     *
+     * ── What deliberately did NOT change ─────────────────────────
+     *
+     * The default is still `Etc/GMT+5`, and the offset labels are still bare.
+     * Moving either is a five-module job: seventeen test files inherit that
+     * default and TimeClock asserts the label text. Making a place choosable
+     * needed none of that, so this change is only that.
+     */
+    public function test_timezone_offers_places_as_well_as_offsets(): void
     {
         $timezone = $this->registry->getOrFail('timezone');
 
         $this->assertSame(SettingDefinition::TYPE_ENUM, $timezone->type);
+
+        // Unchanged, on purpose. See the note above.
         $this->assertSame('Etc/GMT+5', $timezone->default);
-        $this->assertContains('UTC', $timezone->options);
-        $this->assertContains('Etc/GMT+5', $timezone->options);
-        $this->assertContains('Etc/GMT-3', $timezone->options);
-        $this->assertNotContains('America/New_York', $timezone->options);
-        $this->assertCount(27, $timezone->options);
-        $this->assertSame('UTC', $timezone->labelFor('UTC'));
         $this->assertSame('UTC-5', $timezone->labelFor('Etc/GMT+5'));
-        $this->assertSame('UTC+3', $timezone->labelFor('Etc/GMT-3'));
+        $this->assertSame('UTC', $timezone->labelFor('UTC'));
+        $this->assertContains('Etc/GMT-3', $timezone->options);
+
+        // The new part.
+        $this->assertContains('America/New_York', $timezone->options);
+        $this->assertSame('Eastern — New York', $timezone->labelFor('America/New_York'));
+        $this->assertGreaterThan(27, count($timezone->options));
 
         foreach ($timezone->options as $id) {
             $this->assertInstanceOf(\DateTimeZone::class, new \DateTimeZone($id), $id);
@@ -300,4 +330,45 @@ class SettingRegistryTest extends TestCase
             $this->assertSame(8.25, $resolver->get('money.tax_rate', $tx));
         });
     }
+
+    /**
+     * At least one option really does move with the seasons.
+     *
+     * Asserted by BEHAVIOUR, not by the shape of the id. `America/New_York`
+     * could be present and still be a fixed offset wearing a place name, which
+     * a string check would happily accept — and the whole defect was a value
+     * that looks like a timezone and does not act like one.
+     *
+     * Asserted as a CLASS rather than naming one zone, for the same reason the
+     * Phone hours pane's test is written that way: a list that satisfies
+     * "contains America/New_York" is still wrong for somebody in Denver.
+     */
+    public function test_a_timezone_that_observes_daylight_saving_can_be_chosen(): void
+    {
+        $timezone = $this->registry->getOrFail('timezone');
+
+        $moving = [];
+        foreach ($timezone->options as $id) {
+            $zone = new DateTimeZone($id);
+            $january = new DateTimeImmutable('2026-01-15 12:00', $zone);
+            $july = new DateTimeImmutable('2026-07-15 12:00', $zone);
+
+            if ($january->getOffset() !== $july->getOffset()) {
+                $moving[] = $id;
+            }
+        }
+
+        $this->assertGreaterThan(
+            5,
+            count($moving),
+            'no option changes offset between January and July, so every '
+            .'choice drifts an hour from the businesses using it for half the '
+            .'year and there is nothing anybody can pick instead',
+        );
+
+        // And the fixed offsets are still available for the case that wants
+        // them — a clock that should ignore daylight saving is a real need.
+        $this->assertContains('Etc/GMT+5', $timezone->options);
+    }
+
 }
