@@ -164,4 +164,29 @@ class TrainingSchemaTest extends TestCase
         $this->assertInstanceOf(TrainingTestModel::class, $test);
         $this->assertTrue($test->exists);
     }
+
+    /**
+     * The COLUMN's own default, which no API test can reach:
+     * `TestsController::store` writes an explicit value on every create, so
+     * `TrainingTestAuthoringTest`'s default test would stay green with the
+     * migration reverted. This one omits the column entirely — the factory
+     * does not set it — so the value can only have come from the database.
+     *
+     * Both halves are needed and neither substitutes for the other: the
+     * controller decides what an API author gets, this decides what anything
+     * writing the table another way gets, and a default that disagreed with
+     * the controller would be a trap for the next writer rather than a
+     * harmless duplicate (owner's ruling, 2026-09-09: on).
+     */
+    public function test_the_count_attempts_after_pass_column_itself_defaults_on(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $test = $this->inTenant(
+            $tenant['org'],
+            fn () => TrainingTestModel::factory()->create(['company_id' => $tenant['company']->id]),
+        );
+
+        $this->assertTrue($test->refresh()->count_attempts_after_pass);
+    }
 }
