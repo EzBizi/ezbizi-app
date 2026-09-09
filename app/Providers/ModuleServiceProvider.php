@@ -2486,16 +2486,14 @@ class ModuleServiceProvider extends ServiceProvider
                 // must be able to grant one without the other — see
                 // RemoteControlController's docblock (2026-09-02-monitoring-remote-control).
                 actions: ['view', 'specs.view', 'screenshots.view', 'cameras.view', 'cameras.manage', 'control'],
-                // Asked for the first time on 2026-09-09, when writesRecords()
-                // stopped matching only the literals create/edit/delete:
-                // cameras.manage and control change records and device state
-                // (CamerasController, RemoteControlController) and write no
-                // audit_events row and no monitoring_activity row.
-                auditExemptBecause: 'NOT AUDITED. cameras.manage and control change a camera '
-                    .'or drive another machine and leave no audit_events row, so there is '
-                    .'no record of who did it or when. This states a defect, not a decision, '
-                    .'and it is not permission to stay this way — the Monitoring session owns '
-                    .'closing it and deleting this line.',
+                // cameras.manage and control write records / drive a machine, so
+                // §2.2 requires an audit trail (writesRecords() flags them as
+                // writes since 2026-09-09). CamerasController logs
+                // monitoring.camera.{created,updated,deleted}; RemoteControlController
+                // logs monitoring.control.started once per control session. Declared
+                // here so the gate resolves the 'monitoring' prefix to those calls
+                // (ModuleRegistryTest §2.2 asks the source, not this list).
+                auditActionPrefixes: ['monitoring'],
                 triggers: [
                     new TriggerDefinition(
                         key: 'monitoring.new_device_seen',

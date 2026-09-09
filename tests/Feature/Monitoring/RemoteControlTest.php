@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Monitoring;
 
+use App\Models\AuditEvent;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\MonitoredDevice;
@@ -62,6 +63,35 @@ class RemoteControlTest extends TestCase
             ->getJson('/api/v1/monitoring/input-pending?device_key=dk-1')
             ->assertOk()
             ->assertJson(['events' => [], 'control_wanted' => true]);
+    }
+
+    // ── §2.2 audit trail: one row per session start, not per refresh ─
+
+    public function test_starting_control_writes_one_audit_row_and_refreshes_do_not(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->beat($alpha['admin']);
+        $device = $this->deviceFor($alpha['admin']);
+        $controller = $this->userWithRole($alpha, 'Controller', ['monitoring.control']);
+
+        // First POST opens the session; the second is one of the every-few-
+        // seconds refreshes that keep control-wanted fresh.
+        $this->signedInAs($controller)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/control')
+            ->assertNoContent();
+        $this->signedInAs($controller)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/control')
+            ->assertNoContent();
+
+        $rows = AuditEvent::withoutGlobalScopes()
+            ->where('organization_id', $alpha['org']->id)
+            ->where('action', 'monitoring.control.started')
+            ->get();
+
+        // Exactly one — removing the log() gives 0, logging every POST gives 2.
+        $this->assertCount(1, $rows);
+        $this->assertSame($device->id, $rows->first()->target_id);
+        $this->assertSame($controller->getKey(), $rows->first()->actor_id);
     }
 
     public function test_control_wanted_expires_after_the_ttl(): void

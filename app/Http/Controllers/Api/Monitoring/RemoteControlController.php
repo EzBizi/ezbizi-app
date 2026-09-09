@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Controller;
 use App\Models\MonitoredDevice;
 use App\Models\User;
 use App\Support\Access\ScopeReach;
+use App\Support\Audit\AuditLogger;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Closure;
@@ -20,18 +21,21 @@ use Illuminate\Support\Facades\Cache;
  * the viewer watches the live feed while sending input, and controlling a
  * device implies watching it, so `control` also refreshes `live-wanted`.
  *
- * ── Why this writes no row, ever ──────────────────────────────────
+ * ── What is durable here, and what is not ─────────────────────────
  *
- * // ponytail: no new table. A control session is transient by construction
- * // — the same reasoning LiveViewController's docblock gives at length: no
- * // websocket server exists, so this is necessarily poll-driven, and the
- * // whole queue exists only for as long as somebody is actively controlling
- * // the device. A dropped viewer session should make its queued events
- * // evaporate, not linger for the next person to control the same machine
- * // — which is exactly what a TTL buys for free and a table would not. If
- * // an audit trail of WHO controlled WHICH device WHEN is ever required,
- * // that is a durable fact worth its own table; relaying opaque input
- * // events is not.
+ * The input QUEUE writes no table, by construction: a control session is
+ * transient — no websocket server exists, so this is necessarily poll-driven,
+ * and the queue lives only while somebody is actively driving the device. A
+ * dropped viewer's queued events should evaporate, not linger for the next
+ * person, which is exactly what a cache TTL buys and a table would not.
+ *
+ * The one durable fact §2.2 does require is WHO took control of WHICH device
+ * WHEN. That is written to `audit_events` (`monitoring.control.started`) once
+ * per session — on the first `control` POST, while `control-wanted` is still
+ * absent — NOT on the every-few-seconds refreshes that follow, and never per
+ * input batch (relaying opaque events is not itself an audited act). Deleting
+ * a camera and adding one are audited the same way in CamerasController; see
+ * the module's `auditActionPrefixes: ['monitoring']` in ModuleServiceProvider.
  *
  * ── The two cache keys, and why the queue is read-once ─────────────
  *
@@ -94,6 +98,7 @@ class RemoteControlController extends Controller
         private readonly TenantContext $tenant,
         private readonly ScopeReach $reach,
         private readonly SettingsResolver $settings,
+        private readonly AuditLogger $audit,
     ) {}
 
     /**
@@ -114,10 +119,22 @@ class RemoteControlController extends Controller
             abort(404);
         }
 
+        // A fresh session, not one of the every-few-seconds refreshes: the
+        // control-wanted key is still absent. Audited once here so the trail
+        // holds one "took control" row per session, not one per poll.
+        $isNewSession = ! Cache::has($this->controlWantedKey($device->id));
+
         $now = now()->toIso8601String();
 
         Cache::put($this->controlWantedKey($device->id), $now, self::CONTROL_WANTED_TTL_SECONDS);
         Cache::put($this->liveWantedKey($device->id), $now, self::CONTROL_WANTED_TTL_SECONDS);
+
+        if ($isNewSession) {
+            $this->audit->log('monitoring.control.started', $device, [], [
+                'device' => $device->label,
+                'platform' => $device->platform,
+            ]);
+        }
 
         return response()->noContent();
     }
