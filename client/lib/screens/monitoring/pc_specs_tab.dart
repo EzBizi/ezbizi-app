@@ -190,8 +190,14 @@ bool _declaresSpecs(Map<String, dynamic> device) =>
 /// different from one another, and core/timestamps.dart's [formatStamp] is
 /// deliberately NOT this — its own doc comment says a wrong "2 hours ago" is
 /// worse than an exact stamp, which is the opposite tradeoff a glance-only
-/// roster wants. So this stays local rather than reaching for either.
-String _seenAgo(String? iso) {
+/// roster wants. So this stays here rather than reaching for either.
+///
+/// Public, and deliberately: FloorPlanSummary says "seen 3m ago" about the
+/// same `last_seen_at` stamp this roster does, and the General map and PC
+/// Specs disagreeing about how long ago a person was last seen would be a
+/// bug you could only find by holding the two tabs side by side. One
+/// formatter, imported, not a third copy.
+String seenAgo(String? iso) {
   if (iso == null) return 'never';
 
   final at = DateTime.tryParse(iso)?.toLocal();
@@ -418,7 +424,7 @@ class _PersonTile extends StatelessWidget {
 /// The device to show for a person nobody is currently signed in as — max by
 /// `last_seen_at`, so the tile is never empty just because everyone is
 /// offline. A missing or unparseable stamp sorts as the oldest possible,
-/// the same treatment [_seenAgo] gives it ("never").
+/// the same treatment [seenAgo] gives it ("never").
 Map<String, dynamic> _mostRecentlySeen(List<Map<String, dynamic>> devices) {
   var best = devices.first;
   var bestSeen = DateTime.tryParse(best['last_seen_at'] as String? ?? '') ??
@@ -605,7 +611,7 @@ class _DeviceRow extends StatelessWidget {
                     style: theme.textTheme.bodyMedium,
                   )
                 else if (specs is Map<String, dynamic>)
-                  _SpecsLine(specs: specs)
+                  SpecsLine(specs: specs)
                 else
                   Text(
                     'This device has not reported hardware details yet.',
@@ -613,7 +619,7 @@ class _DeviceRow extends StatelessWidget {
                   ),
                 const SizedBox(height: 4),
                 Text(
-                  'seen ${_seenAgo(seen)}',
+                  'seen ${seenAgo(seen)}',
                   style: theme.textTheme.labelSmall,
                 ),
               ],
@@ -625,8 +631,16 @@ class _DeviceRow extends StatelessWidget {
   }
 }
 
-class _SpecsLine extends StatelessWidget {
-  const _SpecsLine({required this.specs});
+/// One device's reported hardware, as the roster words it: the numbers on one
+/// line, open apps on a second, and a plain sentence when the map is present
+/// but says nothing.
+///
+/// Public for the same reason [seenAgo] is: the General tab's summary sidebar
+/// shows the selected person's specs, and it shows them by mounting THIS —
+/// so "32 GB RAM · 128 GB free" is one rendering with one set of labels,
+/// rather than a second one that drifts the first time a key is added.
+class SpecsLine extends StatelessWidget {
+  const SpecsLine({super.key, required this.specs});
 
   final Map<String, dynamic> specs;
 

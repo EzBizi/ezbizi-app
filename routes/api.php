@@ -49,6 +49,7 @@ use App\Http\Controllers\Api\MetaCallbacksController;
 use App\Http\Controllers\Api\MicrosoftMailAuthController;
 use App\Http\Controllers\Api\Monitoring\CamerasController as MonitoringCamerasController;
 use App\Http\Controllers\Api\Monitoring\DevicesController as MonitoringDevicesController;
+use App\Http\Controllers\Api\Monitoring\FloorPlansController as MonitoringFloorPlansController;
 use App\Http\Controllers\Api\Monitoring\HeartbeatController as MonitoringHeartbeatController;
 use App\Http\Controllers\Api\Monitoring\LiveViewController as MonitoringLiveViewController;
 use App\Http\Controllers\Api\Monitoring\RemoteControlController as MonitoringRemoteControlController;
@@ -1554,6 +1555,34 @@ Route::prefix('v1')
         Route::post('monitoring/cameras', [MonitoringCamerasController::class, 'store']);
         Route::patch('monitoring/cameras/{id}', [MonitoringCamerasController::class, 'update']);
         Route::delete('monitoring/cameras/{id}', [MonitoringCamerasController::class, 'destroy']);
+
+        // ── Monitoring: floor plans, the General tab's read side (2026-09-09-monitoring-general-map, Task 3) ──
+        //
+        // A manager opening the map IS navigation, so the reads stay in THIS
+        // idle-bearing group next to the cameras above. The writes (Task 4) are
+        // admin edits, not a background beat, so they live here too. `index` is
+        // scoped by ScopeReach; `show`/`update`/`destroy` §3-scoped with a manual
+        // find + 404; `store`/`update` validate the chosen scope with
+        // ScopeReach::assertCovers and every node assignee against
+        // constrainToVisiblePeople — see FloorPlansController.
+        Route::get('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'index']);
+        Route::post('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'store']);
+        // BEFORE the {id} GET, deliberately: registered after it, "scope-options"
+        // would match {id} first and 404 as a plan that does not exist. Gated on
+        // monitoring.map.manage (the policy's `create`) and answered straight
+        // from ScopeReach::optionsFor, so the create panel offers exactly the
+        // levels `store`'s assertCovers will accept.
+        Route::get('monitoring/floor-plans/scope-options', [MonitoringFloorPlansController::class, 'scopeOptions']);
+        Route::get('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'show']);
+        Route::put('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'update']);
+        Route::delete('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'destroy']);
+
+        // The assign picker's own roster: who this editor may put on a tile.
+        // Deliberately NOT hr/people — that is gated on HR grants a map editor
+        // need not hold. Gated on `monitoring.map.manage` (the policy's `create`)
+        // and filtered by ScopeReach::constrainToVisiblePeople, the same rule the
+        // write endpoint refuses an unseeable assignee by.
+        Route::get('monitoring/assignable-people', [MonitoringFloorPlansController::class, 'assignablePeople']);
 
         // Changing it while signed in. Needs the current password: a session
         // proves somebody sat down at an unlocked laptop, not that they are the

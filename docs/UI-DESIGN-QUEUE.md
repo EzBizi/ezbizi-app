@@ -749,6 +749,32 @@ joining established house vocabulary, not introducing a word.
 > more honest of the two — *"No tests in reach"* does not claim the organization has none, and
 > *"No tests to track"* does. **Ruled back to "in reach."**
 
+> **RULED AGAIN, and this time on the alternative rather than the presence — drop it.** The
+> deploy desk re-opened it with a full count: **eleven customer-facing strings**, not eight, and
+> three of them not on the dashboard at all. But the fact that decides it is one neither of us
+> had measured: **the same board already writes the plain form.** `LeadsGlance` says *"No
+> enquiries yet."*, Reviews says *"No reviews yet."*, *"No star ratings yet."* So "in reach" was
+> never house style — it is a habit in one cluster of boxes, sitting beside boxes that phrase it
+> plainly. **The consistency I reverted Training to protect does not exist.**
+>
+> My middle position failed for a reason I could have caught: **I measured the phrase's presence
+> and never measured its alternative.** Eleven files saying a thing tells you it is common, not
+> that it is the convention. **When you justify a phrase by consistency, read what the
+> inconsistent neighbours say.**
+>
+> **The rule for the replacements, which is what actually makes them safe: the empty sentence
+> describes the BOX, not the world.** *"No tests to track."* describes what the box holds and is
+> true under any scope. *"No tests yet."* describes the organization and is a claim the box
+> cannot support when the reader sees a subset. That is the real content of my original
+> objection, and it means Training's first line was right for a better reason than I gave it.
+>
+> **Two strings keep it, and that is a ruling rather than a deferral.** `ActionRunner:671`
+> (*"No franchise is in reach for that phone line, so a job cannot be opened."*) and
+> `ModuleServiceProvider:1409` are not scoped counts — they explain a mechanism to somebody
+> configuring an automation, where "in reach" names the thing being explained and dropping it
+> would change the meaning to "none exists". Different reader, different job.
+> (`ActionRunner:643` is a docblock, not copy: the count is eleven, not twelve.)
+
 > **The measurement lesson, which is new and is the reusable part: the pattern was right, the
 > file was right, and the CORPUS was wrong.** Dashboard copy is split across Dart and PHP, so a
 > clean search of one language can miss most of the thing and return a confident zero. Before

@@ -41,6 +41,91 @@ class PhonePushTokenTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
+    /**
+     * The push credential is created on the connection's OWN account.
+     *
+     * ── The defect ───────────────────────────────────────────────────
+     *
+     * `notify.twilio.com/v1/Credentials` carries no account segment, unlike
+     * `api.twilio.com/2010-04-01/Accounts/{sid}/…`. So the owning account is
+     * decided by WHO AUTHENTICATES, and the account SID passed alongside is
+     * ignored without a word.
+     *
+     * The first version of this used the platform helper — parent auth, child
+     * SID — with a comment claiming it created the credential against the
+     * subaccount. Run against production it created three credentials on the
+     * PARENT, reported three successes with real CR SIDs, and filled three
+     * columns with SIDs no subaccount token can use. Nothing errored.
+     *
+     * Asserted on the CLIENT'S IDENTITY rather than on a response, because the
+     * response was indistinguishable from success and that is the whole story.
+     */
+    public function test_a_push_credential_is_created_as_the_connections_own_account(): void
+    {
+        $t = $this->provisionTenant();
+        $connection = $this->connection($t, ['account_sid' => 'AC'.str_repeat('9', 32)]);
+        $this->inTenant($t['org'], fn () => $connection
+            ->forceFill(['auth_token' => 'this-accounts-own-token'])->save());
+
+        $client = $this->inTenant($t['org'], fn () => $this->clientFor($connection));
+
+        $this->assertSame(
+            'AC'.str_repeat('9', 32),
+            $client->getUsername(),
+            'the credential would be created by whoever this authenticates as, '
+            .'and it is not this connection',
+        );
+        $this->assertSame('AC'.str_repeat('9', 32), $client->getAccountSid());
+
+        // The control: the platform account is configured and is NOT what came
+        // back. Without this the assertion passes for a client built from a
+        // config that happens to be empty in tests.
+        $this->assertNotSame(
+            (string) config('services.twilio.platform_account_sid'),
+            $client->getUsername(),
+            'this is the parent account, which is where the wrong credentials '
+            .'were created',
+        );
+    }
+
+    /** With no auth token it falls back to the account's own API key. */
+    public function test_without_an_auth_token_the_accounts_api_key_is_used(): void
+    {
+        $t = $this->provisionTenant();
+        $connection = $this->connection($t, ['account_sid' => 'AC'.str_repeat('8', 32)]);
+        $this->inTenant($t['org'], fn () => $connection
+            ->forceFill(['auth_token' => null])->save());
+
+        $client = $this->inTenant($t['org'], fn () => $this->clientFor($connection));
+
+        $this->assertSame('SK'.str_repeat('a', 32), $client->getUsername());
+
+        // Still the connection's account, which is the part that decides where
+        // the credential lands.
+        $this->assertSame('AC'.str_repeat('8', 32), $client->getAccountSid());
+    }
+
+    /** A connection with nothing of its own is refused, not guessed at. */
+    public function test_a_connection_with_no_credentials_of_its_own_is_refused(): void
+    {
+        $t = $this->provisionTenant();
+        $connection = $this->connection($t, ['api_key_sid' => null]);
+        $this->inTenant($t['org'], fn () => $connection
+            ->forceFill(['auth_token' => '', 'credentials' => ''])->save());
+
+        $this->expectException(\RuntimeException::class);
+        $this->inTenant($t['org'], fn () => $this->clientFor($connection));
+    }
+
+    /** The client `createPushCredential` would use, without a network call. */
+    private function clientFor(PhoneConnection $connection): \Twilio\Rest\Client
+    {
+        $method = new \ReflectionMethod(HttpTwilioGateway::class, 'pushCredentialClient');
+        $method->setAccessible(true);
+
+        return $method->invoke(new HttpTwilioGateway, $connection->fresh());
+    }
+
     /** @return array<string, mixed> the voice grant inside a minted token */
     private function voiceGrantOf(PhoneConnection $connection, ?string $platform): array
     {
