@@ -138,6 +138,7 @@ use App\Support\Auth\PasswordPolicy;
 use App\Support\Auth\TwoFactorPolicy;
 use App\Support\I18n\UiCatalogue;
 use App\Support\Modules\PermissionCatalogue;
+use App\Support\Monitoring\ScreenMonitoringExemption;
 use App\Support\Preferences\PreferenceRegistry;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\DisplaySettings;
@@ -1743,6 +1744,17 @@ Route::prefix('v1')
                     // would come back with every screen quietly answering 403
                     // and nothing on screen saying why.
                     'two_factor_enrolment_required' => app(TwoFactorPolicy::class)->mustEnrol($user),
+
+                    // SECURITY exemption (Monitoring): the Lead Developer's own
+                    // device is never screen-captured, live-viewed or
+                    // remote-controlled. The desktop agent reads this to skip
+                    // constructing its capture services and to omit the
+                    // `screenshot` capability from its heartbeat — the server
+                    // strips it regardless, this just stops the agent declaring
+                    // it. Keyed on the shared email between this org user and an
+                    // active lead-developer staff account; see
+                    // ScreenMonitoringExemption.
+                    'screen_monitoring_exempt' => ScreenMonitoringExemption::isExempt($user),
 
                     // Clock in chrome on the first frame (design §8). The top-bar
                     // button reads this rather than a second round trip.

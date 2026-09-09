@@ -7,12 +7,14 @@ use App\Models\MonitoredDevice;
 use App\Models\MonitoringScreenshot;
 use App\Models\User;
 use App\Support\Access\ScopeReach;
+use App\Support\Monitoring\ScreenMonitoringExemption;
 use App\Support\Monitoring\ScreenshotStore;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
 
 /**
  * A device's own periodic screen captures — ingest (`store`, Task 3) and the
@@ -58,6 +60,9 @@ class ScreenshotsController extends Controller
 
     private const DEFAULT_LIMIT = 50;
 
+    /** The SECURITY exemption's refusal sentence, shared by every screen-reaching guard. */
+    private const EXEMPT_REFUSAL = 'This device belongs to a Lead Developer and is exempt from screen monitoring.';
+
     public function __construct(
         private readonly ScreenshotStore $store,
         private readonly TenantContext $tenant,
@@ -86,6 +91,14 @@ class ScreenshotsController extends Controller
 
         if ($device === null) {
             abort(404, 'No registered device for this session — send a heartbeat first.');
+        }
+
+        // SECURITY exemption, defence-in-depth: even though an exempt device
+        // never advertises `screenshot` (the heartbeat strips it), a tampered
+        // client could still POST a capture. Refuse BEFORE a single byte is
+        // stored — the Lead Developer's screen is never written to disk.
+        if (ScreenMonitoringExemption::isExempt($device->user)) {
+            abort(403, self::EXEMPT_REFUSAL);
         }
 
         $image = $request->file('image');
@@ -212,9 +225,28 @@ class ScreenshotsController extends Controller
      */
     private function visibleTo(User $actor): Builder
     {
-        return MonitoringScreenshot::query()
+        $query = MonitoringScreenshot::query()
             ->whereHas('device', fn (Builder $d) => $d->whereHas(
                 'user', fn (Builder $u) => $this->reach->constrainToVisiblePeople($u, $actor)
             ));
+
+        // SECURITY: a Lead Developer's screen is exempt from monitoring, so even
+        // a screenshot captured before the exemption shipped (or before the
+        // staff account existed) is never listed OR served — `show` then 404s
+        // it, the same "you cannot see this" answer §3 gives. A SEPARATE
+        // whereDoesntHave, not a condition inside the reach closure above:
+        // constrainToVisiblePeople builds an OR-group (yourself OR assigned OR
+        // …), and a where added inside it would fold into one arm and leave the
+        // others — notably "yourself", the Lead Developer viewing their own
+        // device — unfiltered. AND-ed at the top level, it holds for every arm.
+        $exemptEmails = ScreenMonitoringExemption::exemptEmails();
+        if ($exemptEmails !== []) {
+            $query->whereDoesntHave(
+                'device.user',
+                fn (Builder $u) => $u->whereIn(DB::raw('LOWER(email)'), $exemptEmails)
+            );
+        }
+
+        return $query;
     }
 }

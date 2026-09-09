@@ -7,6 +7,7 @@ use App\Models\MonitoredDevice;
 use App\Models\User;
 use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
+use App\Support\Monitoring\ScreenMonitoringExemption;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Closure;
@@ -94,6 +95,9 @@ class RemoteControlController extends Controller
     /** Ceiling on the whole batch's encoded size, so nobody parks a megabyte of "opaque" JSON in the cache. */
     private const MAX_BATCH_KILOBYTES = 64;
 
+    /** The SECURITY exemption's refusal sentence — same wording every screen-reaching guard uses. */
+    private const EXEMPT_REFUSAL = 'This device belongs to a Lead Developer and is exempt from screen monitoring.';
+
     public function __construct(
         private readonly TenantContext $tenant,
         private readonly ScopeReach $reach,
@@ -117,6 +121,12 @@ class RemoteControlController extends Controller
 
         if ($device === null) {
             abort(404);
+        }
+
+        // SECURITY exemption: no control session is ever opened over the Lead
+        // Developer's machine — refuse before anything is queued or audited.
+        if (ScreenMonitoringExemption::isExempt($device->user)) {
+            abort(403, self::EXEMPT_REFUSAL);
         }
 
         // A fresh session, not one of the every-few-seconds refreshes: the
@@ -156,6 +166,12 @@ class RemoteControlController extends Controller
 
         if ($device === null) {
             abort(404);
+        }
+
+        // SECURITY exemption: no input is ever queued for the Lead Developer's
+        // machine, even by a caller that somehow opened a control session.
+        if (ScreenMonitoringExemption::isExempt($device->user)) {
+            abort(403, self::EXEMPT_REFUSAL);
         }
 
         $data = $request->validate([
@@ -212,6 +228,12 @@ class RemoteControlController extends Controller
 
         if ($device === null) {
             abort(404);
+        }
+
+        // SECURITY exemption: the agent for an exempt device is never handed
+        // input to apply, and never told a driver is present.
+        if (ScreenMonitoringExemption::isExempt($device->user)) {
+            abort(403, self::EXEMPT_REFUSAL);
         }
 
         $key = $this->inputQueueKey($device->id);
