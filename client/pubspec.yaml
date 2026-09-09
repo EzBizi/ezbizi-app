@@ -95,8 +95,10 @@ dev_dependencies:
   # `flutter test` and `flutter drive` all pass. Only the artefact that ships
   # fails, and only on Android.
   #
-  # TO TAKE SCREENSHOTS: add the two lines back, run the harness, then remove
-  # them again before any release build.
+  # TO TAKE SCREENSHOTS: run scripts/store-screenshots.sh. It adds the two
+  # lines below to its own synced copy on the relay and removes them again,
+  # so they never reach this file and no release can inherit them. Do not add
+  # them here by hand - that is the mistake this arrangement exists to stop.
   #
   #   integration_test:
   #     sdk: flutter
