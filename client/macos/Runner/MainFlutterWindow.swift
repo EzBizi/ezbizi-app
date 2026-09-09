@@ -7,6 +7,10 @@ class MainFlutterWindow: NSWindow {
     let windowFrame = self.frame
     self.contentViewController = flutterViewController
     self.setFrame(windowFrame, display: true)
+    // Reopen at the size and position the window was last left, maximized
+    // state included, the way every macOS document window does; the name is
+    // the key AppKit stores the frame under in the app's preferences.
+    self.setFrameAutosaveName("EzBiziMainWindow")
 
     // EZBIZI_WINDOW=1440x900 pins the content area to that size. It exists for
     // the App Store screenshot run on the relay Mac, where nothing else can

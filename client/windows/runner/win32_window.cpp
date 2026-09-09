@@ -56,6 +56,61 @@ static int g_active_window_count = 0;
 
 using EnableNonClientDpiScaling = BOOL __stdcall(HWND hwnd);
 
+namespace {
+
+// Where the window was last left — size, position, and whether it was
+// maximized — so the next launch opens the same way. Kept in the registry
+// under the current user rather than in a file: an update relaunches a fresh
+// process from the installer, and a person maximizing the app should not have
+// to do it again every version. Saved at every point the window can end or
+// change shape, not only on a clean close, because the updater's Restart
+// Manager path and a plain kill both skip WM_DESTROY.
+const wchar_t* const kPlacementKey = L"Software\\EzBizi";
+const wchar_t* const kPlacementValue = L"WindowPlacement";
+
+void SaveWindowPlacement(HWND window) {
+  if (window == nullptr || !IsWindowVisible(window) || IsIconic(window)) {
+    return;
+  }
+  WINDOWPLACEMENT placement = {};
+  placement.length = sizeof(placement);
+  if (!GetWindowPlacement(window, &placement)) {
+    return;
+  }
+  HKEY key = nullptr;
+  if (RegCreateKeyExW(HKEY_CURRENT_USER, kPlacementKey, 0, nullptr, 0,
+                      KEY_SET_VALUE, nullptr, &key, nullptr) != ERROR_SUCCESS) {
+    return;
+  }
+  RegSetValueExW(key, kPlacementValue, 0, REG_BINARY,
+                 reinterpret_cast<const BYTE*>(&placement), sizeof(placement));
+  RegCloseKey(key);
+}
+
+// True when a placement was saved and its normal rectangle still lands on a
+// monitor that exists now (a laptop undocked from a second screen would
+// otherwise open off-screen with no way to reach it).
+bool LoadWindowPlacement(WINDOWPLACEMENT* placement) {
+  HKEY key = nullptr;
+  if (RegOpenKeyExW(HKEY_CURRENT_USER, kPlacementKey, 0, KEY_QUERY_VALUE,
+                    &key) != ERROR_SUCCESS) {
+    return false;
+  }
+  DWORD type = 0;
+  DWORD size = sizeof(*placement);
+  LSTATUS status = RegQueryValueExW(key, kPlacementValue, nullptr, &type,
+                                    reinterpret_cast<BYTE*>(placement), &size);
+  RegCloseKey(key);
+  if (status != ERROR_SUCCESS || type != REG_BINARY ||
+      size != sizeof(*placement) || placement->length != sizeof(*placement)) {
+    return false;
+  }
+  return MonitorFromRect(&placement->rcNormalPosition,
+                         MONITOR_DEFAULTTONULL) != nullptr;
+}
+
+}  // namespace
+
 // Scale helper to convert logical scaler values to physical using passed in
 // scale factor
 int Scale(int source, double scale_factor) {
@@ -175,6 +230,16 @@ bool Win32Window::Create(const std::wstring& title,
 }
 
 bool Win32Window::Show() {
+  WINDOWPLACEMENT placement = {};
+  placement.length = sizeof(placement);
+  if (LoadWindowPlacement(&placement)) {
+    // Never reopen minimized: a person who closed a minimized app expects a
+    // window, not a taskbar button. Maximized is kept; anything else is normal.
+    placement.showCmd = placement.showCmd == SW_SHOWMAXIMIZED
+                            ? SW_SHOWMAXIMIZED
+                            : SW_SHOWNORMAL;
+    return SetWindowPlacement(window_handle_, &placement);
+  }
   return ShowWindow(window_handle_, SW_SHOWNORMAL);
 }
 
@@ -238,6 +303,7 @@ Win32Window::MessageHandler(HWND hwnd,
        * it has the app sitting on. Letting a close through to an already
        * invisible window costs nothing and closes that hole.
        */
+      SaveWindowPlacement(window_handle_);
       if (!really_quitting_ && IsWindowVisible(window_handle_)) {
         AddTrayIcon();
         ShowWindow(window_handle_, SW_HIDE);
@@ -256,8 +322,15 @@ Win32Window::MessageHandler(HWND hwnd,
       return TRUE;
 
     case WM_ENDSESSION:
+      SaveWindowPlacement(window_handle_);
       really_quitting_ = true;
       break;
+
+    // A drag or resize just finished, or the window was maximized/restored:
+    // remember it now, so a later kill loses nothing.
+    case WM_EXITSIZEMOVE:
+      SaveWindowPlacement(window_handle_);
+      return 0;
 
     case kTrayCallbackMessage:
       switch (LOWORD(lparam)) {
@@ -286,6 +359,7 @@ Win32Window::MessageHandler(HWND hwnd,
       break;
 
     case WM_DESTROY:
+      SaveWindowPlacement(window_handle_);
       window_handle_ = nullptr;
       Destroy();
       if (quit_on_close_) {
@@ -304,6 +378,9 @@ Win32Window::MessageHandler(HWND hwnd,
       return 0;
     }
     case WM_SIZE: {
+      if (wparam == SIZE_MAXIMIZED || wparam == SIZE_RESTORED) {
+        SaveWindowPlacement(window_handle_);
+      }
       RECT rect = GetClientArea();
       if (child_content_ != nullptr) {
         // Size and position the child window.
