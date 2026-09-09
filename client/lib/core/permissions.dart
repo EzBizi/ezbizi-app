@@ -93,6 +93,7 @@ class PermissionAction {
     required this.action,
     required this.label,
     required this.grantable,
+    this.requires = const [],
   });
 
   /// The permission key itself, which is what gets stored and sent.
@@ -118,12 +119,26 @@ class PermissionAction {
   /// answer that was never restrictive.
   final bool grantable;
 
+  /// Other permission keys this one cannot be saved without.
+  ///
+  /// Almost always empty — exactly ONE action in the product declares a
+  /// requirement today (`training.assign` needs `training.monitor`), so the
+  /// screen must spend nothing on a row whose list is empty.
+  ///
+  /// The server REFUSES a save that breaks this rather than adding the missing
+  /// key, deliberately: `withImpliedView` adds a missing `.view` because that
+  /// is the least a module can grant, while `monitor` is the larger disclosure
+  /// and implying it would hand out more than the administrator ticked. So the
+  /// screen says what is missing and never ticks it for them.
+  final List<String> requires;
+
   factory PermissionAction.fromJson(Map<String, dynamic> json) =>
       PermissionAction(
         key: json['key'] as String,
         action: json['action'] as String? ?? '',
         label: json['label'] as String? ?? json['key'] as String,
         grantable: json['grantable'] != false,
+        requires: (json['requires'] as List?)?.cast<String>() ?? const [],
       );
 }
 

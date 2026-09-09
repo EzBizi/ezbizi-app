@@ -1017,6 +1017,171 @@ void main() {
       expect(find.text('Settings'), findsOneWidget);
     });
   });
+
+  /// UI/UX permission-requires layouts 2 + 6, chosen 2026-09-09.
+  ///
+  /// Exactly ONE action in the product declares a requirement, so the case
+  /// that matters most is the one where nothing is declared at all.
+  testWidgets('an action with no requirement says nothing about one', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    await _pumpRoles(
+      tester,
+      roles: [_role('r-2', 'Manager', permissions: const [])],
+      catalogue: [_catalogueModule('customers', 'Customers')],
+    );
+
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Customers'));
+    await tester.pumpAndSettle();
+
+    // The control: the rows are actually drawn, so "no requirement text"
+    // is a statement about them rather than about an empty screen.
+    expect(find.byKey(const ValueKey('action:customers.view')), findsOneWidget);
+    expect(find.textContaining('needs'), findsNothing);
+    expect(find.textContaining('Needs'), findsNothing);
+  });
+
+  testWidgets('on a desktop the requirement rides the label, before any tick', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    await _pumpRoles(
+      tester,
+      roles: [_role('r-2', 'Manager', permissions: const [])],
+      catalogue: [
+        _catalogueModule(
+          'training',
+          'Training',
+          actions: const [
+            ('view', 'View'),
+            ('monitor', 'Monitor training'),
+            ('assign', 'Assign a guide'),
+          ],
+          requires: const {
+            'assign': ['training.monitor'],
+          },
+        ),
+      ],
+    );
+
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Training'));
+    await tester.pumpAndSettle();
+
+    // Legible with NOTHING ticked -- the point of layout 2 over a warning.
+    expect(find.textContaining('needs Monitor training'), findsOneWidget);
+    // Named in the words on the other row, not as a permission key.
+    expect(find.textContaining('training.monitor'), findsNothing);
+    // Not yet a complaint: nothing is ticked, so nothing is wrong.
+    expect(find.textContaining('not ticked'), findsNothing);
+
+    // And it fits on ONE line. A wrapped suffix costs a whole line (measured:
+    // 48 -> 56 at the label's own size); bodySmall costs 4pt of line height
+    // and no wrap. Guard the wrap, which is the failure a longer label would
+    // reintroduce, not the 4pt, which nobody can see on one row in a hundred.
+    final plain =
+        tester.getSize(find.byKey(const ValueKey('action:training.view'))).height;
+    final withSuffix =
+        tester.getSize(find.byKey(const ValueKey('action:training.assign'))).height;
+    expect(
+      withSuffix,
+      lessThan(plain + 8),
+      reason: 'The requirement suffix wrapped onto a second line at this '
+          'width. Shorten it or move it under the label.',
+    );
+  });
+
+  testWidgets('ticking it without its requirement says so, and ticks nothing', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    await _pumpRoles(
+      tester,
+      roles: [_role('r-2', 'Manager', permissions: const [])],
+      catalogue: [
+        _catalogueModule(
+          'training',
+          'Training',
+          actions: const [
+            ('view', 'View'),
+            ('monitor', 'Monitor training'),
+            ('assign', 'Assign a guide'),
+          ],
+          requires: const {
+            'assign': ['training.monitor'],
+          },
+        ),
+      ],
+    );
+
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Training'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('action:training.assign')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('not ticked'), findsOneWidget);
+
+    // The screen NEVER ticks the other box. The server refuses rather than
+    // implying, because monitor is the larger disclosure -- a screen that
+    // helpfully ticked it would hand out more than the administrator did.
+    expect(
+      tester
+          .widget<CheckboxListTile>(
+            find.byKey(const ValueKey('action:training.monitor')),
+          )
+          .value,
+      isFalse,
+    );
+  });
+
+  testWidgets('on a phone the requirement is under the label, not behind a tap', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await _pumpRoles(
+      tester,
+      roles: [_role('r-2', 'Manager', permissions: const [])],
+      catalogue: [
+        _catalogueModule(
+          'training',
+          'Training',
+          actions: const [
+            ('view', 'View'),
+            ('monitor', 'Monitor training'),
+            ('assign', 'Assign a guide'),
+          ],
+          requires: const {
+            'assign': ['training.monitor'],
+          },
+        ),
+      ],
+    );
+
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Training'));
+    await tester.pumpAndSettle();
+
+    // Stated at rest, with nothing ticked and nothing tapped.
+    expect(find.text('Needs Monitor training'), findsOneWidget);
+    // And NOT also as a suffix: two slots measured separately would say it
+    // twice, which is what the single LayoutBuilder exists to prevent.
+    expect(find.textContaining('·  needs'), findsNothing);
+  });
+
 }
 
 // ── harness ────────────────────────────────────────────────────────
@@ -1203,6 +1368,7 @@ Map<String, dynamic> _catalogueModule(
   String groupLabel = '',
   String? groupHint,
   String? parent,
+  Map<String, List<String>> requires = const {},
 }) => {
   'key': key,
   'label': label,
@@ -1221,6 +1387,8 @@ Map<String, dynamic> _catalogueModule(
         'action': action,
         'label': actionLabel,
         'grantable': !ungrantable.contains(action),
+        // The server sends this on EVERY action; almost always empty.
+        'requires': requires[action] ?? const <String>[],
       },
   ],
   'inboxes': ?inboxes,
