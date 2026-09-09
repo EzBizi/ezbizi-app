@@ -966,6 +966,27 @@ now the reader causes it and cannot undo it. **Ruled: the same control toggles, 
 to "Show fewer".** That is not the second control they were right to avoid inventing — it is the
 first one completing its own behaviour.
 
+**State inside a row of a recycled list belongs to the SLOT, not the item, unless keyed — and
+the danger is at the SECOND edit, not the first.** Training's refinement, and it is the part
+that makes the rule useful: *"adding state to something inside a ListView is a moment where the
+question announces itself. It would not have announced itself to somebody adding a filter to
+that list a month later — the row would already be stateful and already look finished."* **The
+person who adds the state usually sees it; the person who adds the reordering usually cannot.**
+So this is a fourth member of the *looks finished* family: a stateful row reads as already-solved
+to whoever arrives next.
+
+**A test written from the same mental model as the code inherits its blind spot.** Training's
+one-way *"Show all"* shipped with a test that tapped once and asserted the list opened — which
+**passes on the broken version**. The control that was wrong and the test that could not see it
+came from the same gap, in the same commit. The two-tap test asserting both directions is what a
+different mental model would have written. **Where a control has a state machine, assert the
+return path, not just the departure.**
+
+**A key is copy too.** Renaming `show-all-attempts` to `toggle-attempts` when the control gained
+a second direction: *"a key called 'show all' on a control that also hides is the same small lie
+the empty states spent today losing."* Test keys are read by people, and one that describes half
+a control ages exactly like a sentence that describes half a fact.
+
 **State inside a row of a recycled list belongs to the SLOT, not the item, unless keyed.**
 Training keyed their person row after finding that expanding one person's history and then
 filtering would show *somebody else's* row expanded — `ListView` reuses the element, and the
