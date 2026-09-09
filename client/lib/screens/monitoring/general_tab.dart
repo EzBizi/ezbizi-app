@@ -6,16 +6,17 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
+import 'floor_plan_canvas.dart';
 
 /// Monitoring — General: an organization's machines laid out on a floor plan
 /// (spec docs/superpowers/specs/2026-09-09-monitoring-general-map-design.md).
 ///
-/// This is Task 5 of the plan: the tab SHELL — the plan picker, the view-mode
-/// load of one plan's `layout` + resolved `status`, and the 30s status poll.
-/// The interactive canvas (grid + walls + status-coloured tiles) and the edit
-/// mode are Tasks 6 and 7; here the selected plan's area is a PLACEHOLDER that
-/// states the node/wall counts, keyed `floor-plan-canvas`, which Task 6
-/// replaces in place.
+/// The tab SHELL — the plan picker, the view-mode load of one plan's `layout`
+/// + resolved `status`, and the 30s status poll — mounting [FloorPlanCanvas]
+/// (Task 6) as the map area, still keyed `floor-plan-canvas`. Edit mode is
+/// Task 7 and the summary sidebar is Task 8; the selection this tab holds
+/// ([_selectedNodeId]) is what the sidebar will read, which is why the canvas
+/// reports taps here rather than keeping the selection to itself.
 ///
 /// ── The two grants, and what each gates ────────────────────────────
 ///
@@ -77,6 +78,11 @@ class _GeneralTabState extends State<GeneralTab> {
   String? _planError;
   Map<String, dynamic>? _layout;
   Map<String, dynamic>? _status;
+
+  /// Which computer tile is selected, or null for none. Owned here, not by the
+  /// canvas: the Task 8 sidebar answers a different question depending on it,
+  /// so one tab-level answer keeps the two panes from disagreeing.
+  String? _selectedNodeId;
 
   Timer? _pollTimer;
 
@@ -142,6 +148,8 @@ class _GeneralTabState extends State<GeneralTab> {
       _layout = null;
       _status = null;
       _planError = null;
+      // Another plan's node ids mean nothing here.
+      _selectedNodeId = null;
     });
 
     _loadPlan(id);
@@ -152,6 +160,14 @@ class _GeneralTabState extends State<GeneralTab> {
   void _refreshSelected() {
     final id = _selectedPlanId;
     if (id != null) _loadPlan(id);
+  }
+
+  /// Tapping the selected tile clears the selection, which is how you get the
+  /// sidebar's whole-plan summary back without hunting for a close button.
+  void _selectNode(String nodeId) {
+    setState(() {
+      _selectedNodeId = nodeId == _selectedNodeId ? null : nodeId;
+    });
   }
 
   Future<void> _loadPlan(String planId) async {
@@ -184,12 +200,26 @@ class _GeneralTabState extends State<GeneralTab> {
 
     final data = response.data as Map<String, dynamic>;
 
+    final layout = (data['layout'] as Map<String, dynamic>?) ?? const {};
+
     setState(() {
       _loadingPlan = false;
       _planError = null;
-      _layout = (data['layout'] as Map<String, dynamic>?) ?? const {};
+      _layout = layout;
       _status = (data['status'] as Map<String, dynamic>?) ?? const {};
+      // A poll can land on a layout somebody else has edited. A selection
+      // pointing at a node that is no longer there would leave the sidebar
+      // describing a deleted machine, so it is dropped rather than kept.
+      if (_selectedNodeId != null && !_layoutHasNode(layout, _selectedNodeId!)) {
+        _selectedNodeId = null;
+      }
     });
+  }
+
+  static bool _layoutHasNode(Map<String, dynamic> layout, String nodeId) {
+    final nodes = layout['nodes'];
+    if (nodes is! List) return false;
+    return nodes.any((n) => n is Map && n['id'] == nodeId);
   }
 
   @override
@@ -267,9 +297,17 @@ class _GeneralTabState extends State<GeneralTab> {
           )
         else if (_planError != null)
           ErrorNote(_planError!)
-        else if (_layout != null)
-          _CanvasPlaceholder(layout: _layout!, status: _status ?? const {})
-        else
+        else if (_layout != null) ...[
+          _PlanCounts(layout: _layout!),
+          const SizedBox(height: 8),
+          FloorPlanCanvas(
+            key: const Key('floor-plan-canvas'),
+            layout: _layout!,
+            status: _status ?? const {},
+            selectedNodeId: _selectedNodeId,
+            onSelectNode: _selectNode,
+          ),
+        ] else
           const SizedBox.shrink(),
       ],
     );
@@ -376,16 +414,15 @@ class _PlanPicker extends StatelessWidget {
   }
 }
 
-/// A stand-in for the interactive canvas (Task 6). It states what the plan
-/// holds — how many computer tiles and wall segments — so the load path is
-/// visibly working before the real grid exists. Keyed the same as the canvas
-/// that replaces it, so the tab's tests keep pointing at "the map area"
-/// whichever of the two is mounted.
-class _CanvasPlaceholder extends StatelessWidget {
-  const _CanvasPlaceholder({required this.layout, required this.status});
+/// What the plan holds, in words, above the map: how many computer tiles and
+/// how many wall segments. The map itself is the picture; this is the caption
+/// that lets you tell at a glance that you are looking at the plan you chose
+/// and that it loaded whole — the same two counts a stale answer would get
+/// wrong, which is what the tab's late-answer test reads.
+class _PlanCounts extends StatelessWidget {
+  const _PlanCounts({required this.layout});
 
   final Map<String, dynamic> layout;
-  final Map<String, dynamic> status;
 
   @override
   Widget build(BuildContext context) {
@@ -393,28 +430,10 @@ class _CanvasPlaceholder extends StatelessWidget {
     final nodes = (layout['nodes'] as List<dynamic>?) ?? const [];
     final walls = (layout['walls'] as List<dynamic>?) ?? const [];
 
-    return Card(
-      key: const Key('floor-plan-canvas'),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Floor plan', style: theme.textTheme.titleSmall),
-            const SizedBox(height: 8),
-            Text(
-              '${nodes.length} computers · ${walls.length} walls',
-              style: theme.textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'The interactive map arrives next.',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
-          ],
-        ),
-      ),
+    return Text(
+      '${nodes.length} computers · ${walls.length} walls',
+      style: theme.textTheme.bodySmall
+          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
     );
   }
 }
