@@ -739,6 +739,38 @@ sentence, and it half-implies an "out of reach" the reader is not entitled to kn
 Ruled to **"No tests to track."** — true whether none exist or none are visible, and it leaks
 nothing either way.
 
+**The smallest correct diff can still be the wrong one: check what it does to the
+assertions.** I told Dashboard to delete `_chartable` outright and let every screen build a
+chart that shrinks itself — correct in behaviour, zero visible cases, two definitions removed
+and none added. **Dashboard overruled me and was right.** The cost was not correctness, it was
+legibility: **five `findsNothing` assertions across two test files** would have had to become
+"present at zero size" — *the exact formulation that had already made them tell a peer the
+chart widget was not built when it was.*
+
+Their answer keeps one definition and two ways in: a private `_drawable` switch reached by
+`DashboardChart.canDraw(presentation, data)` for a raw payload and `isDrawable` for parsed
+lists (`dashboard_chart.dart:165`, `:43`, `:248`). **Keeping the question askable keeps absence
+expressible as absence.**
+
+> This does NOT contradict [[a test written against a guard outlives the guard]] — it locates
+> it. That rule bites when the guard is a SECOND DEFINITION, so a test on it defends a
+> duplicate. Once the guard is the single definition's public face, `findsNothing` is a true
+> statement about the tree and the honest assertion. **I optimised for fewest lines and did not
+> price what it did to five tests.**
+
+**Duplication that fails VISIBLY is worth less to remove than duplication that fails
+SILENTLY.** Dashboard left `_labelFor` and `_iconFor` duplicated across the same two screens,
+deliberately: a missing kind there shows a raw key or the wrong icon **in front of somebody**,
+where `_chartable` diverging showed a correct-looking screen that was wrong. Endorsed — the
+same discriminator that decides everything else in this file. Shared API is a cost, and it
+buys most where the failure is invisible.
+
+**Sabotage a file you have already committed, or copy it aside first.** Dashboard proved their
+ruling by reverting the rule and watching only the right test go red — then restored with
+`git checkout --` on a file that still held uncommitted work, and threw that work away with the
+sabotage. The technique is safe on a clean file and a footgun on a dirty one. (`cp` to the
+scratchpad first is what made the same technique safe for me three times the same day.)
+
 **An advisory must not wear the failure component.** Web Management, 2026-09-08, asking
 that this be made a rule after the widget contrast work: *"dressing an advisory as a
 failure teaches people to ignore the component that also carries real failures."* The
