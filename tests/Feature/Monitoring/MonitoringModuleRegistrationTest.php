@@ -29,6 +29,14 @@ class MonitoringModuleRegistrationTest extends TestCase
         $this->assertContains('cameras.manage', $module->actions);
     }
 
+    public function test_monitoring_declares_map_manage(): void
+    {
+        $module = app(ModuleRegistry::class)->get('monitoring');
+
+        $this->assertNotNull($module);
+        $this->assertContains('map.manage', $module->actions);
+    }
+
     public function test_monitoring_declares_control_as_a_separate_grant_from_screenshots_view(): void
     {
         $module = app(ModuleRegistry::class)->get('monitoring');
@@ -68,5 +76,12 @@ class MonitoringModuleRegistrationTest extends TestCase
         $keys = app(PermissionCatalogue::class)->keys();
 
         $this->assertContains('monitoring.control', $keys);
+    }
+
+    public function test_permission_catalogue_knows_monitoring_map_manage(): void
+    {
+        $keys = app(PermissionCatalogue::class)->keys();
+
+        $this->assertContains('monitoring.map.manage', $keys);
     }
 }
