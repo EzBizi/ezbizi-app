@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Models\ApiToken;
+use App\Observers\JobThumbtackObserver;
+use App\Models\Job;
 use App\Models\InspectionReport;
 use App\Services\Leads\LeadInsights;
 use App\Services\Leads\LocalServicesLeads;
@@ -180,7 +182,19 @@ class AppServiceProvider extends ServiceProvider
          * what that meant while the scope failed open, and why the exemption is
          * one named scope on one relation rather than anything wider.
          */
-        Sanctum::usePersonalAccessTokenModel(ApiToken::class);
+        Sanctum::usePersonalAccessTokenModel(ApiToken::class);
+
+        /*
+         * The only observer in this application, and it earns that.
+         *
+         * A job status changes down two paths — JobsController::update() and an
+         * automation through ActionRunner — and Thumbtack has to be told on
+         * both. ActionRunner already carries a comment about being forced to
+         * duplicate the controller emits for exactly this reason; a third copy
+         * would drift, and a drift here is a Pro whose completion record is
+         * right when a person clicks and wrong when a rule does.
+         */
+        Job::observe(JobThumbtackObserver::class);
 
         /*
          * `attachments.attachable_type` holds `jobs`, not `App\Models\Job`.

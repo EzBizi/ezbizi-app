@@ -833,6 +833,33 @@ class SettingRegistry
                     .'Revenue is reported against the moment a job first reaches one of these, '
                     .'so a job booked in June and finished in September counts in September.',
             ),
+
+            /*
+             * Which of YOUR job statuses mean what to Thumbtack.
+             *
+             * Thumbtack measures a Pro on what happens to work that came
+             * through them, and its six statuses are fixed. EzBizi's are not:
+             * every organization writes its own vocabulary in
+             * `jobs.statuses`, so one company's "Done" is another's "Closed
+             * out". There is no table that could map those without guessing,
+             * and a guess here is not a display bug — it is a false claim
+             * about a job, made to somebody who reports on it.
+             *
+             * So the tenant says. Empty by default, which means EzBizi tells
+             * Thumbtack NOTHING until somebody fills it in — the same shape as
+             * `jobs.earned_statuses`, and for the same reason: silence is
+             * honest, a guess is not.
+             */
+            new SettingDefinition(
+                key: 'jobs.thumbtack_status_map', label: 'What your job statuses mean to Thumbtack',
+                type: SettingDefinition::TYPE_JSON,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'For jobs that began as a Thumbtack enquiry, EzBizi can tell Thumbtack what '
+                    .'happened to them. Map each of your own job statuses to one of these: '
+                    .'not_scheduled, appt_scheduled, job_complete, invoice_paid, customer_cancel or '
+                    .'pro_cancel. Anything you leave out is simply not reported.',
+            ),
         ];
     }
 
