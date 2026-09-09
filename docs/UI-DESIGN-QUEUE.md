@@ -665,8 +665,34 @@ the cause was wrong.
 Nothing is broken today; both agree. But the set of presentation kinds MOVES — Dashboard
 changed which ones a glance may offer this same day — and the day a fifth kind is added to one
 copy, a chart draws on the home screen and silently does not on HR's, falling through
-`default: return false` with no error anywhere. **Same drift class as two definitions of
-readable**, and the same answer: one definition, or a test asserting the two agree.
+`default: return false` with no error anywhere. **Same drift class as two definitions of readable.**
+
+> **CORRECTED the same evening, and my answer was wrong.** I recommended a test asserting the
+> copies agree. HR differed out loud and was right; the measurement then made it decisive.
+> **They are not copies of one rule — one already disagrees:**
+>
+> ```
+> _chartable   (both screens)  'pie'||'bar' → slices is List && isNotEmpty
+> isDrawable   (the chart)     'pie'||'bar' → slices.any((s) => s.total > 0)
+> ```
+>
+> A glance with real categories and a zero in every one — the exact case Scheduling asked
+> about — makes the screens say yes and the chart say no. **An agreement test would have pinned
+> a live contradiction in place**, or been written loosely enough to pass and enshrine the
+> weaker rule.
+>
+> My argument was that the two dashboards might legitimately diverge one day. They cannot: the
+> chart decides what it can draw, so a screen disagreeing with it is a bug with a nicer name.
+>
+> **And the fix is smaller than either proposal.** `isDrawable` is strictly stricter than
+> `_chartable` in every branch, and a non-drawable chart already returns `SizedBox.shrink()`
+> (`dashboard_chart.dart:44`) as a bare list child with no wrapping padding. **Deleting
+> `_chartable` from both screens changes what a person sees in exactly zero cases** — two
+> definitions removed, none added, no new API to keep in step.
+>
+> **The general form: before writing a test that two things agree, check that they do.** An
+> agreement test is only a guard if it starts green for the right reason; started against these
+> three it would have been a decision about which of two rules to canonise, taken by accident.
 
 **An advisory must not wear the failure component.** Web Management, 2026-09-08, asking
 that this be made a rule after the widget contrast work: *"dressing an advisory as a
