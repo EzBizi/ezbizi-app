@@ -622,6 +622,20 @@ class ModuleServiceProvider extends ServiceProvider
                 // "Lock screen" beside the checkbox with no override. Any
                 // action implies `view`, which is right — a locked person
                 // must be able to punch.
+                //
+                // ── §2.2, stated because the gate cannot ask ────────
+                //
+                // `view` here means "may punch": clocking in and out CREATES
+                // and CLOSES time_clock_shifts rows under an action that is
+                // read-only by name, so writesRecords() is false and the
+                // registry audit gate never asks about this module. The
+                // punches are audited anyway — time_clock.clocked_in,
+                // time_clock.clocked_out (a person, a rule, or the server at
+                // the scheduled end) and time_clock.extended, each naming the
+                // actor and the shift. TimeClockAuditTest is the gate for this
+                // module, since the fleet-wide one is blind to it. Not renamed
+                // to `punch`: time_clock.view is a live permission key in
+                // every role that holds it.
                 actions: ['view', 'lock_screen'],
                 sidebar: false,
                 triggers: [
