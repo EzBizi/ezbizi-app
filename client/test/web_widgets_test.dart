@@ -299,6 +299,51 @@ void main() {
     expect(find.textContaining('you have not set one'), findsNothing);
   });
 
+  /// Picking a preset must set BOTH halves of the pair.
+  ///
+  /// If it set only the accent, the previous text colour would survive and the
+  /// swatch could warn about a combination we had just offered — which is the
+  /// whole reason the presets exist. Starts from an unreadable pair so the
+  /// assertion has somewhere to travel from.
+  testWidgets('picking a preset fixes the pair, not just the accent', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      style: const {
+        'accent': '#ffff00',
+        'on_accent': '#ffffff',
+        'text': '#111111',
+        'background': '#ffffff',
+        'font': 'inherit',
+        'radius': 12,
+      },
+    );
+
+    // The pair it starts on is one the screen complains about.
+    expect(find.textContaining('1.1:1'), findsOneWidget);
+
+    final swatch = find.byTooltip('#00838f');
+    await tester.scrollUntilVisible(swatch, 200,
+        scrollable: find.byType(Scrollable).last);
+    await tester.tap(swatch);
+    await tester.pumpAndSettle();
+
+    // Both halves moved: the accent AND the text that has to be legible on it.
+    expect(find.widgetWithText(TextField, '#00838f'), findsOneWidget);
+    expect(find.widgetWithText(TextField, '#000000'), findsOneWidget);
+
+    // And the complaint is gone, because a picked pair cannot be unreadable.
+    expect(find.textContaining('1.1:1'), findsNothing);
+  });
+
+  testWidgets('a viewer is offered no presets to pick', (tester) async {
+    await pump(tester, permissions: ['web_management.view']);
+
+    expect(find.byTooltip('#00838f'), findsNothing);
+  });
+
   testWidgets('view alone can look and cannot change', (tester) async {
     await pump(tester, permissions: ['web_management.view']);
 

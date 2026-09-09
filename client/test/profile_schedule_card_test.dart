@@ -41,9 +41,9 @@ void main() {
     await _pump(tester, canEdit: false, width: 400, height: 2400);
 
     // On a phone the card is not inline: the screen shows a summary row that
-    // opens it. Assert the row is what a phone actually gets, then open it.
-    expect(find.text('Mon Tue Wed Thu Fri'), findsOneWidget);
-    await tester.tap(find.text('Mon Tue Wed Thu Fri'));
+    // opens it. Reached by its icon rather than its text, because the text is
+    // today's hours and changes with the day the suite runs.
+    await tester.tap(find.byIcon(Icons.schedule_outlined));
     await tester.pumpAndSettle();
 
     // Independent of the widget's own list indexing: this names the day from
@@ -83,14 +83,42 @@ void main() {
     expect(find.text('Sun'), findsOneWidget);
   });
 
+  /// This test's NAME always said "says so"; its assertion accepted seven
+  /// "Day off" rows, which is what a person who genuinely works no days looks
+  /// like. Two opposite facts rendering identically, and the assertion could
+  /// not tell them apart. Now it asserts what the name always claimed.
   testWidgets('no schedule at all says so and still offers nothing to a reader', (
     tester,
   ) async {
     await _pump(tester, canEdit: false, schedule: null);
 
     expect(find.text('Work schedule'), findsOneWidget);
-    expect(find.text('Day off'), findsNWidgets(7));
+    expect(find.textContaining('No working hours have been set'), findsOneWidget);
+    expect(find.text('Day off'), findsNothing,
+        reason: 'An unwritten schedule is being drawn as seven days off, which '
+            'is a different fact.');
     expect(find.text('Edit'), findsNothing);
+  });
+
+  /// The row is the only thing a phone shows before a tap, so it carries the
+  /// answer rather than the working pattern.
+  testWidgets('the phone row leads with today, not with which days you work', (
+    tester,
+  ) async {
+    await _pump(tester, canEdit: false, width: 400, height: 2400);
+
+    expect(find.text('Mon Tue Wed Thu Fri'), findsNothing);
+
+    // Whatever today is, the row says something about TODAY: the hours from
+    // the fixture, or that it is a day off. Saturday and Sunday are null in
+    // `_week`, so both branches are reachable depending on the day it runs.
+    final weekend = DateTime.now().weekday >= DateTime.saturday;
+    expect(
+      weekend
+          ? find.text('Off today')
+          : find.textContaining('Today 08:00'),
+      findsOneWidget,
+    );
   });
 }
 

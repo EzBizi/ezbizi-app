@@ -8,6 +8,36 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0174',
+      date: '9 Sep 2026',
+      items: [
+        'Thumbtack: an enquiry is filed from what Thumbtack sends in the moment, so a slow or failed follow-up read no longer loses it, and a conversation that cannot be read yet arrives as a lead with no messages rather than not at all.',
+        'Training: a retake no longer uses up an attempt while somebody\'s pass is still valid. This applies to every test already written; authors who want the stricter counting can switch it back on per test.',
+        'Scheduling: you can add a service area while looking at a company or the whole organization. It used to refuse and tell you to change the switcher at the top first, which meant the one screen that could have asked which branch the area belonged to was the screen refusing to open. It asks now.',
+        'Scheduling: zip codes are separate items you add one at a time and remove individually, instead of one long line of commas where a single mistyped separator could take the whole list with it. Each one saves on its own, so a zip another area already covers is refused on its own rather than refusing every other edit with it.',
+        'Scheduling: a zip code can carry the city it is in, and Availability can then be searched by city - useful when somebody on the phone knows the town and not the postcode.',
+        'Scheduling: the Availability search suggests as you type, and says whether each suggestion is a service area, a city or a zip code. It used to guess from what you typed - all digits meant a zip, anything else meant an area name - so a city found nothing and said "we do not cover that", which was a wrong answer in the right answer\'s words.',
+        'Scheduling: the list of service areas is grouped under the branch that owns each one, with the company named too when two branches share a name. Twenty-six areas from several branches used to arrive as one flat list with nothing saying which belonged to what.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0173',
+      date: '9 Sep 2026',
+      items: [
+        'You can set your business\'s brand colour in Organization, and see the button it makes on your website before you save it. Pick one of seven, or type a hex code. Until you set one, the widgets use a neutral blue and the screen says so.',
+        'Web Management: seven ready-made colours for the chat and form widgets. Pick one and the button text picks itself, so the colours you choose are always readable - typing your own still works, and still warns you if the two are too close.',
+        'On a phone, Your account now shows today\'s hours on the Work schedule line - "Today 08:00 - 17:00", or "Off today" - instead of listing which days you work.',
+        'If nobody has set your working hours yet, it says so, rather than showing you as off every day.',
+        'Leads now arrive from every Google Ads account under a connected manager, not only the accounts the signed-in user owns directly. For A-1 Chimney that is 23 more accounts, Stamford and Hamden among them.',
+        'Searching leads works as you type, and a number matches from its first two digits in any format; the email and the last message are searched too.',
+        'The divider between the lead list and the conversation can be dragged.',
+        'A call in a conversation plays with the same bar as voicemails: play, pause, scrub.',
+        'Human Resources: the Training card lays itself out by the space it is given, so it reads the same in a narrow column on a wide window as on a phone.',
+        'Times across the app now follow a real place rather than a fixed offset, so they stay right when the clocks change. If your organization never chose a timezone it was on a clock that ignored daylight saving, and times between March and November will now read an hour later than they did.',
+        'A clock that should ignore daylight saving is still available: the fixed UTC offsets are all still in the list.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0172',
       date: '9 Sep 2026',
       items: [

@@ -219,6 +219,26 @@ Softened twice on 2026-09-08: each row is now stored under Google's own
 descriptive name (`leads:name-accounts` backfills the ones connected before),
 and the conversation read skips any account that has never produced a lead.
 
+**And inverted on 2026-09-09.** The twenty-two were not too many; they were
+too few. `listAccessibleCustomers` names the accounts the signed-in user
+reaches DIRECTLY. Google's own client tree under the Ads Manager
+(`customer_client` with `login-customer-id` = 4051729356) lists **thirty-six
+enabled accounts**; the other twenty-three (Stamford, Hamden, Providence,
+Seattle, St Louis, Austin, Baltimore, Boston, Charlotte, Florida, ...) answer
+PERMISSION_DENIED to any read that does not carry the manager. They were never
+connected, so their leads never arrived. `social_connections.login_customer_id`
+is the manager a row is read through (null = direct); `identify()` walks every
+manager's enabled non-manager clients at connect time; every Google read sends
+the manager when set; `leads:adopt-manager-clients` does it for grants that
+predate the column. 146-421-7121 is in no manager's tree and 403s to everybody;
+it is a dead row.
+
+**Quota tiering, same day.** Forty-five accounts every five minutes exceeds
+Basic Access (Standard was refused for not yet exceeding it). The tick reads a
+producing account (a lead in 30 days) every 5 min and its conversations every
+10; a quiet account every 30 min, conversations never; a connection under 30
+minutes old at once. About 11,800 operations a day at 25 producing + 20 quiet.
+
 ## 7 · Compliance
 
 `www/google-ads-api/` is written for Google's reviewers and must stay true to

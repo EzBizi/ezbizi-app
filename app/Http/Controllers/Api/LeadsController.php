@@ -131,18 +131,26 @@ class LeadsController extends Controller
             $query->where('leads.source', $source);
         }
 
-        // One box, two meanings. Somebody looking for a lead has either a name
-        // or a phone number in front of them, and asking which they typed is a
-        // question the screen should answer for itself. Digits are matched
-        // against the normalised column so formatting never decides the result.
+        /*
+         * One box, many meanings. Somebody looking for a lead has a name, an
+         * email, a phone number in whatever punctuation they saw it in, or a
+         * few words of what was said. Digits are matched against the
+         * normalised column so "(609)", "609-246" and "609246" all find
+         * +1 (609) 246-1458; the four-digit floor that used to be here made
+         * "609" find nothing while "609246" found the lead (Jose, 2026-09-09),
+         * and a person types the short form first. Two digits is enough to be
+         * a search and not an accident.
+         */
         if (is_string($search = $request->query('search')) && trim($search) !== '') {
             $search = trim($search);
             $digits = Lead::digits($search);
 
             $query->where(function ($q) use ($search, $digits) {
-                $q->where('leads.contact_name', 'like', '%'.$search.'%');
+                $q->where('leads.contact_name', 'like', '%'.$search.'%')
+                    ->orWhere('leads.email', 'like', '%'.$search.'%')
+                    ->orWhere('leads.last_contact_preview', 'like', '%'.$search.'%');
 
-                if ($digits !== null && strlen($digits) >= 4) {
+                if ($digits !== null && strlen($digits) >= 2) {
                     $q->orWhere('leads.phone_digits', 'like', '%'.$digits.'%');
                 }
             });

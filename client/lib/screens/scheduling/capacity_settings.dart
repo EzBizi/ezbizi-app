@@ -4,12 +4,14 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
+import '../../widgets/error_note.dart';
+import '../../widgets/franchise_field.dart';
 
 /// Capacity settings — the area rail, the pattern overview, and one area's grid.
 ///
 /// design: docs/previews/scheduling-layouts.html #7 (#8 selected, #9 at 375px)
 ///
-/// ── Two things this screen must not do ───────────────────────────
+/// ── Three things this screen must not do ─────────────────────────
 ///
 /// CLOSING A DAY DELETES ITS SLOTS. It never writes zero-capacity rows. A day
 /// with no rows is closed; a day with rows is open. If closing ever wrote
@@ -19,9 +21,19 @@ import '../../widgets/async_body.dart';
 /// to ACCEPT it, and both halves are needed.
 ///
 /// APPLYING A PATTERN NAMES WHAT IT WILL OVERWRITE FIRST, with the values, and
-/// then applies to every area or none. A generic "this will overwrite existing
-/// settings" is what people click through, and clicking through it is the
-/// silent flatten the confirmation exists to prevent.
+/// then applies to every area or none.
+///
+/// A FAILED WRITE MUST NOT BLANK THE SCREEN. `_error` is for the initial load
+/// only, because [AsyncBody] renders it INSTEAD of the content. A create or a
+/// save that fails writes `_paneError`, which draws an [ErrorNote] beside the
+/// form that caused it. Sending a create failure to `_error` is what turned
+/// "pick a franchise" into an empty page with one red box on it.
+///
+/// ── Forms are panes, never modals ────────────────────────────────
+///
+/// Adding and renaming an area happen in the right-hand pane, the same way
+/// `AddServicePane` does it. A dialog over a split screen hides the rail you
+/// were reading to decide what to type.
 class CapacitySettings extends StatefulWidget {
   const CapacitySettings({
     super.key,
@@ -40,6 +52,9 @@ class CapacitySettings extends StatefulWidget {
   State<CapacitySettings> createState() => _CapacitySettingsState();
 }
 
+/// What the pane is showing instead of an area or the overview.
+enum _Form { none, create, rename }
+
 class _CapacitySettingsState extends State<CapacitySettings> {
   /// Monday first, because the design's week reads Mon–Sun. The VALUES stay
   /// Carbon's weekday numbers (0 = Sunday) so nothing translates on the wire.
@@ -48,10 +63,20 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   ];
 
   final _search = TextEditingController();
-  final _zips = TextEditingController();
+  final _zipSearch = TextEditingController();
+  final _zipEntry = TextEditingController();
+  final _cityEntry = TextEditingController();
+  final _formName = TextEditingController();
 
   bool _loading = true;
+
+  /// The initial load only. See the class docblock — AsyncBody replaces the
+  /// whole pane with this, so a write failure must never reach it.
   String? _error;
+
+  /// A failure that belongs to the form or the area in front of you.
+  String? _paneError;
+
   List<Map<String, dynamic>> _areas = [];
   Map<String, dynamic>? _pattern;
 
@@ -60,8 +85,18 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   Map<String, dynamic>? _openArea;
   bool _saving = false;
 
+  _Form _form = _Form.none;
+  String? _formFranchiseId;
+
+  /// This area's zips as ITEMS, each `{zip, city}`. Not a comma-separated
+  /// string: one mistyped separator in a field of fifty should cost one zip,
+  /// not the whole set.
+  List<Map<String, dynamic>> _zipList = [];
+
   /// weekday -> list of {start, end, max}. Absent weekday = closed.
   final Map<int, List<Map<String, dynamic>>> _grid = {};
+
+  Me? get _me => widget.session.me;
 
   @override
   void initState() {
@@ -78,7 +113,10 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   @override
   void dispose() {
     _search.dispose();
-    _zips.dispose();
+    _zipSearch.dispose();
+    _zipEntry.dispose();
+    _cityEntry.dispose();
+    _formName.dispose();
     super.dispose();
   }
 
@@ -108,7 +146,8 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     setState(() {
       _openAreaId = id;
       _openArea = null;
-      _error = null;
+      _form = _Form.none;
+      _paneError = null;
     });
 
     final response = await widget.api.get('/scheduling/areas/$id', const {});
@@ -117,11 +156,23 @@ class _CapacitySettingsState extends State<CapacitySettings> {
 
     setState(() {
       if (!response.ok) {
-        _error = response.message;
+        _paneError = response.message;
         return;
       }
       _openArea = response.body['data'] as Map<String, dynamic>?;
-      _zips.text = (_openArea?['zips'] as List? ?? const []).join(', ');
+      _zipList = (_openArea?['zips'] as List? ?? const [])
+          .map(
+            // Tolerates the old bare-string shape as well as {zip, city}, so
+            // a cached payload from before cities does not crash the pane.
+            (z) => z is Map
+                ? {'zip': z['zip'] as String, 'city': z['city'] as String?}
+                : {'zip': z as String, 'city': null},
+          )
+          .cast<Map<String, dynamic>>()
+          .toList();
+      _zipSearch.clear();
+      _zipEntry.clear();
+      _cityEntry.clear();
       _grid.clear();
       for (final slot in (_openArea?['slots'] as List? ?? const [])
           .cast<Map<String, dynamic>>()) {
@@ -134,120 +185,92 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     });
   }
 
-  Future<void> _saveGrid() async {
-    final id = _openAreaId;
-    if (id == null) return;
+  void _showOverview() => setState(() {
+    _openAreaId = null;
+    _openArea = null;
+    _form = _Form.none;
+    _paneError = null;
+  });
 
-    setState(() => _saving = true);
-
-    // Flattened from the map, so a weekday absent from `_grid` sends no rows
-    // at all. That absence IS the closure — there is no zero to write.
-    final slots = <Map<String, dynamic>>[
-      for (final entry in _grid.entries)
-        for (final slot in entry.value)
-          {
-            'weekday': entry.key,
-            'start_time': slot['start_time'],
-            'end_time': slot['end_time'],
-            'max_jobs': slot['max_jobs'],
-          },
-    ];
-
-    final response =
-        await widget.api.put('/scheduling/areas/$id/slots', {'slots': slots});
-
-    if (!mounted) return;
+  /// Open the create form.
+  ///
+  /// The franchise is PRE-FILLED when the view names exactly one and left EMPTY
+  /// otherwise, for the form to ask. Refusing to open at company level — which
+  /// is what this did — made the answer unreachable: the one control that could
+  /// have said "Connecticut" was the one being withheld.
+  void _startCreate() {
+    final inView = _me?.franchisesInView ?? const [];
 
     setState(() {
-      _saving = false;
-      if (!response.ok) {
-        _error = response.message;
-        return;
-      }
+      _form = _Form.create;
+      _openAreaId = null;
+      _openArea = null;
+      _paneError = null;
+      _formName.clear();
+      _formFranchiseId = inView.length == 1 ? inView.first.id : null;
     });
+  }
 
-    if (response.ok) {
-      await _load();
-      if (mounted) await _openArea_(id);
+  void _startRename() {
+    setState(() {
+      _form = _Form.rename;
+      _paneError = null;
+      _formName.text = _openArea?['name'] as String? ?? '';
+    });
+  }
+
+  Future<void> _submitForm() async {
+    final name = _formName.text.trim();
+
+    if (name.isEmpty) {
+      setState(() => _paneError = 'Give the service area a name.');
+      return;
     }
-  }
 
-  /// The franchise a new service area is filed under.
-  ///
-  /// `franchisesInView` and not `franchises`: it honours the switcher at the
-  /// top of the window, so an area added while looking at "A-1 Chimney ›
-  /// Connecticut" belongs to Connecticut. Taking the first of ALL reachable
-  /// franchises would file it under whichever one happened to sort first, which
-  /// is right exactly when the user has one franchise and silently wrong the
-  /// moment they have two.
-  ///
-  /// Null when the view spans several franchises with no area yet to infer
-  /// from — an honest "which one?" rather than a guess. Existing areas answer
-  /// it first, because they already say where this screen's work is filed.
-  String? get _franchiseId {
-    if (_areas.isNotEmpty) return _areas.first['franchise_id'] as String?;
-
-    final inView = widget.session.me?.franchisesInView ?? const [];
-
-    return inView.length == 1 ? inView.first.id : null;
-  }
-
-  Future<void> _createArea() async {
-    final name = await _askForName(title: 'New service area');
-    if (name == null || name.isEmpty) return;
-
-    final franchiseId = _franchiseId;
-
-    if (franchiseId == null) {
+    if (_form == _Form.create && _formFranchiseId == null) {
       setState(
-        () => _error =
-            'Pick a single franchise in the switcher at the top first, so this '
-            'service area is filed under the right one.',
+        () => _paneError =
+            'Choose which ${_me?.organization.franchiseLabel.toLowerCase() ?? 'franchise'} '
+            'this service area belongs to.',
       );
       return;
     }
 
-    final response = await widget.api.post('/scheduling/areas', {
-      'franchise_id': franchiseId,
-      'name': name,
+    setState(() {
+      _saving = true;
+      _paneError = null;
     });
+
+    final response = _form == _Form.create
+        ? await widget.api.post('/scheduling/areas', {
+            'franchise_id': _formFranchiseId,
+            'name': name,
+          })
+        : await widget.api.patch('/scheduling/areas/$_openAreaId', {
+            'name': name,
+          });
 
     if (!mounted) return;
 
     if (!response.ok) {
-      setState(() => _error = response.message);
+      // Beside the form, not instead of the screen.
+      setState(() {
+        _saving = false;
+        _paneError = response.message;
+      });
       return;
     }
 
-    await _load();
+    final saved = response.body['data'] as Map<String, dynamic>?;
 
-    final created = response.body['data'] as Map<String, dynamic>?;
-    if (created != null && mounted) await _openArea_(created['id'] as String);
-  }
-
-  Future<void> _renameArea() async {
-    final id = _openAreaId;
-    if (id == null) return;
-
-    final name = await _askForName(
-      title: 'Rename service area',
-      initial: _openArea?['name'] as String? ?? '',
-    );
-    if (name == null || name.isEmpty) return;
-
-    final response = await widget.api.patch('/scheduling/areas/$id', {
-      'name': name,
+    setState(() {
+      _saving = false;
+      _form = _Form.none;
     });
 
-    if (!mounted) return;
-
-    if (!response.ok) {
-      setState(() => _error = response.message);
-      return;
-    }
-
     await _load();
-    if (mounted) await _openArea_(id);
+
+    if (mounted && saved != null) await _openArea_(saved['id'] as String);
   }
 
   Future<void> _deleteArea() async {
@@ -255,6 +278,9 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     final name = _openArea?['name'] as String? ?? 'this area';
     if (id == null) return;
 
+    // A confirmation, not a form — so this one stays a dialog. It asks a
+    // yes/no about something irreversible and has nothing to fill in, which is
+    // the case a dialog is actually for.
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -283,81 +309,138 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     if (!mounted) return;
 
     if (!response.ok) {
-      setState(() => _error = response.message);
+      setState(() => _paneError = response.message);
       return;
     }
 
-    setState(() {
-      _openAreaId = null;
-      _openArea = null;
-    });
-
+    _showOverview();
     await _load();
   }
 
-  /// Saves the zip set.
+  /// Writes the zip set, one item's worth of change at a time.
   ///
-  /// A zip another area already holds comes back refused BY NAME from the
-  /// server — "75201 is already in Dallas" — and that sentence is shown as it
-  /// arrives rather than replaced with a generic failure, because the useful
-  /// part is which area to go and look at.
-  Future<void> _saveZips() async {
+  /// Every add and every remove saves immediately, so a refusal lands on the
+  /// zip that caused it and nothing else moves. The old field took the whole
+  /// set as one comma-separated string and saved on a button, which meant a
+  /// single zip already held by another area refused FIFTY edits at once and
+  /// told you about one of them.
+  ///
+  /// The server's sentence is shown as it arrives — "75201 is already in
+  /// Dallas" — because the useful half is which area to go and look at.
+  Future<void> _setZips(List<Map<String, dynamic>> next) async {
     final id = _openAreaId;
     if (id == null) return;
 
-    final zips = _zips.text
-        .split(RegExp(r'[\s,;]+'))
-        .map((z) => z.trim())
-        .where((z) => z.isNotEmpty)
-        .toList();
+    final previous = _zipList;
 
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _paneError = null;
+      _zipList = next;
+    });
 
     final response = await widget.api.put('/scheduling/areas/$id/zips', {
-      'zips': zips,
+      'zips': next,
     });
 
     if (!mounted) return;
 
     setState(() {
       _saving = false;
-      if (!response.ok) _error = response.message;
+
+      if (!response.ok) {
+        // Put the list back. A chip the server refused must not sit there
+        // looking saved.
+        _zipList = previous;
+        _paneError = response.message;
+        return;
+      }
+
+      _openArea = {...?_openArea, 'zips': next};
+      _zipEntry.clear();
+      _cityEntry.clear();
+    });
+
+    if (response.ok) await _load();
+  }
+
+  /// Adds the typed zip, with the typed city if there is one.
+  ///
+  /// The city is optional and is a second way to FIND this area — Availability
+  /// can be searched by it — so a zip without one is still a perfectly good
+  /// zip. A paste of several zips is still accepted; they all take the city in
+  /// the box, which is the common case for pasting one city's zips.
+  Future<void> _addZip(String raw) async {
+    final city = _cityEntry.text.trim();
+
+    final entered = raw
+        .split(RegExp(r'[\s,;]+'))
+        .map((z) => z.trim())
+        .where((z) => z.isNotEmpty)
+        .toList();
+
+    if (entered.isEmpty) {
+      setState(() => _paneError = 'Type a zip code to add.');
+      return;
+    }
+
+    final held = _zipList.map((z) => z['zip'] as String).toSet();
+    final fresh = entered.where((z) => !held.contains(z)).toList();
+
+    if (fresh.isEmpty) {
+      setState(() {
+        _paneError = entered.length == 1
+            ? '${entered.first} is already in this area.'
+            : 'Those are already in this area.';
+      });
+      return;
+    }
+
+    await _setZips([
+      ..._zipList,
+      for (final zip in fresh) {'zip': zip, 'city': city.isEmpty ? null : city},
+    ]);
+  }
+
+  Future<void> _removeZip(String zip) =>
+      _setZips(_zipList.where((z) => z['zip'] != zip).toList());
+
+  Future<void> _saveGrid() async {
+    final id = _openAreaId;
+    if (id == null) return;
+
+    setState(() {
+      _saving = true;
+      _paneError = null;
+    });
+
+    // Flattened from the map, so a weekday absent from `_grid` sends no rows
+    // at all. That absence IS the closure — there is no zero to write.
+    final slots = <Map<String, dynamic>>[
+      for (final entry in _grid.entries)
+        for (final slot in entry.value)
+          {
+            'weekday': entry.key,
+            'start_time': slot['start_time'],
+            'end_time': slot['end_time'],
+            'max_jobs': slot['max_jobs'],
+          },
+    ];
+
+    final response =
+        await widget.api.put('/scheduling/areas/$id/slots', {'slots': slots});
+
+    if (!mounted) return;
+
+    setState(() {
+      _saving = false;
+      if (!response.ok) _paneError = response.message;
     });
 
     if (response.ok) {
       await _load();
       if (mounted) await _openArea_(id);
     }
-  }
-
-  Future<String?> _askForName({required String title, String initial = ''}) {
-    final controller = TextEditingController(text: initial);
-
-    return showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Name',
-            hintText: 'Dallas',
-          ),
-          onSubmitted: (value) => Navigator.pop(context, value.trim()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
   }
 
   /// Deletes the day's rows. Never writes zeros — see the class docblock.
@@ -391,12 +474,30 @@ class _CapacitySettingsState extends State<CapacitySettings> {
         .toList();
   }
 
+  /// Filtered by zip OR city, because "everything in Plano" is as likely a
+  /// question as "is 75201 in here".
+  List<Map<String, dynamic>> get _visibleZips {
+    final q = _zipSearch.text.trim().toLowerCase();
+    final sorted = [..._zipList]
+      ..sort((a, b) => (a['zip'] as String).compareTo(b['zip'] as String));
+
+    if (q.isEmpty) return sorted;
+
+    return sorted.where((z) {
+      final zip = (z['zip'] as String).toLowerCase();
+      final city = ((z['city'] as String?) ?? '').toLowerCase();
+
+      return zip.contains(q) || city.contains(q);
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= CapacitySettings.splitAbove;
-        final paneOnly = !wide && _openAreaId != null;
+        final hasPane = _openAreaId != null || _form != _Form.none;
+        final paneOnly = !wide && hasPane;
 
         return AsyncBody(
           loading: _loading,
@@ -451,7 +552,7 @@ class _CapacitySettingsState extends State<CapacitySettings> {
               IconButton(
                 icon: const Icon(Icons.add),
                 tooltip: 'Add service area',
-                onPressed: _createArea,
+                onPressed: _startCreate,
               ),
             ],
           ),
@@ -461,16 +562,13 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           padding: const EdgeInsets.symmetric(horizontal: 8),
           child: ListTile(
             dense: true,
-            selected: _openAreaId == null,
+            selected: _openAreaId == null && _form == _Form.none,
             title: const Text('Overview'),
             subtitle: const Text('Pattern & exceptions'),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
             ),
-            onTap: () => setState(() {
-              _openAreaId = null;
-              _openArea = null;
-            }),
+            onTap: _showOverview,
           ),
         ),
         const Divider(height: 9),
@@ -484,34 +582,244 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           ),
         ),
         Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            itemCount: areas.length,
-            itemBuilder: (context, i) {
-              final area = areas[i];
-              final differs = area['follows_pattern'] == false;
-
-              return ListTile(
-                dense: true,
-                selected: _openAreaId == area['id'],
-                title: Text(area['name'] as String? ?? ''),
-                subtitle: Text(
-                  '${area['zip_count'] ?? 0} zips${differs ? ' · differs' : ''}',
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                onTap: () => _openArea_(area['id'] as String),
-              );
-            },
+          child: ListView(
+            padding: const EdgeInsets.only(bottom: 12),
+            children: _railRows(theme, areas),
           ),
         ),
       ],
     );
   }
 
-  Widget _pane({required bool showBack}) =>
-      _openAreaId == null ? _overview() : _areaPane(showBack: showBack);
+  /// The rail, grouped by the franchise each area belongs to.
+  ///
+  /// ── Why this is not one flat list ────────────────────────────────
+  ///
+  /// At company or organization scope the rail holds every area of every
+  /// franchise in view — twenty-six of them for the business this is built
+  /// for — and nothing on the row said which franchise owned it. "Atlanta
+  /// North" and "East Connecticut" sat adjacent as if they were alternatives,
+  /// and the same area name can legitimately appear under two franchises, so
+  /// there was no way to tell those apart at all.
+  ///
+  /// The header is the FRANCHISE, and it carries its company as well whenever
+  /// more than one company is on screen — the same rule `FranchiseField` uses
+  /// and for the same reason: four franchises called Connecticut under
+  /// different companies is real data here, and the bare name is ambiguous
+  /// exactly then. Borrowed rather than reinvented so the two controls cannot
+  /// disagree about what a place is called.
+  ///
+  /// One group means no headers. At franchise scope there is nothing to
+  /// disambiguate and a single header would be a label on the whole screen.
+  List<Widget> _railRows(ThemeData theme, List<Map<String, dynamic>> areas) {
+    final me = _me;
+
+    // Grouped by franchise id, in the order the server sent (already by name).
+    final groups = <String?, List<Map<String, dynamic>>>{};
+
+    for (final area in areas) {
+      (groups[area['franchise_id'] as String?] ??= []).add(area);
+    }
+
+    // Whether a header needs its company. Read off the franchises actually
+    // ON SCREEN, not off everything reachable — a rail showing one company's
+    // franchises should not carry that company's name on every row.
+    final shown = me == null
+        ? const <FranchiseSummary>[]
+        : me.franchises.where((f) => groups.containsKey(f.id)).toList();
+
+    final ambiguous = shown.map((f) => f.companyId).toSet().length > 1;
+
+    final entries = groups.entries.toList();
+
+    if (me != null) {
+      entries.sort((a, b) {
+        final left = _railGroupLabel(me, a.key, ambiguous: ambiguous);
+        final right = _railGroupLabel(me, b.key, ambiguous: ambiguous);
+
+        return left.compareTo(right);
+      });
+    }
+
+    final rows = <Widget>[];
+
+    for (final entry in entries) {
+      if (entries.length > 1 && me != null) {
+        rows.add(_railHeader(theme, _railGroupLabel(me, entry.key, ambiguous: ambiguous)));
+      }
+
+      for (final area in entry.value) {
+        rows.add(_railTile(area));
+      }
+    }
+
+    return rows;
+  }
+
+  /// The franchise a group of areas belongs to, named so it cannot be confused
+  /// with another franchise of the same name under a different company.
+  String _railGroupLabel(Me me, String? franchiseId, {required bool ambiguous}) {
+    final franchise = me.franchises.where((f) => f.id == franchiseId).firstOrNull;
+
+    // A franchise the session does not list. Says so rather than showing a
+    // blank heading: an area filed under something out of view is a real
+    // state — reach can be narrowed after the area was made — and a heading
+    // reading nothing at all looks like a rendering fault.
+    if (franchise == null) return 'Elsewhere';
+
+    return ambiguous ? franchisePath(me, franchise) : franchise.name;
+  }
+
+  Widget _railHeader(ThemeData theme, String label) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 12, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              letterSpacing: 0.6,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Divider(height: 1, color: EzBiziTheme.edge(context)),
+        ],
+      ),
+    );
+  }
+
+  Widget _railTile(Map<String, dynamic> area) {
+    final differs = area['follows_pattern'] == false;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: ListTile(
+        dense: true,
+        selected: _openAreaId == area['id'],
+        title: Text(area['name'] as String? ?? ''),
+        subtitle: Text(
+          '${area['zip_count'] ?? 0} zips${differs ? ' · differs' : ''}',
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        onTap: () => _openArea_(area['id'] as String),
+      ),
+    );
+  }
+
+  Widget _pane({required bool showBack}) {
+    if (_form != _Form.none) return _formPane(showBack: showBack);
+
+    return _openAreaId == null ? _overview() : _areaPane(showBack: showBack);
+  }
+
+  /// Add or rename, in the pane.
+  ///
+  /// Rename does NOT offer the franchise. Which franchise owns an area decides
+  /// whose numbers its work counts in, and §5.2 makes moving one a separate
+  /// audited step rather than a field on a rename form — the same reason
+  /// FranchiseField exists rather than a bare dropdown of names.
+  Widget _formPane({required bool showBack}) {
+    final theme = Theme.of(context);
+    final me = _me;
+    final creating = _form == _Form.create;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+      children: [
+        Row(
+          children: [
+            if (showBack)
+              IconButton(
+                icon: const Icon(Icons.arrow_back),
+                tooltip: 'Back',
+                onPressed: _showOverview,
+              ),
+            Expanded(
+              child: Text(
+                creating ? 'New service area' : 'Rename service area',
+                style: theme.textTheme.titleMedium,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          creating
+              ? 'A place this business works — Dallas, Houston. Give it zip '
+                    'codes and a week once it exists.'
+              : 'Only the name. Moving an area to another '
+                    '${me?.organization.franchiseLabel.toLowerCase() ?? 'franchise'} '
+                    'changes whose work it counts in, so it is a separate step.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          key: const Key('scheduling-area-name'),
+          controller: _formName,
+          autofocus: true,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _submitForm(),
+          decoration: const InputDecoration(
+            labelText: 'Name',
+            hintText: 'Dallas',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        if (creating && me != null) ...[
+          const SizedBox(height: 16),
+          // Asks rather than refuses. At company level this is the control that
+          // answers the question the screen used to refuse to open over.
+          FranchiseField(
+            key: const Key('scheduling-area-franchise'),
+            me: me,
+            value: _formFranchiseId,
+            onChanged: (id) => setState(() => _formFranchiseId = id),
+            helperText: 'Which one this area belongs to.',
+          ),
+        ],
+        if (_paneError != null) ...[
+          const SizedBox(height: 16),
+          ErrorNote(_paneError!),
+        ],
+        const SizedBox(height: 20),
+        Row(
+          children: [
+            FilledButton(
+              onPressed: _saving ? null : _submitForm,
+              child: Text(
+                _saving
+                    ? 'Saving…'
+                    : creating
+                    ? 'Add service area'
+                    : 'Save name',
+              ),
+            ),
+            const SizedBox(width: 12),
+            TextButton(
+              onPressed: _saving
+                  ? null
+                  : () {
+                      if (creating) {
+                        _showOverview();
+                      } else {
+                        setState(() {
+                          _form = _Form.none;
+                          _paneError = null;
+                        });
+                      }
+                    },
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 
   Widget _overview() {
     final theme = Theme.of(context);
@@ -533,6 +841,10 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           ),
         ),
         const SizedBox(height: 16),
+        if (_paneError != null) ...[
+          ErrorNote(_paneError!),
+          const SizedBox(height: 12),
+        ],
         _card(
           theme,
           title: 'Your slot pattern',
@@ -584,7 +896,7 @@ class _CapacitySettingsState extends State<CapacitySettings> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: FilledButton.icon(
-                  onPressed: _createArea,
+                  onPressed: _startCreate,
                   icon: const Icon(Icons.add, size: 18),
                   label: const Text('Add service area'),
                 ),
@@ -636,7 +948,12 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     final area = _openArea;
 
     if (area == null) {
-      return const Center(child: CircularProgressIndicator());
+      return _paneError == null
+          ? const Center(child: CircularProgressIndicator())
+          : Padding(
+              padding: const EdgeInsets.all(20),
+              child: ErrorNote(_paneError!),
+            );
     }
 
     final rail = _areas.firstWhere(
@@ -654,10 +971,7 @@ class _CapacitySettingsState extends State<CapacitySettings> {
               IconButton(
                 icon: const Icon(Icons.arrow_back),
                 tooltip: 'Areas',
-                onPressed: () => setState(() {
-                  _openAreaId = null;
-                  _openArea = null;
-                }),
+                onPressed: _showOverview,
               ),
             Expanded(
               child: Text(
@@ -666,7 +980,7 @@ class _CapacitySettingsState extends State<CapacitySettings> {
               ),
             ),
             Text(
-              '${(area['zips'] as List? ?? const []).length} zips',
+              '${_zipList.length} zips',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -690,6 +1004,10 @@ class _CapacitySettingsState extends State<CapacitySettings> {
               style: theme.textTheme.bodySmall,
             ),
           ),
+        if (_paneError != null) ...[
+          const SizedBox(height: 12),
+          ErrorNote(_paneError!),
+        ],
         const SizedBox(height: 14),
         Text(
           'Jobs ${area['name']} can take per slot, per weekday.',
@@ -710,53 +1028,12 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           ),
         ),
         const SizedBox(height: 24),
-        // Zips are what make a search by zip resolve to this area at all, so
-        // without this the Availability tab can only be searched by name.
-        _card(
-          theme,
-          title: 'Zip codes',
-          badge: '${(area['zips'] as List? ?? const []).length}',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(
-                key: const Key('scheduling-zips'),
-                controller: _zips,
-                minLines: 2,
-                maxLines: 5,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText: '75201, 75202, 75203',
-                  helperText: 'Separated by commas or spaces.',
-                ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  FilledButton.tonal(
-                    onPressed: _saving ? null : _saveZips,
-                    child: const Text('Save zip codes'),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'A zip belongs to one area. One already covered '
-                      'elsewhere is refused, and says which area has it.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+        _zipCard(theme),
         const SizedBox(height: 8),
         Row(
           children: [
             TextButton.icon(
-              onPressed: _renameArea,
+              onPressed: _startRename,
               icon: const Icon(Icons.edit_outlined, size: 18),
               label: const Text('Rename'),
             ),
@@ -772,6 +1049,153 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           ],
         ),
       ],
+    );
+  }
+
+  /// Zip codes as removable items, each with the city it is in.
+  ///
+  /// Search because an area can hold fifty and "is 75209 in here" is the
+  /// question somebody actually has. Items because a set typed as one string
+  /// fails as one string. The city because Availability can be searched by it,
+  /// so a caller who knows "Plano" and not the zip still gets an answer.
+  Widget _zipCard(ThemeData theme) {
+    final visible = _visibleZips;
+    final filtering = _zipSearch.text.trim().isNotEmpty;
+
+    return _card(
+      theme,
+      title: 'Zip codes',
+      badge: '${_zipList.length}',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 2,
+                child: TextField(
+                  key: const Key('scheduling-zip-entry'),
+                  controller: _zipEntry,
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                    labelText: 'Zip code',
+                    hintText: '75201',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 3,
+                child: TextField(
+                  key: const Key('scheduling-city-entry'),
+                  controller: _cityEntry,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _addZip(_zipEntry.text),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                    labelText: 'City (optional)',
+                    hintText: 'Dallas',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filledTonal(
+                icon: const Icon(Icons.add, size: 20),
+                tooltip: 'Add zip code',
+                onPressed: _saving ? null : () => _addZip(_zipEntry.text),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'One at a time. The city is optional and lets people search '
+              'Availability by city name.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          if (_zipList.length > 8)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: TextField(
+                key: const Key('scheduling-zip-search'),
+                controller: _zipSearch,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  prefixIcon: Icon(Icons.search, size: 18),
+                  hintText: 'Find a zip or city in this area',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ),
+          if (_zipList.isEmpty)
+            Text(
+              'No zip codes yet. A search by zip or city will not find this '
+              'area until it has some.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            )
+          else if (visible.isEmpty)
+            Text(
+              'Nothing here matches "${_zipSearch.text.trim()}".',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            )
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final entry in visible)
+                  InputChip(
+                    key: ValueKey('zip-${entry['zip']}'),
+                    label: Text(
+                      entry['city'] == null
+                          ? entry['zip'] as String
+                          : '${entry['zip']} · ${entry['city']}',
+                    ),
+                    onDeleted: _saving
+                        ? null
+                        : () => _removeZip(entry['zip'] as String),
+                    // Named rather than left to Material's default, which has
+                    // changed shape between versions — the test taps this icon
+                    // and should not be asserting on a framework default.
+                    deleteIcon: const Icon(Icons.close, size: 18),
+                    deleteButtonTooltipMessage: 'Remove ${entry['zip']}',
+                    deleteIconColor: theme.colorScheme.onSurfaceVariant,
+                  ),
+              ],
+            ),
+          if (filtering && visible.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text(
+                'Showing ${visible.length} of ${_zipList.length}.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          const SizedBox(height: 10),
+          Text(
+            'A zip belongs to one area. One already covered elsewhere is '
+            'refused, and says which area has it.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

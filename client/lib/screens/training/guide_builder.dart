@@ -44,7 +44,7 @@ import 'test_builder.dart';
 /// lets [_load] here fetch the guide's own test ONCE, as part of the SAME
 /// load that fetches the guide, and hand the result straight to the panel —
 /// no second spinner nested inside this one's own `AsyncBody`, and no second
-/// copy of the four options' editing logic to drift from `TestBuilder`'s.
+/// copy of the five options' editing logic to drift from `TestBuilder`'s.
 ///
 /// ── Reorder without a mouse ──────────────────────────────────────────────
 ///

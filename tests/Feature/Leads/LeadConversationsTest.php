@@ -32,17 +32,18 @@ class LeadConversationsTest extends TestCase
     private const CUSTOMER   = '4941850746';
     private const RECORDING  = 'https://recordings.google.example/calls/abc123.mp3';
 
-    private function connected(array $t): SocialConnection
+    private function connected(array $t, string $customer = self::CUSTOMER, ?string $via = null): SocialConnection
     {
-        return $this->inTenant($t['org'], function () use ($t) {
+        return $this->inTenant($t['org'], function () use ($t, $customer, $via) {
             $connection = new SocialConnection;
             $connection->forceFill([
-                'organization_id' => $t['org']->id,
-                'scope_type'      => SocialConnection::SCOPE_COMPANY,
-                'scope_id'        => $t['company']->id,
-                'provider'        => SocialProvider::GoogleAds->value,
-                'remote_id'       => self::CUSTOMER,
-                'display_name'    => GoogleAdsOAuth::readableId(self::CUSTOMER),
+                'organization_id'   => $t['org']->id,
+                'scope_type'        => SocialConnection::SCOPE_COMPANY,
+                'scope_id'          => $t['company']->id,
+                'provider'          => SocialProvider::GoogleAds->value,
+                'remote_id'         => $customer,
+                'login_customer_id' => $via,
+                'display_name'      => GoogleAdsOAuth::readableId($customer),
             ]);
             $connection->connect(['refresh_token' => 'rt-test', 'access_token' => 'at-stale']);
             $connection->save();
@@ -116,6 +117,8 @@ class LeadConversationsTest extends TestCase
         array $conversations,
         array $recovered = [],
         mixed $append = null,   // what Http::response() returns: a promise, not a Response
+        array $clients = [],    // customer_client rows a manager lists
+        array $managers = [],   // customer ids that describe themselves as managers
     ): void {
         config([
             'services.google_ads.client_id'       => 'client.apps.googleusercontent.com',
@@ -128,7 +131,7 @@ class LeadConversationsTest extends TestCase
         // test STACKS behind this one, and this one's fall-through answers
         // everything - which is how the first reply test got a lead list back
         // from the send.
-        Http::fake(function (Request $request) use ($leads, $conversations, $recovered, $append) {
+        Http::fake(function (Request $request) use ($leads, $conversations, $recovered, $append, $clients, $managers) {
             if (str_contains($request->url(), 'oauth2.googleapis.com/token')) {
                 return Http::response(['access_token' => 'at-fresh', 'expires_in' => 3600]);
             }
@@ -142,6 +145,19 @@ class LeadConversationsTest extends TestCase
             }
 
             $query = (string) (((array) $request->data())['query'] ?? '');
+
+            if (str_contains($query, 'FROM customer_client')) {
+                return Http::response(['results' => $clients]);
+            }
+
+            if (str_contains($query, 'FROM customer')) {
+                preg_match('#/customers/(\\d+)/#', $request->url(), $m);
+                $id = $m[1] ?? '';
+
+                return Http::response(['results' => [['customer' => [
+                    'id' => $id, 'descriptiveName' => "Account {$id}", 'manager' => in_array($id, $managers, true),
+                ]]]]);
+            }
 
             if (str_contains($query, 'FROM local_services_lead_conversation')) {
                 return Http::response(['results' => $conversations]);
@@ -890,5 +906,90 @@ class LeadConversationsTest extends TestCase
             array_column($detail, 'text'),
             'a thread that reads backwards is the one defect a thread cannot survive',
         );
+    }
+
+    /**
+     * A connection reached through a manager reads with the manager as
+     * login-customer-id on every call. Without it Google answers
+     * PERMISSION_DENIED, which is how twenty-three of A-1 Chimney's accounts
+     * stayed silent (2026-09-09).
+     */
+    public function test_a_connection_reached_through_a_manager_reads_through_it(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $connection = $this->connected($t, '2796623321', via: '4051729356');
+
+        $this->fakeGoogle([$this->leadRow('111', 'Stamford enquirer')], []);
+        $this->sync($t, $connection);
+
+        Http::assertSent(function (Request $request) {
+            return str_contains($request->url(), '/customers/2796623321/googleAds:search')
+                && $request->header('login-customer-id') === ['4051729356'];
+        });
+
+        $this->assertSame(1, $this->inTenant($t['org'], fn () => Lead::query()->where('connection_id', $connection->id)->count()));
+    }
+
+    /**
+     * The rows made before login_customer_id existed: every enabled client
+     * under a connected manager is connected under the same grant, reading
+     * through it. Idempotent, and never a cancelled or manager client.
+     */
+    public function test_adopt_manager_clients_connects_what_the_manager_reaches_and_nothing_twice(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $manager   = $this->connected($t, '4051729356');
+        $cleveland = $this->connected($t, self::CUSTOMER);
+
+        $this->fakeGoogle([], [], managers: ['4051729356'], clients: [
+            ['customerClient' => ['id' => '4051729356', 'descriptiveName' => 'A1 Chimney - Ads Manager', 'level' => 0, 'manager' => true, 'status' => 'ENABLED']],
+            ['customerClient' => ['id' => self::CUSTOMER, 'descriptiveName' => 'A1 Chimney - Cleveland', 'level' => 1, 'manager' => false, 'status' => 'ENABLED']],
+            ['customerClient' => ['id' => '2796623321', 'descriptiveName' => 'A1 Chimney - Stamford', 'level' => 2, 'manager' => false, 'status' => 'ENABLED']],
+            ['customerClient' => ['id' => '8839813550', 'descriptiveName' => 'A1 Chimney - Hamden', 'level' => 2, 'manager' => false, 'status' => 'ENABLED']],
+            ['customerClient' => ['id' => '4634809513', 'descriptiveName' => 'A1 Chimney - Connecticut', 'level' => 1, 'manager' => false, 'status' => 'CANCELED']],
+        ]);
+
+        $this->artisan('leads:adopt-manager-clients')->assertSuccessful();
+
+        $rows = $this->inTenant($t['org'], fn () => SocialConnection::query()
+            ->where('provider', 'google_ads')->orderBy('remote_id')->get(['remote_id', 'login_customer_id', 'display_name', 'scope_type', 'scope_id']));
+
+        $this->assertSame(['2796623321', '4051729356', self::CUSTOMER, '8839813550'], $rows->pluck('remote_id')->all());
+        $stamford = $rows->firstWhere('remote_id', '2796623321');
+        $this->assertSame('4051729356', $stamford->login_customer_id);
+        $this->assertSame('A1 Chimney - Stamford', $stamford->display_name);
+        $this->assertSame($manager->scope_id, $stamford->scope_id, 'placed where the manager is placed');
+        $this->assertNull($rows->firstWhere('remote_id', self::CUSTOMER)->login_customer_id, 'a direct row stays direct');
+
+        // The adopted row can refresh a token: it carries the manager's grant.
+        $refresh = $this->inTenant($t['org'], fn () => SocialConnection::query()->where('remote_id', '2796623321')->first()->credentials['refresh_token'] ?? null);
+        $this->assertSame('rt-test', $refresh);
+
+        // Second run: nothing new.
+        $this->artisan('leads:adopt-manager-clients')->assertSuccessful();
+        $this->assertSame(4, $this->inTenant($t['org'], fn () => SocialConnection::query()->where('provider', 'google_ads')->count()));
+    }
+
+    /**
+     * "609", "(609)" and "609-246" all find +1 216 555 0100's neighbour; the
+     * four-digit floor made the short form find nothing (Jose, 2026-09-09).
+     * Words in the last message count too.
+     */
+    public function test_search_matches_a_number_in_any_format_from_two_digits_and_the_last_message(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $connection = $this->connected($t);
+
+        $lead = $this->leadRow('111', 'Jane Doe');
+        $lead['localServicesLead']['contactDetails']['phoneNumber'] = '+1 (609) 246-1458';
+        $this->fakeGoogle([$lead], array_slice($this->threadRows('111'), 1, 1));
+        $this->sync($t, $connection);
+
+        foreach (['609', '(609)', '609-246', '609 246 1', '2461458', 'Saturday'] as $needle) {
+            $names = $this->signedInAs($t['admin'])->getJson('/api/v1/leads?search='.urlencode($needle))->assertOk()->json('data.*.contact_name');
+            $this->assertSame(['Jane Doe'], $names, "'$needle' must find the lead");
+        }
+
+        $this->assertSame([], $this->signedInAs($t['admin'])->getJson('/api/v1/leads?search=777')->json('data'));
     }
 }

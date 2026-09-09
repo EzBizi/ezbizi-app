@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/screens/phone/recording_playback_bar.dart';
 import 'package:ezbizi_client/screens/phone/recording_player.dart';
 import 'package:ezbizi_client/widgets/lead_thread.dart';
 import 'package:flutter/material.dart';
@@ -22,8 +23,11 @@ import 'package:http/testing.dart';
 void main() {
   _wordTests();
 
-  testWidgets('play says it is fetching until the bytes arrive, then hands '
-      'them to the player', (tester) async {
+  /// The call row carries the same play bar Voicemail and Records use:
+  /// fetch on the first press through the lead's own endpoint, then play,
+  /// pause and scrub. Nothing plays before the bytes arrive.
+  testWidgets('the play bar fetches the recording on the first press, then '
+      'plays and scrubs', (tester) async {
     final gate = Completer<void>();
     final player = FakeRecordingPlayer();
 
@@ -32,56 +36,36 @@ void main() {
     expect(find.text('Call · 2:05'), findsOneWidget);
     expect(find.textContaining('They called'), findsOneWidget);
     expect(find.textContaining('PHONE_CALL'), findsNothing);
+    expect(find.byKey(const Key('recording-play')), findsOneWidget);
+    expect(find.byKey(const Key('recording-scrub')), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('play-c-call')));
+    await tester.tap(find.byKey(const Key('recording-play')));
     await tester.pump();
 
-    expect(find.text('Fetching the recording…'), findsOneWidget);
-    expect(
-      player.played,
-      isEmpty,
-      reason: 'nothing to play before the bytes arrive',
-    );
+    expect(player.played, isEmpty, reason: 'nothing to play before the bytes');
 
     gate.complete();
     await tester.pumpAndSettle();
 
-    expect(find.text('Fetching the recording…'), findsNothing);
-    expect(find.text('Playing'), findsOneWidget);
     expect(player.played, hasLength(1));
     expect(utf8.decode(player.played.single), 'ID3-fake-audio-bytes');
+    expect(
+      find.byTooltip('Pause'),
+      findsOneWidget,
+      reason: 'the app is making the sound, so it can pause it',
+    );
   });
 
-  /// Every platform plays it HERE.
-  ///
-  /// This test used to assert the opposite — that on desktop the control said
-  /// the audio opened elsewhere and never claimed to be playing. That was a
-  /// faithful test of a wrong design: Windows wrote the recording into %TEMP%
-  /// and handed it to whatever opens an MP3, so the app that was carrying live
-  /// call audio could not play a voicemail. Jose put it plainly, and he was
-  /// right, so the test now says what the app does instead of defending what
-  /// it did.
-  testWidgets('playing happens in the app, and the control says so', (
-    tester,
-  ) async {
-    final player = FakeRecordingPlayer();
-
-    await _pump(tester, player: player, recordingGate: Completer()..complete());
-
-    expect(find.textContaining('opens in your audio player'), findsNothing);
-    expect(find.byTooltip('Play in your audio player'), findsNothing);
-    expect(find.byTooltip('Play'), findsOneWidget);
-
-    await tester.tap(find.byKey(const ValueKey('play-c-call')));
-    await tester.pumpAndSettle();
-
-    expect(player.played, hasLength(1));
-    expect(find.text('Playing'), findsOneWidget);
-    expect(
-      find.byTooltip('Stop'),
-      findsOneWidget,
-      reason: 'the app is making the sound, so it must be able to stop it',
+  testWidgets('a message row has no play bar; only a call with a recording '
+      'does', (tester) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
     );
+
+    expect(find.byType(RecordingPlaybackBar), findsOneWidget);
+    expect(find.byKey(const ValueKey('recording-c-call')), findsOneWidget);
   });
 
   /// A refusal is shown, in the player's own words rather than ours.
@@ -93,10 +77,13 @@ void main() {
       recordingGate: Completer()..complete(),
     );
 
-    await tester.tap(find.byKey(const ValueKey('play-c-call')));
+    await tester.tap(find.byKey(const Key('recording-play')));
     await tester.pumpAndSettle();
 
-    expect(find.text('This recording would not play.'), findsOneWidget);
+    expect(
+      find.textContaining('This recording would not play.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('a reply goes out on Send and appears in the thread as ours', (

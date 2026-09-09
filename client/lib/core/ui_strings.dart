@@ -85,6 +85,15 @@ class UiStrings {
     'time_clock.auto': 'Auto',
     'time_clock.outside': 'Outside schedule',
     'time_clock.day_off': 'Day off',
+    // The phone row leads with today, so it needs today's words. "Off today"
+    // and "no schedule set" are OPPOSITE facts that both used to render as
+    // "Day off" -- one says the schedule answered, the other says nobody has
+    // written one.
+    'time_clock.today_hours': 'Today {start} – {end}',
+    'time_clock.off_today': 'Off today',
+    'time_clock.schedule_not_set': 'Not set yet',
+    'time_clock.no_schedule':
+        'No working hours have been set for you yet.',
     'time_clock.work_schedule': 'Work schedule',
     'time_clock.not_scheduled': 'You are not on a scheduled shift.',
     'time_clock.overnight':

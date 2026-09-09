@@ -4,8 +4,9 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
+import '../../widgets/error_note.dart';
 
-/// Availability — search a zip or an area, read that area's week.
+/// Availability — search a zip, a city or an area, read that area's week.
 ///
 /// design: docs/previews/scheduling-layouts.html #4 (and #6 at 375px)
 ///
@@ -20,6 +21,18 @@ import '../../widgets/async_body.dart';
 /// The word is taken from the payload rather than compiled in here, so the day
 /// the server starts subtracting, the label changes with it and nobody who
 /// learned the first meaning is quietly shown the second.
+///
+/// ── The box suggests instead of guessing ─────────────────────────
+///
+/// It used to decide what you meant from the SHAPE of what you typed: all
+/// digits was a zip, anything else was an area name. So a city reached nothing,
+/// a half-typed area name reached nothing, and both looked exactly like "we do
+/// not cover that" — a wrong answer in the same words as the right one.
+///
+/// Now it asks the server what the letters so far could mean and offers the
+/// answers, because the three namespaces genuinely overlap: an area called
+/// Dallas and a city called Dallas are different questions with different
+/// answers, and no rule about string shape can tell them apart.
 class AvailabilityPane extends StatefulWidget {
   const AvailabilityPane({
     super.key,
@@ -40,24 +53,78 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
   static const _dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   final _search = TextEditingController();
+  final _focus = FocusNode();
 
   bool _loading = false;
   String? _error;
   Map<String, dynamic>? _result;
   String? _week;
+
+  /// What the caller picked, so paging weeks re-asks the same question rather
+  /// than re-running the search box's text.
+  Map<String, dynamic>? _picked;
+
+  List<Map<String, dynamic>> _suggestions = [];
+  bool _suggesting = false;
+
   int _request = 0;
+  int _suggestRequest = 0;
 
   @override
   void dispose() {
     _search.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
-  bool get _isZip => RegExp(r'^\d{3,10}$').hasMatch(_search.text.trim());
+  /// ponytail: one request per keystroke, staleness handled by a counter
+  /// rather than a debounce timer. The server is local and the query is three
+  /// indexed prefix lookups; add a timer when that stops being true.
+  Future<void> _suggest(String raw) async {
+    final q = raw.trim();
+    final request = ++_suggestRequest;
 
+    if (q.isEmpty) {
+      setState(() {
+        _suggestions = [];
+        _suggesting = false;
+      });
+      return;
+    }
+
+    setState(() => _suggesting = true);
+
+    final response = await widget.api.get('/scheduling/suggest', {'q': q});
+
+    if (!mounted || request != _suggestRequest) return;
+
+    setState(() {
+      _suggesting = false;
+      _suggestions = response.ok
+          ? (response.body['data'] as List? ?? const [])
+                .cast<Map<String, dynamic>>()
+          : const [];
+    });
+  }
+
+  Future<void> _pick(Map<String, dynamic> suggestion) async {
+    _search.text = suggestion['label'] as String? ?? '';
+    _focus.unfocus();
+
+    setState(() {
+      _picked = suggestion;
+      _suggestions = [];
+    });
+
+    await _load();
+  }
+
+  /// Asks about whatever was picked, or — when somebody typed and pressed
+  /// Enter without picking — about the text as all three things at once, and
+  /// lets the server resolve it.
   Future<void> _load({String? week}) async {
     final typed = _search.text.trim();
-    if (typed.isEmpty) return;
+    if (typed.isEmpty && _picked == null) return;
 
     final request = ++_request;
 
@@ -65,15 +132,27 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
       _loading = true;
       _error = null;
       _week = week;
+      _suggestions = [];
     });
 
-    // A digits-only search is a zip; anything else is a name, which the server
-    // resolves by area. Deciding here rather than sending both keeps the
-    // "matched by" in the response meaningful.
-    final response = await widget.api.get('/scheduling/availability', {
-      if (_isZip) 'zip': typed else 'area_name': typed,
+    final picked = _picked;
+
+    final query = <String, String>{
       if (week case final String w) 'week': w,
-    });
+      if (picked != null && picked['area_id'] != null)
+        // Exact: the suggestion already resolved to one area.
+        'area_id': picked['area_id'] as String
+      else if (picked != null && picked['type'] == 'city')
+        'city': picked['label'] as String
+      else if (picked != null && picked['type'] == 'zip')
+        'zip': picked['label'] as String
+      else if (RegExp(r'^\d{3,10}$').hasMatch(typed))
+        'zip': typed
+      else
+        'area_name': typed,
+    };
+
+    final response = await widget.api.get('/scheduling/availability', query);
 
     if (!mounted || request != _request) return;
 
@@ -84,7 +163,7 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
         _result = null;
         return;
       }
-      _result = (response.data ?? response.body['data']) as Map<String, dynamic>?;
+      _result = response.body['data'] as Map<String, dynamic>?;
     });
   }
 
@@ -100,33 +179,48 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // The heading here read "Availability" — the tab's own label,
-              // word for word. The sentence under it is kept: it says what
-              // the pane MEANS, which the tab does not.
               Text(
-                'What this business is set up to take. Search a zip code or a '
-                'service area.',
+                'What this business is set up to take. Search a zip code, a '
+                'city or a service area.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(height: 12),
               TextField(
+                key: const Key('availability-search'),
                 controller: _search,
+                focusNode: _focus,
                 textInputAction: TextInputAction.search,
+                onChanged: (value) {
+                  // Typing again abandons the previous pick, so paging weeks
+                  // cannot silently answer about the thing you replaced.
+                  _picked = null;
+                  _suggest(value);
+                },
                 onSubmitted: (_) => _load(),
                 decoration: InputDecoration(
                   isDense: true,
                   prefixIcon: const Icon(Icons.search, size: 20),
-                  hintText: 'Zip code or area name',
+                  hintText: 'Zip code, city or area name',
                   border: const OutlineInputBorder(),
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.arrow_forward, size: 20),
-                    tooltip: 'Search',
-                    onPressed: _load,
-                  ),
+                  suffixIcon: _suggesting
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : IconButton(
+                          icon: const Icon(Icons.arrow_forward, size: 20),
+                          tooltip: 'Search',
+                          onPressed: () => _load(),
+                        ),
                 ),
               ),
+              if (_suggestions.isNotEmpty) _suggestionList(theme),
             ],
           ),
         ),
@@ -143,11 +237,41 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
     );
   }
 
+  Widget _suggestionList(ThemeData theme) {
+    const icons = {
+      'area': Icons.map_outlined,
+      'city': Icons.location_city_outlined,
+      'zip': Icons.markunread_mailbox_outlined,
+    };
+
+    return Container(
+      margin: const EdgeInsets.only(top: 6),
+      decoration: BoxDecoration(
+        border: Border.all(color: EzBiziTheme.edge(context)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          for (final s in _suggestions)
+            ListTile(
+              dense: true,
+              leading: Icon(icons[s['type']] ?? Icons.search, size: 18),
+              title: Text(s['label'] as String? ?? ''),
+              subtitle: (s['detail'] as String? ?? '').isEmpty
+                  ? null
+                  : Text(s['detail'] as String),
+              onTap: () => _pick(s),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _prompt(ThemeData theme) => Center(
     child: Padding(
       padding: const EdgeInsets.all(24),
       child: Text(
-        'Search a zip code or an area name to see its week.',
+        'Search a zip code, a city or an area name to see its week.',
         textAlign: TextAlign.center,
         style: theme.textTheme.bodyMedium?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,
@@ -179,6 +303,11 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
         .where((d) => d['closed'] != true)
         .toList();
 
+    final picked = _picked;
+    final split = picked != null &&
+        picked['type'] == 'city' &&
+        picked['area_id'] == null;
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
       children: [
@@ -186,9 +315,7 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
           children: [
             Expanded(
               child: Text(
-                matched['by'] == 'zip'
-                    ? '${_search.text.trim()} is in ${matched['area_name']}'
-                    : '${matched['area_name']}',
+                _heading(matched),
                 style: theme.textTheme.titleSmall,
               ),
             ),
@@ -204,6 +331,16 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
             ),
           ],
         ),
+        // A city whose zips sit in more than one area cannot have "a" week.
+        // Saying so beats showing one area's week under the city's name.
+        if (split)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: ErrorNote(
+              '${picked['label']} covers more than one service area. This is '
+              '${matched['area_name']} only — open the others from Settings.',
+            ),
+          ),
         if (data['basis'] == 'configured')
           Padding(
             padding: const EdgeInsets.only(top: 6, bottom: 4),
@@ -230,6 +367,19 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
           for (final day in days) _dayCard(theme, day),
       ],
     );
+  }
+
+  /// Says how it matched, so the screen never shows a different place than the
+  /// one that was asked for without saying why.
+  String _heading(Map<String, dynamic> matched) {
+    final area = matched['area_name'] ?? '';
+    final typed = _search.text.trim();
+
+    return switch (matched['by']) {
+      'zip' => '$typed is in $area',
+      'city' => '$typed is in $area',
+      _ => '$area',
+    };
   }
 
   Widget _dayCard(ThemeData theme, Map<String, dynamic> day) {

@@ -19,6 +19,49 @@ import 'package:http/http.dart' as http;
 /// invisible in a screenshot.
 void main() {
   _conversationRowTests();
+
+  testWidgets('search runs as you type, without Enter', (tester) async {
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell')],
+      connections: _connected,
+    );
+    _lastListQuery = const {};
+
+    await tester.enterText(find.byType(TextField).first, '609');
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(
+      _lastListQuery.containsKey('search'),
+      isFalse,
+      reason: 'not on every keystroke',
+    );
+
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(_lastListQuery['search'], '609');
+  });
+
+  testWidgets('the divider drags the panes, within limits', (tester) async {
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell')],
+      connections: _connected,
+    );
+
+    final divider = find.byKey(const ValueKey('pane-divider'));
+    final before = tester.getTopLeft(divider).dx;
+
+    await tester.drag(divider, const Offset(150, 0));
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(divider).dx, greaterThan(before + 100));
+
+    // Far past the limit: the list stops at its ceiling rather than eating
+    // the thread, and nothing overflows.
+    await tester.drag(divider, const Offset(5000, 0));
+    await tester.pumpAndSettle();
+    final width = tester.getSize(find.byType(LeadsScreen)).width;
+    expect(tester.getTopLeft(divider).dx, lessThanOrEqualTo(width - 460));
+    expect(tester.takeException(), isNull);
+  });
   _triageTests();
 
   testWidgets('with nothing connected the empty state says so, rather than '
@@ -182,9 +225,13 @@ void main() {
     // Every source reachable, Thumbtack included. The drawn mobile option had
     // it pushed off the end; the strip scrolls, so it is here.
     for (final word in ['Google', 'Thumbtack', 'Chat', 'Forms']) {
-      expect(find.widgetWithText(ChoiceChip, word), findsOneWidget,
-          reason: '$word has no tab, so that source can only be reached by '
-              'scrolling the whole list.');
+      expect(
+        find.widgetWithText(ChoiceChip, word),
+        findsOneWidget,
+        reason:
+            '$word has no tab, so that source can only be reached by '
+            'scrolling the whole list.',
+      );
     }
 
     // Still ONE list: a tab narrows it, it does not open a screen per source.
@@ -200,7 +247,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(_lastListQuery['source'], 'website_chat');
     expect(
-      tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Chat')).selected,
+      tester
+          .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Chat'))
+          .selected,
       isTrue,
     );
 
@@ -211,7 +260,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(_lastListQuery.containsKey('source'), isFalse);
     expect(
-      tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Chat')).selected,
+      tester
+          .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Chat'))
+          .selected,
       isFalse,
       reason: 'The Chat tab is still lit after All cleared the source.',
     );

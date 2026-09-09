@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/scheduling/capacity_settings.dart';
+import 'package:ezbizi_client/widgets/error_note.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -43,9 +44,7 @@ void main() {
   });
 
   /// The defect this screen shipped with: it listed areas and had no way to
-  /// make one. With zero areas that is a dead end — the pattern card, the
-  /// grid and the zips all sit behind having an area, so nothing on the
-  /// screen could be reached from a cold start.
+  /// make one. With zero areas that is a dead end.
   testWidgets('an empty screen offers a way to create the first area', (
     tester,
   ) async {
@@ -56,7 +55,8 @@ void main() {
       areas: const [],
       pattern: null,
       onRequest: (request) {
-        if (request.method == 'POST' && request.url.path.endsWith('/scheduling/areas')) {
+        if (request.method == 'POST' &&
+            request.url.path.endsWith('/scheduling/areas')) {
           posted = jsonDecode(request.body) as Map<String, dynamic>;
           return _json({'data': _dallasDetail}, 201);
         }
@@ -69,8 +69,16 @@ void main() {
     await tester.tap(find.text('Add service area'));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField).last, 'Dallas');
-    await tester.tap(find.text('Save'));
+    // A PANE, not a dialog. A modal over a split screen hides the rail you
+    // were reading to decide what to type.
+    expect(find.byType(Dialog), findsNothing);
+    expect(find.byKey(const Key('scheduling-area-name')), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const Key('scheduling-area-name')),
+      'Dallas',
+    );
+    await tester.tap(find.text('Add service area'));
     await tester.pumpAndSettle();
 
     expect(posted, isNotNull, reason: 'Creating an area should POST it.');
@@ -78,18 +86,89 @@ void main() {
     expect(
       posted!['franchise_id'],
       'fr-1',
-      reason: 'A new area is filed under the franchise in view.',
+      reason: 'One franchise in view is filled in without asking.',
     );
   });
 
-  testWidgets('zip codes can be edited and are sent as a list', (tester) async {
-    Map<String, dynamic>? saved;
+  /// The bug reported from the app: at company level, with two franchises in
+  /// view, the screen REFUSED to open the form and said to go and change the
+  /// switcher. The one control that could have answered "which franchise" was
+  /// the control being withheld.
+  testWidgets('at company level the form asks which franchise, not refuses', (
+    tester,
+  ) async {
+    Map<String, dynamic>? posted;
+
+    await _pump(
+      tester,
+      areas: const [],
+      pattern: null,
+      me: const {
+        'franchises': [
+          {'id': 'fr-1', 'name': 'Connecticut', 'company_id': 'co-1'},
+          {'id': 'fr-2', 'name': 'Georgia', 'company_id': 'co-1'},
+        ],
+      },
+      onRequest: (request) {
+        if (request.method == 'POST' &&
+            request.url.path.endsWith('/scheduling/areas')) {
+          posted = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({'data': _dallasDetail}, 201);
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('Add service area'));
+    await tester.pumpAndSettle();
+
+    // It opened, and it is asking.
+    expect(find.byKey(const Key('scheduling-area-franchise')), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const Key('scheduling-area-name')),
+      'Dallas',
+    );
+
+    // Submitting without choosing says so IN THE PANE and does not blank the
+    // screen. Sending this to the load error produced an empty page with one
+    // red box on it.
+    await tester.tap(find.text('Add service area'));
+    await tester.pumpAndSettle();
+
+    expect(posted, isNull, reason: 'It must not guess a franchise.');
+    expect(find.byType(ErrorNote), findsOneWidget);
+    expect(
+      find.byKey(const Key('scheduling-area-name')),
+      findsOneWidget,
+      reason: 'The form survives its own error.',
+    );
+
+    await tester.tap(find.byKey(const Key('scheduling-area-franchise')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Georgia').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Add service area'));
+    await tester.pumpAndSettle();
+
+    expect(posted, isNotNull);
+    expect(posted!['franchise_id'], 'fr-2');
+  });
+
+  /// Items, not a comma-separated string. The old field took the whole set as
+  /// one string on one Save, so a single zip held by another area refused
+  /// every edit at once and named one of them.
+  testWidgets('a zip is added as an item, with its city, and saves on its own', (
+    tester,
+  ) async {
+    final saves = <Map<String, dynamic>>[];
 
     await _pump(
       tester,
       onRequest: (request) {
         if (request.method == 'PUT' && request.url.path.endsWith('/zips')) {
-          saved = jsonDecode(request.body) as Map<String, dynamic>;
+          saves.add(jsonDecode(request.body) as Map<String, dynamic>);
           return _json({'data': _dallasDetail});
         }
         return null;
@@ -99,25 +178,57 @@ void main() {
     await tester.tap(find.text('Dallas'));
     await tester.pumpAndSettle();
 
-    // The zips card sits below the day grid, so it has to be scrolled to
-    // before it can be typed into or tapped.
-    await tester.ensureVisible(find.byKey(const Key('scheduling-zips')));
+    await tester.ensureVisible(find.byKey(const Key('scheduling-zip-entry')));
     await tester.pumpAndSettle();
 
     await tester.enterText(
-      find.byKey(const Key('scheduling-zips')),
-      '75201, 75202 75203',
+      find.byKey(const Key('scheduling-zip-entry')),
+      '75202',
+    );
+    await tester.enterText(
+      find.byKey(const Key('scheduling-city-entry')),
+      'Plano',
+    );
+    await tester.tap(find.byTooltip('Add zip code'));
+    await tester.pumpAndSettle();
+
+    expect(saves, hasLength(1), reason: 'Adding one zip saves immediately.');
+
+    final zips = (saves.first['zips'] as List).cast<Map<String, dynamic>>();
+
+    expect(zips.map((z) => z['zip']), containsAll(['75201', '75202']));
+
+    final added = zips.firstWhere((z) => z['zip'] == '75202');
+    expect(added['city'], 'Plano');
+  });
+
+  testWidgets('removing a zip sends the set without it', (tester) async {
+    final saves = <Map<String, dynamic>>[];
+
+    await _pump(
+      tester,
+      onRequest: (request) {
+        if (request.method == 'PUT' && request.url.path.endsWith('/zips')) {
+          saves.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return _json({'data': _dallasDetail});
+        }
+        return null;
+      },
     );
 
-    await tester.ensureVisible(find.text('Save zip codes'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Save zip codes'));
+    await tester.tap(find.text('Dallas'));
     await tester.pumpAndSettle();
 
-    expect(saved, isNotNull, reason: 'Saving zips should PUT them.');
+    await tester.ensureVisible(find.byKey(const ValueKey('zip-75201')));
+    await tester.pumpAndSettle();
 
-    // Commas and spaces both separate, because people type both.
-    expect(saved!['zips'], ['75201', '75202', '75203']);
+    // The chip's own delete affordance, so one zip goes without retyping the
+    // other forty-nine.
+    await tester.tap(find.byTooltip('Remove 75201'));
+    await tester.pumpAndSettle();
+
+    expect(saves, hasLength(1));
+    expect(saves.first['zips'] as List, isEmpty);
   });
 
   testWidgets('closing a day sends no rows for it, never a zero', (
@@ -163,6 +274,95 @@ void main() {
       reason: 'Zero capacity would make "closed" and "full" the same state.',
     );
   });
+  /// Twenty-six areas across several franchises came out as one flat list with
+  /// nothing saying which franchise owned which — and the same area name can
+  /// legitimately sit under two franchises, so those were indistinguishable.
+  testWidgets('the rail groups areas under the franchise that owns them', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      me: const {
+        'franchises': [
+          {'id': 'fr-1', 'name': 'Connecticut', 'company_id': 'co-1'},
+          {'id': 'fr-2', 'name': 'Georgia', 'company_id': 'co-1'},
+        ],
+      },
+      areas: const [
+        {
+          'id': 'a-1',
+          'name': 'East',
+          'franchise_id': 'fr-1',
+          'zip_count': 3,
+          'follows_pattern': true,
+        },
+        {
+          'id': 'a-2',
+          'name': 'Atlanta North',
+          'franchise_id': 'fr-2',
+          'zip_count': 4,
+          'follows_pattern': true,
+        },
+      ],
+      pattern: null,
+    );
+
+    // One header per franchise, so a row is never orphaned from its owner.
+    expect(find.text('CONNECTICUT'), findsOneWidget);
+    expect(find.text('GEORGIA'), findsOneWidget);
+    expect(find.text('East'), findsOneWidget);
+    expect(find.text('Atlanta North'), findsOneWidget);
+  });
+
+  /// One franchise means nothing to disambiguate, so a header would be a
+  /// label on the whole screen.
+  testWidgets('a single franchise gets no group header', (tester) async {
+    await _pump(tester);
+
+    expect(find.text('CONNECTICUT'), findsNothing);
+    expect(find.text('Dallas'), findsOneWidget);
+  });
+
+  /// Two companies on screen means the bare franchise name is ambiguous —
+  /// four Connecticuts under different companies is real data here — so the
+  /// header carries the company too. Same rule FranchiseField uses.
+  testWidgets('two companies on screen put the company in the header', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      me: const {
+        'companies': [
+          {'id': 'co-1', 'name': 'Everdoors', 'parent_company_id': null},
+          {'id': 'co-2', 'name': 'Premier', 'parent_company_id': null},
+        ],
+        'franchises': [
+          {'id': 'fr-1', 'name': 'Connecticut', 'company_id': 'co-1'},
+          {'id': 'fr-2', 'name': 'Connecticut', 'company_id': 'co-2'},
+        ],
+      },
+      areas: const [
+        {
+          'id': 'a-1',
+          'name': 'East',
+          'franchise_id': 'fr-1',
+          'zip_count': 3,
+          'follows_pattern': true,
+        },
+        {
+          'id': 'a-2',
+          'name': 'West',
+          'franchise_id': 'fr-2',
+          'zip_count': 4,
+          'follows_pattern': true,
+        },
+      ],
+      pattern: null,
+    );
+
+    expect(find.text('EVERDOORS › CONNECTICUT'), findsOneWidget);
+    expect(find.text('PREMIER › CONNECTICUT'), findsOneWidget);
+  });
 }
 
 Future<void> _pump(
@@ -170,6 +370,7 @@ Future<void> _pump(
   http.Response? Function(http.Request request)? onRequest,
   List<Map<String, dynamic>>? areas,
   Map<String, dynamic>? pattern = _defaultPattern,
+  Map<String, dynamic>? me,
 }) async {
   tester.view.physicalSize = const Size(1280, 900);
   tester.view.devicePixelRatio = 1.0;
@@ -177,7 +378,7 @@ Future<void> _pump(
 
   final api = ApiClient(
     client: MockClient(
-      _handler(onRequest: onRequest, areas: areas, pattern: pattern),
+      _handler(onRequest: onRequest, areas: areas, pattern: pattern, me: me),
     ),
   );
   final session = Session(api);
@@ -199,6 +400,7 @@ MockClientHandler _handler({
   http.Response? Function(http.Request request)? onRequest,
   List<Map<String, dynamic>>? areas,
   Map<String, dynamic>? pattern,
+  Map<String, dynamic>? me,
 }) {
   return (request) async {
     final override = onRequest?.call(request);
@@ -210,6 +412,7 @@ MockClientHandler _handler({
       return _json({
         'data': {
           ..._me,
+          ...?me,
           'permissions': const [
             'scheduling.view',
             'scheduling.create',
@@ -261,7 +464,9 @@ const _dallasDetail = {
   'id': 'a-dallas',
   'name': 'Dallas',
   'franchise_id': 'fr-1',
-  'zips': ['75201'],
+  'zips': [
+    {'zip': '75201', 'city': 'Dallas'},
+  ],
   'slots': [
     {
       'id': 's-1',

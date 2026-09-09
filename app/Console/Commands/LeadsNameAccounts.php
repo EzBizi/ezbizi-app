@@ -64,7 +64,7 @@ class LeadsNameAccounts extends Command
 
                     try {
                         $token = GoogleToken::forConnection($row, 'google_ads');
-                        $name  = GoogleAdsOAuth::nameOf($token, $digits);
+                        $name  = GoogleAdsOAuth::nameOf($token, $digits, $row->login_customer_id);
                     } catch (Throwable $e) {
                         $failed++;
                         $this->warn("{$row->remote_id}: {$e->getMessage()}");

@@ -417,6 +417,74 @@ class WebWidgetsTest extends TestCase
             ->assertStatus(422);
     }
 
+    /**
+     * The picker draws the same string the website renders.
+     *
+     * Its preview is a button in the brand colour with the automatic text on
+     * it. If the client derived that itself there would be two definitions of
+     * readable, and the day the threshold moved the preview and the customer's
+     * own website would disagree — with the customer first to notice.
+     */
+    public function test_the_colour_endpoint_carries_the_text_colour_it_derives(): void
+    {
+        ['tenant' => $tenant] = $this->site();
+        $admin = $this->brandSetter($tenant);
+
+        $body = $this->signedInAs($admin)
+            ->putJson('/api/v1/branding/colour', ['colour' => '#ffff00'])
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame('#ffff00', $body['effective']);
+        $this->assertSame('#000000', $body['on_effective'], 'A bright brand needs dark text.');
+        $this->assertSame('#ffff00', $body['rendered']);
+        $this->assertSame('#000000', $body['on_rendered']);
+    }
+
+    /**
+     * The not-set state is every customer today, so the screen has to be able
+     * to draw it: null says they have told us nothing, `rendered` says what a
+     * visitor sees anyway.
+     */
+    public function test_a_business_with_no_colour_still_says_what_a_visitor_sees(): void
+    {
+        ['tenant' => $tenant] = $this->site();
+
+        $body = $this->signedInAs($this->brandSetter($tenant))
+            ->getJson('/api/v1/branding/colour')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertNull($body['effective'], 'Not set is a real answer, not a missing one.');
+        $this->assertNull($body['on_effective']);
+        $this->assertSame('#0b5cad', $body['rendered']);
+        $this->assertSame('#ffffff', $body['on_rendered']);
+    }
+
+    /**
+     * The fallback has one definition.
+     *
+     * It was written three times in WidgetDefaults before the picker needed it
+     * too; a fourth copy in Dart is what this constant exists to prevent.
+     */
+    public function test_the_widget_and_the_picker_agree_on_the_fallback(): void
+    {
+        ['site' => $site, 'editor' => $editor, 'tenant' => $tenant] = $this->site();
+
+        $picker = $this->signedInAs($this->brandSetter($tenant))
+            ->getJson('/api/v1/branding/colour')
+            ->assertOk()
+            ->json('data');
+
+        $widget = $this->signedInAs($editor)
+            ->getJson("/api/v1/web/sites/{$site['data']['id']}/widgets")
+            ->assertOk()
+            ->json('config.style');
+
+        $this->assertSame($widget['accent'], $picker['rendered']);
+        $this->assertSame($widget['on_accent'], $picker['on_rendered']);
+    }
+
     // ── helpers ──────────────────────────────────────────────────────
 
     /** @return array{site: array<string, mixed>, editor: User, tenant: array<string, mixed>} */

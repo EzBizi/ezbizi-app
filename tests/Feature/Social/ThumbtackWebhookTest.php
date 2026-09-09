@@ -238,6 +238,64 @@ class ThumbtackWebhookTest extends TestCase
         });
     }
 
+    /**
+     * A specimen event becomes a lead WITHOUT fetching anything.
+     *
+     * Thumbtack's test-negotiation endpoint, in their own words: "All
+     * information in the test negotiation payload will be synthetic/dummy data
+     * ... IDs in the payload will be randomly generated and will not refer to
+     * any real entities in the Thumbtack system."
+     *
+     * So absorb() fetching the negotiation by id could never work for a
+     * specimen — it 404s by design. Three separate attempts to prove this
+     * integration end to end died on that 404 and were read as faults.
+     *
+     * It was never only a testing problem. Their API cannot list negotiations,
+     * so a real enquiry whose fetch fails once is gone for good. The payload
+     * carries the whole negotiation and cannot fail.
+     */
+    public function test_a_specimen_event_becomes_a_lead_without_fetching_it(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->connection($t, remoteId: 'biz-1', secret: 'the-secret');
+
+        // Everything Thumbtack offers for a synthetic id: not found.
+        Http::fake(['*' => Http::response(['title' => 'Not Found'], 404)]);
+
+        $this->withHeader(ThumbtackWebhooks::AUTH_HEADER, 'the-secret')
+            ->postJson(self::URL, [
+                'event' => ['eventType' => 'NegotiationCreatedV4'],
+                'data'  => [
+                    'negotiationID' => 'synthetic-999',
+                    'createdAt'     => '2026-09-09T13:30:00Z',
+                    'customer'      => [
+                        'customerID' => 'cus-1',
+                        'firstName'  => 'Ada',
+                        'lastName'   => 'Sweep',
+                        'phone'      => '+15552345678',
+                    ],
+                    'business' => ['businessID' => 'biz-1'],
+                ],
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.handled', true);
+
+        $this->inTenant($t['org'], function () {
+            $lead = Lead::query()->where('source', 'thumbtack')->first();
+
+            $this->assertNotNull($lead, 'the payload alone must produce a lead');
+            $this->assertSame('Ada Sweep', $lead->contact_name);
+            $this->assertSame('synthetic-999', $lead->remote_id);
+        });
+
+        // The negotiation itself was never fetched. A 404 on the message
+        // thread is tolerated; a 404 on the enquiry would have lost it.
+        Http::assertNotSent(
+            fn ($r) => $r->method() === 'GET'
+                && str_ends_with($r->url(), '/v4/negotiations/synthetic-999')
+        );
+    }
+
     public function test_the_flat_shape_still_works_if_they_ever_send_it(): void
     {
         // Kept behind the envelope: one array lookup, and the difference

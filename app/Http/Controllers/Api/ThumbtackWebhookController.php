@@ -199,7 +199,14 @@ class ThumbtackWebhookController extends Controller
             }
 
             try {
-                app(ThumbtackLeads::class)->absorb($connection, $negotiationId);
+                app(ThumbtackLeads::class)->absorb(
+                    $connection,
+                    $negotiationId,
+                    // The event's own detail. NegotiationCreatedV4 carries the
+                    // whole enquiry here, so this saves a round trip and works
+                    // for a specimen, whose ids refer to nothing fetchable.
+                    carried: (array) ($payload['data'] ?? []),
+                );
             } catch (Throwable $e) {
                 /*
                  * Reported, then RE-THROWN so this answers 500 and Thumbtack

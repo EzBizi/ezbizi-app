@@ -377,13 +377,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
     onEdit: _editSchedule,
   );
 
-  /// "Mon–Fri" or "Day off" for the phone row, read without opening it.
+  /// Today's hours for the phone row, read without opening it.
+  ///
+  /// It used to list the working days — "Mon Tue Wed Thu Fri" — which answers
+  /// "which days do I work". On a phone the question is "what am I doing
+  /// today", and the row was the one place that could answer it before a tap.
+  /// Jose, 2026-09-09.
+  ///
+  /// Three outcomes, and the third is the one that used to lie: working today,
+  /// off today, and nobody has written a schedule at all. The last two both
+  /// rendered as "Day off", which are opposite facts — one is the schedule
+  /// answering, the other is the absence of one.
   String _scheduleSummary() {
     final days = _schedule?['days'];
-    if (days is! Map) return UiStrings.t('time_clock.day_off');
-    final on = _WorkScheduleCard.days.where((d) => days[d] is Map).toList();
-    if (on.isEmpty) return UiStrings.t('time_clock.day_off');
-    return on.map(_WorkScheduleCard.title).join(' ');
+    if (days is! Map) return UiStrings.t('time_clock.schedule_not_set');
+
+    // `weekday` is 1..7 from Monday, which is the order `days` is written in,
+    // so the -1 is an index rather than an assumption about locale.
+    final window = days[_WorkScheduleCard.days[DateTime.now().weekday - 1]];
+    if (window is! Map) return UiStrings.t('time_clock.off_today');
+
+    return UiStrings.t('time_clock.today_hours')
+        .replaceFirst('{start}', '${window['start'] ?? ''}')
+        .replaceFirst('{end}', '${window['end'] ?? ''}');
   }
 
   /// Only offered when the organization allows it (design 2026-09-08 §3.3);
@@ -691,14 +707,24 @@ class _WorkScheduleCard extends StatelessWidget {
             // schedule layouts 1 + 5, chosen by Jose 2026-09-09. The question
             // a phone is asked is "what am I doing today", and seven equal
             // rows make you find today before you can answer it.
-            LayoutBuilder(
-              builder: (context, c) => Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: c.maxWidth < 600
-                    ? _phone(context, theme, map)
-                    : [for (final day in days) _row(context, theme, map, day)],
+            // Nobody has written a schedule: say that, rather than drawing
+            // seven "Day off" rows. They are opposite facts and were rendering
+            // identically -- a person with no schedule looked exactly like a
+            // person who works no days, and neither could tell which they were.
+            if (week is! Map)
+              Text(
+                UiStrings.t('time_clock.no_schedule'),
+                style: theme.textTheme.bodyMedium,
+              )
+            else
+              LayoutBuilder(
+                builder: (context, c) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: c.maxWidth < 600
+                      ? _phone(context, theme, map)
+                      : [for (final day in days) _row(context, theme, map, day)],
+                ),
               ),
-            ),
           ],
         ),
       ),

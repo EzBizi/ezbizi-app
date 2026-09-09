@@ -600,6 +600,31 @@ it nominates the one it shows. Distinguishing prefixes (`pk_` / `ezb_`) do the s
 for a value pasted into a support ticket, but a prefix cannot fix a screen that offers
 only one of them.
 
+**Bound a resizable pane in PIXELS, not in a share — and check the floors can both be met.**
+Leads, 2026-09-09 (`06519f20`), making the Leads divider draggable: *"a share alone let a wide
+window push the thread to 336px, and the header overflowed by 46."* A percentage says how the
+room is divided; it cannot say what either side needs. The floors are `320` for the list and
+`460` for the thread, the second being what its header wants for the star, Book and the status
+control on one line.
+
+> **The check that is easy to skip: two floors can be unsatisfiable together.** `maxList =
+> (width - 460).clamp(320, width)` returns 320 on a narrow window and hands the thread 380 —
+> the exact overflow the floors exist to prevent, reintroduced by the clamp. It is unreachable
+> here only because the split renders at `>= 900` and 320 + 460 = 780. **A pair of minimums is
+> a claim about the SMALLEST container they will ever run in**, so verify against that number,
+> not against a comfortable one.
+>
+> Set the floor above the measured minimum, not at it: 382 was what overflowed, 460 is what
+> shipped. A floor at the measured value clears the case you tested and nothing else — the same
+> lesson as the row heights where a 44 floor left two heights one pixel apart.
+
+**Reuse across a module boundary beats a polite copy.** Same commit: the Leads call row now uses
+Phone's `RecordingPlaybackBar` and **deleted** its own play disc rather than adding a second
+player. One definition, in `screens/phone/`, imported by `lead_thread.dart`. A copy would have
+been the easy version and would have drifted the first time Phone improved scrubbing. **Deleting
+a widget to adopt someone else's is a better outcome than either module writing its own**, and
+it is the thing sessions avoid out of deference to each other's folders.
+
 **An advisory must not wear the failure component.** Web Management, 2026-09-08, asking
 that this be made a rule after the widget contrast work: *"dressing an advisory as a
 failure teaches people to ignore the component that also carries real failures."* The
@@ -1035,9 +1060,27 @@ states (2 + 3 + 2 = 7), so a sixth state going uncounted fails there rather than
 > the strip reading zero, just cheaper. **Specify the bucket AND the word, or the person who has
 > to write it inherits a decision you did not know you were making.**
 
-> **STILL OPEN, non-blocking, HR's call:** the breakpoint is `MediaQuery.sizeOf(context).width`
-> — the window's, not the card's. See the second finding below; recorded so it does not
-> evaporate rather than held against the build.
+**Breakpoint CLOSED too** — `LayoutBuilder` on `constraints.maxWidth < 600`, verified at
+`ad12d292`, with a test that places the card in a 320-point box on a 1400-point window. I
+described the failure; HR built the case that reproduces it.
+
+> **Name a widget by its FILE, not by its feature.** I told HR "the work schedule card uses
+> LayoutBuilder". They grepped `work_schedule_panel.dart`, found none, and corrected me —
+> correctly, for that file. The panel is the *editor*; the card is `_WorkScheduleCard` in
+> `profile_screen.dart:694`. One feature, two files, and "card" versus "panel" is the whole
+> difference. **A claim aimed by feature name gets checked against whichever file carries the
+> name.**
+>
+> Their supporting claim — that the house uses of `LayoutBuilder` are two files — measured
+> **43** when I took it. Worth recording as the general form: **when a check returns an absence,
+> widen the search before concluding a practice is rare.** A single-file grep answers a question
+> about that file, never about the codebase.
+>
+> **And then my 43 went stale in about twenty minutes.** HR measured 44 and was right: the
+> difference is `training_card.dart` itself, which their own fix had just added. I had quoted a
+> count as a standing property while the thing it counted was being changed by the conversation
+> I was having. **A count is a measurement with a timestamp, not a property of the codebase** —
+> and the one I used to correct someone else with was the one that decayed.
 
 > ⚠️ **RULING, against the build: the strip must account for every row it sits above.**
 > Five states exist (`lapsed`, `notPassed`, `notStarted`, `inProgress`, `passed`); the strip

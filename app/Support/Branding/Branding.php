@@ -115,6 +115,21 @@ final class Branding
     }
 
     /**
+     * What represents a business that has told us no colour.
+     *
+     * Deliberately nobody's brand, and measured rather than chosen: 6.67:1 on
+     * white, which is why it survives as the fallback now that a real brand
+     * colour can be the default. A fallback that inherited nothing would not be
+     * neutral, it would be unstyled.
+     *
+     * It lives here rather than in the widget that renders it because a second
+     * consumer already exists — the picker draws this exact colour for the
+     * not-set state, which is every customer today — and two copies of a
+     * fallback are two things to disagree.
+     */
+    public const FALLBACK_COLOUR = '#0b5cad';
+
+    /**
      * The customer's own colour, resolved the way their logo is.
      *
      * The company's if it has one, else the organization's, else null — and
