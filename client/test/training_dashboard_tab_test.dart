@@ -163,12 +163,23 @@ void main() {
     // The affordance names the total, never a bare "Show all".
     expect(find.text('Show all 5 attempts'), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('training.person-show-all-attempts')));
+    await tester.tap(find.byKey(const Key('training.person-toggle-attempts')));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('50%  -  Failed'), findsOneWidget);
     expect(find.textContaining('40%  -  Failed'), findsOneWidget);
     expect(find.text('Show all 5 attempts'), findsNothing);
+
+    // And back again. A one-way disclosure would let the reader recreate the
+    // very row-swallows-the-pane problem the cap exists to prevent, with no
+    // way out short of reloading.
+    expect(find.text('Show fewer'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('training.person-toggle-attempts')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('50%  -  Failed'), findsNothing);
+    expect(find.text('Show all 5 attempts'), findsOneWidget);
   });
 
   testWidgets('exactly three attempts hide nothing, so no affordance claims they do', (tester) async {
@@ -197,7 +208,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('60%  -  Failed'), findsOneWidget);
-    expect(find.byKey(const Key('training.person-show-all-attempts')), findsNothing);
+    expect(find.byKey(const Key('training.person-toggle-attempts')), findsNothing);
   });
 
   testWidgets('an empty pane says what showed up, never that nobody is assigned', (tester) async {

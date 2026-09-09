@@ -701,16 +701,23 @@ class _PersonRowState extends State<_PersonRow> {
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
-            // The affordance NAMES THE TOTAL, so the reader knows the size of
+            // Collapsed, it NAMES THE TOTAL, so the reader knows the size of
             // what is hidden before deciding to open it -- the same discipline
             // as an empty sentence describing the box rather than the world.
             // Absent when nothing is hidden: a control claiming to reveal more
             // when there is no more is its own small lie.
-            if (!_showAll && attempts.length > _visible)
+            //
+            // It TOGGLES rather than expanding one way (UI/UX, 2026-09-09).
+            // One-way expansion reintroduces the very thing the cap exists to
+            // prevent -- a row swallowing a list of people -- except the reader
+            // causes it and then has no way back short of reloading the pane.
+            // This is the control finishing its own behaviour, not a second
+            // control.
+            if (attempts.length > _visible)
               TextButton(
-                key: const Key('training.person-show-all-attempts'),
-                onPressed: () => setState(() => _showAll = true),
-                child: Text('Show all ${attempts.length} attempts'),
+                key: const Key('training.person-toggle-attempts'),
+                onPressed: () => setState(() => _showAll = !_showAll),
+                child: Text(_showAll ? 'Show fewer' : 'Show all ${attempts.length} attempts'),
               ),
           ],
           if (fraction != null) ...[
