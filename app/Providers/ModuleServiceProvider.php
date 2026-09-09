@@ -2362,6 +2362,21 @@ class ModuleServiceProvider extends ServiceProvider
                     \App\Models\TrainingAssignment::class,
                 ],
                 actions: ['view', 'monitor', 'manage', 'assign'],
+                /*
+                 * `assign` alone is a role with nothing to click. The control
+                 * that assigns a guide or a test lives in the Dashboard pane,
+                 * and `monitor` is what opens that pane — so an administrator
+                 * could tick Assign, save it cleanly, and hand somebody an
+                 * ordinary-looking screen with no way to do the thing they had
+                 * just been given permission to do.
+                 *
+                 * Deliberately NOT solved by making assign imply monitor.
+                 * Monitor is the larger disclosure — everybody's scores — and
+                 * implying it from the smaller act would widen access past what
+                 * was ticked. The save is refused instead, naming the missing
+                 * one, and the person granting decides.
+                 */
+                actionRequires: ['assign' => ['training.monitor']],
                 triggers: [
                     new TriggerDefinition(
                         key: 'training.assigned',

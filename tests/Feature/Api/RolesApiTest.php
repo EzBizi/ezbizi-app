@@ -43,6 +43,60 @@ class RolesApiTest extends TestCase
         });
     }
 
+    public function test_a_permission_cannot_be_granted_without_the_one_it_needs(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        // `training.assign` puts the assign control in the Dashboard pane, and
+        // `training.monitor` is what opens that pane. Granted alone it saved
+        // cleanly and handed somebody a screen with nothing on it.
+        $this->signedInAs($alpha['admin'])->postJson('/api/v1/roles', [
+            'name' => 'Supervisor', 'permissions' => ['training.assign'],
+        ])->assertStatus(422)->assertJsonPath(
+            'errors.permissions.0',
+            fn (string $m) => str_contains($m, 'training.assign needs training.monitor'),
+        );
+
+        $this->inTenant($alpha['org'], function () {
+            $this->assertNull(Role::where('name', 'Supervisor')->first());
+        });
+    }
+
+    public function test_the_same_grant_with_its_requirement_is_accepted(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        // The control for the refusal above. Without it, a check that refused
+        // every save containing `training.assign` — or every save at all —
+        // would pass the test that matters and break the feature.
+        $created = $this->signedInAs($alpha['admin'])->postJson('/api/v1/roles', [
+            'name'        => 'Supervisor',
+            'permissions' => ['training.assign', 'training.monitor'],
+        ])->assertCreated()->json('data');
+
+        $this->assertContains('training.assign', $created['permissions']);
+        $this->assertContains('training.monitor', $created['permissions']);
+    }
+
+    public function test_an_action_carries_what_it_requires_into_the_catalogue(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+
+        // The editor cannot warn about a rule it is never told. Almost every
+        // action reports an empty list, which is the second half of this: a
+        // payload that said `requires` everywhere would be as useless as one
+        // that said it nowhere.
+        $modules = $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/roles/catalogue')->assertOk()->json('modules');
+
+        $training = collect($modules)->firstWhere('key', 'training');
+        $assign   = collect($training['actions'])->firstWhere('action', 'assign');
+        $manage   = collect($training['actions'])->firstWhere('action', 'manage');
+
+        $this->assertSame(['training.monitor'], $assign['requires']);
+        $this->assertSame([], $manage['requires']);
+    }
+
     public function test_a_role_payload_cannot_make_itself_administrator(): void
     {
         $alpha = $this->provisionTenant('Alpha');
