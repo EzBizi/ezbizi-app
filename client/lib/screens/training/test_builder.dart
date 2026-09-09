@@ -22,15 +22,20 @@ import '../../widgets/error_note.dart';
 /// `requires_guide` ("Must finish the guide before the test"), `pass_mark`
 /// ("Pass mark"), `max_attempts` ("Retakes allowed" — blank means
 /// unlimited), `valid_for_days` ("A pass runs out after" — blank means a
-/// pass never expires), and `count_attempts_after_pass` ("Every retake
-/// counts toward the limit" — off, the default, is the fifth-option
-/// brief's own answer to "if somebody already passed and wants a better
-/// score, does that use one of their attempts?": no, as long as their pass
-/// is still good; the exemption itself ends the day that pass runs out,
-/// which is what the row's hint now says rather than leaving an author to
-/// guess). [TestEditorPanel] edits exactly these five plus the
-/// questions themselves; nothing else on this screen is a sixth option
-/// dressed up as one.
+/// pass never expires), and `count_attempts_after_pass` ("Count every
+/// retake, even a pass" — off, the default, is the owner's failures-only
+/// ruling, 2026-09-09, the fix for a permanent-lockout defect the
+/// fifth-option brief's own first cut of this option still had (a passing
+/// attempt spent the cap's one slot, which stayed hidden until that pass
+/// itself lapsed): only a FAILED attempt counts toward `max_attempts`, and
+/// only when it was not taken while an earlier pass was still valid — a
+/// pass itself never counts, and neither does a retake, whatever its
+/// outcome, taken while one still holds. Both conditions are load-bearing
+/// (see `LapsedPasses::walkCountingTowardCap`'s own docblock for why
+/// neither alone closes the lockout), which is what the row's hint now
+/// says rather than leaving an author to guess). [TestEditorPanel] edits
+/// exactly these five plus the questions themselves; nothing else on this
+/// screen is a sixth option dressed up as one.
 ///
 /// ── The server's sentence, never this client's own wording ─────────────
 ///
@@ -483,8 +488,8 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
           ),
         ),
         _OptionRow(
-          label: 'Every retake counts toward the limit',
-          hint: 'Off spares retakes only until that pass runs out',
+          label: 'Count every retake, even a pass',
+          hint: 'Off only counts failures outside of a valid pass',
           trailing: Switch(
             key: const Key('training.option-count-attempts-after-pass'),
             value: _countAttemptsAfterPass,

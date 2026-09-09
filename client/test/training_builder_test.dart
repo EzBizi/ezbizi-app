@@ -27,7 +27,7 @@ void main() {
     expect(find.text('Pass mark'), findsOneWidget);
     expect(find.text('Retakes allowed'), findsOneWidget);
     expect(find.text('A pass runs out after'), findsOneWidget);
-    expect(find.text('Every retake counts toward the limit'), findsOneWidget);
+    expect(find.text('Count every retake, even a pass'), findsOneWidget);
 
     // Each is a real, live control — not just a label — bound to the
     // field it edits.

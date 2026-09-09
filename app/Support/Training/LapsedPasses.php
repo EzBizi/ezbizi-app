@@ -151,6 +151,25 @@ final class LapsedPasses
      * fact it is measured against (an earlier row's fixed `taken_at` and
      * `expires_on`) never changes after that earlier row is written.
      *
+     * ── The failures-only ruling (owner, 2026-09-09) ────────────────────
+     *
+     * A later review found the fifth option still created the exact
+     * permanent dead end this module's own rules forbid: with
+     * `max_attempts: 1`, the PASSING attempt itself used to spend the one
+     * slot — nothing precedes the first attempt to shelter it — and the
+     * end-of-walk override below only masks that miscount for as long as
+     * the pass stays current. The moment it lapsed, the raw count was
+     * exposed and the learner could never sit the test again. The owner's
+     * ruling: an attempt counts toward `max_attempts` only if it BOTH (1)
+     * failed and (2) was not taken while an earlier pass was still valid.
+     * Neither condition alone closes the hole — a passing attempt must
+     * never count (that is this fix), and a FAILING attempt taken under a
+     * still-good pass must not count either, or the identical lockout
+     * reappears one call later: pass, retake-while-valid-and-fail (that
+     * failure alone spends the slot under a "failures only" reading), the
+     * pass lapses, and the learner is back at the cap with nothing valid to
+     * shelter behind. [walkCountingTowardCap] below applies both.
+     *
      * `LearnController::submit` asks this BEFORE inserting the attempt under
      * test — the count is of attempts that already exist, exactly like the
      * plain `COUNT(*)` it replaces when the option is off. `showTest` asks
@@ -218,26 +237,37 @@ final class LapsedPasses
      * either variable, since holding a still-good pass is not undone by
      * failing a retake of it.
      *
+     * ── What actually increments $counted (owner's ruling, 2026-09-09) ──
+     *
+     * Only a FAILED attempt taken while NOT sheltered by a still-valid
+     * earlier pass (`! $stillValid`) — a passing attempt never increments
+     * $counted, whatever $stillValid says, because a pass is never itself
+     * the thing `max_attempts` is meant to ration (this class's own
+     * "owner's report", above). `$holding`/`$expiresOn` are still updated
+     * off every PASSED attempt regardless of whether that attempt counted —
+     * a pass always becomes the person's new current standing — and are
+     * left untouched by a failed one, sheltered or not: holding a still-good
+     * pass is not undone by failing a retake of it.
+     *
      * ── Why the return value is 0, not the historical count, whenever the
      *    walk ends still holding ────────────────────────────────────────
      *
      * Both callers ask this to answer ONE question — "is a NEW attempt,
      * about to be taken right now, blocked by `max_attempts`?" — never "how
-     * many attempts has this person made." Comparing the raw historical
-     * count against `max_attempts` gets that wrong the moment a pass has
-     * already been retaken while valid: with `max_attempts: 1`, a single
-     * pass already spends the one slot in the walk (nothing precedes it to
-     * exempt it), so a caller that compared the historical count directly
-     * would refuse EVERY retake after it, even while that same pass still
-     * shelters them — the exact bug this method exists to not have. A
-     * learner currently holding a still-valid pass (the loop's own final
-     * `$holding`/`$expiresOn`, asked against `now()` — the `taken_at` a new
-     * attempt would get) may always take one more for free, however much of
-     * the real budget history is already spent, so this reports 0: safe
-     * against ANY `max_attempts` (`min:1` — `TestsController::rules`), and
-     * true to "does not count against max_attempts" (this class's own
-     * `attemptsCountingTowardCap` docblock) rather than merely "counts one
-     * fewer."
+     * many attempts has this person made." A learner currently holding a
+     * still-valid pass (the loop's own final `$holding`/`$expiresOn`, asked
+     * against `now()` — the `taken_at` a new attempt would get) may always
+     * take one more for free, however much of the real budget history is
+     * already spent, so this reports 0: safe against ANY `max_attempts`
+     * (`min:1` — `TestsController::rules`), and true to "does not count
+     * against max_attempts" (this class's own `attemptsCountingTowardCap`
+     * docblock) rather than merely "counts one fewer." This override is
+     * NOT what makes a passing attempt free of the cap any more — $counted
+     * itself never rises for one now — but it is still what a failing
+     * retake taken while currently sheltered needs: that failure is
+     * excluded from $counted by `$stillValid` at the point it was taken,
+     * and this override is what keeps a NEXT attempt admitted too, without
+     * which a stale pre-lapse $counted could still wrongly block it.
      *
      * @param  iterable<int, TrainingAttempt>  $orderedAttempts
      */
@@ -251,8 +281,11 @@ final class LapsedPasses
             $stillValid = $holding && ($expiresOn === null || $expiresOn->toDateString() > $attempt->taken_at->toDateString());
 
             if (! $stillValid) {
-                $counted++;
                 $holding = false;
+
+                if (! $attempt->passed) {
+                    $counted++;
+                }
             }
 
             if ($attempt->passed) {
