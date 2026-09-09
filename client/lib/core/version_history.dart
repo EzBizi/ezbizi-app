@@ -11,7 +11,7 @@ class VersionHistory {
       version: '0.0.0175',
       date: '9 Sep 2026',
       items: [
-        'Web Management: the website list and the preview can be dragged wider or narrower, so the screen fits how you work rather than how we guessed.',
+        'Web Management: the website list and the preview can be dragged wider or narrower, and the screen opens the way you left it.',
         'Leads: an account disconnected inside the Connected sources panel now leaves the panel at once, instead of staying until the panel was closed and reopened.',
         'Leads: Disconnect all, on any provider with more than one account, lets every account go after one confirmation; for Thumbtack the twelve businesses of one consent are tidied one by one and the grant revoked once.',
       ],
