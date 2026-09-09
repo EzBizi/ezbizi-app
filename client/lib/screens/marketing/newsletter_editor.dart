@@ -578,11 +578,13 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
              * say.
              *
              * Do not re-pin this comment to whatever the platform default
-             * happens to be. The version written yesterday named `Etc/GMT+5`
-             * and was false by morning: the default is now `America/New_York`.
-             * The note is correct across both because it promises a wall time
-             * on the clock the SERVER picked and then names that clock, rather
-             * than promising a particular clock.
+             * happens to be. It has now been wrong twice for that reason: once
+             * naming `Etc/GMT+5` as though it were permanent, and once saying
+             * it had become `America/New_York` when that value lived only in
+             * the shared working tree and was cut back before it shipped. The
+             * note below is correct under every default because it promises a
+             * wall time on the clock the SERVER picked and then names that
+             * clock, rather than promising a particular clock.
              *
              * Fixed offsets remain selectable, so this stays load-bearing.
              * Saying which one you got costs nothing - the server has been

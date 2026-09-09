@@ -275,7 +275,7 @@ class WebWidgetsTest extends TestCase
         // not the same person trying again.
         $admin = $this->brandSetter($tenant);
 
-        foreach ([['#ffff00', '#111111'], ['#101820', '#ffffff']] as [$brand, $expected]) {
+        foreach ([['#ffff00', '#000000'], ['#101820', '#ffffff']] as [$brand, $expected]) {
             $this->signedInAs($admin)
                 ->putJson('/api/v1/branding/colour', ['colour' => $brand])
                 ->assertOk();
@@ -291,6 +291,48 @@ class WebWidgetsTest extends TestCase
                 $body['config']['style']['on_accent'],
                 "A $brand button needs $expected on it to be readable.",
             );
+        }
+    }
+
+    /**
+     * The property, tested at the boundary rather than either side of it.
+     *
+     * The pair above asserts both DIRECTIONS from a distance — yellow is
+     * 17.6:1 and the dark one is nowhere near the crossover — and a boundary is
+     * not covered by testing far from it on both sides. #00838F is an
+     * unremarkable teal that sits close enough to matter: it read 4.18:1
+     * against the near-black this used to return, and our own contrast warning
+     * would have fired on a pair the customer never chose.
+     *
+     * Asserts the RATIO clears 4.5 rather than which hex comes back, so it
+     * survives the constant changing again and fails only when the property
+     * actually breaks. Boundary and colour both from the UI/UX session.
+     */
+    public function test_a_derived_pair_is_never_one_our_own_screen_would_warn_about(): void
+    {
+        ['site' => $site, 'editor' => $editor, 'tenant' => $tenant] = $this->site();
+
+        $admin = $this->brandSetter($tenant);
+
+        foreach (['#00838f', '#767676', '#8a8a8a', '#ffff00', '#101820'] as $brand) {
+            $this->signedInAs($admin)
+                ->putJson('/api/v1/branding/colour', ['colour' => $brand])
+                ->assertOk();
+
+            $style = $this->signedInAs($editor)
+                ->getJson("/api/v1/web/sites/{$site['data']['id']}/widgets")
+                ->assertOk()
+                ->json('config.style');
+
+            $ratio = $this->contrast($style['accent'], $style['on_accent']);
+
+            $this->assertGreaterThanOrEqual(4.5, $ratio, sprintf(
+                'A %s button got %s on it at %.2f:1 — under 4.5, so the Widgets '
+                .'screen would warn about a pair nobody chose.',
+                $brand,
+                $style['on_accent'],
+                $ratio,
+            ));
         }
     }
 
@@ -392,6 +434,28 @@ class WebWidgetsTest extends TestCase
             'editor' => $editor,
             'tenant' => $tenant,
         ];
+    }
+
+    /** WCAG relative contrast, computed here so the test does not trust the code it tests. */
+    private function contrast(string $a, string $b): float
+    {
+        $luminance = static function (string $hex): float {
+            $hex = ltrim($hex, '#');
+            $channel = static function (int $byte): float {
+                $c = $byte / 255;
+
+                return $c <= 0.03928 ? $c / 12.92 : (($c + 0.055) / 1.055) ** 2.4;
+            };
+
+            return 0.2126 * $channel((int) hexdec(substr($hex, 0, 2)))
+                + 0.7152 * $channel((int) hexdec(substr($hex, 2, 2)))
+                + 0.0722 * $channel((int) hexdec(substr($hex, 4, 2)));
+        };
+
+        $x = $luminance($a);
+        $y = $luminance($b);
+
+        return (max($x, $y) + 0.05) / (min($x, $y) + 0.05);
     }
 
     /**

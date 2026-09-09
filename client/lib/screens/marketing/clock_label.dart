@@ -8,18 +8,27 @@
 /// it is named after moves an hour in March. Same wall time, an hour apart
 /// from March to November, with nothing on screen saying so.
 ///
-/// **This names the condition, not a value, deliberately.** An earlier version
-/// of this docblock said "the platform default `Etc/GMT+5`", and it was false
-/// within a day: Phone measured the setting, Jose chose Miami's clock, and the
-/// default became `America/New_York` (SettingRegistry). A comment pinned to
-/// somebody else's current value is a comment with an expiry date on it.
+/// **This names the condition, not a value, deliberately — and the reason is
+/// embarrassing enough to be worth writing down.** The first version of this
+/// docblock said "the platform default `Etc/GMT+5`". When Phone set out to
+/// change that default I rewrote this to say it had become `America/New_York`.
+/// It had not. That value existed only in the shared working tree; the change
+/// was cut back when the full suite came up 55 red — seventeen test files
+/// across Dashboard, TimeClock, Phone reports, Social posts and HR glances
+/// inherit the offset as the value they expect. So the comment was pinned
+/// first to a value that changed, and then to a value that never shipped.
 ///
-/// The hazard did NOT go away with the default, which is the reason to say it
-/// this way. Fixed offsets are still selectable — twenty-seven of them, now
-/// labelled "fixed, no daylight saving" — so a view can still resolve one,
-/// deliberately or by inheritance. Whether that is the right offering is a
-/// platform decision and not Marketing's. Naming which clock you actually got
-/// is not a decision at all, and that is all this does.
+/// What DID ship (`f7eb8b16`) is that real places are now selectable and the
+/// help text says a place handles daylight saving for you. **The default is
+/// still `Etc/GMT+5`**, so above franchise scope this client still mostly
+/// renders a fixed offset — which is exactly the case this function exists to
+/// make visible.
+///
+/// Do not re-pin this to whatever the default is when you read it. Fixed
+/// offsets are selectable regardless, so a view can resolve one whatever the
+/// default says, and naming which clock you actually got is correct under all
+/// of them. Whether the offering is right is a platform decision, not
+/// Marketing's.
 library;
 
 final RegExp _fixed = RegExp(r'^Etc/GMT([+-])(\d{1,2})$');

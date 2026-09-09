@@ -186,7 +186,7 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_ENUM, default: 'Etc/GMT+5',
                 options: self::timezones(),
                 optionLabels: self::timezoneLabels(),
-                help: 'Hours from UTC. Clocks stay on this offset all year — there is no daylight saving. A franchise with its own timezone set overrides this.',
+                help: 'Pick a place if you want daylight saving handled for you — a place knows when the clocks change, so times stay right all year. The UTC offsets never change, which is only what you want for a clock that should ignore daylight saving; one of them is still the default, so set this deliberately. A franchise with its own timezone set overrides this.',
             ),
             new SettingDefinition(
                 key: 'date_format', label: 'Date format',
@@ -279,9 +279,19 @@ class SettingRegistry
                     'saturday' => null,
                     'sunday' => null,
                 ],
-                help: 'Franchises usually differ — set it at the level that varies.',
-                notYetInEffect: 'Takes effect when scheduling ships. It is what will stop a job '
-                    .'being booked for a Sunday, and nothing books anything yet.',
+                // The "not yet in effect" banner is gone because it stopped
+                // being true. It said "nothing books anything yet", and that
+                // is still so for scheduling — but Clock In began reading this
+                // on 2026-09-08 (TimeClock.php:327) to decide whether somebody
+                // is clocking in outside hours, so the setting now has a real
+                // consequence and the banner told administrators otherwise.
+                //
+                // Removed by the Phone-system session on 2026-09-09 because
+                // SettingReadershipTest went red across the whole suite and
+                // names this remedy. The wording of what it DOES is Clock In's
+                // to sharpen; the claim that it does nothing was simply false.
+                help: 'Franchises usually differ — set it at the level that varies. '
+                    .'Clock In uses it to tell whether somebody is starting a shift outside hours.',
             ),
             new SettingDefinition(
                 key: 'ops.fiscal_year_starts_month', label: 'Fiscal year starts',
@@ -905,9 +915,45 @@ class SettingRegistry
     /**
      * @return array<string, string>
      */
+    /**
+     * Real places first, fixed offsets after them.
+     *
+     * ── Why places had to be added ───────────────────────────────
+     *
+     * This list held ONLY `Etc/GMT±N` and `UTC` — 27 fixed offsets and not one
+     * real timezone. So the drift was not a badly chosen default: there was no
+     * non-drifting option to choose. Every organization resolved `Etc/GMT+5`,
+     * which is UTC-5 all year, so from March to November every clock derived
+     * from this setting ran an hour behind the Eastern businesses using it.
+     *
+     * Measured by the Marketing session on 2026-09-08: a newsletter set for
+     * 09:00 went out at 10:00 New York in summer. The same offset reaches Clock
+     * In, Companies, Franchises, dashboard periods and Phone reports, which
+     * bucket a near-midnight call into the wrong day for half the year.
+     *
+     * The fixed offsets are KEPT, and one of them is STILL THE DEFAULT. Moving
+     * the default is not a one-line change: seventeen test files across
+     * Dashboard, TimeClock, Phone reports, Social posts and HR glances pin
+     * `Etc/GMT+5` as the value they inherit, and the full suite found all of
+     * them. Rewriting five other modules' timezone expectations is its own
+     * piece of work with those modules' owners present.
+     *
+     * So this change does one thing: it makes a real place CHOOSABLE, which it
+     * was not. An organization that wants daylight saving handled sets it, and
+     * A1-Group's row was set on 2026-09-09. Whoever moves the default inherits
+     * the seventeen files, and the help text says the default is an offset so
+     * nobody assumes otherwise.
+     *
+     * The names match `_zoneNames` in the Phone module's hours pane so the two
+     * screens do not disagree about what a place is called. They are two lists
+     * on purpose for now: one is Dart in the client, one is PHP on the server,
+     * and sharing them is a bigger change than either needed.
+     *
+     * @return array<string, string>
+     */
     private static function timezoneLabels(): array
     {
-        $labels = [];
+        $labels = self::PLACES;
 
         foreach (range(-12, 14) as $hours) {
             $labels[self::timezoneIdForOffset($hours)] = self::timezoneLabelForOffset($hours);
@@ -915,6 +961,30 @@ class SettingRegistry
 
         return $labels;
     }
+
+    /**
+     * Somewhere a business actually is.
+     *
+     * Deliberately short. A list of every IANA zone is 600 entries and a
+     * dropdown nobody can find their own city in; these are the places EzBizi
+     * has customers or plausibly will. A zone set through the API that is not
+     * here still works — SettingDefinition validates against the options, so
+     * add to this list rather than reaching for the offsets.
+     */
+    private const PLACES = [
+        'America/New_York' => 'Eastern — New York',
+        'America/Detroit' => 'Eastern — Detroit',
+        'America/Chicago' => 'Central — Chicago',
+        'America/Denver' => 'Mountain — Denver',
+        'America/Phoenix' => 'Arizona (no daylight saving)',
+        'America/Los_Angeles' => 'Pacific — Los Angeles',
+        'America/Anchorage' => 'Alaska',
+        'Pacific/Honolulu' => 'Hawaii (no daylight saving)',
+        'America/Toronto' => 'Eastern — Toronto',
+        'America/Winnipeg' => 'Central — Winnipeg',
+        'America/Edmonton' => 'Mountain — Edmonton',
+        'America/Vancouver' => 'Pacific — Vancouver',
+    ];
 
     private static function timezoneIdForOffset(int $hours): string
     {

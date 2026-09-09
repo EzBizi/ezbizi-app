@@ -147,9 +147,22 @@ final class Branding
      * a pair the customer never chose. Derived, so the pair is legible by
      * construction and the warning is reserved for choices somebody made.
      *
-     * The threshold is WCAG's own: white text wins when the background's
-     * relative luminance is below 0.179, the point at which contrast against
-     * black overtakes contrast against white.
+     * ── Why the dark is #000000 and not a softer near-black ──
+     *
+     * 0.179 is the crossover for PURE black. #111111 has luminance 0.0056, not
+     * zero, which moves the real crossover to 0.1916 — so a band of ordinary
+     * mid-tone brands would get the dark text while white was still the better
+     * of the two, AND the best contrast available at the crossover drops below
+     * 4.5:1. #00838F, an unremarkable teal, reads 4.18:1 on #111111 and 4.64:1
+     * on #000000.
+     *
+     * That matters because of what this function is FOR. A derived pair is one
+     * the customer never chose; if it can fall under 4.5:1 then our own screen
+     * warns them about our own choice, in their name. With pure black the worst
+     * case anywhere is 4.58:1, so a derived pair can never trip that warning
+     * for any colour a customer types. With #111111 it can.
+     *
+     * Found by the UI/UX session, who also supplied the failing colour.
      */
     public static function readableOn(string $hex): string
     {
@@ -169,7 +182,7 @@ final class Branding
             + 0.7152 * $channel((int) hexdec(substr($hex, 2, 2)))
             + 0.0722 * $channel((int) hexdec(substr($hex, 4, 2)));
 
-        return $luminance > 0.179 ? '#111111' : '#ffffff';
+        return $luminance > 0.179 ? '#000000' : '#ffffff';
     }
 
     /** "512x512 or 1024x256" — for a refusal that says what would work. */
