@@ -645,6 +645,29 @@ one"*; its sentence says *"Training **will** show…"*. **Only the sentence is o
 > "due for retaking" is shown one person at a time on the HR record card, so the org-wide
 > figure is invisible unless you go looking: exactly the shape a glance is for.
 
+**Right about the effect, wrong about the mechanism — and the mechanism is what a peer
+builds on.** Dashboard, 2026-09-09, and the best process note anyone gave me today. Scheduling
+asked whether the dashboard handles a chart with real categories and a zero in every one.
+Dashboard checked, formed the answer *"the chart is not built"*, and — before sending —
+**pinned it as a test. The assertion failed.** `DashboardChart` **is** built; `_chartable`
+only asks whether the slice list is non-empty, and it is `build` that returns
+`SizedBox.shrink()` (`dashboard_chart.dart:44`, verified). The visible effect was right and
+the cause was wrong.
+
+> **This is worse than being wrong about both, because the correct effect supplies the
+> confidence.** A peer does not build on the effect, they build on the mechanism — Scheduling
+> would have designed around a widget that does not exist. **Before handing a peer a rule about
+> your own surface, write the assertion that would fail if the rule were wrong.** Two tests and
+> no production code turned a wrong answer into a measured one.
+
+**Two byte-identical copies of `_chartable` decide whether a chart draws.**
+`dashboard_screen.dart:495` and `hr/dashboard_tab.dart:355`, same switch, same four kinds.
+Nothing is broken today; both agree. But the set of presentation kinds MOVES — Dashboard
+changed which ones a glance may offer this same day — and the day a fifth kind is added to one
+copy, a chart draws on the home screen and silently does not on HR's, falling through
+`default: return false` with no error anywhere. **Same drift class as two definitions of
+readable**, and the same answer: one definition, or a test asserting the two agree.
+
 **An advisory must not wear the failure component.** Web Management, 2026-09-08, asking
 that this be made a rule after the widget contrast work: *"dressing an advisory as a
 failure teaches people to ignore the component that also carries real failures."* The
