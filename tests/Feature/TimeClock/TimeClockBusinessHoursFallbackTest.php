@@ -35,7 +35,10 @@ class TimeClockBusinessHoursFallbackTest extends TestCase
         $person = $this->userWithRole($alpha, 'Locked', ['time_clock.lock_screen']);
         $this->assertNull($person->work_schedule);
 
-        // Tuesday 09:00 in the default Etc/GMT+5; default business hours are Mon-Fri 08:00-17:00.
+        // Tuesday 10:00 in the default America/New_York (September is EDT,
+        // UTC−4); default business hours are Mon-Fri 08:00-17:00. It was 09:00
+        // while the default was a fixed UTC−5 — inside the window either way,
+        // which is why only the stamp below moved.
         Carbon::setTestNow(Carbon::parse('2026-09-08 14:00:00', 'UTC'));
 
         $me = $this->signedInAs($person)->getJson('/api/v1/me')->assertOk()->json('data.time_clock');
@@ -43,7 +46,9 @@ class TimeClockBusinessHoursFallbackTest extends TestCase
         $this->assertSame(['start' => '08:00', 'end' => '17:00'], $me['today']);
 
         $block = $this->signedInAs($person)->postJson('/api/v1/time-clock/clock-in')->assertOk()->json('data.time_clock');
-        $this->assertSame('2026-09-08T22:00:00Z', $block['scheduled_end_at']);
+        // 17:00 New York on an EDT date is 21:00Z. It was 22:00Z while the
+        // default was a fixed UTC−5 all year.
+        $this->assertSame('2026-09-08T21:00:00Z', $block['scheduled_end_at']);
         $this->assertFalse($this->inTenant($alpha['org'], fn () => TimeClockShift::openFor($person))->outside_schedule);
 
         // Saturday: business hours are closed, so no lock.

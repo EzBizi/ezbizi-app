@@ -183,7 +183,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'timezone', label: 'Default timezone',
-                type: SettingDefinition::TYPE_ENUM, default: 'Etc/GMT+5',
+                type: SettingDefinition::TYPE_ENUM, default: 'America/New_York',
                 options: self::timezones(),
                 optionLabels: self::timezoneLabels(),
                 help: 'Pick a place if you want daylight saving handled for you — a place knows when the clocks change, so times stay right all year. The UTC offsets never change, which is only what you want for a clock that should ignore daylight saving; one of them is still the default, so set this deliberately. A franchise with its own timezone set overrides this.',
@@ -928,6 +928,10 @@ class SettingRegistry
      * non-drifting option to choose. Every organization resolved `Etc/GMT+5`,
      * which is UTC-5 all year, so from March to November every clock derived
      * from this setting ran an hour behind the Eastern businesses using it.
+     *
+     * The DEFAULT moved to `America/New_York` on 2026-09-09 as well, on Jose's
+     * word that the company is physically in Miami. Offsets stay selectable
+     * for anyone who genuinely wants a clock that does not move.
      *
      * Measured by the Marketing session on 2026-09-08: a newsletter set for
      * 09:00 went out at 10:00 New York in summer. The same offset reaches Clock

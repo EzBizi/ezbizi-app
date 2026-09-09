@@ -116,8 +116,10 @@ class PhoneReportTest extends TestCase
      */
     public function test_a_call_made_this_evening_is_still_counted_today(): void
     {
-        // 01:07 UTC is 20:07 the previous day at UTC-5 — inside the local day,
-        // and past the naive upper bound the bug compared against.
+        // 01:07 UTC is 21:07 the previous day in New York on 28 August (EDT,
+        // UTC−4) — inside the local day, and past the naive upper bound the
+        // bug compared against. It was 20:07 while the default was a fixed
+        // UTC−5; the evening is what matters here, not the exact hour.
         Carbon::setTestNow(Carbon::parse('2026-08-29 01:07:00', 'UTC'));
 
         try {
@@ -134,9 +136,10 @@ class PhoneReportTest extends TestCase
                 ->getJson('/api/v1/phone/reports/run?period=last_7&group_by=day')
                 ->assertOk();
 
-            // If the timezone ever stops being UTC-5 this assertion goes
-            // first, so the test cannot quietly stop testing anything.
-            $this->assertSame('Etc/GMT+5', $response->json('data.window.timezone'));
+            // If the resolved timezone ever changes again this assertion goes
+            // first, so the test cannot quietly stop testing anything. It was
+            // 'Etc/GMT+5' until 2026-09-09 and the tripwire did its job.
+            $this->assertSame('America/New_York', $response->json('data.window.timezone'));
 
             $this->assertSame(
                 1,

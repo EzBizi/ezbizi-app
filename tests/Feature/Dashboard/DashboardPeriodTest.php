@@ -54,12 +54,15 @@ class DashboardPeriodTest extends TestCase
 
     public function test_a_month_starts_on_the_first_in_the_view_timezone(): void
     {
-        Carbon::setTestNow(Carbon::parse('2026-08-24 16:00:00', 'Etc/GMT+5'));
-        // Default timezone is a fixed UTC offset (Etc/GMT+5 = UTC−5), no DST.
+        Carbon::setTestNow(Carbon::parse('2026-08-24 16:00:00', 'America/New_York'));
+        // The default is a PLACE now, so the offset is whatever that place is
+        // observing: August is EDT, UTC−4. It read −05:00 all year until
+        // 2026-09-09, which is the drift this change closed - the month began
+        // an hour late for the half of the year New York spends on EDT.
         $period = DashboardPeriod::for($this->alpha['admin'], 'month');
         $this->assertSame('month', $period->key);
-        $this->assertSame('2026-08-01T00:00:00-05:00', $period->startsOn->toIso8601String());
-        $this->assertSame('Etc/GMT+5', $period->timezone);
+        $this->assertSame('2026-08-01T00:00:00-04:00', $period->startsOn->toIso8601String());
+        $this->assertSame('America/New_York', $period->timezone);
     }
 
     public function test_week_respects_week_starts_on(): void

@@ -74,10 +74,11 @@ class SettingsApiTest extends TestCase
         // list of 27 fixed offsets and nothing else, which meant no caller
         // could choose a timezone that observes daylight saving — so every
         // clock built on this setting ran an hour out from March to November.
-        // Changed on 2026-09-09 with Jose's word. The DEFAULT is deliberately
-        // still Etc/GMT+5 — moving it means rewriting seventeen test files
-        // across five modules — so this only makes a place choosable. The
-        // reasoning is on
+        // Changed on 2026-09-09 with Jose's word, and the DEFAULT followed
+        // the same day once someone was awake to review the seven expectations
+        // it actually moves - fewer than the seventeen files first counted,
+        // because most of those set their own timezone and never read the
+        // default. The reasoning is on
         // SettingRegistryTest::test_timezone_offers_places_as_well_as_offsets.
         $this->assertContains(
             'America/New_York',

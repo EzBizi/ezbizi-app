@@ -96,12 +96,27 @@ class SettingRegistryTest extends TestCase
      * no non-drifting value to choose, so "set your timezone properly" was
      * advice nobody could take.
      *
-     * ── What deliberately did NOT change ─────────────────────────
+     * ── The default moved too, on 2026-09-09 ─────────────────────
      *
-     * The default is still `Etc/GMT+5`, and the offset labels are still bare.
-     * Moving either is a five-module job: seventeen test files inherit that
-     * default and TimeClock asserts the label text. Making a place choosable
-     * needed none of that, so this change is only that.
+     * Making a place CHOOSABLE shipped first; the default followed the same
+     * day, once somebody was awake to review the expectations it moves.
+     *
+     * It was reported as a five-module job across seventeen test files. That
+     * count was the number of files MENTIONING `Etc/GMT+5`, and most of them
+     * set their own timezone explicitly and never read the default at all.
+     * The default change alone failed SEVEN tests, in five files. The larger
+     * number came from measuring a combined change - default plus relabelling
+     * the offsets - and attributing all of it to the default.
+     *
+     * Six of the seven wanted their expected value re-derived. One wanted its
+     * INSTANT moved: TimeClockDayListTest froze 04:00 UTC to sit on the
+     * previous local day, which was true at a fixed UTC−5 and is exactly
+     * midnight in EDT. Swapping its expected date would have left a green test
+     * asserting the opposite of its purpose. That is the real cost of moving a
+     * default, and it is not visible in a count of files.
+     *
+     * The offset labels are still bare `UTC-5`. TimeClock asserts that text
+     * and nothing about it is wrong.
      */
     public function test_timezone_offers_places_as_well_as_offsets(): void
     {
@@ -109,8 +124,9 @@ class SettingRegistryTest extends TestCase
 
         $this->assertSame(SettingDefinition::TYPE_ENUM, $timezone->type);
 
-        // Unchanged, on purpose. See the note above.
-        $this->assertSame('Etc/GMT+5', $timezone->default);
+        // Moved 2026-09-09. Jose: "whatever you recommend, our company is
+        // physically at Miami Florida."
+        $this->assertSame('America/New_York', $timezone->default);
         $this->assertSame('UTC-5', $timezone->labelFor('Etc/GMT+5'));
         $this->assertSame('UTC', $timezone->labelFor('UTC'));
         $this->assertContains('Etc/GMT-3', $timezone->options);

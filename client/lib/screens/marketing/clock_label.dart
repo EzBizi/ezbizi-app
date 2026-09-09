@@ -18,17 +18,19 @@
 /// inherit the offset as the value they expect. So the comment was pinned
 /// first to a value that changed, and then to a value that never shipped.
 ///
-/// What DID ship (`f7eb8b16`) is that real places are now selectable and the
-/// help text says a place handles daylight saving for you. **The default is
-/// still `Etc/GMT+5`**, so above franchise scope this client still mostly
-/// renders a fixed offset — which is exactly the case this function exists to
-/// make visible.
+/// This is the THIRD time these words would have been wrong if they named the
+/// current default, so they no longer name it at all. Go and read
+/// `SettingRegistry` if you want to know what it is today.
 ///
-/// Do not re-pin this to whatever the default is when you read it. Fixed
-/// offsets are selectable regardless, so a view can resolve one whatever the
-/// default says, and naming which clock you actually got is correct under all
-/// of them. Whether the offering is right is a platform decision, not
-/// Marketing's.
+/// What matters here does not depend on that: **fixed offsets are selectable**,
+/// so a view can resolve one whatever the default happens to be — deliberately,
+/// or inherited from a scope somebody set years ago. When it does, the wall
+/// time promised and the wall time in the place named on screen are an hour
+/// apart for half the year. Naming the clock you actually got is correct under
+/// every default, which is the only reason this function can be written once.
+///
+/// Whether the offering should include fixed offsets at all is a platform
+/// decision, not Marketing's.
 library;
 
 final RegExp _fixed = RegExp(r'^Etc/GMT([+-])(\d{1,2})$');

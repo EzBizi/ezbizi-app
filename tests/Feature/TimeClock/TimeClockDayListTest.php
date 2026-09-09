@@ -54,17 +54,26 @@ class TimeClockDayListTest extends TestCase
         $this->enableClockIn($alpha['org']);
         $viewer = $this->userWithRole($alpha, 'Hr', ['hr.view']);
 
-        // 04:00 UTC is still 23:00 the previous calendar day in the default
-        // Etc/GMT+5 (UTC−5). Device/UTC "today" would be 2026-08-25.
-        Carbon::setTestNow(Carbon::parse('2026-08-25 04:00:00', 'UTC'));
+        // 03:00 UTC is still 23:00 the previous calendar day in the default
+        // America/New_York (August is EDT, UTC−4). Device/UTC "today" would be
+        // 2026-08-25.
+        //
+        // The INSTANT moved with the default, and it had to. This was 04:00
+        // UTC, which was 23:00 on the 24th at a fixed UTC−5 but is exactly
+        // midnight on the 25th in EDT — so the local day and the UTC day would
+        // have agreed and the test would have passed while proving the
+        // opposite of what it is for. Re-deriving the instant keeps the
+        // premise; swapping the expected date to '2026-08-25' would have
+        // silently thrown the test away.
+        Carbon::setTestNow(Carbon::parse('2026-08-25 03:00:00', 'UTC'));
 
         $page = $this->signedInAs($viewer)->getJson('/api/v1/hr/time-clock')
             ->assertOk()
             ->json('data');
 
         $this->assertSame('2026-08-24', $page['date']);
-        $this->assertSame('Etc/GMT+5', $page['timezone']);
-        $this->assertSame('UTC-5', $page['timezone_label']);
+        $this->assertSame('America/New_York', $page['timezone']);
+        $this->assertSame('Eastern — New York', $page['timezone_label']);
         $this->assertSame([], $page['shifts']);
     }
 
@@ -123,9 +132,11 @@ class TimeClockDayListTest extends TestCase
 
         $puncher = $this->userWithRole($alpha, 'Tech', ['time_clock.view'], 'tech@alpha.test');
 
-        // Spec §12: a punch just after midnight in UTC−5 is the previous day
-        // in UTC−6. 05:30 UTC is 00:30 in Etc/GMT+5 and 23:30 the day before
-        // in Etc/GMT+6. (04:30 UTC is still the 24th in both zones.)
+        // Spec §12: a punch just after midnight in the org's zone is the
+        // previous day in the franchise's. 05:30 UTC is 01:30 in New York on
+        // an EDT date (UTC−4) and 23:30 the day before in Etc/GMT+6. The gap
+        // used to be one hour, when the org default was a fixed UTC−5; it is
+        // two now, and the contrast this test is built on is unchanged.
         $inAt = Carbon::parse('2026-08-25 05:30:00', 'UTC');
         $outAt = $inAt->copy()->addHours(8);
 
@@ -144,12 +155,12 @@ class TimeClockDayListTest extends TestCase
             ->json('data');
 
         $this->assertSame('2026-08-25', $orgDay['date']);
-        $this->assertSame('Etc/GMT+5', $orgDay['timezone']);
-        $this->assertSame('UTC-5', $orgDay['timezone_label']);
+        $this->assertSame('America/New_York', $orgDay['timezone']);
+        $this->assertSame('Eastern — New York', $orgDay['timezone_label']);
         $this->assertCount(1, $orgDay['shifts']);
         $this->assertSame(28800, $orgDay['shifts'][0]['duration_seconds']);
-        $this->assertSame('12:30 AM', $orgDay['shifts'][0]['clocked_in']);
-        $this->assertSame('8:30 AM', $orgDay['shifts'][0]['clocked_out']);
+        $this->assertSame('1:30 AM', $orgDay['shifts'][0]['clocked_in']);
+        $this->assertSame('9:30 AM', $orgDay['shifts'][0]['clocked_out']);
         $this->assertSame('2026-08-25T05:30:00Z', $orgDay['shifts'][0]['clocked_in_at']);
 
         $this->standIn($viewer, 'franchise:'.$texas->id);
@@ -201,7 +212,9 @@ class TimeClockDayListTest extends TestCase
         $this->assertNull($shift['clocked_out_at']);
         $this->assertNull($shift['clocked_out']);
         $this->assertNull($shift['duration_seconds']);
-        $this->assertSame('9:00 AM', $shift['clocked_in']);
+        // 14:00 UTC in New York on an EDT date. It read 9:00 AM while the
+        // default was a fixed UTC−5.
+        $this->assertSame('10:00 AM', $shift['clocked_in']);
     }
 
     public function test_a_sibling_franchise_person_is_not_listed(): void
