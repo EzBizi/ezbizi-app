@@ -5,6 +5,20 @@ plugins {
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+
+    // Reads app/google-services.json and generates the resources the Firebase
+    // SDKs read at runtime — the project id, the API key, the sender id FCM
+    // needs to address this app.
+    //
+    // It is here for ONE reason: an incoming Twilio call cannot ring an Android
+    // handset without a push. twilio_voice already pulls firebase-messaging; what
+    // was missing was a project for it to register against, so the build passed,
+    // outgoing calls worked, and nothing ever rang.
+    //
+    // This plugin and app/google-services.json land together or neither does.
+    // Applied without the file it fails at CONFIGURATION time, so a half-done
+    // change breaks every Android build rather than degrading quietly.
+    id("com.google.gms.google-services")
 }
 
 // The upload key, if this machine has one.

@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "247590132639",
+    "project_id": "ezbizi-506117",
+    "storage_bucket": "ezbizi-506117.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:247590132639:android:a6cabb62df61814de37baa",
+        "android_client_info": {
+          "package_name": "com.ezbizi.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "247590132639-q8csgv6g575rcsdnev7gvf2uctkc69hi.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBUk8jQBM_iO3__TiQunKPARcUdC0PH4o8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "247590132639-q8csgv6g575rcsdnev7gvf2uctkc69hi.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
