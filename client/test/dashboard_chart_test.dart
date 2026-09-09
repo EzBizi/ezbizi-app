@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
@@ -382,6 +383,40 @@ void main() {
     expect(find.text('These are configured, not booked.'), findsNothing);
   });
 
+  /// Two dashboards, one rule about whether a payload can be drawn.
+  ///
+  /// UI/UX found this while verifying something else: `_chartable` is defined
+  /// byte-identically in `screens/dashboard_screen.dart` and in
+  /// `screens/hr/dashboard_tab.dart`. Nothing is broken today, because they
+  /// agree. The hazard is that the set of presentation kinds MOVES — it moved
+  /// on the day this was written — and a fifth kind added to one copy draws a
+  /// chart on the home screen and silently does not on HR's, falling through
+  /// `default: return false` with nothing red anywhere. It would be reported
+  /// as "the HR dashboard is broken" and the cause would sit in a file nobody
+  /// opened.
+  ///
+  /// A test rather than an extraction, and the reason is not taste. One copy
+  /// is mine and one is HR's, so extracting needs their file and their
+  /// session; a test is the only thing that reduces the risk TODAY and within
+  /// one owner's reach. UI/UX preferred it for a second reason worth keeping:
+  /// the two dashboards may one day diverge for a good reason, and this makes
+  /// that a decision somebody takes rather than a thing that happens.
+  ///
+  /// Delete this when the two call one definition. It is scaffolding around a
+  /// duplication, not a rule worth keeping for its own sake.
+  test('both dashboards decide "can this be drawn" the same way', () {
+    final mine = _chartableBody('lib/screens/dashboard_screen.dart');
+    final hr = _chartableBody('lib/screens/hr/dashboard_tab.dart');
+
+    // Controls. Without these, a rename that made both reads return '' would
+    // compare two empty strings and pass green for ever — the exact failure
+    // this kind of source-reading guard exists to avoid.
+    expect(mine, contains('slices'), reason: 'dashboard_screen.dart not read');
+    expect(hr, contains('slices'), reason: 'hr/dashboard_tab.dart not read');
+
+    expect(hr, mine);
+  });
+
   testWidgets('coming soon has no how-to-draw menu', (tester) async {
     await _pumpDashboard(tester, _comingSoon());
 
@@ -619,3 +654,18 @@ const _me = {
   'companies': <Map<String, Object?>>[],
   'franchises': <Map<String, Object?>>[],
 };
+
+/// The body of `_chartable` from a client source file, whitespace collapsed.
+///
+/// Line endings are normalised first: this repo has been bitten by CRLF in a
+/// `$`-anchored regex before, and a guard that silently stops matching is
+/// worse than no guard, which is what the control assertions above are for.
+String _chartableBody(String path) {
+  final source = File(path).readAsStringSync().replaceAll('\r\n', '\n');
+  final start = source.indexOf('bool _chartable(');
+  if (start < 0) return '';
+  final end = source.indexOf('\n  }', start);
+  if (end < 0) return '';
+
+  return source.substring(start, end).replaceAll(RegExp(r'\s+'), ' ').trim();
+}
