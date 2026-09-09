@@ -200,7 +200,14 @@ class _DashboardPaneState extends State<DashboardPane> {
                           padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                           itemCount: _people.length,
                           separatorBuilder: (_, _) => const Divider(height: 1),
-                          itemBuilder: (context, i) => _PersonRow(person: _people[i], session: widget.session),
+                          itemBuilder: (context, i) => _PersonRow(
+                            // Keyed to the PERSON: this row holds expansion
+                            // state, and an unkeyed row in a rebuilt list keeps
+                            // the state of whoever stood in that slot before.
+                            key: ValueKey(_people[i]['user_id']),
+                            person: _people[i],
+                            session: widget.session,
+                          ),
                         ),
                 ),
         ),
@@ -571,11 +578,27 @@ class _RowStats extends StatelessWidget {
   }
 }
 
-class _PersonRow extends StatelessWidget {
-  const _PersonRow({required this.person, required this.session});
+class _PersonRow extends StatefulWidget {
+  const _PersonRow({super.key, required this.person, required this.session});
 
   final Map<String, dynamic> person;
   final Session session;
+
+  @override
+  State<_PersonRow> createState() => _PersonRowState();
+}
+
+class _PersonRowState extends State<_PersonRow> {
+  /// How many attempts are drawn before the "Show all N" affordance.
+  ///
+  /// UI/UX's ruling, 2026-09-09, and the measurement behind it is that this
+  /// row sits inside a `ListView.separated` -- it is a list of PEOPLE, not one
+  /// person at a time. An unbounded block means one person who sat a test
+  /// forty times produces a row that swallows the pane for everybody
+  /// scrolling past them looking for somebody else.
+  static const int _visible = 3;
+
+  bool _showAll = false;
 
   /// One attempt as one line: when it was sat, what it scored, and whether
   /// it passed. `score` may legitimately be null -- `testDetailByUser` sends
@@ -592,7 +615,9 @@ class _PersonRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final me = session.me!;
+    final me = widget.session.me!;
+
+    final person = widget.person;
 
     final name = person['name'] as String? ?? 'Someone';
     final state = person['state'] as String? ?? 'not_started';
@@ -619,9 +644,18 @@ class _PersonRow extends StatelessWidget {
     // said "all"). Absent on a GUIDE row, which has no attempts to carry --
     // its history is the progress bar below.
     //
-    // Drawn only from the SECOND attempt onward. With exactly one, the score
-    // tag above already IS the history, and repeating it under a heading
-    // would say the same fact twice in one row.
+    // Drawn only from the SECOND attempt onward, because A ONE-ITEM LIST IS
+    // NOT A SEQUENCE: this block's job is to show change over time, and with
+    // one attempt there is no change for the heading to head.
+    //
+    // Deliberately NOT the reason "the score tag already says it, so the list
+    // repeats a fact" -- that argument does not survive its own logic (UI/UX,
+    // 2026-09-09). At two attempts the latest is still both the tag and the
+    // first line, so that reasoning argues for dropping the current attempt
+    // from the list at every count, which is not what this is. From two, the
+    // tag is a SUMMARY and the list is the RECORD, and a summary appearing
+    // again inside its own detail is context rather than duplication -- the
+    // same relation as a count strip above the rows it counts.
     final attempts = person['attempts'] is List
         ? (person['attempts'] as List).whereType<Map>().toList()
         : const <Map>[];
@@ -646,12 +680,23 @@ class _PersonRow extends StatelessWidget {
             const SizedBox(height: 8),
             Text('Attempts', style: theme.textTheme.labelSmall),
             const SizedBox(height: 2),
-            for (final attempt in attempts)
+            for (final attempt in _showAll ? attempts : attempts.take(_visible))
               Text(
                 _attemptLine(attempt, me.display),
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
+              ),
+            // The affordance NAMES THE TOTAL, so the reader knows the size of
+            // what is hidden before deciding to open it -- the same discipline
+            // as an empty sentence describing the box rather than the world.
+            // Absent when nothing is hidden: a control claiming to reveal more
+            // when there is no more is its own small lie.
+            if (!_showAll && attempts.length > _visible)
+              TextButton(
+                key: const Key('training.person-show-all-attempts'),
+                onPressed: () => setState(() => _showAll = true),
+                child: Text('Show all ${attempts.length} attempts'),
               ),
           ],
           if (fraction != null) ...[

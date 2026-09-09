@@ -126,6 +126,80 @@ void main() {
     expect(find.textContaining('40%  -  Failed'), findsOneWidget);
   });
 
+  testWidgets('more than three attempts show three, and the affordance names the total', (tester) async {
+    await _pumpDashboard(
+      tester,
+      rows: [_row(id: 't-1', title: 'Ladder Safety Test', assigned: 1, passed: 1, overdue: 0, retaking: 0)],
+      summary: _summary(assigned: 1, overdue: 0, retaking: 0),
+      people: {
+        't-1': [
+          _person(
+            id: 'u-priya',
+            name: 'Priya Kaur',
+            state: 'passed',
+            score: 90,
+            attempts: [
+              _attempt(takenAt: '2026-09-08T10:00:00Z', score: 90, passed: true),
+              _attempt(takenAt: '2026-09-07T10:00:00Z', score: 70, passed: false),
+              _attempt(takenAt: '2026-09-06T10:00:00Z', score: 60, passed: false),
+              _attempt(takenAt: '2026-09-05T10:00:00Z', score: 50, passed: false),
+              _attempt(takenAt: '2026-09-04T10:00:00Z', score: 40, passed: false),
+            ],
+          ),
+        ],
+      },
+    );
+
+    await tester.tap(find.text('Ladder Safety Test'));
+    await tester.pumpAndSettle();
+
+    // The three newest are drawn, the two oldest are not.
+    expect(find.textContaining('90%'), findsWidgets);
+    expect(find.textContaining('70%  -  Failed'), findsOneWidget);
+    expect(find.textContaining('60%  -  Failed'), findsOneWidget);
+    expect(find.textContaining('50%  -  Failed'), findsNothing);
+    expect(find.textContaining('40%  -  Failed'), findsNothing);
+
+    // The affordance names the total, never a bare "Show all".
+    expect(find.text('Show all 5 attempts'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('training.person-show-all-attempts')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('50%  -  Failed'), findsOneWidget);
+    expect(find.textContaining('40%  -  Failed'), findsOneWidget);
+    expect(find.text('Show all 5 attempts'), findsNothing);
+  });
+
+  testWidgets('exactly three attempts hide nothing, so no affordance claims they do', (tester) async {
+    await _pumpDashboard(
+      tester,
+      rows: [_row(id: 't-1', title: 'Ladder Safety Test', assigned: 1, passed: 1, overdue: 0, retaking: 0)],
+      summary: _summary(assigned: 1, overdue: 0, retaking: 0),
+      people: {
+        't-1': [
+          _person(
+            id: 'u-priya',
+            name: 'Priya Kaur',
+            state: 'passed',
+            score: 90,
+            attempts: [
+              _attempt(takenAt: '2026-09-08T10:00:00Z', score: 90, passed: true),
+              _attempt(takenAt: '2026-09-07T10:00:00Z', score: 70, passed: false),
+              _attempt(takenAt: '2026-09-06T10:00:00Z', score: 60, passed: false),
+            ],
+          ),
+        ],
+      },
+    );
+
+    await tester.tap(find.text('Ladder Safety Test'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('60%  -  Failed'), findsOneWidget);
+    expect(find.byKey(const Key('training.person-show-all-attempts')), findsNothing);
+  });
+
   testWidgets('one attempt draws no history block, because the score tag already is one', (tester) async {
     await _pumpDashboard(
       tester,
