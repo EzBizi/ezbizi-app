@@ -34,10 +34,18 @@ class TrainingTest extends Model implements StatesRetention, SummarizesBulkAttri
 
     protected $fillable = [
         'company_id', 'franchise_id', 'guide_id', 'title', 'status', 'questions',
-        'requires_guide', 'pass_mark', 'max_attempts', 'valid_for_days',
+        'requires_guide', 'pass_mark', 'max_attempts', 'valid_for_days', 'count_attempts_after_pass',
     ];
 
-    protected $casts = ['questions' => 'array', 'requires_guide' => 'bool'];
+    protected $casts = [
+        'questions' => 'array',
+        'requires_guide' => 'bool',
+        // Fifth-option brief (2026-09-09): true is today's behaviour, every
+        // attempt counts. false (the default) excludes a retake taken while
+        // an earlier pass for the same test is still valid — see
+        // `LearnController::submit` and `LapsedPasses`.
+        'count_attempts_after_pass' => 'bool',
+    ];
 
     public static function retention(): RetentionPolicy
     {
