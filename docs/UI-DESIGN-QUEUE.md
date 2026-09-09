@@ -1326,6 +1326,12 @@ leads, and Stock is no longer what a user lands on.
 - `movement` — a time series: `buckets` (dates) and `lines` (`in`, `out`, `adjusted`,
   `transferred`), index-aligned to the buckets. `transferred` carries `internal: true`
   because it nets to zero org-wide — real motion between shelves, not real gain or loss.
+  **Know before you draw it: a bucket is not a day.** The axis reuses the Dashboard's
+  period vocabulary, so `week` gives days, `month` and `quarter` give start-of-week,
+  and `year` gives months. **A month is therefore four or five points, not thirty** —
+  the captured payload shows exactly two, because its fixtures span two weeks. If a
+  bar-per-day is what the design wants, say so and it becomes a real decision rather
+  than a surprise at build time.
 
 **Four choices that are design's, stated as questions:**
 1. How do the three blocks stack at 375px versus desktop width?
