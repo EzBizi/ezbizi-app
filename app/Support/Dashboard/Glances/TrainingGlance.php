@@ -93,11 +93,33 @@ final class TrainingGlance extends DescribedGlance
             if ($testIds === []) {
                 return $this->payload([
                     'empty' => true,
-                    // "in reach" is OUR scoping vocabulary, not a word a reader
-                    // has been taught, and it half-implies an "out of reach"
-                    // — hinting at tests they cannot see (UI/UX, 2026-09-09).
-                    // "To track" is true of both cases this state covers: none
-                    // exist, or none are visible to this reader.
+                    // THE EMPTY SENTENCE DESCRIBES THE BOX, NOT THE WORLD.
+                    // That is the rule, and it is why this line is worded the
+                    // way it is: "No tests to track." says what this box holds,
+                    // which is true under any scope. "No tests in reach." and
+                    // "No tests yet." both make a claim about the ORGANIZATION
+                    // — that none exist — and a box showing somebody their own
+                    // subset cannot support that claim.
+                    //
+                    // This string moved THREE TIMES on 2026-09-09 and the
+                    // reasoning is here so a fourth reader does not move it
+                    // again. It was "in reach", changed to "to track" when a
+                    // measurement found "reach" absent from customer copy,
+                    // changed back when that measurement turned out to have
+                    // searched only ui_strings.dart (glance copy is PHP, and
+                    // "in reach" was in eleven files), and settled here when a
+                    // fuller count found the same board ALSO writes the plain
+                    // form — Leads says "No enquiries yet.", Reviews says "No
+                    // reviews yet." Eleven files saying a thing makes it
+                    // common, not conventional. UI/UX then ruled fleet-wide
+                    // that the scoped counts drop "in reach" (2026-09-09).
+                    //
+                    // The word is NOT banned: the automations failure detail
+                    // and the builder's action description keep it, because
+                    // there it names the mechanism being explained to somebody
+                    // configuring a rule, and dropping it would change the
+                    // meaning to "no franchise exists". Different reader,
+                    // different job.
                     'sentence' => 'No tests to track.',
                 ]);
             }

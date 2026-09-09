@@ -588,6 +588,194 @@ class TrainingDashboardTest extends TestCase
     // ── Fixtures ────────────────────────────────────────────────────
 
     /** @return array<int, array<string, mixed>> */
+    // -- The whole history, not only current standing (owner, "all", 2026-09-09) --
+
+    /**
+     * Three attempts come back as three, newest first - and the row's own
+     * `score`/`passed` still describe the LATEST one, because `state` is
+     * built from current standing and the two must not disagree inside a
+     * single row.
+     */
+    public function test_the_people_pane_carries_every_attempt_newest_first(): void
+    {
+        $tenant = $this->provisionTenant('History-'.Str::random(8));
+        $monitor = $this->userWithRole($tenant, 'Monitor', ['training.monitor']);
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $tenant['franchise']);
+
+        $test = $this->aPublishedTest($tenant, 'Ladders', validForDays: 365);
+
+        foreach ([[30, 40, false], [20, 55, false], [10, 90, true]] as [$daysAgo, $score, $passed]) {
+            $this->inTenant($tenant['org'], fn () => TrainingAttempt::create([
+                'user_id' => $learner->id,
+                'test_id' => $test->id,
+                'answers' => [1, 0],
+                'score' => $score,
+                'passed' => $passed,
+                'taken_at' => now()->subDays($daysAgo),
+                'expires_on' => $passed ? now()->addDays(300)->toDateString() : null,
+            ]));
+        }
+
+        $row = collect($this->signedInAs($monitor)
+            ->getJson("/api/v1/training/dashboard/{$test->id}/people")->json('data'))
+            ->firstWhere('user_id', $learner->id);
+
+        $this->assertNotNull($row);
+        $this->assertCount(3, $row['attempts']);
+        $this->assertSame([90, 55, 40], array_column($row['attempts'], 'score'));
+        $this->assertSame([true, false, false], array_column($row['attempts'], 'passed'));
+
+        // Current standing, unchanged and still the latest attempt.
+        $this->assertSame(90, $row['score']);
+        $this->assertTrue($row['passed']);
+    }
+
+    /**
+     * The control that makes the test above mean something: a person with
+     * ONE attempt gets a one-entry history, not an empty one and not a
+     * missing key. Without this, an `attempts` that silently dropped
+     * everything but multi-attempt users would pass.
+     */
+    public function test_a_single_attempt_is_a_history_of_one(): void
+    {
+        $tenant = $this->provisionTenant('History-'.Str::random(8));
+        $monitor = $this->userWithRole($tenant, 'Monitor', ['training.monitor']);
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $tenant['franchise']);
+
+        $test = $this->aPublishedTest($tenant, 'Ladders', validForDays: 365);
+
+        $this->inTenant($tenant['org'], fn () => TrainingAttempt::create([
+            'user_id' => $learner->id,
+            'test_id' => $test->id,
+            'answers' => [1, 0],
+            'score' => 70,
+            'passed' => true,
+            'taken_at' => now()->subDay(),
+            'expires_on' => now()->addDays(300)->toDateString(),
+        ]));
+
+        $row = collect($this->signedInAs($monitor)
+            ->getJson("/api/v1/training/dashboard/{$test->id}/people")->json('data'))
+            ->firstWhere('user_id', $learner->id);
+
+        $this->assertCount(1, $row['attempts']);
+        $this->assertSame(70, $row['attempts'][0]['score']);
+    }
+
+    /**
+     * A GUIDE has no attempts to carry - its history is `last_screen` and
+     * `completed_at`, which the pane already drew. The key must be absent
+     * rather than an empty list, so the client can tell "a test nobody has
+     * sat" from "not a test at all".
+     */
+    public function test_a_guide_row_carries_no_attempts_key(): void
+    {
+        $tenant = $this->provisionTenant('History-'.Str::random(8));
+        $monitor = $this->userWithRole($tenant, 'Monitor', ['training.monitor']);
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $tenant['franchise']);
+
+        $guide = $this->aPublishedGuide($tenant, 'Ladder Safety');
+        $this->assignRow($tenant, $guide, null, $learner);
+
+        $row = collect($this->signedInAs($monitor)
+            ->getJson("/api/v1/training/dashboard/{$guide->id}/people")->json('data'))
+            ->firstWhere('user_id', $learner->id);
+
+        $this->assertNotNull($row);
+        $this->assertArrayNotHasKey('attempts', $row);
+    }
+
+    /**
+     * HR's read carries the same history, because it answers the SAME
+     * question about the same person on the same day as the pane above. One
+     * of them showing three attempts while the other shows one would be two
+     * truths about one person.
+     */
+    public function test_the_hr_record_read_carries_the_history_too(): void
+    {
+        $tenant = $this->provisionTenant('History-'.Str::random(8));
+        $monitor = $this->userWithRole($tenant, 'Monitor', ['training.monitor']);
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $tenant['franchise']);
+
+        $test = $this->aPublishedTest($tenant, 'Ladders', validForDays: 365);
+        $this->assignRow($tenant, null, $test, $learner);
+
+        foreach ([[20, 40, false], [10, 90, true]] as [$daysAgo, $score, $passed]) {
+            $this->inTenant($tenant['org'], fn () => TrainingAttempt::create([
+                'user_id' => $learner->id,
+                'test_id' => $test->id,
+                'answers' => [1, 0],
+                'score' => $score,
+                'passed' => $passed,
+                'taken_at' => now()->subDays($daysAgo),
+                'expires_on' => $passed ? now()->addDays(300)->toDateString() : null,
+            ]));
+        }
+
+        $row = collect($this->signedInAs($monitor)
+            ->getJson("/api/v1/training/records?user={$learner->id}")->json('data'))
+            ->firstWhere('id', $test->id);
+
+        $this->assertNotNull($row);
+        $this->assertSame([90, 40], array_column($row['attempts'], 'score'));
+    }
+
+    /**
+     * The gap "all" exposed. HR's read decided a test earned a row by
+     * asking `currentStandingQuery`, which is the latest PASSED attempt -
+     * so somebody who has only ever FAILED an unassigned test had no row at
+     * all, and they are exactly who a record card is wanted for.
+     */
+    public function test_a_person_who_only_ever_failed_still_gets_a_record_row(): void
+    {
+        $tenant = $this->provisionTenant('History-'.Str::random(8));
+        $monitor = $this->userWithRole($tenant, 'Monitor', ['training.monitor']);
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $tenant['franchise']);
+
+        // Never assigned - taken from the library - and never passed.
+        $test = $this->aPublishedTest($tenant, 'Ladders', validForDays: 365);
+
+        $this->inTenant($tenant['org'], fn () => TrainingAttempt::create([
+            'user_id' => $learner->id,
+            'test_id' => $test->id,
+            'answers' => [0, 0],
+            'score' => 20,
+            'passed' => false,
+            'taken_at' => now()->subDay(),
+            'expires_on' => null,
+        ]));
+
+        $body = $this->signedInAs($monitor)
+            ->getJson("/api/v1/training/records?user={$learner->id}")->json();
+
+        $row = collect($body['data'])->firstWhere('id', $test->id);
+
+        $this->assertNotNull($row, 'A failed attempt is a training record.');
+        $this->assertFalse($row['assigned']);
+        $this->assertNull($row['passed']);
+        $this->assertSame([20], array_column($row['attempts'], 'score'));
+    }
+
+    /**
+     * The control for the test above, and the reason it is not simply "show
+     * every test": a published test this person has never touched and was
+     * never assigned still earns NO row. Without this, dropping the filter
+     * entirely would pass.
+     */
+    public function test_an_untouched_unassigned_test_still_earns_no_record_row(): void
+    {
+        $tenant = $this->provisionTenant('History-'.Str::random(8));
+        $monitor = $this->userWithRole($tenant, 'Monitor', ['training.monitor']);
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $tenant['franchise']);
+
+        $untouched = $this->aPublishedTest($tenant, 'Never Sat', validForDays: 365);
+
+        $body = $this->signedInAs($monitor)
+            ->getJson("/api/v1/training/records?user={$learner->id}")->json();
+
+        $this->assertNull(collect($body['data'])->firstWhere('id', $untouched->id));
+    }
+
     private function twoQuestions(): array
     {
         $question = [
