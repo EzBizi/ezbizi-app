@@ -1126,6 +1126,7 @@ class _CallTabState extends State<CallTab> {
                             enabled: !_onCall,
                             onPicked: (id) =>
                                 setState(() => _numberId = id),
+                            onOpened: _load,
                           ),
                   ),
                   if (showPerson)
@@ -1389,12 +1390,21 @@ class _LinePicker extends StatelessWidget {
     required this.selected,
     required this.enabled,
     required this.onPicked,
+    required this.onOpened,
   });
 
   final List<_Number> lines;
   final _Number? selected;
   final bool enabled;
   final void Function(String id) onPicked;
+
+  /// Refetch the lines, because "on a call" is only true for a moment.
+  ///
+  /// The list is loaded once when the screen opens. Without this the busy
+  /// marks are as old as the tab, so a line freed ten minutes ago still reads
+  /// as taken and a line taken since reads as free — and the second of those
+  /// is the one that puts two calls on one number.
+  final VoidCallback onOpened;
 
   /// What a line reads as, and what typing searches over.
   ///
@@ -1403,6 +1413,15 @@ class _LinePicker extends StatelessWidget {
   static String describe(_Number line) => line.assignedToMe
       ? '${line.label} · ${formatPhoneNumber(line.e164)} — yours'
       : '${line.label} · ${formatPhoneNumber(line.e164)}';
+
+  /// Why a line cannot be picked, or null when it can.
+  static String? busyReason(_Number line) {
+    if (!line.onCall) return null;
+
+    return line.onCallWith == null
+        ? 'on a call'
+        : 'on a call with ${line.onCallWith}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1418,11 +1437,74 @@ class _LinePicker extends StatelessWidget {
         // to see what there is has to work without knowing a name first.
         if (query.isEmpty) return lines;
 
+        // AND SO DOES AN UNTOUCHED ONE.
+        //
+        // The field holds the selected line's own description, so tapping to
+        // open the list searched for that exact string and matched exactly one
+        // thing — itself. A business with thirty numbers looked like a
+        // business with one, and the picker looked like a label that had been
+        // styled as a dropdown by mistake. Jose reported it as "I should be
+        // able to choose from among all the numbers", which is what it looks
+        // like from outside.
+        //
+        // Compared against the SELECTION rather than against every line's
+        // description: typing another line's name in full is a real search and
+        // must still narrow to it.
+        if (selected != null && query == describe(selected!).toLowerCase()) {
+          return lines;
+        }
+
         return lines.where(
           (line) => describe(line).toLowerCase().contains(query),
         );
       },
-      onSelected: (line) => onPicked(line.id),
+      // A busy line is shown and refused, not hidden. Hiding it would answer
+      // "why can I not see Ana's number" with silence; this answers it with
+      // the reason, and stops answering the moment the call ends.
+      onSelected: (line) {
+        if (busyReason(line) != null) return;
+        onPicked(line.id);
+      },
+
+      optionsViewBuilder: (context, onSelected, options) {
+        final theme = Theme.of(context);
+        final rows = options.toList();
+
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            elevation: 4,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 320, maxWidth: 520),
+              child: ListView.builder(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                itemCount: rows.length,
+                itemBuilder: (context, i) {
+                  final line = rows[i];
+                  final busy = busyReason(line);
+
+                  return ListTile(
+                    key: ValueKey('calling-as-${line.id}'),
+                    dense: true,
+                    enabled: busy == null,
+                    title: Text(describe(line)),
+                    subtitle: busy == null ? null : Text(busy),
+                    trailing: busy == null
+                        ? null
+                        : Icon(
+                            Icons.phone_in_talk_outlined,
+                            size: 18,
+                            color: theme.colorScheme.error,
+                          ),
+                    onTap: busy == null ? () => onSelected(line) : null,
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
       fieldViewBuilder: (context, controller, focus, onSubmit) => TextField(
         controller: controller,
         focusNode: focus,
@@ -1436,10 +1518,13 @@ class _LinePicker extends StatelessWidget {
 
         // Selecting the text on focus so the first keystroke searches rather
         // than appending to the line's own name, which never matches anything.
-        onTap: () => controller.selection = TextSelection(
-          baseOffset: 0,
-          extentOffset: controller.text.length,
-        ),
+        onTap: () {
+          controller.selection = TextSelection(
+            baseOffset: 0,
+            extentOffset: controller.text.length,
+          );
+          onOpened();
+        },
       ),
     );
   }
@@ -1454,6 +1539,8 @@ class _Number {
     required this.transcribe,
     required this.smsOutboundAllowed,
     required this.assignedToMe,
+    required this.onCall,
+    this.onCallWith,
   });
 
   final String id;
@@ -1466,6 +1553,16 @@ class _Number {
   /// Whether this is the line the person reading calls out from, set on Team.
   final bool assignedToMe;
 
+  /// Somebody is on this line right now.
+  ///
+  /// Offering it anyway would put a second call on a number a colleague is
+  /// mid-conversation on, and send the callback to them.
+  final bool onCall;
+
+  /// Who is on it, when the call has a person on it. Null for an inbound call
+  /// still ringing a group, which belongs to nobody yet.
+  final String? onCallWith;
+
   factory _Number.fromJson(Map<String, dynamic> json) => _Number(
     id: json['id'] as String? ?? '',
     connectionId: json['connection_id'] as String? ?? '',
@@ -1474,6 +1571,8 @@ class _Number {
     transcribe: json['transcribe'] == true,
     smsOutboundAllowed: json['sms_outbound_allowed'] == true,
     assignedToMe: json['assigned_to_me'] == true,
+    onCall: json['on_call'] == true,
+    onCallWith: json['on_call_with'] as String?,
   );
 }
 

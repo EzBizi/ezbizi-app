@@ -500,7 +500,43 @@ final class HttpTwilioGateway implements TwilioGateway
             ),
         };
 
+        // THE RESPONSE SAYS WHO OWNS IT. Read it.
+        //
+        // When this created three credentials on the parent account, the
+        // create response carried `account_sid` = the parent on every one of
+        // them. The answer was in my hand and I returned the SID without
+        // looking at it, so the command reported three successes and stored
+        // three SIDs no subaccount token can use.
+        //
+        // Costs nothing — no extra call, the field is already in the payload —
+        // and it makes the whole class of mistake loud instead of silent. A
+        // create that returns 201 and a real id has told you the write
+        // happened, not where.
+        $this->assertOwnedBy((string) $instance->accountSid, $connection);
+
         return (string) $instance->sid;
+    }
+
+    /**
+     * Refuse a credential that belongs to a different Twilio account.
+     *
+     * Separate and tiny so it can be tested without a network: the guard is
+     * the part that was missing, not the request.
+     */
+    private function assertOwnedBy(string $ownerAccountSid, PhoneConnection $connection): void
+    {
+        $expected = (string) $connection->account_sid;
+
+        if ($ownerAccountSid === $expected) {
+            return;
+        }
+
+        throw new RuntimeException(
+            'Twilio created that push credential on account '
+            .($ownerAccountSid === '' ? '(none reported)' : $ownerAccountSid)
+            .', not on '.$expected.'. A token minted from this connection '
+            .'cannot use it, so it has not been stored.'
+        );
     }
 
     public function accessToken(PhoneConnection $connection, string $identity, ?string $platform = null): string

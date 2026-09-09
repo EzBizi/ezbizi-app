@@ -204,7 +204,7 @@ class InspectionGlanceTest extends TestCase
         )->toArray();
 
         $this->assertTrue($payload['data']['empty']);
-        $this->assertSame('No inspections in reach.', $payload['data']['sentence']);
+        $this->assertSame('No inspections to show.', $payload['data']['sentence']);
     }
 
     public function test_the_named_bars_ignore_the_dashboard_period(): void

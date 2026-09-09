@@ -43,7 +43,7 @@ final class InventoryGlance extends DescribedGlance
                     options: [],
                     data: [
                         'empty' => true,
-                        'sentence' => 'No items in reach.',
+                        'sentence' => 'No items to show.',
                     ],
                 );
             }
@@ -60,8 +60,8 @@ final class InventoryGlance extends DescribedGlance
                     ['label' => 'Out of stock', 'total' => $counts['out']],
                 ],
                 'sentences' => [
-                    $items === 1 ? '1 item in reach.' : "{$items} items in reach.",
-                    $locations === 1 ? '1 location in reach.' : "{$locations} locations in reach.",
+                    $items === 1 ? '1 item listed.' : "{$items} items listed.",
+                    $locations === 1 ? '1 location listed.' : "{$locations} locations listed.",
                     $openPos === 1 ? '1 open purchase order.' : "{$openPos} open purchase orders.",
                 ],
             ];

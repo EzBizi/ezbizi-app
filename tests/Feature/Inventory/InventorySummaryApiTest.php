@@ -80,7 +80,7 @@ class InventorySummaryApiTest extends TestCase
             ->json('health');
 
         $this->assertTrue($health['empty']);
-        $this->assertSame('No items in reach.', $health['sentence']);
+        $this->assertSame('No items to show.', $health['sentence']);
     }
 
     public function test_the_low_figure_carries_the_query_that_produced_it(): void

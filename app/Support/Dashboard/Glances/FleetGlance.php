@@ -53,7 +53,7 @@ final class FleetGlance extends DescribedGlance
                     options: [],
                     data: [
                         'empty' => true,
-                        'sentence' => 'No vehicles in reach.',
+                        'sentence' => 'No vehicles to show.',
                     ],
                 );
             }
