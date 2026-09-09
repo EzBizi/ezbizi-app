@@ -1559,6 +1559,13 @@ Route::prefix('v1')
         Route::put('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'update']);
         Route::delete('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'destroy']);
 
+        // The assign picker's own roster: who this editor may put on a tile.
+        // Deliberately NOT hr/people — that is gated on HR grants a map editor
+        // need not hold. Gated on `monitoring.map.manage` (the policy's `create`)
+        // and filtered by ScopeReach::constrainToVisiblePeople, the same rule the
+        // write endpoint refuses an unseeable assignee by.
+        Route::get('monitoring/assignable-people', [MonitoringFloorPlansController::class, 'assignablePeople']);
+
         // Changing it while signed in. Needs the current password: a session
         // proves somebody sat down at an unlocked laptop, not that they are the
         // account holder.

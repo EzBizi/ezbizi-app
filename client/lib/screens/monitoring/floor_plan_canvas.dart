@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
@@ -53,6 +54,8 @@ class FloorPlanCanvas extends StatelessWidget {
     required this.status,
     required this.selectedNodeId,
     required this.onSelectNode,
+    this.editable = false,
+    this.onNodeMoved,
   });
 
   /// `{grid:{cols,rows}, walls:[{x1,y1,x2,y2}], nodes:[{id,x,y,label,user_id}]}`
@@ -71,6 +74,23 @@ class FloorPlanCanvas extends StatelessWidget {
   /// selection; this widget only reports the tap.
   final ValueChanged<String> onSelectNode;
 
+  /// Whether tiles may be dragged. View mode is [editable] false and is
+  /// exactly the Task 6 behaviour: no drag recognizer is even built, so there
+  /// is nothing to start by accident while reading a plan.
+  final bool editable;
+
+  /// Called with `(nodeId, col, row)` when a drag is released — CELLS, already
+  /// snapped and already clamped inside the grid, never pixels.
+  ///
+  /// The pixel-to-cell conversion lives HERE and only here, in [_dropAt],
+  /// because this widget is the only thing that knows the cell size: `cell`
+  /// falls out of the fit-to-canvas rule (`availableWidth / cols`) inside a
+  /// LayoutBuilder the tab cannot see into. A caller doing its own conversion
+  /// would be guessing at a width, and would silently disagree the moment the
+  /// canvas is laid out at any other size — so the tab is handed the answer,
+  /// not the arithmetic.
+  final void Function(String nodeId, int col, int row)? onNodeMoved;
+
   /// Used when a layout omits its grid. The spec's own example is 40x28.
   static const int defaultCols = 40;
   static const int defaultRows = 28;
@@ -78,7 +98,7 @@ class FloorPlanCanvas extends StatelessWidget {
   /// A tile covers this many cells on a side. One cell is too small to read a
   /// label in at any realistic grid size (40 columns of a 1200px canvas is a
   /// 30px cell); two is a desk-sized marker that still lands on the grid, which
-  /// is what the editor will snap to in Task 7.
+  /// is what a drag snaps to.
   static const int tileSpan = 2;
 
   /// The colour a tile draws in, for one node's [status] entry.
@@ -160,6 +180,8 @@ class FloorPlanCanvas extends StatelessWidget {
                   node: node,
                   cell: cell,
                   tile: tile,
+                  cols: cols,
+                  rows: rows,
                   width: width,
                   height: height,
                 ),
@@ -175,6 +197,8 @@ class FloorPlanCanvas extends StatelessWidget {
     required Map<String, dynamic> node,
     required double cell,
     required double tile,
+    required int cols,
+    required int rows,
     required double width,
     required double height,
   }) {
@@ -183,8 +207,8 @@ class FloorPlanCanvas extends StatelessWidget {
     final entry = status[id] as Map<String, dynamic>?;
 
     // Clamped so a node placed on the last column still draws inside the
-    // canvas instead of half off the edge — the editor snaps within bounds,
-    // but a layout written by an older client must not overflow the box.
+    // canvas instead of half off the edge — a drag snaps within bounds, but a
+    // layout written by an older client must not overflow the box.
     final left = (_asDouble(node['x']) * cell)
         .clamp(0.0, math.max(0.0, width - tile))
         .toDouble();
@@ -203,8 +227,50 @@ class FloorPlanCanvas extends StatelessWidget {
         entry: entry,
         selected: id == selectedNodeId,
         onTap: () => onSelectNode(id),
+        // A drag is wired up only when there is both a mode that wants it and
+        // somewhere to report it; either one missing and the tile is Task 6's.
+        onDragged: editable && onNodeMoved != null
+            ? (delta) => _dropAt(
+                id: id,
+                left: left,
+                top: top,
+                delta: delta,
+                cell: cell,
+                cols: cols,
+                rows: rows,
+              )
+            : null,
       ),
     );
+  }
+
+  /// Turn a released drag into a grid cell, and report it.
+  ///
+  /// The tile hands back the pixels it was dragged by; this adds them to where
+  /// it was drawn, divides by the cell size and ROUNDS — so a tile let go
+  /// anywhere inside a cell lands on that cell, which is what "snaps to the
+  /// nearest cell" means. The result is then clamped to `0 .. cols - tileSpan`
+  /// (rows likewise), so a tile dragged off the right edge lands on the last
+  /// column that fits it WHOLE rather than half outside the plan. A grid
+  /// narrower than one tile clamps to 0 rather than to a negative column.
+  void _dropAt({
+    required String id,
+    required double left,
+    required double top,
+    required Offset delta,
+    required double cell,
+    required int cols,
+    required int rows,
+  }) {
+    if (cell <= 0) return;
+
+    final maxCol = math.max(0, cols - tileSpan);
+    final maxRow = math.max(0, rows - tileSpan);
+
+    final col = ((left + delta.dx) / cell).round().clamp(0, maxCol);
+    final row = ((top + delta.dy) / cell).round().clamp(0, maxRow);
+
+    onNodeMoved!(id, col, row);
   }
 }
 
@@ -216,12 +282,20 @@ class FloorPlanCanvas extends StatelessWidget {
 /// the name belongs to the sidebar (Task 8), which has room to say "online,
 /// seen 2 minutes ago" instead of implying it in six pixels. The name does
 /// reach the screen reader, where the status colour cannot.
-class _NodeTile extends StatelessWidget {
+///
+/// It is stateful only for the drag: while a pointer is down the tile has to
+/// follow it, and where it has been dragged TO is not a fact about the layout
+/// until it is let go. So the in-flight offset lives here and dies here, and
+/// the only thing that leaves is [_NodeTile.onDragged] with the total pixel
+/// delta — the canvas converts that into a cell, because the canvas is what
+/// knows how big a cell is.
+class _NodeTile extends StatefulWidget {
   const _NodeTile({
     required this.label,
     required this.entry,
     required this.selected,
     required this.onTap,
+    this.onDragged,
   });
 
   final String label;
@@ -229,17 +303,45 @@ class _NodeTile extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
+  /// Null in view mode — no recognizer is built at all, so nothing about
+  /// reading a plan changes.
+  final void Function(Offset delta)? onDragged;
+
+  @override
+  State<_NodeTile> createState() => _NodeTileState();
+}
+
+class _NodeTileState extends State<_NodeTile> {
+  /// How far this tile has been dragged since the gesture started, in pixels.
+  /// Zero whenever nothing is being dragged.
+  Offset _drag = Offset.zero;
+
   String get _statusWord {
-    if (entry == null || entry!['assigned'] != true) return 'unassigned';
-    final name = entry!['name'] as String?;
-    final state = entry!['online'] == true ? 'online' : 'offline';
+    final entry = widget.entry;
+    if (entry == null || entry['assigned'] != true) return 'unassigned';
+    final name = entry['name'] as String?;
+    final state = entry['online'] == true ? 'online' : 'offline';
     return name == null || name.isEmpty ? state : '$name, $state';
+  }
+
+  void _onPanUpdate(DragUpdateDetails details) {
+    setState(() => _drag += details.delta);
+  }
+
+  void _onPanEnd(DragEndDetails details) {
+    final moved = _drag;
+    // Cleared BEFORE it is reported: the canvas answers a move by rebuilding
+    // this tile at its new left/top, and an offset still sitting here would be
+    // added to that new position and double the drag.
+    setState(() => _drag = Offset.zero);
+    widget.onDragged?.call(moved);
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final fill = FloorPlanCanvas.tileColor(context, entry);
+    final fill = FloorPlanCanvas.tileColor(context, widget.entry);
+    final draggable = widget.onDragged != null;
 
     // A token pair rather than a picked one: whichever of the three fills is
     // under the label, the text is the surface colour on a dark fill and the
@@ -251,37 +353,48 @@ class _NodeTile extends StatelessWidget {
 
     return Semantics(
       button: true,
-      selected: selected,
-      label: '$label, $_statusWord',
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(2),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: fill,
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(
-              // Selection is a border, not a different fill: the fill is the
-              // status, and a selected tile that changed colour would be
-              // saying something about the person instead of about the cursor.
-              color: selected
-                  ? theme.colorScheme.onSurface
-                  : theme.colorScheme.outlineVariant,
-              width: selected ? 3 : 1,
+      selected: widget.selected,
+      label: '${widget.label}, $_statusWord',
+      child: Transform.translate(
+        offset: _drag,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          // `down`, not the default `start`: the tile has to end up where the
+          // pointer left it, and `start` measures from where the recognizer won
+          // the arena instead of from where the pointer went down — so every
+          // drag would land the tile a touch-slop short of the finger, and a
+          // short drag would snap back to the cell it came from.
+          dragStartBehavior: DragStartBehavior.down,
+          onTap: widget.onTap,
+          onPanUpdate: draggable ? _onPanUpdate : null,
+          onPanEnd: draggable ? _onPanEnd : null,
+          child: Container(
+            padding: const EdgeInsets.all(2),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: fill,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(
+                // Selection is a border, not a different fill: the fill is the
+                // status, and a selected tile that changed colour would be
+                // saying something about the person instead of about the cursor.
+                color: widget.selected
+                    ? theme.colorScheme.onSurface
+                    : theme.colorScheme.outlineVariant,
+                width: widget.selected ? 3 : 1,
+              ),
             ),
-          ),
-          // Scales the label down rather than wrapping or ellipsing it: the
-          // tile is as small as the grid makes it, and a FittedBox cannot
-          // overflow its box, which is what keeps 375px clean.
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              label,
-              maxLines: 1,
-              softWrap: false,
-              style: theme.textTheme.labelSmall?.copyWith(color: onFill),
+            // Scales the label down rather than wrapping or ellipsing it: the
+            // tile is as small as the grid makes it, and a FittedBox cannot
+            // overflow its box, which is what keeps 375px clean.
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                widget.label,
+                maxLines: 1,
+                softWrap: false,
+                style: theme.textTheme.labelSmall?.copyWith(color: onFill),
+              ),
             ),
           ),
         ),

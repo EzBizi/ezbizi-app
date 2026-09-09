@@ -6,17 +6,19 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/side_panel.dart';
 import 'floor_plan_canvas.dart';
 
 /// Monitoring — General: an organization's machines laid out on a floor plan
 /// (spec docs/superpowers/specs/2026-09-09-monitoring-general-map-design.md).
 ///
-/// The tab SHELL — the plan picker, the view-mode load of one plan's `layout`
-/// + resolved `status`, and the 30s status poll — mounting [FloorPlanCanvas]
-/// (Task 6) as the map area, still keyed `floor-plan-canvas`. Edit mode is
-/// Task 7 and the summary sidebar is Task 8; the selection this tab holds
-/// ([_selectedNodeId]) is what the sidebar will read, which is why the canvas
-/// reports taps here rather than keeping the selection to itself.
+/// The tab SHELL — the plan picker, the load of one plan's `layout` + resolved
+/// `status`, the 30s status poll, and the TILE EDITOR (Task 7a: add, move,
+/// delete, assign, save) — mounting [FloorPlanCanvas] as the map area, still
+/// keyed `floor-plan-canvas`. Walls and plan create/rename/delete are Task 7b;
+/// the summary sidebar is Task 8, and the selection this tab holds
+/// ([_selectedNodeId]) is what it will read, which is why the canvas reports
+/// taps here rather than keeping the selection to itself.
 ///
 /// ── The two grants, and what each gates ────────────────────────────
 ///
@@ -25,9 +27,33 @@ import 'floor_plan_canvas.dart';
 ///     only [noPermissionNote]: the list endpoint would 403 anyway, and asking
 ///     the server only to show the same sentence a beat later teaches nobody
 ///     anything (the rule every other Monitoring tab keeps).
-///   * `monitoring.map.manage` — edit — is Task 7's. Here it only decides
-///     whether the empty state offers an "add a plan" affordance; the affordance
-///     itself is a placeholder until the editor lands.
+///   * `monitoring.map.manage` — edit — decides whether the edit toggle exists
+///     at all. Without it nothing on this tab can be dragged, added, deleted or
+///     assigned, and the assign picker's roster
+///     (`GET /monitoring/assignable-people`, gated on the same grant) is never
+///     even requested: a viewer has no use for a list of people they cannot
+///     assign anybody from.
+///
+/// ── View mode and edit mode ────────────────────────────────────────
+///
+/// View mode is byte-for-byte what it was before the editor existed: the canvas
+/// is handed `editable: false` and no move callback, so no drag recognizer is
+/// built and there are no edit affordances on screen.
+///
+/// Edit mode works on a DRAFT — a deep copy of the loaded layout ([_draft]) —
+/// and never on `_layout` itself. Two reasons, both load-bearing: leaving edit
+/// mode has to be able to throw the edits away and still have the plan the
+/// server sent, and a `status` map keyed by the server's nodes has to keep
+/// meaning something while the draft grows nodes the server has never seen. A
+/// draft node has no `status` entry and so draws grey — including one you have
+/// just assigned somebody to, which is honest: whether that person is ONLINE is
+/// the server's fact, and it does not become ours by typing their name.
+///
+/// The poll is CANCELLED while editing. A poll exists to keep a live status
+/// fresh; while you are rearranging desks it would only re-answer a question
+/// about a layout you are in the middle of changing, and the plan-switch
+/// picker is disabled in edit mode for the same reason — a switch would have
+/// nowhere honest to put the draft.
 ///
 /// ── The poll and its guard ─────────────────────────────────────────
 ///
@@ -57,12 +83,24 @@ class GeneralTab extends StatefulWidget {
 
   static const String noPlansNote = 'No floor plans yet.';
 
-  /// Shown under [noPlansNote] only to someone who can edit — the real add
-  /// flow is Task 7, so this is a hint, not a working button.
+  /// Shown under [noPlansNote] only to someone who can edit — creating a plan
+  /// is Task 7b, so this is a hint, not a working button.
   static const String addPlanHint =
       'You can add a floor plan once map editing is available.';
 
   static const String selectPrompt = 'Select a floor plan to view it.';
+
+  /// Said in edit mode while nothing is selected, so the two controls that need
+  /// a tile are not disabled for a reason the screen never gives.
+  static const String selectTileHint =
+      'Tap a computer to assign or delete it. Drag one to move it.';
+
+  /// The confirmation for leaving edit mode with unsaved edits. Edits are never
+  /// dropped silently: the answer is either "keep editing" (the draft survives,
+  /// still dirty) or an explicit discard.
+  static const String unsavedNote =
+      'This floor plan has changes that have not been saved. Leaving edit mode '
+      'now throws them away.';
 
   @override
   State<GeneralTab> createState() => _GeneralTabState();
@@ -84,6 +122,24 @@ class _GeneralTabState extends State<GeneralTab> {
   /// so one tab-level answer keeps the two panes from disagreeing.
   String? _selectedNodeId;
 
+  bool _editing = false;
+
+  /// The layout being edited — a deep copy of [_layout], made on the first
+  /// mutation and dropped on save or discard. Null means "not edited since the
+  /// last load", which is also exactly the not-dirty condition.
+  Map<String, dynamic>? _draft;
+
+  bool _dirty = false;
+  bool _saving = false;
+  String? _saveError;
+
+  /// The assign picker's roster, fetched once per edit session. Null means
+  /// "never asked" — which is the state a viewer without `monitoring.map.manage`
+  /// stays in forever, because they never enter edit mode.
+  List<Map<String, dynamic>>? _people;
+  bool _loadingPeople = false;
+  String? _peopleError;
+
   Timer? _pollTimer;
 
   /// Bumped every time a plan fetch STARTS (a select, a poll tick, a manual
@@ -95,6 +151,13 @@ class _GeneralTabState extends State<GeneralTab> {
 
   bool get _canManage =>
       widget.session.me?.can('monitoring.map.manage') ?? false;
+
+  /// What the canvas draws: the draft while one exists, the server's layout
+  /// otherwise. One getter so no widget has to remember which is current.
+  Map<String, dynamic>? get _shownLayout => _draft ?? _layout;
+
+  Map<String, dynamic>? get _selectedPlan =>
+      _plans.where((p) => p['id'] == _selectedPlanId).firstOrNull;
 
   @override
   void initState() {
@@ -153,8 +216,13 @@ class _GeneralTabState extends State<GeneralTab> {
     });
 
     _loadPlan(id);
+    _startPoll(id);
+  }
+
+  void _startPoll(String planId) {
+    _pollTimer?.cancel();
     _pollTimer =
-        Timer.periodic(GeneralTab.pollInterval, (_) => _loadPlan(id));
+        Timer.periodic(GeneralTab.pollInterval, (_) => _loadPlan(planId));
   }
 
   void _refreshSelected() {
@@ -209,8 +277,11 @@ class _GeneralTabState extends State<GeneralTab> {
       _status = (data['status'] as Map<String, dynamic>?) ?? const {};
       // A poll can land on a layout somebody else has edited. A selection
       // pointing at a node that is no longer there would leave the sidebar
-      // describing a deleted machine, so it is dropped rather than kept.
-      if (_selectedNodeId != null && !_layoutHasNode(layout, _selectedNodeId!)) {
+      // describing a deleted machine, so it is dropped rather than kept. The
+      // draft is asked when there is one: a node you have just added is not in
+      // the server's answer and must not deselect itself.
+      final shown = _draft ?? layout;
+      if (_selectedNodeId != null && !_layoutHasNode(shown, _selectedNodeId!)) {
         _selectedNodeId = null;
       }
     });
@@ -220,6 +291,324 @@ class _GeneralTabState extends State<GeneralTab> {
     final nodes = layout['nodes'];
     if (nodes is! List) return false;
     return nodes.any((n) => n is Map && n['id'] == nodeId);
+  }
+
+  // ── edit mode ──────────────────────────────────────────────────────
+
+  /// Enter edit mode, or try to leave it.
+  ///
+  /// Leaving with unsaved edits asks first, in a panel, and a "keep editing"
+  /// answer leaves everything exactly as it was — the draft intact and still
+  /// dirty. Nothing here can discard an edit without somebody having said so.
+  Future<void> _toggleEdit() async {
+    if (!_editing) {
+      // The poll is stopped for the duration; see the class doc comment.
+      _pollTimer?.cancel();
+      _pollTimer = null;
+
+      setState(() {
+        _editing = true;
+        _saveError = null;
+      });
+
+      await _loadPeople();
+      return;
+    }
+
+    if (_dirty && !await _confirmDiscard()) return;
+
+    if (!mounted) return;
+
+    setState(() {
+      _editing = false;
+      _draft = null;
+      _dirty = false;
+      _saveError = null;
+      _peopleError = null;
+    });
+
+    final id = _selectedPlanId;
+    if (id != null) {
+      // Back to live: re-read now rather than waiting out a whole interval for
+      // the first status this tab has not been watching.
+      _loadPlan(id);
+      _startPoll(id);
+    }
+  }
+
+  Future<bool> _confirmDiscard() async {
+    final discard = await showSidePanel<bool>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Leave without saving?',
+        actions: [
+          TextButton(
+            key: const Key('general-keep-editing'),
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep editing'),
+          ),
+          FilledButton(
+            key: const Key('general-discard'),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Discard changes'),
+          ),
+        ],
+        child: const Text(GeneralTab.unsavedNote),
+      ),
+    );
+
+    return discard == true;
+  }
+
+  /// The people this editor may assign — asked for once, on entering edit mode.
+  ///
+  /// NOT `hr/people`: that is gated on HR grants a map editor need not hold.
+  /// `monitoring/assignable-people` is gated on `monitoring.map.manage` and
+  /// filtered by the same reach predicate the save is validated against, so
+  /// every name it offers is a name the PUT will accept.
+  Future<void> _loadPeople() async {
+    if (_people != null || _loadingPeople) return;
+
+    setState(() {
+      _loadingPeople = true;
+      _peopleError = null;
+    });
+
+    final response = await widget.api.get('/monitoring/assignable-people');
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() {
+        _loadingPeople = false;
+        _peopleError = response.message;
+      });
+      return;
+    }
+
+    setState(() {
+      _loadingPeople = false;
+      _people = (response.data as List<dynamic>).cast<Map<String, dynamic>>();
+    });
+  }
+
+  /// The draft, created on first use from the loaded layout.
+  ///
+  /// The copy is deep enough to matter: the grid map, every wall map and every
+  /// node map are copied, so editing a node cannot reach back into `_layout`
+  /// and make the discard path a lie. Walls are copied although Task 7a cannot
+  /// draw one — a save PUTs the whole layout, and a draft that dropped the
+  /// walls would delete them from the plan on the next Save.
+  Map<String, dynamic> _workingLayout() {
+    final existing = _draft;
+    if (existing != null) return existing;
+
+    final base = _layout ?? const <String, dynamic>{};
+    final grid = base['grid'];
+    final walls = base['walls'];
+    final nodes = base['nodes'];
+
+    final copy = <String, dynamic>{
+      'grid': grid is Map
+          ? Map<String, dynamic>.from(grid)
+          : <String, dynamic>{
+              'cols': FloorPlanCanvas.defaultCols,
+              'rows': FloorPlanCanvas.defaultRows,
+            },
+      'walls': [
+        for (final wall in walls is List ? walls : const [])
+          if (wall is Map) Map<String, dynamic>.from(wall),
+      ],
+      'nodes': [
+        for (final node in nodes is List ? nodes : const [])
+          if (node is Map) Map<String, dynamic>.from(node),
+      ],
+    };
+
+    _draft = copy;
+    return copy;
+  }
+
+  List<dynamic> _draftNodes() => _workingLayout()['nodes'] as List<dynamic>;
+
+  Map<String, dynamic>? _draftNode(String id) {
+    for (final node in _draftNodes()) {
+      if (node is Map<String, dynamic> && node['id'] == id) return node;
+    }
+    return null;
+  }
+
+  /// Add a computer at the first free cell, and select it.
+  ///
+  /// "Free" is checked on the TILE LATTICE — every [FloorPlanCanvas.tileSpan]
+  /// cells, the same lattice a drag snaps to — so a new tile lands beside the
+  /// others rather than on top of one, and the scan never has to reason about
+  /// two tiles half-overlapping. A full plan puts it at the origin: refusing to
+  /// add would be a button that stops working with no way to see why, and a
+  /// tile on top of another can be dragged off it in one gesture.
+  void _addComputer() {
+    final layout = _workingLayout();
+    final grid = layout['grid'];
+    final gridMap = grid is Map ? grid : const {};
+    final cols = gridMap['cols'] is num
+        ? (gridMap['cols'] as num).toInt()
+        : FloorPlanCanvas.defaultCols;
+    final rows = gridMap['rows'] is num
+        ? (gridMap['rows'] as num).toInt()
+        : FloorPlanCanvas.defaultRows;
+
+    final nodes = _draftNodes();
+    final taken = <String>{
+      for (final node in nodes)
+        if (node is Map) '${node['x']},${node['y']}',
+    };
+
+    var col = 0;
+    var row = 0;
+    const span = FloorPlanCanvas.tileSpan;
+
+    outer:
+    for (var r = 0; r + span <= rows; r += span) {
+      for (var c = 0; c + span <= cols; c += span) {
+        if (!taken.contains('$c,$r')) {
+          col = c;
+          row = r;
+          break outer;
+        }
+      }
+    }
+
+    // Unique without asking the server for an id: the layout is one JSON
+    // document written whole, so an id only has to be unique inside it.
+    final id = 'node-${DateTime.now().microsecondsSinceEpoch}-${nodes.length}';
+
+    setState(() {
+      nodes.add(<String, dynamic>{
+        'id': id,
+        'x': col,
+        'y': row,
+        'label': 'Computer ${nodes.length + 1}',
+        'user_id': null,
+      });
+      _dirty = true;
+      _selectedNodeId = id;
+    });
+  }
+
+  void _deleteSelected() {
+    final id = _selectedNodeId;
+    if (id == null) return;
+
+    final nodes = _draftNodes();
+
+    setState(() {
+      nodes.removeWhere((node) => node is Map && node['id'] == id);
+      _dirty = true;
+      _selectedNodeId = null;
+    });
+  }
+
+  /// A tile was dropped on a cell. The cell arrives already snapped and already
+  /// clamped — [FloorPlanCanvas] owns every pixel of that arithmetic, because
+  /// it is the only thing that knows how wide a cell was laid out.
+  void _moveNode(String id, int col, int row) {
+    final node = _draftNode(id);
+    if (node == null) return;
+
+    // A drag that ends on the cell it started from is not an edit, and marking
+    // the plan dirty for it would arm the unsaved-changes prompt over nothing.
+    if (node['x'] == col && node['y'] == row) return;
+
+    setState(() {
+      node['x'] = col;
+      node['y'] = row;
+      _dirty = true;
+    });
+  }
+
+  /// Assign (or unassign) the selected tile, in a panel — this app has no
+  /// dialogs, and the map stays visible beside the list so you can see which
+  /// desk you are naming somebody for.
+  Future<void> _assignSelected() async {
+    final id = _selectedNodeId;
+    if (id == null) return;
+
+    await _loadPeople();
+
+    if (!mounted) return;
+
+    final node = _draftNode(id);
+    final label = (node?['label'] as String?) ?? 'this computer';
+
+    final choice = await showSidePanel<Map<String, dynamic>>(
+      context,
+      builder: (context) => _AssignPanel(
+        tileLabel: label,
+        people: _people ?? const [],
+        error: _peopleError,
+        assignedUserId: node?['user_id'] as String?,
+      ),
+    );
+
+    if (choice == null || !mounted) return;
+
+    final target = _draftNode(id);
+    if (target == null) return;
+
+    setState(() {
+      target['user_id'] = choice['user_id'];
+      _dirty = true;
+    });
+  }
+
+  /// PUT the whole draft, then re-read the plan.
+  ///
+  /// The re-read is not belt and braces: `status` is resolved by the server
+  /// from the assignees, so the tile you just gave to somebody only learns
+  /// whether they are online once the save has round-tripped. A failure keeps
+  /// the draft exactly as it is — the server's own sentence is shown, and the
+  /// plan stays dirty so Save is still there to press. That matters most for
+  /// the one refusal the editor can actually provoke: assigning somebody the
+  /// server will not let you see, which comes back 422.
+  Future<void> _save() async {
+    final planId = _selectedPlanId;
+    final layout = _draft;
+    if (planId == null || layout == null || _saving) return;
+
+    setState(() {
+      _saving = true;
+      _saveError = null;
+    });
+
+    final body = <String, dynamic>{'layout': layout};
+    final name = _selectedPlan?['name'] as String?;
+    if (name != null) body['name'] = name;
+
+    final response =
+        await widget.api.put('/monitoring/floor-plans/$planId', body);
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() {
+        _saving = false;
+        // `reason`, not `message`: a 422 says "The given data was invalid."
+        // at the top and the sentence you can act on — "You can only assign
+        // people you can see." — under `errors.layout`. The top-level one
+        // would hide the only part of the refusal that says what to change.
+        _saveError = response.reason;
+      });
+      return;
+    }
+
+    setState(() {
+      _saving = false;
+      _saveError = null;
+      _draft = null;
+      _dirty = false;
+    });
+
+    await _loadPlan(planId);
   }
 
   @override
@@ -250,7 +639,9 @@ class _GeneralTabState extends State<GeneralTab> {
             key: const Key('floor-plan-picker'),
             plans: _plans,
             selectedId: _selectedPlanId,
-            onSelect: _selectPlan,
+            // Switching plans mid-edit would have nowhere honest to put the
+            // draft, so the picker waits until you are done.
+            onSelect: _editing ? null : _selectPlan,
           ),
           const SizedBox(height: 16),
           _selectedArea(context),
@@ -266,8 +657,8 @@ class _GeneralTabState extends State<GeneralTab> {
     }
 
     final theme = Theme.of(context);
-    final plan = _plans.where((p) => p['id'] == id).firstOrNull;
-    final name = plan?['name'] as String? ?? 'Floor plan';
+    final name = _selectedPlan?['name'] as String? ?? 'Floor plan';
+    final layout = _shownLayout;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -284,7 +675,7 @@ class _GeneralTabState extends State<GeneralTab> {
             IconButton(
               key: const Key('general-refresh'),
               tooltip: 'Refresh status',
-              onPressed: _refreshSelected,
+              onPressed: _editing ? null : _refreshSelected,
               icon: const Icon(Icons.refresh),
             ),
           ],
@@ -297,19 +688,237 @@ class _GeneralTabState extends State<GeneralTab> {
           )
         else if (_planError != null)
           ErrorNote(_planError!)
-        else if (_layout != null) ...[
-          _PlanCounts(layout: _layout!),
+        else if (layout != null) ...[
+          if (_canManage) ...[
+            _EditToolbar(
+              editing: _editing,
+              dirty: _dirty,
+              saving: _saving,
+              hasSelection: _selectedNodeId != null,
+              onToggleEdit: _toggleEdit,
+              onAdd: _addComputer,
+              onAssign: _assignSelected,
+              onDelete: _deleteSelected,
+              onSave: _save,
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (_saveError != null) ...[
+            ErrorNote(_saveError!),
+            const SizedBox(height: 8),
+          ],
+          _PlanCounts(layout: layout),
           const SizedBox(height: 8),
           FloorPlanCanvas(
             key: const Key('floor-plan-canvas'),
-            layout: _layout!,
+            layout: layout,
             status: _status ?? const {},
             selectedNodeId: _selectedNodeId,
             onSelectNode: _selectNode,
+            editable: _editing,
+            onNodeMoved: _editing ? _moveNode : null,
           ),
         ] else
           const SizedBox.shrink(),
       ],
+    );
+  }
+}
+
+/// The editor's controls, above the map.
+///
+/// A [Wrap], not a [Row]: five buttons is more than 375px holds, and a Row
+/// would throw there rather than take a second line. Assign and Delete are
+/// disabled without a selected tile and Save without an unsaved change, each
+/// with the hint below saying which — a disabled button whose condition is
+/// never stated is a puzzle, not an affordance.
+class _EditToolbar extends StatelessWidget {
+  const _EditToolbar({
+    required this.editing,
+    required this.dirty,
+    required this.saving,
+    required this.hasSelection,
+    required this.onToggleEdit,
+    required this.onAdd,
+    required this.onAssign,
+    required this.onDelete,
+    required this.onSave,
+  });
+
+  final bool editing;
+  final bool dirty;
+  final bool saving;
+  final bool hasSelection;
+  final VoidCallback onToggleEdit;
+  final VoidCallback onAdd;
+  final VoidCallback onAssign;
+  final VoidCallback onDelete;
+  final VoidCallback onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            OutlinedButton.icon(
+              key: const Key('general-edit-toggle'),
+              onPressed: onToggleEdit,
+              icon: Icon(editing ? Icons.done : Icons.edit_outlined),
+              label: Text(editing ? 'Done' : 'Edit map'),
+            ),
+            if (editing) ...[
+              FilledButton.tonalIcon(
+                key: const Key('general-add-computer'),
+                onPressed: onAdd,
+                icon: const Icon(Icons.add),
+                label: const Text('Add computer'),
+              ),
+              OutlinedButton(
+                key: const Key('general-assign-node'),
+                onPressed: hasSelection ? onAssign : null,
+                child: const Text('Assign person'),
+              ),
+              OutlinedButton(
+                key: const Key('general-delete-node'),
+                onPressed: hasSelection ? onDelete : null,
+                child: const Text('Delete computer'),
+              ),
+              FilledButton(
+                key: const Key('general-save'),
+                onPressed: dirty && !saving ? onSave : null,
+                child: Text(saving ? 'Saving…' : 'Save'),
+              ),
+            ],
+          ],
+        ),
+        if (editing && !hasSelection) ...[
+          const SizedBox(height: 6),
+          Text(
+            GeneralTab.selectTileHint,
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Who to put on the selected tile.
+///
+/// The roster comes from `monitoring/assignable-people`, which is filtered by
+/// the same reach predicate the save is validated against — so everything in
+/// this list can actually be saved. The search box filters what is already
+/// held rather than asking the server again: the endpoint answers with the
+/// whole (capped) list precisely so typing costs nothing.
+///
+/// Returns `{'user_id': <id>}` for a person, `{'user_id': null}` for Unassign,
+/// and null for a cancel — a distinct third answer, so backing out cannot be
+/// mistaken for clearing the assignee.
+class _AssignPanel extends StatefulWidget {
+  const _AssignPanel({
+    required this.tileLabel,
+    required this.people,
+    required this.error,
+    required this.assignedUserId,
+  });
+
+  final String tileLabel;
+  final List<Map<String, dynamic>> people;
+  final String? error;
+  final String? assignedUserId;
+
+  @override
+  State<_AssignPanel> createState() => _AssignPanelState();
+}
+
+class _AssignPanelState extends State<_AssignPanel> {
+  String _query = '';
+
+  List<Map<String, dynamic>> get _matches {
+    final needle = _query.trim().toLowerCase();
+    if (needle.isEmpty) return widget.people;
+    return [
+      for (final person in widget.people)
+        if (((person['name'] as String?) ?? '').toLowerCase().contains(needle))
+          person,
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final matches = _matches;
+
+    return SidePanel(
+      title: 'Assign ${widget.tileLabel}',
+      // The body owns its own height: a long roster stays a lazy list rather
+      // than building every row inside a scroll view.
+      scrollable: false,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          key: const Key('assign-unassign'),
+          onPressed: () =>
+              Navigator.of(context).pop(<String, dynamic>{'user_id': null}),
+          child: const Text('Unassign'),
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (widget.error != null) ...[
+            ErrorNote(widget.error!),
+            const SizedBox(height: 12),
+          ],
+          TextField(
+            key: const Key('assign-search'),
+            decoration: const InputDecoration(
+              labelText: 'Search people',
+              prefixIcon: Icon(Icons.search),
+            ),
+            onChanged: (value) => setState(() => _query = value),
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: matches.isEmpty
+                ? Text(
+                    widget.people.isEmpty
+                        ? 'There is nobody here you can assign.'
+                        : 'Nobody matches that.',
+                    style: theme.textTheme.bodyMedium,
+                  )
+                : ListView.builder(
+                    itemCount: matches.length,
+                    itemBuilder: (context, index) {
+                      final person = matches[index];
+                      final id = person['id'] as String? ?? '';
+                      final name = person['name'] as String? ?? 'Unnamed';
+
+                      return ListTile(
+                        key: ValueKey('assign-person-$id'),
+                        title: Text(name),
+                        trailing: id == widget.assignedUserId
+                            ? const Icon(Icons.check)
+                            : null,
+                        onTap: () => Navigator.of(context)
+                            .pop(<String, dynamic>{'user_id': id}),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -319,6 +928,10 @@ class _GeneralTabState extends State<GeneralTab> {
 /// franchise; the heading carries the scope's own label so two companies with
 /// a plan each never merge. A `Wrap` of chips per group keeps it from
 /// overflowing at 375px.
+///
+/// [onSelect] is null while the tab is in edit mode, which disables every chip:
+/// there is no honest place to put a half-finished layout when you leave the
+/// plan it belongs to.
 class _PlanPicker extends StatelessWidget {
   const _PlanPicker({
     super.key,
@@ -329,7 +942,7 @@ class _PlanPicker extends StatelessWidget {
 
   final List<Map<String, dynamic>> plans;
   final String? selectedId;
-  final ValueChanged<String> onSelect;
+  final ValueChanged<String>? onSelect;
 
   static int _rank(String type) => switch (type) {
     'organization' => 0,
@@ -399,7 +1012,9 @@ class _PlanPicker extends StatelessWidget {
                             key: ValueKey('floor-plan-${plan['id']}'),
                             label: Text(plan['name'] as String? ?? 'Untitled'),
                             selected: plan['id'] == selectedId,
-                            onSelected: (_) => onSelect(plan['id'] as String),
+                            onSelected: onSelect == null
+                                ? null
+                                : (_) => onSelect!(plan['id'] as String),
                           ),
                       ],
                     ),
@@ -418,7 +1033,8 @@ class _PlanPicker extends StatelessWidget {
 /// how many wall segments. The map itself is the picture; this is the caption
 /// that lets you tell at a glance that you are looking at the plan you chose
 /// and that it loaded whole — the same two counts a stale answer would get
-/// wrong, which is what the tab's late-answer test reads.
+/// wrong, which is what the tab's late-answer test reads. In edit mode it
+/// counts the DRAFT, so adding a computer says so immediately.
 class _PlanCounts extends StatelessWidget {
   const _PlanCounts({required this.layout});
 
@@ -439,7 +1055,7 @@ class _PlanCounts extends StatelessWidget {
 }
 
 /// No plans yet. An editor additionally sees a hint that they can add one —
-/// the real add flow is Task 7, so the affordance is a placeholder for now.
+/// creating a plan is Task 7b, so the affordance is a placeholder for now.
 class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.canManage});
 
@@ -460,7 +1076,7 @@ class _EmptyState extends StatelessWidget {
               const SizedBox(height: 12),
               FilledButton.icon(
                 key: const Key('general-add-plan'),
-                // Task 7 wires this up; a disabled button states the
+                // Task 7b wires this up; a disabled button states the
                 // affordance without pretending to work yet.
                 onPressed: null,
                 icon: const Icon(Icons.add),

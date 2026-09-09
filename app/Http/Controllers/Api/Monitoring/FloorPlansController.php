@@ -16,11 +16,11 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 /**
- * The org's floor plans — the Monitoring "General" tab's read side
- * (docs/superpowers/specs/2026-09-09-monitoring-general-map-design.md, Task 3).
+ * The org's floor plans — the Monitoring "General" tab's endpoints
+ * (docs/superpowers/specs/2026-09-09-monitoring-general-map-design.md).
  * `index` lists the plans a caller may see; `show` returns one plan's layout
- * plus a resolved per-node online/offline status. Writes (store/update/destroy)
- * arrive in Task 4.
+ * plus a resolved per-node online/offline status; store/update/destroy write
+ * them back, and `assignablePeople` is the assign picker's roster (Task 7a).
  *
  * ── §3/§4 reach: two different scopes, on purpose ─────────────────
  *
@@ -51,6 +51,14 @@ class FloorPlansController extends Controller
      * window" mirrors the client's `now - last_seen_at <= onlineWithin`.
      */
     private const ONLINE_WINDOW_MINUTES = 5;
+
+    /**
+     * The most people the assign picker is handed in one answer. A cap, not a
+     * page: an org with more than this many people needs a searching endpoint,
+     * not a longer list, and the picker searches what it holds. Five hundred is
+     * comfortably above every EzBizi org and small enough to send at once.
+     */
+    private const ASSIGNABLE_PEOPLE_LIMIT = 500;
 
     /** The scope types a plan may name, mapped to Assignment's constants via ScopeReach::TYPES. */
     private const SCOPE_TYPES = ['organization', 'company', 'franchise'];
@@ -115,6 +123,58 @@ class FloorPlansController extends Controller
                 'layout' => $plan->layout,
                 'status' => $this->status($plan, $actor),
             ],
+        ]);
+    }
+
+    /**
+     * GET /api/v1/monitoring/assignable-people
+     *
+     * The people an editor may put on a tile — `{id, name}` and nothing else.
+     *
+     * ── Why this exists rather than reusing `hr/people` ────────────
+     *
+     * `hr/people` is gated on HR grants, which a Monitoring map editor has no
+     * reason to hold; pointing the assign picker at it would either force an
+     * unrelated permission onto every editor or hand them a 403 with nothing to
+     * choose from. So the picker gets its own list, and the list is defined by
+     * the rule the ASSIGNMENT already obeys: the same grant the write needs
+     * (`monitoring.map.manage`, via the `create` policy method — only an editor
+     * has any use for it), over the same predicate `validatedLayout` refuses a
+     * node against (`constrainToVisiblePeople`). One rule, two endpoints: a name
+     * offered here always saves, and a name missing here would always have been
+     * refused. Nothing beyond id and name is returned — the picker needs a label
+     * to show and an id to store, and a roster is not a place to widen what
+     * Monitoring discloses about a person.
+     *
+     * Inactive people are NOT filtered out, deliberately: the write endpoint
+     * does not refuse them either, and a picker narrower than the rule it is a
+     * picker for is how the two quietly stop agreeing.
+     *
+     * The predicate is wrapped in a closure group (`where(fn ($q) => ...)`)
+     * rather than applied to the query directly. `constrainToVisiblePeople` adds
+     * OR arms, so any sibling condition placed beside them at the top level
+     * would be escapable by an arm — the same wrapping `status()` and
+     * `validatedLayout()` use, and the bug that was fixed there. There is no
+     * sibling condition here today; the group is what keeps that true for
+     * whichever `where` is added next.
+     */
+    public function assignablePeople(Request $request): JsonResponse
+    {
+        $this->authorize('create', MonitoringFloorPlan::class);
+
+        $actor = $request->user();
+
+        $people = User::query()
+            ->where(fn (Builder $q) => $this->reach->constrainToVisiblePeople($q, $actor))
+            ->orderBy('name')
+            ->limit(self::ASSIGNABLE_PEOPLE_LIMIT)
+            ->get(['id', 'name']);
+
+        return response()->json([
+            'data' => $people->map(fn (User $person) => [
+                'id' => $person->getKey(),
+                'name' => $person->name,
+            ])->all(),
         ]);
     }
 
