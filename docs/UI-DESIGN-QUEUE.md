@@ -875,6 +875,33 @@ what makes their route right is that **Jose ruled it directly**, not the craft c
 keeping separate so the carve-out does not quietly widen to cover anything a module felt sure
 about.
 
+**The rule is about the CLAIM, not about two phrases.** The sweep found eighteen strings, not
+sixteen, and the last two were invisible to every grep because they used neither forbidden word.
+Phone's box said **"No calls came in."** — false for anyone whose lines are a subset, a
+world-claim in plain English. Dashboard found the client's last-resort fallback saying
+*"Nothing to show yet."*, and their argument is the sharpest of the whole sweep: **that branch
+is reached precisely when we do not know what the box holds.** Every other empty sentence is a
+module making a claim it is in a position to make; that one was the app guessing optimistically
+about somebody else's data. **Grepping for "in reach" and "yet" finds the habits, never the
+rule.**
+
+**ComingSoon is a different question and it was already answered.** Ruled 2026-09-09: those
+sentences are not empty-state copy — a coming-soon box has no query, so it makes no claim about
+the customer's data at all. It falls under the placeholder rule above (*describe a destination,
+not a date*), not the scoping rule. **Measured, the set is two strings, not a category:**
+Newsletter's is compliant, and `Monitoring` still carries both — *"Monitoring **will show** who
+is online … here. Open the Monitoring tab for the roster."* One promise, one destination, in one
+sentence. Drop the promise, keep the destination. **Dashboard's to reword, one string, no
+sweep.**
+
+**A phrase can be simultaneously the best evidence available and inadmissible.** Customers'
+line, and the whole story of this ruling: I cited Leads and Reviews as the board's plain form,
+and those strings break the rule I was citing them for. Web Management then shipped my
+pre-ruling wording because they checked my cited precedent and stopped there; Inventory nearly
+confirmed a verb against Services' strings, which had not landed. **A ruling titled "I cited as
+precedent the form my own rule forbids" deserves a precedent that exists** — cite `025f5afd`,
+the only participle live in a glance.
+
 **An advisory must not wear the failure component.** Web Management, 2026-09-08, asking
 that this be made a rule after the widget contrast work: *"dressing an advisory as a
 failure teaches people to ignore the component that also carries real failures."* The
