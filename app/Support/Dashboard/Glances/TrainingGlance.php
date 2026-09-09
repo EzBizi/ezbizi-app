@@ -93,7 +93,12 @@ final class TrainingGlance extends DescribedGlance
             if ($testIds === []) {
                 return $this->payload([
                     'empty' => true,
-                    'sentence' => 'No tests in reach.',
+                    // "in reach" is OUR scoping vocabulary, not a word a reader
+                    // has been taught, and it half-implies an "out of reach"
+                    // — hinting at tests they cannot see (UI/UX, 2026-09-09).
+                    // "To track" is true of both cases this state covers: none
+                    // exist, or none are visible to this reader.
+                    'sentence' => 'No tests to track.',
                 ]);
             }
 
