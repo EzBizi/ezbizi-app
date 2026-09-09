@@ -12,6 +12,7 @@ class VersionHistory {
       date: '9 Sep 2026',
       items: [
         'Training: a test\'s attempt limit counts from your last pass rather than for all time. Somebody who certified, let it lapse and then failed a retake was locked out of certifying again for good, with nothing an administrator could reset.',
+        'Training: writing a test warns you when a limit on attempts, an expiry and counting every retake are set together - the one combination that can leave somebody unable to certify again, with nothing an administrator can undo. It warns rather than refuses.',
       ],
     ),
     VersionRelease(
