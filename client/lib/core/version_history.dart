@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0175',
+      date: '9 Sep 2026',
+      items: [
+        'Web Management: the website list and the preview can be dragged wider or narrower, so the screen fits how you work rather than how we guessed.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0174',
       date: '9 Sep 2026',
       items: [
