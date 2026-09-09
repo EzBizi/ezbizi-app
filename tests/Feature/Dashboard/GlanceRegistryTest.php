@@ -105,20 +105,35 @@ class GlanceRegistryTest extends TestCase
         $this->assertSame(['inventory'], $keys);
     }
 
+    /**
+     * The example moved from Marketing to Newsletter on 2026-09-09.
+     *
+     * Marketing went live, which turned this red — the third module to do that
+     * to this test after Web Management. The lesson is in the choice of
+     * replacement rather than in the fix: **an example should be a case that is
+     * SETTLED, not merely one that is true today.** Newsletter's placeholder is
+     * argued in the registry as the permanent answer — it keeps its own
+     * dashboard inside its tab, and a second summary a click away would drift
+     * from it — so it is not a queue entry waiting to be built like Marketing's
+     * was.
+     *
+     * Marketing's own "no longer coming soon" assertion lives with the glance,
+     * in MarketingGlanceTest, rather than being restated here.
+     */
     public function test_a_coming_soon_glance_has_no_chart_presentations(): void
     {
-        $user = $this->userWithPermissions(['marketing.view']);
-        $payload = app(GlanceRegistry::class)->find('marketing', $user)
+        $user = $this->userWithPermissions(['newsletter.view']);
+        $payload = app(GlanceRegistry::class)->find('newsletter', $user)
             ->resolve($user, DashboardPeriod::for($user), []);
         $array = $payload->toArray();
         $this->assertTrue($array['coming_soon']);
         $this->assertSame([], $array['allowed_presentations']);
         $this->assertSame('text', $array['presentation']);
         /*
-         * Not a literal from Marketing's copy any more.
+         * Not a literal from the module's copy.
          *
-         * This pinned the exact words "compose is live", so correcting a
-         * sentence that had gone stale turned THIS test red — a test in
+         * This pinned Marketing's exact words "compose is live", so correcting
+         * a sentence that had gone stale turned THIS test red — a test in
          * Dashboard defending wrong copy in another module, and the reason the
          * correction sat unmade through a release. The intent here is that a
          * coming-soon glance resolves to text with no chart and a real

@@ -11,9 +11,10 @@ use App\Support\Dashboard\Glances\HrGlance;
 use App\Support\Dashboard\Glances\InspectionGlance;
 use App\Support\Dashboard\Glances\InventoryGlance;
 use App\Support\Dashboard\Glances\JobsGlance;
-use App\Support\Dashboard\Glances\PhoneGlance;
 use App\Support\Dashboard\Glances\BusinessProfileGlance;
 use App\Support\Dashboard\Glances\LeadsGlance;
+use App\Support\Dashboard\Glances\MarketingGlance;
+use App\Support\Dashboard\Glances\PhoneGlance;
 use App\Support\Dashboard\Glances\ReviewsGlance;
 use App\Support\Dashboard\Glances\ServicesGlance;
 use App\Support\Dashboard\Glances\WebManagementGlance;
@@ -53,18 +54,6 @@ class GlanceRegistry
      * @var array<string, array{label: string, sentence: string}>
      */
     private const COMING_SOON = [
-        'marketing' => [
-            'label' => 'Marketing',
-            /*
-             * Reworded 2026-09-08. It read "once compose is live" — a
-             * condition met on 2026-08-28, when Publish now shipped. So the
-             * sentence named a wait that was already over while the box still
-             * was not there, telling somebody the hold-up was a thing that had
-             * happened. What is actually missing is the glance, so that is
-             * what it says.
-             */
-            'sentence' => 'Marketing keeps scheduled and published posts inside the tab. A summary of them here is not built yet.',
-        ],
         /*
          * Added with the Training module, not with a Training glance.
          *
@@ -151,6 +140,7 @@ class GlanceRegistry
         EmailGlance::class,
         AutomationsGlance::class,
         PhoneGlance::class,
+        MarketingGlance::class,
     ];
 
     public function __construct(
