@@ -365,13 +365,34 @@ final class ModuleDefinition
     }
 
     /**
+     * Actions that only read. Anything else a module names is taken to write,
+     * so the audit rule asks about it. Kept short on purpose: an action the
+     * list does not know is treated as a write, which makes the rule ask a
+     * question rather than stay silent — the failure of the first draft,
+     * which matched the literals create/edit/delete and so never asked
+     * `time_clock` (lock_screen), `training` (manage, assign) or `monitoring`
+     * (cameras.manage, control) anything while all three change records.
+     */
+    public const READ_ONLY_ACTIONS = ['view', 'export', 'monitor', 'lock_screen'];
+
+    /**
      * Can this module change anything? Only a module that writes can owe an
      * audit trail, so a read-only one is outside the rule rather than exempt
-     * from it — there is nothing for it to state a reason about.
+     * from it — there is nothing for it to state a reason about. "Writes"
+     * means: names any action that is not a read (see READ_ONLY_ACTIONS; a
+     * dotted action ending in `.view` is a read too).
      */
     public function writesRecords(): bool
     {
-        return array_intersect(['create', 'edit', 'delete'], $this->actions) !== [];
+        foreach ($this->actions as $action) {
+            if (in_array($action, self::READ_ONLY_ACTIONS, true) || str_ends_with($action, '.view')) {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
     /**

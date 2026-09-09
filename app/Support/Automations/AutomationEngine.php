@@ -40,6 +40,34 @@ class AutomationEngine
         }
 
         return $this->tenant->run($organization, function () use ($event, $organization) {
+            /*
+             * EVERY TIME VALUE IN THIS CLASS IS A DURATION, AND THAT IS WHAT
+             * KEEPS IT OUT OF THE DAYLIGHT-SAVING PROBLEM.
+             *
+             * The lease below, the retry backoff, and `available_at` are all
+             * `now()` plus an elapsed offset. A duration means the same thing
+             * either side of a clock change; a WALL-CLOCK time does not. So
+             * this engine has no timezone in it at all — grep it, there is not
+             * one — and that is a property to keep rather than a gap to fill.
+             *
+             * It matters because the organization timezone defaults to
+             * `Etc/GMT+5`, a FIXED OFFSET with no daylight saving, and says so
+             * in its own help text. That is a deliberate product decision, not
+             * a bug — but it means anything expressed as "9am daily" resolved
+             * through that setting runs an hour off local civil time from March
+             * to November. It has already bitten company- and org-scoped
+             * schedules elsewhere in the app.
+             *
+             * §5.5 asks for DST behaviour to be settled BEFORE schedules are
+             * built, and the moment that arrives is known: the sweep that would
+             * raise `item.low`, `vehicle.service_due` and
+             * `vehicle.insurance_expiring`, which are declared and unraised for
+             * exactly that reason. Whoever builds it inherits the question this
+             * class currently does not have to answer — and must answer it,
+             * rather than reading the absence of a timezone here as permission
+             * to skip it.
+             */
+
             // A durable lease serializes workers without holding a transaction
             // open across network calls. Abandoned actions remain on the run.
             $token = (string) Str::uuid();
