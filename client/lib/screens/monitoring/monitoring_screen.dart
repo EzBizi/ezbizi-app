@@ -142,7 +142,19 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     bool canViewCameras,
   ) {
     if (_active == _SubTab.general && canViewGeneral) {
-      return GeneralTab(api: widget.api, session: widget.session);
+      // The General map's person summary offers a jump to Desktop Monitoring.
+      // The sub-tab is not a route, so nothing below this screen can switch
+      // it — the switch is handed down as a callback. It is handed down ONLY
+      // with `monitoring.screenshots.view`: without it the Desktop Monitoring
+      // chip is locked, and a jump to a tab you cannot open is a button that
+      // can only ever fail. Null is what makes the summary show none.
+      return GeneralTab(
+        api: widget.api,
+        session: widget.session,
+        onOpenDesktopMonitoring: canViewScreenshots
+            ? () => setState(() => _active = _SubTab.desktopMonitoring)
+            : null,
+      );
     }
 
     if (_active == _SubTab.desktopMonitoring && canViewScreenshots) {

@@ -8,6 +8,7 @@ import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/side_panel.dart';
 import 'floor_plan_canvas.dart';
+import 'floor_plan_summary.dart';
 
 /// Monitoring — General: an organization's machines laid out on a floor plan
 /// (spec docs/superpowers/specs/2026-09-09-monitoring-general-map-design.md).
@@ -77,15 +78,38 @@ import 'floor_plan_canvas.dart';
 /// have since left must never paint under the plan you are now looking at. The
 /// poll timer is cancelled on dispose and on every plan-switch.
 class GeneralTab extends StatefulWidget {
-  const GeneralTab({super.key, required this.api, required this.session});
+  const GeneralTab({
+    super.key,
+    required this.api,
+    required this.session,
+    this.onOpenDesktopMonitoring,
+  });
 
   final ApiClient api;
   final Session session;
+
+  /// Switches the Monitoring screen to its Desktop Monitoring sub-tab.
+  ///
+  /// A callback rather than a Navigator push because the sub-tab is not a
+  /// route: [MonitoringScreen] owns which chip is active, so the only thing
+  /// that can switch it is the screen itself. Null when the viewer lacks
+  /// `monitoring.screenshots.view` (the screen passes nothing then, and its
+  /// chip is locked for the same reason) — the summary offers no jump at all
+  /// in that case rather than one that lands on a refusal.
+  final VoidCallback? onOpenDesktopMonitoring;
 
   /// How often the selected plan's status is re-read. Polling, not push —
   /// live push is deferred for the whole module until it earns its keep (spec
   /// "Deferred").
   static const Duration pollInterval = Duration(seconds: 30);
+
+  /// Above this width the summary is a rail to the RIGHT of the map; at or
+  /// below it, the summary drops underneath. The map is fit-to-canvas, so a
+  /// rail always costs the picture its own width — at 900px the map would be
+  /// down to ~580px with the rail beside it, which is where a 40-column grid
+  /// stops being readable. Below that the map keeps the full width and the
+  /// summary takes a turn underneath it.
+  static const double summaryBeside = 900;
 
   static const String noPermissionNote =
       'Your role does not include monitoring.view, so floor plans are not '
@@ -204,6 +228,27 @@ class _GeneralTabState extends State<GeneralTab> {
 
   bool get _canManage =>
       widget.session.me?.can('monitoring.map.manage') ?? false;
+
+  /// Whether the Desktop Monitoring jump is offered at all — the same grant
+  /// MonitoringScreen gates that chip on. Without it the tab it would switch
+  /// to is locked and its endpoints 403.
+  bool get _canViewScreenshots =>
+      widget.session.me?.can('monitoring.screenshots.view') ?? false;
+
+  /// The selected plan's scope, worded the way the picker's own group headings
+  /// word it ("Company · A-1 Chimney"), so the summary names the plan's place
+  /// in the same words you chose it by.
+  String get _scopeLabel {
+    final scope =
+        (_selectedPlan?['scope'] as Map<String, dynamic>?) ?? const {};
+    final type = scope['type'] as String? ?? '';
+    final label = scope['label'] as String? ?? '';
+
+    if (type.isEmpty && label.isEmpty) return '';
+    if (label.isEmpty) return _typeTitle(type);
+
+    return '${_typeTitle(type)} · $label';
+  }
 
   /// What the canvas draws: the draft while one exists, the server's layout
   /// otherwise. One getter so no widget has to remember which is current.
@@ -1099,23 +1144,74 @@ class _GeneralTabState extends State<GeneralTab> {
           ],
           _PlanCounts(layout: layout),
           const SizedBox(height: 8),
-          FloorPlanCanvas(
-            key: const Key('floor-plan-canvas'),
-            layout: layout,
-            status: _status ?? const {},
-            selectedNodeId: _selectedNodeId,
-            onSelectNode: _selectNode,
-            editable: _editing,
-            onNodeMoved: _editing ? _moveNode : null,
-            wallMode: _editing && _wallMode,
-            onWallPoint: _editing && _wallMode ? _wallPoint : null,
-            pendingWall: _pendingWall,
-            selectedWallIndex: _selectedWallIndex,
-            onSelectWall: _editing && _wallMode ? _selectWall : null,
-          ),
+          _mapAndSummary(context, name: name, layout: layout),
         ] else
           const SizedBox.shrink(),
       ],
+    );
+  }
+
+  /// The map and the summary, side by side or stacked.
+  ///
+  /// A [LayoutBuilder] rather than a MediaQuery read: what decides this is how
+  /// much room the TAB has, which is not the window — the app's own nav rail
+  /// takes a slice of it on desktop, and the same window is a different amount
+  /// of room with it open. The canvas already sizes itself from the width it
+  /// is handed, so it takes whatever the rail leaves without being told.
+  ///
+  /// The summary is mounted in BOTH arms with the same inputs; only where it
+  /// sits changes. So nothing the pane says depends on the width, and a narrow
+  /// window is never told less than a wide one.
+  Widget _mapAndSummary(
+    BuildContext context, {
+    required String name,
+    required Map<String, dynamic> layout,
+  }) {
+    final canvas = FloorPlanCanvas(
+      key: const Key('floor-plan-canvas'),
+      layout: layout,
+      status: _status ?? const {},
+      selectedNodeId: _selectedNodeId,
+      onSelectNode: _selectNode,
+      editable: _editing,
+      onNodeMoved: _editing ? _moveNode : null,
+      wallMode: _editing && _wallMode,
+      onWallPoint: _editing && _wallMode ? _wallPoint : null,
+      pendingWall: _pendingWall,
+      selectedWallIndex: _selectedWallIndex,
+      onSelectWall: _editing && _wallMode ? _selectWall : null,
+    );
+
+    final summary = FloorPlanSummary(
+      planName: name,
+      scopeLabel: _scopeLabel,
+      // The DRAFT while one exists, so the counts describe what is on screen.
+      layout: layout,
+      status: _status ?? const {},
+      selectedNodeId: _selectedNodeId,
+      onOpenDesktopMonitoring: _canViewScreenshots
+          ? widget.onOpenDesktopMonitoring
+          : null,
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth <= GeneralTab.summaryBeside) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [canvas, const SizedBox(height: 12), summary],
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: canvas),
+            const SizedBox(width: 16),
+            SizedBox(width: FloorPlanSummary.railWidth, child: summary),
+          ],
+        );
+      },
     );
   }
 }
@@ -1549,6 +1645,17 @@ class _AssignPanelState extends State<_AssignPanel> {
   }
 }
 
+/// A scope type as a heading word. Top-level, not private to the picker: the
+/// summary pane names the selected plan's scope in the same words the picker's
+/// group heading does, and two spellings of "Franchise" on one screen is the
+/// kind of drift nobody reports and everybody notices.
+String _typeTitle(String type) => switch (type) {
+  'organization' => 'Organization',
+  'company' => 'Company',
+  'franchise' => 'Franchise',
+  _ => type.isEmpty ? 'Other' : type,
+};
+
 /// The plan picker: the plans the viewer can see, grouped by scope so the same
 /// office reads as one group. Org first, then each company, then each
 /// franchise; the heading carries the scope's own label so two companies with
@@ -1577,12 +1684,6 @@ class _PlanPicker extends StatelessWidget {
     _ => 3,
   };
 
-  static String _typeTitle(String type) => switch (type) {
-    'organization' => 'Organization',
-    'company' => 'Company',
-    'franchise' => 'Franchise',
-    _ => type.isEmpty ? 'Other' : type,
-  };
 
   @override
   Widget build(BuildContext context) {

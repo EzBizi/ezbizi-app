@@ -488,20 +488,38 @@ class FloorPlansController extends Controller
      *
      * Resolved with two queries, never N+1: one `users` query for the nodes'
      * assignees narrowed to who the caller may see (`constrainToVisiblePeople`),
-     * one `monitored_devices` query for which of those have been seen inside the
-     * online window. Everything else is decided in memory.
+     * one `monitored_devices` query for every device those people own, newest
+     * beat first. Everything else — who is online, when each was last seen, and
+     * whose machine has reported specs — is decided in memory off that one
+     * ordered result set. Adding a person to a plan adds no query; adding a
+     * hundred adds none either.
      *
      * A node whose `user_id` is null, or names a person the caller may not see
      * (or a deleted user — absent from the visible set either way), resolves to
-     * `{assigned:false, online:false, name:null}`: an unseeable assignee must
-     * never leak so much as a name. A visible assignee resolves to
-     * `{assigned:true, online:<seen recently>, name:<their name>}`.
+     * every field empty: `{assigned:false, online:false, name:null,
+     * last_seen_at:null}` (plus `specs:null` when the key is sent at all). An
+     * unseeable assignee must never leak so much as a name, and the sidebar
+     * that reads this must have nothing to draw a status from.
      *
-     * @return array<string, array{assigned: bool, online: bool, name: ?string}>
+     * ── Why `specs` is a KEY that can be absent ───────────────────────
+     *
+     * `specs` is gated on `monitoring.specs.view`, the same grant
+     * DevicesController::present gates it on, and it is withheld the same way:
+     * the KEY is absent, not present-and-null. Present-and-null would tell a
+     * caller who lacks the grant that specs exist to be granted — and here it
+     * would be worse than on the devices roster, because null is also what a
+     * permitted caller sees for a person whose machine runs no agent. One
+     * absent key and one null value keep "you may not see this" and "there is
+     * nothing to see" from collapsing into the same answer; the client tells
+     * them apart with `containsKey`, exactly as PcSpecsTab's device row does.
+     *
+     * @return array<string, array{assigned: bool, online: bool, name: ?string, last_seen_at: ?string, specs?: ?array}>
      */
     private function status(MonitoringFloorPlan $plan, User $actor): array
     {
         $nodes = $plan->layout['nodes'] ?? [];
+
+        $canSeeSpecs = $actor->hasPermission('monitoring.specs.view');
 
         // The distinct, non-null assignee ids named across every node.
         $userIds = collect($nodes)
@@ -511,7 +529,15 @@ class FloorPlansController extends Controller
             ->values();
 
         $visible = collect();
-        $onlineIds = collect();
+
+        /**
+         * Per visible person: their newest beat, and the specs of their
+         * newest device that has any. Both resolved from the one ordered
+         * devices query below, never per node.
+         *
+         * @var array<string, array{seen: ?\Illuminate\Support\Carbon, specs: ?array}>
+         */
+        $devices = [];
 
         if ($userIds->isNotEmpty()) {
             // constrainToVisiblePeople adds OR arms, so it is wrapped in a group
@@ -523,15 +549,37 @@ class FloorPlansController extends Controller
                 ->keyBy('id');
 
             if ($visible->isNotEmpty()) {
-                $onlineIds = MonitoredDevice::query()
+                // Newest beat first, so the FIRST row seen for a person is their
+                // most recent one and the first carrying specs is their most
+                // recently seen machine that has any. A device that has never
+                // beaten sorts last (NULL last under DESC) and is skipped by the
+                // null checks either way.
+                $rows = MonitoredDevice::query()
                     ->whereIn('user_id', $visible->keys()->all())
-                    ->where('last_seen_at', '>=', now()->subMinutes(self::ONLINE_WINDOW_MINUTES))
-                    ->distinct()
-                    ->pluck('user_id');
+                    ->orderByDesc('last_seen_at')
+                    ->get(['user_id', 'last_seen_at', 'specs']);
+
+                foreach ($rows as $row) {
+                    $userId = $row->user_id;
+                    $entry = $devices[$userId] ?? ['seen' => null, 'specs' => null];
+
+                    if ($entry['seen'] === null && $row->last_seen_at !== null) {
+                        $entry['seen'] = $row->last_seen_at;
+                    }
+
+                    // An empty specs array is "reported nothing", not "reported":
+                    // it would render as a row of blanks, so it is skipped and a
+                    // later device with real numbers can still answer.
+                    if ($entry['specs'] === null && is_array($row->specs) && $row->specs !== []) {
+                        $entry['specs'] = $row->specs;
+                    }
+
+                    $devices[$userId] = $entry;
+                }
             }
         }
 
-        $onlineSet = $onlineIds->flip();
+        $cutoff = now()->subMinutes(self::ONLINE_WINDOW_MINUTES);
 
         $status = [];
 
@@ -545,13 +593,37 @@ class FloorPlansController extends Controller
             $userId = $node['user_id'] ?? null;
             $person = ($userId === null || $userId === '') ? null : $visible->get($userId);
 
-            $status[$nodeId] = $person === null
-                ? ['assigned' => false, 'online' => false, 'name' => null]
-                : [
-                    'assigned' => true,
-                    'online' => $onlineSet->has($userId),
-                    'name' => $person->name,
+            if ($person === null) {
+                $entry = [
+                    'assigned' => false,
+                    'online' => false,
+                    'name' => null,
+                    'last_seen_at' => null,
                 ];
+
+                if ($canSeeSpecs) {
+                    $entry['specs'] = null;
+                }
+
+                $status[$nodeId] = $entry;
+
+                continue;
+            }
+
+            $seen = $devices[$userId]['seen'] ?? null;
+
+            $entry = [
+                'assigned' => true,
+                'online' => $seen !== null && $seen->greaterThanOrEqualTo($cutoff),
+                'name' => $person->name,
+                'last_seen_at' => $seen?->toIso8601String(),
+            ];
+
+            if ($canSeeSpecs) {
+                $entry['specs'] = $devices[$userId]['specs'] ?? null;
+            }
+
+            $status[$nodeId] = $entry;
         }
 
         return $status;

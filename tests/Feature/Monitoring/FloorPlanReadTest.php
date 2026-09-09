@@ -139,14 +139,17 @@ class FloorPlanReadTest extends TestCase
         // One the manager CANNOT see (assigned under the sibling company).
         $unseenPerson = $this->userWithRole($alpha, 'Unseen Person', [], onlyAt: $franchiseB);
 
-        $this->inTenant($alpha['org'], function () use ($alpha, $onlinePerson, $offlinePerson, $unseenPerson) {
+        $onlineBeat = now()->subMinutes(1);
+        $offlineBeat = now()->subMinutes(10);
+
+        $this->inTenant($alpha['org'], function () use ($alpha, $onlinePerson, $offlinePerson, $unseenPerson, $onlineBeat, $offlineBeat) {
             MonitoredDevice::factory()->create([
                 'organization_id' => $alpha['org']->id, 'user_id' => $onlinePerson->id,
-                'last_seen_at' => now()->subMinutes(1),
+                'last_seen_at' => $onlineBeat,
             ]);
             MonitoredDevice::factory()->create([
                 'organization_id' => $alpha['org']->id, 'user_id' => $offlinePerson->id,
-                'last_seen_at' => now()->subMinutes(10),
+                'last_seen_at' => $offlineBeat,
             ]);
             // The unseen person's machine is online — proving the node is hidden
             // by reach, not because they happen to be offline.
@@ -174,10 +177,134 @@ class FloorPlanReadTest extends TestCase
             ->assertOk()
             ->json('data.status');
 
-        $this->assertSame(['assigned' => true, 'online' => true, 'name' => $onlinePerson->name], $status['n1']);
-        $this->assertSame(['assigned' => true, 'online' => false, 'name' => $offlinePerson->name], $status['n2']);
-        $this->assertSame(['assigned' => false, 'online' => false, 'name' => null], $status['n3']);
-        $this->assertSame(['assigned' => false, 'online' => false, 'name' => null], $status['n4']);
+        // This caller holds `monitoring.view` alone, so no `specs` key is sent
+        // at all — see FloorPlansController::status. The seen-at stamp is not
+        // gated and rides along on every resolved node.
+        $this->assertSame([
+            'assigned' => true, 'online' => true, 'name' => $onlinePerson->name,
+            'last_seen_at' => $onlineBeat->toIso8601String(),
+        ], $status['n1']);
+        $this->assertSame([
+            'assigned' => true, 'online' => false, 'name' => $offlinePerson->name,
+            'last_seen_at' => $offlineBeat->toIso8601String(),
+        ], $status['n2']);
+        $this->assertSame(
+            ['assigned' => false, 'online' => false, 'name' => null, 'last_seen_at' => null],
+            $status['n3'],
+        );
+        $this->assertSame(
+            ['assigned' => false, 'online' => false, 'name' => null, 'last_seen_at' => null],
+            $status['n4'],
+        );
+    }
+
+    /**
+     * The sidebar's two extra facts (Task 8): a visible assignee's node carries
+     * their most recent `last_seen_at` and the specs of their most recently
+     * seen machine that HAS any — and an unseeable assignee's node carries
+     * neither, though hers is the machine with both.
+     *
+     * The online person deliberately owns TWO devices: her newest beat is from
+     * a device that has reported no specs at all, and the specs come from an
+     * older one. So the two fields cannot both be read off "the newest row" —
+     * a test where one device answered both would pass against an
+     * implementation that only ever looks at the first row it sees.
+     */
+    public function test_show_carries_last_seen_at_and_specs_for_a_visible_assignee(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $companyA = $alpha['company'];
+        $franchiseA = $alpha['franchise'];
+
+        $franchiseB = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $c = Company::create(['organization_id' => $alpha['org']->id, 'name' => 'Company B', 'is_active' => true]);
+
+            return Franchise::create([
+                'organization_id' => $alpha['org']->id, 'company_id' => $c->id, 'name' => 'B F1', 'is_active' => true,
+            ]);
+        });
+
+        $seenPerson = $this->userWithRole($alpha, 'Seen Person', [], onlyAt: $franchiseA);
+        $unseenPerson = $this->userWithRole($alpha, 'Unseen Person', [], onlyAt: $franchiseB);
+
+        $newestBeat = now()->subMinutes(2);
+        $olderBeat = now()->subMinutes(90);
+        $specs = ['ram_gb' => 32, 'disk_free_gb' => 128, 'os_version' => 'Windows 11'];
+
+        $this->inTenant($alpha['org'], function () use ($alpha, $seenPerson, $unseenPerson, $newestBeat, $olderBeat, $specs) {
+            // Newest beat, no specs: a browser session reports none.
+            MonitoredDevice::factory()->create([
+                'organization_id' => $alpha['org']->id, 'user_id' => $seenPerson->id,
+                'last_seen_at' => $newestBeat, 'specs' => null,
+            ]);
+            // Older beat, and the only machine that has ever reported specs.
+            MonitoredDevice::factory()->create([
+                'organization_id' => $alpha['org']->id, 'user_id' => $seenPerson->id,
+                'last_seen_at' => $olderBeat, 'specs' => $specs,
+            ]);
+            // The unseeable person's machine is online AND has specs — so the
+            // nulls on her node are reach hiding them, not an absence of data.
+            MonitoredDevice::factory()->create([
+                'organization_id' => $alpha['org']->id, 'user_id' => $unseenPerson->id,
+                'last_seen_at' => now()->subMinute(), 'specs' => ['ram_gb' => 8],
+            ]);
+        });
+
+        $plan = $this->makePlan($alpha, 'Company A plan', ['assigned_company_id' => $companyA->id], [
+            'grid' => ['cols' => 10, 'rows' => 10],
+            'walls' => [],
+            'nodes' => [
+                ['id' => 'n1', 'x' => 1, 'y' => 1, 'label' => 'PC1', 'user_id' => $seenPerson->id],
+                ['id' => 'n2', 'x' => 2, 'y' => 1, 'label' => 'PC2', 'user_id' => $unseenPerson->id],
+                ['id' => 'n3', 'x' => 3, 'y' => 1, 'label' => 'PC3', 'user_id' => null],
+            ],
+        ]);
+
+        $manager = $this->companyManager(
+            $alpha, $companyA, 'Company A Mgr', ['monitoring.view', 'monitoring.specs.view']
+        );
+
+        $status = $this->signedInAs($manager)
+            ->getJson('/api/v1/monitoring/floor-plans/'.$plan->id)
+            ->assertOk()
+            ->json('data.status');
+
+        // Field by field, and the key list too, so nothing extra rides along.
+        // `specs` is compared with assertEquals rather than assertSame: MySQL's
+        // JSON type reorders an object's keys on write, so the array comes back
+        // with the same pairs in a different order.
+        $node = $status['n1'];
+        $this->assertSame(['assigned', 'online', 'name', 'last_seen_at', 'specs'], array_keys($node));
+        $this->assertTrue($node['assigned']);
+        $this->assertTrue($node['online']);
+        $this->assertSame($seenPerson->name, $node['name']);
+        $this->assertSame($newestBeat->toIso8601String(), $node['last_seen_at']);
+        $this->assertEquals($specs, $node['specs']);
+
+        // The control: everything the visible node carried, absent here.
+        $this->assertSame(
+            ['assigned' => false, 'online' => false, 'name' => null, 'last_seen_at' => null, 'specs' => null],
+            $status['n2'],
+        );
+        $this->assertSame(
+            ['assigned' => false, 'online' => false, 'name' => null, 'last_seen_at' => null, 'specs' => null],
+            $status['n3'],
+        );
+
+        // Without `monitoring.specs.view` the specs KEY is absent, not null —
+        // the same withholding DevicesController::present does. `last_seen_at`
+        // is still there, which is what proves the key is gone because of the
+        // grant and not because this caller resolved nothing.
+        $viewerOnly = $this->companyManager($alpha, $companyA, 'Company A Viewer', ['monitoring.view']);
+
+        $plain = $this->signedInAs($viewerOnly)
+            ->getJson('/api/v1/monitoring/floor-plans/'.$plan->id)
+            ->assertOk()
+            ->json('data.status');
+
+        $this->assertArrayNotHasKey('specs', $plain['n1']);
+        $this->assertSame($newestBeat->toIso8601String(), $plain['n1']['last_seen_at']);
+        $this->assertArrayNotHasKey('specs', $plain['n2']);
     }
 
     public function test_without_monitoring_view_index_and_show_are_refused(): void
