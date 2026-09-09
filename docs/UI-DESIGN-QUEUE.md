@@ -1040,6 +1040,22 @@ its converse — **a real failure must not be dressed as a polite note.**
 >
 > Test to add with it: assert the cells sum to the row count on a fixture carrying all five
 > states, so a sixth state added later fails here instead of silently going uncounted.
+>
+> **Verified again 2026-09-09 after HR reported it built: still unchanged, and their message
+> had crossed the ruling.** Everything else on their list measured true — key, boxed error
+> cell, `narrow` branch, footnote under a divider, lock plus verbatim reason, empty sentence,
+> five tests plus a caller test. **The summary was accurate and the one thing that was not
+> still needed the file opened**, which is the case for measuring rather than reading a
+> hand-over: a summary can only be true as of when it was written.
+
+**Second finding, not blocking, raised with the same ruling.** The breakpoint reads
+`MediaQuery.sizeOf(context).width < 600` — the WINDOW's width, not the card's. Harmless today
+because the aside stacks full-width, but `TrainingCard` is a keyed widget passed into a slot,
+so it is built to be placed. Put it in a side panel and MediaQuery reports the desktop width
+while the card has 320 points, rendering a three-cell strip into a column that cannot hold it —
+silently. **`LayoutBuilder` asks the question the layout depends on** (how much room do I have)
+rather than what kind of device this is, and it is what the work schedule card uses for the
+same decision.
 
 > **UI/UX keeps the verification**, which is the half that actually answers the rule: HR
 > sends a SHA, and it is checked against the drawing — the three counts, the lapsed one
