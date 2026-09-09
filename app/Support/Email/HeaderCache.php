@@ -132,6 +132,59 @@ final class HeaderCache
     }
 
     /**
+     * The unread count, for the same {@see TTL_SECONDS} as a page of headers.
+     *
+     * ── Why this exists, found by the Dashboard session ──────────
+     *
+     * `EmailGlance` calls `unreadCount()` for EVERY readable mailbox, serially,
+     * on every load of the home screen. No reader cached it. So the first
+     * screen of the application had its load time bounded by third-party mail
+     * servers — mailboxes × the reader's timeout in the worst case, and there
+     * is nothing between "answers in 200ms" and "gives up at ten seconds",
+     * because a slow host is not an error and the per-mailbox `catch` only
+     * helps when something actually fails.
+     *
+     * The asymmetry is what makes this obviously right rather than a judgement
+     * call: this module ALREADY caches the expensive call — a whole page of
+     * headers, above — and did not cache the cheap one that runs on a screen
+     * everybody opens. Same TTL, same argument, one of them simply never got
+     * written.
+     *
+     * ── Per MAILBOX, not per person, and that is the win ─────────
+     *
+     * An unread count is a fact about the mailbox. Four colleagues opening the
+     * dashboard within a minute share one answer instead of making four
+     * identical round trips to the same mail server.
+     *
+     * ── Sixty seconds is a count, not a truth ────────────────────
+     *
+     * `EmailGlance` declares `SNAPSHOT = true` — it is explicitly a reading at
+     * a moment rather than a windowed figure — so a count that lags a minute is
+     * still a count. Nobody acts on the difference between 11 and 12 unread;
+     * they act on "there is mail waiting", which a minute does not change.
+     */
+    public function unread(Mailbox $mailbox, callable $count): int
+    {
+        $key = sprintf(
+            'email:unread:%s:%s',
+            $mailbox->organization_id,
+            $mailbox->getKey(),
+        );
+
+        $cached = Cache::get($key);
+
+        if (is_int($cached)) {
+            return $cached;
+        }
+
+        $fresh = (int) $count();
+
+        Cache::put($key, $fresh, self::TTL_SECONDS);
+
+        return $fresh;
+    }
+
+    /**
      * Organization, mailbox, cursor, page size.
      *
      * The page size is part of the key because a page of 25 and a page of 50

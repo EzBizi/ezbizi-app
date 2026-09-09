@@ -70,6 +70,7 @@ class MailboxReaders
             $this->readerFor($mailbox),
             app(TenantContext::class),
             app(EventEmitter::class),
+            app(HeaderCache::class),
         );
     }
 

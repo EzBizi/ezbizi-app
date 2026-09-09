@@ -115,6 +115,82 @@ class MailboxHealthTest extends TestCase
             ->getJson(self::ENDPOINT."/{$mailbox->id}/messages/m-1");
     }
 
+    /**
+     * The unread count is asked of the provider ONCE a minute, not once a load.
+     *
+     * ═══════════════════════════════════════════════════════════════
+     *  Found by the Dashboard session, reading the code rather than a
+     *  timer: EmailGlance calls unreadCount for EVERY readable mailbox
+     *  on EVERY load of the home screen, serially, and nothing cached
+     *  it. So the first screen of the application had its load time
+     *  bounded by third-party mail servers — and a merely SLOW host is
+     *  not an error, so the per-mailbox catch does not help.
+     *
+     *  What makes it obviously right rather than a judgement call: this
+     *  module already cached the EXPENSIVE call, a whole page of
+     *  headers, for the same sixty seconds. The cheap one that runs on
+     *  a screen everybody opens simply never got written.
+     * ═══════════════════════════════════════════════════════════════
+     */
+    public function test_the_unread_count_is_asked_of_the_provider_once_a_minute(): void
+    {
+        $this->withScriptedProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+
+        ScriptedMailboxReader::reset();
+
+        $this->inTenant($t['org'], function () use ($mailbox) {
+            $reader = app(MailboxReaders::class)->for($mailbox);
+
+            $first  = $reader->unreadCount($mailbox);
+            $second = $reader->unreadCount($mailbox);
+
+            // THE CONTROL, and without it a reader that always answered zero
+            // without asking anybody would pass the assertion below.
+            $this->assertSame(
+                1,
+                ScriptedMailboxReader::$unreadAsked,
+                'The mail server was asked twice for a number that cannot have '
+                .'changed, on a screen that asks once per mailbox per load.',
+            );
+
+            $this->assertSame($first, $second, 'The cached answer differs from the fresh one.');
+        });
+    }
+
+    /**
+     * Each mailbox is its own answer.
+     *
+     * A cache key that collapsed two mailboxes would show one inbox's unread
+     * count against another's name — quieter than a slow dashboard and far
+     * worse, because it reads as information.
+     */
+    public function test_two_mailboxes_do_not_share_one_cached_count(): void
+    {
+        $this->withScriptedProvider();
+
+        $t     = $this->provisionTenant('A1-Group');
+        $one   = $this->inbox($t);
+        $two   = $this->inbox($t, 'bookings@a-1chimney.com');
+
+        ScriptedMailboxReader::reset();
+
+        $this->inTenant($t['org'], function () use ($one, $two) {
+            $readers = app(MailboxReaders::class);
+
+            $readers->for($one)->unreadCount($one);
+            $readers->for($two)->unreadCount($two);
+
+            $this->assertSame(
+                2,
+                ScriptedMailboxReader::$unreadAsked,
+                'A second mailbox was served a cached count belonging to the first.',
+            );
+        });
+    }
+
     private function reload(array $t, Mailbox $mailbox): Mailbox
     {
         return $this->inTenant($t['org'], fn () => Mailbox::findOrFail($mailbox->getKey()));
