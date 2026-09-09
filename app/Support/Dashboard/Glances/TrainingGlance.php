@@ -93,12 +93,25 @@ final class TrainingGlance extends DescribedGlance
             if ($testIds === []) {
                 return $this->payload([
                     'empty' => true,
-                    // "in reach" is OUR scoping vocabulary, not a word a reader
-                    // has been taught, and it half-implies an "out of reach"
-                    // — hinting at tests they cannot see (UI/UX, 2026-09-09).
-                    // "To track" is true of both cases this state covers: none
-                    // exist, or none are visible to this reader.
-                    'sentence' => 'No tests to track.',
+                    // "In reach" is deliberate, and it was briefly changed to
+                    // "No tests to track." before being changed back the same
+                    // day — so the reasoning is here to stop a third round.
+                    //
+                    // It reads like internal vocabulary and is not: every count
+                    // on this board is scoped to the person reading it, and this
+                    // phrase is what stops "12 customers" being taken for the
+                    // organization's total rather than their own. For an EMPTY
+                    // state it is the more honest of the two — "no tests in
+                    // reach" does not claim the organization has none, and "no
+                    // tests to track" does. On a board where a franchise manager
+                    // sees a subset of everything, that is the whole point.
+                    //
+                    // It is also house vocabulary, in ELEVEN files: Fleet, Jobs,
+                    // Services, Inventory, Inspection, Customers, Phone,
+                    // Business Profile and the rest all say it (UI/UX, measured
+                    // 2026-09-09 after a first measurement of ui_strings.dart
+                    // alone returned a false zero — glance copy is PHP).
+                    'sentence' => 'No tests in reach.',
                 ]);
             }
 
