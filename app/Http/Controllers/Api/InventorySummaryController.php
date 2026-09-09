@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\InventoryItem;
+use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Inventory\InventorySummary;
 use App\Support\Scoping\ViewScope;
 use Illuminate\Http\JsonResponse;
@@ -25,6 +26,14 @@ class InventorySummaryController extends Controller
     {
         $this->authorize('viewAny', InventoryItem::class);
 
+        $periodKey = (string) $request->query('period', 'month');
+
+        if (! in_array($periodKey, DashboardPeriod::VALUES, true)) {
+            return response()->json([
+                'message' => 'That is not a period this dashboard offers.',
+            ], 422);
+        }
+
         $user = $request->user();
         $scope = ViewScope::forUser($user);
         $counts = InventorySummary::counts($user, $scope);
@@ -33,11 +42,15 @@ class InventorySummaryController extends Controller
         return response()->json([
             'health' => $this->health($counts, $withMoney),
             'warnings' => InventorySummary::warnings($user, $scope, $counts, $withMoney),
-            // Task 4 fills this. It ships with its final SHAPE now — an object
-            // with empty members — so that the client is never written against
-            // a shape that later changes type.
-            'movement' => ['period' => 'month', 'buckets' => [], 'lines' => []],
-        ]);
+            'movement' => InventorySummary::movement(
+                $user,
+                $scope,
+                DashboardPeriod::for($user, $periodKey),
+            ),
+            // movement.points are quantities, always meant as decimals — an
+            // integral point (0, or a whole 10) must still arrive as a float
+            // so the client never has to guess a mixed-type array's shape.
+        ], 200, [], JSON_PRESERVE_ZERO_FRACTION);
     }
 
     /**

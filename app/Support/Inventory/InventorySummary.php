@@ -2,11 +2,17 @@
 
 namespace App\Support\Inventory;
 
+use App\Models\InventoryAdjustment;
 use App\Models\InventoryBalance;
+use App\Models\InventoryIssueLine;
 use App\Models\InventoryItem;
 use App\Models\InventoryLocation;
 use App\Models\InventoryPurchaseOrder;
+use App\Models\InventoryReceiveLine;
+use App\Models\InventorySaleFulfillmentLine;
+use App\Models\InventoryTransferLine;
 use App\Models\User;
+use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Scoping\ViewScope;
 use App\Support\Time\ViewTimezone;
 use Illuminate\Support\Carbon;
@@ -173,6 +179,149 @@ final class InventorySummary
         }
 
         return array_values(array_filter($rows, fn (array $row) => $row['count'] > 0));
+    }
+
+    /**
+     * Time series behind the General tab's movement chart.
+     *
+     * `transferred` carries internal => true and is never folded into `in`
+     * or `out` — moving stock between our own shelves is net zero, not
+     * activity. `out` sums two sources (issues and sale fulfilments), which
+     * is exactly the kind of thing that can silently lose one and still
+     * look right everywhere else.
+     *
+     * @return array{period:string,buckets:list<string>,lines:list<array{key:string,label:string,internal:bool,points:list<float>}>}
+     */
+    public static function movement(User $user, ViewScope $scope, DashboardPeriod $period): array
+    {
+        $buckets = self::bucketAxis($period);
+        $slot = array_flip($buckets);
+
+        $visibleItem = fn ($q) => InventoryVisibility::constrain($q, $user, $scope);
+        $visibleLocation = fn ($q) => InventoryVisibility::constrain($q, $user, $scope);
+
+        // Another extra hop, same trap as sale fulfilments: a receive line has
+        // no item_id of its own — it carries purchase_order_line_id, and the
+        // item lives on THAT row. whereHas('item', ...) here would throw
+        // (InventoryReceiveLine has no item() relation at all), not silently
+        // match nothing, but the join it needs is still one hop further than
+        // issue/transfer lines.
+        $received = InventoryReceiveLine::query()
+            ->join('inventory_receives', 'inventory_receives.id', '=', 'inventory_receive_lines.receive_id')
+            ->join('inventory_purchase_order_lines', 'inventory_purchase_order_lines.id', '=', 'inventory_receive_lines.purchase_order_line_id')
+            ->whereIn('inventory_purchase_order_lines.item_id', $visibleItem(InventoryItem::query())->select('id'))
+            ->whereIn('inventory_receives.location_id', $visibleLocation(InventoryLocation::query())->select('id'))
+            ->whereBetween('inventory_receives.received_on', [
+                $period->startsOn->toDateString(), $period->endsOn->toDateString(),
+            ])
+            ->get(['inventory_receives.received_on as on', 'inventory_receive_lines.qty as qty']);
+
+        $issued = InventoryIssueLine::query()
+            ->join('inventory_issues', 'inventory_issues.id', '=', 'inventory_issue_lines.issue_id')
+            ->whereHas('item', $visibleItem)
+            ->whereIn('inventory_issues.location_id', $visibleLocation(InventoryLocation::query())->select('id'))
+            ->whereBetween('inventory_issues.issued_on', [
+                $period->startsOn->toDateString(), $period->endsOn->toDateString(),
+            ])
+            ->get(['inventory_issues.issued_on as on', 'inventory_issue_lines.qty as qty']);
+
+        // Sale fulfilments join `out` too, but the shape is different from the
+        // other three line tables: this one has no item_id of its own — the
+        // item lives one hop further, on the sale LINE it fulfils.
+        $fulfilled = InventorySaleFulfillmentLine::query()
+            ->join('inventory_sale_fulfillments', 'inventory_sale_fulfillments.id', '=', 'inventory_sale_fulfillment_lines.fulfillment_id')
+            ->join('inventory_sale_lines', 'inventory_sale_lines.id', '=', 'inventory_sale_fulfillment_lines.sale_line_id')
+            ->whereIn('inventory_sale_lines.item_id', $visibleItem(InventoryItem::query())->select('id'))
+            ->whereIn('inventory_sale_fulfillments.location_id', $visibleLocation(InventoryLocation::query())->select('id'))
+            ->whereBetween('inventory_sale_fulfillments.fulfilled_on', [
+                $period->startsOn->toDateString(), $period->endsOn->toDateString(),
+            ])
+            ->get([
+                'inventory_sale_fulfillments.fulfilled_on as on',
+                'inventory_sale_fulfillment_lines.qty as qty',
+            ]);
+
+        $transferred = InventoryTransferLine::query()
+            ->join('inventory_transfers', 'inventory_transfers.id', '=', 'inventory_transfer_lines.transfer_id')
+            ->whereHas('item', $visibleItem)
+            ->whereIn('inventory_transfers.from_location_id', $visibleLocation(InventoryLocation::query())->select('id'))
+            ->whereBetween('inventory_transfers.transferred_on', [
+                $period->startsOn->toDateString(), $period->endsOn->toDateString(),
+            ])
+            ->get(['inventory_transfers.transferred_on as on', 'inventory_transfer_lines.qty as qty']);
+
+        // Signed, so a downward count reads negative on ONE line rather than
+        // being split across in and out — the sign is the information.
+        $adjusted = InventoryAdjustment::query()
+            ->whereHas('item', $visibleItem)
+            ->whereIn('location_id', $visibleLocation(InventoryLocation::query())->select('id'))
+            ->whereBetween('adjusted_on', [
+                $period->startsOn->toDateString(), $period->endsOn->toDateString(),
+            ])
+            ->get()
+            ->map(fn ($row) => (object) [
+                'on' => $row->adjusted_on,
+                'qty' => bcsub((string) $row->qty_after, (string) $row->qty_before, 3),
+            ]);
+
+        return [
+            'period' => $period->key,
+            'buckets' => $buckets,
+            'lines' => [
+                ['key' => 'in', 'label' => 'Received', 'internal' => false,
+                    'points' => self::points($received, $period, $slot, count($buckets))],
+                ['key' => 'out', 'label' => 'Issued and sold', 'internal' => false,
+                    'points' => self::points($issued->concat($fulfilled), $period, $slot, count($buckets))],
+                ['key' => 'adjusted', 'label' => 'Adjusted', 'internal' => false,
+                    'points' => self::points($adjusted, $period, $slot, count($buckets))],
+                // Net zero: stock moved between our own shelves. Never folded
+                // into in or out, and flagged so the client cannot either.
+                ['key' => 'transferred', 'label' => 'Transferred', 'internal' => true,
+                    'points' => self::points($transferred, $period, $slot, count($buckets))],
+            ],
+        ];
+    }
+
+    /** @return list<string> */
+    private static function bucketAxis(DashboardPeriod $period): array
+    {
+        $axis = [];
+        $at = $period->startsOn->copy();
+
+        // Walk the whole period so a quiet week returns a full axis rather than
+        // an empty chart the client has to invent labels for.
+        while ($at->lessThanOrEqualTo($period->endsOn)) {
+            $bucket = $period->bucket($at);
+            if (! in_array($bucket, $axis, true)) {
+                $axis[] = $bucket;
+            }
+            $at->addDay();
+        }
+
+        return $axis;
+    }
+
+    /**
+     * @param  iterable<object{on:mixed,qty:mixed}>  $rows
+     * @param  array<string,int>  $slot
+     * @return list<float>
+     */
+    private static function points(iterable $rows, DashboardPeriod $period, array $slot, int $width): array
+    {
+        $points = array_fill(0, $width, 0.0);
+
+        foreach ($rows as $row) {
+            // These are `date` columns — already calendar days. Parse them IN
+            // the view timezone; never round-trip one through UTC, which can
+            // move it a day.
+            $bucket = $period->bucket(Carbon::parse((string) $row->on, $period->timezone));
+
+            if (isset($slot[$bucket])) {
+                $points[$slot[$bucket]] += (float) $row->qty;
+            }
+        }
+
+        return $points;
     }
 
     /**

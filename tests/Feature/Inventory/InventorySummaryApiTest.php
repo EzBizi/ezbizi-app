@@ -5,7 +5,13 @@ namespace Tests\Feature\Inventory;
 use App\Models\InventoryBalance;
 use App\Models\InventoryItem;
 use App\Models\InventoryLocation;
+use App\Models\InventorySale;
+use App\Models\InventorySaleFulfillment;
+use App\Models\InventorySaleFulfillmentLine;
+use App\Models\InventorySaleLine;
 use App\Support\Inventory\InventoryItemStatus;
+use App\Support\Inventory\InventorySalePaymentStatus;
+use App\Support\Inventory\InventorySaleStatus;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -308,6 +314,237 @@ class InventorySummaryApiTest extends TestCase
         $this->assertArrayHasKey('location_holding_nothing', $byKey);
         $this->assertSame(1, $byKey['location_holding_nothing']['count']);
         $this->assertSame('1 location is holding nothing.', $byKey['location_holding_nothing']['sentence']);
+    }
+
+    public function test_a_transfer_is_neither_in_nor_out(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+
+        $this->seedOneTransferToday($tenant, qty: '10.000');
+
+        $lines = collect(
+            $this->signedInAs($boss)->getJson('/api/v1/inventory/summary')->assertOk()->json('movement.lines')
+        )->keyBy('key');
+
+        // The whole point: ten moved between two of our own shelves is not ten
+        // received and ten issued, and a chart that says so makes a quiet week
+        // look busy.
+        $this->assertSame(0.0, array_sum($lines['in']['points']));
+        $this->assertSame(0.0, array_sum($lines['out']['points']));
+        $this->assertSame(10.0, array_sum($lines['transferred']['points']));
+        $this->assertTrue($lines['transferred']['internal']);
+    }
+
+    public function test_an_adjustment_downward_counts_as_out(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+
+        $this->seedOneAdjustmentToday($tenant, before: '10.000', after: '4.000');
+
+        $lines = collect(
+            $this->signedInAs($boss)->getJson('/api/v1/inventory/summary')->assertOk()->json('movement.lines')
+        )->keyBy('key');
+
+        $this->assertSame(-6.0, array_sum($lines['adjusted']['points']));
+    }
+
+    public function test_points_are_index_aligned_with_buckets(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+
+        $movement = $this->signedInAs($boss)
+            ->getJson('/api/v1/inventory/summary')
+            ->assertOk()
+            ->json('movement');
+
+        foreach ($movement['lines'] as $line) {
+            $this->assertCount(
+                count($movement['buckets']),
+                $line['points'],
+                "Line {$line['key']} has a different number of points than there are buckets.",
+            );
+        }
+    }
+
+    public function test_a_sale_fulfilment_counts_as_out(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+
+        $this->seedOneFulfilmentToday($tenant, qty: '3.000');
+
+        $lines = collect(
+            $this->signedInAs($boss)->getJson('/api/v1/inventory/summary')->assertOk()->json('movement.lines')
+        )->keyBy('key');
+
+        $this->assertSame(3.0, array_sum($lines['out']['points']));
+    }
+
+    /**
+     * The dedicated test for the trap named in the task: `out` sums TWO
+     * sources (issues and sale fulfilments) that come from unrelated
+     * tables. A test that only ever seeds one source cannot tell "both are
+     * summed" from "only one is read" — this seeds both together and checks
+     * the total is their sum, not either figure alone.
+     */
+    public function test_out_sums_issues_and_fulfilments_together(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+
+        $this->seedOneIssueToday($tenant, qty: '5.000');
+        $this->seedOneFulfilmentToday($tenant, qty: '3.000');
+
+        $lines = collect(
+            $this->signedInAs($boss)->getJson('/api/v1/inventory/summary')->assertOk()->json('movement.lines')
+        )->keyBy('key');
+
+        $this->assertSame(8.0, array_sum($lines['out']['points']));
+    }
+
+    private function seedOneTransferToday(array $tenant, string $qty): void
+    {
+        $this->inTenant($tenant['org'], function () use ($tenant, $qty) {
+            $from = InventoryLocation::factory()->create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+            ]);
+            $to = InventoryLocation::factory()->create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+            ]);
+            $item = InventoryItem::factory()->create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+                'status' => InventoryItemStatus::Active,
+            ]);
+
+            $transfer = \App\Models\InventoryTransfer::create([
+                'organization_id' => $tenant['org']->id,
+                'from_location_id' => $from->id,
+                'to_location_id' => $to->id,
+                'number' => 'TR-'.uniqid(),
+                'transferred_on' => now()->toDateString(),
+            ]);
+
+            \App\Models\InventoryTransferLine::create([
+                'organization_id' => $tenant['org']->id,
+                'transfer_id' => $transfer->id,
+                'item_id' => $item->id,
+                'qty' => $qty,
+            ]);
+        });
+    }
+
+    private function seedOneAdjustmentToday(array $tenant, string $before, string $after): void
+    {
+        $this->inTenant($tenant['org'], function () use ($tenant, $before, $after) {
+            $location = InventoryLocation::factory()->create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+            ]);
+            $item = InventoryItem::factory()->create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+                'status' => InventoryItemStatus::Active,
+            ]);
+
+            \App\Models\InventoryAdjustment::create([
+                'organization_id' => $tenant['org']->id,
+                'location_id' => $location->id,
+                'item_id' => $item->id,
+                'qty_before' => $before,
+                'qty_after' => $after,
+                'reason' => 'Counted.',
+                'adjusted_on' => now()->toDateString(),
+            ]);
+        });
+    }
+
+    private function seedOneIssueToday(array $tenant, string $qty): void
+    {
+        $this->inTenant($tenant['org'], function () use ($tenant, $qty) {
+            $location = InventoryLocation::factory()->create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+            ]);
+            $item = InventoryItem::factory()->create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+                'status' => InventoryItemStatus::Active,
+            ]);
+
+            $issue = \App\Models\InventoryIssue::create([
+                'organization_id' => $tenant['org']->id,
+                'location_id' => $location->id,
+                'note' => 'Used on site.',
+                'number' => 'IS-'.uniqid(),
+                'issued_on' => now()->toDateString(),
+            ]);
+
+            \App\Models\InventoryIssueLine::create([
+                'organization_id' => $tenant['org']->id,
+                'issue_id' => $issue->id,
+                'item_id' => $item->id,
+                'qty' => $qty,
+            ]);
+        });
+    }
+
+    /**
+     * `inventory_sales` required columns (organization_id, number, status,
+     * payment_status — company_id/franchise_id, customer_id, note and
+     * sold_on are all nullable) read from
+     * database/migrations/2026_08_25_120000_create_inventory_sales_tables.php:18-34,
+     * not invented — an invented fixture only proves the code agrees with
+     * itself.
+     */
+    private function seedOneFulfilmentToday(array $tenant, string $qty): void
+    {
+        $this->inTenant($tenant['org'], function () use ($tenant, $qty) {
+            $location = InventoryLocation::factory()->create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+            ]);
+            $item = InventoryItem::factory()->create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+                'status' => InventoryItemStatus::Active,
+            ]);
+
+            $sale = InventorySale::create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+                'number' => 'SA-'.uniqid(),
+                'status' => InventorySaleStatus::Fulfilled,
+                'payment_status' => InventorySalePaymentStatus::Paid,
+            ]);
+
+            $saleLine = InventorySaleLine::create([
+                'organization_id' => $tenant['org']->id,
+                'sale_id' => $sale->id,
+                'item_id' => $item->id,
+                'qty_ordered' => $qty,
+                'qty_fulfilled' => $qty,
+            ]);
+
+            $fulfillment = InventorySaleFulfillment::create([
+                'organization_id' => $tenant['org']->id,
+                'sale_id' => $sale->id,
+                'location_id' => $location->id,
+                'fulfilled_on' => now()->toDateString(),
+            ]);
+
+            InventorySaleFulfillmentLine::create([
+                'organization_id' => $tenant['org']->id,
+                'fulfillment_id' => $fulfillment->id,
+                'sale_line_id' => $saleLine->id,
+                'qty' => $qty,
+            ]);
+        });
     }
 
     private function seedOneItemOnHand(array $tenant, string $qty, ?string $reorderAt, ?int $lastCostMinor): void
