@@ -105,6 +105,18 @@ class InventorySummaryApiTest extends TestCase
                 'status' => \App\Support\Inventory\InventoryPurchaseOrderStatus::Open,
                 'ordered_on' => null,
             ]);
+
+            // Control: a dated order old enough to trigger the warning, so the
+            // absence above proves the null was excluded and not that the
+            // query never fires at all.
+            \App\Models\InventoryPurchaseOrder::create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+                'vendor_id' => $vendor->id,
+                'number' => 'PO-2',
+                'status' => \App\Support\Inventory\InventoryPurchaseOrderStatus::Open,
+                'ordered_on' => now()->subDays(60),
+            ]);
         });
 
         $warnings = $this->signedInAs($boss)
@@ -112,10 +124,10 @@ class InventorySummaryApiTest extends TestCase
             ->assertOk()
             ->json('warnings');
 
-        $this->assertNotContains(
-            'purchase_order_open_a_long_time',
-            array_column($warnings, 'key'),
-        );
+        $byKey = array_column($warnings, null, 'key');
+
+        $this->assertArrayHasKey('purchase_order_open_a_long_time', $byKey);
+        $this->assertSame(1, $byKey['purchase_order_open_a_long_time']['count']);
     }
 
     public function test_a_warning_with_nothing_in_it_is_not_sent(): void
