@@ -85,8 +85,18 @@ final class SchedulingGlance extends DescribedGlance
             if ($areaIds->isEmpty()) {
                 return $this->payload([
                     'empty' => true,
-                    'sentence' => 'No service areas yet. Add one in Scheduling '
-                        .'settings to say where this business works.',
+                    // "in this view", not "yet": this box counts only the
+                    // franchises in `franchiseIds()` above, so it cannot see
+                    // whether the ORGANIZATION has any. A reader looking at one
+                    // franchise would have been told the company had none.
+                    //
+                    // DEPENDS ON THIS BOX STAYING SCOPED. If service areas ever
+                    // become organization-wide, "in this view" becomes the
+                    // needlessly hedged version and "yet" becomes correct —
+                    // and nothing here would fail to tell you. The scoping is
+                    // asserted in SchedulingGlanceTest.
+                    'sentence' => 'No service areas in this view. Add one in '
+                        .'Scheduling settings to say where this business works.',
                 ]);
             }
 
@@ -144,9 +154,19 @@ final class SchedulingGlance extends DescribedGlance
                 : "{$unconfigured} service areas have no hours set, so they can take nothing.";
         }
 
-        $out[] = $totalJobs === 0
-            ? 'No hours set yet, so nothing can be taken.'
-            : "Set up to take {$totalJobs} ".($totalJobs === 1 ? 'job' : 'jobs').' a week.';
+        // Only when there is a number to give. The zero case used to read "No
+        // hours set yet, so nothing can be taken." and was BOTH a claim about
+        // the organization from a scoped box AND a duplicate: `max_jobs` has a
+        // `min:1` validator, so a total of zero means no slot rows exist at
+        // all, which means every area is unconfigured, which means the sentence
+        // above has already said it and said it with a count.
+        //
+        // Two sentences saying one thing is how a reader learns to skim the
+        // box.
+        if ($totalJobs > 0) {
+            $out[] = "Set up to take {$totalJobs} "
+                .($totalJobs === 1 ? 'job' : 'jobs').' a week.';
+        }
 
         $out[] = sprintf(
             '%d service %s covering %d zip %s.',
