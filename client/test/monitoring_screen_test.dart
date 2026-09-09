@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/module_screens.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/monitoring/camera_monitoring_tab.dart';
+import 'package:ezbizi_client/screens/monitoring/general_tab.dart';
 import 'package:ezbizi_client/screens/monitoring/monitoring_screen.dart';
 import 'package:ezbizi_client/screens/monitoring/pc_specs_tab.dart';
 import 'package:flutter/material.dart';
@@ -231,6 +232,42 @@ void main() {
       expect(find.text('Camera Monitoring'), findsOneWidget);
       expect(find.text('Desktop Monitoring'), findsOneWidget);
       expect(find.text('Soon'), findsNWidgets(2));
+    },
+  );
+
+  testWidgets(
+    'the General sub-tab is present, first in the strip, and selectable on '
+    'the module grant — a viewer with monitoring.view can open it',
+    (tester) async {
+      // The default fixture holds monitoring.view (the module grant), so the
+      // General chip is live rather than the locked "Soon" fallback.
+      await _pumpScreen(tester, devices: [_agentDevice, _webDevice]);
+
+      expect(find.text('General'), findsOneWidget);
+
+      // First in the strip: leftmost chip on the (single) row at 1280px.
+      final generalX = tester.getCenter(find.text('General')).dx;
+      final pcSpecsX = tester.getCenter(find.text('PC Specs')).dx;
+      expect(
+        generalX,
+        lessThan(pcSpecsX),
+        reason: 'General must be the FIRST sub-tab, left of PC Specs.',
+      );
+
+      // Selectable, not a locked "Soon" chip — switching to it mounts the real
+      // GeneralTab, which lands on its own empty state (floor-plans stubbed
+      // empty), not a no-permission note.
+      await tester.tap(find.text('General'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(GeneralTab.noPlansNote),
+        findsOneWidget,
+        reason: 'A viewer with monitoring.view switched to General and should '
+            'see the real tab (its empty state), proving the chip is gated on '
+            'the module grant they hold, not locked behind "Soon".',
+      );
+      expect(find.text(GeneralTab.noPermissionNote), findsNothing);
     },
   );
 
@@ -659,6 +696,13 @@ Future<void> _pumpScreen(
 
       if (path.endsWith('/monitoring/devices')) {
         return _json({'data': live});
+      }
+
+      // The General sub-tab lists floor plans on open — stubbed empty so the
+      // one test that switches to it lands on the honest empty state rather
+      // than an error.
+      if (path.endsWith('/monitoring/floor-plans')) {
+        return _json({'data': <Map<String, dynamic>>[]});
       }
 
       // Only ever reached by the Camera Monitoring grant test below — no

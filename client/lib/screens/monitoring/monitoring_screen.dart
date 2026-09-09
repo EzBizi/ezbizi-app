@@ -5,6 +5,7 @@ import '../../core/session.dart';
 import '../../widgets/tag.dart';
 import 'camera_monitoring_tab.dart';
 import 'desktop_monitoring_tab.dart';
+import 'general_tab.dart';
 import 'pc_specs_tab.dart';
 
 /// Monitoring — a sub-tab strip (spec §"Sub-project 1") holding PC Specs,
@@ -49,13 +50,20 @@ class MonitoringScreen extends StatefulWidget {
   State<MonitoringScreen> createState() => _MonitoringScreenState();
 }
 
-enum _SubTab { pcSpecs, desktopMonitoring, cameraMonitoring }
+enum _SubTab { general, pcSpecs, desktopMonitoring, cameraMonitoring }
 
 class _MonitoringScreenState extends State<MonitoringScreen> {
   _SubTab _active = _SubTab.pcSpecs;
 
   @override
   Widget build(BuildContext context) {
+    // The General tab (floor-plan map) rides on the module's own
+    // `monitoring.view` — the same grant that gates reaching this screen at
+    // all — so every viewer here can open it. It is gated anyway, as the same
+    // defence-in-depth the other chips use; the locked fallback is only ever
+    // reached when this screen is built for somebody the module was not meant
+    // to show, and GeneralTab carries its own copy of the check too.
+    final canViewGeneral = widget.session.me?.can('monitoring.view') ?? false;
     final canViewScreenshots =
         widget.session.me?.can('monitoring.screenshots.view') ?? false;
     final canViewCameras =
@@ -72,6 +80,19 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
               spacing: 8,
               runSpacing: 4,
               children: [
+                if (canViewGeneral)
+                  ChoiceChip(
+                    label: const Text('General'),
+                    selected: _active == _SubTab.general,
+                    onSelected: (_) =>
+                        setState(() => _active = _SubTab.general),
+                  )
+                else
+                  const ChoiceChip(
+                    label: _SoonLabel('General'),
+                    selected: false,
+                    onSelected: null,
+                  ),
                 ChoiceChip(
                   label: const Text('PC Specs'),
                   selected: _active == _SubTab.pcSpecs,
@@ -108,12 +129,22 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
           ),
         ),
         const Divider(height: 1),
-        Expanded(child: _body(canViewScreenshots, canViewCameras)),
+        Expanded(
+          child: _body(canViewGeneral, canViewScreenshots, canViewCameras),
+        ),
       ],
     );
   }
 
-  Widget _body(bool canViewScreenshots, bool canViewCameras) {
+  Widget _body(
+    bool canViewGeneral,
+    bool canViewScreenshots,
+    bool canViewCameras,
+  ) {
+    if (_active == _SubTab.general && canViewGeneral) {
+      return GeneralTab(api: widget.api, session: widget.session);
+    }
+
     if (_active == _SubTab.desktopMonitoring && canViewScreenshots) {
       return DesktopMonitoringTab(api: widget.api, session: widget.session);
     }
