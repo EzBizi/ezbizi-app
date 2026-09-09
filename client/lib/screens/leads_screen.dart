@@ -9,6 +9,7 @@ import '../widgets/lead_thread.dart';
 import '../widgets/leads_accounts.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/social_network_mark.dart';
+import '../widgets/tab_bar_like.dart';
 
 /// Leads — enquiries from connected advertising (EZ Leads).
 ///
@@ -67,6 +68,18 @@ class _LeadsScreenState extends State<LeadsScreen> {
     ('thumbtack', 'Thumbtack'),
     ('website_chat', 'Chat'),
     ('website_form', 'Forms'),
+  ];
+
+  /// The strip, in `_sourceChips` order with All in front. Icons only exist
+  /// here: nothing else in the app draws a per-source mark, so these are the
+  /// definition rather than a copy of one. Keep them in step if a source is
+  /// added -- the strip is built from `_sourceChips`, so a source added there
+  /// and not here would land with the wrong icon rather than none.
+  static const _sourceIcons = <IconData>[
+    Icons.campaign,          // Google Local Services: an ad placement
+    Icons.push_pin,          // Thumbtack, which is what a thumbtack is
+    Icons.chat_bubble_outline,
+    Icons.description,
   ];
 
   void _setSource(String? source) {
@@ -252,11 +265,17 @@ class _LeadsScreenState extends State<LeadsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    // One list across every source (UI/UX sources layout 1 / 4, decided in
-    // Jose's absence on 2026-09-08 and reversible in one word: layout 2 is
-    // the same row, badges and band under a tab strip). The triage marks
-    // exist to answer "who is waiting on me", and only one list answers it
-    // once rather than once per source.
+    // One list across every source, under a source strip: UI/UX sources
+    // layouts 3 and 6, the hybrid, chosen by Jose on 2026-09-09. It reverses
+    // the 1 / 4 shipped in his absence the night before -- the source moved
+    // out of the filter row and into a strip of its own with All in front.
+    //
+    // What the strip does NOT change: the list is still one list, and the
+    // triage marks still answer "who is waiting on me" once rather than once
+    // per source. All is the strip's first tab AND the filter row's first
+    // chip, and both mean the unfiltered list -- clearing the filters returns
+    // the strip to All visibly, rather than leaving a tab selected that no
+    // longer describes what is on screen.
     return _googleTab(theme);
   }
 
@@ -350,6 +369,27 @@ class _LeadsScreenState extends State<LeadsScreen> {
             },
           ),
         ),
+        // The source strip. All first, then one tab per source, in the order
+        // the filter row used to list them.
+        //
+        // TabBarLike scrolls horizontally, which is what makes this work on a
+        // phone: the drawn mobile option had Thumbtack pushed off the end
+        // because the HTML mock could not scroll, and losing a live source
+        // would have been a real gap rather than a drawing's compromise.
+        // Every source is reachable at 352px; the strip scrolls to them.
+        TabBarLike(
+          key: const ValueKey('source-tabs'),
+          labels: [
+            ('All', Icons.all_inbox),
+            for (var i = 0; i < _sourceChips.length; i++)
+              (_sourceChips[i].$2, _sourceIcons[i]),
+          ],
+          selected: _source == null
+              ? 0
+              : _sourceChips.indexWhere((c) => c.$1 == _source) + 1,
+          onSelected: (i) =>
+              _setSource(i == 0 ? null : _sourceChips[i - 1].$1),
+        ),
         // One "Connected sources" row whatever the number of providers: the
         // band-to-panel shape Google's accounts shipped with, costing one row
         // at one provider or four. The panel holds every provider's section.
@@ -410,15 +450,6 @@ class _LeadsScreenState extends State<LeadsScreen> {
                       selected: _starred,
                       onSelected: (on) => _setFilters(starred: on),
                     ),
-                    // Source: the fourth filter, in the row with the three it
-                    // narrows with, so "Chat + Unread" is two chips.
-                    for (final (key, word) in _sourceChips)
-                      FilterChip(
-                        key: ValueKey('source-$key'),
-                        label: Text(word),
-                        selected: _source == key,
-                        onSelected: (on) => _setSource(on ? key : null),
-                      ),
                   ],
                 ),
               ),

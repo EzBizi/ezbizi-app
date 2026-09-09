@@ -172,26 +172,49 @@ void main() {
 
   // ── one list across every source (sources layout 1 / 4) ─────────
 
-  testWidgets('one list: the sources band names every provider and there is '
-      'no tab strip', (tester) async {
+  testWidgets('one list under a source strip: All first, and every source '
+      'has a tab', (tester) async {
     await _pump(tester, leads: const [], connections: const []);
 
     expect(find.text('Connected sources'), findsOneWidget);
+    expect(find.byKey(const ValueKey('source-tabs')), findsOneWidget);
+
+    // Every source reachable, Thumbtack included. The drawn mobile option had
+    // it pushed off the end; the strip scrolls, so it is here.
+    for (final word in ['Google', 'Thumbtack', 'Chat', 'Forms']) {
+      expect(find.widgetWithText(ChoiceChip, word), findsOneWidget,
+          reason: '$word has no tab, so that source can only be reached by '
+              'scrolling the whole list.');
+    }
+
+    // Still ONE list: a tab narrows it, it does not open a screen per source.
     expect(find.text('Google Leads'), findsNothing);
     expect(find.text('Thumbtack Leads'), findsNothing);
   });
 
-  testWidgets('the source chips narrow the list by source, beside the other '
-      'three', (tester) async {
+  testWidgets('a source tab narrows the list, and clearing the filters puts '
+      'the strip back to All', (tester) async {
     await _pump(tester, leads: const [], connections: const []);
 
-    await tester.tap(find.byKey(const ValueKey('source-website_chat')));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Chat'));
     await tester.pumpAndSettle();
     expect(_lastListQuery['source'], 'website_chat');
+    expect(
+      tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Chat')).selected,
+      isTrue,
+    );
 
+    // There are two Alls -- the strip's tab and the filter row's chip -- and
+    // both mean the unfiltered list. Clearing the filters must move the strip
+    // too, or a tab stays lit describing something that is no longer on screen.
     await tester.tap(find.byKey(const ValueKey('filter-all')));
     await tester.pumpAndSettle();
     expect(_lastListQuery.containsKey('source'), isFalse);
+    expect(
+      tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Chat')).selected,
+      isFalse,
+      reason: 'The Chat tab is still lit after All cleared the source.',
+    );
   });
 
   testWidgets('every row carries its source as a badge', (tester) async {
