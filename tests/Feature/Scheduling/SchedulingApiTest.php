@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Scheduling;
 
+use App\Models\Franchise;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaSlot;
 use App\Models\ServiceAreaZip;
@@ -278,6 +279,66 @@ class SchedulingApiTest extends TestCase
             3,
             ServiceAreaZip::where('service_area_id', $area->id)->count(),
         );
+    }
+
+    /**
+     * The list is scoped by the VIEW, asserted from both sides of the boundary.
+     *
+     * This is the claim the Settings screen's wording rests on. That screen
+     * says "Every area in this view follows the pattern" and "No service areas
+     * in this view" rather than speaking for the organization, and both
+     * sentences are honest only if this endpoint actually hides what is out of
+     * view. Nothing pinned that until now.
+     *
+     * BOTH SIDES, because one is the check that cannot fail: from inside the
+     * franchise the correct answer and a broken count are identical — an empty
+     * list looks the same whether the sibling's area was hidden or the query
+     * returned nothing at all. The organization view is what proves the row
+     * existed to be hidden.
+     *
+     * The view has to be SET. A user with no `navigation.scope` is in the
+     * organization view however they are assigned, so without the preference
+     * this would measure reach rather than view and pass either way.
+     */
+    public function test_the_area_list_is_scoped_to_the_view_from_both_sides(): void
+    {
+        [$tenant, $editor] = $this->tenantWithEditor();
+
+        app(TenantContext::class)->set($tenant['org']);
+
+        $sibling = Franchise::create([
+            'organization_id' => $tenant['org']->id,
+            'company_id' => $tenant['company']->id,
+            'name' => 'Georgia',
+        ]);
+
+        ServiceArea::create(['franchise_id' => $sibling->id, 'name' => 'Atlanta']);
+        ServiceArea::create(['franchise_id' => $tenant['franchise']->id, 'name' => 'Dallas']);
+
+        // Side one: looking at their own franchise, Atlanta is not there.
+        $editor->forceFill([
+            'preferences' => ['navigation.scope' => 'franchise:'.$tenant['franchise']->id],
+        ])->save();
+
+        $narrow = collect(
+            $this->signedInAs($editor)->getJson('/api/v1/scheduling/areas')->assertOk()->json('data')
+        )->pluck('name');
+
+        $this->assertSame(['Dallas'], $narrow->all());
+
+        // Side two: the same person in the organization view sees the row that
+        // was hidden. Without this, the assertion above passes for an endpoint
+        // that has stopped returning anything.
+        // The request above cleared the tenant, and a User is tenant-owned, so
+        // the boundary refuses this write without it.
+        app(TenantContext::class)->set($tenant['org']);
+        $editor->forceFill(['preferences' => []])->save();
+
+        $wide = collect(
+            $this->signedInAs($editor)->getJson('/api/v1/scheduling/areas')->assertOk()->json('data')
+        )->pluck('name')->sort()->values();
+
+        $this->assertSame(['Atlanta', 'Dallas'], $wide->all());
     }
 
     public function test_a_role_without_scheduling_cannot_read_or_write_capacity(): void
