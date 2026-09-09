@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Web;
 use App\Http\Controllers\Api\Controller;
 use App\Models\WebSite;
 use App\Models\WebWidget;
+use App\Support\Branding\Branding;
 use App\Support\Web\WidgetDefaults;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,7 +27,14 @@ class WidgetsController extends Controller
 
         return response()->json([
             ...WebWidget::forEditor($site),
-            'defaults' => WidgetDefaults::all(),
+            'defaults' => WidgetDefaults::all($this->brand($site)),
+            /*
+             * So the screen can say WHERE an untouched accent came from. Sent
+             * with the config rather than fetched separately: it is already
+             * resolved here to build the defaults, and a second request for one
+             * string would be a second thing to fail.
+             */
+            'brand' => $this->brand($site),
             'field_types' => WidgetDefaults::FIELD_TYPES,
         ]);
     }
@@ -57,7 +65,14 @@ class WidgetsController extends Controller
 
         return response()->json([
             ...WebWidget::forEditor($site),
-            'defaults' => WidgetDefaults::all(),
+            'defaults' => WidgetDefaults::all($this->brand($site)),
+            /*
+             * So the screen can say WHERE an untouched accent came from. Sent
+             * with the config rather than fetched separately: it is already
+             * resolved here to build the defaults, and a second request for one
+             * string would be a second thing to fail.
+             */
+            'brand' => $this->brand($site),
             'field_types' => WidgetDefaults::FIELD_TYPES,
         ]);
     }
@@ -77,8 +92,29 @@ class WidgetsController extends Controller
 
         return response()->json([
             ...WebWidget::forEditor($site),
-            'defaults' => WidgetDefaults::all(),
+            'defaults' => WidgetDefaults::all($this->brand($site)),
+            /*
+             * So the screen can say WHERE an untouched accent came from. Sent
+             * with the config rather than fetched separately: it is already
+             * resolved here to build the defaults, and a second request for one
+             * string would be a second thing to fail.
+             */
+            'brand' => $this->brand($site),
             'field_types' => WidgetDefaults::FIELD_TYPES,
         ]);
+    }
+
+    /**
+     * The colour this site's owner publishes under, if they have told us one.
+     *
+     * Null means genuinely unknown, which the screen says differently from a
+     * colour somebody chose — a default presented as the customer's when it is
+     * ours is the whole thing this feature exists to stop.
+     */
+    private function brand(WebSite $site): ?string
+    {
+        $site->loadMissing('company');
+
+        return Branding::colour($site->company, $site->company?->organization);
     }
 }
