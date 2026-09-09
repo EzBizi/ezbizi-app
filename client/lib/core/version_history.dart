@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0176',
+      date: '9 Sep 2026',
+      items: [
+        'The desktop app opens at the size and position you left it, maximized if it was maximized, including after an update. It used to come back at the default size every time.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0175',
       date: '9 Sep 2026',
       items: [
