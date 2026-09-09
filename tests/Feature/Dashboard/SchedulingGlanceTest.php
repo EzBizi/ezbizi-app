@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Dashboard;
 
+use App\Models\Franchise;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaSlot;
 use App\Models\ServiceAreaZip;
@@ -67,7 +68,127 @@ class SchedulingGlanceTest extends TestCase
             ->toArray()['data'];
 
         $this->assertTrue($data['empty']);
-        $this->assertStringContainsString('No service areas yet', $data['sentence']);
+
+        // "in this view", never "yet". This box counts only the franchises in
+        // reach, so it cannot know whether the ORGANIZATION has any — a reader
+        // looking at one franchise was being told the company had none.
+        $this->assertStringContainsString(
+            'No service areas in this view',
+            $data['sentence'],
+        );
+        $this->assertStringNotContainsString('yet', $data['sentence']);
+
+        // The instruction is the half worth keeping: an empty state that
+        // offers no way to make the first one is a front door with no handle.
+        $this->assertStringContainsString('Scheduling settings', $data['sentence']);
+    }
+
+    /**
+     * The claim the wording rests on, held by a test rather than by a comment.
+     *
+     * "In this view" is honest only while this box is SCOPED BY FRANCHISE. If
+     * service areas ever became organization-wide the sentence would be
+     * needlessly hedged and nothing would say so — the compliant sentence is
+     * the fragile one, because a wrong sentence at least looks wrong to
+     * somebody reading the file.
+     *
+     * TWO FRANCHISES IN ONE ORGANIZATION, and the view pinned to one. An
+     * earlier version of this test used two ORGANIZATIONS, which proves
+     * nothing about scoping: BelongsToTenant already isolates those, so it
+     * would have passed with `franchiseIds()` deleted and left a comment
+     * citing a test that did not test it.
+     *
+     * The view has to be SET. A user with no `navigation.scope` is in the
+     * organization view however they are assigned, so the fixture would reach
+     * both franchises and the assertion would be about the wrong rule.
+     */
+    public function test_capacity_in_another_franchise_does_not_reach_this_view(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        app(TenantContext::class)->set($tenant['org']);
+
+        $sibling = Franchise::create([
+            'organization_id' => $tenant['org']->id,
+            'company_id' => $tenant['company']->id,
+            'name' => 'Georgia',
+        ]);
+
+        // All the capacity lives in the sibling franchise.
+        $area = ServiceArea::create([
+            'franchise_id' => $sibling->id,
+            'name' => 'Atlanta',
+        ]);
+        $this->slot($area, 1, 4);
+
+        // The reader is looking at their own franchise, not the sibling.
+        $tenant['admin']->forceFill([
+            'preferences' => ['navigation.scope' => 'franchise:'.$tenant['franchise']->id],
+        ])->save();
+
+        $data = $this->glance()
+            ->resolve($tenant['admin'], DashboardPeriod::for($tenant['admin']), [])
+            ->toArray()['data'];
+
+        $this->assertTrue(
+            $data['empty'],
+            "Another franchise's capacity must not reach this view.",
+        );
+
+        // And with the view widened to the organization, the same rows arrive —
+        // the positive control, without which "empty" above could mean the
+        // fixture simply never created anything.
+        $tenant['admin']->forceFill(['preferences' => []])->save();
+
+        $wide = $this->glance()
+            ->resolve($tenant['admin'], DashboardPeriod::for($tenant['admin']), [])
+            ->toArray()['data'];
+
+        $this->assertFalse(
+            $wide['empty'],
+            'The organization view should see the sibling capacity that was hidden.',
+        );
+    }
+
+    /**
+     * Areas but no hours says it ONCE, with a count.
+     *
+     * It used to say it twice: "N service areas have no hours set, so they can
+     * take nothing." followed by "No hours set yet, so nothing can be taken."
+     * `max_jobs` has a min of 1, so a total of zero means no slot rows exist,
+     * which means every area is unconfigured — the two sentences described the
+     * same state and one of them also claimed it about the organization.
+     */
+    public function test_areas_without_hours_are_reported_once_not_twice(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->area($tenant, 'Dallas');
+        $this->area($tenant, 'Houston');
+
+        $data = $this->glance()
+            ->resolve($tenant['admin'], DashboardPeriod::for($tenant['admin']), [])
+            ->toArray()['data'];
+
+        $sentences = $data['sentences'];
+
+        $this->assertFalse($data['empty'], 'Two areas exist, so this is not the empty box.');
+
+        $noHours = array_values(array_filter(
+            $sentences,
+            fn (string $s) => str_contains($s, 'no hours set') || str_contains($s, 'nothing can be taken'),
+        ));
+
+        $this->assertCount(1, $noHours, 'One sentence, not two, for one fact.');
+        $this->assertStringContainsString('2 service areas have no hours set', $noHours[0]);
+
+        // And nothing anywhere in the box claims the organization.
+        foreach ($sentences as $sentence) {
+            $this->assertStringNotContainsString(
+                'yet',
+                $sentence,
+                "A scoped box cannot say \"yet\": {$sentence}",
+            );
+        }
     }
 
     /**
