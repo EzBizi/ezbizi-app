@@ -600,6 +600,31 @@ it nominates the one it shows. Distinguishing prefixes (`pk_` / `ezb_`) do the s
 for a value pasted into a support ticket, but a prefix cannot fix a screen that offers
 only one of them.
 
+**Bound a resizable pane in PIXELS, not in a share — and check the floors can both be met.**
+Leads, 2026-09-09 (`06519f20`), making the Leads divider draggable: *"a share alone let a wide
+window push the thread to 336px, and the header overflowed by 46."* A percentage says how the
+room is divided; it cannot say what either side needs. The floors are `320` for the list and
+`460` for the thread, the second being what its header wants for the star, Book and the status
+control on one line.
+
+> **The check that is easy to skip: two floors can be unsatisfiable together.** `maxList =
+> (width - 460).clamp(320, width)` returns 320 on a narrow window and hands the thread 380 —
+> the exact overflow the floors exist to prevent, reintroduced by the clamp. It is unreachable
+> here only because the split renders at `>= 900` and 320 + 460 = 780. **A pair of minimums is
+> a claim about the SMALLEST container they will ever run in**, so verify against that number,
+> not against a comfortable one.
+>
+> Set the floor above the measured minimum, not at it: 382 was what overflowed, 460 is what
+> shipped. A floor at the measured value clears the case you tested and nothing else — the same
+> lesson as the row heights where a 44 floor left two heights one pixel apart.
+
+**Reuse across a module boundary beats a polite copy.** Same commit: the Leads call row now uses
+Phone's `RecordingPlaybackBar` and **deleted** its own play disc rather than adding a second
+player. One definition, in `screens/phone/`, imported by `lead_thread.dart`. A copy would have
+been the easy version and would have drifted the first time Phone improved scrubbing. **Deleting
+a widget to adopt someone else's is a better outcome than either module writing its own**, and
+it is the thing sessions avoid out of deference to each other's folders.
+
 **An advisory must not wear the failure component.** Web Management, 2026-09-08, asking
 that this be made a rule after the widget contrast work: *"dressing an advisory as a
 failure teaches people to ignore the component that also carries real failures."* The
