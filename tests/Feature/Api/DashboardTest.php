@@ -224,7 +224,24 @@ class DashboardTest extends TestCase
         // that skips the clause when the list is empty would invert this into
         // "no assignments means see everything".
         $this->assertTrue($jobs['data']['empty']);
-        $this->assertSame('No jobs in reach.', $jobs['data']['sentence']);
+
+        /*
+         * A sentence, not Jobs' sentence.
+         *
+         * This pinned the literal "No jobs in reach." — a Dashboard test
+         * asserting another module's COPY, so a wording change Jobs is
+         * entitled to make turns a file they do not own red, and the module
+         * session finds a failure they have no business editing. The identical
+         * coupling in GlanceRegistryTest held Marketing's exact words through a
+         * release because correcting a stale sentence meant turning a
+         * dashboard test red first.
+         *
+         * What this test is about is one row above: a stranger to every
+         * franchise gets an EMPTY jobs box, because `whereIn` on an empty list
+         * matches nothing. That the box also says something is worth keeping;
+         * WHICH something is Jobs' business and changes without warning here.
+         */
+        $this->assertNotSame('', trim((string) $jobs['data']['sentence']));
     }
 
     public function test_inventory_view_returns_the_inventory_box(): void
