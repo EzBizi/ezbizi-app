@@ -713,6 +713,32 @@ doing it has every reason to believe the guard was load-bearing.
 > The version that measures survives the guard being removed, and fails if the widget ever
 > starts taking room.
 
+**A box that vanishes when the news is good cannot say "I looked, and it is fine".** Ruled
+2026-09-09 on Training's due-for-retaking glance. Zero renders as a sentence — *"Nobody is due
+to retake a test."* — and the empty state is reserved for "there is nothing to count at all".
+Training's own reason was layout: a box that emptied at zero would reflow the board every time
+the last person retook something. The stronger one is that **zero IS the answer the box exists
+to give**, and absence cannot distinguish "checked, all clear" from "broken".
+
+> Corollary, and the thing to actually check: **the zero sentence and the empty sentence must
+> not read alike.** *"Nobody is due"* and *"nothing to count"* are different facts and a reader
+> who cannot tell them apart has learned nothing from either.
+
+**Scoping the CONTENT constrains nothing about the PEOPLE.** Training's note, and the sharpest
+privacy point anyone made today: a count over people is a disclosure even with no name in it,
+and an organization-wide test is visible to everybody — so bounding the glance by reach over
+the *test* leaves the headcount unbounded. Bound it by reach over the **person**. Their test
+uses an org-wide test *deliberately*, so content-scope cannot mask the bug, plus a positive
+control so a box stuck at zero cannot pass. **This module had already shipped two
+cross-franchise disclosures by conflating those two questions.**
+
+**Customer copy may not borrow our scoping vocabulary.** The empty state read *"No tests in
+reach"*. Measured: `reach` appears **zero** times in customer-facing copy — the only hit in
+`ui_strings.dart` is a code comment. "In reach" is real in the code and meaningless in a
+sentence, and it half-implies an "out of reach" the reader is not entitled to know about.
+Ruled to **"No tests to track."** — true whether none exist or none are visible, and it leaks
+nothing either way.
+
 **An advisory must not wear the failure component.** Web Management, 2026-09-08, asking
 that this be made a rule after the widget contrast work: *"dressing an advisory as a
 failure teaches people to ignore the component that also carries real failures."* The
