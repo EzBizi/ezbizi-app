@@ -43,18 +43,39 @@ class RolesApiTest extends TestCase
         });
     }
 
+    /**
+     * Declare a requirement to test the MECHANISM with.
+     *
+     * No shipped module declares one. `training.assign` did from 0.0.0180 to
+     * 0.0.0182 and it was removed because the premise was measured wrong — see
+     * ModuleServiceProvider's training block. Pinning these rules to whichever
+     * module happens to carry a requirement this month is how the last version
+     * of this test died; a module of its own outlives the policy.
+     */
+    private function moduleWithARequirement(): void
+    {
+        app(ModuleRegistry::class)->register(new ModuleDefinition(
+            key: 'reqdemo',
+            label: 'Requirement Demo',
+            actions: ['view', 'watch', 'act'],
+            actionRequires: ['act' => ['reqdemo.watch']],
+            automationExemptBecause: 'A fixture, not a feature. It emits nothing.',
+        ));
+    }
+
     public function test_a_permission_cannot_be_granted_without_the_one_it_needs(): void
     {
         $alpha = $this->provisionTenant('Alpha');
+        $this->moduleWithARequirement();
 
-        // `training.assign` puts the assign control in the Dashboard pane, and
-        // `training.monitor` is what opens that pane. Granted alone it saved
-        // cleanly and handed somebody a screen with nothing on it.
+        // Registered BEFORE the first request: a route keeps one controller and
+        // its injected catalogue for the whole test, so a module added after the
+        // first call is never seen.
         $this->signedInAs($alpha['admin'])->postJson('/api/v1/roles', [
-            'name' => 'Supervisor', 'permissions' => ['training.assign'],
+            'name' => 'Supervisor', 'permissions' => ['reqdemo.act'],
         ])->assertStatus(422)->assertJsonPath(
             'errors.permissions.0',
-            fn (string $m) => str_contains($m, 'training.assign needs training.monitor'),
+            fn (string $m) => str_contains($m, 'reqdemo.act needs reqdemo.watch'),
         );
 
         $this->inTenant($alpha['org'], function () {
@@ -65,36 +86,56 @@ class RolesApiTest extends TestCase
     public function test_the_same_grant_with_its_requirement_is_accepted(): void
     {
         $alpha = $this->provisionTenant('Alpha');
+        $this->moduleWithARequirement();
 
         // The control for the refusal above. Without it, a check that refused
-        // every save containing `training.assign` — or every save at all —
-        // would pass the test that matters and break the feature.
+        // every save containing `reqdemo.act` — or every save at all — would
+        // pass the test that matters and break the feature.
         $created = $this->signedInAs($alpha['admin'])->postJson('/api/v1/roles', [
             'name'        => 'Supervisor',
-            'permissions' => ['training.assign', 'training.monitor'],
+            'permissions' => ['reqdemo.act', 'reqdemo.watch'],
         ])->assertCreated()->json('data');
 
-        $this->assertContains('training.assign', $created['permissions']);
-        $this->assertContains('training.monitor', $created['permissions']);
+        $this->assertContains('reqdemo.act', $created['permissions']);
+        $this->assertContains('reqdemo.watch', $created['permissions']);
     }
 
     public function test_an_action_carries_what_it_requires_into_the_catalogue(): void
     {
         $alpha = $this->provisionTenant('Alpha');
+        $this->moduleWithARequirement();
 
-        // The editor cannot warn about a rule it is never told. Almost every
-        // action reports an empty list, which is the second half of this: a
-        // payload that said `requires` everywhere would be as useless as one
-        // that said it nowhere.
+        // The editor cannot warn about a rule it is never told. The second
+        // assertion is the half that matters: a payload saying `requires`
+        // everywhere would be as useless as one saying it nowhere.
         $modules = $this->signedInAs($alpha['admin'])
             ->getJson('/api/v1/roles/catalogue')->assertOk()->json('modules');
 
-        $training = collect($modules)->firstWhere('key', 'training');
-        $assign   = collect($training['actions'])->firstWhere('action', 'assign');
-        $manage   = collect($training['actions'])->firstWhere('action', 'manage');
+        $demo  = collect($modules)->firstWhere('key', 'reqdemo');
+        $act   = collect($demo['actions'])->firstWhere('action', 'act');
+        $watch = collect($demo['actions'])->firstWhere('action', 'watch');
 
-        $this->assertSame(['training.monitor'], $assign['requires']);
-        $this->assertSame([], $manage['requires']);
+        $this->assertSame(['reqdemo.watch'], $act['requires']);
+        $this->assertSame([], $watch['requires']);
+    }
+
+    public function test_no_shipped_module_declares_a_requirement_by_accident(): void
+    {
+        // The mechanism stays and the client renders it, so nothing stops a
+        // module quietly acquiring a requirement. Every one costs an
+        // administrator a grant they did not ask for, and `training.assign`
+        // showed the reasoning can be wrong in a way that hides itself. A new
+        // entry here should be a decision somebody argued for, not a diff
+        // nobody read.
+        $declaring = [];
+
+        foreach (app(ModuleRegistry::class)->all() as $key => $module) {
+            if ($module->actionRequires !== []) {
+                $declaring[] = $key;
+            }
+        }
+
+        $this->assertSame([], $declaring);
     }
 
     public function test_a_role_payload_cannot_make_itself_administrator(): void
