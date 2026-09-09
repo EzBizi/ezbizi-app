@@ -342,25 +342,18 @@ class _GlanceBody extends StatelessWidget {
     }
 
     return [
-      if (_chartable(presentation, data))
-        DashboardChart(
-          presentation: presentation,
-          slices: data['slices'] is List ? data['slices'] as List : null,
-          series: data['series'] is List ? data['series'] as List : null,
-        ),
+      // No guard here: DashboardChart decides what it can draw and draws
+      // nothing when it cannot. A screen-side copy of that rule was a second
+      // definition that had already drifted (UI/UX, 2026-09-09) — and its
+      // "yes" over an all-zero pie still rendered nothing, so removing it
+      // changes what a person sees in zero cases.
+      DashboardChart(
+        presentation: presentation,
+        slices: data['slices'] is List ? data['slices'] as List : null,
+        series: data['series'] is List ? data['series'] as List : null,
+      ),
       ..._sentences(data),
     ];
-  }
-
-  static bool _chartable(String presentation, Map<String, dynamic> data) {
-    switch (presentation) {
-      case 'pie' || 'bar':
-        return data['slices'] is List && (data['slices'] as List).isNotEmpty;
-      case 'line' || 'timeline':
-        return data['series'] is List && (data['series'] as List).isNotEmpty;
-      default:
-        return false;
-    }
   }
 
   static List<Widget> _sentences(Map<String, dynamic> data) {
