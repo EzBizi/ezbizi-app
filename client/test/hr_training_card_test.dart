@@ -15,7 +15,7 @@ import 'package:http/testing.dart';
 void main() {
   testWidgets('desktop: three counts first, the lapsed one boxed, then the '
       'rows most urgent first, and the ownership line', (tester) async {
-    await _pump(tester, _records, width: 1400);
+    await _pump(tester, _recordsHandler, width: 1400);
 
     // Is anything wrong with this person, before what they have done.
     expect(find.byKey(TrainingCard.countsKey), findsOneWidget);
@@ -23,10 +23,20 @@ void main() {
       of: find.byKey(TrainingCard.countsKey),
       matching: find.byType(Text),
     );
-    expect(
-      tester.widgetList<Text>(strip).map((t) => t.data).toList(),
-      ['1', 'Due for retaking', '2', 'Passed', '2', 'Not started'],
-    );
+    final cells = tester.widgetList<Text>(strip).map((t) => t.data).toList();
+    expect(cells, ['2', 'Needs a pass', '3', 'Outstanding', '2', 'Passed']);
+
+    // The three cells PARTITION the rows — every state counted once. A strip
+    // that skipped a state read all zeros above red rows (UI/UX, 2026-09-09),
+    // and this is what fails if a sixth state arrives and nobody adds it.
+    final figures = [cells[0], cells[2], cells[4]].map((c) => int.parse(c!));
+    expect(figures.fold(0, (a, b) => a + b), _records.length);
+    expect(find.byType(Tag), findsNWidgets(_records.length));
+
+    // The first cell never borrows Training's word: "retaking" means a pass
+    // that lapsed, and somebody who never passed is not retaking anything.
+    expect(cells, isNot(contains('Due for retaking')));
+    expect(find.text('Not passed'), findsOneWidget);
 
     // Lapsed above passed, whatever order the server listed them in.
     expect(
@@ -54,7 +64,7 @@ void main() {
   testWidgets('phone: no counts strip, a card per row, lapsed first', (
     tester,
   ) async {
-    await _pump(tester, _records, width: 390);
+    await _pump(tester, _recordsHandler, width: 390);
 
     expect(find.byKey(TrainingCard.countsKey), findsNothing);
     expect(find.text('Ladder safety'), findsOneWidget);
@@ -147,10 +157,17 @@ Future<void> _pump(
 }
 
 /// The endpoint's rows, deliberately NOT most urgent first — the card sorts.
-Future<http.Response> _records(http.Request request) async => http.Response(
-  jsonEncode({
-    'user': {'id': 'u-2', 'name': 'Bea Okafor'},
-    'data': [
+/// All five states are in it, so the strip's partition is checked in full.
+Future<http.Response> _recordsHandler(http.Request request) async =>
+    http.Response(
+      jsonEncode({
+        'user': {'id': 'u-2', 'name': 'Bea Okafor'},
+        'data': _records,
+      }),
+      200,
+    );
+
+const _records = [
       {
         'type': 'test',
         'id': 't-1',
@@ -208,7 +225,14 @@ Future<http.Response> _records(http.Request request) async => http.Response(
         'expires_on': null,
         'due_for_retaking': false,
       },
-    ],
-  }),
-  200,
-);
+      {
+        'type': 'test',
+        'id': 't-4',
+        'title': 'Flue sizing',
+        'assigned': true,
+        'score': 40,
+        'passed': false,
+        'expires_on': null,
+        'due_for_retaking': false,
+      },
+];
