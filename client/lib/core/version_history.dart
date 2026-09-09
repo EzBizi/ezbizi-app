@@ -16,6 +16,8 @@ class VersionHistory {
         'On a phone, Your account now shows today\'s hours on the Work schedule line - "Today 08:00 - 17:00", or "Off today" - instead of listing which days you work.',
         'If nobody has set your working hours yet, it says so, rather than showing you as off every day.',
         'Human Resources: the Training card lays itself out by the space it is given, so it reads the same in a narrow column on a wide window as on a phone.',
+        'Times across the app now follow a real place rather than a fixed offset, so they stay right when the clocks change. If your organization never chose a timezone it was on a clock that ignored daylight saving, and times between March and November will now read an hour later than they did.',
+        'A clock that should ignore daylight saving is still available: the fixed UTC offsets are all still in the list.',
       ],
     ),
     VersionRelease(
