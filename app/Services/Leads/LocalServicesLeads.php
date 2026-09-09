@@ -340,7 +340,7 @@ class LocalServicesLeads implements LeadReplyChannel
             $response = Http::withToken($token)
                 ->withHeaders([
                     'developer-token'   => (string) config('services.google_ads.developer_token'),
-                    'login-customer-id' => $customerId,
+                    'login-customer-id' => $connection->login_customer_id ?: $customerId,
                 ])
                 ->timeout(self::TIMEOUT)
                 ->post(
@@ -638,7 +638,7 @@ class LocalServicesLeads implements LeadReplyChannel
                      * ever needed, belongs in a column on the connection - put
                      * there by the flow that knows which manager was used.
                      */
-                    'login-customer-id' => $customerId,
+                    'login-customer-id' => $connection->login_customer_id ?: $customerId,
                 ])
                 ->timeout(self::TIMEOUT)
                 ->post(

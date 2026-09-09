@@ -199,6 +199,8 @@ final class GoogleAdsOAuth implements SocialOAuth
         }
 
         $accounts = [];
+        $seen     = [];
+        $managers = [];
 
         foreach ($names as $name) {
             $id = trim(str_replace('customers/', '', (string) $name));
@@ -207,7 +209,37 @@ final class GoogleAdsOAuth implements SocialOAuth
                 continue;
             }
 
-            $accounts[] = new SocialAccount($id, self::nameOf($grant->accessToken, $id), null);
+            $about      = self::describe($grant->accessToken, $id);
+            $accounts[] = new SocialAccount($id, $about['name'], null);
+            $seen[]     = $id;
+
+            if ($about['manager']) {
+                $managers[] = $id;
+            }
+        }
+
+        /*
+         * And every enabled client of every manager, read THROUGH it.
+         *
+         * listAccessibleCustomers names the accounts the signed-in user
+         * reaches directly. A-1 Chimney's user reaches twenty-two; the Ads
+         * Manager among them has thirty-six enabled clients. The other
+         * twenty-three - Stamford, Hamden, Providence, Seattle, St Louis -
+         * answer PERMISSION_DENIED to any read that does not carry the
+         * manager as login-customer-id, and were never connected, so their
+         * leads never arrived (measured 2026-09-09). A client the user also
+         * reaches directly keeps its direct row; the manager route is for the
+         * ones that have no other.
+         */
+        foreach ($managers as $managerId) {
+            foreach (self::clientsOf($grant->accessToken, $managerId) as $client) {
+                if (in_array($client->remoteId, $seen, true)) {
+                    continue;
+                }
+
+                $accounts[] = $client;
+                $seen[]     = $client->remoteId;
+            }
         }
 
         if ($accounts === []) {
@@ -215,6 +247,88 @@ final class GoogleAdsOAuth implements SocialOAuth
         }
 
         return $accounts;
+    }
+
+    /**
+     * The account's name and whether it is a manager, in one read.
+     *
+     * A failed read is not a failed connect: the account still exists and
+     * its leads still arrive, it just wears its digits until
+     * `leads:name-accounts` names it, and is treated as not a manager.
+     *
+     * @return array{name: string, manager: bool}
+     */
+    public static function describe(string $accessToken, string $customerId, ?string $loginCustomerId = null): array
+    {
+        try {
+            $response = Http::withToken($accessToken)
+                ->withHeaders([
+                    'developer-token'   => (string) config('services.google_ads.developer_token'),
+                    'login-customer-id' => $loginCustomerId ?: $customerId,
+                ])
+                ->timeout(self::TIMEOUT)
+                ->post(
+                    self::endpoint()."/customers/{$customerId}/googleAds:search",
+                    ['query' => 'SELECT customer.id, customer.descriptive_name, customer.manager FROM customer'],
+                );
+        } catch (ConnectionException) {
+            return ['name' => self::readableId($customerId), 'manager' => false];
+        }
+
+        $customer = $response->ok() ? (array) ($response->json('results.0.customer') ?? []) : [];
+        $name     = trim((string) ($customer['descriptiveName'] ?? ''));
+
+        return [
+            'name'    => $name !== '' ? $name : self::readableId($customerId),
+            'manager' => (bool) ($customer['manager'] ?? false),
+        ];
+    }
+
+    /**
+     * Every ENABLED, non-manager client under a manager, at any depth, each
+     * marked to be read through that manager. A refused or unreachable
+     * listing is an empty list: the manager's own row still connects.
+     *
+     * @return SocialAccount[]
+     */
+    public static function clientsOf(string $accessToken, string $managerId): array
+    {
+        try {
+            $response = Http::withToken($accessToken)
+                ->withHeaders([
+                    'developer-token'   => (string) config('services.google_ads.developer_token'),
+                    'login-customer-id' => $managerId,
+                ])
+                ->timeout(self::TIMEOUT)
+                ->post(
+                    self::endpoint()."/customers/{$managerId}/googleAds:search",
+                    ['query' => 'SELECT customer_client.id, customer_client.descriptive_name, '
+                        .'customer_client.level, customer_client.manager, customer_client.status '
+                        .'FROM customer_client'],
+                );
+        } catch (ConnectionException) {
+            return [];
+        }
+
+        if (! $response->ok()) {
+            return [];
+        }
+
+        $clients = [];
+
+        foreach ((array) $response->json('results', []) as $row) {
+            $c  = (array) (($row['customerClient'] ?? []));
+            $id = trim((string) ($c['id'] ?? ''));
+
+            if ($id === '' || $id === $managerId || ($c['manager'] ?? false) || ($c['status'] ?? '') !== 'ENABLED') {
+                continue;
+            }
+
+            $name      = trim((string) ($c['descriptiveName'] ?? ''));
+            $clients[] = new SocialAccount($id, $name !== '' ? $name : self::readableId($id), null, loginCustomerId: $managerId);
+        }
+
+        return $clients;
     }
 
     /**
@@ -234,13 +348,13 @@ final class GoogleAdsOAuth implements SocialOAuth
      * `leads:name-accounts` names it. Throwing here would refuse a whole
      * connection over a label.
      */
-    public static function nameOf(string $accessToken, string $customerId): string
+    public static function nameOf(string $accessToken, string $customerId, ?string $loginCustomerId = null): string
     {
         try {
             $response = Http::withToken($accessToken)
                 ->withHeaders([
                     'developer-token'   => (string) config('services.google_ads.developer_token'),
-                    'login-customer-id' => $customerId,
+                    'login-customer-id' => $loginCustomerId ?: $customerId,
                 ])
                 ->timeout(self::TIMEOUT)
                 ->post(

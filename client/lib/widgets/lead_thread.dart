@@ -5,6 +5,7 @@ import '../core/api_client.dart';
 import '../core/phone_numbers.dart';
 import '../core/session.dart';
 import '../screens/jobs/job_detail_panel.dart';
+import '../screens/phone/recording_playback_bar.dart';
 import '../screens/phone/recording_player.dart';
 import 'async_body.dart';
 import 'book_lead_panel.dart';
@@ -104,10 +105,6 @@ class _LeadThreadState extends State<LeadThread> {
   /// A draft is offered only where a reply can go and the model is on.
   bool _canSuggest = false;
   bool _suggesting = false;
-
-  String? _fetchingId;
-  String? _playingId;
-  String? _playError;
 
   static const _statuses = <String, String>{
     'new': 'New',
@@ -319,63 +316,6 @@ class _LeadThreadState extends State<LeadThread> {
     await showSidePanel<void>(context, builder: (_) => panel);
   }
 
-  Future<void> _play(Map<String, dynamic> c) async {
-    final id = c['id'] as String;
-
-    if (_playingId == id) {
-      _player.stop();
-      setState(() => _playingId = null);
-      return;
-    }
-
-    _player.stop();
-    setState(() {
-      _playingId = null;
-      _playError = null;
-      _fetchingId = id;
-    });
-
-    final bytes = await widget.api.getBytes(
-      '/leads/${widget.lead['id']}/conversations/$id/recording',
-    );
-    if (!mounted) return;
-
-    if (bytes == null) {
-      setState(() {
-        _fetchingId = null;
-        _playError = 'The recording could not be fetched.';
-      });
-      return;
-    }
-
-    try {
-      await _player.play(bytes);
-    } on RecordingPlaybackFailure catch (failure) {
-      if (!mounted) return;
-      setState(() {
-        _fetchingId = null;
-        _playError = failure.message;
-      });
-      return;
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _fetchingId = null;
-        _playError = 'The recording could not be played.';
-      });
-      return;
-    }
-    if (!mounted) return;
-    setState(() {
-      _fetchingId = null;
-      // On a desktop the audio is somebody else's window now (see
-      // Playing in the app now, on every platform, so this is simply which
-      // bubble is making the sound. It used to be null on desktop, where
-      // playback left the app and there was nothing here to stop.
-      _playingId = id;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -499,16 +439,6 @@ class _LeadThreadState extends State<LeadThread> {
           ),
         ),
         const Divider(height: 1),
-        if (_playError != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Text(
-              _playError!,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.error,
-              ),
-            ),
-          ),
         Expanded(
           child: ColoredBox(
             color: theme.colorScheme.surfaceContainerLow,
@@ -890,6 +820,12 @@ class _LeadThreadState extends State<LeadThread> {
     ),
   );
 
+  /// A call: its length and who placed it, and the same play bar Voicemail
+  /// and Records use, with pause, scrub and how far through you are. Jose,
+  /// 2026-09-09: "like the one in communications for the voicemail, right
+  /// now it's too simple". The bar fetches through the lead's own endpoint
+  /// with the connection's credentials and keeps the bytes, so a second play
+  /// does not download again.
   Widget _callRow(
     ThemeData theme,
     Map<String, dynamic> c, {
@@ -897,79 +833,45 @@ class _LeadThreadState extends State<LeadThread> {
     required String when,
   }) {
     final id = c['id'] as String;
-    final fetching = _fetchingId == id;
-    final playing = _playingId == id;
     final hasRecording = c['has_recording'] == true;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(11, 9, 11, 9),
+      padding: const EdgeInsets.fromLTRB(11, 9, 11, 6),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         border: Border.all(color: theme.colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (hasRecording)
-            SizedBox(
-              width: 34,
-              height: 34,
-              child: fetching
-                  ? const Padding(
-                      padding: EdgeInsets.all(8),
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  // A filled disc: primaryContainer at rest, primary while
-                  // playing, per the approved colour layout.
-                  : Material(
-                      color: playing
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.primaryContainer,
-                      shape: const CircleBorder(),
-                      clipBehavior: Clip.antiAlias,
-                      child: IconButton(
-                        key: ValueKey('play-$id'),
-                        tooltip: playing ? 'Stop' : 'Play',
-                        padding: EdgeInsets.zero,
-                        iconSize: 20,
-                        onPressed: () => _play(c),
-                        icon: Icon(
-                          playing ? Icons.stop : Icons.play_arrow,
-                          color: playing
-                              ? theme.colorScheme.onPrimary
-                              : theme.colorScheme.onPrimaryContainer,
-                        ),
-                      ),
-                    ),
-            ),
-          if (hasRecording) const SizedBox(width: 10),
-          Flexible(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Call · ${formatDuration(c['duration_ms'] as num?)}',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  fetching
-                      ? 'Fetching the recording…'
-                      : playing
-                      ? 'Playing'
-                      : hasRecording
-                      ? '$who called · $when'
-                      : '$who called · $when · no recording',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
+          Text(
+            'Call · ${formatDuration(c['duration_ms'] as num?)}',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
             ),
           ),
+          Text(
+            hasRecording
+                ? '$who called · $when'
+                : '$who called · $when · no recording',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          if (hasRecording)
+            SizedBox(
+              width: 360,
+              child: RecordingPlaybackBar(
+                key: ValueKey('recording-$id'),
+                player: _player,
+                dense: true,
+                load: () => widget.api.getBytes(
+                  '/leads/${widget.lead['id']}/conversations/$id/recording',
+                ),
+              ),
+            ),
         ],
       ),
     );

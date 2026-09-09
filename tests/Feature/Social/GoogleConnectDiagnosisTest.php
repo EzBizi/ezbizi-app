@@ -230,6 +230,59 @@ class GoogleConnectDiagnosisTest extends TestCase
         $this->assertSame('111-111-1111', $byId['1111111111'], 'Digits are the fallback when Google will not name it.');
     }
 
+    /**
+     * The accounts a user reaches only THROUGH a manager are connected too.
+     *
+     * listAccessibleCustomers named twenty-two accounts for A-1 Chimney; the
+     * Ads Manager among them has thirty-six enabled clients, and the other
+     * twenty-three answered PERMISSION_DENIED to every read that did not carry
+     * the manager as login-customer-id. They were never connected, so their
+     * leads never arrived (2026-09-09). A client the user also reaches directly
+     * keeps its direct row.
+     */
+    public function test_a_managers_enabled_clients_are_connected_through_the_manager(): void
+    {
+        config(['services.google_ads.developer_token' => 'dev-token', 'services.google_ads.version' => 'v24']);
+
+        Http::fake(function ($request) {
+            if (str_contains($request->url(), 'listAccessibleCustomers')) {
+                return Http::response(['resourceNames' => ['customers/4051729356', 'customers/4941850746']]);
+            }
+
+            $query = (string) (((array) $request->data())['query'] ?? '');
+
+            if (str_contains($query, 'FROM customer_client')) {
+                $this->assertSame(['4051729356'], $request->header('login-customer-id'), 'clients are listed through the manager');
+
+                return Http::response(['results' => [
+                    ['customerClient' => ['id' => '4051729356', 'descriptiveName' => 'A1 Chimney - Ads Manager', 'level' => 0, 'manager' => true, 'status' => 'ENABLED']],
+                    ['customerClient' => ['id' => '4941850746', 'descriptiveName' => 'A1 Chimney - Cleveland', 'level' => 1, 'manager' => false, 'status' => 'ENABLED']],
+                    ['customerClient' => ['id' => '2796623321', 'descriptiveName' => 'A1 Chimney - Stamford', 'level' => 2, 'manager' => false, 'status' => 'ENABLED']],
+                    ['customerClient' => ['id' => '4634809513', 'descriptiveName' => 'A1 Chimney - Connecticut', 'level' => 1, 'manager' => false, 'status' => 'CANCELED']],
+                    ['customerClient' => ['id' => '3747134697', 'descriptiveName' => 'A1 Chimney - Philadelphia (MCC)', 'level' => 1, 'manager' => true, 'status' => 'ENABLED']],
+                ]]);
+            }
+
+            if (str_contains($request->url(), 'customers/4051729356/')) {
+                return Http::response(['results' => [['customer' => ['id' => '4051729356', 'descriptiveName' => 'A1 Chimney - Ads Manager', 'manager' => true]]]]);
+            }
+
+            return Http::response(['results' => [['customer' => ['id' => '4941850746', 'descriptiveName' => 'A1 Chimney - Cleveland', 'manager' => false]]]]);
+        });
+
+        $accounts = (new GoogleAdsOAuth)->identify($this->grant());
+
+        $byId = [];
+        foreach ($accounts as $a) {
+            $byId[$a->remoteId] = $a;
+        }
+
+        $this->assertSame(['4051729356', '4941850746', '2796623321'], array_map('strval', array_keys($byId)), 'direct accounts, then the manager\'s clients that are not already there; never a cancelled or manager client');
+        $this->assertNull($byId['4941850746']->loginCustomerId, 'reached directly, so read directly');
+        $this->assertSame('4051729356', $byId['2796623321']->loginCustomerId, 'reached only through the manager');
+        $this->assertSame('A1 Chimney - Stamford', $byId['2796623321']->displayName);
+    }
+
     public function test_signing_in_with_an_account_that_has_no_ads_accounts_is_not_a_failure_to_identify(): void
     {
         config(['services.google_ads.developer_token' => 'dev-token']);

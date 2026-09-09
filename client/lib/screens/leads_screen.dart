@@ -1,4 +1,6 @@
 import '../core/phone_numbers.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -38,6 +40,10 @@ class LeadsScreen extends StatefulWidget {
 class _LeadsScreenState extends State<LeadsScreen> {
   final _search = TextEditingController();
 
+  /// Search runs as you type, a third of a second after the last keystroke.
+  /// Enter still works; it just no longer waits for it (Jose, 2026-09-09).
+  Timer? _searchDebounce;
+
   bool _loading = true;
   bool _syncing = false;
   String? _error;
@@ -76,8 +82,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// added -- the strip is built from `_sourceChips`, so a source added there
   /// and not here would land with the wrong icon rather than none.
   static const _sourceIcons = <IconData>[
-    Icons.campaign,          // Google Local Services: an ad placement
-    Icons.push_pin,          // Thumbtack, which is what a thumbtack is
+    Icons.campaign, // Google Local Services: an ad placement
+    Icons.push_pin, // Thumbtack, which is what a thumbtack is
     Icons.chat_bubble_outline,
     Icons.description,
   ];
@@ -104,6 +110,16 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// means the first one, so the pane is never blank while there are leads.
   String? _selectedId;
 
+  /// The list's share of the two panes, dragged on the divider. Bounded in
+  /// PIXELS so neither pane can be squeezed below what it lays out (Jose,
+  /// 2026-09-09: "with limits of course to not break overflow"): the list
+  /// keeps its row, the thread keeps its header with the star, Book and the
+  /// status control on one line. A share alone let a wide window push the
+  /// thread to 336px, and the header overflowed by 46.
+  double _listShare = 0.5;
+  static const _minListPx = 320.0;
+  static const _minThreadPx = 460.0;
+
   Map<String, dynamic>? get _selected {
     for (final l in _leads) {
       if (l['id'] == _selectedId) return l;
@@ -128,6 +144,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _search.dispose();
     super.dispose();
   }
@@ -292,7 +309,17 @@ class _LeadsScreenState extends State<LeadsScreen> {
             builder: (context, constraints) {
               final search = TextField(
                 controller: _search,
-                onSubmitted: (_) => _load(),
+                onSubmitted: (_) {
+                  _searchDebounce?.cancel();
+                  _load();
+                },
+                onChanged: (_) {
+                  _searchDebounce?.cancel();
+                  _searchDebounce = Timer(
+                    const Duration(milliseconds: 350),
+                    _load,
+                  );
+                },
                 decoration: InputDecoration(
                   isDense: true,
                   prefixIcon: const Icon(Icons.search, size: 20),
@@ -387,8 +414,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
           selected: _source == null
               ? 0
               : _sourceChips.indexWhere((c) => c.$1 == _source) + 1,
-          onSelected: (i) =>
-              _setSource(i == 0 ? null : _sourceChips[i - 1].$1),
+          onSelected: (i) => _setSource(i == 0 ? null : _sourceChips[i - 1].$1),
         ),
         // One "Connected sources" row whatever the number of providers: the
         // band-to-panel shape Google's accounts shipped with, costing one row
@@ -581,37 +607,63 @@ class _LeadsScreenState extends State<LeadsScreen> {
   Widget _twoPane(ThemeData theme) {
     final selected = _selected;
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(
-          child: _list(
-            theme,
-            selectedId: selected?['id'] as String?,
-            onTap: (lead) =>
-                setState(() => _selectedId = lead['id'] as String?),
-          ),
-        ),
-        const VerticalDivider(width: 1),
-        Expanded(
-          child: selected == null
-              ? const SizedBox.shrink()
-              : LeadThread(
-                  // Keyed on the lead so picking another one fetches its
-                  // thread rather than keeping the last one's State.
-                  key: ValueKey('thread-${selected['id']}'),
-                  api: widget.api,
-                  lead: selected,
-                  onStatusChanged: (status) => _setStatus(selected, status),
-                  onRead: () => _markRead(selected),
-                  onStar: (on) => _mark(selected, starred: on),
-                  onNote: (text) =>
-                      _mark(selected, note: text, clearNote: text == null),
-                  session: widget.session,
-                  onBooked: _booked,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final maxList = (width - _minThreadPx).clamp(_minListPx, width);
+        final listWidth = (width * _listShare).clamp(_minListPx, maxList);
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              width: listWidth,
+              child: _list(
+                theme,
+                selectedId: selected?['id'] as String?,
+                onTap: (lead) =>
+                    setState(() => _selectedId = lead['id'] as String?),
+              ),
+            ),
+            // The divider is the handle: an 8px hit target drawn as a 1px
+            // line, dragged left or right to resize both panes at once.
+            MouseRegion(
+              cursor: SystemMouseCursors.resizeLeftRight,
+              child: GestureDetector(
+                key: const ValueKey('pane-divider'),
+                behavior: HitTestBehavior.opaque,
+                onHorizontalDragUpdate: (d) => setState(() {
+                  _listShare =
+                      (listWidth + d.delta.dx).clamp(_minListPx, maxList) /
+                      width;
+                }),
+                child: const SizedBox(
+                  width: 8,
+                  child: Center(child: VerticalDivider(width: 1)),
                 ),
-        ),
-      ],
+              ),
+            ),
+            Expanded(
+              child: selected == null
+                  ? const SizedBox.shrink()
+                  : LeadThread(
+                      // Keyed on the lead so picking another one fetches its
+                      // thread rather than keeping the last one's State.
+                      key: ValueKey('thread-${selected['id']}'),
+                      api: widget.api,
+                      lead: selected,
+                      onStatusChanged: (status) => _setStatus(selected, status),
+                      onRead: () => _markRead(selected),
+                      onStar: (on) => _mark(selected, starred: on),
+                      onNote: (text) =>
+                          _mark(selected, note: text, clearNote: text == null),
+                      session: widget.session,
+                      onBooked: _booked,
+                    ),
+            ),
+          ],
+        );
+      },
     );
   }
 

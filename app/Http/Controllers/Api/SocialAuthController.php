@@ -232,6 +232,11 @@ class SocialAuthController extends Controller
                     $connection->forceFill([
                         'display_name' => $account->displayName,
                         'handle'       => $account->handle,
+                        // Google Ads: the manager this account is read through,
+                        // null when the grant reaches it directly. Written on
+                        // every connect so a row that gained a direct route
+                        // drops the manager and one that lost it gains one.
+                        'login_customer_id' => $account->loginCustomerId,
                     ]);
 
                     // Only Meta issues one, and only Meta's callbacks need it.
