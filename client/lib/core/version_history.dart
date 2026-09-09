@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0181',
+      date: '9 Sep 2026',
+      items: [
+        'The home screen has a box for Scheduling, Phone and Marketing where each had a note saying something would appear later.',
+        'Scheduling shows what you are set up to take each day of the week. The numbers are what you have configured - booked jobs are not counted yet, and the box says so.',
+        'Phone shows how many calls were answered and how many were missed, and tells you if voicemails are waiting.',
+        'Marketing shows what was published over the period, how many posts are waiting to go out, and how many failed to reach their account. A post sent to three accounts counts as three, because each one can succeed or fail on its own.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0180',
       date: '9 Sep 2026',
       items: [
