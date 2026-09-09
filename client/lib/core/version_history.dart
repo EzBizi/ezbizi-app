@@ -12,6 +12,7 @@ class VersionHistory {
       date: '9 Sep 2026',
       items: [
         'You can set your business\'s brand colour in Organization, and see the button it makes on your website before you save it. Pick one of seven, or type a hex code. Until you set one, the widgets use a neutral blue and the screen says so.',
+        'Web Management: seven ready-made colours for the chat and form widgets. Pick one and the button text picks itself, so the colours you choose are always readable - typing your own still works, and still warns you if the two are too close.',
         'Human Resources: the Training card lays itself out by the space it is given, so it reads the same in a narrow column on a wide window as on a phone.',
       ],
     ),
