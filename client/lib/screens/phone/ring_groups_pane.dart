@@ -369,9 +369,17 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
                 ? 'none of $listed can be rung'
                 : '$reachable of $listed can be rung',
             group.mode == 'sequential' ? 'one at a time' : 'all at once',
+            // LABELS, not E.164. Six raw numbers on one line is a string
+            // nobody reads to the end, and the labels are what the same fact
+            // is called everywhere else on this screen — the editor below
+            // already says "General Use, Jose, Toula".
+            //
+            // "no line yet" also read as a leftover from the control that
+            // used to live here, so it says the thing that is actually true
+            // and stays short enough for a summary row.
             answering.isEmpty
-                ? 'answers no line yet'
-                : 'answers ${answering.map((l) => l.e164).join(", ")}',
+                ? 'no number rings it yet'
+                : 'rings for ${answering.map((l) => l.label).join(", ")}',
           ].join(' · '),
         ),
         trailing: editing
@@ -415,7 +423,24 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
             ),
             const SizedBox(height: 12),
 
+            // KEYED ON THE DRAFT, and this is not a nicety.
+            //
+            // `initialValue` is read once, when the field's State is created.
+            // Pressing Edit on a second group while this editor is open swaps
+            // the draft underneath a widget in the same position, so Flutter
+            // reuses that State and its controller — and the box goes on
+            // showing the PREVIOUS group's name over the new group's members.
+            //
+            // Jose hit it on 2026-09-09: the editor showed Dispatch's seven
+            // people and Dispatch's "no number rings this group", with
+            // "Marketing" in the name box. Save would have renamed Dispatch.
+            // He reported it as leftover text, which is exactly what it looks
+            // like from outside.
+            //
+            // A key that changes with the draft forces a fresh State, so the
+            // field can never be one group behind the rest of the form.
             TextFormField(
+              key: ValueKey('ring-group-name-${draft.id}'),
               initialValue: draft.name,
               decoration: const InputDecoration(labelText: 'Name'),
               enabled: !_saving,
@@ -583,6 +608,10 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
 
             if (draft.overflow == 'forward')
               TextFormField(
+                // Same trap as the name field above: a forwarding number left
+                // over from the group you were looking at a moment ago is one
+                // Save away from sending this group's calls to it.
+                key: ValueKey('ring-group-overflow-${draft.id}'),
                 initialValue: draft.overflowNumber,
                 decoration: const InputDecoration(
                   labelText: 'Forward to',

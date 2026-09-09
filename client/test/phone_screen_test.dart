@@ -2053,7 +2053,118 @@ void main() {
       reason: 'a reachable group did not say what reaches it',
     );
   });
+
+  /// Editing a second group without cancelling the first.
+  ///
+  /// ── The defect ─────────────────────────────────────────────────
+  ///
+  /// `TextFormField.initialValue` is read once, when the field's State is
+  /// created. Pressing Edit on another group swaps the draft under a widget in
+  /// the same position, so Flutter reuses that State and its controller — and
+  /// the name box went on showing the PREVIOUS group while every other control
+  /// showed the new one.
+  ///
+  /// Jose hit it on 2026-09-09 and reported it as leftover text, which is what
+  /// it looks like from outside: Dispatch's seven people and Dispatch's "no
+  /// number rings this group", under the name "Marketing". Save would have
+  /// renamed Dispatch.
+  ///
+  /// The test above never saw it because it presses Cancel between the two,
+  /// which disposes the field and hides the whole failure.
+  testWidgets('editing a second group carries none of the first', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      connections: const [
+        {
+          'id': 'conn-1',
+          'scope_type': 'company',
+          'scope_id': 'co-1',
+          'kind': 'subaccount',
+          'status': 'connected',
+          'account_sid': 'ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        },
+      ],
+      numbers: const [
+        {
+          'id': 'num-1',
+          'connection_id': 'conn-1',
+          'e164': '+12394560829',
+          'label': 'General Use',
+          'ring_group_id': 'rg-marketing',
+        },
+      ],
+      members: const [
+        {'id': 'u-1', 'name': 'Dana Reyes', 'role_id': 'r-1'},
+      ],
+      ringGroups: const [
+        {
+          'id': 'rg-marketing',
+          'connection_id': 'conn-1',
+          'name': 'Marketing',
+          'mode': 'simultaneous',
+          'timeout_seconds': 30,
+          'overflow': 'voicemail',
+          'member_ids': <String>[],
+          'line_ids': ['num-1'],
+        },
+        {
+          'id': 'rg-dispatch',
+          'connection_id': 'conn-1',
+          'name': 'Dispatch',
+          'mode': 'simultaneous',
+          'timeout_seconds': 30,
+          'overflow': 'voicemail',
+          'member_ids': <String>[],
+          'line_ids': <String>[],
+        },
+      ],
+    );
+
+    await _tap(tester, _tab('Settings'));
+    await _tap(tester, find.text('Ring groups'));
+
+    await _tap(tester, _editOn(tester, 'Marketing'));
+
+    // Straight to the other one. NO Cancel — that is the whole point.
+    await _tap(tester, _editOn(tester, 'Dispatch'));
+
+    expect(
+      find.descendant(
+        of: find.byType(TextFormField),
+        matching: find.text('Dispatch'),
+      ),
+      findsOneWidget,
+      reason:
+          'the name box still holds the group edited a moment ago, so Save '
+          'would rename this one to that',
+    );
+
+    expect(
+      find.descendant(
+        of: find.byType(TextFormField),
+        matching: find.text('Marketing'),
+      ),
+      findsNothing,
+    );
+
+    // And the rest of the form really did move, so the assertion above is
+    // about the name field and not about nothing having happened.
+    expect(
+      find.textContaining('No number rings this group yet'),
+      findsOneWidget,
+    );
+  });
 }
+
+/// The Edit button on one ring group's card.
+Finder _editOn(WidgetTester tester, String group) => find
+    .descendant(
+      of: find.ancestor(of: find.text(group), matching: find.byType(Card)),
+      matching: find.widgetWithText(TextButton, 'Edit'),
+    )
+    .first;
 Finder _tab(String label) => find.widgetWithText(ChoiceChip, label);
 
 /// The TOP-LEVEL tabs only.
