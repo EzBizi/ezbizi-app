@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/tag.dart';
+import 'blocked_numbers_pane.dart';
 import 'call_flow_pane.dart';
 import 'flows_pane.dart';
 import 'general_pane.dart';
@@ -113,6 +114,15 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
       id: 'voicemail',
       label: 'Voicemail',
       icon: Icons.voicemail_outlined,
+      group: 'Answering',
+    ),
+
+    // Under Answering because it is the first decision made about an
+    // incoming call: whether to answer it at all.
+    (
+      id: 'blocked',
+      label: 'Blocked callers',
+      icon: Icons.block_outlined,
       group: 'Answering',
     ),
 
@@ -437,6 +447,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
       'hours' => HoursPane(api: widget.api, session: widget.session),
       'ring-groups' => RingGroupsPane(api: widget.api, session: widget.session),
       'voicemail' => VoicemailPane(api: widget.api, session: widget.session),
+      'blocked' => BlockedNumbersPane(api: widget.api, session: widget.session),
       'trust' => TrustPane(api: widget.api, session: widget.session),
       'tags' => TagsPane(api: widget.api, session: widget.session),
       'cost' => UsagePane(

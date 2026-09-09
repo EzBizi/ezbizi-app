@@ -81,6 +81,7 @@ use App\Http\Controllers\Api\Phone\StatusWebhookController as PhoneStatusWebhook
 use App\Http\Controllers\Api\Phone\TokensController as PhoneTokensController;
 use App\Http\Controllers\Api\Phone\TranscriptionWebhookController as PhoneTranscriptionWebhookController;
 use App\Http\Controllers\Api\Phone\TrustController as PhoneTrustController;
+use App\Http\Controllers\Api\Phone\BlockedNumbersController as PhoneBlockedNumbersController;
 use App\Http\Controllers\Api\Phone\VoicemailBoxesController as PhoneVoicemailBoxesController;
 use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookController;
 use App\Http\Controllers\Api\Phone\WhisperWebhookController as PhoneWhisperWebhookController;
@@ -1174,6 +1175,14 @@ Route::prefix('v1')
         Route::post('phone/voicemail-boxes', [PhoneVoicemailBoxesController::class, 'store']);
         Route::patch('phone/voicemail-boxes/{box}', [PhoneVoicemailBoxesController::class, 'update']);
         Route::delete('phone/voicemail-boxes/{box}', [PhoneVoicemailBoxesController::class, 'destroy']);
+
+        // Callers the company will not take a call from. The list is read
+        // here; it is ENFORCED on the public voice webhook, before anything
+        // routes, because a block that only filtered a screen would still
+        // ring every phone in the ring group.
+        Route::get('phone/blocked-numbers', [PhoneBlockedNumbersController::class, 'index']);
+        Route::post('phone/blocked-numbers', [PhoneBlockedNumbersController::class, 'store']);
+        Route::delete('phone/blocked-numbers/{blocked}', [PhoneBlockedNumbersController::class, 'destroy']);
 
         Route::get('phone/ports', [PhonePortsController::class, 'index']);
         Route::post('phone/ports', [PhonePortsController::class, 'store']);
