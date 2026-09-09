@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Monitoring;
 
+use App\Models\AuditEvent;
 use App\Models\MonitoringCamera;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
@@ -56,6 +57,45 @@ class CamerasTest extends TestCase
         $camera = $this->inTenant($alpha['org'], fn () => MonitoringCamera::query()->sole());
         $this->assertSame($alpha['org']->id, $camera->organization_id);
         $this->assertSame($manager->getKey(), $camera->created_by);
+    }
+
+    // ── §2.2 audit trail ────────────────────────────────────────────
+
+    public function test_create_update_delete_each_write_an_audit_row(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $manager = $this->userWithRole($alpha, 'Manager', ['monitoring.cameras.manage']);
+
+        $id = $this->signedInAs($manager)->postJson('/api/v1/monitoring/cameras', [
+            'label' => 'Front Door',
+            'protocol' => 'hls',
+            'url' => 'https://cam.example.test/stream.m3u8',
+        ])->assertCreated()->json('data.id');
+
+        $this->signedInAs($manager)
+            ->patchJson('/api/v1/monitoring/cameras/'.$id, ['label' => 'Back Door'])
+            ->assertOk();
+
+        $this->signedInAs($manager)
+            ->deleteJson('/api/v1/monitoring/cameras/'.$id)
+            ->assertNoContent();
+
+        $rows = AuditEvent::withoutGlobalScopes()
+            ->where('organization_id', $alpha['org']->id)
+            ->where('action', 'like', 'monitoring.camera.%')
+            ->get();
+
+        $this->assertEqualsCanonicalizing(
+            ['monitoring.camera.created', 'monitoring.camera.updated', 'monitoring.camera.deleted'],
+            $rows->pluck('action')->all(),
+            'each write action leaves exactly one audit row',
+        );
+
+        // Non-vacuous: the created row names the camera and the actor, so
+        // removing the log() call (or logging the wrong target) fails here.
+        $created = $rows->firstWhere('action', 'monitoring.camera.created');
+        $this->assertSame($id, $created->target_id);
+        $this->assertSame($manager->getKey(), $created->actor_id);
     }
 
     public function test_a_valid_rtsp_url_with_protocol_rtsp_is_accepted(): void

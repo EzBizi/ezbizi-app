@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Monitoring;
 
 use App\Http\Controllers\Api\Controller;
 use App\Models\MonitoringCamera;
+use App\Support\Audit\AuditLogger;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,6 +30,8 @@ use Illuminate\Validation\Rule;
 class CamerasController extends Controller
 {
     private const PROTOCOLS = ['hls', 'mjpeg', 'snapshot', 'rtsp'];
+
+    public function __construct(private readonly AuditLogger $audit) {}
 
     /** GET /api/v1/monitoring/cameras */
     public function index(): JsonResponse
@@ -64,6 +67,14 @@ class CamerasController extends Controller
             'created_by' => $request->user()->getKey(),
         ]);
 
+        // §2.2: cameras.manage writes records, so who added which camera when
+        // is an audited fact (ModuleRegistryTest). The url is left out — it can
+        // carry a stream credential; the label and protocol identify it enough.
+        $this->audit->log('monitoring.camera.created', $camera, [
+            'label' => $camera->label,
+            'protocol' => $camera->protocol,
+        ]);
+
         return response()->json(['data' => $this->present($camera)], Response::HTTP_CREATED);
     }
 
@@ -87,7 +98,13 @@ class CamerasController extends Controller
             'enabled' => ['sometimes', 'boolean'],
         ]);
 
-        $camera->fill($data)->save();
+        $camera->fill($data);
+        $changed = array_keys($camera->getDirty());
+        $camera->save();
+
+        // Records WHICH fields changed, not their values — the url can carry a
+        // credential, and "who changed the url and when" is the audited fact.
+        $this->audit->log('monitoring.camera.updated', $camera, ['fields' => $changed]);
 
         return response()->json(['data' => $this->present($camera->fresh())]);
     }
@@ -103,7 +120,12 @@ class CamerasController extends Controller
 
         $this->authorize('delete', $camera);
 
+        $label = $camera->label;
         $camera->delete();
+
+        // Logged with the label captured before deletion — the row outlives the
+        // camera, so "who removed 'Front door' and when" stays legible.
+        $this->audit->log('monitoring.camera.deleted', $camera, ['label' => $label]);
 
         return response()->noContent();
     }
