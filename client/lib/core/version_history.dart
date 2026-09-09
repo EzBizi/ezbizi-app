@@ -12,6 +12,8 @@ class VersionHistory {
       date: '9 Sep 2026',
       items: [
         'Human Resources: opening a person\'s record now shows their Training card - what they were assigned, what they passed, and what is due for retaking - with a note saying which of the two time panels is whose to act on. Someone who cannot reach the person sees why instead of an empty card.',
+        'You can set a real place as your timezone now - Eastern, Central, Mountain, Pacific, Alaska, Hawaii and the Canadian equivalents - instead of only a fixed offset from UTC. A place knows when the clocks change, so times stay right all year; the offsets are still there for a clock that should ignore daylight saving.',
+        'Business hours no longer says it is not in effect yet. It is: Clock In uses it to tell whether somebody is starting a shift outside hours.',
       ],
     ),
     VersionRelease(
