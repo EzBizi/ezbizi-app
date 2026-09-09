@@ -59,6 +59,41 @@ class SchedulingGlanceTest extends TestCase
         $this->assertTrue($this->glance()->snapshot());
     }
 
+    /**
+     * The period cannot move this box, asserted as BEHAVIOUR rather than as a
+     * flag.
+     *
+     * `test_it_is_a_snapshot...` above checks `snapshot()` returns true, which
+     * is the DECLARATION. This checks the consequence: two different periods
+     * must produce the same answer. A box that declared itself a snapshot and
+     * then windowed its query would satisfy the first and fail this.
+     *
+     * It also settles the second axis the deploy desk raised — an all-clear
+     * derived from a windowed query overclaims TIME as well as scope. Nothing
+     * here is windowed, so no sentence in this box can. That is a property of
+     * the query, and this is what holds it.
+     */
+    public function test_two_different_periods_give_the_same_answer(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->slot($this->area($tenant, 'Dallas'), 1, 3);
+
+        $month = $this->glance()
+            ->resolve($tenant['admin'], DashboardPeriod::for($tenant['admin'], 'month'), [])
+            ->toArray()['data'];
+
+        $week = $this->glance()
+            ->resolve($tenant['admin'], DashboardPeriod::for($tenant['admin'], 'week'), [])
+            ->toArray()['data'];
+
+        $this->assertSame($month, $week, 'A snapshot must not vary with the period.');
+
+        // The positive control: the fixture really did produce something, so
+        // "identical" is not two empty boxes agreeing with each other.
+        $this->assertFalse($month['empty']);
+        $this->assertContains('Set up to take 3 jobs a week.', $month['sentences']);
+    }
+
     public function test_with_no_areas_it_says_to_add_one_rather_than_showing_zero(): void
     {
         $tenant = $this->provisionTenant('Alpha');

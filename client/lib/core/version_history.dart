@@ -8,6 +8,22 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0183',
+      date: '9 Sep 2026',
+      items: [
+        'Calling a colleague rings. The caller hears ringing while it dials, which they did not before - a team call was silence, with no way to tell dialling from failed from already answered.',
+        'An incoming call rings the desk, brings the window to the front and posts a notification. The bar across the top was the only signal, and it only helps somebody already looking at the window.',
+        'Desktop Monitoring says why a computer is not sending screenshots, instead of leaving a blank space. A locked screen, a Windows install missing its image encoder, an upload the server turned away - and where there is something you can do about it, the message says what.',
+        'A computer that is simply switched off is no longer reported as faulty. It says plainly that it is off, and the faulty wording is kept for a machine that is on and genuinely not sending.',
+        'Online and offline no longer show as colour alone on the device lists or on the floor plan. A lit bolt means on and a struck-through bolt means off, so the status reads without relying on telling green from grey.',
+        'Boxes that can only see part of the business have stopped speaking for all of it. Where a box shows you your own branch or company, it now says so, instead of reporting that the company has none of something when it means none in your view. This covers the home screen boxes for Scheduling, Leads, Reviews, Marketing, Human Resources, Web Management, Fleet, Inspection, Inventory, Jobs, Services, Customers, Business Profile and Training.',
+        'The same is now true of boxes that tell you nothing needs your attention, which matters more: every review answered, nothing failed to send, every service area following your pattern. Each says whether that is true of the whole business or only of what you can see, so a problem somewhere you cannot see no longer reads as no problem at all.',
+        'Human Resources says when nothing is coming due, instead of showing nothing at all.',
+        'A reply to a lead updates its row in the list straight away, and moves it to the top.',
+        'The list of attempts on a training record can be closed again after you open it.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0182',
       date: '9 Sep 2026',
       items: [
