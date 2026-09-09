@@ -177,6 +177,48 @@ final class LapsedPasses
      * own docblock): so a client gating Submit on `max_attempts` is never
      * shown a smaller number of "used" attempts than the server will
      * actually enforce.
+     *
+     * ── The per-cycle ruling (owner, 2026-09-09, one step past the
+     *    failures-only ruling above) ─────────────────────────────────────
+     *
+     * A 128-scenario search (every 4-intent pass/fail sequence × `max_attempts`
+     * {1, 2} × `valid_for_days` {10, null} × the option {off, on}, with time
+     * travel between submissions) proved the failures-only ruling above still
+     * had a lifetime lockout in it: `$counted` never forgot a failure just
+     * because the learner went on to pass again. `fail` (spends a slot),
+     * `pass` (re-certifies — a closed, spent cycle by every rule already in
+     * this class), `fail` again after THAT pass lapses — under a plain
+     * lifetime sum this is 2 failures against `max_attempts: 2`, refused,
+     * forever, even though the learner is one cycle into a fresh
+     * certification and has failed it exactly ONCE. A stale failure from a
+     * cycle the learner already closed by re-certifying was still being held
+     * against them.
+     *
+     * The owner's ruling: the cap is per certification cycle, not per
+     * lifetime. Counting starts again at each landed pass — only attempts
+     * SINCE the learner's most recent passing attempt can count toward
+     * `max_attempts`; everything before that pass is a closed cycle and is
+     * spent, exactly like a failure sheltered by a still-valid pass is spent
+     * the moment that pass lands (this class's own "failures-only ruling"
+     * above; per-cycle is a THIRD narrowing on top of the same two
+     * conditions, never a replacement for either). [walkCountingTowardCap]
+     * applies it by resetting `$counted` to 0 at every landed pass, in the
+     * same pass at which `$holding`/`$expiresOn` already reset — a pass is
+     * always this person's new current standing, and now also always the
+     * start of a new counting window.
+     *
+     * This does NOT manufacture a recovery path out of a cycle that is
+     * itself still open: a learner who has genuinely spent every failure
+     * `max_attempts` allows since their OWN last pass, without landing a new
+     * one before hitting the cap, is refused until the author raises the
+     * cap — identical in kind to `max_attempts: 1` refusing a first-ever
+     * failure with no pass on record at all (this class's own prior "Trying
+     * to find a path this does not close" report, corrected here: that
+     * report's search never asked what happens ACROSS cycles, only within
+     * one, which is exactly the gap this ruling closes). What per-cycle
+     * closes is a stale, ALREADY-superseded cycle's spent failures reaching
+     * across a genuine re-certification to refuse a learner who is only one
+     * failure into their current, open cycle.
      */
     public static function attemptsCountingTowardCap(string $userId, string $testId): int
     {
@@ -249,6 +291,26 @@ final class LapsedPasses
      * left untouched by a failed one, sheltered or not: holding a still-good
      * pass is not undone by failing a retake of it.
      *
+     * ── The per-cycle reset (owner's ruling, 2026-09-09) ────────────────
+     *
+     * `$counted` is ALSO reset to 0 in that same "the attempt passed" branch
+     * — the identical instant `$holding`/`$expiresOn` reset to describe this
+     * person's new current standing. A landed pass closes the cycle every
+     * failure counted before it belonged to; nothing from before it is owed
+     * against this person's NEXT cycle's own `max_attempts` budget, however
+     * many failures that closed cycle held. This is on top of, never instead
+     * of, the sheltering exclusion just above: a failure sat WHILE sheltered
+     * was already excluded at the point it was taken (`! $stillValid` never
+     * true for it, so $counted never rose for it in the first place); this
+     * reset is what stops an UNSHELTERED failure from an earlier, since-
+     * closed cycle from still being held on the books once a new pass has
+     * genuinely re-certified the person. See this class's own
+     * `attemptsCountingTowardCap` docblock, "The per-cycle ruling", for the
+     * lockout this closes and the one shape of lockout it deliberately does
+     * NOT — a learner's own currently OPEN cycle exhausting its real budget
+     * with no new pass yet on record stays refused, same as it would for
+     * anyone who has never passed at all.
+     *
      * ── Why the return value is 0, not the historical count, whenever the
      *    walk ends still holding ────────────────────────────────────────
      *
@@ -291,11 +353,26 @@ final class LapsedPasses
             if ($attempt->passed) {
                 $holding = true;
                 $expiresOn = $attempt->expires_on;
+                $counted = 0; // Per-cycle ruling: a landed pass closes the prior cycle.
             }
         }
 
-        $currentlyValid = $holding && ($expiresOn === null || $expiresOn->toDateString() > now()->toDateString());
-
-        return $currentlyValid ? 0 : $counted;
+        // No end-of-walk override, and its absence is the point.
+        //
+        // Before the per-cycle ruling this returned `$currentlyValid ? 0 :
+        // $counted`, to stop a learner who holds a valid pass being refused by
+        // failures counted earlier. Per-cycle counting SUBSUMES it: every path
+        // to "holding a valid pass now" runs through a passing attempt, and a
+        // pass zeroes `$counted` above — while a failure taken WHILE holding is
+        // sheltered and never increments. So `$counted > 0` and currently-valid
+        // cannot both be true, and the override could only ever return the value
+        // it was already returning.
+        //
+        // Measured, not assumed: with the override still in place, deleting it
+        // left TrainingGradingTest 34/34 green, including the case written to
+        // catch exactly it (a learner holding a valid pass with failures on
+        // record). A line no input can reach and no test can kill is dead code,
+        // and a docblock calling it load-bearing is worse than no docblock.
+        return $counted;
     }
 }

@@ -489,7 +489,7 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
         ),
         _OptionRow(
           label: 'Count every retake, even a pass',
-          hint: 'Off only counts failures outside of a valid pass',
+          hint: 'Off counts only failures, and only since the last pass',
           trailing: Switch(
             key: const Key('training.option-count-attempts-after-pass'),
             value: _countAttemptsAfterPass,
@@ -551,14 +551,27 @@ class _OptionRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    final labelColumn = Column(
+    // Two lines when stacked, one when there is a row's worth of width.
+    //
+    // At 375px this column gets 343px, and a hint has to say a whole rule in
+    // it. Measured against this theme, three of the six hints on this screen
+    // are 48 characters and need ~595px — so on a phone they all truncated
+    // mid-clause, and the retake one truncated into "Off only counts
+    // failures", which is precisely the failures-only rule the per-cycle
+    // ruling exists to reject. A hint that ellipsises into a DIFFERENT rule is
+    // worse than one that wraps.
+    //
+    // So the fix is the row, not the wording: shortening one hint would have
+    // left the two siblings cut in the same place, and the honest sentence for
+    // this option does not fit 343px in one line at any wording I could find.
+    Widget labelColumn(int lines) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: theme.textTheme.bodyMedium, maxLines: 1, overflow: TextOverflow.ellipsis),
+        Text(label, style: theme.textTheme.bodyMedium, maxLines: lines, overflow: TextOverflow.ellipsis),
         Text(
           hint,
           style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          maxLines: 1,
+          maxLines: lines,
           overflow: TextOverflow.ellipsis,
         ),
       ],
@@ -571,13 +584,13 @@ class _OptionRow extends StatelessWidget {
           if (constraints.maxWidth < _narrowBelow) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [labelColumn, const SizedBox(height: 8), trailing],
+              children: [labelColumn(2), const SizedBox(height: 8), trailing],
             );
           }
           return Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Expanded(child: labelColumn),
+              Expanded(child: labelColumn(1)),
               const SizedBox(width: 10),
               trailingWidth == null ? trailing : SizedBox(width: trailingWidth, child: trailing),
             ],
