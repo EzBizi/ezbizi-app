@@ -265,6 +265,8 @@ class SchedulingAreasController extends Controller
                 continue;
             }
 
+            $this->assertLooksLikeAZip($zip);
+
             $city = is_array($entry) ? trim((string) ($entry['city'] ?? '')) : '';
 
             // Last one wins, so a re-send that adds a city to a zip already
@@ -273,6 +275,46 @@ class SchedulingAreasController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * A postal code, and not a fragment of something else.
+     *
+     * ── The corruption this closes ───────────────────────────────────
+     *
+     * `zips` used to be checked for nothing but `max:16`, which let ANY short
+     * string be stored as a zip. That was harmless while the only client sent
+     * zips — and stopped being harmless the moment the read shape changed from
+     * `["75201"]` to `[{zip, city}]`, because a client older than that change
+     * renders the objects into its text field with `join(', ')`, giving
+     *
+     *     {zip: 75201, city: Dallas}
+     *
+     * and then splits THAT on commas and spaces when somebody hits Save. Four
+     * strings — `{zip:`, `75201`, `city:`, `Dallas}` — all under sixteen
+     * characters, all accepted, and the area's real coverage replaced by
+     * fragments of its own serialisation. Nothing would have errored.
+     *
+     * So the tolerance for bare strings, which exists to keep an older client
+     * WRITING successfully, was the very thing that let an older client write
+     * rubbish. Both halves are needed: accept the old shape, and refuse a
+     * value that cannot be a postal code.
+     *
+     * Deliberately permissive about FORM — letters, digits, hyphens and single
+     * inner spaces, so "SW1A 1AA" and "75201-1234" both pass — and strict
+     * about the characters that appear in serialised data rather than on
+     * envelopes: braces, colons, commas, quotes.
+     */
+    private function assertLooksLikeAZip(string $zip): void
+    {
+        if (preg_match('/^[A-Za-z0-9][A-Za-z0-9-]*( [A-Za-z0-9-]+)?$/', $zip) !== 1
+            || mb_strlen($zip) > 16) {
+            throw ValidationException::withMessages([
+                'zips' => "\"{$zip}\" is not a zip code, so nothing was changed. "
+                    .'If a whole list arrived here as one line, the app that sent it '
+                    .'is out of date — update it and try again.',
+            ]);
+        }
     }
 
     /**
