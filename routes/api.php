@@ -1374,6 +1374,10 @@ Route::prefix('v1')
             [MailboxMessagesController::class, 'file']);
         Route::post('email/mailboxes/{mailbox}/messages/{message}/reply',
             [MailboxMessagesController::class, 'reply']);
+        Route::post('email/mailboxes/{mailbox}/messages/{message}/dealt',
+            [MailboxMessagesController::class, 'markDealt']);
+        Route::delete('email/mailboxes/{mailbox}/messages/{message}/dealt',
+            [MailboxMessagesController::class, 'unmarkDealt']);
         Route::post('email/mailboxes/{mailbox}/messages/{message}/seen',
             [MailboxMessagesController::class, 'markSeen']);
         Route::delete('email/mailboxes/{mailbox}/messages/{message}/seen',

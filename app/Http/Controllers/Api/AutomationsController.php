@@ -62,6 +62,10 @@ class AutomationsController extends Controller
         'voicemail.mark_dealt',
         'missed.create_job',
 
+        // Email's, three segments in the module so it does not arrive here as a
+        // bare `mark_dealt` in the namespace every module shares.
+        'message.mark_dealt',
+
         // Not subject-bound: it exists so a rule on something with no phone in
         // it — an email arriving — can still send a text, so the line and the
         // destination come from the rule rather than the record.
@@ -1107,6 +1111,7 @@ class AutomationsController extends Controller
             $type('notify', 'Send a notification'),
             $type('voicemail.mark_dealt', 'Mark a voicemail dealt with'),
             $type('missed.create_job', 'Create a job from a missed call'),
+            $type('message.mark_dealt', 'Mark an email dealt with'),
 
             // The line, the destination and the words are all stated in the
             // rule, because this action is deliberately not bound to the
