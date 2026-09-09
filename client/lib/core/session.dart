@@ -788,6 +788,23 @@ class Me {
     return value.clamp(180.0, 420.0);
   }
 
+  /// The two pane widths on Web Management → Widgets.
+  ///
+  /// Clamped on read for the same reason [navigationWidth] is: a value stored
+  /// by an older build, or one whose bounds the server has since tightened,
+  /// must not be able to render a pane nobody can use.
+  double get webWidgetsListWidth => _width('web.widgets.list_width', 260, 180, 460);
+
+  double get webWidgetsPreviewWidth =>
+      _width('web.widgets.preview_width', 360, 280, 640);
+
+  double _width(String key, double fallback, double min, double max) {
+    final stored = preferences[key];
+    final value = stored is num ? stored.toDouble() : fallback;
+
+    return value.clamp(min, max);
+  }
+
   factory Me.fromJson(Map<String, dynamic> json) => Me(
     id: json['id'] as String,
     name: json['name'] as String,

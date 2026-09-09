@@ -23,7 +23,11 @@ void main() {
     Map<String, Object?>? style,
     String? brand,
     bool twoSites = false,
+    Map<String, Object?> preferences = const {},
+    Map<String, Object?>? saved,
   }) async {
+    final writes = saved ?? <String, Object?>{};
+
     final client = MockClient((request) async {
       // Matched on the WHOLE path. ApiClient prefixes /api/v1, and a suffix
       // match once let a typo'd path fall through to a fixture that happened
@@ -48,7 +52,7 @@ void main() {
                 'reachable': true,
               },
             ],
-            'preferences': <String, dynamic>{},
+            'preferences': preferences,
             'organization': {
               'id': 'org-1',
               'name': 'A-1 Chimney Group',
@@ -122,6 +126,12 @@ void main() {
           'brand': brand,
           'field_types': const ['text', 'textarea', 'email', 'tel', 'select'],
         };
+      } else if (path == '/api/v1/me/preferences') {
+        writes.addAll(
+          (jsonDecode(request.body) as Map<String, dynamic>)['preferences']
+              as Map<String, dynamic>,
+        );
+        body = {'data': writes};
       } else {
         return http.Response('{}', 404,
             headers: {'content-type': 'application/json'});
@@ -515,6 +525,72 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.getSize(preview.first).width, resized);
+  });
+
+  /// A width that is forgotten on restart is a width somebody sets once and
+  /// then stops bothering with.
+  testWidgets('a dragged width is saved when the drag settles', (tester) async {
+    final saved = <String, Object?>{};
+
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      saved: saved,
+    );
+
+    // Nothing written while nobody has dragged anything.
+    expect(saved, isEmpty);
+
+    await tester.drag(
+        find.byTooltip('Drag to resize the preview'), const Offset(-70, 0));
+    await tester.pumpAndSettle();
+
+    expect(saved['web.widgets.preview_width'], isA<int>());
+    expect(saved['web.widgets.preview_width'] as int, greaterThan(360));
+
+    await tester.drag(
+        find.byTooltip('Drag to resize the list'), const Offset(50, 0));
+    await tester.pumpAndSettle();
+
+    expect(saved['web.widgets.list_width'] as int, greaterThan(260));
+  });
+
+  /// The saved value is what the screen opens on, or saving it was pointless.
+  testWidgets('a saved width is what the screen opens with', (tester) async {
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      preferences: const {
+        'web.widgets.list_width': 300,
+        'web.widgets.preview_width': 500,
+      },
+    );
+
+    final preview = find.ancestor(
+      of: find.text('Preview'),
+      matching: find.byType(SizedBox),
+    );
+
+    expect(tester.getSize(preview.first).width, 500.0);
+  });
+
+  /// A stored value from an older build, or one whose bounds have since been
+  /// tightened, must not be able to render a pane nobody can use.
+  testWidgets('an impossible saved width is clamped rather than obeyed', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      preferences: const {'web.widgets.preview_width': 9999},
+    );
+
+    final preview = find.ancestor(
+      of: find.text('Preview'),
+      matching: find.byType(SizedBox),
+    );
+
+    expect(tester.getSize(preview.first).width, 640.0);
   });
 
   testWidgets('view alone can look and cannot change', (tester) async {

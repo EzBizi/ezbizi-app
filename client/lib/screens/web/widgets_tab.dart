@@ -36,9 +36,15 @@ class _WidgetsTabState extends State<WidgetsTab> {
   ///
   /// The editor is keyed by site id, so its state is thrown away every time
   /// somebody clicks a different website — a width kept there would snap back
-  /// to my guess on every click, which is worse than not being draggable.
-  double _listWidth = 260;
-  double _previewWidth = 360;
+  /// on every click, which is worse than not being draggable.
+  ///
+  /// Seeded from the person's saved preference and written back when a drag
+  /// settles, the way the app's own sidebar does it. During the drag the value
+  /// lives here so the pane follows the pointer at frame rate; a PATCH per
+  /// pixel would be a request per frame for a value nobody has finished
+  /// choosing.
+  late double _listWidth = widget.session.me?.webWidgetsListWidth ?? 260;
+  late double _previewWidth = widget.session.me?.webWidgetsPreviewWidth ?? 360;
 
   @override
   void initState() {
@@ -129,6 +135,10 @@ class _WidgetsTabState extends State<WidgetsTab> {
             siteId: _selected!,
             canEdit: _canEdit,
             previewWidth: _previewWidth,
+            onPreviewSettled: () => widget.session.setPreference(
+              'web.widgets.preview_width',
+              _previewWidth.round(),
+            ),
             onPreviewDelta: (delta) => setState(
               () => _previewWidth = (_previewWidth - delta).clamp(280.0, 640.0),
             ),
@@ -146,6 +156,10 @@ class _WidgetsTabState extends State<WidgetsTab> {
             SizedBox(width: _listWidth, child: list),
             _DragHandle(
               tooltip: 'Drag to resize the list',
+              onSettled: () => widget.session.setPreference(
+                'web.widgets.list_width',
+                _listWidth.round(),
+              ),
               onDelta: (delta) => setState(() {
                 // 180 still shows a subdomain without truncating it; past 460
                 // the list is wider than the longest host anybody registers and
@@ -162,6 +176,10 @@ class _WidgetsTabState extends State<WidgetsTab> {
                       siteId: _selected!,
                       canEdit: _canEdit,
                       previewWidth: _previewWidth,
+                      onPreviewSettled: () => widget.session.setPreference(
+                        'web.widgets.preview_width',
+                        _previewWidth.round(),
+                      ),
                       onPreviewDelta: (delta) => setState(() {
                         // Dragging LEFT widens the preview, so the sign flips.
                         // The upper bound leaves the form its 560: below that
@@ -207,11 +225,16 @@ class _WidgetsTabState extends State<WidgetsTab> {
 class _DragHandle extends StatefulWidget {
   const _DragHandle({
     required this.onDelta,
+    required this.onSettled,
     this.tooltip = 'Drag to resize',
   });
 
   /// Pixels the pointer moved since the last frame, positive to the right.
   final void Function(double delta) onDelta;
+
+  /// The drag has stopped. Separate from [onDelta] because the value is worth
+  /// saving once, not sixty times a second while somebody is still choosing.
+  final VoidCallback onSettled;
 
   final String tooltip;
 
@@ -237,8 +260,16 @@ class _DragHandleState extends State<_DragHandle> {
         // only the hairline drawn inside them.
         behavior: HitTestBehavior.opaque,
         onHorizontalDragStart: (_) => setState(() => _dragging = true),
-        onHorizontalDragEnd: (_) => setState(() => _dragging = false),
-        onHorizontalDragCancel: () => setState(() => _dragging = false),
+        onHorizontalDragEnd: (_) {
+          setState(() => _dragging = false);
+          widget.onSettled();
+        },
+        // A cancelled drag still settled somewhere: the pane is at whatever
+        // width the last frame left it, so that width is the one to keep.
+        onHorizontalDragCancel: () {
+          setState(() => _dragging = false);
+          widget.onSettled();
+        },
         onHorizontalDragUpdate: (details) => widget.onDelta(details.delta.dx),
         child: Tooltip(
           message: widget.tooltip,
@@ -269,6 +300,7 @@ class _WidgetEditor extends StatefulWidget {
     required this.canEdit,
     required this.previewWidth,
     required this.onPreviewDelta,
+    required this.onPreviewSettled,
   });
 
   final ApiClient api;
@@ -279,6 +311,10 @@ class _WidgetEditor extends StatefulWidget {
   /// a different website is selected.
   final double previewWidth;
   final void Function(double delta) onPreviewDelta;
+
+  /// Called once the drag stops, so the width is saved rather than the
+  /// hundred values it passed through on the way.
+  final VoidCallback onPreviewSettled;
 
   @override
   State<_WidgetEditor> createState() => _WidgetEditorState();
@@ -561,6 +597,7 @@ class _WidgetEditorState extends State<_WidgetEditor> {
             _DragHandle(
               tooltip: 'Drag to resize the preview',
               onDelta: widget.onPreviewDelta,
+              onSettled: widget.onPreviewSettled,
             ),
             SizedBox(width: widget.previewWidth, child: _preview(theme)),
           ],
