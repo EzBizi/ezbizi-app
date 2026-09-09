@@ -75,18 +75,25 @@ class PresenceController extends Controller
     {
         $user = $request->user();
 
-        $states = PhonePresence::query()
+        $rows = PhonePresence::query()
             ->where('user_id', $user->id)
-            ->pluck('state')
-            ->all();
+            ->get();
+
+        $states = $rows->pluck('state')->all();
+
+        // A wrap-up that has run out is not a state at all. Reading the stored
+        // string alone would leave somebody showing as busy for as long as the
+        // row sat untouched, which is the stuck-icon bug wearing a new name.
+        $wrapping = $rows->contains(fn (PhonePresence $row) => $row->isWrappingUp());
 
         return response()->json(['data' => [
-            'has_line' => $states !== [],
-            'state' => in_array(PhonePresence::STATE_DND, $states, true)
-                ? PhonePresence::STATE_DND
-                : (in_array(PhonePresence::STATE_ON_CALL, $states, true)
-                    ? PhonePresence::STATE_ON_CALL
-                    : PhonePresence::STATE_REGISTERED),
+            'has_line' => $rows->isNotEmpty(),
+            'state' => match (true) {
+                in_array(PhonePresence::STATE_DND, $states, true) => PhonePresence::STATE_DND,
+                in_array(PhonePresence::STATE_ON_CALL, $states, true) => PhonePresence::STATE_ON_CALL,
+                $wrapping => PhonePresence::STATE_WRAP_UP,
+                default => PhonePresence::STATE_REGISTERED,
+            },
         ]]);
     }
 
@@ -145,6 +152,10 @@ class PresenceController extends Controller
                 PhonePresence::STATE_REGISTERED,
                 PhonePresence::STATE_DND,
                 PhonePresence::STATE_ON_CALL,
+
+                // Accepted so a desk can put itself into wrap-up directly, and
+                // so a client echoing back what it was last told is not a 422.
+                PhonePresence::STATE_WRAP_UP,
             ])],
         ]);
 
@@ -155,6 +166,11 @@ class PresenceController extends Controller
             return response()->json(['message' => self::NO_LINE], Response::HTTP_FORBIDDEN);
         }
 
+        $current = PhonePresence::query()
+            ->where('connection_id', $connection->id)
+            ->where('user_id', $user->id)
+            ->first();
+
         $presence = PhonePresence::query()->updateOrCreate(
             [
                 'connection_id' => $connection->id,
@@ -162,7 +178,7 @@ class PresenceController extends Controller
             ],
             [
                 'organization_id' => $this->tenant->idOrFail(),
-                'state' => $input['state'],
+                ...$this->wrapUp($connection, $current, (string) $input['state']),
             ],
         );
 
@@ -172,9 +188,54 @@ class PresenceController extends Controller
                 'connection_id' => $presence->connection_id,
                 'user_id' => $presence->user_id,
                 'state' => $presence->state,
+                'wrap_up_until' => $presence->wrap_up_until?->toIso8601String(),
                 'updated_at' => $presence->updated_at?->toIso8601String(),
             ],
         ]);
+    }
+
+    /**
+     * The state to actually store, once wrap-up has had its say.
+     *
+     * Two transitions matter and they look identical on the wire, because the
+     * desk sends "registered" for both:
+     *
+     *   on_call  → registered   the call just ended. If the company has asked
+     *                           for wrap-up time, this becomes a wrap-up with
+     *                           a deadline instead — the moment the feature
+     *                           exists for.
+     *   wrap_up  → registered   somebody pressed "I'm ready". That is a person
+     *                           saying they are done, and it must win, or the
+     *                           button does nothing.
+     *
+     * Told apart by the state ALREADY STORED rather than by anything the
+     * client sends. A flag on the request would be a flag a stale client omits,
+     * and the failure would be silent: no wrap-up, and nobody able to say why.
+     *
+     * @return array<string, mixed>
+     */
+    private function wrapUp(
+        PhoneConnection $connection,
+        ?PhonePresence $current,
+        string $wanted,
+    ): array {
+        $seconds = (int) $connection->wrap_up_seconds;
+
+        $justFinished = $wanted === PhonePresence::STATE_REGISTERED
+            && $current?->state === PhonePresence::STATE_ON_CALL
+            && $seconds > 0;
+
+        if ($justFinished) {
+            return [
+                'state' => PhonePresence::STATE_WRAP_UP,
+                'wrap_up_until' => now()->addSeconds($seconds),
+            ];
+        }
+
+        // Any other transition clears the deadline. Leaving a stale one behind
+        // would put somebody back into wrap-up the next time they were marked
+        // available, from a call that ended an hour ago.
+        return ['state' => $wanted, 'wrap_up_until' => null];
     }
 
     private function existsInTenant(string $table): \Illuminate\Validation\Rules\Exists
