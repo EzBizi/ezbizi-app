@@ -368,13 +368,17 @@ class _TrainingCardState extends State<TrainingCard> {
     if (completed != null) {
       return _Row(title, _State.passed, 'completed $completed');
     }
-    if (json['last_screen'] != null) {
+    // `last_screen` is a 0-indexed high-water mark (ProgressController::seen),
+    // so the screen reached is one more than stored — the same arithmetic as
+    // Training's own Learn card, so a guide reads the same on both screens.
+    // Null is "not started"; zero is "has seen the first screen".
+    if (json['last_screen'] case final num reached) {
       final total = json['screen_count'];
 
       return _Row(
         title,
         _State.inProgress,
-        total == null ? '' : 'screen ${json['last_screen']} of $total',
+        total == null ? '' : 'screen ${reached.toInt() + 1} of $total',
       );
     }
     return _Row(title, _State.notStarted, '');
