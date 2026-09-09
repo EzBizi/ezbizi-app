@@ -844,6 +844,31 @@ ruling by reverting the rule and watching only the right test go red — then re
 sabotage. The technique is safe on a clean file and a footgun on a dirty one. (`cp` to the
 scratchpad first is what made the same technique safe for me three times the same day.)
 
+**A summary repeating into its own detail is context, not duplication — but a one-item list
+is not a sequence.** Ruled on Training's Attempts block, 2026-09-09. It draws from the SECOND
+attempt onward, which is right; the reason given for it was not. *"With one attempt the tag
+above already is the history, so repeating it says one fact twice"* argues for excluding the
+current attempt at **every** count, and at two the latest is still both the tag and the first
+line. The reason that holds is that with one attempt there is no change to show, so the heading
+has nothing to head. **Fix the reason, or the next reader "fixes" the code.**
+
+**An unbounded list inside a ROW is one person deciding how usable a screen is for everyone
+else.** The Attempts block sits in `_PersonRow` inside a `ListView.separated` — a list of
+people. Somebody who sat a test forty times produces a row that swallows the pane, and the cost
+lands on whoever is scrolling past looking for somebody else. **Capped at three, newest first,
+with the affordance NAMING THE TOTAL** — *"Show all 9 attempts"*, so the reader knows the size
+of what is hidden before opening it. Same discipline as an empty sentence describing the box.
+
+> Jose's word was *"all"*. A cap with an affordance that names the count still offers all of
+> it — "all" answered *what the dashboard holds*, against a version that showed only current
+> state. **Say which reading you took, so he can overrule the reasoning rather than the number.**
+
+**Craft ships and tells me; a new element is design; Jose's direct word is neither — it is just
+the job.** Training routed the Attempts block as craft. It is a new element, so normally design;
+what makes their route right is that **Jose ruled it directly**, not the craft carve-out. Worth
+keeping separate so the carve-out does not quietly widen to cover anything a module felt sure
+about.
+
 **An advisory must not wear the failure component.** Web Management, 2026-09-08, asking
 that this be made a rule after the widget contrast work: *"dressing an advisory as a
 failure teaches people to ignore the component that also carries real failures."* The
