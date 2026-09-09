@@ -81,6 +81,45 @@ class TrainingAuditTest extends TestCase
         $this->assertSame('New title', $row->changes['after']['title'] ?? null);
     }
 
+    /**
+     * `screens` is a whole guide's worth of authored content — bulk, not
+     * §9-sensitive, and unread by anything (`AuditEvent` has no reader
+     * today). Writing it in full into `audit_events` — append-only,
+     * outside erasure's reach — would be pure liability for no benefit.
+     * `AuditLogger::logChange` must log that it changed and by how many
+     * screens, never the screens themselves.
+     */
+    public function test_updating_a_guides_screens_records_a_count_not_the_content(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $author = $this->userWithRole($tenant, 'Author', ['training.manage'], onlyAt: $tenant['franchise']);
+
+        $guide = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
+            'company_id' => $tenant['company']->id, 'franchise_id' => $tenant['franchise']->id,
+            'title' => 'Ladder safety', 'status' => TrainingGuide::DRAFT,
+            'screens' => [['title' => 'Screen 1', 'body' => 'Confidential wording.', 'media_kind' => 'none', 'media_url' => null]],
+        ]));
+
+        $newScreens = [
+            ['title' => 'Screen 1', 'body' => 'Rewritten confidential wording.', 'media_kind' => 'none', 'media_url' => null],
+            ['title' => 'Screen 2', 'body' => 'Second confidential screen.', 'media_kind' => 'none', 'media_url' => null],
+        ];
+
+        $this->signedInAs($author)
+            ->patchJson('/api/v1/training/guides/'.$guide->id, ['screens' => $newScreens])
+            ->assertOk();
+
+        $row = \App\Models\AuditEvent::query()->where('action', 'guide.updated')->firstOrFail();
+
+        $this->assertSame(['count' => 1], $row->changes['before']['screens'] ?? null);
+        $this->assertSame(['count' => 2], $row->changes['after']['screens'] ?? null);
+
+        $encoded = json_encode($row->changes);
+        $this->assertStringNotContainsString('Confidential wording.', $encoded);
+        $this->assertStringNotContainsString('Rewritten confidential wording.', $encoded);
+        $this->assertStringNotContainsString('Second confidential screen.', $encoded);
+    }
+
     public function test_an_update_that_changes_nothing_writes_no_audit_row(): void
     {
         $tenant = $this->provisionTenant('Alpha');
@@ -180,6 +219,55 @@ class TrainingAuditTest extends TestCase
         $this->assertSame($author->id, $row->actor_id);
         $this->assertSame('Old quiz', $row->changes['before']['title'] ?? null);
         $this->assertSame('New quiz', $row->changes['after']['title'] ?? null);
+    }
+
+    /**
+     * `questions` carries the answer key (`correct` lives inside the same
+     * JSON — `TrainingTest`'s own docblock). Jose's own ruling on this
+     * finding: the answer key must never be written into an append-only,
+     * unerasable table that nothing reads. `AuditLogger::logChange` must
+     * log that `questions` changed and by how many, never the questions
+     * or their answers.
+     */
+    public function test_updating_a_tests_questions_records_a_count_not_the_answer_key(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $author = $this->userWithRole($tenant, 'Author', ['training.manage'], onlyAt: $tenant['franchise']);
+
+        $test = $this->inTenant($tenant['org'], fn () => TrainingTest::create([
+            'company_id' => $tenant['company']->id, 'franchise_id' => $tenant['franchise']->id,
+            'title' => 'Ladder safety quiz', 'status' => TrainingTest::DRAFT,
+            'questions' => [
+                ['prompt' => 'Q1', 'choices' => [
+                    ['text' => 'The-Secret-Answer', 'correct' => true],
+                    ['text' => 'Wrong', 'correct' => false],
+                ]],
+            ],
+            'requires_guide' => false, 'pass_mark' => 80,
+        ]));
+
+        $newQuestions = [
+            ['prompt' => 'Q1', 'choices' => [
+                ['text' => 'A-New-Secret-Answer', 'correct' => true],
+                ['text' => 'Wrong', 'correct' => false],
+            ]],
+            ['prompt' => 'Q2', 'choices' => [
+                ['text' => 'Another-Secret-Answer', 'correct' => true],
+                ['text' => 'Wrong', 'correct' => false],
+            ]],
+        ];
+
+        $this->signedInAs($author)
+            ->patchJson('/api/v1/training/tests/'.$test->id, ['questions' => $newQuestions])
+            ->assertOk();
+
+        $row = \App\Models\AuditEvent::query()->where('action', 'test.updated')->firstOrFail();
+
+        $this->assertSame(['count' => 1], $row->changes['before']['questions'] ?? null);
+        $this->assertSame(['count' => 2], $row->changes['after']['questions'] ?? null);
+
+        $encoded = json_encode($row->changes);
+        $this->assertStringNotContainsString('Secret-Answer', $encoded);
     }
 
     public function test_deleting_a_test_writes_an_audit_row_naming_the_actor(): void

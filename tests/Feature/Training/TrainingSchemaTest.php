@@ -81,7 +81,21 @@ class TrainingSchemaTest extends TestCase
         }
     }
 
-    /** And the third table carrying the same place pair: assignments. */
+    /**
+     * And the third table carrying the same place pair: assignments.
+     *
+     * The guide here is filed at the ORGANIZATION (`company_id` and
+     * `franchise_id` both null), not at `$company` — review found that
+     * filing it at `$company` too meant `training_guides`' own
+     * `restrictOnDelete` blocked the delete FIRST, so the test passed for
+     * a reason that had nothing to do with `training_assignments`: proven
+     * by removing `training_assignments` from the migration's table list
+     * and watching this stay green. An org-wide guide can still be
+     * assigned to someone filed at `$company` (assignment place is a fact
+     * about the ASSIGNEE, not the guide — `AssignmentWriter`'s own
+     * docblock), which is exactly what lets the assignment's own FK to
+     * `$company` be the thing actually under test.
+     */
     public function test_deleting_a_company_with_an_assignment_filed_on_it_is_blocked_not_silently_reparented(): void
     {
         $tenant = $this->provisionTenant('Alpha');
@@ -91,8 +105,8 @@ class TrainingSchemaTest extends TestCase
         ]));
 
         $guide = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
-            'company_id' => $company->id, 'franchise_id' => null,
-            'title' => 'Filed Here', 'status' => TrainingGuide::PUBLISHED, 'screens' => [],
+            'company_id' => null, 'franchise_id' => null,
+            'title' => 'Filed Org-Wide', 'status' => TrainingGuide::PUBLISHED, 'screens' => [],
         ]));
 
         $learner = $this->userWithRole($tenant, 'Learner', ['training.view']);

@@ -177,10 +177,13 @@ class _DashboardPaneState extends State<DashboardPane> {
                   session: widget.session,
                   itemId: widget.itemId,
                   // `kind` — see `DashboardController::row`'s own docblock —
-                  // is what says which of `guide_id`/`test_id` to post.
-                  // The fallback is defensive only: every row this pane can
-                  // ever be opened from already carries one.
-                  kind: (widget.row['kind'] as String?) ?? 'guide',
+                  // is what says which of `guide_id`/`test_id` to post. A
+                  // missing `kind` used to fall back to 'guide' silently,
+                  // which would post `guide_id` for what might be a test —
+                  // a wrong write with nothing red anywhere. Cast rather
+                  // than fall back: a missing `kind` is a server bug, and
+                  // it must fail loudly here rather than mis-post there.
+                  kind: widget.row['kind'] as String,
                   onCancel: () => setState(() => _assigning = false),
                   onAssigned: () {
                     setState(() => _assigning = false);
@@ -262,6 +265,12 @@ class _AssignPaneState extends State<_AssignPane> {
   bool _submitting = false;
   String? _error;
 
+  /// `AssignmentsController::userCandidates`'s own signal that the list
+  /// shown is not the whole of who is reachable — see that method's own
+  /// docblock. Never a reason to hide any of `_userResults`; just a hint
+  /// that a narrower search would find somebody not shown here.
+  bool _truncated = false;
+
   Me get _me => widget.session.me!;
 
   @override
@@ -300,6 +309,7 @@ class _AssignPaneState extends State<_AssignPane> {
       _searching = false;
       if (response.ok) {
         _userResults = _mapList(response.data);
+        _truncated = response.body['truncated'] == true;
       } else {
         _error = response.reason;
       }
@@ -413,10 +423,28 @@ class _AssignPaneState extends State<_AssignPane> {
               onChanged: _searchUsers,
             ),
           ),
+          if (_truncated && !_searching)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 4, 20, 0),
+              child: Text(
+                'More people match — refine your search to narrow the list.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
           const SizedBox(height: 8),
           Expanded(child: _searching ? const Center(child: CircularProgressIndicator()) : _userList()),
         ] else ...[
-          Expanded(child: !_rolesLoaded ? const Center(child: CircularProgressIndicator()) : _roleList()),
+          Expanded(
+            // A failed fetch still flips `_rolesLoaded` (below) so the
+            // spinner does not spin forever — but that alone would render
+            // `_roleList()`'s own "no roles yet" empty state right under
+            // the `ErrorNote` above: two contradictory statements about
+            // the same failed request. The `ErrorNote` already says what
+            // happened; show nothing else here when it is showing.
+            child: !_rolesLoaded
+                ? const Center(child: CircularProgressIndicator())
+                : (_error != null ? const SizedBox.shrink() : _roleList()),
+          ),
         ],
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),

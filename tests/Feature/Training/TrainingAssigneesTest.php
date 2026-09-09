@@ -111,6 +111,53 @@ class TrainingAssigneesTest extends TestCase
         $this->assertTrue($franchiseRows->every(fn ($row) => $row['assignable'] === false));
     }
 
+    /**
+     * `AssignmentsController::userCandidates` used to `limit(50)` BEFORE
+     * filtering by §4 reach, so if a supervisor's own reachable crew
+     * happened to sort alphabetically LATE, and 50-or-more unreachable
+     * people in the organization sorted before them, the query's own 50
+     * rows could be entirely unreachable people — filtering left nothing,
+     * and the picker came back empty with no signal anything was ever
+     * cut. Riverside's crew is named to sort after 55 Northgate names, so
+     * the old `limit(50)` — applied before the filter — would have
+     * fetched only Northgate rows and returned zero Riverside names here.
+     */
+    public function test_a_reachable_crew_sorting_late_alphabetically_is_not_cut_by_the_display_limit(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $riverside = $tenant['franchise'];
+        $northgate = $this->extraFranchise($tenant, 'Northgate');
+
+        $supervisor = $this->userWithRole($tenant, 'Supervisor', ['training.assign'], onlyAt: $riverside);
+
+        // 55 unreachable people, sorting alphabetically BEFORE the
+        // reachable crew below — enough on their own to fill the old
+        // pre-filter limit(50).
+        foreach (range(1, 55) as $n) {
+            $this->userWithRole(
+                $tenant,
+                sprintf('AAA Northgate %02d', $n),
+                [],
+                email: sprintf('northgate%02d@%s.test', $n, $tenant['org']->slug),
+                onlyAt: $northgate,
+            );
+        }
+
+        $this->userWithRole($tenant, 'ZZZ Riverside Crew', [], onlyAt: $riverside);
+
+        $response = $this->signedInAs($supervisor)
+            ->getJson('/api/v1/training/assignees?type=user')
+            ->assertOk();
+
+        $names = collect($response->json('data'))->pluck('name');
+
+        $this->assertTrue(
+            $names->contains('ZZZ Riverside Crew'),
+            'A reachable person must not be excluded just because they sort late.',
+        );
+        $this->assertFalse($response->json('truncated'), '57 candidates, none of it should need truncating.');
+    }
+
     private function publishedGuide(array $tenant, $franchise): \App\Models\TrainingGuide
     {
         return $this->inTenant($tenant['org'], fn () => \App\Models\TrainingGuide::create([

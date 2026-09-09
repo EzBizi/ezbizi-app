@@ -929,6 +929,129 @@ class TrainingAssignmentReachTest extends TestCase
         });
     }
 
+    /**
+     * Correction-round-2 regression: `exactlyOneTarget` resolved the
+     * assigner's view with `ViewScope::forUser($assigner)`. Inside an
+     * automation run there is no request, so `forUser` falls through to
+     * the RULE CREATOR's own stored `navigation.scope` top-bar
+     * preference (`ViewScope::forUser`'s own docblock) — the identical
+     * defect class as coherence audit finding 2, moved from the learner
+     * to the assigner rather than removed. `ActionRunner::assignTraining`
+     * already resolves the automation's correct scope via `taskContext()`
+     * (`[$actor, ViewScope::forStoredAutomationScope(...)]`) one line
+     * above where it calls `AssignmentWriter::create` — and then discarded
+     * it with `[$actor] = $this->taskContext($automation)`.
+     *
+     * $admin here is the automation's creator, with full organization
+     * reach, and never touches the rule's OWN `scope_type`/`scope_id` —
+     * only $admin's personal top-bar chip, set here exactly the way a
+     * person sets it by clicking around, with nothing to do with this
+     * rule or its assignee. The target guide sits at Northgate, a
+     * franchise the rule creator's chip never names.
+     *
+     * ONE automation, fired twice, proves the chip and nothing else
+     * decides it: unchanged with no saved chip (organization default),
+     * changed only to point at Riverside (not Northgate, and not
+     * anywhere the guide or the learner needs to be) before the second
+     * firing.
+     */
+    public function test_the_automation_creators_saved_view_does_not_decide_whether_a_rule_assigns_training(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $riverside = $tenant['franchise'];
+        $northgate = $this->extraFranchise($tenant, 'Northgate');
+        $admin = $tenant['admin'];
+
+        $learner = $this->userAtCompany($tenant, 'Learner', ['training.view']);
+
+        $targetGuide = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
+            'company_id' => $tenant['company']->id, 'franchise_id' => $northgate->id,
+            'title' => 'Northgate Guide', 'status' => TrainingGuide::PUBLISHED,
+            'screens' => $this->screens(1),
+        ]));
+
+        $triggerGuideOne = $this->aPublishedOrgGuide($tenant, 'Trigger One');
+        $triggerGuideTwo = $this->aPublishedOrgGuide($tenant, 'Trigger Two');
+
+        $automationId = $this->signedInAs($admin)->postJson('/api/v1/automations', [
+            'name' => 'Assign the Northgate guide',
+            'trigger_key' => 'training.completed',
+            'actions' => [
+                [
+                    'type' => 'training.assign',
+                    'guide_id' => $targetGuide->id,
+                    'assignee_type' => 'user',
+                    'assignee_id' => $learner->id,
+                ],
+            ],
+        ])->assertCreated()->json('data.id');
+
+        $this->signedInAs($admin)
+            ->patchJson("/api/v1/automations/{$automationId}", ['is_active' => true])
+            ->assertOk();
+
+        // Row 1: the creator has no saved chip — falls back to the
+        // organization, which sees Northgate.
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/guides/{$triggerGuideOne->id}/seen", ['screen' => 0])
+            ->assertOk();
+
+        $this->inTenant($tenant['org'], function () use ($targetGuide, $learner) {
+            $eventOne = AutomationEvent::query()
+                ->where('event_key', 'training.completed')
+                ->latest('occurred_at')
+                ->firstOrFail();
+
+            app(AutomationEngine::class)->deliver($eventOne);
+
+            $runOne = AutomationRun::query()->where('event_id', $eventOne->id)->firstOrFail();
+            $this->assertSame(
+                AutomationRun::SUCCEEDED,
+                $runOne->status,
+                'Row 1 (no saved chip): expected a SUCCEEDED run; got action_results: '.json_encode($runOne->action_results),
+            );
+            $this->assertTrue(
+                TrainingAssignment::query()
+                    ->where('assignee_type', TrainingAssignment::USER)
+                    ->where('assignee_id', $learner->id)
+                    ->where('guide_id', $targetGuide->id)
+                    ->exists(),
+                'Row 1 must have written the assignment.',
+            );
+        });
+
+        // Row 2: the creator's OWN top-bar chip, pointed at Riverside — a
+        // display preference on the automation's CREATOR, not anything
+        // about the rule's stored scope, the guide's place, or the
+        // learner's reach, all three of which are unchanged from row 1.
+        $this->inTenant($tenant['org'], function () use ($admin, $riverside) {
+            $admin->forceFill(['preferences' => ['navigation.scope' => 'franchise:'.$riverside->id]])->save();
+        });
+
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/guides/{$triggerGuideTwo->id}/seen", ['screen' => 0])
+            ->assertOk();
+
+        $this->inTenant($tenant['org'], function () use ($targetGuide, $learner) {
+            $eventTwo = AutomationEvent::query()
+                ->where('event_key', 'training.completed')
+                ->latest('occurred_at')
+                ->firstOrFail();
+
+            app(AutomationEngine::class)->deliver($eventTwo);
+
+            $runTwo = AutomationRun::query()->where('event_id', $eventTwo->id)->firstOrFail();
+            $this->assertSame(
+                AutomationRun::SUCCEEDED,
+                $runTwo->status,
+                'Row 2 (chip at Riverside, guide at Northgate): the automation\'s OWN '
+                .'scope already covers Northgate (taskContext()) — the creator\'s personal '
+                .'top-bar chip must not be able to fail this. Got action_results: '
+                .json_encode($runTwo->action_results).', error: '.$runTwo->error,
+            );
+        });
+    }
+
     // ── Round 2: the permission gate must hold on BOTH paths ─────────
 
     /**
@@ -1236,6 +1359,92 @@ class TrainingAssignmentReachTest extends TestCase
                 .'must fall through to the same conservative [null, null] an unplaced person gets, '
                 .'not throw and not silently resolve to whoever happens to hold a matching id.',
         );
+    }
+
+    /**
+     * Coherence audit finding 6's `oldest()->oldest('id')` fix
+     * (`TrainingAssignment::automationScope`'s own docblock) had a test
+     * for `TrainingProgress`
+     * (`TrainingProgressTest::test_automation_scope_is_deterministic_when_the_learner_holds_two_assignments`)
+     * but not for this class, though the identical ordering lives here
+     * too. Same shape: the learner holds two assignments, the Riverside
+     * one backdated older than the Northgate one, and the OLDER row must
+     * win — asserted against Riverside specifically so an unordered
+     * `first()` regressing back in would not pass by coincidence.
+     */
+    public function test_automation_scope_is_deterministic_when_the_learner_holds_two_assignments(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $riverside = $tenant['franchise'];
+        $guide = $this->aPublishedOrgGuide($tenant);
+
+        $learner = $this->userInFranchise($tenant, $riverside, 'Learner', ['training.view']);
+
+        $scope = $this->inTenant($tenant['org'], function () use ($tenant, $learner, $guide) {
+            $northgate = Franchise::create(['company_id' => $tenant['company']->id, 'name' => 'Northgate']);
+
+            // The Riverside row already exists (`userInFranchise`'s own
+            // `onlyAt`) and is backdated so its `created_at` is
+            // unambiguously the OLDER of the two even at second precision.
+            $learner->assignments()->first()->forceFill(['created_at' => now()->subMinute()])->save();
+
+            Assignment::create([
+                'organization_id' => $tenant['org']->id, 'user_id' => $learner->id,
+                'assigned_franchise_id' => $northgate->id,
+            ]);
+
+            $assignment = TrainingAssignment::create([
+                'guide_id' => $guide->id,
+                'assignee_type' => TrainingAssignment::USER,
+                'assignee_id' => $learner->id,
+            ]);
+
+            return $assignment->automationScope();
+        });
+
+        $this->assertSame(
+            ['franchise', $riverside->id],
+            $scope,
+            'The OLDER assignment (Riverside) must win, deterministically, over the newer one (Northgate).',
+        );
+    }
+
+    /**
+     * The behavioral test above proves the CHOSEN row is deterministic,
+     * but with the older row also the FIRST-created one, MySQL can return
+     * it in creation order often enough that the value assertion passes
+     * by coincidence even with no `ORDER BY` at all —
+     * `TrainingProgressTest::test_automation_scope_query_carries_an_explicit_order_by`'s
+     * own docblock names the identical trap. This asserts the `ORDER BY`
+     * clause itself is on the query, which cannot pass by coincidence the
+     * way a value assertion can.
+     */
+    public function test_automation_scope_query_carries_an_explicit_order_by(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $guide = $this->aPublishedOrgGuide($tenant);
+        $learner = $this->userInFranchise($tenant, $tenant['franchise'], 'Learner', ['training.view']);
+
+        $assignment = $this->inTenant($tenant['org'], fn () => TrainingAssignment::create([
+            'guide_id' => $guide->id,
+            'assignee_type' => TrainingAssignment::USER,
+            'assignee_id' => $learner->id,
+        ]));
+
+        $this->inTenant($tenant['org'], function () use ($assignment) {
+            \Illuminate\Support\Facades\DB::enableQueryLog();
+            $assignment->automationScope();
+            $log = \Illuminate\Support\Facades\DB::getQueryLog();
+            \Illuminate\Support\Facades\DB::disableQueryLog();
+
+            $assignmentsQuery = collect($log)->first(
+                fn (array $entry) => str_contains($entry['query'], 'from `assignments`')
+                    || str_contains($entry['query'], 'from "assignments"'),
+            );
+
+            $this->assertNotNull($assignmentsQuery, 'automationScope() did not query assignments at all.');
+            $this->assertStringContainsStringIgnoringCase('order by', $assignmentsQuery['query']);
+        });
     }
 
     // ── Fixtures ──────────────────────────────────────────────────────

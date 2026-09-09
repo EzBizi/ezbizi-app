@@ -415,6 +415,92 @@ class TrainingGradingTest extends TestCase
     }
 
     /**
+     * Coherence audit finding 6's `oldest()->oldest('id')` fix
+     * (`TrainingAttempt::automationScope`'s own docblock) had a test for
+     * `TrainingProgress` (`TrainingProgressTest::
+     * test_automation_scope_is_deterministic_when_the_learner_holds_two_assignments`)
+     * but not for this class, though the identical ordering lives here
+     * too. Same shape: the learner's Riverside assignment (from
+     * `aTwoQuestionTest`'s own `userWithRole`) is backdated older than a
+     * second, Northgate one, and the OLDER row must win — asserted against
+     * Riverside specifically so an unordered `first()` regressing back in
+     * would not pass by coincidence.
+     */
+    public function test_automation_scope_is_deterministic_when_the_learner_holds_two_assignments(): void
+    {
+        [$learner, $test, $tenant] = $this->aTwoQuestionTest(passMark: 40);
+        $riverside = $tenant['franchise'];
+
+        $this->inTenant($tenant['org'], function () use ($tenant, $learner) {
+            $northgate = \App\Models\Franchise::create(['company_id' => $tenant['company']->id, 'name' => 'Northgate']);
+
+            $learner->assignments()->first()->forceFill(['created_at' => now()->subMinute()])->save();
+
+            \App\Models\Assignment::create([
+                'organization_id' => $tenant['org']->id, 'user_id' => $learner->id,
+                'assigned_franchise_id' => $northgate->id,
+            ]);
+        });
+
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [1, 0]])
+            ->assertOk();
+
+        $this->inTenant($tenant['org'], function () use ($test, $learner, $riverside) {
+            $attempt = TrainingAttempt::query()
+                ->where('user_id', $learner->id)->where('test_id', $test->id)->firstOrFail();
+
+            $this->assertSame(
+                ['franchise', $riverside->id],
+                $attempt->automationScope(),
+                'The OLDER assignment (Riverside) must win, deterministically, over the newer one (Northgate).',
+            );
+        });
+    }
+
+    /**
+     * The behavioral test above proves the CHOSEN row is deterministic,
+     * but with the older row also the FIRST-created one, MySQL can return
+     * it in creation order often enough that the value assertion passes
+     * by coincidence even with no `ORDER BY` at all —
+     * `TrainingProgressTest::test_automation_scope_query_carries_an_explicit_order_by`'s
+     * own docblock names the identical trap. This asserts the `ORDER BY`
+     * clause itself is on the query, which cannot pass by coincidence the
+     * way a value assertion can.
+     */
+    public function test_automation_scope_query_carries_an_explicit_order_by(): void
+    {
+        $tenant = $this->provisionTenant('Order-'.Str::random(8));
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $tenant['franchise']);
+
+        $test = $this->inTenant($tenant['org'], fn () => TrainingTest::create([
+            'company_id' => null, 'franchise_id' => null,
+            'title' => 'Order Test', 'status' => TrainingTest::PUBLISHED,
+            'questions' => [], 'requires_guide' => false, 'pass_mark' => 80,
+        ]));
+
+        $attempt = $this->inTenant($tenant['org'], fn () => TrainingAttempt::create([
+            'user_id' => $learner->id, 'test_id' => $test->id,
+            'answers' => [], 'score' => 0, 'passed' => false, 'taken_at' => now(),
+        ]));
+
+        $this->inTenant($tenant['org'], function () use ($attempt) {
+            DB::enableQueryLog();
+            $attempt->automationScope();
+            $log = DB::getQueryLog();
+            DB::disableQueryLog();
+
+            $assignmentsQuery = collect($log)->first(
+                fn (array $entry) => str_contains($entry['query'], 'from `assignments`')
+                    || str_contains($entry['query'], 'from "assignments"'),
+            );
+
+            $this->assertNotNull($assignmentsQuery, 'automationScope() did not query assignments at all.');
+            $this->assertStringContainsStringIgnoringCase('order by', $assignmentsQuery['query']);
+        });
+    }
+
+    /**
      * Proving `automationScope()` NARROWS the audience, not merely that it is
      * present and returns a plausible-looking value in isolation.
      *

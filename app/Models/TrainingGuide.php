@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Audit\SummarizesBulkAttributes;
 use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
 use Database\Factories\TrainingGuideFactory;
@@ -16,7 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  *
  * Screens are a JSON array rather than a table — see the migration for why.
  */
-class TrainingGuide extends Model implements StatesRetention
+class TrainingGuide extends Model implements StatesRetention, SummarizesBulkAttributes
 {
     use HasUuids;
     use BelongsToTenant;
@@ -51,5 +52,17 @@ class TrainingGuide extends Model implements StatesRetention
     public function screenCount(): int
     {
         return count($this->screens ?? []);
+    }
+
+    /**
+     * `screens` is bulk — a whole guide's worth of authored content — not
+     * sensitive. `AuditLogger::logChange` asks this so `guide.updated`
+     * records that it changed, and by how many screens, never the
+     * content itself — see {@see \App\Support\Audit\SummarizesBulkAttributes}'s
+     * own docblock.
+     */
+    public function bulkAuditAttributes(): array
+    {
+        return ['screens'];
     }
 }

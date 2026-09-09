@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Audit\SummarizesBulkAttributes;
 use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
 use Database\Factories\TrainingTestFactory;
@@ -19,7 +20,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * why. `correct` lives inside that same JSON; the Learn read path strips it
  * before the response leaves the server (spec §3).
  */
-class TrainingTest extends Model implements StatesRetention
+class TrainingTest extends Model implements StatesRetention, SummarizesBulkAttributes
 {
     use HasUuids;
     use BelongsToTenant;
@@ -65,5 +66,17 @@ class TrainingTest extends Model implements StatesRetention
     public function questionCount(): int
     {
         return count($this->questions ?? []);
+    }
+
+    /**
+     * `questions` carries the answer key — see this class's own docblock,
+     * "`correct` lives inside that same JSON". `AuditLogger::logChange`
+     * asks this so `test.updated` records that it changed, and by how
+     * many questions, never the questions (or their answers) themselves —
+     * see {@see \App\Support\Audit\SummarizesBulkAttributes}'s own docblock.
+     */
+    public function bulkAuditAttributes(): array
+    {
+        return ['questions'];
     }
 }

@@ -158,14 +158,33 @@ final class AssignmentWriter
      * @throws \Illuminate\Database\Eloquent\ModelNotFoundException  the
      *                               guide, test, person or role named does
      *                               not exist in this tenant, or is a draft
+     *
+     * $scope defaults to `ViewScope::forUser($assigner)` — the caller's own
+     * current view, correct for `AssignmentsController::store`, where the
+     * assigner IS the request user. `ActionRunner::assignTraining` passes
+     * its own already-resolved scope instead: inside an automation run
+     * there is no request, so `forUser` would fall through to the RULE
+     * CREATOR's stored `navigation.scope` top-bar preference
+     * (`ViewScope::forUser`'s own docblock) — a person who did nothing
+     * more than click a chip in their own top bar, with no connection to
+     * this rule or its assignee, deciding whether it can see its own
+     * target. `taskContext()` already computes the automation's correct
+     * scope (`ViewScope::forStoredAutomationScope`) one line above the
+     * call in `ActionRunner::assignTraining` — this parameter is what lets
+     * it hand that scope through instead of it being silently discarded.
      */
-    public function create(User $assigner, array $input, ?AutomationEvent $causedBy = null): TrainingAssignment
+    public function create(User $assigner, array $input, ?AutomationEvent $causedBy = null, ?ViewScope $scope = null): TrainingAssignment
     {
         if (! $assigner->hasPermission('training.assign')) {
             Refusal::permission('assign training')->authorize();
         }
 
-        [$guide, $test] = $this->exactlyOneTarget($assigner, $input['guide_id'] ?? null, $input['test_id'] ?? null);
+        [$guide, $test] = $this->exactlyOneTarget(
+            $assigner,
+            $input['guide_id'] ?? null,
+            $input['test_id'] ?? null,
+            $scope ?? ViewScope::forUser($assigner),
+        );
 
         $assigneeType = $input['assignee_type'] ?? null;
         $assigneeId = $input['assignee_id'] ?? null;
@@ -301,8 +320,12 @@ final class AssignmentWriter
      * specific row EXISTS somewhere they cannot see, the same reasoning
      * `LearnController::showTest`'s own docblock gives for querying through
      * publication and place at once rather than resolving by id first.
+     *
+     * $view is the CALLER's to resolve — see [create]'s own docblock on
+     * why the default (`ViewScope::forUser`) is wrong inside an automation
+     * run, where `ActionRunner::assignTraining` passes its own instead.
      */
-    private function exactlyOneTarget(User $assigner, ?string $guideId, ?string $testId): array
+    private function exactlyOneTarget(User $assigner, ?string $guideId, ?string $testId, ViewScope $view): array
     {
         if (($guideId === null) === ($testId === null)) {
             throw ValidationException::withMessages([
@@ -311,8 +334,6 @@ final class AssignmentWriter
                     : 'Give this assignment a guide or a test, never both at once.',
             ]);
         }
-
-        $view = ViewScope::forUser($assigner);
 
         // PUBLISHED only — the same "a draft answers the same as one that
         // does not exist" choice `LearnController::showTest` makes, and for

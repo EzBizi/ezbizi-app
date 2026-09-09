@@ -276,6 +276,109 @@ void main() {
     expect(posted!['assignee_id'], 'role-crew');
   });
 
+  testWidgets('a failed role fetch shows only the error, never the empty-roles text too', (tester) async {
+    final api = ApiClient(
+      client: MockClient((request) async {
+        final path = request.url.path;
+        if (path.endsWith('/me')) {
+          return _json({
+            'data': {..._me, 'permissions': const ['training.monitor', 'training.assign']},
+          });
+        }
+        if (path.endsWith('/training/dashboard')) {
+          return _json({
+            'data': [_row(id: 't-9', title: 'CO Awareness', kind: 'test', assigned: 1, passed: 0, overdue: 0, retaking: 0)],
+            'summary': _summary(assigned: 1, overdue: 0, retaking: 0),
+          });
+        }
+        if (path.endsWith('/training/assignees')) {
+          final type = request.url.queryParameters['type'];
+          if (type == 'role') {
+            return _json({'message': 'Something went wrong loading roles.'}, 500);
+          }
+
+          return _json({'data': const []});
+        }
+        if (path.endsWith('/training/dashboard/t-9/people')) {
+          return _json({'data': const []});
+        }
+        return _json({'message': 'Nothing stubbed for $path.'}, 500);
+      }),
+    );
+    final session = Session(api);
+    await tester.runAsync(() => session.adopt('tok'));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(body: TrainingDashboard(api: api, session: session)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('CO Awareness'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Assign to more people'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('A role'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Something went wrong loading roles.'), findsOneWidget);
+    expect(find.text('This organization has no roles yet.'), findsNothing);
+  });
+
+  testWidgets('a truncated candidate list shows the refine-your-search hint', (tester) async {
+    final api = ApiClient(
+      client: MockClient((request) async {
+        final path = request.url.path;
+        if (path.endsWith('/me')) {
+          return _json({
+            'data': {..._me, 'permissions': const ['training.monitor', 'training.assign']},
+          });
+        }
+        if (path.endsWith('/training/dashboard')) {
+          return _json({
+            'data': [_row(id: 't-9', title: 'CO Awareness', kind: 'test', assigned: 1, passed: 0, overdue: 0, retaking: 0)],
+            'summary': _summary(assigned: 1, overdue: 0, retaking: 0),
+          });
+        }
+        if (path.endsWith('/training/assignees')) {
+          final type = request.url.queryParameters['type'];
+          if (type == 'role') return _json({'data': const []});
+
+          // `AssignmentsController::userCandidates`'s own `truncated` flag.
+          return _json({
+            'data': [
+              {'id': 'u-1', 'name': 'Somebody', 'email': 'somebody@example.test'},
+            ],
+            'truncated': true,
+          });
+        }
+        if (path.endsWith('/training/dashboard/t-9/people')) {
+          return _json({'data': const []});
+        }
+        return _json({'message': 'Nothing stubbed for $path.'}, 500);
+      }),
+    );
+    final session = Session(api);
+    await tester.runAsync(() => session.adopt('tok'));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(body: TrainingDashboard(api: api, session: session)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('CO Awareness'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Assign to more people'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('More people match — refine your search to narrow the list.'), findsOneWidget);
+  });
+
   testWidgets('a refusal from the server is shown verbatim, never a generic failure', (tester) async {
     await _pumpDashboard(
       tester,

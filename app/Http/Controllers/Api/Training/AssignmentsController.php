@@ -37,6 +37,12 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class AssignmentsController extends Controller
 {
+    /** What the picker ever shows — see {@see userCandidates}'s own docblock. */
+    private const CANDIDATE_DISPLAY_LIMIT = 50;
+
+    /** How many rows the query fetches before the §4 reach filter runs. */
+    private const CANDIDATE_FETCH_LIMIT = 500;
+
     public function __construct(private readonly AssignmentWriter $writer) {}
 
     /** POST /api/v1/training/assignments */
@@ -131,9 +137,29 @@ class AssignmentsController extends Controller
         return response()->json(['data' => $roles]);
     }
 
+    /**
+     * `AssignmentReach::mayAssignTo` is a per-row PHP check (it walks the
+     * assignee's `Assignment`s through `ScopeReach`), not something this
+     * query can express — so it cannot run inside the SQL `LIMIT` itself.
+     * The old shape put `limit(50)` BEFORE that filter: in an organization
+     * with more than 50 active users, a franchise supervisor's reachable
+     * crew could sort late alphabetically, get excluded from the 50 rows
+     * the query fetched, and the picker would come back empty or short
+     * with no signal anything was ever cut — indistinguishable from "you
+     * really do not reach anyone".
+     *
+     * Fetching `self::CANDIDATE_FETCH_LIMIT` rows first (well above the
+     * 50 the picker ever shows) gives the filter enough to work with
+     * before the picker's own cap applies, and `truncated` is the honest
+     * signal for the two ways this can still come up short: the filtered,
+     * in-reach list itself ran past 50, or the raw fetch hit its own
+     * upper bound and might be hiding reachable people beyond it. Either
+     * way the client shows "refine your search" rather than a silently
+     * incomplete list.
+     */
     private function userCandidates(User $assigner, string $search): JsonResponse
     {
-        $candidates = User::query()
+        $fetched = User::query()
             ->where('organization_id', $assigner->organization_id)
             ->where('is_active', true)
             ->when($search !== '', fn ($q) => $q->where(function ($inner) use ($search) {
@@ -141,7 +167,7 @@ class AssignmentsController extends Controller
                     ->orWhere('email', 'like', "%{$search}%");
             }))
             ->orderBy('name')
-            ->limit(50)
+            ->limit(self::CANDIDATE_FETCH_LIMIT)
             // Full rows, not a narrow `select` — `AssignmentReach::mayAssignTo`
             // reads `is_active` and `organization_id` off the candidate, and a
             // model missing those attributes reads both as null, which
@@ -150,15 +176,22 @@ class AssignmentsController extends Controller
             // filtered out, including the assigner's own crew).
             ->get();
 
-        $data = $candidates
+        $reachable = $fetched
             // Filtered, not marked-and-shown — see this method's own
             // docblock. A person outside §4 reach is not named here at all,
             // unlike a role's uniform allow/refuse.
             ->filter(fn (User $candidate) => AssignmentReach::mayAssignTo($assigner, $candidate))
+            ->values();
+
+        $truncated = $reachable->count() > self::CANDIDATE_DISPLAY_LIMIT
+            || $fetched->count() >= self::CANDIDATE_FETCH_LIMIT;
+
+        $data = $reachable
+            ->take(self::CANDIDATE_DISPLAY_LIMIT)
             ->map(fn (User $candidate) => ['id' => $candidate->id, 'name' => $candidate->name, 'email' => $candidate->email])
             ->values();
 
-        return response()->json(['data' => $data]);
+        return response()->json(['data' => $data, 'truncated' => $truncated]);
     }
 
     /** @return array<string, mixed> */

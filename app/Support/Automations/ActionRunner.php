@@ -468,7 +468,15 @@ class ActionRunner
      */
     private function assignTraining(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation): array
     {
-        [$actor] = $this->taskContext($automation);
+        // Both halves of taskContext(), not just the actor —
+        // AssignmentWriter::create's own docblock on why: with no request
+        // to resolve, its default (ViewScope::forUser) falls through to
+        // the RULE CREATOR's stored `navigation.scope` top-bar preference,
+        // a fact about their own last click with nothing to do with this
+        // rule or its assignee. $scope is the automation's OWN
+        // already-resolved scope, computed right here — pass it through
+        // rather than silently discarding it.
+        [$actor, $scope] = $this->taskContext($automation);
 
         $assigneeType = $action['assignee_type'] ?? ($subject instanceof User ? TrainingAssignment::USER : null);
         $assigneeId = $action['assignee_id'] ?? ($subject instanceof User ? $subject->getKey() : null);
@@ -492,7 +500,7 @@ class ActionRunner
         }
 
         try {
-            $assignment = $this->trainingAssignments->create($actor, $assignmentInput, causedBy: $event);
+            $assignment = $this->trainingAssignments->create($actor, $assignmentInput, causedBy: $event, scope: $scope);
         } catch (ValidationException $e) {
             return [
                 'type' => 'training.assign',

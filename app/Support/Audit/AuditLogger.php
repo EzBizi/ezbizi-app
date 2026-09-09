@@ -214,7 +214,39 @@ class AuditLogger
             }
         }
 
+        // Not sensitive (§9) — {@see SummarizesBulkAttributes}'s own
+        // docblock — just bulk and unread. `count`, never the value: the
+        // fact that `questions`/`screens` changed, and by how much, is
+        // still on the row; the content is not.
+        if ($model instanceof SummarizesBulkAttributes) {
+            foreach ($model->bulkAuditAttributes() as $attribute) {
+                if (array_key_exists($attribute, $after)) {
+                    $after[$attribute] = self::bulkSummary($after[$attribute]);
+                }
+
+                if (array_key_exists($attribute, $before)) {
+                    $before[$attribute] = self::bulkSummary($before[$attribute]);
+                }
+            }
+        }
+
         return $this->log($action, $model, ['before' => $before, 'after' => $after], actor: $actor);
+    }
+
+    /**
+     * @return array{count: ?int}
+     */
+    private static function bulkSummary(mixed $value): array
+    {
+        // `getDirty()` returns the RAW stored form for an `array`-cast
+        // attribute (a JSON string), while `getOriginal()` (above) already
+        // applies the cast (a real PHP array) — the same asymmetry this
+        // method's own caller documents for encrypted columns. Handling
+        // both shapes here means `before` and `after` summarize the same
+        // way regardless of which side of that asymmetry produced them.
+        $decoded = is_string($value) ? json_decode($value, true) : $value;
+
+        return ['count' => is_array($decoded) ? count($decoded) : null];
     }
 
     /**
