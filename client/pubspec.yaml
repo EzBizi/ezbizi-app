@@ -75,10 +75,31 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
-  # Drives the real app on a simulator to take App Store screenshots. Not used
-  # by `flutter test`; only by scripts/screenshots-ios.sh.
-  integration_test:
-    sdk: flutter
+  # integration_test is DELIBERATELY NOT DECLARED, and must not be added back
+  # without reading this.
+  #
+  # It drives the real app on a simulator to take App Store and Play
+  # screenshots. Declared here as a dev_dependency it BREAKS EVERY ANDROID
+  # RELEASE BUILD on Flutter 3.41.6:
+  #
+  #   GeneratedPluginRegistrant.java:39: error: package
+  #   dev.flutter.plugins.integration_test does not exist
+  #
+  # The tool writes one GeneratedPluginRegistrant.java for every build mode and
+  # lists integration_test in it, while the release compile path excludes dev
+  # dependencies — so the registrant names a class release cannot see. The
+  # manifest is not confused about it; .flutter-plugins-dependencies correctly
+  # says dev_dependency = true. The registrant simply does not honour the flag.
+  #
+  # Debug is unaffected, which is what made it invisible: `flutter run`,
+  # `flutter test` and `flutter drive` all pass. Only the artefact that ships
+  # fails, and only on Android.
+  #
+  # TO TAKE SCREENSHOTS: add the two lines back, run the harness, then remove
+  # them again before any release build.
+  #
+  #   integration_test:
+  #     sdk: flutter
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

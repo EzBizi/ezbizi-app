@@ -16,6 +16,7 @@ class VersionHistory {
         'Phone shows how many calls were answered and how many were missed, and tells you if voicemails are waiting.',
         'Marketing shows what was published over the period, how many posts are waiting to go out, and how many failed to reach their account. A post sent to three accounts counts as three, because each one can succeed or fail on its own.',
         'Training shows how many people are due to retake a test. It counts people rather than assignments, and only the people you can already see; when there are none it says so in plain words.',
+        'Fixed: opening a second ring group for editing without closing the first left the previous group\'s name in the box, so saving could rename the wrong group.',
       ],
     ),
     VersionRelease(

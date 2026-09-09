@@ -697,6 +697,107 @@ class _RoleEditorState extends State<_RoleEditor> {
   /// a box to make a tab appear, which is not a thing to do by accident. The
   /// detail below is one click away for the rest.
   /// The refused actions, in the catalogue's words rather than as keys.
+  /// The label a permission key wears on its own row, from anywhere in the
+  /// catalogue — a requirement may name another module's action.
+  ///
+  /// Falls back to the key rather than to a prettified guess. This screen's
+  /// neighbour learned that the hard way: splitting keys on the dot and
+  /// upper-casing the front produced headings like "NUMBERING" that nobody
+  /// wrote. A key we cannot find is worth showing as the key.
+  String _labelForKey(String key) {
+    for (final module in widget.catalogue.modules) {
+      for (final action in module.actions) {
+        if (action.key == key) return action.label;
+      }
+    }
+    return key;
+  }
+
+  String _requirementNames(PermissionAction action) =>
+      action.requires.map(_labelForKey).join(' and ');
+
+  /// Whether this action is ticked while something it needs is not.
+  bool _requirementUnmet(PermissionAction action) =>
+      _held.contains(action.key) &&
+      action.requires.any((key) => !_held.contains(key));
+
+  /// Layout 2 on a desktop: the requirement rides the label as a muted suffix,
+  /// so it is legible BEFORE the tick rather than after the save.
+  ///
+  /// Nothing is added for an action with no requirement, which is all but one
+  /// of them — no icon, no suffix, no reserved space.
+  Widget _actionTitle(
+    BuildContext context,
+    PermissionAction action,
+    Color? muted, {
+    required bool narrow,
+  }) {
+    final theme = Theme.of(context);
+    if (narrow || action.requires.isEmpty) {
+      return Text(action.label, style: TextStyle(color: muted));
+    }
+
+    return Text.rich(
+      TextSpan(
+        text: action.label,
+        style: TextStyle(color: muted),
+        children: [
+          // bodySmall, and both alternatives were measured before settling
+          // here. At the label's own size the suffix WRAPS at this width (the
+          // row goes 48 -> 56, a second line). At bodySmall it stays on one
+          // line and costs 4pt of line height (48 -> 52).
+          //
+          // 4pt on one row is not the two-heights defect this file has met
+          // before: that was seven rows ALTERNATING, a broken rhythm you can
+          // see. Exactly one action in the product declares a requirement, so
+          // exactly one row is 4pt taller, and nothing reads as uneven. The
+          // failure worth guarding is the wrap, and the test guards that.
+          TextSpan(
+            text: '  ·  needs ${_requirementNames(action)}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The line under the row.
+  ///
+  /// On a phone (layout 6) it carries the requirement at rest, because a phone
+  /// has vertical room and no hover: a dependency only revealed by touching
+  /// something is one nobody reads. On a desktop the suffix has already said
+  /// it, so this appears ONLY when the requirement is unmet.
+  ///
+  /// It never ticks the other box. The server refuses rather than implying —
+  /// `withImpliedView` adds a missing `.view` because that is the least a
+  /// module can grant, while the larger disclosure would hand out more than
+  /// the administrator ticked. A screen that helpfully ticked it would undo
+  /// that decision quietly.
+  Widget? _requirementLine(
+    BuildContext context,
+    PermissionAction action, {
+    required bool narrow,
+  }) {
+    if (action.requires.isEmpty) return null;
+
+    final theme = Theme.of(context);
+    final unmet = _requirementUnmet(action);
+    if (!narrow && !unmet) return null;
+
+    final names = _requirementNames(action);
+    return Text(
+      unmet ? 'Needs $names — not ticked' : 'Needs $names',
+      style: theme.textTheme.bodySmall?.copyWith(
+        color: unmet
+            ? theme.colorScheme.error
+            : theme.colorScheme.onSurfaceVariant,
+        fontWeight: unmet ? FontWeight.w600 : null,
+      ),
+    );
+  }
+
   String _actionNames(PermissionModule module, List<String> keys) {
     final labels = <String>[];
 
@@ -1145,6 +1246,18 @@ class _RoleEditorState extends State<_RoleEditor> {
         ],
       ),
       children: [
+        // One width decision for every row, taken from the space the rows
+        // actually have rather than from the window: layout 2 rides the
+        // requirement on the label, layout 6 puts it underneath, and the two
+        // must not both appear because two slots measured separately.
+        //
+        // 400, not the 600 used elsewhere, and it is MEASURED rather than
+        // conventional. This editor is a panel, not a page: a row is 472pt on
+        // a 1400pt window and 312pt on a 400pt one. A 600 threshold puts every
+        // row on the phone side forever and layout 2 would never once appear.
+        LayoutBuilder(
+          builder: (context, constraints) => Column(
+            children: [
         for (final action in module.actions)
           CheckboxListTile(
             key: ValueKey('action:${action.key}'),
@@ -1155,7 +1268,17 @@ class _RoleEditorState extends State<_RoleEditor> {
             onChanged: live && action.grantable
                 ? (_) => _toggleAction(module, action)
                 : null,
-            title: Text(action.label, style: TextStyle(color: muted)),
+            title: _actionTitle(
+              context,
+              action,
+              muted,
+              narrow: constraints.maxWidth < 400,
+            ),
+            subtitle: _requirementLine(
+              context,
+              action,
+              narrow: constraints.maxWidth < 400,
+            ),
             // Shown rather than hidden, and shown as held when it is held. §4:
             // nobody grants what they do not have — but a role can hold what
             // the person editing it does not, and pretending otherwise draws an
@@ -1172,6 +1295,9 @@ class _RoleEditorState extends State<_RoleEditor> {
                     'you cannot hand it out or take it back.',
                   ),
           ),
+            ],
+          ),
+        ),
 
         ..._inboxRows(module, theme, live: live, muted: muted),
       ],
