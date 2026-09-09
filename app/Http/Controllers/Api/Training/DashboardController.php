@@ -191,7 +191,7 @@ class DashboardController extends Controller
                 started: array_intersect_key($guideActivity[$guide->id]['started'] ?? [], $reachable),
             );
 
-            $rows[] = $this->row($guide->id, $guide->title, $states);
+            $rows[] = $this->row($guide->id, $guide->title, $states, 'guide');
             $peopleAssigned += $states['assigned'];
             $peopleOverdue += $states[self::OVERDUE];
             $peopleRetaking += $states[self::RETAKING];
@@ -206,7 +206,7 @@ class DashboardController extends Controller
                 started: array_intersect_key($testActivity[$test->id]['attempted'] ?? [], $reachable),
             );
 
-            $rows[] = $this->row($test->id, $test->title, $states);
+            $rows[] = $this->row($test->id, $test->title, $states, 'test');
             $peopleAssigned += $states['assigned'];
             $peopleOverdue += $states[self::OVERDUE];
             $peopleRetaking += $states[self::RETAKING];
@@ -839,11 +839,25 @@ class DashboardController extends Controller
     }
 
     /** @param  array<string, array<string, true>>  $states */
-    private function row(string $id, string $title, array $states): array
+    /**
+     * `kind` is `'guide'` or `'test'` — added for task "close the assign
+     * gap" (audit-fixes-report.md): the Dashboard pane's "Assign to more
+     * people" control (`client/lib/screens/training/dashboard_pane.dart`)
+     * posts to `/training/assignments`, which needs EXACTLY ONE of
+     * `guide_id`/`test_id` (`AssignmentsController::store`), and this row
+     * — carried through unchanged into `DashboardPane.row` — was the only
+     * place that could ever say which one without the client guessing. Not
+     * added to a per-person row in [people]: that stays exactly as it was,
+     * still with no `type` field, because every row's audience there is
+     * unambiguously the ONE item [findVisibleItem] already resolved a kind
+     * for, one level up.
+     */
+    private function row(string $id, string $title, array $states, string $kind): array
     {
         return [
             'id' => $id,
             'title' => $title,
+            'kind' => $kind,
             'assigned' => count($states['assigned']),
             self::PASSED => count($states[self::PASSED]),
             self::IN_PROGRESS => count($states[self::IN_PROGRESS]),

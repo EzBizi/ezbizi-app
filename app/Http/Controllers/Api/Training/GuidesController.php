@@ -6,13 +6,18 @@ use App\Http\Controllers\Api\Controller;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\TrainingGuide;
+use App\Models\TrainingTest;
+use App\Support\Audit\AuditLogger;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\PlaceInView;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Training\GuidePlaceReach;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -21,10 +26,19 @@ use Symfony\Component\HttpFoundation\Response;
  * Screens are one JSON array on the guide row (see the migration and the
  * model's `screenCount()`); there is no separate screen endpoint. List
  * always applies the shared place-scope engine — see the comment in [index].
+ *
+ * create/update/delete each write an `audit_events` row (§2.2) — the shape
+ * copied from CompaniesController/JobsController (`logChange`, called
+ * before `save()` so the dirty diff is still there to capture) and
+ * InspectionDefinitionsController (`log` on create, and on delete before
+ * the row is gone so `target_label` can still read the title).
  */
 class GuidesController extends Controller
 {
-    public function __construct(private readonly TenantContext $tenant) {}
+    public function __construct(
+        private readonly TenantContext $tenant,
+        private readonly AuditLogger $audit,
+    ) {}
 
     /**
      * An `exists` rule scoped to this organization.
@@ -100,14 +114,20 @@ class GuidesController extends Controller
             $this->authorize('create', [TrainingGuide::class, $company, $franchise]);
         }
 
-        $guide = TrainingGuide::create([
-            'company_id' => $company?->getKey(),
-            'franchise_id' => $franchise?->getKey(),
-            'title' => $input['title'],
-            'summary' => $input['summary'] ?? null,
-            'status' => $input['status'] ?? TrainingGuide::DRAFT,
-            'screens' => $input['screens'] ?? [],
-        ]);
+        $guide = DB::transaction(function () use ($input, $company, $franchise) {
+            $guide = TrainingGuide::create([
+                'company_id' => $company?->getKey(),
+                'franchise_id' => $franchise?->getKey(),
+                'title' => $input['title'],
+                'summary' => $input['summary'] ?? null,
+                'status' => $input['status'] ?? TrainingGuide::DRAFT,
+                'screens' => $input['screens'] ?? [],
+            ]);
+
+            $this->audit->log('guide.created', $guide);
+
+            return $guide;
+        });
 
         return response()->json(
             ['data' => $this->present($guide->fresh())],
@@ -151,13 +171,78 @@ class GuidesController extends Controller
                 } else {
                     $this->authorize('create', [TrainingGuide::class, $company, $franchise]);
                 }
+
+                $blameField = array_key_exists('company_id', $input) ? 'company_id' : 'franchise_id';
+                $this->assertMoveDoesNotStrandTests($guide, $companyId, $franchiseId, $blameField);
             }
         }
 
-        $guide->fill($input);
-        $guide->save();
+        DB::transaction(function () use ($guide, $input) {
+            $guide->fill($input);
+
+            // No dirty attributes means nothing actually changed (e.g. a PATCH
+            // re-sending the same title) — same as CompaniesController::update:
+            // skip both the write and the audit row rather than bumping
+            // `updated_at` and logging a change that never happened.
+            if (! $guide->isDirty()) {
+                return;
+            }
+
+            $this->audit->logChange('guide.updated', $guide);
+            $guide->save();
+        });
 
         return response()->json(['data' => $this->present($guide->fresh())]);
+    }
+
+    /**
+     * Refuses a guide move that would strand a test pointing at it.
+     *
+     * `TestsController::assertGuideCompatible` guards this rule from the
+     * TEST's side — a test may only be authored or moved onto a guide that
+     * still reaches it. It has no way to stop the GUIDE moving out from
+     * under a test that already passed that check, which is exactly the
+     * auditor's proven case: an organization guide behind an organization
+     * `requires_guide: true` test, the guide moved to a franchise, and a
+     * learner elsewhere left with a 404 on the guide and a permanent 403 on
+     * the test — `assertGuideGateHasATarget`'s own docblock names a test
+     * nobody can ever pass as exactly the dead end this module refuses to
+     * create.
+     *
+     * So the guide's side is guarded here, asking the identical question
+     * `GuidePlaceReach` already answers for the test's side — never a
+     * second copy of "is this guide reachable from that place" — for every
+     * test currently pointing at this guide, in either direction: one that
+     * merely references it, or one that requires finishing it first. Not a
+     * detach, not a cascade onto the tests: refused, naming what would be
+     * stranded, so the author can act instead of the module acting for
+     * them.
+     */
+    private function assertMoveDoesNotStrandTests(
+        TrainingGuide $guide,
+        ?string $newCompanyId,
+        ?string $newFranchiseId,
+        string $field,
+    ): void {
+        $stranded = TrainingTest::query()
+            ->where('guide_id', $guide->getKey())
+            ->get()
+            ->reject(fn (TrainingTest $test) => GuidePlaceReach::covers(
+                $newCompanyId, $newFranchiseId,
+                $test->company_id, $test->franchise_id,
+            ));
+
+        if ($stranded->isEmpty()) {
+            return;
+        }
+
+        $names = $stranded->pluck('title')->implode(', ');
+
+        throw ValidationException::withMessages([
+            $field => "Moving this guide would leave the following test(s) pointing at a guide some "
+                ."of their own takers could no longer reach: {$names}. Move those tests first, or "
+                .'leave this guide where it is.',
+        ]);
     }
 
     /** DELETE /api/v1/training/guides/{guide} */
@@ -165,7 +250,19 @@ class GuidesController extends Controller
     {
         $this->authorize('delete', $guide);
 
-        $guide->delete();
+        DB::transaction(function () use ($guide) {
+            // Logged before the delete, same as
+            // InspectionDefinitionsController::destroy — target_label reads
+            // `title` off the model, which is gone once `delete()` runs, and
+            // `training_progress`/`training_assignments` cascade with this row
+            // (migration `create_training_tables`), so this is the only record
+            // that a guide with completions behind it ever existed.
+            $this->audit->log('guide.deleted', $guide, metadata: [
+                'title' => $guide->title,
+            ]);
+
+            $guide->delete();
+        });
 
         return response()->noContent();
     }

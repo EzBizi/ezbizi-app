@@ -3,7 +3,11 @@
 namespace App\Http\Controllers\Api\Training;
 
 use App\Http\Controllers\Api\Controller;
+use App\Models\Role;
 use App\Models\TrainingAssignment;
+use App\Models\User;
+use App\Support\Access\Refusal;
+use App\Support\Training\AssignmentReach;
 use App\Support\Training\AssignmentWriter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -33,6 +37,12 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class AssignmentsController extends Controller
 {
+    /** What the picker ever shows — see {@see userCandidates}'s own docblock. */
+    private const CANDIDATE_DISPLAY_LIMIT = 50;
+
+    /** How many rows the query fetches before the §4 reach filter runs. */
+    private const CANDIDATE_FETCH_LIMIT = 500;
+
     public function __construct(private readonly AssignmentWriter $writer) {}
 
     /** POST /api/v1/training/assignments */
@@ -60,6 +70,128 @@ class AssignmentsController extends Controller
         $status = $assignment->wasRecentlyCreated ? Response::HTTP_CREATED : Response::HTTP_OK;
 
         return response()->json(['data' => $this->present($assignment)], $status);
+    }
+
+    /**
+     * GET /api/v1/training/assignees
+     *
+     * Who the client's assign picker may offer, for `?type=user` (searched
+     * by name/email, bounded to who {@see AssignmentReach::mayAssignTo}
+     * actually allows) or `?type=role` (the organization's whole role
+     * list, each marked `assignable` — the same "show and mark" shape
+     * `HrPeopleController::scopeOptions`' role list already uses, rather
+     * than a role simply being absent with no way to tell "we have none"
+     * from "not yours to give").
+     *
+     * Gated on `training.assign` alone, same as {@see AssignmentWriter::create}
+     * — never `hr.view` or `roles.view`. Every other people/role listing on
+     * this platform sits behind one of those two, and `training.assign` was
+     * created precisely so a supervisor could hold it without holding
+     * either — see AssignmentReach's own docblock. Without a lookup gated
+     * the same way, the write endpoint's contract is real but nothing
+     * reachable from `training.assign` alone could ever discover an
+     * `assignee_id` to send it.
+     *
+     * `type=user` never returns somebody `mayAssignTo` would refuse — the
+     * module's own rule against offering what the write would then reject
+     * (AssignmentWriter's own docblock, "ONE write path"). `type=role`
+     * returns every role either way, since {@see AssignmentReach::mayAssignToRole}
+     * is a single yes/no about the ASSIGNER's own reach, not about any one
+     * role — hiding the list entirely would look identical to "this
+     * organization has no roles", and marking-not-hiding says which.
+     */
+    public function assignees(Request $request): JsonResponse
+    {
+        $assigner = $request->user();
+
+        if (! $assigner->hasPermission('training.assign')) {
+            Refusal::permission('assign training')->authorize();
+        }
+
+        $input = $request->validate([
+            'type' => ['required', 'string', Rule::in([TrainingAssignment::USER, TrainingAssignment::ROLE])],
+            'search' => ['sometimes', 'nullable', 'string', 'max:100'],
+        ]);
+
+        return $input['type'] === TrainingAssignment::ROLE
+            ? $this->roleCandidates($assigner)
+            : $this->userCandidates($assigner, trim((string) ($input['search'] ?? '')));
+    }
+
+    private function roleCandidates(User $assigner): JsonResponse
+    {
+        // AssignmentReach::mayAssignToRole reduces, for a role in the
+        // ASSIGNER's own organization, to exactly this one check (its own
+        // docblock, "The role case — organization reach, always") — asked
+        // once here rather than once per row, since no role in the list
+        // below can ever get a different answer from another.
+        $assignable = $assigner->canActOnOrganization($assigner->organization);
+
+        $roles = Role::query()
+            ->where('organization_id', $assigner->organization_id)
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (Role $role) => ['id' => $role->id, 'name' => $role->name, 'assignable' => $assignable])
+            ->values();
+
+        return response()->json(['data' => $roles]);
+    }
+
+    /**
+     * `AssignmentReach::mayAssignTo` is a per-row PHP check (it walks the
+     * assignee's `Assignment`s through `ScopeReach`), not something this
+     * query can express — so it cannot run inside the SQL `LIMIT` itself.
+     * The old shape put `limit(50)` BEFORE that filter: in an organization
+     * with more than 50 active users, a franchise supervisor's reachable
+     * crew could sort late alphabetically, get excluded from the 50 rows
+     * the query fetched, and the picker would come back empty or short
+     * with no signal anything was ever cut — indistinguishable from "you
+     * really do not reach anyone".
+     *
+     * Fetching `self::CANDIDATE_FETCH_LIMIT` rows first (well above the
+     * 50 the picker ever shows) gives the filter enough to work with
+     * before the picker's own cap applies, and `truncated` is the honest
+     * signal for the two ways this can still come up short: the filtered,
+     * in-reach list itself ran past 50, or the raw fetch hit its own
+     * upper bound and might be hiding reachable people beyond it. Either
+     * way the client shows "refine your search" rather than a silently
+     * incomplete list.
+     */
+    private function userCandidates(User $assigner, string $search): JsonResponse
+    {
+        $fetched = User::query()
+            ->where('organization_id', $assigner->organization_id)
+            ->where('is_active', true)
+            ->when($search !== '', fn ($q) => $q->where(function ($inner) use ($search) {
+                $inner->where('name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%");
+            }))
+            ->orderBy('name')
+            ->limit(self::CANDIDATE_FETCH_LIMIT)
+            // Full rows, not a narrow `select` — `AssignmentReach::mayAssignTo`
+            // reads `is_active` and `organization_id` off the candidate, and a
+            // model missing those attributes reads both as null, which
+            // `refusalForAssignee` takes as "inactive" and refuses every row
+            // (found running this method's own RED: every candidate came back
+            // filtered out, including the assigner's own crew).
+            ->get();
+
+        $reachable = $fetched
+            // Filtered, not marked-and-shown — see this method's own
+            // docblock. A person outside §4 reach is not named here at all,
+            // unlike a role's uniform allow/refuse.
+            ->filter(fn (User $candidate) => AssignmentReach::mayAssignTo($assigner, $candidate))
+            ->values();
+
+        $truncated = $reachable->count() > self::CANDIDATE_DISPLAY_LIMIT
+            || $fetched->count() >= self::CANDIDATE_FETCH_LIMIT;
+
+        $data = $reachable
+            ->take(self::CANDIDATE_DISPLAY_LIMIT)
+            ->map(fn (User $candidate) => ['id' => $candidate->id, 'name' => $candidate->name, 'email' => $candidate->email])
+            ->values();
+
+        return response()->json(['data' => $data, 'truncated' => $truncated]);
     }
 
     /** @return array<string, mixed> */

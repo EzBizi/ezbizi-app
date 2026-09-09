@@ -7,6 +7,7 @@ use App\Models\Automation;
 use App\Models\AutomationEvent;
 use App\Models\AutomationRun;
 use App\Models\AutomationVersion;
+use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Notification;
 use App\Models\Role;
@@ -139,6 +140,205 @@ class TrainingAssignmentReachTest extends TestCase
             $this->assertNotSame('', $message);
             $this->assertStringContainsString($tenant['org']->name, $message);
         });
+    }
+
+    // ── Coherence audit finding 2: bound by the learner's reach, never their saved view ──
+
+    /**
+     * The auditor's own executed probe. `$learner` is assigned at the
+     * COMPANY level, so their §4 reach covers both Riverside and Northgate.
+     * With no saved view, assigning a Northgate guide succeeds. Saving the
+     * learner's OWN `navigation.scope` at Riverside — a display preference
+     * on their own top bar, set by the learner, not the assigner, and
+     * nothing about where they may be reached — used to turn the identical,
+     * still-valid Northgate assignment into a 422 claiming it was "outside
+     * where they are assigned", which was false: the learner's reach never
+     * changed. `AssignmentWriter::assertLearnerCanSee` must ask
+     * `ViewScope::reachOf`, never `ViewScope::forUser`.
+     */
+    public function test_a_learners_own_saved_view_does_not_decide_whether_they_can_be_assigned_training(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $riverside = $tenant['franchise'];
+        $northgate = $this->extraFranchise($tenant, 'Northgate');
+
+        $learner = $this->userAtCompany($tenant, 'Learner', ['training.view']);
+
+        $guide = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
+            'company_id' => $tenant['company']->id, 'franchise_id' => $northgate->id,
+            'title' => 'Northgate Guide', 'status' => TrainingGuide::PUBLISHED,
+            'screens' => $this->screens(1),
+        ]));
+
+        // No saved view yet: succeeds.
+        $this->signedInAs($tenant['admin'])->postJson('/api/v1/training/assignments', [
+            'guide_id' => $guide->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id,
+        ])->assertCreated();
+
+        // The learner saves a Riverside view on their OWN top bar — a display
+        // preference, reachable to them (Riverside is under their company),
+        // but narrower than their full reach and not touched by the assigner.
+        $this->inTenant($tenant['org'], function () use ($learner, $riverside) {
+            $learner->forceFill(['preferences' => ['navigation.scope' => 'franchise:'.$riverside->id]])->save();
+        });
+
+        $test = $this->inTenant($tenant['org'], fn () => TrainingTest::create([
+            'company_id' => $tenant['company']->id, 'franchise_id' => $northgate->id,
+            'title' => 'Northgate Test', 'status' => TrainingTest::PUBLISHED,
+            'questions' => [], 'pass_mark' => 80,
+        ]));
+
+        // Still the identical, still-valid Northgate assignment — must still succeed.
+        $this->signedInAs($tenant['admin'])->postJson('/api/v1/training/assignments', [
+            'test_id' => $test->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id,
+        ])->assertCreated();
+    }
+
+    /** The other half: a guide genuinely OUTSIDE the learner's reach is still refused, with the same sentence. */
+    public function test_a_guide_genuinely_outside_the_learners_reach_is_still_refused(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $riverside = $tenant['franchise'];
+        $northgate = $this->extraFranchise($tenant, 'Northgate');
+
+        // Assigned at Riverside ONLY — reach never covers Northgate.
+        $learner = $this->userInFranchise($tenant, $riverside, 'Learner', ['training.view']);
+
+        $guide = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
+            'company_id' => $tenant['company']->id, 'franchise_id' => $northgate->id,
+            'title' => 'Northgate Guide', 'status' => TrainingGuide::PUBLISHED,
+            'screens' => $this->screens(1),
+        ]));
+
+        $response = $this->signedInAs($tenant['admin'])->postJson('/api/v1/training/assignments', [
+            'guide_id' => $guide->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id,
+        ]);
+
+        $response->assertStatus(422)->assertJsonValidationErrors(['guide_id']);
+        $this->assertStringContainsString(
+            'outside where they are assigned',
+            (string) $response->json('errors.guide_id.0'),
+        );
+    }
+
+    // ── Coherence audit finding 5, corrected: the assigner must SEE the content, never merely FILE at its place ──
+
+    /**
+     * Correction to finding 5's own fix (this task, not a new finding). The
+     * original fix made [create] call `PlaceInView::assert` against the
+     * content's own (possibly null) place — the same check
+     * `GuidesController`/`TestsController` make when a caller directly
+     * NAMES a place to file a new record at. [create] never files
+     * anywhere; the assignment's place is only ever COPIED off the guide
+     * or test being assigned. Asking `PlaceInView` about that derived
+     * place made an ORGANIZATION-WIDE guide (`company_id === null`)
+     * unassignable from any view narrower than the organization itself —
+     * `PlaceInView::assert`'s `$company === null` arm refuses a group-level
+     * place from any non-organization view, and a franchise view is never
+     * the organization view.
+     *
+     * That defeats the one point of an organization-wide guide: it exists
+     * so every place below the organization may use it, most of all a
+     * franchise supervisor handing it to their own crew — the module's
+     * most important flow. `$supervisor` here is a franchise-level
+     * assigner standing in their OWN franchise's view (an explicitly saved
+     * `navigation.scope`, not the organization default), assigning the
+     * org-wide guide to a learner in that same franchise.
+     *
+     * Against the tree at `a3c829d3` this must fail with the exact
+     * `PlaceInView` refusal described above — that is the regression this
+     * test exists to prove, and it must keep failing there for as long as
+     * `assertContentInView` calls `PlaceInView::assert`. Once [create]
+     * asks `InventoryVisibility::constrain` instead (this task's fix), an
+     * organization-wide guide is visible from every view — its
+     * `whereNull('company_id')` arm — and this must succeed.
+     */
+    public function test_a_franchise_supervisor_may_assign_an_organization_wide_guide_to_their_own_crew(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $riverside = $tenant['franchise'];
+
+        $supervisor = $this->userInFranchise($tenant, $riverside, 'Supervisor', ['training.assign']);
+        $learner = $this->userInFranchise($tenant, $riverside, 'Learner', ['training.view']);
+        $guide = $this->aPublishedOrgGuide($tenant);
+
+        $this->inTenant($tenant['org'], function () use ($supervisor, $riverside) {
+            $supervisor->forceFill(['preferences' => ['navigation.scope' => 'franchise:'.$riverside->id]])->save();
+        });
+
+        $this->signedInAs($supervisor)->postJson('/api/v1/training/assignments', [
+            'guide_id' => $guide->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id,
+        ])->assertCreated();
+    }
+
+    /**
+     * `$admin` has organization-level §4 reach — plenty to reach both
+     * companies — but is currently VIEWING Company A, and the guide named
+     * is filed at a SIBLING company's General. The original finding stays
+     * closed: this must still be refused. What changed is the mechanism —
+     * [create] no longer asks "may you FILE at this place" (`PlaceInView`);
+     * it asks "can you SEE this content from where you stand"
+     * (`InventoryVisibility::constrain`, run against the lookup itself in
+     * `exactlyOneTarget`). A constrained query simply does not match a
+     * sibling company's guide, so this now comes back the same `404` a
+     * nonexistent or draft id already does — see [exactlyOneTarget]'s own
+     * docblock for why that shape, rather than a named validation error,
+     * is the right one here.
+     */
+    public function test_an_admin_viewing_one_company_cannot_assign_a_guide_filed_at_a_sibling_company(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $companyA = $tenant['company'];
+        $companyB = $this->inTenant($tenant['org'], fn () => Company::create([
+            'organization_id' => $tenant['org']->id, 'name' => 'Beta Co', 'is_active' => true,
+        ]));
+
+        $admin = $tenant['admin'];
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view']);
+
+        $guide = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
+            'company_id' => $companyB->id, 'franchise_id' => null,
+            'title' => 'Beta General Guide', 'status' => TrainingGuide::PUBLISHED,
+            'screens' => $this->screens(1),
+        ]));
+
+        $this->inTenant($tenant['org'], function () use ($admin, $companyA) {
+            $admin->forceFill(['preferences' => ['navigation.scope' => 'company:'.$companyA->id]])->save();
+        });
+
+        $this->signedInAs($admin)->postJson('/api/v1/training/assignments', [
+            'guide_id' => $guide->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id,
+        ])->assertNotFound();
+
+        $this->inTenant($tenant['org'], function () use ($guide, $learner) {
+            $this->assertDatabaseMissing('training_assignments', [
+                'guide_id' => $guide->id, 'assignee_id' => $learner->id,
+            ]);
+        });
+    }
+
+    /** Viewing the SAME company the guide is filed at still succeeds — the fix narrows to the view, it does not add a blanket refusal. */
+    public function test_an_admin_viewing_the_guides_own_company_may_still_assign_it(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $companyA = $tenant['company'];
+
+        $admin = $tenant['admin'];
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view']);
+
+        $guide = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
+            'company_id' => $companyA->id, 'franchise_id' => null,
+            'title' => 'Alpha General Guide', 'status' => TrainingGuide::PUBLISHED,
+            'screens' => $this->screens(1),
+        ]));
+
+        $this->inTenant($tenant['org'], function () use ($admin, $companyA) {
+            $admin->forceFill(['preferences' => ['navigation.scope' => 'company:'.$companyA->id]])->save();
+        });
+
+        $this->signedInAs($admin)->postJson('/api/v1/training/assignments', [
+            'guide_id' => $guide->id, 'assignee_type' => 'user', 'assignee_id' => $learner->id,
+        ])->assertCreated();
     }
 
     // ── Decision 2: exactly one of guide_id/test_id ──────────────────
@@ -729,6 +929,129 @@ class TrainingAssignmentReachTest extends TestCase
         });
     }
 
+    /**
+     * Correction-round-2 regression: `exactlyOneTarget` resolved the
+     * assigner's view with `ViewScope::forUser($assigner)`. Inside an
+     * automation run there is no request, so `forUser` falls through to
+     * the RULE CREATOR's own stored `navigation.scope` top-bar
+     * preference (`ViewScope::forUser`'s own docblock) — the identical
+     * defect class as coherence audit finding 2, moved from the learner
+     * to the assigner rather than removed. `ActionRunner::assignTraining`
+     * already resolves the automation's correct scope via `taskContext()`
+     * (`[$actor, ViewScope::forStoredAutomationScope(...)]`) one line
+     * above where it calls `AssignmentWriter::create` — and then discarded
+     * it with `[$actor] = $this->taskContext($automation)`.
+     *
+     * $admin here is the automation's creator, with full organization
+     * reach, and never touches the rule's OWN `scope_type`/`scope_id` —
+     * only $admin's personal top-bar chip, set here exactly the way a
+     * person sets it by clicking around, with nothing to do with this
+     * rule or its assignee. The target guide sits at Northgate, a
+     * franchise the rule creator's chip never names.
+     *
+     * ONE automation, fired twice, proves the chip and nothing else
+     * decides it: unchanged with no saved chip (organization default),
+     * changed only to point at Riverside (not Northgate, and not
+     * anywhere the guide or the learner needs to be) before the second
+     * firing.
+     */
+    public function test_the_automation_creators_saved_view_does_not_decide_whether_a_rule_assigns_training(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $riverside = $tenant['franchise'];
+        $northgate = $this->extraFranchise($tenant, 'Northgate');
+        $admin = $tenant['admin'];
+
+        $learner = $this->userAtCompany($tenant, 'Learner', ['training.view']);
+
+        $targetGuide = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
+            'company_id' => $tenant['company']->id, 'franchise_id' => $northgate->id,
+            'title' => 'Northgate Guide', 'status' => TrainingGuide::PUBLISHED,
+            'screens' => $this->screens(1),
+        ]));
+
+        $triggerGuideOne = $this->aPublishedOrgGuide($tenant, 'Trigger One');
+        $triggerGuideTwo = $this->aPublishedOrgGuide($tenant, 'Trigger Two');
+
+        $automationId = $this->signedInAs($admin)->postJson('/api/v1/automations', [
+            'name' => 'Assign the Northgate guide',
+            'trigger_key' => 'training.completed',
+            'actions' => [
+                [
+                    'type' => 'training.assign',
+                    'guide_id' => $targetGuide->id,
+                    'assignee_type' => 'user',
+                    'assignee_id' => $learner->id,
+                ],
+            ],
+        ])->assertCreated()->json('data.id');
+
+        $this->signedInAs($admin)
+            ->patchJson("/api/v1/automations/{$automationId}", ['is_active' => true])
+            ->assertOk();
+
+        // Row 1: the creator has no saved chip — falls back to the
+        // organization, which sees Northgate.
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/guides/{$triggerGuideOne->id}/seen", ['screen' => 0])
+            ->assertOk();
+
+        $this->inTenant($tenant['org'], function () use ($targetGuide, $learner) {
+            $eventOne = AutomationEvent::query()
+                ->where('event_key', 'training.completed')
+                ->latest('occurred_at')
+                ->firstOrFail();
+
+            app(AutomationEngine::class)->deliver($eventOne);
+
+            $runOne = AutomationRun::query()->where('event_id', $eventOne->id)->firstOrFail();
+            $this->assertSame(
+                AutomationRun::SUCCEEDED,
+                $runOne->status,
+                'Row 1 (no saved chip): expected a SUCCEEDED run; got action_results: '.json_encode($runOne->action_results),
+            );
+            $this->assertTrue(
+                TrainingAssignment::query()
+                    ->where('assignee_type', TrainingAssignment::USER)
+                    ->where('assignee_id', $learner->id)
+                    ->where('guide_id', $targetGuide->id)
+                    ->exists(),
+                'Row 1 must have written the assignment.',
+            );
+        });
+
+        // Row 2: the creator's OWN top-bar chip, pointed at Riverside — a
+        // display preference on the automation's CREATOR, not anything
+        // about the rule's stored scope, the guide's place, or the
+        // learner's reach, all three of which are unchanged from row 1.
+        $this->inTenant($tenant['org'], function () use ($admin, $riverside) {
+            $admin->forceFill(['preferences' => ['navigation.scope' => 'franchise:'.$riverside->id]])->save();
+        });
+
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/guides/{$triggerGuideTwo->id}/seen", ['screen' => 0])
+            ->assertOk();
+
+        $this->inTenant($tenant['org'], function () use ($targetGuide, $learner) {
+            $eventTwo = AutomationEvent::query()
+                ->where('event_key', 'training.completed')
+                ->latest('occurred_at')
+                ->firstOrFail();
+
+            app(AutomationEngine::class)->deliver($eventTwo);
+
+            $runTwo = AutomationRun::query()->where('event_id', $eventTwo->id)->firstOrFail();
+            $this->assertSame(
+                AutomationRun::SUCCEEDED,
+                $runTwo->status,
+                'Row 2 (chip at Riverside, guide at Northgate): the automation\'s OWN '
+                .'scope already covers Northgate (taskContext()) — the creator\'s personal '
+                .'top-bar chip must not be able to fail this. Got action_results: '
+                .json_encode($runTwo->action_results).', error: '.$runTwo->error,
+            );
+        });
+    }
+
     // ── Round 2: the permission gate must hold on BOTH paths ─────────
 
     /**
@@ -1036,6 +1359,92 @@ class TrainingAssignmentReachTest extends TestCase
                 .'must fall through to the same conservative [null, null] an unplaced person gets, '
                 .'not throw and not silently resolve to whoever happens to hold a matching id.',
         );
+    }
+
+    /**
+     * Coherence audit finding 6's `oldest()->oldest('id')` fix
+     * (`TrainingAssignment::automationScope`'s own docblock) had a test
+     * for `TrainingProgress`
+     * (`TrainingProgressTest::test_automation_scope_is_deterministic_when_the_learner_holds_two_assignments`)
+     * but not for this class, though the identical ordering lives here
+     * too. Same shape: the learner holds two assignments, the Riverside
+     * one backdated older than the Northgate one, and the OLDER row must
+     * win — asserted against Riverside specifically so an unordered
+     * `first()` regressing back in would not pass by coincidence.
+     */
+    public function test_automation_scope_is_deterministic_when_the_learner_holds_two_assignments(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $riverside = $tenant['franchise'];
+        $guide = $this->aPublishedOrgGuide($tenant);
+
+        $learner = $this->userInFranchise($tenant, $riverside, 'Learner', ['training.view']);
+
+        $scope = $this->inTenant($tenant['org'], function () use ($tenant, $learner, $guide) {
+            $northgate = Franchise::create(['company_id' => $tenant['company']->id, 'name' => 'Northgate']);
+
+            // The Riverside row already exists (`userInFranchise`'s own
+            // `onlyAt`) and is backdated so its `created_at` is
+            // unambiguously the OLDER of the two even at second precision.
+            $learner->assignments()->first()->forceFill(['created_at' => now()->subMinute()])->save();
+
+            Assignment::create([
+                'organization_id' => $tenant['org']->id, 'user_id' => $learner->id,
+                'assigned_franchise_id' => $northgate->id,
+            ]);
+
+            $assignment = TrainingAssignment::create([
+                'guide_id' => $guide->id,
+                'assignee_type' => TrainingAssignment::USER,
+                'assignee_id' => $learner->id,
+            ]);
+
+            return $assignment->automationScope();
+        });
+
+        $this->assertSame(
+            ['franchise', $riverside->id],
+            $scope,
+            'The OLDER assignment (Riverside) must win, deterministically, over the newer one (Northgate).',
+        );
+    }
+
+    /**
+     * The behavioral test above proves the CHOSEN row is deterministic,
+     * but with the older row also the FIRST-created one, MySQL can return
+     * it in creation order often enough that the value assertion passes
+     * by coincidence even with no `ORDER BY` at all —
+     * `TrainingProgressTest::test_automation_scope_query_carries_an_explicit_order_by`'s
+     * own docblock names the identical trap. This asserts the `ORDER BY`
+     * clause itself is on the query, which cannot pass by coincidence the
+     * way a value assertion can.
+     */
+    public function test_automation_scope_query_carries_an_explicit_order_by(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $guide = $this->aPublishedOrgGuide($tenant);
+        $learner = $this->userInFranchise($tenant, $tenant['franchise'], 'Learner', ['training.view']);
+
+        $assignment = $this->inTenant($tenant['org'], fn () => TrainingAssignment::create([
+            'guide_id' => $guide->id,
+            'assignee_type' => TrainingAssignment::USER,
+            'assignee_id' => $learner->id,
+        ]));
+
+        $this->inTenant($tenant['org'], function () use ($assignment) {
+            \Illuminate\Support\Facades\DB::enableQueryLog();
+            $assignment->automationScope();
+            $log = \Illuminate\Support\Facades\DB::getQueryLog();
+            \Illuminate\Support\Facades\DB::disableQueryLog();
+
+            $assignmentsQuery = collect($log)->first(
+                fn (array $entry) => str_contains($entry['query'], 'from `assignments`')
+                    || str_contains($entry['query'], 'from "assignments"'),
+            );
+
+            $this->assertNotNull($assignmentsQuery, 'automationScope() did not query assignments at all.');
+            $this->assertStringContainsStringIgnoringCase('order by', $assignmentsQuery['query']);
+        });
     }
 
     // ── Fixtures ──────────────────────────────────────────────────────

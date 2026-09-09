@@ -65,6 +65,35 @@ class TrainingDashboardTest extends TestCase
         $this->assertSame(1, $row['retaking'], 'Passed once, and the pass ran out.');
     }
 
+    /**
+     * `DashboardController::row`'s `kind` (`'guide'` or `'test'`) is the
+     * ONLY thing that tells `client/lib/screens/training/dashboard_pane.dart`
+     * which of `guide_id`/`test_id` to post to `POST /training/assignments`
+     * (`AssignmentsController::store` needs exactly one). Deleting
+     * `'kind' => $kind` from `row()` left this suite green before this
+     * test existed, because nothing pinned the value — pin both rows here
+     * so a guide row can never silently start claiming `kind: 'test'` or
+     * vice versa.
+     */
+    public function test_each_row_reports_its_own_kind(): void
+    {
+        $tenant = $this->provisionTenant('Alpha-'.Str::random(8));
+        $monitor = $this->userWithRole($tenant, 'Monitor', ['training.monitor']);
+
+        $guide = $this->aPublishedGuide($tenant, 'A Guide');
+        $test = $this->aPublishedTest($tenant, 'A Test');
+
+        $rows = collect($this->signedInAs($monitor)->getJson('/api/v1/training/dashboard')->json('data'));
+
+        $guideRow = $rows->firstWhere('id', $guide->id);
+        $testRow = $rows->firstWhere('id', $test->id);
+
+        $this->assertNotNull($guideRow, 'The guide must appear on the dashboard.');
+        $this->assertNotNull($testRow, 'The test must appear on the dashboard.');
+        $this->assertSame('guide', $guideRow['kind']);
+        $this->assertSame('test', $testRow['kind']);
+    }
+
     public function test_a_currently_valid_pass_is_neither_overdue_nor_retaking(): void
     {
         $tenant = $this->provisionTenant('Valid-'.Str::random(8));

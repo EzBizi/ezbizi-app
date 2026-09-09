@@ -4,6 +4,7 @@ namespace Tests\Feature\Training;
 
 use App\Models\Assignment;
 use App\Models\AutomationEvent;
+use App\Models\Franchise;
 use App\Models\Organization;
 use App\Models\Role;
 use App\Models\TrainingGuide;
@@ -205,6 +206,99 @@ class TrainingProgressTest extends TestCase
                     .'have silently stranded every franchise- or company-scoped rule on this event — '
                     .'the guide answers "who may see this", a completion answers "who should be told".',
             );
+        });
+    }
+
+    /**
+     * Coherence audit finding 6: §4 lets a person hold SEVERAL assignments,
+     * and `assignments()->first()` carried no ordering — MySQL was free to
+     * hand back either row, so which supervisor "who should be told"
+     * resolved to could differ between two runs of the identical
+     * completion. Given two assignments, the OLDEST one now always wins,
+     * proven here by asserting the answer against the older row's place
+     * (Riverside) though the newer one (Northgate) was created after it —
+     * a test built the other way around (asserting against whichever the
+     * old code happened to return) would not have caught the
+     * non-determinism at all.
+     */
+    public function test_automation_scope_is_deterministic_when_the_learner_holds_two_assignments(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $riverside = $tenant['franchise'];
+
+        $orgWideGuide = $this->inTenant($tenant['org'], fn () => TrainingGuide::create([
+            'company_id' => null, 'franchise_id' => null,
+            'title' => 'Org Wide Guide', 'status' => TrainingGuide::PUBLISHED,
+            'screens' => $this->screens(1),
+        ]));
+
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $riverside);
+
+        $this->inTenant($tenant['org'], function () use ($tenant, $learner) {
+            $northgate = Franchise::create(['company_id' => $tenant['company']->id, 'name' => 'Northgate']);
+
+            // The Riverside row already exists (`userWithRole`'s `onlyAt`) and
+            // is backdated so its `created_at` is unambiguously the OLDER of
+            // the two even at second precision.
+            $learner->assignments()->first()->forceFill(['created_at' => now()->subMinute()])->save();
+
+            Assignment::create([
+                'organization_id' => $tenant['org']->id, 'user_id' => $learner->id,
+                'assigned_franchise_id' => $northgate->id,
+            ]);
+        });
+
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/guides/{$orgWideGuide->id}/seen", ['screen' => 0])
+            ->assertOk();
+
+        $this->inTenant($tenant['org'], function () use ($orgWideGuide, $learner, $riverside) {
+            $progress = TrainingProgress::query()
+                ->where('user_id', $learner->id)->where('guide_id', $orgWideGuide->id)->firstOrFail();
+
+            $this->assertSame(
+                ['franchise', $riverside->id],
+                $progress->automationScope(),
+                'The OLDER assignment (Riverside) must win, deterministically, over the newer one (Northgate).',
+            );
+        });
+    }
+
+    /**
+     * The behavioral test above proves the CHOSEN row is deterministic, but
+     * MySQL returning an unordered result in creation order often enough
+     * that the assertion happens to pass is exactly the trap an unordered
+     * `first()` sets — this asserts the ORDER BY clause itself is on the
+     * query, which cannot pass by coincidence the way a value assertion
+     * can.
+     */
+    public function test_automation_scope_query_carries_an_explicit_order_by(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $tenant['franchise']);
+
+        $progress = $this->inTenant($tenant['org'], fn () => TrainingProgress::create([
+            'user_id' => $learner->id,
+            'guide_id' => TrainingGuide::create([
+                'company_id' => null, 'franchise_id' => null,
+                'title' => 'Org Wide Guide', 'status' => TrainingGuide::PUBLISHED, 'screens' => [],
+            ])->id,
+            'last_screen' => 1,
+        ]));
+
+        $this->inTenant($tenant['org'], function () use ($progress) {
+            DB::enableQueryLog();
+            $progress->automationScope();
+            $log = DB::getQueryLog();
+            DB::disableQueryLog();
+
+            $assignmentsQuery = collect($log)->first(
+                fn (array $entry) => str_contains($entry['query'], 'from `assignments`')
+                    || str_contains($entry['query'], 'from "assignments"'),
+            );
+
+            $this->assertNotNull($assignmentsQuery, 'automationScope() did not query assignments at all.');
+            $this->assertStringContainsStringIgnoringCase('order by', $assignmentsQuery['query']);
         });
     }
 

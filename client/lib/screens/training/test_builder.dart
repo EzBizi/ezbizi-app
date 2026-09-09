@@ -419,26 +419,39 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
           _OptionRow(
             label: 'Which guide',
             hint: 'Only used while the toggle above is on',
-            trailing: SizedBox(
-              width: 200,
-              child: DropdownButtonFormField<String?>(
-                key: const Key('training.option-guide-id'),
-                initialValue: _guideId,
-                isDense: true,
-                decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
-                items: [
-                  const DropdownMenuItem<String?>(value: null, child: Text('None')),
-                  for (final guide in widget.availableGuides)
-                    DropdownMenuItem<String?>(
-                      value: guide['id'] as String?,
-                      child: Text(
-                        guide['title'] as String? ?? '',
-                        overflow: TextOverflow.ellipsis,
-                      ),
+            // No `SizedBox` fixing this to a pixel width any more (review
+            // finding — see `_OptionRow.trailingWidth`'s own docblock).
+            // `isExpanded: true` is required, not cosmetic: without it,
+            // `DropdownButtonFormField` sizes its closed-state display from
+            // the WIDEST item's own intrinsic content width — measured via
+            // an internal off-screen layout that ignores whatever width its
+            // parent actually gave it — so a long guide title overflows
+            // that internal layout even while sitting inside a correctly
+            // constrained parent. `isExpanded: true` makes the button fill
+            // whatever width it is given instead (200px at a wide layout,
+            // the full row at a narrow one) and lets each item's own
+            // `overflow: TextOverflow.ellipsis` (below) actually take
+            // effect, which is what stops a long title from being the
+            // thing that overflows once the button itself no longer does.
+            trailingWidth: 200,
+            trailing: DropdownButtonFormField<String?>(
+              key: const Key('training.option-guide-id'),
+              initialValue: _guideId,
+              isDense: true,
+              isExpanded: true,
+              decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
+              items: [
+                const DropdownMenuItem<String?>(value: null, child: Text('None')),
+                for (final guide in widget.availableGuides)
+                  DropdownMenuItem<String?>(
+                    value: guide['id'] as String?,
+                    child: Text(
+                      guide['title'] as String? ?? '',
+                      overflow: TextOverflow.ellipsis,
                     ),
-                ],
-                onChanged: (value) => setState(() => _guideId = value),
-              ),
+                  ),
+              ],
+              onChanged: (value) => setState(() => _guideId = value),
             ),
           ),
         _OptionRow(
@@ -478,37 +491,75 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
 /// One option row — a label (with a muted explanatory line under it, the
 /// mockup's own `.opt .lab i`) and a trailing control. `.opt`'s own shape
 /// (training-layouts.html), redrawn in widgets rather than CSS.
+///
+/// ── Below [_narrowBelow] the row stacks, and [trailingWidth] stops
+/// applying (review finding) ─────────────────────────────────────────────
+///
+/// At a wide layout the label and [trailing] sit side by side — [trailing]
+/// pinned to [trailingWidth] when the caller passes one (the "Which guide"
+/// picker's own 200px, matching its old fixed `SizedBox`). Below
+/// [_narrowBelow] — the same 600 `GuidePlayer.splitAbove`/
+/// `InventoryScreen.splitAbove` already use as this module's own narrow-
+/// layout floor — the row becomes a [Column] instead: label and hint on
+/// top, [trailing] given the ROW's own full width underneath, and
+/// [trailingWidth] is never applied. A fixed pixel width that is safe at a
+/// wide layout is exactly what overflowed the "Which guide" picker at
+/// 375px — the label+hint column had nowhere near enough of the remaining
+/// ~143px to sit beside a 200px-wide dropdown, and the dropdown's own
+/// closed-state layout (see that call site's docblock) overflowed within
+/// itself besides. No fixed width may survive at that size; stacking is
+/// what removes it rather than shrinking it further.
 class _OptionRow extends StatelessWidget {
-  const _OptionRow({required this.label, required this.hint, required this.trailing});
+  const _OptionRow({required this.label, required this.hint, required this.trailing, this.trailingWidth});
 
   final String label;
   final String hint;
   final Widget trailing;
 
+  /// Applied to [trailing] only at a wide layout (see class docblock).
+  /// `null` (every row but the guide picker) leaves [trailing] unsized —
+  /// safe already, since [Switch] and `_NumberField` are both naturally
+  /// small and were never the overflow risk here.
+  final double? trailingWidth;
+
+  static const double _narrowBelow = 600;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    final labelColumn = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: theme.textTheme.bodyMedium, maxLines: 1, overflow: TextOverflow.ellipsis),
+        Text(
+          hint,
+          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 9),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: Column(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < _narrowBelow) {
+            return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: theme.textTheme.bodyMedium),
-                Text(
-                  hint,
-                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          trailing,
-        ],
+              children: [labelColumn, const SizedBox(height: 8), trailing],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(child: labelColumn),
+              const SizedBox(width: 10),
+              trailingWidth == null ? trailing : SizedBox(width: trailingWidth, child: trailing),
+            ],
+          );
+        },
       ),
     );
   }

@@ -7,12 +7,15 @@ use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\TrainingGuide;
 use App\Models\TrainingTest;
+use App\Support\Audit\AuditLogger;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\PlaceInView;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Training\GuidePlaceReach;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
@@ -22,7 +25,9 @@ use Symfony\Component\HttpFoundation\Response;
  * per-test options (decision 4) that decide how a test is passed.
  *
  * Mirrors GuidesController closely: same place-scope engine, same
- * store/update place-handling shape. Three things this controller adds that
+ * store/update place-handling shape, same audit shape (see
+ * GuidesController's docblock — `logChange` before `save()`, `log` on
+ * create and before delete). Three things this controller adds that
  * the guide one does not need: `questions` carries its own answer-key trust
  * boundary (every question must have exactly one correct choice, counted on
  * a NORMALIZED and REBUILT copy of the input — see [normalizeQuestions] and
@@ -36,7 +41,10 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class TestsController extends Controller
 {
-    public function __construct(private readonly TenantContext $tenant) {}
+    public function __construct(
+        private readonly TenantContext $tenant,
+        private readonly AuditLogger $audit,
+    ) {}
 
     /**
      * An `exists` rule scoped to this organization.
@@ -115,18 +123,24 @@ class TestsController extends Controller
 
         $this->assertGuideCompatible($guide, $company, $franchise);
 
-        $test = TrainingTest::create([
-            'company_id' => $company?->getKey(),
-            'franchise_id' => $franchise?->getKey(),
-            'guide_id' => $guide?->getKey(),
-            'title' => $input['title'],
-            'status' => $input['status'] ?? TrainingTest::DRAFT,
-            'questions' => $input['questions'] ?? [],
-            'requires_guide' => $input['requires_guide'] ?? false,
-            'pass_mark' => $input['pass_mark'] ?? 80,
-            'max_attempts' => $input['max_attempts'] ?? null,
-            'valid_for_days' => $input['valid_for_days'] ?? null,
-        ]);
+        $test = DB::transaction(function () use ($input, $company, $franchise, $guide) {
+            $test = TrainingTest::create([
+                'company_id' => $company?->getKey(),
+                'franchise_id' => $franchise?->getKey(),
+                'guide_id' => $guide?->getKey(),
+                'title' => $input['title'],
+                'status' => $input['status'] ?? TrainingTest::DRAFT,
+                'questions' => $input['questions'] ?? [],
+                'requires_guide' => $input['requires_guide'] ?? false,
+                'pass_mark' => $input['pass_mark'] ?? 80,
+                'max_attempts' => $input['max_attempts'] ?? null,
+                'valid_for_days' => $input['valid_for_days'] ?? null,
+            ]);
+
+            $this->audit->log('test.created', $test);
+
+            return $test;
+        });
 
         return response()->json(
             ['data' => $this->present($test->fresh())],
@@ -205,8 +219,17 @@ class TestsController extends Controller
             $this->assertGuideCompatible($guide, $company, $franchise, $blameField);
         }
 
-        $test->fill($input);
-        $test->save();
+        DB::transaction(function () use ($test, $input) {
+            $test->fill($input);
+
+            // Same no-op guard as GuidesController::update.
+            if (! $test->isDirty()) {
+                return;
+            }
+
+            $this->audit->logChange('test.updated', $test);
+            $test->save();
+        });
 
         return response()->json(['data' => $this->present($test->fresh())]);
     }
@@ -216,7 +239,17 @@ class TestsController extends Controller
     {
         $this->authorize('delete', $test);
 
-        $test->delete();
+        DB::transaction(function () use ($test) {
+            // Logged before the delete — see GuidesController::destroy.
+            // `training_attempts` cascade with this row (migration
+            // `create_training_tables`), so this is the only record that a
+            // test with recorded attempts behind it ever existed.
+            $this->audit->log('test.deleted', $test, metadata: [
+                'title' => $test->title,
+            ]);
+
+            $test->delete();
+        });
 
         return response()->noContent();
     }
@@ -346,9 +379,12 @@ class TestsController extends Controller
             return;
         }
 
-        $compatible = $guide->company_id === null
-            || ($guide->company_id === $company?->getKey() && $guide->franchise_id === null)
-            || ($guide->company_id === $company?->getKey() && $guide->franchise_id === $franchise?->getKey());
+        // The one shared definition — see GuidePlaceReach's own docblock on
+        // why GuidesController::update asks it too rather than a second copy.
+        $compatible = GuidePlaceReach::covers(
+            $guide->company_id, $guide->franchise_id,
+            $company?->getKey(), $franchise?->getKey(),
+        );
 
         if (! $compatible) {
             throw ValidationException::withMessages([

@@ -158,14 +158,33 @@ final class AssignmentWriter
      * @throws \Illuminate\Database\Eloquent\ModelNotFoundException  the
      *                               guide, test, person or role named does
      *                               not exist in this tenant, or is a draft
+     *
+     * $scope defaults to `ViewScope::forUser($assigner)` — the caller's own
+     * current view, correct for `AssignmentsController::store`, where the
+     * assigner IS the request user. `ActionRunner::assignTraining` passes
+     * its own already-resolved scope instead: inside an automation run
+     * there is no request, so `forUser` would fall through to the RULE
+     * CREATOR's stored `navigation.scope` top-bar preference
+     * (`ViewScope::forUser`'s own docblock) — a person who did nothing
+     * more than click a chip in their own top bar, with no connection to
+     * this rule or its assignee, deciding whether it can see its own
+     * target. `taskContext()` already computes the automation's correct
+     * scope (`ViewScope::forStoredAutomationScope`) one line above the
+     * call in `ActionRunner::assignTraining` — this parameter is what lets
+     * it hand that scope through instead of it being silently discarded.
      */
-    public function create(User $assigner, array $input, ?AutomationEvent $causedBy = null): TrainingAssignment
+    public function create(User $assigner, array $input, ?AutomationEvent $causedBy = null, ?ViewScope $scope = null): TrainingAssignment
     {
         if (! $assigner->hasPermission('training.assign')) {
             Refusal::permission('assign training')->authorize();
         }
 
-        [$guide, $test] = $this->exactlyOneTarget($input['guide_id'] ?? null, $input['test_id'] ?? null);
+        [$guide, $test] = $this->exactlyOneTarget(
+            $assigner,
+            $input['guide_id'] ?? null,
+            $input['test_id'] ?? null,
+            $scope ?? ViewScope::forUser($assigner),
+        );
 
         $assigneeType = $input['assignee_type'] ?? null;
         $assigneeId = $input['assignee_id'] ?? null;
@@ -253,8 +272,60 @@ final class AssignmentWriter
         });
     }
 
-    /** @return array{0: ?TrainingGuide, 1: ?TrainingTest} */
-    private function exactlyOneTarget(?string $guideId, ?string $testId): array
+    /**
+     * Coherence audit finding 5, corrected (this task — a correction to the
+     * fix, not a new finding).
+     *
+     * [create] has no place field of its own for the caller to name; the
+     * assignment's `company_id`/`franchise_id` are copied from whichever
+     * guide or test is being assigned (see the INSERT in [create]). The
+     * first fix for finding 5 added `assertContentInView`, which called
+     * `PlaceInView::assert` against that DERIVED place — the identical
+     * check `GuidesController`/`TestsController` make when a `store`/
+     * `update` request directly NAMES a place to file a new record at.
+     * That was the wrong instrument: `PlaceInView::assert` answers "may
+     * you FILE at the place you just named", and its `company === null`
+     * arm refuses a group-level filing from any non-organization view —
+     * correct when a caller CHOSE to park a new record at the group, but
+     * [create] never chooses a place; it only reads one off an EXISTING
+     * row. Asking `PlaceInView` that question made an organization-wide
+     * guide (`company_id === null`) unassignable from any view narrower
+     * than the organization itself, defeating the one point of an
+     * organization-wide guide — that every place below may use it, most of
+     * all a franchise supervisor handing it to their own crew.
+     *
+     * The real question was never "may you file here" — it was "can you
+     * SEE this content from where you stand", which
+     * `InventoryVisibility::constrain` already answers for every other
+     * Training read, [assertLearnerCanSee] included. So do not add a
+     * `PlaceInView`-shaped check back here: constrain the LOOKUP itself
+     * (below, in [exactlyOneTarget]) through `InventoryVisibility` instead.
+     * Its organization arm (`whereNull('company_id')`) makes an org-wide
+     * guide visible from every view, and its company/franchise arms still
+     * keep a sibling company's guide invisible from here — the same
+     * outcome the `PlaceInView` fix reached for a MISPLACED guide, without
+     * the collateral refusal for a WIDELY-placed one.
+     */
+
+    /**
+     * @return array{0: ?TrainingGuide, 1: ?TrainingTest}
+     *
+     * Constrained by the ASSIGNER's current view — coherence audit finding
+     * 5, corrected (see the docblock just above this method). A guide or
+     * test outside that view, including a sibling company's, simply does
+     * not match the constrained query and comes back
+     * `ModelNotFoundException` — the identical "not found" a draft or a
+     * nonexistent id already produces below, on purpose: distinguishing
+     * "wrong place" from "does not exist" would tell an assigner a
+     * specific row EXISTS somewhere they cannot see, the same reasoning
+     * `LearnController::showTest`'s own docblock gives for querying through
+     * publication and place at once rather than resolving by id first.
+     *
+     * $view is the CALLER's to resolve — see [create]'s own docblock on
+     * why the default (`ViewScope::forUser`) is wrong inside an automation
+     * run, where `ActionRunner::assignTraining` passes its own instead.
+     */
+    private function exactlyOneTarget(User $assigner, ?string $guideId, ?string $testId, ViewScope $view): array
     {
         if (($guideId === null) === ($testId === null)) {
             throw ValidationException::withMessages([
@@ -270,17 +341,34 @@ final class AssignmentWriter
         // ever be shown, so a row assigning one is a dud from the moment it
         // is written. See this class's own docblock.
         return $guideId !== null
-            ? [TrainingGuide::query()->where('status', TrainingGuide::PUBLISHED)->findOrFail($guideId), null]
-            : [null, TrainingTest::query()->where('status', TrainingTest::PUBLISHED)->findOrFail($testId)];
+            ? [InventoryVisibility::constrain(
+                TrainingGuide::query()->where('status', TrainingGuide::PUBLISHED),
+                $assigner,
+                $view,
+            )->findOrFail($guideId), null]
+            : [null, InventoryVisibility::constrain(
+                TrainingTest::query()->where('status', TrainingTest::PUBLISHED),
+                $assigner,
+                $view,
+            )->findOrFail($testId)];
     }
 
     /**
      * For a USER assignee only — see this class's own docblock on why a role
      * target is not checked this way.
+     *
+     * `ViewScope::reachOf`, not `forUser` — coherence audit finding 2. This
+     * asks whether the learner could EVER be shown the target, which is a
+     * fact about their §4 reach; `forUser` would have answered a different
+     * question — what their own saved `navigation.scope` happens to be
+     * pointed at today — and a manager's otherwise-valid assignment would
+     * then stand or fall on which chip the LEARNER last clicked in their
+     * own top bar, something the manager cannot see and did not do. See
+     * `ViewScope::reachOf`'s own docblock.
      */
     private function assertLearnerCanSee(?TrainingGuide $guide, ?TrainingTest $test, User $learner): void
     {
-        $scope = ViewScope::forUser($learner);
+        $scope = ViewScope::reachOf($learner);
 
         $visible = $guide !== null
             ? InventoryVisibility::constrain(TrainingGuide::query(), $learner, $scope)->whereKey($guide->getKey())->exists()

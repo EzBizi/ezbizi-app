@@ -18,10 +18,11 @@ import 'dashboard_pane.dart';
 ///
 /// `GET /training/dashboard` (`DashboardController::index`) answers `{data:
 /// [...], summary: {...}}`. Each row in `data` is one guide or one test:
-/// `{id, title, assigned, passed, in_progress, overdue, retaking}` — no
-/// `type` field, so nothing here (or in `dashboard_pane.dart`) can tell a
-/// guide row from a test row; the pane below does not need to, either — see
-/// its own docblock.
+/// `{id, title, kind, assigned, passed, in_progress, overdue, retaking}` —
+/// `kind` (`'guide'` or `'test'`) was added so the pane's "Assign to more
+/// people" control knows which of `guide_id`/`test_id` to post
+/// (`DashboardController::row`'s own docblock) — carried straight through
+/// as `widget.row['kind']`, never refetched.
 ///
 /// `summary` — `{people_assigned, people_overdue, people_due_for_retaking}`
 /// — is the one number on this screen that is NOT "count what is in front
