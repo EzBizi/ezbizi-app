@@ -156,6 +156,30 @@ final class HeaderCache
      * dashboard within a minute share one answer instead of making four
      * identical round trips to the same mail server.
      *
+     * ── IF YOU ADD A CALLER, YOU ARE THE ONE WHO CAN BREAK THIS ──
+     *
+     * A cache keyed on a RESOURCE rather than on a person is only safe while
+     * every caller has already decided that this viewer may read this mailbox.
+     * The key is organization-prefixed, so a mailbox id cannot collide across
+     * tenants — but that is the second line of defence, not the first. The
+     * first is that nothing consults this cache for a mailbox the caller was
+     * not already entitled to open.
+     *
+     * `EmailGlance` earns it: it resolves the readable mailboxes and filters
+     * them to the current view BEFORE its loop reaches `unreadCount`. So the
+     * cache is downstream of the access decision, never upstream of it.
+     *
+     * That invariant lives across two files and was written in neither until
+     * the Dashboard session went looking for it — the safety of this cache is
+     * a property of its CALLERS, and this class cannot enforce it. A caller
+     * that asked for a count first and checked permission afterwards would
+     * still be correct on a cache miss and wrong on a hit, which is the worst
+     * shape a leak can have: intermittent, and dependent on who loaded the
+     * page a minute earlier.
+     *
+     * So: filter by access first. If that ever becomes inconvenient, key this
+     * per viewer instead — and lose the sharing that is the whole point.
+     *
      * ── Sixty seconds is a count, not a truth ────────────────────
      *
      * `EmailGlance` declares `SNAPSHOT = true` — it is explicitly a reading at
