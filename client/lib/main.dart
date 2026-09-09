@@ -457,7 +457,13 @@ class _HomeShellState extends State<HomeShell> {
       screenMonitoringExempt: exempt,
     );
     if (!exempt) {
-      _screenshots = ScreenshotService(widget.api);
+      // The capture service tells the heartbeat how each attempt went, and
+      // the beat carries it to the server — otherwise a device that cannot
+      // capture at all is indistinguishable from one that has not tried yet.
+      _screenshots = ScreenshotService(
+        widget.api,
+        onOutcome: _heartbeat.reportCapture,
+      );
       _liveView = LiveViewService(widget.api);
       _remoteControl = RemoteControlService(widget.api);
     }

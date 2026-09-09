@@ -240,4 +240,78 @@ void main() {
       it.heartbeat.dispose();
     },
   );
+
+  group('the beat carries the last capture outcome', () {
+    test('no capture reported yet means no capture block at all', () async {
+      final it = harness();
+      await it.heartbeat.enter('jobs');
+
+      expect(
+        it.posted.single.containsKey('capture'),
+        isFalse,
+        reason: 'A device that has not attempted a capture must say nothing '
+            'rather than assert a state it has no evidence for — the server '
+            'leaves the last known answer alone when the block is absent.',
+      );
+
+      it.heartbeat.dispose();
+    });
+
+    test('a reported failure rides on the next beat, with its reason', () async {
+      final it = harness();
+
+      it.heartbeat.reportCapture(ok: false, reason: 'jpeg_encoder_missing');
+      await it.heartbeat.enter('jobs');
+
+      final capture = it.posted.single['capture'] as Map<String, dynamic>;
+      expect(capture['ok'], isFalse);
+      expect(capture['reason'], 'jpeg_encoder_missing');
+      expect(
+        DateTime.tryParse(capture['at'] as String),
+        isNotNull,
+        reason: 'The server validates `capture.at` as a date, so an unparseable '
+            'stamp would 422 the whole beat — taking presence down with it.',
+      );
+
+      it.heartbeat.dispose();
+    });
+
+    test('a success reports ok with no reason key', () async {
+      final it = harness();
+
+      it.heartbeat.reportCapture(ok: true);
+      await it.heartbeat.enter('jobs');
+
+      final capture = it.posted.single['capture'] as Map<String, dynamic>;
+      expect(capture['ok'], isTrue);
+      expect(capture.containsKey('reason'), isFalse,
+          reason: 'Omitted rather than null — the server reads ok:true as '
+              '"clear the stored fault", and a reason alongside it would be '
+              'two answers to one question.');
+
+      it.heartbeat.dispose();
+    });
+
+    test('the outcome keeps riding on later beats until it is replaced', () async {
+      final it = harness();
+
+      it.heartbeat.reportCapture(ok: false, reason: 'screen_locked');
+      await it.heartbeat.enter('jobs');
+      await it.heartbeat.enter('customers');
+
+      expect(it.posted.length, 2,
+          reason: 'The control: two beats really were sent, so the second '
+              "reading below is a second beat's and not the first one twice.");
+      expect(
+        (it.posted.last['capture'] as Map<String, dynamic>)['reason'],
+        'screen_locked',
+        reason: 'Beats run every 60s and captures every 5 minutes, so most '
+            'beats carry no fresh outcome. If the outcome were cleared once '
+            'sent, the roster would go blank for four minutes out of every '
+            'five — a stale truth beats a fresh "we do not know".',
+      );
+
+      it.heartbeat.dispose();
+    });
+  });
 }

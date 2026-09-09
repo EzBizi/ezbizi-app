@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 
@@ -35,6 +34,18 @@ import 'screenshot_capability.dart';
 /// why). The only way to guarantee that is for both to read the identical
 /// cached value, which is what [DeviceKey.value] exists to do.
 ///
+/// ── Why every attempt reports an outcome ───────────────────────────
+///
+/// A capture that fails is silent by nature: nobody is watching, there is no
+/// screen to show an error on, and the debug log does not exist in a shipped
+/// build. That silence is what made "this device can capture screenshots, but
+/// none have landed yet" unanswerable — it is equally consistent with a
+/// machine whose WIC JPEG encoder is missing, one whose user locks their
+/// screen, and one that simply has not reached its first tick. So every
+/// attempt, success or failure, hands its outcome to [_onOutcome] (the
+/// heartbeat, in main.dart), which carries it to the server on the next beat.
+/// See MonitoringHeartbeat.reportCapture.
+///
 /// ── Why this never throws ──────────────────────────────────────────
 ///
 /// A capture or upload failure is not a foreground event — nobody is
@@ -48,9 +59,11 @@ class ScreenshotService {
   ScreenshotService(
     this._api, {
     Duration interval = const Duration(minutes: 5),
-    Future<Uint8List?> Function()? capture,
+    Future<CaptureAttempt> Function()? capture,
+    void Function({required bool ok, String? reason})? onOutcome,
   })  : _interval = interval,
-        _capture = capture ?? _defaultCapture {
+        _capture = capture ?? _defaultCapture,
+        _onOutcome = onOutcome {
     // Windows-guarded, but only for the DEFAULT (native-channel) capture
     // path: off Windows (including web) there is no channel to invoke at
     // all — windows/runner is the only platform runner that registers
@@ -68,7 +81,12 @@ class ScreenshotService {
 
   final ApiClient _api;
   final Duration _interval;
-  final Future<Uint8List?> Function() _capture;
+  final Future<CaptureAttempt> Function() _capture;
+
+  /// Told the result of every attempt. Null in tests that do not care and in
+  /// any future caller with nowhere to report — reporting is a courtesy to
+  /// whoever is looking at the roster, never a precondition for capturing.
+  final void Function({required bool ok, String? reason})? _onOutcome;
 
   Timer? _timer;
 
@@ -76,13 +94,18 @@ class ScreenshotService {
   // doc comment above ("Where the bytes come from") for why this and
   // [LiveViewService] call the same function rather than each invoking their
   // own MethodChannel.
-  static Future<Uint8List?> _defaultCapture() =>
+  static Future<CaptureAttempt> _defaultCapture() =>
       captureMonitoringScreen(caller: 'ScreenshotService');
 
   Future<void> _captureAndUpload() async {
     try {
-      final bytes = await _capture();
-      if (bytes == null || bytes.isEmpty) return;
+      final attempt = await _capture();
+      final bytes = attempt.bytes;
+
+      if (bytes == null || bytes.isEmpty) {
+        _report(ok: false, reason: attempt.reason ?? 'empty_capture');
+        return;
+      }
 
       final deviceKey = await DeviceKey.value();
 
@@ -94,14 +117,38 @@ class ScreenshotService {
         fields: {'device_key': deviceKey},
       );
 
-      if (!response.ok && kDebugMode) {
-        debugPrint('ScreenshotService: upload failed (${response.statusCode}): '
-            '${response.message}');
+      if (!response.ok) {
+        // A capture that succeeded and an upload that was refused are
+        // different faults with different fixes, so the status code is kept
+        // rather than flattened into a generic failure: `upload_404` means
+        // the device row is missing, `upload_413`/`upload_422` mean the
+        // frame itself was rejected, `upload_403` is the exemption.
+        _report(ok: false, reason: 'upload_${response.statusCode}');
+
+        if (kDebugMode) {
+          debugPrint('ScreenshotService: upload failed (${response.statusCode}): '
+              '${response.message}');
+        }
+        return;
       }
+
+      _report(ok: true, reason: null);
     } catch (e) {
+      _report(ok: false, reason: 'capture_failed');
+
       if (kDebugMode) {
         debugPrint('ScreenshotService: capture/upload failed: $e');
       }
+    }
+  }
+
+  /// Never lets a reporting failure become a capture failure — [_onOutcome]
+  /// is somebody else's code, and this runs inside a timer callback.
+  void _report({required bool ok, String? reason}) {
+    try {
+      _onOutcome?.call(ok: ok, reason: reason);
+    } catch (_) {
+      // Deliberately swallowed: see above.
     }
   }
 

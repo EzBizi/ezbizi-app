@@ -1,6 +1,7 @@
 #include "flutter_window.h"
 
 #include <optional>
+#include <string>
 #include <utility>
 #include <variant>
 
@@ -58,9 +59,15 @@ bool FlutterWindow::OnCreate() {
           result->NotImplemented();
           return;
         }
-        std::vector<uint8_t> jpeg_bytes = CapturePrimaryMonitorJpeg();
+        // A failed capture is reported as an ERROR carrying the reason slug,
+        // not as Success(null). Both used to arrive in Dart as "no bytes",
+        // which meant a machine that could never capture looked exactly like
+        // one that had not captured yet — see monitoring_screenshot.h.
+        std::string reason;
+        std::vector<uint8_t> jpeg_bytes = CapturePrimaryMonitorJpeg(&reason);
         if (jpeg_bytes.empty()) {
-          result->Success();
+          result->Error(reason.empty() ? "capture_failed" : reason,
+                        "The primary monitor could not be captured.");
           return;
         }
         result->Success(flutter::EncodableValue(std::move(jpeg_bytes)));

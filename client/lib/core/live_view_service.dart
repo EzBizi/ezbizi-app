@@ -68,8 +68,8 @@ class LiveViewService {
 
   Timer? _timer;
 
-  static Future<Uint8List?> _defaultCapture() =>
-      captureMonitoringScreen(caller: 'LiveViewService');
+  static Future<Uint8List?> _defaultCapture() async =>
+      (await captureMonitoringScreen(caller: 'LiveViewService')).bytes;
 
   Future<void> _pollAndMaybeUpload() async {
     try {

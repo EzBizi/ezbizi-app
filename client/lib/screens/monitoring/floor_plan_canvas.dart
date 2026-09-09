@@ -169,6 +169,19 @@ class FloorPlanCanvas extends StatelessWidget {
         : scheme.error;
   }
 
+  /// The icon a tile draws, for one node's [status] entry.
+  ///
+  /// Deliberately written as the same three-way question as [tileColor], in
+  /// the same order, ASSIGNED FIRST — the icon and the fill are two renderings
+  /// of one fact, and a tile whose bolt disagreed with its colour would be
+  /// worse than either alone. Kept next to it so the pair is edited together.
+  static IconData tileIcon(Map<String, dynamic>? entry) {
+    if (entry == null || entry['assigned'] != true) {
+      return Icons.person_outline;
+    }
+    return entry['online'] == true ? Icons.flash_on : Icons.flash_off;
+  }
+
   static int _asInt(Object? value, int fallback) =>
       value is num ? value.toInt() : fallback;
 
@@ -544,16 +557,28 @@ class _NodeTileState extends State<_NodeTile> {
                 width: widget.selected ? 3 : 1,
               ),
             ),
-            // Scales the label down rather than wrapping or ellipsing it: the
-            // tile is as small as the grid makes it, and a FittedBox cannot
-            // overflow its box, which is what keeps 375px clean.
+            // Scales the icon and label down together rather than wrapping or
+            // ellipsing: the tile is as small as the grid makes it, and a
+            // FittedBox cannot overflow its box, which is what keeps 375px
+            // clean. The icon says the status a second way, so a tile is not
+            // relying on green-versus-red alone to be read.
             child: FittedBox(
               fit: BoxFit.scaleDown,
-              child: Text(
-                widget.label,
-                maxLines: 1,
-                softWrap: false,
-                style: theme.textTheme.labelSmall?.copyWith(color: onFill),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    FloorPlanCanvas.tileIcon(widget.entry),
+                    size: 14,
+                    color: onFill,
+                  ),
+                  Text(
+                    widget.label,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: theme.textTheme.labelSmall?.copyWith(color: onFill),
+                  ),
+                ],
               ),
             ),
           ),

@@ -525,15 +525,18 @@ class _StatusDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 9,
-      height: 9,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: online
-            ? EzBiziTheme.clockIn(context)
-            : Theme.of(context).colorScheme.outlineVariant,
-      ),
+    // A bolt and a struck-through bolt, not two coloured circles: colour was
+    // the ONLY thing separating online from offline here, which fails anyone
+    // who cannot tell this green from this grey, and fails everyone in a
+    // screenshot pasted into a ticket. The shape now carries the fact and the
+    // colour reinforces it.
+    return Icon(
+      online ? Icons.flash_on : Icons.flash_off,
+      size: 13,
+      color: online
+          ? EzBiziTheme.clockIn(context)
+          : Theme.of(context).colorScheme.outlineVariant,
+      semanticLabel: online ? 'Online' : 'Offline',
     );
   }
 }
