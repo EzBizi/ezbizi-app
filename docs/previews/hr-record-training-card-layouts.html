@@ -1,0 +1,201 @@
+<!doctype html><meta charset="utf-8">
+<title>HR record &rsaquo; Training card &mdash; layouts</title>
+<style>
+/* Palette from client/lib/core/theme.dart, light brightness:
+   _ink #060808, _muted #5B6672, _line #060808 @ 10%, primary (_cyanDeep) #00708f.
+   Green is EzBiziTheme.clockIn #0B8F5B. Red is the ColorScheme.fromSeed error
+   for light, Material 3's #BA1A1A -- theme.dart does not override it. */
+:root{--ink:#060808;--muted:#5B6672;--line:rgba(6,8,8,.10);--primary:#00708f;
+      --ok:#0B8F5B;--bad:#BA1A1A;--paper:#fff;--ground:#f4f6f7}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+     font:14px/1.45 -apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:20px 24px 8px}
+h1{margin:0;font-size:18px;font-weight:700;letter-spacing:-.3px}
+#nums{display:flex;flex-wrap:wrap;gap:8px;padding:12px 24px 6px;align-items:center}
+#nums button{font:inherit;font-weight:600;background:var(--paper);color:var(--ink);
+  border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
+#nums button[aria-current=true]{background:var(--primary);color:#fff;border-color:var(--primary)}
+#tog{padding:4px 24px 18px;font-size:13px;color:var(--muted)}
+#tog label{cursor:pointer;user-select:none;font-weight:600;color:var(--ink)}
+#stage{padding:0 24px 48px}
+.cap{font-size:13px;color:var(--muted);margin:0 0 14px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:16px}
+.desk{max-width:600px}
+.phone{width:352px;border:1px solid var(--line);border-radius:26px;background:var(--paper);
+       padding:14px 12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.hd{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.hd .t{font-weight:600;flex:1}
+.ic{width:18px;height:18px;flex:none;stroke:var(--ink);fill:none;stroke-width:1.7}
+.sub{font-size:12px;color:var(--muted);margin:0 0 12px 26px}
+.grp{font-size:12px;font-weight:700;letter-spacing:.4px;color:var(--muted);
+     margin:14px 0 6px;text-transform:uppercase}
+.grp.bad{color:var(--bad)}
+.it{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)}
+.it:last-child{border-bottom:0}
+.it .n{flex:1;font-weight:600}
+.it .m{font-size:13px;color:var(--muted);white-space:nowrap}
+.it .m.ok{color:var(--ok);font-weight:600}
+.it .m.bad{color:var(--bad);font-weight:600}
+.pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:700}
+.pill.ok{color:var(--ok);background:rgba(11,143,91,.10)}
+.pill.bad{color:var(--bad);background:rgba(186,26,26,.09)}
+.pill.new{color:var(--muted);background:rgba(6,8,8,.05)}
+.strip{display:flex;gap:8px;margin:2px 0 12px}
+.strip .s{flex:1;border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+.strip .s .v{font-size:20px;font-weight:700;letter-spacing:-.4px}
+.strip .s .k{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;
+             letter-spacing:.3px}
+.strip .s.bad{border-color:rgba(186,26,26,.35);background:rgba(186,26,26,.05)}
+.strip .s.bad .v{color:var(--bad)}
+.alert{border:1px solid rgba(186,26,26,.35);background:rgba(186,26,26,.05);
+       border-radius:12px;padding:12px 14px;margin-bottom:10px}
+.alert .k{font-size:11px;font-weight:700;color:var(--bad);letter-spacing:.4px}
+.alert .n{font-weight:700;font-size:16px;margin-top:3px}
+.alert .w{font-size:12px;color:var(--muted);margin-top:3px}
+.acc{border:1px solid var(--line);border-radius:10px;margin-bottom:8px;overflow:hidden}
+.acc .h2{display:flex;align-items:center;gap:8px;padding:11px 12px;font-weight:700}
+.acc .h2 .c{margin-left:auto;color:var(--muted);font-weight:600}
+.acc.open .bd{padding:2px 12px 8px}
+.acc .bd{display:none}.acc.open .bd{display:block}
+.acc.badh .h2{color:var(--bad);background:rgba(186,26,26,.05)}
+.mini{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.mini.bad{border-color:rgba(186,26,26,.35);background:rgba(186,26,26,.04)}
+.mini .n{font-weight:700}
+.mini .r{display:flex;align-items:center;gap:8px;margin-top:5px}
+.refused{display:flex;gap:10px;align-items:flex-start;padding:14px 2px}
+.refused svg{width:20px;height:20px;flex:none;stroke:var(--muted);fill:none;stroke-width:1.7}
+.refused .s{color:var(--muted);font-size:13px;line-height:1.5}
+/* Real UI, not an annotation: on a screen that also carries HR's own
+   "Expiring certifications", the card has to say which of the two this is and
+   who acts on it. Drawn as a footnote rule inside the card, not a callout. */
+.own{margin-top:12px;padding-top:10px;border-top:1px solid var(--line);
+     font-size:12px;color:var(--muted)}
+.own b{color:var(--ink);font-weight:600}
+</style>
+<header><h1>HR record &rsaquo; Training card &mdash; pick one desktop and one mobile</h1></header>
+<div id="nums"></div>
+<div id="tog"><label><input type="checkbox" id="ref"> Show the refused state (no reach over this person)</label></div>
+<div id="stage"></div>
+<script>
+var CAP = '<svg class="ic" viewBox="0 0 24 24"><path d="M3 8l9-4 9 4-9 4-9-4z"/><path d="M7 11v5c0 1 2.2 2.5 5 2.5s5-1.5 5-2.5v-5"/></svg>';
+var LOCK = '<svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>';
+
+var LAPSED = [['Ladder safety','Passed 12 Mar 2025','Lapsed 12 Mar 2026']];
+var PASSED = [['Chimney sweep basics','92%','4 Jun 2026'],
+              ['Customer handling','88%','21 Apr 2026'],
+              ['Fire safety awareness','95%','9 Jan 2026']];
+var NEW    = [['Gas appliance awareness','Assigned 2 Sep'],
+              ['Ladder safety (retake)','Assigned 2 Sep']];
+
+function head(sub){
+  return '<div class="hd">'+CAP+'<div class="t">Training</div></div>'+
+         (sub ? '<p class="sub">'+sub+'</p>' : '');
+}
+function refused(wrap){
+  return '<div class="'+wrap+'">'+head('')+
+    '<div class="refused">'+LOCK+'<div class="s">Training results are only shown for people '+
+    'you can reach. Ask an administrator if you need this record&rsquo;s training.</div></div></div>';
+}
+/* The sentence is the SERVER's, shown verbatim; drawn here so the shape of the
+   refusal is a decision and not a leftover. */
+
+function ownNote(){
+  return '<div class="own"><b>Due for retaking</b> is ours to re-assign &mdash; '+
+         'separate from HR&rsquo;s <b>Expiring certifications</b>, which is theirs to renew.</div>';
+}
+
+function D1(){
+  var l = LAPSED.map(function(x){ return '<div class="it"><span class="n">'+x[0]+
+    '</span><span class="m bad">'+x[2]+'</span></div>'; }).join('');
+  var p = PASSED.map(function(x){ return '<div class="it"><span class="n">'+x[0]+
+    '</span><span class="m ok">'+x[1]+'</span><span class="m">'+x[2]+'</span></div>'; }).join('');
+  var n = NEW.map(function(x){ return '<div class="it"><span class="n">'+x[0]+
+    '</span><span class="m">'+x[1]+'</span></div>'; }).join('');
+  return '<div class="card desk">'+head('')+
+    '<div class="grp bad">Due for retaking</div>'+l+
+    '<div class="grp">Passed</div>'+p+
+    '<div class="grp">Assigned, not started</div>'+n+ownNote()+'</div>';
+}
+function D2(){
+  var rows = []
+    .concat(LAPSED.map(function(x){ return ['<span class="pill bad">Due for retaking</span>', x[0], x[2]]; }))
+    .concat(NEW.map(function(x){ return ['<span class="pill new">Not started</span>', x[0], x[1]]; }))
+    .concat(PASSED.map(function(x){ return ['<span class="pill ok">Passed '+x[1]+'</span>', x[0], x[2]]; }));
+  var body = rows.map(function(r){
+    return '<div class="it"><span class="n">'+r[1]+'</span>'+r[0]+
+           '<span class="m">'+r[2]+'</span></div>';
+  }).join('');
+  return '<div class="card desk">'+head('Every guide assigned to this person, most urgent first.')+
+    body+ownNote()+'</div>';
+}
+function D3(){
+  var body = [].concat(
+    LAPSED.map(function(x){ return '<div class="it"><span class="n">'+x[0]+
+      '</span><span class="pill bad">Due for retaking</span><span class="m">'+x[2]+'</span></div>'; }),
+    PASSED.map(function(x){ return '<div class="it"><span class="n">'+x[0]+
+      '</span><span class="m ok">'+x[1]+'</span><span class="m">'+x[2]+'</span></div>'; })
+  ).join('');
+  return '<div class="card desk">'+head('')+
+    '<div class="strip">'+
+      '<div class="s bad"><div class="v">1</div><div class="k">Due for retaking</div></div>'+
+      '<div class="s"><div class="v">3</div><div class="k">Passed</div></div>'+
+      '<div class="s"><div class="v">2</div><div class="k">Not started</div></div>'+
+    '</div>'+body+ownNote()+'</div>';
+}
+function M4(){
+  return '<div class="phone">'+head('')+
+    '<div class="alert"><div class="k">DUE FOR RETAKING</div>'+
+    '<div class="n">Ladder safety</div>'+
+    '<div class="w">Passed 12 Mar 2025 &middot; lapsed 12 Mar 2026</div></div>'+
+    '<div class="it"><span class="n" style="color:var(--muted);font-weight:600">'+
+    '3 passed &middot; 2 not started</span><span class="m" style="color:var(--primary);'+
+    'font-weight:700">Show all</span></div>'+ownNote()+'</div>';
+}
+function M5(){
+  return '<div class="phone">'+head('')+
+    '<div class="acc open badh"><div class="h2">Due for retaking<span class="c">1</span></div>'+
+      '<div class="bd"><div class="it"><span class="n">Ladder safety</span>'+
+      '<span class="m bad">Lapsed 12 Mar 2026</span></div></div></div>'+
+    '<div class="acc"><div class="h2">Passed<span class="c">3</span></div></div>'+
+    '<div class="acc"><div class="h2">Assigned, not started<span class="c">2</span></div></div>'+
+    ownNote()+'</div>';
+}
+function M6(){
+  var cards = ''
+    + '<div class="mini bad"><div class="n">Ladder safety</div><div class="r">'
+    + '<span class="pill bad">Due for retaking</span><span class="m" style="font-size:12px;'
+    + 'color:var(--muted)">lapsed 12 Mar</span></div></div>'
+    + NEW.map(function(x){ return '<div class="mini"><div class="n">'+x[0]+
+        '</div><div class="r"><span class="pill new">Not started</span></div></div>'; }).join('')
+    + PASSED.slice(0,2).map(function(x){ return '<div class="mini"><div class="n">'+x[0]+
+        '</div><div class="r"><span class="pill ok">Passed '+x[1]+'</span></div></div>'; }).join('');
+  return '<div class="phone">'+head('')+cards+ownNote()+'</div>';
+}
+var OPT = {
+  1:['1 &middot; Desktop &mdash; grouped by state, lapsed at the top', D1, 'card desk'],
+  2:['2 &middot; Desktop &mdash; one list, the state as a pill, most urgent first', D2, 'card desk'],
+  3:['3 &middot; Desktop &mdash; three counts, then the guides', D3, 'card desk'],
+  4:['4 &middot; Mobile &mdash; only what needs action; the rest behind one tap', M4, 'phone'],
+  5:['5 &middot; Mobile &mdash; three groups collapsed, the lapsed one open', M5, 'phone'],
+  6:['6 &middot; Mobile &mdash; a card per guide, most urgent first', M6, 'phone']
+};
+var nums = document.getElementById('nums'), stage = document.getElementById('stage'),
+    ref = document.getElementById('ref'), cur = 1;
+function show(k){
+  cur = k;
+  var o = OPT[k];
+  stage.innerHTML = '<p class="cap">'+o[0]+'</p>' + (ref.checked ? refused(o[2]) : o[1]());
+  Array.prototype.forEach.call(nums.children, function(b){
+    if (b.dataset) b.setAttribute('aria-current', b.dataset.k === String(k));
+  });
+}
+Object.keys(OPT).forEach(function(k){
+  var b = document.createElement('button');
+  b.textContent = (k < 4 ? 'Desktop ' : 'Mobile ') + k;
+  b.dataset.k = k; b.onclick = function(){ show(k); };
+  nums.appendChild(b);
+});
+ref.onchange = function(){ show(cur); };
+show(1);
+</script>
