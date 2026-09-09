@@ -59,7 +59,20 @@ final class HrGlance extends DescribedGlance
                     options: [],
                     data: [
                         'empty' => true,
-                        'sentence' => 'Nobody on the books yet.',
+                        // Not "yet", and the reason is that this branch has two
+                        // causes it cannot tell apart: an organization with
+                        // nobody on the books, and a reader who can reach
+                        // nobody. `peopleOnTheBooks` is scoped, so a franchise
+                        // manager with no assignments hit the same sentence and
+                        // read it as "the company has no staff" — which it was
+                        // never entitled to say. A screenshot run caught the
+                        // shape once: this box read "nobody" while Customers
+                        // listed three of the same tenant's people. The
+                        // sentence describes the BOX (UI/UX, 2026-09-09;
+                        // sixteen strings, no exemptions), and being true of
+                        // both causes is what makes it honest rather than
+                        // merely softer.
+                        'sentence' => 'Nobody in this view.',
                     ],
                 );
             }

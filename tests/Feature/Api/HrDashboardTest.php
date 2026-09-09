@@ -107,7 +107,9 @@ class HrDashboardTest extends TestCase
         // An empty place list that dropped its clause would invert into
         // "assigned nowhere means see everybody".
         $this->assertTrue($glance['data']['empty']);
-        $this->assertSame('Nobody on the books yet.', $glance['data']['sentence']);
+        // Scoped, not "yet": this stranger reaches nobody, and the
+        // organization they cannot see is not empty. See HrGlance's note.
+        $this->assertSame('Nobody in this view.', $glance['data']['sentence']);
     }
 
     // ── invitations ──────────────────────────────────────────────
