@@ -472,11 +472,7 @@ final class HttpTwilioGateway implements TwilioGateway
         string $platform,
         array $material,
     ): string {
-        // Created against the SUBACCOUNT, authenticated as the parent. A
-        // credential on the parent account is invisible to a token minted from
-        // the child, and Twilio does not say so — the token is accepted and the
-        // push simply never arrives.
-        $credentials = $this->platformClientForAccount((string) $connection->account_sid)
+        $credentials = $this->pushCredentialClient($connection)
             ->notify
             ->v1
             ->credentials;
@@ -805,6 +801,51 @@ final class HttpTwilioGateway implements TwilioGateway
             ->v2010
             ->accounts((string) $connection->account_sid)
             ->update(['status' => 'closed']);
+    }
+
+    /**
+     * A client that IS this connection's account, for Notify.
+     *
+     * ── Why not platformClientForAccount, which every neighbour uses ──
+     *
+     * That helper authenticates as the parent and passes the subaccount SID,
+     * which works because the classic API puts the account in the PATH:
+     * `api.twilio.com/2010-04-01/Accounts/{sid}/…`. Notify does not. Its URL is
+     * `notify.twilio.com/v1/Credentials` with no account segment at all, so the
+     * owning account is decided entirely by who authenticates — and the SID
+     * argument is silently ignored.
+     *
+     * I used it anyway on 2026-09-09, with a comment saying the credential was
+     * created against the subaccount. Three credentials were created on the
+     * PARENT, the command reported three successes with real CR SIDs, and the
+     * columns were filled in with SIDs that a token minted from a subaccount
+     * cannot use. Nothing failed. That is the exact shape this module keeps
+     * producing, and I wrote it into the fix for it.
+     *
+     * The account's own auth token first, its API key second — the same order
+     * and the same reason as [platformClient]: token auth is the one Twilio
+     * never withholds anything from.
+     */
+    private function pushCredentialClient(PhoneConnection $connection): Client
+    {
+        $accountSid = (string) $connection->account_sid;
+        $authToken = (string) $connection->auth_token;
+
+        if ($authToken !== '') {
+            return new Client($accountSid, $authToken, $accountSid);
+        }
+
+        $apiKeySid = (string) $connection->api_key_sid;
+        $apiSecret = (string) $connection->credentials;
+
+        if ($apiKeySid === '' || $apiSecret === '') {
+            throw new RuntimeException(
+                'This phone connection has no credentials of its own, so a push '
+                .'credential created for it would belong to the wrong account.'
+            );
+        }
+
+        return $this->client($accountSid, $apiKeySid, $apiSecret);
     }
 
     private function connectionClient(PhoneConnection $connection): Client
