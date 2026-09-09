@@ -291,7 +291,10 @@ class SettingRegistry
                 // names this remedy. The wording of what it DOES is Clock In's
                 // to sharpen; the claim that it does nothing was simply false.
                 help: 'Franchises usually differ — set it at the level that varies. '
-                    .'Clock In uses it to tell whether somebody is starting a shift outside hours.',
+                    .'Clock in treats these as the working day for anyone without a personal work '
+                    .'schedule: the lock screen, the end-of-shift reminder and the automatic clock-out '
+                    .'all follow them, and a shift started before them is marked outside schedule. '
+                    .'A personal schedule set on Human Resources › Records always wins.',
             ),
             new SettingDefinition(
                 key: 'ops.fiscal_year_starts_month', label: 'Fiscal year starts',
