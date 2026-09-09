@@ -94,6 +94,65 @@ class HrGlanceTest extends TestCase
         $this->assertSame(0, $slices->firstWhere('label', 'Inactive')['total'] ?? null);
     }
 
+    /**
+     * The one line that used to vanish when the news was good.
+     *
+     * Five of the six sentences render their zero; certifications was written
+     * `elseif (total > 0)`, so a box that had LOOKED and found nothing due was
+     * indistinguishable from one where nobody is watching. The note is the
+     * other branch — nothing marked as an expiry at all — and this case is the
+     * opposite: a question IS marked, and nothing is coming due.
+     */
+    public function test_a_configured_expiry_with_nothing_due_says_zero_rather_than_going_quiet(): void
+    {
+        $this->inTenant(function () {
+            $contract = \App\Models\Contract::create([
+                'organization_id' => $this->alpha['org']->id,
+                'name'            => 'Technician',
+                'created_by'      => $this->alpha['admin']->id,
+            ]);
+
+            $version = \App\Models\ContractVersion::create([
+                'organization_id' => $this->alpha['org']->id,
+                'contract_id'     => $contract->id,
+                'version'         => 1,
+                'body'            => '',
+                'created_by'      => $this->alpha['admin']->id,
+                'fields'          => [[
+                    'key' => 'ticket', 'label' => 'Gas ticket', 'type' => 'date',
+                    'options' => [], 'filled_by' => 'either', 'required' => false,
+                    'sensitive' => false, 'retired' => false, 'is_expiry' => true,
+                ]],
+            ]);
+
+            // No invitation, so it is placed by the reader's own assignment and
+            // an organization-level administrator can see it. No answer either:
+            // the question exists and nobody has dated it, which is exactly
+            // "marked, and nothing coming due".
+            \App\Models\Onboarding::create([
+                'organization_id'     => $this->alpha['org']->id,
+                'user_id'             => $this->alpha['admin']->id,
+                'contract_version_id' => $version->id,
+                'status'              => 'in_progress',
+                'started_at'          => now(),
+                'started_by_user_id'  => $this->alpha['admin']->id,
+            ]);
+        });
+
+        $sentences = app(HrGlance::class)
+            ->resolve($this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), [])
+            ->toArray()['data']['sentences'];
+
+        $this->assertContains('0 certifications are coming due.', $sentences);
+
+        // And it is not the other branch wearing a different hat: the note
+        // fires only when nothing is marked at all, and something is.
+        $this->assertNotContains(
+            'No contract question in this view is marked as an expiry, so there is nothing to track. A date field on a contract template can be marked as one.',
+            $sentences,
+        );
+    }
+
     public function test_revoked_invitations_are_not_stalled(): void
     {
         $this->invite('revoked@alpha.test');
