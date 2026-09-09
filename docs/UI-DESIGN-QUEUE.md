@@ -819,6 +819,7 @@ on main may have moved on.
 | ✅ | **Suggestions · the author's tab** | **2 — JOSE'S CHOICE, 2026-09-04: "i like 2 for both".** Overrules the provisional 1 below, which had already shipped, so this is a change to a live screen and not a branch edit. **Layout 2 is `what happened to what you sent`:** a rail split into Waiting on EzBizi / Answered with a Write-a-suggestion button above it, and the selected one in full in a detail pane. My argument for 1 was that 2 is built for a volume nobody will have — that argument lost, and it was only ever a guess about how people would use a tab nobody had used yet. Recorded because the reasoning below is now history and must not read as current. *Previously:* **1 chosen — PROVISIONALLY, by Claude under delegation, not by Jose.** `docs/previews/suggestions-1.html`, `-2.html`, `-3.html` — 1 compose-first, 2 what-happened-to-what-you-sent, 3 correspondence. Jose left for the day at the gate and said "pick your recommended layouts, and we'll change them tomorrow if I don't like any", so **1** was chosen on these grounds: 2's master-detail rail and 3's stream are both built for a volume nobody will have (0–5 suggestions, ever), and 3's correspondence metaphor promises a reply the backend does not support — one note per suggestion, and the author cannot answer it. 1 matches the data, and its empty state *is* the compose box, which is what nearly every first visit will be. **This is a standing invitation to overrule, not a settled decision.** Backend `f13dd81..f845c4e`. |
 | ✅ | **Suggestions · the Development queue** | **2 — JOSE'S CHOICE, 2026-09-04: "i like 2 for both".** Confirms what already shipped, so **no code changes for this row** — it is recorded so nobody later reads a provisional marker and rebuilds a screen that is already the approved one. *Previously:* **2 chosen — PROVISIONALLY, by Claude under delegation, not by Jose.** `docs/previews/suggestions-queue-1.html`, `-2.html`, `-3.html` — 1 worklist table, 2 list-beside-the-answer, 3 everything-in-full. **2** on these grounds: the act this screen exists for is to read a suggestion in full and write a sentence the author reads verbatim, which is why the server makes a note mandatory to deny. 1 truncates into table cells the prose you have to judge; 3 keeps the full text but repeats the answer box on all 200 cards. 2 holds the suggestion in the pane while the note is written in the footer. Same standing invitation to overrule. |
 | 4 | **Web Management · per-page value overrides** | Briefed. `license` ruled **conditional**. Not started. |
+| 8 | **Inventory · General tab** | Briefed. `GET /inventory/summary` live at `4f8a9dec`. Two real payloads captured — see below. Not started. |
 
 **Phone, shipped 2026-08-31 and not re-listed above:** Voicemail on the shared pane skeleton (`3223015`), Numbers split pane (`b25c3db`), staff messaging (`ed3b35f`), extensions (`8b82ed2`), and the rail-is-a-switch guard (`753556b`). Still approved and NOT built: **Connection**, **Hours**, **Ring groups** — the three 🔨 rows above, held by the Phone session (`ezbizi-0b` → this one).
 
@@ -1292,6 +1293,66 @@ drawings, and it holds whichever number comes back.
 > **known deviation with an owner-shaped gap**: whoever owns `TabBarLike` should fix it
 > once, for both screens, rather than a module session doing it sideways. Recorded here
 > so it stops resurfacing as an unanswered question every time somebody counts the chips.
+
+### 8 · Inventory · General tab
+
+Jose's ask, verbatim: *"I feel we are missing a General Tab where it works like a
+dashboard showing a summary of everything, graphs, warnings, etc."* Asked which of
+three scopes he meant — item health, money, or activity — he answered **"all of the
+above."** All three ship from one endpoint; nothing is split across screens.
+
+**The endpoint:** `GET /api/v1/inventory/summary?period=week|month|quarter|year`, live
+at `4f8a9dec`. Two real payloads, captured from the actual code through fixtures (not
+invented): `docs/previews/inventory-general-payload.json` — a caller **with**
+`inventory.financials` — and `docs/previews/inventory-general-payload-no-financials.json`
+— the same scene, **without** it. Diff the two; the difference is the design problem in
+miniature: the `health.value` key is gone entirely and `no_cost_recorded` never appears
+in `warnings`, and the tab still has to read as a finished screen rather than one with a
+hole in it.
+
+**Placement, already decided by Jose:** General is the **first chip** on Inventory and
+**opens first**. `inventory_screen.dart`'s `_tabs` today are Stock, Items, Orders,
+Locations, with Stock as the default pane — the four shift right one place, General
+leads, and Stock is no longer what a user lands on.
+
+**The three blocks.**
+- `health` — stock-health figures (`items`, `low`, `out`, `locations`,
+  `open_purchase_orders`, and `value` when the caller is permitted). Every figure that
+  names a filtered list carries a `links` entry pointing at it; a figure with none has
+  no live list behind it.
+- `warnings` — a **fixed-order** array (`out_of_stock` leads whenever it fires). A
+  warning with nothing in it is **omitted entirely**, never sent at a zero count — a
+  row that can never fire must never render.
+- `movement` — a time series: `buckets` (dates) and `lines` (`in`, `out`, `adjusted`,
+  `transferred`), index-aligned to the buckets. `transferred` carries `internal: true`
+  because it nets to zero org-wide — real motion between shelves, not real gain or loss.
+  **Know before you draw it: a bucket is not a day.** The axis reuses the Dashboard's
+  period vocabulary, so `week` gives days, `month` and `quarter` give start-of-week,
+  and `year` gives months. **A month is therefore four or five points, not thirty** —
+  the captured payload shows exactly two, because its fixtures span two weeks. If a
+  bar-per-day is what the design wants, say so and it becomes a real decision rather
+  than a surprise at build time.
+
+**Four choices that are design's, stated as questions:**
+1. How do the three blocks stack at 375px versus desktop width?
+2. Is `movement` drawn as bars, lines, or stacked areas?
+3. Does `transferred` appear on the chart at all, given it is net zero and flagged
+   `internal: true` — plotting it risks reading as extra volume that isn't there;
+   dropping it risks making transfers look like they don't happen?
+4. Does `warnings` lead the screen, or sit beneath the health figures?
+
+**Constraints that are not design's to choose** (inherited from §*Inherited
+constraints* above, restated here so this brief stands alone): no modals; colours from
+`client/lib/core/theme.dart` only, never a literal; 44px touch targets; a figure with
+no `links` entry is drawn as text, not a dead control; and the tab must look complete,
+not broken, for a caller with no money on it — that is exactly what the
+no-financials payload is for.
+
+**One caveat worth stating plainly:** there is no "overdue purchase order" warning and
+there cannot be one — purchase orders carry no expected-delivery date, so there is
+nothing for a date to be overdue against. `purchase_order_open_a_long_time` ("open more
+than 30 days") is the honest weaker claim that ships instead. Do not draw a red
+"overdue" state; the server has no fact to back it.
 
 ---
 

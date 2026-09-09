@@ -4,11 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\InventoryBalance;
 use App\Models\InventoryItem;
+use App\Models\InventoryLocation;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * On-hand at a place — the Stock chip (spec §7, §13).
@@ -17,6 +19,14 @@ use Illuminate\Http\Request;
  * visible. `low=1` is on-hand at or below the item’s reorder_at when that
  * is set. `item_id` is one item’s balances, so a pane is not page 1 of
  * the whole register.
+ *
+ * `low_items=1` asks the same question of the ITEM rather than the row: its
+ * on-hand summed over every visible location, at or below reorder_at. The two
+ * disagree, and both answers are wanted — three in one van and three in the
+ * shop is two low rows to whoever is restocking a shelf, and nothing to order
+ * to whoever is buying. The Stock chip ships `low`; the General tab's low
+ * figure counts items, so its link spends `low_items` to open the same set it
+ * just claimed.
  */
 class InventoryStockController extends Controller
 {
@@ -38,6 +48,25 @@ class InventoryStockController extends Controller
         if ((string) $request->query('low') === '1') {
             $query->whereNotNull('inventory_items.reorder_at')
                 ->whereColumn('inventory_balances.qty_on_hand', '<=', 'inventory_items.reorder_at');
+        }
+
+        if ((string) $request->query('low_items') === '1') {
+            // Asks the ITEM, not the row: on-hand summed over every location
+            // this caller can see, at or below the item's reorder_at. Grouped
+            // rather than correlated so it runs once, not once per row.
+            $visibleLocations = InventoryVisibility::constrain(
+                InventoryLocation::query(), $user, $scope,
+            )->select('inventory_locations.id');
+
+            $lowItemIds = DB::table('inventory_balances')
+                ->join('inventory_items', 'inventory_items.id', '=', 'inventory_balances.item_id')
+                ->whereNotNull('inventory_items.reorder_at')
+                ->whereIn('inventory_balances.location_id', $visibleLocations)
+                ->groupBy('inventory_balances.item_id', 'inventory_items.reorder_at')
+                ->havingRaw('sum(inventory_balances.qty_on_hand) <= inventory_items.reorder_at')
+                ->select('inventory_balances.item_id');
+
+            $query->whereIn('inventory_balances.item_id', $lowItemIds);
         }
 
         if (filled($request->query('item_id'))) {

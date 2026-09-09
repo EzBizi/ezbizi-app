@@ -193,6 +193,135 @@ class InventoryAdjustTest extends TestCase
         $this->assertSame($lowItem->id, $low[0]['item']['id'] ?? $low[0]['item_id'] ?? null);
     }
 
+    /**
+     * `low` and `low_items` answer different questions, and both are wanted.
+     *
+     * The split item is the whole reason the second filter exists: three in
+     * the cage and three in the van is two rows at or below a reorder point of
+     * five, and six on hand against it — low to whoever restocks a shelf,
+     * fine to whoever writes the purchase order. The General tab's low figure
+     * counts items, so its link has to be the one that agrees with it.
+     */
+    public function test_low_items_asks_of_the_item_what_low_asks_of_the_row(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+
+        [$split, $short] = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $at = fn (string $name) => InventoryLocation::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'name' => $name,
+            ]);
+
+            $cage = $at('Cage');
+            $van = $at('Van');
+
+            $split = InventoryItem::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'name' => 'Split liner',
+                'reorder_at' => '5.000',
+            ]);
+            $short = InventoryItem::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'name' => 'Short liner',
+                'reorder_at' => '5.000',
+            ]);
+
+            foreach ([[$split, $cage, '3.000'], [$split, $van, '3.000'], [$short, $cage, '2.000']] as [$item, $place, $qty]) {
+                InventoryBalance::create([
+                    'organization_id' => $tenant['org']->id,
+                    'item_id' => $item->id,
+                    'location_id' => $place->id,
+                    'qty_on_hand' => $qty,
+                ]);
+            }
+
+            return [$split, $short];
+        });
+
+        $low = $this->signedInAs($admin)
+            ->getJson('/api/v1/inventory/stock?low=1')
+            ->assertOk()
+            ->json('data');
+
+        // Per row: both halves of the split, and the short one.
+        $this->assertSame(
+            [$short->id, $split->id, $split->id],
+            array_column(array_column($low, 'item'), 'id'),
+        );
+
+        $lowItems = $this->signedInAs($admin)
+            ->getJson('/api/v1/inventory/stock?low_items=1')
+            ->assertOk()
+            ->json('data');
+
+        // Per item: six on hand is above the point, so the split one is gone —
+        // and the short one is still here, so the filter is not simply empty.
+        $this->assertSame(
+            [$short->id],
+            array_column(array_column($lowItems, 'item'), 'id'),
+        );
+    }
+
+    public function test_low_items_counts_a_shelf_the_caller_cannot_see_as_nothing(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $other = $this->extraFranchise($tenant, 'Alpha F2');
+
+        $local = $this->userWithRole(
+            $tenant,
+            'Local',
+            ['inventory.view'],
+            onlyAt: $tenant['franchise'],
+        );
+
+        $item = $this->inTenant($tenant['org'], function () use ($tenant, $other) {
+            $mine = InventoryLocation::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'name' => 'Mine',
+            ]);
+            $theirs = InventoryLocation::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $other->id,
+                'name' => 'Theirs',
+            ]);
+
+            $item = InventoryItem::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'name' => 'General liner',
+                'reorder_at' => '5.000',
+            ]);
+
+            // 3 here, 3 at a franchise this user cannot open. Summed over
+            // every row it is 6 and not low; summed over what this caller can
+            // see it is 3 and low. The filter must answer for the caller.
+            foreach ([[$mine, '3.000'], [$theirs, '3.000']] as [$place, $qty]) {
+                InventoryBalance::create([
+                    'organization_id' => $tenant['org']->id,
+                    'item_id' => $item->id,
+                    'location_id' => $place->id,
+                    'qty_on_hand' => $qty,
+                ]);
+            }
+
+            return $item;
+        });
+
+        $rows = $this->signedInAs($local)
+            ->getJson('/api/v1/inventory/stock?low_items=1')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertCount(1, $rows);
+        $this->assertSame($item->id, $rows[0]['item']['id']);
+        $this->assertSame('Mine', $rows[0]['location']['name']);
+    }
+
     public function test_stock_list_does_not_leak_sibling_company_balances(): void
     {
         $tenant = $this->provisionTenant('Alpha');

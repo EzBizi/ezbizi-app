@@ -106,9 +106,21 @@ box already uses, from the server, not restated in the client.
 
 ## 8. `movement`
 
-A series over the period, bucketed by calendar day in the view's timezone — not
-by UTC midnight. Every movement header already carries the date it needs:
-`received_on`, `issued_on`, `transferred_on`, `adjusted_on`, `fulfilled_on`.
+A series over the period, bucketed by `DashboardPeriod::bucket()` in the view's
+timezone — never by UTC midnight. Every movement header already carries the date
+it needs: `received_on`, `issued_on`, `transferred_on`, `adjusted_on`,
+`fulfilled_on`.
+
+**The bucket is not always a day, and this sentence used to say it was.** §6
+requires reusing `DashboardPeriod` rather than inventing a second period
+vocabulary, and `DashboardPeriod` deliberately coarsens: a day for `week`,
+start-of-week for `month` and `quarter`, `Y-m` for `year`. Those two rules
+contradicted each other and the code followed §6, so a month renders as four or
+five points rather than thirty — and a year as twelve rather than three hundred
+and sixty-five, which is the reason the coarsening exists. Corrected here on
+2026-09-09 after the whole-branch review caught the contradiction against a
+captured payload. Consistency with every other chart in the product is worth
+more than the sentence that was wrong.
 
 | Line | Source | Direction |
 |---|---|---|
@@ -191,9 +203,13 @@ on is not drawn as a control.
 
 ## 12. Dates
 
-Calendar days in the view's timezone. The movement buckets are days, not UTC
-midnights, and the PO age is a count of calendar days from `ordered_on`. This
-matches §15 of the parent spec.
+Calendar days in the view's timezone, never UTC midnights. The PO age is a count
+of calendar days from `ordered_on`, taken from
+`Carbon::now(ViewTimezone::forUser($user))` — `config('app.timezone')` is `UTC`
+and this shipped wrong once, putting the 30-day boundary a day out for any
+organization that is not. Movement buckets are also resolved in that timezone,
+but their *granularity* is `DashboardPeriod`'s, not one day: see §8. This matches
+§15 of the parent spec.
 
 ## 13. Tests (MySQL, own schema)
 

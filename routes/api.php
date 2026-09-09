@@ -34,6 +34,7 @@ use App\Http\Controllers\Api\InventoryLocationsController;
 use App\Http\Controllers\Api\InventoryPurchaseOrdersController;
 use App\Http\Controllers\Api\InventorySalesController;
 use App\Http\Controllers\Api\InventoryStockController;
+use App\Http\Controllers\Api\InventorySummaryController;
 use App\Http\Controllers\Api\InventoryTransfersController;
 use App\Http\Controllers\Api\InventoryVendorsController;
 use App\Http\Controllers\Api\InvitationAcceptanceController;
@@ -650,6 +651,7 @@ Route::prefix('v1')
         Route::apiResource('inventory/purchase-orders', InventoryPurchaseOrdersController::class)
             ->only(['index', 'store', 'show']);
         Route::get('inventory/stock', [InventoryStockController::class, 'index']);
+        Route::get('inventory/summary', [InventorySummaryController::class, 'index']);
         Route::post('inventory/adjustments', [InventoryAdjustmentsController::class, 'store']);
         Route::post('inventory/transfers', [InventoryTransfersController::class, 'store']);
         Route::apiResource('inventory/issues', InventoryIssuesController::class)
