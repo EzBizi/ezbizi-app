@@ -67,6 +67,7 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   final _zipEntry = TextEditingController();
   final _cityEntry = TextEditingController();
   final _formName = TextEditingController();
+  final _deleteName = TextEditingController();
 
   bool _loading = true;
 
@@ -86,6 +87,9 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   bool _saving = false;
 
   _Form _form = _Form.none;
+
+  /// Showing the inline delete confirmation for the open area.
+  bool _deleting = false;
   String? _formFranchiseId;
 
   /// This area's zips as ITEMS, each `{zip, city}`. Not a comma-separated
@@ -117,6 +121,7 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     _zipEntry.dispose();
     _cityEntry.dispose();
     _formName.dispose();
+    _deleteName.dispose();
     super.dispose();
   }
 
@@ -148,6 +153,10 @@ class _CapacitySettingsState extends State<CapacitySettings> {
       _openArea = null;
       _form = _Form.none;
       _paneError = null;
+      // Never carry a half-typed confirmation from one area to another: the
+      // name in the box would then match the area you just left.
+      _deleting = false;
+      _deleteName.clear();
     });
 
     final response = await widget.api.get('/scheduling/areas/$id', const {});
@@ -273,38 +282,44 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     if (mounted && saved != null) await _openArea_(saved['id'] as String);
   }
 
+  /// Is the typed name the area's own?
+  ///
+  /// Case- and space-insensitive: the check is meant to prove you know WHICH
+  /// area you are deleting, not to test your typing. `Dallas` and `dallas `
+  /// both prove that; an empty box and `Houston` do not.
+  bool get _deleteConfirmed {
+    final name = (_openArea?['name'] as String? ?? '').trim().toLowerCase();
+
+    return name.isNotEmpty &&
+        _deleteName.text.trim().toLowerCase() == name;
+  }
+
+  /// Deletes the open area, once its name has been typed.
+  ///
+  /// Inline, not a dialog. The rest of this screen puts its forms in the pane
+  /// and one popup on an otherwise popup-free screen reads as a surprise —
+  /// Jose's call, and the consistency argument beat my "a confirmation is what
+  /// a dialog is for".
+  ///
+  /// The NAME is typed rather than the word DELETE, which is what
+  /// [DeleteAccountCard] asks for. Different question: there is only one
+  /// account, so proving you mean it is enough, whereas there can be thirty
+  /// areas and the risk is deleting the wrong ONE. Typing the word would prove
+  /// you read a prompt; typing the name proves you know which row you are on.
   Future<void> _deleteArea() async {
     final id = _openAreaId;
-    final name = _openArea?['name'] as String? ?? 'this area';
-    if (id == null) return;
+    if (id == null || !_deleteConfirmed) return;
 
-    // A confirmation, not a form — so this one stays a dialog. It asks a
-    // yes/no about something irreversible and has nothing to fill in, which is
-    // the case a dialog is actually for.
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Delete $name?'),
-        content: Text(
-          'Its zip codes and its week go with it. Anything already booked in '
-          '$name is not touched.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Keep it'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !mounted) return;
+    setState(() {
+      _saving = true;
+      _paneError = null;
+    });
 
     final response = await widget.api.delete('/scheduling/areas/$id');
+
+    if (mounted) setState(() => _saving = false);
+
+    if (!mounted) return;
 
     if (!mounted) return;
 
@@ -313,9 +328,21 @@ class _CapacitySettingsState extends State<CapacitySettings> {
       return;
     }
 
+    _stopDeleting();
     _showOverview();
     await _load();
   }
+
+  void _startDeleting() => setState(() {
+    _deleting = true;
+    _paneError = null;
+    _deleteName.clear();
+  });
+
+  void _stopDeleting() => setState(() {
+    _deleting = false;
+    _deleteName.clear();
+  });
 
   /// Writes the zip set, one item's worth of change at a time.
   ///
@@ -963,6 +990,9 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     final differs = rail['follows_pattern'] == false;
 
     return ListView(
+      // Keyed so a test can scroll THIS list rather than the rail, which is
+      // the other Scrollable on screen.
+      key: const Key('scheduling-area-pane'),
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
       children: [
         Row(
@@ -1038,16 +1068,18 @@ class _CapacitySettingsState extends State<CapacitySettings> {
               label: const Text('Rename'),
             ),
             const SizedBox(width: 8),
-            TextButton.icon(
-              onPressed: _deleteArea,
-              icon: const Icon(Icons.delete_outline, size: 18),
-              label: const Text('Delete area'),
-              style: TextButton.styleFrom(
-                foregroundColor: theme.colorScheme.error,
+            if (!_deleting)
+              TextButton.icon(
+                onPressed: _startDeleting,
+                icon: const Icon(Icons.delete_outline, size: 18),
+                label: const Text('Delete area'),
+                style: TextButton.styleFrom(
+                  foregroundColor: theme.colorScheme.error,
+                ),
               ),
-            ),
           ],
         ),
+        if (_deleting) _deleteConfirmation(theme, area['name'] as String? ?? ''),
       ],
     );
   }
@@ -1193,6 +1225,77 @@ class _CapacitySettingsState extends State<CapacitySettings> {
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Delete, confirmed in place by typing the area's name.
+  ///
+  /// It expands where the button was rather than opening over the screen, so
+  /// the rail behind it still shows which area is selected — which is half of
+  /// what makes the typed name a real check rather than a ritual.
+  Widget _deleteConfirmation(ThemeData theme, String name) {
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.errorContainer.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: theme.colorScheme.error.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Delete $name?',
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: theme.colorScheme.error,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Its ${_zipList.length} zip '
+            '${_zipList.length == 1 ? 'code' : 'codes'} and its week go with '
+            'it, and it cannot be undone. Anything already booked in $name is '
+            'not touched.',
+            style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('scheduling-delete-confirm'),
+            controller: _deleteName,
+            autofocus: true,
+            onChanged: (_) => setState(() {}),
+            onSubmitted: (_) => _deleteConfirmed ? _deleteArea() : null,
+            decoration: InputDecoration(
+              isDense: true,
+              border: const OutlineInputBorder(),
+              labelText: 'Type $name to confirm',
+              // Says which area rather than "type the name", because thirty
+              // areas is the case this exists for and the whole point is
+              // proving you know which row you are on.
+              hintText: name,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              FilledButton(
+                onPressed: _deleteConfirmed && !_saving ? _deleteArea : null,
+                style: FilledButton.styleFrom(
+                  backgroundColor: theme.colorScheme.error,
+                  foregroundColor: theme.colorScheme.onError,
+                ),
+                child: Text(_saving ? 'Deleting…' : 'Delete $name'),
+              ),
+              const SizedBox(width: 12),
+              TextButton(
+                onPressed: _saving ? null : _stopDeleting,
+                child: const Text('Keep it'),
+              ),
+            ],
           ),
         ],
       ),
