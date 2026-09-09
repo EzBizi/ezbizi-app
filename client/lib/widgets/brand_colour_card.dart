@@ -44,6 +44,12 @@ class _BrandColourCardState extends State<BrandColourCard> {
   /// Measured, not chosen by eye: each clears 4.5:1 against its own derived
   /// text, tightest #00838f at 4.64:1. So a customer who picks rather than
   /// types cannot land on an unreadable button.
+  ///
+  /// **Keep #00838f whatever else changes here.** It is the colour that
+  /// exposed the near-black bug in `Branding::readableOn`: on the old #111111
+  /// it read 4.18:1 and would have had our own default trip our own contrast
+  /// warning, on a pair no customer chose. This list is incidentally a
+  /// regression case for that constant, and that one is the case.
   static const _presets = [
     '#00838f',
     '#0b5cad',
