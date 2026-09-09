@@ -180,7 +180,11 @@ class _RowList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (rows.isEmpty) {
-      return const Center(child: Text('Nothing to watch yet — publish a guide or a test.'));
+      // Scope-filtered, so it says what showed up rather than what exists:
+      // "nothing to watch YET" would tell a franchise manager the
+      // organization has published none when it may have published plenty
+      // they cannot see.
+      return const Center(child: Text('Nothing to watch here — publish a guide or a test.'));
     }
 
     return ListView.separated(

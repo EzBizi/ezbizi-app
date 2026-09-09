@@ -200,6 +200,26 @@ void main() {
     expect(find.byKey(const Key('training.person-show-all-attempts')), findsNothing);
   });
 
+  testWidgets('an empty pane says what showed up, never that nobody is assigned', (tester) async {
+    // This pane is bounded by reach over the PERSON, so it cannot know whether
+    // anybody is assigned -- only whether anybody it may show is. The sentence
+    // it replaces ("Nobody is assigned to, or has attempted, this yet.") was
+    // FALSE to a franchise manager whose colleagues are assigned and simply
+    // not theirs to see.
+    await _pumpDashboard(
+      tester,
+      rows: [_row(id: 't-1', title: 'Ladder Safety Test', assigned: 0, passed: 0, overdue: 0, retaking: 0)],
+      summary: _summary(assigned: 0, overdue: 0, retaking: 0),
+      people: {'t-1': const []},
+    );
+
+    await tester.tap(find.text('Ladder Safety Test'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nobody to show for this one.'), findsOneWidget);
+    expect(find.textContaining('is assigned'), findsNothing);
+  });
+
   testWidgets('one attempt draws no history block, because the score tag already is one', (tester) async {
     await _pumpDashboard(
       tester,

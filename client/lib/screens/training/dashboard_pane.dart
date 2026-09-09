@@ -195,7 +195,15 @@ class _DashboardPaneState extends State<DashboardPane> {
                   error: _error,
                   onRetry: _load,
                   child: _people.isEmpty
-                      ? const Center(child: Text('Nobody is assigned to, or has attempted, this yet.'))
+                      // Says what SHOWED UP, never what exists: this list is
+                      // bounded by reach over the PERSON (DashboardController::
+                      // people -> reachablePeople), so "nobody is assigned"
+                      // would be FALSE to a franchise manager whose colleagues
+                      // are assigned and simply not theirs to see. "This one"
+                      // rather than "this test" because the pane covers a guide
+                      // OR a test, and naming the object would be wrong half the
+                      // time.
+                      ? const Center(child: Text('Nobody to show for this one.'))
                       : ListView.separated(
                           padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                           itemCount: _people.length,
@@ -507,6 +515,12 @@ class _AssignPaneState extends State<_AssignPane> {
 
   Widget _roleList() {
     if (_roleResults.isEmpty) {
+      // A DELIBERATE world-claim, and it depends on a fact: roles are
+      // ORG-WIDE, so "this organization has none" is true for every
+      // reader. The day roles gain a company or franchise dimension this
+      // sentence becomes false and NOTHING FAILS - no test, no analyzer,
+      // and no reader who could tell. It is stated here so the person
+      // adding that dimension finds it (UI/UX, 2026-09-09).
       return const Center(child: Text('This organization has no roles yet.'));
     }
 
