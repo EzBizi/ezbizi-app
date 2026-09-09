@@ -625,6 +625,26 @@ been the easy version and would have drifted the first time Phone improved scrub
 a widget to adopt someone else's is a better outcome than either module writing its own**, and
 it is the thing sessions avoid out of deference to each other's folders.
 
+**A placeholder that says "will" is a promise; one that says where it lives is an answer.**
+Ruled 2026-09-09 on the dashboard's coming-soon boxes. Newsletter's entry and its comment
+agree — *"Newsletter keeps its own dashboard inside the tab… Open the Newsletter tab for it"* —
+and the reasoning holds: a second summary a click from the real one restates it and then
+drifts. Training's entry does **not** agree with itself. Its comment says *"no plan puts a
+summary of it on the home screen, so a placeholder is the honest answer rather than a temporary
+one"*; its sentence says *"Training **will** show…"*. **Only the sentence is on screen.**
+
+> **The test for a placeholder: does it describe a destination or a date?** "Will show" is a
+> date with the number left off, and a reader is owed the thing eventually. "Keeps its own
+> dashboard inside the tab, open it" is a destination and is true forever. A placeholder whose
+> comment says permanent and whose copy says coming-soon has picked a fight it will lose in
+> front of a customer.
+
+> **And the drift objection is about a SUMMARY, not a COUNT.** It rules out restating an in-tab
+> dashboard on the home screen. It does not rule out the one number that makes somebody open
+> the tab — a count cannot drift from a dashboard because it is not describing it. Training's
+> "due for retaking" is shown one person at a time on the HR record card, so the org-wide
+> figure is invisible unless you go looking: exactly the shape a glance is for.
+
 **An advisory must not wear the failure component.** Web Management, 2026-09-08, asking
 that this be made a rule after the widget contrast work: *"dressing an advisory as a
 failure teaches people to ignore the component that also carries real failures."* The
