@@ -26,6 +26,31 @@ class DashboardChart extends StatelessWidget {
 
   static const double height = 140;
 
+  /// Whether a glance payload is worth drawing at all — ask before building.
+  ///
+  /// Exists so a screen deciding "is there a chart here" and this widget
+  /// deciding "is there anything to paint" cannot answer differently. Both go
+  /// through [_drawable]; this is the half that reads a raw payload map, and
+  /// [_DashboardChartPainter.isDrawable] is the half that reads parsed lists.
+  ///
+  /// A screen may skip this and just build the widget — a non-drawable chart
+  /// renders `SizedBox.shrink()` and costs nothing. Asking first is better
+  /// because it keeps "no chart" expressible as an ABSENCE: a test can say
+  /// `findsNothing`, which is what a reader means, rather than asserting a
+  /// widget is present at zero size, which is how somebody comes to believe a
+  /// chart is missing when it is merely invisible. That confusion has already
+  /// cost one wrong answer to a peer.
+  static bool canDraw(String presentation, Map<String, dynamic> data) {
+    final rawSlices = data['slices'];
+    final rawSeries = data['series'];
+
+    return _drawable(
+      presentation,
+      _readSlices(rawSlices is List ? rawSlices : null),
+      _readSeries(rawSeries is List ? rawSeries : null),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -123,6 +148,27 @@ List<Color> _palette(ColorScheme scheme) => [
       scheme.tertiaryContainer,
     ];
 
+/// Whether this presentation has anything to draw. THE definition, once.
+///
+/// It lived in three places until 2026-09-09: here, and as a private
+/// `_chartable` in `screens/dashboard_screen.dart` and in
+/// `screens/hr/dashboard_tab.dart`. The two screens agreed with each other
+/// and **both disagreed with this one**, which is what made it worth fixing
+/// rather than worth a test asserting the copies matched — you cannot pin
+/// three things as agreeing when two of them already do not.
+///
+/// The disagreement was live, in the case Scheduling asked about: a glance
+/// with real categories and a zero in every one made the screens say draw and
+/// this say do not, so a chart went into the tree and then declined to paint.
+/// The stricter rule is the right one — a box with categories and nothing in
+/// them should draw no chart — so it is the one that survived.
+bool _drawable(String presentation, List<_Slice> slices, List<_Series> series) =>
+    switch (presentation) {
+      'pie' || 'bar' => slices.any((s) => s.total > 0),
+      'line' || 'timeline' => series.any((s) => s.points.isNotEmpty),
+      _ => false,
+    };
+
 List<_Slice> _readSlices(List<dynamic>? raw) {
   if (raw == null) return const [];
 
@@ -199,11 +245,7 @@ class _DashboardChartPainter extends CustomPainter {
   final Color track;
   final Color onLine;
 
-  bool get isDrawable => switch (presentation) {
-        'pie' || 'bar' => slices.any((s) => s.total > 0),
-        'line' || 'timeline' => series.any((s) => s.points.isNotEmpty),
-        _ => false,
-      };
+  bool get isDrawable => _drawable(presentation, slices, series);
 
   String get semanticsLabel {
     if (presentation == 'pie' || presentation == 'bar') {
