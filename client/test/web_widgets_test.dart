@@ -21,6 +21,7 @@ void main() {
     required List<String> permissions,
     bool own = false,
     Map<String, Object?>? style,
+    String? brand,
   }) async {
     final client = MockClient((request) async {
       // Matched on the WHOLE path. ApiClient prefixes /api/v1, and a suffix
@@ -106,6 +107,7 @@ void main() {
                   'style': {'accent': '#123456'},
                 }
               : <String, Object?>{},
+          'brand': brand,
           'field_types': const ['text', 'textarea', 'email', 'tel', 'select'],
         };
       } else {
@@ -268,6 +270,33 @@ void main() {
     expect(find.textContaining('Following the primary website'), findsNothing);
 
     expect(find.text('Follow the primary again'), findsOneWidget);
+  });
+
+  /// A business that has told us no colour is getting OURS on THEIR website.
+  /// The screen has to say so, because the person who would mind is the one
+  /// least likely to be reading this screen.
+  testWidgets('the screen says where an untouched colour came from', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      brand: null,
+    );
+
+    expect(find.textContaining('you have not set one'), findsOneWidget);
+    expect(find.textContaining('neutral blue'), findsOneWidget);
+  });
+
+  testWidgets('and names the brand colour when there is one', (tester) async {
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      brand: '#7b2d8e',
+    );
+
+    expect(find.textContaining('your brand colour, #7b2d8e'), findsOneWidget);
+    expect(find.textContaining('you have not set one'), findsNothing);
   });
 
   testWidgets('view alone can look and cannot change', (tester) async {
