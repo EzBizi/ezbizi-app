@@ -659,6 +659,25 @@ final class TwimlRenderer
             $attributes['callerId'] = $context['caller_id'];
         }
 
+        // RINGBACK, or the caller hears nothing at all.
+        //
+        // `answerOnBridge` holds the caller's leg unanswered until the callee
+        // picks up — which is what keeps an inbound PSTN caller hearing their
+        // carrier's ringing. A BROWSER caller has no carrier: no media flows
+        // on an unanswered leg, so a team call was silence. Jose called a
+        // colleague and could not tell whether it was dialling, had failed, or
+        // had already been answered.
+        //
+        // `ringTone` makes Twilio play ringback into that leg while it dials,
+        // which is the one thing that can produce audio before an answer. Set
+        // HERE and not in dialAttributes: inbound callers already hear their
+        // own network's ringing, and overriding it would change a path that
+        // works to fix one that does not.
+        //
+        // 'us' because that is where the business and its customers are. A
+        // per-country cadence would be a mapping with one entry in it.
+        $attributes['ringTone'] = 'us';
+
         $dial = $response->dial(null, $attributes);
         if (str_starts_with($to, 'client:')) {
             // A colleague's browser. Both ends are ours and both are already
