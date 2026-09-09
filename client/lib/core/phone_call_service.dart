@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../screens/phone/voice_device.dart';
@@ -64,6 +66,7 @@ class PhoneCallService extends ChangeNotifier {
       service.notifyListeners();
     };
     device.onRegistrationChanged = service.notifyListeners;
+    device.onEnded = service._ended;
 
     return service;
   }
@@ -72,6 +75,11 @@ class PhoneCallService extends ChangeNotifier {
 
   String? _connectionId;
   String? _callerId;
+
+  /// Kept from start(), because presence has to be written when a call ENDS
+  /// and nothing is passing an api in at that point — the event comes from the
+  /// device, not from a screen.
+  ApiClient? _api;
 
   bool _starting = false;
   bool _started = false;
@@ -140,6 +148,7 @@ class PhoneCallService extends ChangeNotifier {
       }
       if (mine == null) return;
 
+      _api = api;
       _connectionId = (mine['connection_id'] ?? '').toString();
       _callerId = (mine['e164'] ?? '').toString();
 
@@ -149,6 +158,7 @@ class PhoneCallService extends ChangeNotifier {
         notifyListeners();
       };
       _device!.onRegistrationChanged = notifyListeners;
+      _device!.onEnded = _ended;
 
       // prepare(), then a FRAME, then the token. platformView is null until
       // prepare() has built the controller, so the shell cannot mount the
@@ -161,6 +171,10 @@ class PhoneCallService extends ChangeNotifier {
 
       final token = await api.post('/phone/tokens', {
         'connection_id': _connectionId,
+        // Omitted on a browser. Present on a handset, and it is what makes the
+        // minted token carry a push credential — without it the phone
+        // registers and never rings.
+        if (_device!.pushPlatform != null) 'platform': _device!.pushPlatform,
       });
 
       if (token.ok) {
@@ -188,6 +202,7 @@ class PhoneCallService extends ChangeNotifier {
   Future<void> restart(ApiClient api, {VoiceDevice? device}) async {
     _device?.onIncoming = null;
     _device?.onRegistrationChanged = null;
+    _device?.onEnded = null;
     _device?.dispose();
     _device = null;
     _started = false;
@@ -226,12 +241,71 @@ class PhoneCallService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The call ended and nobody here pressed anything.
+  ///
+  /// ── The two things this puts right ───────────────────────────
+  ///
+  /// The banner, which used to sit across every screen offering to answer a
+  /// call that had already gone — a caller giving up, or a colleague in the
+  /// ring group answering first.
+  ///
+  /// And `on_call` on the server, which is the one that cost something. Ring
+  /// groups skip anybody on a call, so a stale one takes that person out of
+  /// the rotation and their phone simply stops ringing. They cannot clear it
+  /// themselves either: PresenceController::setMine refuses to overwrite
+  /// `on_call` on purpose, so the availability control is powerless against
+  /// it. Before this, only signing out and back in put somebody back in the
+  /// rotation, and nothing on screen said that was what was needed.
+  ///
+  /// Writes `registered`, not the person's standing choice, because the desk
+  /// does not hold that — availability is server state, read by the app bar.
+  /// Somebody who had set Do Not Disturb had it overwritten by `on_call` when
+  /// the call started, so `registered` is the honest restore: they are on the
+  /// hook again and the control shows it. Do Not Disturb surviving a call is a
+  /// separate question and belongs on the server, where the choice lives.
+  void _ended() {
+    final wasOnCall = _onCall;
+
+    _incomingFrom = null;
+    _onCall = false;
+    _callsToken++;
+    notifyListeners();
+
+    // Only for a call that was actually connected. A ringing call that was
+    // never answered never set `on_call`, and writing presence for it would be
+    // a request per missed call for no change.
+    if (wasOnCall) unawaited(_releasePresence());
+  }
+
+  /// Put the server back to whatever this person's standing answer is.
+  ///
+  /// Deliberately fire-and-forget: the desk is already correct on screen, and
+  /// a failed write here must not leave the app believing it is still on a
+  /// call. The next start() writes presence again regardless.
+  Future<void> _releasePresence() async {
+    final api = _api;
+    final connectionId = _connectionId;
+    if (api == null || connectionId == null || connectionId.isEmpty) return;
+
+    await api.put('/phone/presence', {
+      'connection_id': connectionId,
+      'state': 'registered',
+    });
+  }
+
   void hangUp() {
+    final wasOnCall = _onCall;
+
     _device?.hangUp();
     _onCall = false;
     _incomingFrom = null;
     _callsToken++;
     notifyListeners();
+
+    // Hanging up locally left `on_call` set on the server too — the same
+    // stale-presence bug by a different route, and the one somebody would hit
+    // every single call rather than only when the customer hung up first.
+    if (wasOnCall) unawaited(_releasePresence());
   }
 
   /// Somebody signed out. The next person is not this person.
@@ -240,6 +314,7 @@ class PhoneCallService extends ChangeNotifier {
     _device?.onRegistrationChanged = null;
     _device?.dispose();
     _device = null;
+    _api = null;
     _connectionId = null;
     _callerId = null;
     _incomingFrom = null;

@@ -8,6 +8,41 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0179',
+      date: '9 Sep 2026',
+      items: [
+        'Training: a test\'s attempt limit counts from your last pass rather than for all time. Somebody who certified, let it lapse and then failed a retake was locked out of certifying again for good, with nothing an administrator could reset.',
+        'Training: writing a test warns you when a limit on attempts, an expiry and counting every retake are set together - the one combination that can leave somebody unable to certify again, with nothing an administrator can undo. It warns rather than refuses.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0178',
+      date: '9 Sep 2026',
+      items: [
+        'Communication - Settings - Ring groups is about people now. The editor used to carry a second list of every phone number on the account with tick boxes, which read as putting numbers into the group. Which group answers a number is set on that number, under Numbers, or as the company default under General.',
+        'A ring group that no number reaches now says so, in red, and says where to choose one. It used to look like a working group and never ring.',
+        'A group that IS reached names what reaches it - "Rings when a call comes to General Use" - so you can see what a group does without opening every line.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0177',
+      date: '9 Sep 2026',
+      items: [
+        'Scheduling: deleting a service area now asks you to type its name, in the panel rather than a pop-up box. It says how many zip codes go with it, and anything already booked in that area is left alone.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0176',
+      date: '9 Sep 2026',
+      items: [
+        'Monitoring: the Lead Developer\'s own machine is never screen-captured, live-viewed, or remote-controlled - it still shows online with its specs, but its screen is off-limits, since that account handles credentials.',
+        'The desktop app opens at the size and position you left it, maximized if it was maximized, including after an update. It used to come back at the default size every time.',
+        'The incoming call bar goes away when the call does. If the caller hung up, or a colleague answered first, the bar stayed across the top of every screen offering to answer a call that had already ended, until the app was reloaded.',
+        'Answering a call no longer leaves you marked "on a call" afterwards. That mattered more than it looked: ring groups skip anybody who is on a call, so the line stopped ringing for that person until they signed out and back in - and the availability control could not clear it, because it deliberately refuses to overwrite a live call.',
+        'The availability icon in the top bar keeps up with what you are doing. It read your status once when the app opened and never again, so it showed what was true at sign-in for the rest of the session.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0175',
       date: '9 Sep 2026',
       items: [

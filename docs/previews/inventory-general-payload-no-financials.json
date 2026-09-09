@@ -1,0 +1,87 @@
+{
+    "health": {
+        "empty": false,
+        "in_stock": 1,
+        "low": 1,
+        "out": 5,
+        "items": 7,
+        "locations": 9,
+        "open_purchase_orders": 1,
+        "links": {
+            "low": "stock?low_items=1",
+            "items": "items",
+            "locations": "locations",
+            "open_purchase_orders": "orders"
+        }
+    },
+    "warnings": [
+        {
+            "key": "out_of_stock",
+            "count": 5,
+            "sentence": "5 items are out of stock."
+        },
+        {
+            "key": "below_reorder",
+            "count": 1,
+            "sentence": "1 item is at or below its reorder point.",
+            "link": "stock?low_items=1"
+        },
+        {
+            "key": "purchase_order_open_a_long_time",
+            "count": 1,
+            "sentence": "1 purchase order has been open more than 30 days.",
+            "link": "orders"
+        },
+        {
+            "key": "location_holding_nothing",
+            "count": 7,
+            "sentence": "7 locations are holding nothing.",
+            "link": "locations"
+        }
+    ],
+    "movement": {
+        "period": "month",
+        "buckets": [
+            "2026-08-30",
+            "2026-09-06"
+        ],
+        "lines": [
+            {
+                "key": "in",
+                "label": "Received",
+                "internal": false,
+                "points": [
+                    0.0,
+                    0.0
+                ]
+            },
+            {
+                "key": "out",
+                "label": "Issued and sold",
+                "internal": false,
+                "points": [
+                    0.0,
+                    8.0
+                ]
+            },
+            {
+                "key": "adjusted",
+                "label": "Adjusted",
+                "internal": false,
+                "points": [
+                    0.0,
+                    -6.0
+                ]
+            },
+            {
+                "key": "transferred",
+                "label": "Transferred",
+                "internal": true,
+                "points": [
+                    0.0,
+                    10.0
+                ]
+            }
+        ]
+    }
+}

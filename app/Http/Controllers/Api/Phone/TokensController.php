@@ -35,6 +35,12 @@ class TokensController extends Controller
 
         $input = $request->validate([
             'connection_id' => ['required', 'uuid', $this->existsInTenant('phone_connections')],
+
+            // Which kind of device is asking. Absent means a browser, which is
+            // every desktop and web client and was the only caller until
+            // handsets stopped ringing: a phone needs the token to name a push
+            // credential, and only the phone knows which one it can receive.
+            'platform' => ['sometimes', 'nullable', Rule::in(['ios', 'android'])],
         ]);
 
         $connection = PhoneConnection::query()->findOrFail($input['connection_id']);
@@ -45,7 +51,7 @@ class TokensController extends Controller
         }
 
         $identity = ClientIdentity::of($user);
-        $token = $this->twilio->accessToken($connection, $identity);
+        $token = $this->twilio->accessToken($connection, $identity, $input['platform'] ?? null);
 
         return response()->json([
             'token' => $token,

@@ -312,15 +312,28 @@ void main() {
     await tester.pumpAndSettle();
 
     await _tap(tester, find.text('Dana Reyes'));
-    await _tap(tester, find.text('Front desk').last);
     await _tap(tester, find.text('Save'));
 
     expect(group?['name'], 'Front desk');
     expect(group?['member_user_ids'], ['u-1']);
     expect(group?['connection_id'], 'conn-1');
 
-    // The half that made the phone ring: the line now points at the group.
-    expect(patched, {'ring_group_id': 'rg-new'});
+    // SAVING A GROUP TOUCHES NO LINE.
+    //
+    // This used to assert the opposite — that saving also PATCHed the number
+    // with the new group's id — because the editor carried a list of numbers
+    // with tick boxes. That list is gone: a line points at one group, and it
+    // is chosen on Numbers where somebody looking at a phone number already
+    // stands, or as the company default on General.
+    //
+    // Kept as an assertion rather than deleted, because "no request went out"
+    // is the thing that would silently come back if the second save were ever
+    // restored.
+    expect(
+      patched,
+      isNull,
+      reason: 'saving a ring group reached out and rewrote a phone line',
+    );
   });
 
   /// §4 gate 2 from the customer's side. Phone is a paid extra billed to
@@ -1916,18 +1929,21 @@ void main() {
     );
   });
 
-  /// The two lists are different questions, and the screen says which.
+  /// A ring group is PEOPLE. It does not hand out phone numbers.
   ///
-  /// "Who it rings" and "Lines it answers" sat under one another with no
-  /// wording between them, so somebody who had given people their own numbers
-  /// on Users reasonably read the second list as those assignments and could
-  /// not see why every line was greyed out. Nothing was wrong; nothing
-  /// explained it either.
+  /// The editor used to carry a second list of numbers with tick boxes, and it
+  /// asked the question backwards: a line points at one group, so ticking it
+  /// here edited the line's own setting from the far end — the same setting
+  /// the Numbers screen owns. Two editors, one column.
   ///
-  /// And a claimed line now NAMES the group that has it. "Answered by another
-  /// group" says you cannot have it without saying where it went, which leaves
-  /// opening every other group to find out.
-  testWidgets('ring groups say what each list means and who holds a line', (
+  /// It also read as "add a number to this group", which a group is not.
+  /// Jose named the shape from RingCentral on 2026-09-09: a queue holds
+  /// agents, and the destination is set on the number.
+  ///
+  /// What survives is the FACT, not the control — because a group nothing
+  /// points at never rings, and a screen of correct settings no call reaches
+  /// is this module's most reliable failure.
+  testWidgets('a ring group holds people, and says what reaches it', (
     tester,
   ) async {
     await _pump(
@@ -1996,23 +2012,46 @@ void main() {
           .first,
     );
 
+    // Dispatch has no line pointing at it, and says so rather than looking
+    // like a working group.
+    expect(
+      find.textContaining('No number rings this group yet'),
+      findsOneWidget,
+      reason: 'a group nothing routes to gave no sign it can never ring',
+    );
+
+    // The numbers are NOT offered as something to assign here.
     expect(
       find.textContaining('Which main numbers route INTO this group'),
-      findsOneWidget,
-      reason: 'nothing distinguished the two lists',
+      findsNothing,
+      reason: 'the line-assignment list is still on the group editor',
     );
     expect(
-      find.textContaining('set per person on Users'),
-      findsOneWidget,
-      reason: 'the screen never said assignments are a different thing',
+      find.widgetWithText(CheckboxListTile, 'General Use'),
+      findsNothing,
+      reason: 'a phone number is still tickable from inside a ring group',
+    );
+
+    // And the group that IS reached names what reaches it.
+    await _tap(tester, find.widgetWithText(TextButton, 'Cancel'));
+    await _tap(
+      tester,
+      find
+          .descendant(
+            of: find.ancestor(
+              of: find.text('Marketing'),
+              matching: find.byType(Card),
+            ),
+            matching: find.widgetWithText(TextButton, 'Edit'),
+          )
+          .first,
     );
 
     expect(
-      find.textContaining('answered by Marketing'),
+      find.textContaining('Rings when a call comes to General Use'),
       findsOneWidget,
-      reason: 'a claimed line still refused to say which group has it',
+      reason: 'a reachable group did not say what reaches it',
     );
-    expect(find.textContaining('answered by another group'), findsNothing);
   });
 }
 Finder _tab(String label) => find.widgetWithText(ChoiceChip, label);

@@ -117,7 +117,6 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
         overflow: 'voicemail',
         overflowNumber: '',
         overflowGroupId: null,
-        lineIds: <String>{},
       );
     });
   }
@@ -135,10 +134,6 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
         overflow: group.overflow,
         overflowNumber: group.overflowNumber ?? '',
         overflowGroupId: group.overflowGroupId,
-        lineIds: _lines
-            .where((line) => line.ringGroupId == group.id)
-            .map((line) => line.id)
-            .toSet(),
       );
     });
   }
@@ -189,48 +184,33 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
       return;
     }
 
-    final saved = response.body['data'];
-    final groupId = saved is Map<String, dynamic> ? saved['id'] as String? : null;
-
-    // The lines are a second save on purpose: they are a different resource,
-    // and a group that saved but whose lines did not must still exist rather
-    // than roll back to nothing.
-    final lineFailure = await _saveLines(draft, groupId);
-
-    if (!mounted) return;
-
+    // Saving a group no longer touches any line.
+    //
+    // It used to PATCH /phone/numbers for every line whose tick had changed —
+    // a second save, of a different resource, from a screen about people. That
+    // is gone with the control it served: a line's ring group is set on
+    // Numbers, and the company's default on General.
     setState(() {
       _saving = false;
-      if (lineFailure != null) _formError = lineFailure;
+      _draft = null;
     });
-
-    if (lineFailure == null) {
-      setState(() => _draft = null);
-    }
 
     await _load();
   }
 
-  /// PATCH every line whose group changed. Untouched lines are left alone.
-  Future<String?> _saveLines(_Draft draft, String? groupId) async {
-    if (groupId == null) return null;
+  /// The lines that route here, in words. Empty when nothing does.
+  String _reachedBy(String? groupId) {
+    if (groupId == null) return '';
 
-    for (final line in _lines) {
-      final wants = draft.lineIds.contains(line.id);
-      final has = line.ringGroupId == groupId;
+    final names = [
+      for (final line in _lines)
+        if (line.ringGroupId == groupId) line.label,
+    ];
 
-      if (wants == has) continue;
+    if (names.isEmpty) return '';
+    if (names.length == 1) return names.first;
 
-      final response = await widget.api.patch('/phone/numbers/${line.id}', {
-        'ring_group_id': wants ? groupId : null,
-      });
-
-      if (!response.ok) {
-        return response.message;
-      }
-    }
-
-    return null;
+    return '${names.take(names.length - 1).join(', ')} and ${names.last}';
   }
 
   Future<void> _delete(_Group group) async {
@@ -360,18 +340,6 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
     ),
   );
 
-  /// The group holding a line, by name.
-  ///
-  /// Falls back to the old wording rather than an id: a group this account
-  /// cannot see is still a real answer, and an id on screen is not.
-  String _groupName(String id) {
-    for (final group in _groups) {
-      if (group.id == id) return group.name;
-    }
-
-    return 'another group';
-  }
-
   Widget _groupCard(_Group group, ThemeData theme) {
     final answering = _lines.where((l) => l.ringGroupId == group.id).toList();
     final editing = _draft?.id == group.id;
@@ -431,9 +399,6 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
               .expand((g) => g.members))
         member.userId: member,
     };
-    final sameConnection = _lines
-        .where((line) => line.connectionId == draft.connectionId)
-        .toList();
     final otherGroups = _groups
         .where((g) => g.id != draft.id && g.connectionId == draft.connectionId)
         .toList();
@@ -470,8 +435,7 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
                     ? null
                     : (value) => setState(() {
                         draft.connectionId = value;
-                        // Lines and overflow groups belong to one account.
-                        draft.lineIds.clear();
+                        // An overflow group belongs to one account.
                         draft.overflowGroupId = null;
                       }),
               ),
@@ -566,55 +530,36 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
                 ),
 
             const SizedBox(height: 16),
-            Text('Lines it answers', style: theme.textTheme.labelLarge),
+            Text('Where calls come from', style: theme.textTheme.labelLarge),
 
-            // Said out loud, because these two lists look like one setting and
-            // are not. Somebody who has given people their own numbers on Users
-            // reasonably expects those lines to appear here already claimed —
-            // they are a different fact entirely, and nothing on this screen
-            // used to say so.
+            // READ ONLY, deliberately.
+            //
+            // This used to be a list of numbers with tick boxes, and it was the
+            // wrong shape twice over. A line points at ONE group, so a control
+            // here is really editing the line's setting from the far end — and
+            // the same setting is edited on Numbers, where somebody looking at
+            // a phone number already stands. Two editors for one column is how
+            // the two disagree.
+            //
+            // It also read as "add a number to this group", which is not what
+            // a group is. A group is people. Every other phone system puts the
+            // destination on the number for exactly that reason.
+            //
+            // Still SHOWN, because a group nothing points at never rings, and
+            // that is the failure this module keeps producing: a screen full
+            // of correct settings that no call ever reaches.
             Text(
-              'Which main numbers route INTO this group. This is not the same '
-              'as the line a person calls out from, or their extension — those '
-              'are set per person on Users. A number can be answered by one '
-              'group only.',
+              _reachedBy(draft.id).isEmpty
+                  ? 'No number rings this group yet. Choose it as the ring '
+                        'group on a line under Numbers, or set it as the '
+                        "company's default under General."
+                  : 'Rings when a call comes to ${_reachedBy(draft.id)}.',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+                color: _reachedBy(draft.id).isEmpty
+                    ? theme.colorScheme.error
+                    : theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(height: 4),
-            if (sameConnection.isEmpty)
-              Text(
-                'No numbers on this phone account yet. A group with no line '
-                'never rings.',
-                style: theme.textTheme.bodySmall,
-              )
-            else
-              for (final line in sameConnection)
-                CheckboxListTile(
-                  value: draft.lineIds.contains(line.id),
-                  onChanged: _saving
-                      ? null
-                      : (on) => setState(() {
-                          if (on == true) {
-                            draft.lineIds.add(line.id);
-                          } else {
-                            draft.lineIds.remove(line.id);
-                          }
-                        }),
-                  title: Text(line.label),
-                  subtitle: Text(
-                    // NAMED. "answered by another group" tells somebody they
-                    // cannot have the line and not where it went, so the next
-                    // move is to open every other group looking for it.
-                    line.ringGroupId != null && line.ringGroupId != draft.id
-                        ? '${line.e164} · answered by '
-                              '${_groupName(line.ringGroupId!)}'
-                        : line.e164,
-                  ),
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                ),
 
             const SizedBox(height: 16),
             Text('If nobody answers', style: theme.textTheme.labelLarge),
@@ -725,7 +670,6 @@ class _Draft {
     required this.overflow,
     required this.overflowNumber,
     required this.overflowGroupId,
-    required this.lineIds,
   });
 
   final String id;
@@ -737,7 +681,6 @@ class _Draft {
   String overflow;
   String overflowNumber;
   String? overflowGroupId;
-  Set<String> lineIds;
 }
 
 /// One person in a ring group, and whether a call would reach them.

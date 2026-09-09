@@ -212,6 +212,129 @@ class TrainingGradingTest extends TestCase
     }
 
     /**
+     * The permanent-lockout defect this task closes (owner's ruling,
+     * 2026-09-09, one step past the fifth-option brief above): with
+     * `max_attempts: 1`, the PASS itself used to spend the one slot in
+     * `walkCountingTowardCap` — nothing precedes the first attempt to
+     * shelter it. The end-of-walk override (`$currentlyValid ? 0 :
+     * $counted`) masked that miscount for as long as the pass stayed
+     * current, but the moment it lapsed the raw count (1) was exposed
+     * against `max_attempts: 1` and the learner could never sit the test
+     * again — a genuine pass, on record, permanently unable to
+     * re-certify. Seeded the same way the other lapsed-pass tests in this
+     * file are (real elapsed time is not reproducible through the HTTP
+     * API): the pass is already 20 days expired before this test's one
+     * live submission — the retake — is sent.
+     */
+    public function test_a_lapsed_pass_never_locks_a_learner_out_of_retaking_forever(): void
+    {
+        [$learner, $test, $tenant] = $this->aTwoQuestionTest(passMark: 40, maxAttempts: 1, validForDays: 10, countAttemptsAfterPass: false);
+
+        $this->inTenant($tenant['org'], function () use ($learner, $test) {
+            // Passed 30 days ago, good for 10 — lapsed on day -20.
+            TrainingAttempt::create([
+                'user_id' => $learner->id,
+                'test_id' => $test->id,
+                'answers' => [1, 0],
+                'score' => 50,
+                'passed' => true,
+                'taken_at' => now()->subDays(30),
+                'expires_on' => now()->subDays(20)->toDateString(),
+            ]);
+        });
+
+        // The pass never counted against max_attempts: 1 in the first
+        // place, so the retake must be admitted — not permanently refused.
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [1, 0]])
+            ->assertOk()
+            ->assertJsonPath('passed', true);
+    }
+
+    /**
+     * The other half of "the cap should count failures" (owner's ruling):
+     * a FAILURE taken while an earlier pass was still valid must never
+     * spend a `max_attempts` slot EITHER — sheltering only the pass itself
+     * and not the retakes taken under it would still lock a learner out
+     * once that pass lapses, the identical permanent dead end one layer
+     * over ("failures only" reintroduces the lockout on its own, argued in
+     * the task report). Seeded: a pass now 10 days expired, and a failing
+     * retake sat 30 days ago, back when that pass was still 20 days from
+     * expiring.
+     */
+    public function test_a_failure_taken_while_holding_a_valid_pass_never_counts_even_after_the_pass_later_lapses(): void
+    {
+        [$learner, $test, $tenant] = $this->aTwoQuestionTest(passMark: 40, maxAttempts: 1, validForDays: 30, countAttemptsAfterPass: false);
+
+        $this->inTenant($tenant['org'], function () use ($learner, $test) {
+            // Passed 40 days ago, good for 30 — lapsed 10 days ago.
+            TrainingAttempt::create([
+                'user_id' => $learner->id,
+                'test_id' => $test->id,
+                'answers' => [1, 0],
+                'score' => 50,
+                'passed' => true,
+                'taken_at' => now()->subDays(40),
+                'expires_on' => now()->subDays(10)->toDateString(),
+            ]);
+
+            // Sat 30 days ago — 10 days into the pass above, while it was
+            // still good — and failed.
+            TrainingAttempt::create([
+                'user_id' => $learner->id,
+                'test_id' => $test->id,
+                'answers' => [0, 0],
+                'score' => 0,
+                'passed' => false,
+                'taken_at' => now()->subDays(30),
+                'expires_on' => null,
+            ]);
+        });
+
+        // Neither seeded attempt counts — the pass never does, and the
+        // failure was sheltered by it at the time it was sat — so this live
+        // retake, sat after the pass has since lapsed, is still admitted.
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [1, 0]])
+            ->assertOk();
+    }
+
+    /**
+     * Pins the sheltering exclusion live, not seeded: failing retakes sat
+     * while today's pass is still good must not spend `max_attempts` slots.
+     *
+     * TWO failing retakes, and the second one is the whole test. With ONE,
+     * this asserts nothing about the shelter at all: the per-cycle reset
+     * (`LapsedPasses::walkCountingTowardCap`) zeroes the count at the pass,
+     * so at the first retake's own submit the count is 0 whether or not
+     * `$stillValid` sheltered anything, and every mutation of the shelter
+     * leaves it green — measured, 2026-09-09, which is why the second
+     * retake is here. At the SECOND retake the two readings finally differ:
+     * sheltered, the first failure never incremented and this is admitted;
+     * unsheltered, it incremented to 1, `max_attempts: 1` is reached, and
+     * this is refused.
+     */
+    public function test_a_failure_taken_while_a_pass_is_still_valid_does_not_spend_a_slot(): void
+    {
+        [$learner, $test] = $this->aTwoQuestionTest(passMark: 40, maxAttempts: 1, validForDays: 365, countAttemptsAfterPass: false);
+
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [1, 0]])
+            ->assertOk()->assertJsonPath('passed', true);
+
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [0, 0]])
+            ->assertOk()->assertJsonPath('passed', false);
+
+        // The assertion that actually needs the shelter: the pass is still
+        // good, so the failure above spent nothing and this one is admitted
+        // too, against `max_attempts: 1`.
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [0, 0]])
+            ->assertOk()->assertJsonPath('passed', false);
+    }
+
+    /**
      * The expired-pass decision, argued in the task report: once the
      * sheltering pass itself has lapsed, an attempt sat after it counts
      * normally again — "held a VALID, unexpired pass" is no longer true, so
@@ -220,7 +343,11 @@ class TrainingGradingTest extends TestCase
      * simulating elapsed real time through the HTTP API is not possible:
      * attempt 1 is a genuine pass whose `expires_on` already fell in the
      * past BEFORE attempt 2 was ever sat, and attempt 2 (seeded, not a real
-     * submission) sits far enough after that lapse to be unambiguous.
+     * submission) sits far enough after that lapse to be unambiguous. The
+     * PASS itself never counts (owner's ruling, 2026-09-09 — the
+     * permanent-lockout defect the two tests above target), so it takes
+     * the seeded post-lapse failure PLUS one live failing retake to
+     * actually reach `max_attempts: 2` here.
      */
     public function test_an_attempt_after_the_sheltering_pass_has_expired_counts_toward_the_cap(): void
     {
@@ -251,20 +378,27 @@ class TrainingGradingTest extends TestCase
             ]);
         });
 
-        // Both seeded attempts count (the pass on its own account, the
-        // later one because the pass had already lapsed by the time it was
-        // sat) — max_attempts: 2 is already spent.
+        // The pass does not count (0) — only the post-lapse failure does
+        // (1 of 2) — so this live retake, whatever its outcome, is still
+        // admitted.
         $this->signedInAs($learner)
-            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [1, 0]])
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [0, 0]])
+            ->assertOk()->assertJsonPath('passed', false);
+
+        // Two genuine failures are now on record (the seeded one and the
+        // live one above) — max_attempts: 2 is spent.
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [0, 0]])
             ->assertStatus(403)
             ->assertJsonPath('message', fn (string $m) => str_contains($m, '2'));
     }
 
     /**
      * The mirror of the test above: the same shape, but the sheltering pass
-     * is STILL valid when the second attempt is sat. That second attempt is
-     * excluded, so only the ORIGINAL pass counts against `max_attempts: 2`
-     * — a third submission (this one, live) still has room.
+     * is STILL valid when the second attempt is sat. Neither seeded attempt
+     * counts — the pass never does (owner's ruling, 2026-09-09), and the
+     * failure sat under it is sheltered too — so a third submission (this
+     * one, live) still has room against `max_attempts: 2`.
      */
     public function test_an_attempt_taken_while_the_sheltering_pass_is_still_valid_is_excluded_even_seeded(): void
     {
@@ -294,8 +428,8 @@ class TrainingGradingTest extends TestCase
             ]);
         });
 
-        // Only the first seeded attempt counts — one slot of two spent —
-        // so this live submission is still admitted.
+        // Neither seeded attempt counts — nothing has been spent — so this
+        // live submission is admitted.
         $this->signedInAs($learner)
             ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [1, 0]])
             ->assertOk();
@@ -304,11 +438,14 @@ class TrainingGradingTest extends TestCase
     /**
      * The exact boundary the two tests above straddle but never sit on: a
      * retake taken on the SAME calendar date the sheltering pass's own
-     * `expires_on` names. [walkCountingTowardCap]'s `>` (line 251) agrees
-     * with `currentlyLapsedQuery`'s `<= today` — a pass is already lapsed ON
+     * `expires_on` names. [walkCountingTowardCap]'s `>` agrees with
+     * `currentlyLapsedQuery`'s `<= today` — a pass is already lapsed ON
      * its expiry date, not the day after — so this retake is NOT sheltered
      * and counts toward the cap, same as the day-91 case the review finding
-     * describes for an author reading the option's own label.
+     * describes for an author reading the option's own label. The pass
+     * itself still never counts (owner's ruling, 2026-09-09), so it takes
+     * the boundary-day failure PLUS one live failing retake to reach
+     * `max_attempts: 2`.
      */
     public function test_an_attempt_taken_on_the_exact_expiry_date_counts_toward_the_cap(): void
     {
@@ -339,13 +476,162 @@ class TrainingGradingTest extends TestCase
             ]);
         });
 
-        // Both seeded attempts count (the pass on its own account, the
-        // same-day retake because the pass is already lapsed on its own
-        // expiry date) — max_attempts: 2 is already spent.
+        // The pass does not count (0) — only the boundary-day failure does
+        // (1 of 2) — so this live retake, whatever its outcome, is still
+        // admitted.
         $this->signedInAs($learner)
-            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [1, 0]])
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [0, 0]])
+            ->assertOk()->assertJsonPath('passed', false);
+
+        // Two genuine failures are now on record — max_attempts: 2 is
+        // spent.
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [0, 0]])
             ->assertStatus(403)
             ->assertJsonPath('message', fn (string $m) => str_contains($m, '2'));
+    }
+
+    // ── The per-cycle ruling (owner, 2026-09-09, one step past the
+    // failures-only ruling above): counting starts again at each landed
+    // pass — a failure from a cycle the learner has since closed by
+    // re-certifying must never be held against a LATER cycle's own
+    // `max_attempts`. A 128-scenario search proved the failures-only fix
+    // above still had a lifetime lockout: a lifetime SUM of every
+    // unsheltered failure ever taken, however many closed, superseded
+    // cycles it spans, eventually reaches `max_attempts` and refuses
+    // forever, even though the learner may be only one failure into a
+    // brand new cycle. `LapsedPasses::walkCountingTowardCap` now resets
+    // `$counted` to 0 at every landed pass, exactly where `$holding`/
+    // `$expiresOn` already reset — see that method's own docblock.
+
+    /**
+     * The exact defect the per-cycle ruling closes: a failure sat BEFORE
+     * this person had ever passed — a closed cycle on its own, one
+     * `max_attempts: 2` would not yet refuse anything for — must not be
+     * resurrected against a LATER, already-re-certified cycle's own budget.
+     *
+     * Seeded: one genuine unsheltered failure, then a pass that has since
+     * lapsed (closing that cycle). The first live retake is admitted under
+     * EITHER a lifetime or a per-cycle reading (the running sum is only 1
+     * either way). The SECOND live retake is where the two readings
+     * disagree: a lifetime sum sees 2 failures total (the closed-cycle one
+     * plus this new cycle's own) and wrongly refuses at `max_attempts: 2`
+     * — the exact permanent lockout this task closes, reproduced against
+     * the UNFIXED code as this test's own RED run. Per-cycle sees only 1
+     * (the pre-pass failure belongs to a closed cycle), so it is still
+     * admitted. A genuine THIRD failure in this SAME (still open, no new
+     * pass since) cycle finally reaches `max_attempts: 2` counted since the
+     * pass — the cap still works, it is just scoped to the cycle now.
+     */
+    public function test_a_failure_from_a_closed_cycle_never_counts_against_a_later_cycle(): void
+    {
+        [$learner, $test, $tenant] = $this->aTwoQuestionTest(passMark: 40, maxAttempts: 2, validForDays: 10, countAttemptsAfterPass: false);
+
+        $this->inTenant($tenant['org'], function () use ($learner, $test) {
+            // A genuine failure, before this person had ever passed —
+            // closed the moment the pass below lands.
+            TrainingAttempt::create([
+                'user_id' => $learner->id,
+                'test_id' => $test->id,
+                'answers' => [0, 0],
+                'score' => 0,
+                'passed' => false,
+                'taken_at' => now()->subDays(40),
+                'expires_on' => null,
+            ]);
+
+            // Passed 35 days ago, good for 10 days — lapsed 25 days ago.
+            // This pass closes the cycle the failure above belonged to.
+            TrainingAttempt::create([
+                'user_id' => $learner->id,
+                'test_id' => $test->id,
+                'answers' => [1, 0],
+                'score' => 50,
+                'passed' => true,
+                'taken_at' => now()->subDays(35),
+                'expires_on' => now()->subDays(25)->toDateString(),
+            ]);
+        });
+
+        // First live retake: a genuine failure in the NEW cycle (the pass
+        // has since lapsed). Admitted under either reading.
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [0, 0]])
+            ->assertOk()->assertJsonPath('passed', false);
+
+        // Second live retake: lifetime and per-cycle disagree here. Still
+        // admitted under per-cycle — only 1 failure has happened since the
+        // learner's own most recent pass.
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [0, 0]])
+            ->assertOk()->assertJsonPath('passed', false);
+
+        // A third failure in the same open cycle finally spends
+        // `max_attempts: 2` counted since the pass.
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [0, 0]])
+            ->assertStatus(403)
+            ->assertJsonPath('message', fn (string $m) => str_contains($m, '2'));
+    }
+
+    /**
+     * The override at the end of `walkCountingTowardCap`
+     * (`return $currentlyValid ? 0 : $counted`) has its own load-bearing
+     * case, named in its own docblock: an author who lowers `max_attempts`
+     * AFTER a learner already accumulated failures, while that learner
+     * currently holds a still-valid pass. Seeded directly (accumulating
+     * real failures through the HTTP API one at a time is not the point —
+     * the point is the STATE: several failures on record, `max_attempts`
+     * now lower than when they were taken, and a currently-valid pass held
+     * since).
+     *
+     * Because the per-cycle reset above ALSO zeroes `$counted` at the same
+     * pass that sets `$holding`, `$counted` is already 0 by the time this
+     * walk reaches its own end whenever `$holding` is still true — the
+     * override's `0` and the raw `$counted` now agree in every case a
+     * mutation test can reach; see this file's own report for the measured
+     * result of mutating the override away after this task's fix. This
+     * test still pins the OBSERVABLE guarantee — a learner holding a
+     * currently-valid pass is never refused, whatever their failure history
+     * — regardless of which line in the walk is the one currently
+     * providing it.
+     */
+    public function test_a_learner_holding_a_valid_pass_is_never_refused_even_with_failures_on_record(): void
+    {
+        [$learner, $test, $tenant] = $this->aTwoQuestionTest(passMark: 40, maxAttempts: 2, validForDays: 30, countAttemptsAfterPass: false);
+
+        $this->inTenant($tenant['org'], function () use ($learner, $test) {
+            // Three genuine failures, before this person had ever passed —
+            // more than today's max_attempts: 2 would allow, on their own.
+            foreach ([40, 39, 38] as $daysAgo) {
+                TrainingAttempt::create([
+                    'user_id' => $learner->id,
+                    'test_id' => $test->id,
+                    'answers' => [0, 0],
+                    'score' => 0,
+                    'passed' => false,
+                    'taken_at' => now()->subDays($daysAgo),
+                    'expires_on' => null,
+                ]);
+            }
+
+            // Passed 10 days ago, good for 30 — still valid today.
+            TrainingAttempt::create([
+                'user_id' => $learner->id,
+                'test_id' => $test->id,
+                'answers' => [1, 0],
+                'score' => 50,
+                'passed' => true,
+                'taken_at' => now()->subDays(10),
+                'expires_on' => now()->addDays(20)->toDateString(),
+            ]);
+        });
+
+        // Currently holding a valid pass — admitted regardless of the three
+        // failures on record from before it.
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [1, 0]])
+            ->assertOk();
     }
 
     public function test_null_max_attempts_means_unlimited_retakes_with_the_option_on_too(): void

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:twilio_voice/twilio_voice.dart';
 
 import 'voice_device.dart';
@@ -34,7 +35,20 @@ class MobileVoiceDevice implements VoiceDevice {
   void Function()? onRegistrationChanged;
 
   @override
+  void Function()? onEnded;
+
+  @override
   Object? get platformView => null;
+
+  /// A handset, and which kind — so the token it asks for names a credential
+  /// Twilio can wake it with. Null on macOS: it runs the same plugin but is
+  /// never asleep in a pocket, and Apple's VoIP push is an iOS service.
+  @override
+  String? get pushPlatform => switch (defaultTargetPlatform) {
+    TargetPlatform.iOS => 'ios',
+    TargetPlatform.android => 'android',
+    _ => null,
+  };
 
   @override
   bool get supported => true;
@@ -78,10 +92,24 @@ class MobileVoiceDevice implements VoiceDevice {
   void _onEvent(CallEvent event) {
     if (event == CallEvent.incoming || event == CallEvent.ringing) {
       // The native call UI already knows who is calling and is already
-      // showing them. This tells the Dial tab so its own banner agrees.
+      // showing them. This tells the desk so its own banner agrees.
       onIncoming?.call(
         VoiceIncoming(from: TwilioVoicePlatform.instance.call.activeCall?.from ?? ''),
       );
+
+      return;
+    }
+
+    // The four ways this SDK says there is no call any more.
+    //
+    // `missedCall` and `declined` matter as much as `callEnded`: on a ring
+    // group, the leg that nobody answers here ends as one of those while
+    // somebody else takes the call — and the desk was left showing a banner
+    // for a call a colleague had already picked up.
+    if (event == CallEvent.callEnded ||
+        event == CallEvent.missedCall ||
+        event == CallEvent.declined) {
+      onEnded?.call();
     }
   }
 
@@ -118,5 +146,6 @@ class MobileVoiceDevice implements VoiceDevice {
     _events?.cancel();
     _events = null;
     onIncoming = null;
+    onEnded = null;
   }
 }

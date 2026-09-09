@@ -22,15 +22,20 @@ import '../../widgets/error_note.dart';
 /// `requires_guide` ("Must finish the guide before the test"), `pass_mark`
 /// ("Pass mark"), `max_attempts` ("Retakes allowed" — blank means
 /// unlimited), `valid_for_days` ("A pass runs out after" — blank means a
-/// pass never expires), and `count_attempts_after_pass` ("Every retake
-/// counts toward the limit" — off, the default, is the fifth-option
-/// brief's own answer to "if somebody already passed and wants a better
-/// score, does that use one of their attempts?": no, as long as their pass
-/// is still good; the exemption itself ends the day that pass runs out,
-/// which is what the row's hint now says rather than leaving an author to
-/// guess). [TestEditorPanel] edits exactly these five plus the
-/// questions themselves; nothing else on this screen is a sixth option
-/// dressed up as one.
+/// pass never expires), and `count_attempts_after_pass` ("Count every
+/// retake, even a pass" — off, the default, is the owner's failures-only
+/// ruling, 2026-09-09, the fix for a permanent-lockout defect the
+/// fifth-option brief's own first cut of this option still had (a passing
+/// attempt spent the cap's one slot, which stayed hidden until that pass
+/// itself lapsed): only a FAILED attempt counts toward `max_attempts`, and
+/// only when it was not taken while an earlier pass was still valid — a
+/// pass itself never counts, and neither does a retake, whatever its
+/// outcome, taken while one still holds. Both conditions are load-bearing
+/// (see `LapsedPasses::walkCountingTowardCap`'s own docblock for why
+/// neither alone closes the lockout), which is what the row's hint now
+/// says rather than leaving an author to guess). [TestEditorPanel] edits
+/// exactly these five plus the questions themselves; nothing else on this
+/// screen is a sixth option dressed up as one.
 ///
 /// ── The server's sentence, never this client's own wording ─────────────
 ///
@@ -280,6 +285,45 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
         .toList();
   }
 
+  /// The one combination on this screen that can permanently lock a learner
+  /// out, said where it is chosen rather than discovered by the person it
+  /// happens to: every retake counted + a cap + an expiry means a learner who
+  /// spends the cap can never certify again, and nothing in the product
+  /// removes a past attempt, so no admin can undo it per learner.
+  ///
+  /// The behaviour is the owner's decided call (2026-09-09, told the
+  /// consequence plainly), so this warns and does not refuse — an author who
+  /// wants exactly this still gets it. It is only shown for the ON setting:
+  /// with the switch off the cap counts failures since the last pass, which
+  /// has no such dead end.
+  ///
+  /// A [ListenableBuilder] on the two fields rather than listeners plus
+  /// setState — the switch already rebuilds through setState, and the two
+  /// numbers are the only other inputs the condition reads.
+  Widget _lockoutWarning() {
+    return ListenableBuilder(
+      listenable: Listenable.merge([_maxAttempts, _validForDays]),
+      builder: (context, _) {
+        if (!_countAttemptsAfterPass || _parseInt(_maxAttempts.text) == null || _parseInt(_validForDays.text) == null) {
+          return const SizedBox.shrink();
+        }
+
+        final theme = Theme.of(context);
+
+        return Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(
+            'With all three set, a learner who uses up the retakes can never pass '
+            'this test again: their pass runs out, and every attempt they have '
+            'already made still counts. Nothing removes a past attempt.',
+            key: const Key('training.option-lockout-warning'),
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   void dispose() {
     _title.dispose();
@@ -483,14 +527,15 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
           ),
         ),
         _OptionRow(
-          label: 'Every retake counts toward the limit',
-          hint: 'Off spares retakes only until that pass runs out',
+          label: 'Count every retake, even a pass',
+          hint: 'Off counts only failures, and only since the last pass',
           trailing: Switch(
             key: const Key('training.option-count-attempts-after-pass'),
             value: _countAttemptsAfterPass,
             onChanged: (value) => setState(() => _countAttemptsAfterPass = value),
           ),
         ),
+        _lockoutWarning(),
         const SizedBox(height: 14),
         if (_saveError != null) ...[ErrorNote(_saveError!), const SizedBox(height: 12)],
         Align(
@@ -546,14 +591,27 @@ class _OptionRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    final labelColumn = Column(
+    // Two lines when stacked, one when there is a row's worth of width.
+    //
+    // At 375px this column gets 343px, and a hint has to say a whole rule in
+    // it. Measured against this theme, three of the six hints on this screen
+    // are 48 characters and need ~595px — so on a phone they all truncated
+    // mid-clause, and the retake one truncated into "Off only counts
+    // failures", which is precisely the failures-only rule the per-cycle
+    // ruling exists to reject. A hint that ellipsises into a DIFFERENT rule is
+    // worse than one that wraps.
+    //
+    // So the fix is the row, not the wording: shortening one hint would have
+    // left the two siblings cut in the same place, and the honest sentence for
+    // this option does not fit 343px in one line at any wording I could find.
+    Widget labelColumn(int lines) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: theme.textTheme.bodyMedium, maxLines: 1, overflow: TextOverflow.ellipsis),
+        Text(label, style: theme.textTheme.bodyMedium, maxLines: lines, overflow: TextOverflow.ellipsis),
         Text(
           hint,
           style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          maxLines: 1,
+          maxLines: lines,
           overflow: TextOverflow.ellipsis,
         ),
       ],
@@ -566,13 +624,13 @@ class _OptionRow extends StatelessWidget {
           if (constraints.maxWidth < _narrowBelow) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [labelColumn, const SizedBox(height: 8), trailing],
+              children: [labelColumn(2), const SizedBox(height: 8), trailing],
             );
           }
           return Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Expanded(child: labelColumn),
+              Expanded(child: labelColumn(1)),
               const SizedBox(width: 10),
               trailingWidth == null ? trailing : SizedBox(width: trailingWidth, child: trailing),
             ],

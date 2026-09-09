@@ -24,13 +24,17 @@ import 'carrier_settings.dart';
 /// a row without the repoint is a line we list and never hear from, which is
 /// worse than not listing it.
 ///
-/// ── Why a line is configured here rather than only in Ring groups ─
+/// ── This screen is where a line's ring group is set ──────────────
 ///
-/// Ring groups own "which lines do I answer", because that is where somebody
-/// setting up who-rings-whom is already standing. This screen owns the rest of
-/// what a line is: its name, whether it records, whether it transcribes, and
-/// what happens out of hours. Both write `phone_numbers`; neither is the only
-/// way in.
+/// It used to be settable from both ends: here, and as a list of tick boxes
+/// inside the Ring groups editor. One column, two editors, and the second one
+/// asked the question backwards — "which numbers belong to this group" — when
+/// a group is people and a number points at exactly one of them.
+///
+/// Jose named the shape on 2026-09-09 from RingCentral, where a queue holds
+/// agents and the destination is set on the number. That is this screen. The
+/// Ring groups editor now only SAYS which lines reach a group, so a group
+/// nothing points at still admits it will never ring.
 class NumbersPane extends StatefulWidget {
   const NumbersPane({super.key, required this.api, required this.session});
 

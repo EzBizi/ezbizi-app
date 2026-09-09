@@ -64,6 +64,28 @@ abstract class VoiceDevice {
   /// Dial tab mounts it at zero size.
   Object? get platformView;
 
+  /// 'ios', 'android', or null for anything that is not a handset.
+  ///
+  /// ── Why the device answers this and not the app ──────────────────
+  ///
+  /// A browser hears an incoming call down the signalling socket it is
+  /// already holding open. A locked phone holds nothing open, so Twilio has to
+  /// send a VoIP push — and it only does that when the ACCESS TOKEN names a
+  /// push credential, which means the token request has to say what is asking
+  /// before it is minted.
+  ///
+  /// Nothing said, so every token was a browser token. The TestFlight build on
+  /// 2026-09-09 registered, dialled out, showed itself connected, and never
+  /// rang once. There was no error anywhere, because outgoing calls need only
+  /// the TwiML application and that was set.
+  ///
+  /// Asked of the DEVICE rather than read from the platform at the call site,
+  /// because the honest answer is not "what OS is this" — the Windows build
+  /// runs a browser inside a desktop app, and macOS runs the handset plugin on
+  /// a machine that never sleeps in a pocket. Only the device knows whether it
+  /// can be woken.
+  String? get pushPlatform => null;
+
   /// Place an outbound call. [to] is E.164 or `client:{identity}`.
   Future<void> connect({required String to, String? callerId});
 
@@ -94,6 +116,27 @@ abstract class VoiceDevice {
 
   /// Inbound ringing. Tests drive this; the web wrapper maps SDK `incoming`.
   void Function(VoiceIncoming incoming)? onIncoming;
+
+  /// The call is over, and NOBODY HERE ASKED FOR THAT.
+  ///
+  /// ── Why this had to exist ────────────────────────────────────
+  ///
+  /// Every way a call used to end went through a button: accept, decline, hang
+  /// up. So the desk cleared its state on the way out of its own methods and
+  /// that looked complete.
+  ///
+  /// It is not, because the commonest ways a call ends are not local. The
+  /// caller gives up while it is ringing. Somebody else in the ring group
+  /// answers first and Twilio cancels this leg. The customer hangs up on a
+  /// live call. None of those press anything here, so the desk kept believing
+  /// a call was in progress: the incoming bar stayed across every screen
+  /// offering to answer a call that no longer existed, and `on_call` stayed
+  /// set on the server, which quietly takes that person out of the ring group.
+  ///
+  /// Fired for all three, deliberately without saying which. The desk's answer
+  /// is the same in each case — there is no call any more — and a device that
+  /// had to name the reason would be three chances to name it wrong.
+  void Function()? onEnded;
 
   void dispose();
 }

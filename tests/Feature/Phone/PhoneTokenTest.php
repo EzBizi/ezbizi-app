@@ -81,6 +81,96 @@ class PhoneTokenTest extends TestCase
         $this->assertSame($identity, $tokenCall['args'][1]);
     }
 
+    /**
+     * The phone says what it is, and the endpoint passes it on.
+     *
+     * The gateway can mint a push-bearing token all day; if nothing tells it a
+     * handset is asking, every token is a browser token and no phone rings.
+     * PhonePushTokenTest proves the grant, this proves it is reached.
+     */
+    public function test_a_handset_says_which_platform_it_is(): void
+    {
+        [$desk, $connection] = $this->deskWithALine('Handset');
+
+        /** @var FakeTwilioGateway $gateway */
+        $gateway = $this->app->make(TwilioGateway::class);
+
+        $this->signedInAs($desk)->postJson('/api/v1/phone/tokens', [
+            'connection_id' => $connection->id,
+            'platform' => 'ios',
+        ])->assertOk();
+
+        $call = collect($gateway->calls)->firstWhere('method', 'accessToken');
+        $this->assertSame('ios', $call['args'][2] ?? null);
+    }
+
+    /**
+     * A browser sends nothing, and the gateway hears nothing.
+     *
+     * The control for the test above: without it, an implementation that
+     * hardcoded 'ios' would pass that one and attach an APNs credential to
+     * every desktop token.
+     */
+    public function test_a_browser_sends_no_platform_and_the_gateway_hears_none(): void
+    {
+        [$desk, $connection] = $this->deskWithALine('Browser');
+
+        /** @var FakeTwilioGateway $gateway */
+        $gateway = $this->app->make(TwilioGateway::class);
+
+        $this->signedInAs($desk)->postJson('/api/v1/phone/tokens', [
+            'connection_id' => $connection->id,
+        ])->assertOk();
+
+        $call = collect($gateway->calls)->firstWhere('method', 'accessToken');
+        $this->assertNull($call['args'][2] ?? null);
+    }
+
+    /** A platform nobody has a credential for is a mistake, not a silent null. */
+    public function test_an_unknown_platform_is_refused(): void
+    {
+        [$desk, $connection] = $this->deskWithALine('Unknown');
+
+        $this->signedInAs($desk)->postJson('/api/v1/phone/tokens', [
+            'connection_id' => $connection->id,
+            'platform' => 'blackberry',
+        ])->assertStatus(422);
+    }
+
+    /** @return array{0: \App\Models\User, 1: PhoneConnection} */
+    private function deskWithALine(string $label): array
+    {
+        $t = $this->provisionTenant();
+        $desk = $this->userWithRole($t, $label, ['phone.view']);
+
+        $connection = $this->inTenant($t['org'], function () use ($t, $desk, $label) {
+            $connection = PhoneConnection::factory()->create([
+                'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'api_key_sid' => 'SKbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                'twiml_app_sid' => 'APcccccccccccccccccccccccccccccccc',
+            ]);
+            $connection->writeSecrets('SK-secret', 'auth-token');
+
+            $number = PhoneNumber::factory()->create([
+                'connection_id' => $connection->id,
+                'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'e164' => '+1203555'.substr(str_pad((string) crc32($label), 4, '0'), 0, 4),
+            ]);
+
+            PhoneNumberGrant::create([
+                'organization_id' => $t['org']->id,
+                'number_id' => $number->id,
+                'role_id' => $desk->role_id,
+            ]);
+
+            return $connection;
+        });
+
+        return [$desk, $connection];
+    }
+
     public function test_without_a_line_on_the_connection_the_token_is_refused(): void
     {
         $t = $this->provisionTenant();

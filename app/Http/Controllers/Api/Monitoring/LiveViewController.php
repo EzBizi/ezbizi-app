@@ -8,6 +8,7 @@ use App\Models\MonitoringScreenshot;
 use App\Models\User;
 use App\Support\Access\ScopeReach;
 use App\Support\Monitoring\LiveFrameStore;
+use App\Support\Monitoring\ScreenMonitoringExemption;
 use App\Support\Tenancy\TenantContext;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -92,6 +93,9 @@ class LiveViewController extends Controller
     /** Same ceiling as ScreenshotsController::MAX_KILOBYTES, and for the same reason. */
     private const MAX_KILOBYTES = 2048;
 
+    /** The SECURITY exemption's refusal sentence — same wording every screen-reaching guard uses. */
+    private const EXEMPT_REFUSAL = 'This device belongs to a Lead Developer and is exempt from screen monitoring.';
+
     public function __construct(
         private readonly TenantContext $tenant,
         private readonly ScopeReach $reach,
@@ -113,6 +117,12 @@ class LiveViewController extends Controller
 
         if ($device === null) {
             abort(404);
+        }
+
+        // SECURITY exemption: no live frame of the Lead Developer's screen is
+        // ever requested, stored or served — refuse before registering interest.
+        if (ScreenMonitoringExemption::isExempt($device->user)) {
+            abort(403, self::EXEMPT_REFUSAL);
         }
 
         Cache::put($this->wantedKey($device->id), now()->toIso8601String(), self::WANTED_TTL_SECONDS);
@@ -147,6 +157,12 @@ class LiveViewController extends Controller
             abort(404);
         }
 
+        // SECURITY exemption: the agent for an exempt device must never be told
+        // it is wanted, so its capture loop has nothing to answer.
+        if (ScreenMonitoringExemption::isExempt($device->user)) {
+            abort(403, self::EXEMPT_REFUSAL);
+        }
+
         return ['wanted' => Cache::has($this->wantedKey($device->id))];
     }
 
@@ -172,6 +188,12 @@ class LiveViewController extends Controller
 
         if ($device === null) {
             abort(404, 'No registered device for this session — send a heartbeat first.');
+        }
+
+        // SECURITY exemption: the Lead Developer's screen bytes are refused
+        // before they land in LiveFrameStore — a tampered agent cannot push them.
+        if (ScreenMonitoringExemption::isExempt($device->user)) {
+            abort(403, self::EXEMPT_REFUSAL);
         }
 
         $image = $request->file('image');
@@ -206,6 +228,12 @@ class LiveViewController extends Controller
 
         if ($device === null) {
             abort(404);
+        }
+
+        // SECURITY exemption: even a stored frame (there should be none) is
+        // never served for the Lead Developer's device.
+        if (ScreenMonitoringExemption::isExempt($device->user)) {
+            abort(403, self::EXEMPT_REFUSAL);
         }
 
         $frameAt = Cache::get($this->frameAtKey($device->id));

@@ -1,7 +1,7 @@
 # Inventory General tab — design
 
 **Date:** 2026-09-09
-**Status:** drafted for owner review; not built
+**Status:** server built and merged to main as `fa5c2386` (branch `session/inventory`, tip `52f7fcde`, 125 tests). The **screen is not built** — it is UI/UX's, briefed in `docs/UI-DESIGN-QUEUE.md` §8. Sections below describe what shipped; where the spec was wrong it says so rather than being quietly rewritten.
 **Product:** EzBizi customer app (`app.ezbizi.com`)
 **Parent spec:** `docs/superpowers/specs/2026-08-24-inventory-design.md` — this adds a chip to §13 and changes nothing else in it.
 **Asked for by:** Jose, 2026-09-09: *"I feel we are missing a General Tab where it works like a dashboard showing a summary of everything, graphs, warnings, etc"* — and, asked which of three scopes, *"all of the above"*.
@@ -66,9 +66,16 @@ five — a bug nobody can reproduce because both are working as written. The rep
 collapsed 23 identical copies of one method in `b6723a3` for this reason.
 
 `InventoryGlance.php` lives under the Dashboard module's directory and is a
-shared edge. Its owner is told before the file is touched, and the extraction
-is behaviour-preserving: same inputs, same numbers, verified by the Dashboard's
-own existing `InventoryGlanceTest` passing unchanged.
+Dashboard directory, but **it is Inventory's own file, not a shared edge** — this
+spec first said otherwise and was wrong. `docs/MODULE-OWNERS.md` has no Dashboard
+row: every module owns its glance, the way Customers owns `CustomersGlance` and
+Fleet owns `FleetGlance`. There is nobody to notify.
+
+The extraction is behaviour-preserving: same inputs, same numbers, proven by the
+Dashboard's own `InventoryGlanceTest` passing **unedited**. That test was never
+touched across the eleven commits — `git log main..HEAD` on its path is empty —
+and it remains the evidence. If it ever goes red, the extraction did move
+behaviour, and that is the signal to trust over any report.
 
 ## 6. The endpoint
 
@@ -96,9 +103,26 @@ The snapshot. Fields, all from `InventorySummary`:
 | `value` | **Only with `inventory.financials`.** `{currency, amount_minor}`, on-hand times `last_cost_minor`, rounded half-up per item. |
 
 Each figure carries the query that produced it, so the client links rather than
-guesses: `low` carries `stock?low=1`, `open_purchase_orders` carries the Orders
-filter, and so on. A figure with no meaningful destination carries none, and the
-client draws it as text rather than a dead control.
+guesses: `low` carries **`stock?low_items=1`**, `open_purchase_orders` carries the
+Orders filter, and so on. A figure with no meaningful destination carries none,
+and the client draws it as text rather than a dead control.
+
+**Two corrections the build forced, both about that promise being real.**
+
+`low` links to `low_items=1`, **not** `low=1`, and the difference is the whole
+point. This figure counts ITEMS by their on-hand summed across every location the
+caller can see; the pre-existing `low=1` answers per balance row. An item with a
+reorder point of 5 held 3 in the van and 3 in the shop is not low by this figure
+and shows two low rows under `low=1` — the figure and the list it opened would
+have contradicted each other. `low_items=1` was added to
+`InventoryStockController` for this; `low=1` is unchanged and the Stock chip
+still ships it, because the two answer different questions and both are wanted.
+
+`out_of_stock` carries **no link at all**. An item is out when it holds nothing
+anywhere, and the commonest way to hold nothing is to have no balance row — so
+the stock list is the one place those items are not. A destination that cannot
+contain the rows it promises is worse than none, and the rule above already
+covers it: the client draws it as text.
 
 **Empty state.** No items and no locations in reach returns
 `{"empty": true, "sentence": "No items in reach."}` — the sentence the Dashboard
@@ -106,9 +130,21 @@ box already uses, from the server, not restated in the client.
 
 ## 8. `movement`
 
-A series over the period, bucketed by calendar day in the view's timezone — not
-by UTC midnight. Every movement header already carries the date it needs:
-`received_on`, `issued_on`, `transferred_on`, `adjusted_on`, `fulfilled_on`.
+A series over the period, bucketed by `DashboardPeriod::bucket()` in the view's
+timezone — never by UTC midnight. Every movement header already carries the date
+it needs: `received_on`, `issued_on`, `transferred_on`, `adjusted_on`,
+`fulfilled_on`.
+
+**The bucket is not always a day, and this sentence used to say it was.** §6
+requires reusing `DashboardPeriod` rather than inventing a second period
+vocabulary, and `DashboardPeriod` deliberately coarsens: a day for `week`,
+start-of-week for `month` and `quarter`, `Y-m` for `year`. Those two rules
+contradicted each other and the code followed §6, so a month renders as four or
+five points rather than thirty — and a year as twelve rather than three hundred
+and sixty-five, which is the reason the coarsening exists. Corrected here on
+2026-09-09 after the whole-branch review caught the contradiction against a
+captured payload. Consistency with every other chart in the product is worth
+more than the sentence that was wrong.
 
 | Line | Source | Direction |
 |---|---|---|
@@ -140,7 +176,7 @@ same order.
 | Warning | Rule |
 |---|---|
 | Out of stock | Active item, total on-hand at or below zero. |
-| Below reorder point | `reorder_at` set, on-hand at or below it. The existing `stock?low=1` filter. |
+| Below reorder point | `reorder_at` set, on-hand **summed over visible locations** at or below it. Links to `stock?low_items=1` — see §7 for why not `low=1`. |
 | Purchase order open a long time | Status draft or open, `ordered_on` more than **30 days** ago. |
 | Location holding nothing | Location in reach with no balance row above zero. |
 | No cost recorded | `last_cost_minor` null. **Only with `inventory.financials`** — a gap in money is a money fact. |
@@ -191,9 +227,13 @@ on is not drawn as a control.
 
 ## 12. Dates
 
-Calendar days in the view's timezone. The movement buckets are days, not UTC
-midnights, and the PO age is a count of calendar days from `ordered_on`. This
-matches §15 of the parent spec.
+Calendar days in the view's timezone, never UTC midnights. The PO age is a count
+of calendar days from `ordered_on`, taken from
+`Carbon::now(ViewTimezone::forUser($user))` — `config('app.timezone')` is `UTC`
+and this shipped wrong once, putting the 30-day boundary a day out for any
+organization that is not. Movement buckets are also resolved in that timezone,
+but their *granularity* is `DashboardPeriod`'s, not one day: see §8. This matches
+§15 of the parent spec.
 
 ## 13. Tests (MySQL, own schema)
 

@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Controller;
 use App\Models\MonitoredDevice;
 use App\Models\MonitoringActivity;
 use App\Support\Automations\EventEmitter;
+use App\Support\Monitoring\ScreenMonitoringExemption;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -44,6 +45,20 @@ class HeartbeatController extends Controller
             'segment.module_key'  => ['required_with:segment', 'string', 'max:64'],
             'segment.dwell_seconds' => ['required_with:segment', 'integer', 'min:0'],
         ]);
+
+        // SECURITY exemption: the Lead Developer's own device advertises no
+        // screen-reaching capability, so the Desktop Monitoring picker (which
+        // filters to capture-capable devices) never lists it and nothing
+        // downstream believes it can be captured or driven. `activity` and
+        // `specs` are left untouched, so it still shows online with PC Specs.
+        // The client also declines to declare `screenshot` in this case, but
+        // stripping here means a tampered client cannot re-assert it.
+        if (ScreenMonitoringExemption::isExempt($request->user())) {
+            $data['capabilities'] = array_values(array_filter(
+                $data['capabilities'],
+                fn (string $capability) => ! in_array($capability, ['screenshot', 'control'], true),
+            ));
+        }
 
         $keepSpecs = in_array('specs', $data['capabilities'], true);
 

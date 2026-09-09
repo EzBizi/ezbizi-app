@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/phone_call_service.dart';
 
 /// Whether you are taking calls, from anywhere in the app.
 ///
@@ -39,11 +40,53 @@ class _AvailabilityButtonState extends State<AvailabilityButton> {
   bool _busy = false;
   String _state = 'registered';
 
+  /// The desk, not a timer.
+  ///
+  /// This button used to read presence once in initState and never again, and
+  /// it is mounted for the whole session — so the moment anything else changed
+  /// presence, the icon and the truth came apart and stayed apart. Taking a
+  /// call changes it, so that was every call.
+  ///
+  /// Listening to the desk rather than polling means it is right in the same
+  /// frame the call starts and ends, and there is no interval during which it
+  /// is knowingly wrong.
+  late final PhoneCallService _service = PhoneCallService.current;
+
   @override
   void initState() {
     super.initState();
+    _service.addListener(_deskChanged);
     _load();
   }
+
+  @override
+  void dispose() {
+    _service.removeListener(_deskChanged);
+    super.dispose();
+  }
+
+  /// A call started or ended.
+  ///
+  /// Refetched rather than assumed when it ENDS, because the server is what
+  /// decides what somebody goes back to — the desk asked for `registered`, and
+  /// whether that took is the server's answer, not ours.
+  void _deskChanged() {
+    if (!mounted) return;
+
+    final onCall = _service.onCall;
+    if (onCall == _wasOnCall) return;
+    _wasOnCall = onCall;
+
+    if (onCall) {
+      setState(() {});
+
+      return;
+    }
+
+    _load();
+  }
+
+  bool _wasOnCall = false;
 
   Future<void> _load() async {
     final response = await widget.api.get('/phone/presence/me');
@@ -86,7 +129,12 @@ class _AvailabilityButtonState extends State<AvailabilityButton> {
 
     final theme = Theme.of(context);
     final away = _state == 'dnd';
-    final onCall = _state == 'on_call';
+
+    // The desk first: it knows a call has started before the server has been
+    // told, and it knows one has ended before the refetch lands. The server's
+    // own `on_call` is still honoured for a call somebody is on from ANOTHER
+    // device on the same account.
+    final onCall = _service.onCall || _state == 'on_call';
 
     return IconButton(
       onPressed: _busy || onCall ? null : _toggle,

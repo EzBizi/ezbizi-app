@@ -372,9 +372,19 @@ final class FakeTwilioGateway implements TwilioGateway
         $this->record(__FUNCTION__, [$connection->id, $incomingSid]);
     }
 
-    public function accessToken(PhoneConnection $connection, string $identity): string
+    public function createPushCredential(
+        PhoneConnection $connection,
+        string $platform,
+        array $material,
+    ): string {
+        $this->record(__FUNCTION__, [$connection->id, $platform, array_keys($material)]);
+
+        return 'CR'.substr(md5($connection->id.$platform), 0, 32);
+    }
+
+    public function accessToken(PhoneConnection $connection, string $identity, ?string $platform = null): string
     {
-        $this->record(__FUNCTION__, [$connection->id, $identity]);
+        $this->record(__FUNCTION__, [$connection->id, $identity, $platform]);
 
         return 'fake-access-token.'.$identity.'.'.$connection->id;
     }
