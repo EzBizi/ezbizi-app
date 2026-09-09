@@ -48,6 +48,7 @@ use App\Http\Controllers\Api\MetaCallbacksController;
 use App\Http\Controllers\Api\MicrosoftMailAuthController;
 use App\Http\Controllers\Api\Monitoring\CamerasController as MonitoringCamerasController;
 use App\Http\Controllers\Api\Monitoring\DevicesController as MonitoringDevicesController;
+use App\Http\Controllers\Api\Monitoring\FloorPlansController as MonitoringFloorPlansController;
 use App\Http\Controllers\Api\Monitoring\HeartbeatController as MonitoringHeartbeatController;
 use App\Http\Controllers\Api\Monitoring\LiveViewController as MonitoringLiveViewController;
 use App\Http\Controllers\Api\Monitoring\RemoteControlController as MonitoringRemoteControlController;
@@ -1542,6 +1543,15 @@ Route::prefix('v1')
         Route::post('monitoring/cameras', [MonitoringCamerasController::class, 'store']);
         Route::patch('monitoring/cameras/{id}', [MonitoringCamerasController::class, 'update']);
         Route::delete('monitoring/cameras/{id}', [MonitoringCamerasController::class, 'destroy']);
+
+        // ── Monitoring: floor plans, the General tab's read side (2026-09-09-monitoring-general-map, Task 3) ──
+        //
+        // A manager opening the map IS navigation, so both reads stay in THIS
+        // idle-bearing group next to the cameras above. The write side
+        // (POST/PUT/DELETE) lands in Task 4. `index` is scoped by ScopeReach,
+        // `show` §3-scoped with a manual find + 404 — see FloorPlansController.
+        Route::get('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'index']);
+        Route::get('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'show']);
 
         // Changing it while signed in. Needs the current password: a session
         // proves somebody sat down at an unlocked laptop, not that they are the
