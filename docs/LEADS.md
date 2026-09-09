@@ -239,6 +239,30 @@ producing account (a lead in 30 days) every 5 min and its conversations every
 10; a quiet account every 30 min, conversations never; a connection under 30
 minutes old at once. About 11,800 operations a day at 25 producing + 20 quiet.
 
+**Adopted on the box 2026-09-09 13:50 UTC**, once 0.0.0173 (e04ee987) was live:
+`leads:adopt-manager-clients` connected 23 (Bucks County via 3747134697, the
+other 22 via 4051729356); 46 connected Google Ads rows, 23 read through a
+manager. The full re-read (`ezbizi:sync-leads --days=3650`) followed, 13:48
+to 14:20 UTC: leads 23,918 -> 40,469 (16,550 of the new ones on 19 of the 23
+adopted accounts), conversations 65,002 after the read; both numbers Jose
+had found missing against a1tools (646-547-6829, 610-406-7510) present. One
+connection failed: the seeded demo row DEMO-555-0100-01, which has no grant.
+146-421-7121 is marked broken by the same run.
+
+**Thumbtack, same day, two faults found from the box.** (1) A specimen from
+`ezbizi:thumbtack-test-lead` now authenticates and reaches the lead code, then
+`GET /v4/negotiations/{id}` 404s: Thumbtack's own text says specimen ids
+"will not refer to any real entities". `d25c935d` files the lead from the
+event body and fetches only when the body is thin, which also removes a
+lost-lead path for real enquiries. (2) Jose's connect at 12:16 made TWELVE
+rows (one per business) all carrying one token pair; Thumbtack rotates the
+refresh token per use, one row rotated it at 13:32, the other eleven replayed
+the spent one and the family was revoked by 13:37. `12870b19` writes the
+rotated pair to every row holding the spent one, under a lock. Nothing repairs
+the dead tokens: **Jose reconnects Thumbtack once, after 12870b19 is live**,
+never before. Webhook delivery does not need the token, so new enquiries still
+store meanwhile; threads and replies do not.
+
 ## 7 · Compliance
 
 `www/google-ads-api/` is written for Google's reviewers and must stay true to
