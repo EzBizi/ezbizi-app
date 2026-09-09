@@ -22,6 +22,31 @@ live in `docs/previews/`. Jose answers by number.
 
 ## Settled rules
 
+**The danger is not the error. It is that the artefact looks finished.**
+
+Training's, 2026-09-09, drawing three of that day's findings into one shape. Each is a
+different medium and the same failure — **the thing that hides the mistake is the very thing
+that signals care**:
+
+- **A wrong reason survives review**, because it reads as considered. No reason invites the next
+  reader to work it out; a wrong one hands them an argument, and they fix working code to match
+  it.
+- **A correction appended to a note leaves the false summary in play.** The body is right, the
+  one line a reader sees at recall is not, and nothing looks unfinished.
+- **A true sentence resting on an unstated dependency reads as settled.** *"This organization
+  has no roles yet"* is correct only while roles are org-wide; the day one gains a franchise
+  dimension it is false and **nothing fails** — no test, no analyzer, no reader who could tell.
+
+> **So the review question is not "is this right?" but "what would this look like if it were
+> wrong?"** In all three cases: exactly the same. A wrong sentence at least looks wrong to
+> somebody reading the file; a correct-by-dependency one looks like a decision already taken.
+>
+> The practice, in all three media: **write down what the thing depends on, beside it.** The
+> reason under a decision, the current fact at the TOP of a note, the dependency beside a
+> deliberate world-claim. Not for the author — for the reader who has no way to tell a
+> considered artefact from a finished-looking one.
+
+
 **A preview file is the SCREEN, not a document about the screen.** Jose, 2026-09-02:
 *"you did the screen previews wrong, I need to see the actual UI in the html."* The
 Suggestions galleries opened with about eighty lines of reasoning — a locked/found/ask
