@@ -8,6 +8,8 @@ use App\Models\InventoryLocation;
 use App\Models\InventoryPurchaseOrder;
 use App\Models\User;
 use App\Support\Scoping\ViewScope;
+use App\Support\Time\ViewTimezone;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 /**
@@ -125,8 +127,11 @@ final class InventorySummary
             ])
             // A null ordered_on cannot be aged, so it is excluded rather than
             // treated as today — which would make every undated order fine.
+            // The cutoff is a calendar day in the VIEW's timezone (spec), not
+            // app.timezone (UTC) — near midnight UTC those disagree about
+            // which day it is. Match DashboardPeriod::timezoneFor().
             ->whereNotNull('ordered_on')
-            ->whereDate('ordered_on', '<', now()->subDays(30)->toDateString())
+            ->whereDate('ordered_on', '<', Carbon::now(ViewTimezone::forUser($user))->subDays(30)->toDateString())
             ->count();
 
         $rows[] = [

@@ -6,7 +6,9 @@ use App\Models\InventoryBalance;
 use App\Models\InventoryItem;
 use App\Models\InventoryLocation;
 use App\Support\Inventory\InventoryItemStatus;
+use App\Support\Settings\SettingsResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -17,6 +19,12 @@ class InventorySummaryApiTest extends TestCase
 {
     use BuildsTenants;
     use RefreshDatabase;
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
 
     public function test_health_counts_what_is_in_reach(): void
     {
@@ -175,6 +183,131 @@ class InventorySummaryApiTest extends TestCase
         );
 
         $this->assertNotContains('no_cost_recorded', $keys);
+    }
+
+    public function test_the_30_day_cutoff_is_a_calendar_day_in_the_view_timezone(): void
+    {
+        // 02:00 UTC on the 9th is still 22:00 on the 8th in New York. A bare
+        // now() (app.timezone is UTC — config/app.php) reads "today" as the
+        // 9th; the view timezone reads it as the 8th. The two disagree about
+        // which purchase orders are over 30 days open.
+        Carbon::setTestNow(Carbon::parse('2026-09-09 02:00:00', 'UTC'));
+
+        $tenant = $this->provisionTenant('Alpha');
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            app(SettingsResolver::class)->set('timezone', $tenant['org'], 'America/New_York');
+
+            $vendor = \App\Models\InventoryVendor::factory()->create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+            ]);
+
+            // Exactly 30 calendar days before "today" in New York
+            // (2026-09-08). The cutoff is strict ('<'), so an order exactly
+            // 30 days old is not yet "more than 30 days" and must be
+            // excluded — but a UTC-dated "today" of the 9th would wrongly
+            // include it.
+            \App\Models\InventoryPurchaseOrder::create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+                'vendor_id' => $vendor->id,
+                'number' => 'PO-BOUNDARY',
+                'status' => \App\Support\Inventory\InventoryPurchaseOrderStatus::Open,
+                'ordered_on' => '2026-08-09',
+            ]);
+
+            // Control: one calendar day further back — over 30 days under
+            // either timezone's "today" — proves the query still fires.
+            \App\Models\InventoryPurchaseOrder::create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+                'vendor_id' => $vendor->id,
+                'number' => 'PO-OVER',
+                'status' => \App\Support\Inventory\InventoryPurchaseOrderStatus::Open,
+                'ordered_on' => '2026-08-08',
+            ]);
+        });
+
+        $warnings = $this->signedInAs($boss)
+            ->getJson('/api/v1/inventory/summary')
+            ->assertOk()
+            ->json('warnings');
+
+        $byKey = array_column($warnings, null, 'key');
+
+        $this->assertArrayHasKey('purchase_order_open_a_long_time', $byKey);
+        $this->assertSame(1, $byKey['purchase_order_open_a_long_time']['count']);
+    }
+
+    public function test_no_cost_recorded_is_shown_with_financials(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.financials']);
+
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            InventoryItem::factory()->create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+                'status' => InventoryItemStatus::Active,
+                'last_cost_minor' => null,
+            ]);
+        });
+
+        $warnings = $this->signedInAs($boss)
+            ->getJson('/api/v1/inventory/summary')
+            ->assertOk()
+            ->json('warnings');
+
+        $byKey = array_column($warnings, null, 'key');
+
+        $this->assertArrayHasKey('no_cost_recorded', $byKey);
+        $this->assertSame(1, $byKey['no_cost_recorded']['count']);
+        $this->assertSame('1 item has no cost recorded.', $byKey['no_cost_recorded']['sentence']);
+    }
+
+    public function test_location_holding_nothing_reports_only_the_empty_one(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            // Empty: no balance rows at all.
+            InventoryLocation::factory()->create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+            ]);
+
+            // Holding stock — must NOT be counted, proving the clause
+            // discriminates rather than always firing.
+            $holding = InventoryLocation::factory()->create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+            ]);
+            $item = InventoryItem::factory()->create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+                'status' => InventoryItemStatus::Active,
+            ]);
+            InventoryBalance::create([
+                'organization_id' => $tenant['org']->id,
+                'item_id' => $item->id,
+                'location_id' => $holding->id,
+                'qty_on_hand' => '4.000',
+            ]);
+        });
+
+        $warnings = $this->signedInAs($boss)
+            ->getJson('/api/v1/inventory/summary')
+            ->assertOk()
+            ->json('warnings');
+
+        $byKey = array_column($warnings, null, 'key');
+
+        $this->assertArrayHasKey('location_holding_nothing', $byKey);
+        $this->assertSame(1, $byKey['location_holding_nothing']['count']);
+        $this->assertSame('1 location is holding nothing.', $byKey['location_holding_nothing']['sentence']);
     }
 
     private function seedOneItemOnHand(array $tenant, string $qty, ?string $reorderAt, ?int $lastCostMinor): void
