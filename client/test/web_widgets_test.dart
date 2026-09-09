@@ -22,6 +22,7 @@ void main() {
     bool own = false,
     Map<String, Object?>? style,
     String? brand,
+    bool twoSites = false,
   }) async {
     final client = MockClient((request) async {
       // Matched on the WHOLE path. ApiClient prefixes /api/v1, and a suffix
@@ -69,9 +70,20 @@ void main() {
               'company': {'id': 'c1', 'name': 'A-1'},
               'franchise': null,
             },
+            if (twoSites)
+              {
+                'id': 'site-2',
+                'host': 'nj.a-1chimney.com',
+                'label': null,
+                'is_primary': false,
+                'public_key': 'pk_y',
+                'company': {'id': 'c1', 'name': 'A-1'},
+                'franchise': null,
+              },
           ],
         };
-      } else if (path == '/api/v1/web/sites/site-1/widgets') {
+      } else if (path == '/api/v1/web/sites/site-1/widgets' ||
+          path == '/api/v1/web/sites/site-2/widgets') {
         body = {
           'own': own,
           'config': {
@@ -414,6 +426,95 @@ void main() {
     );
 
     expect(painted, isNotEmpty, reason: 'The preview never took the new accent.');
+  });
+
+  /// The 260 and the 360 were my guesses about somebody else's monitor.
+  testWidgets('both panes can be dragged wider and narrower', (tester) async {
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+
+    double widthOf(Finder f) => tester.getSize(f).width;
+
+    final listHandle = find.byTooltip('Drag to resize the list');
+    final previewHandle = find.byTooltip('Drag to resize the preview');
+
+    expect(listHandle, findsOneWidget);
+    expect(previewHandle, findsOneWidget);
+
+    // The site list, dragged right, gets wider.
+    final list = find.ancestor(
+      of: find.text('a-1chimney.com'),
+      matching: find.byType(SizedBox),
+    );
+    final listBefore = widthOf(list.first);
+
+    await tester.drag(listHandle, const Offset(60, 0));
+    await tester.pumpAndSettle();
+
+    expect(widthOf(list.first), greaterThan(listBefore));
+
+    // The preview, dragged LEFT, gets wider — the sign flips because the pane
+    // is on the other side of its handle.
+    final preview = find.ancestor(
+      of: find.text('Preview'),
+      matching: find.byType(SizedBox),
+    );
+    final previewBefore = widthOf(preview.first);
+
+    await tester.drag(previewHandle, const Offset(-80, 0));
+    await tester.pumpAndSettle();
+
+    expect(widthOf(preview.first), greaterThan(previewBefore));
+  });
+
+  /// A pane dragged to nothing is not a smaller pane, it is a lost one, and the
+  /// way back is a hairline somebody has to find.
+  testWidgets('a pane cannot be dragged away entirely', (tester) async {
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+
+    // Shove both handles far past any sane width.
+    await tester.drag(
+        find.byTooltip('Drag to resize the list'), const Offset(-2000, 0));
+    await tester.pumpAndSettle();
+    await tester.drag(
+        find.byTooltip('Drag to resize the preview'), const Offset(2000, 0));
+    await tester.pumpAndSettle();
+
+    // Both panes are still there and still usable.
+    expect(find.text('a-1chimney.com'), findsOneWidget);
+    expect(find.text('Preview'), findsOneWidget);
+
+    final list = find.ancestor(
+      of: find.text('a-1chimney.com'),
+      matching: find.byType(SizedBox),
+    );
+
+    expect(tester.getSize(list.first).width, greaterThanOrEqualTo(180.0));
+  });
+
+  /// The editor is keyed by site id, so anything held inside it is thrown away
+  /// on every click. A width that snapped back would be worse than none.
+  testWidgets('a resized preview survives switching website', (tester) async {
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      twoSites: true,
+    );
+
+    final preview = find.ancestor(
+      of: find.text('Preview'),
+      matching: find.byType(SizedBox),
+    );
+
+    await tester.drag(
+        find.byTooltip('Drag to resize the preview'), const Offset(-90, 0));
+    await tester.pumpAndSettle();
+
+    final resized = tester.getSize(preview.first).width;
+
+    await tester.tap(find.text('nj.a-1chimney.com'));
+    await tester.pumpAndSettle();
+
+    expect(tester.getSize(preview.first).width, resized);
   });
 
   testWidgets('view alone can look and cannot change', (tester) async {

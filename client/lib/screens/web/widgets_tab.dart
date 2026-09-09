@@ -32,6 +32,14 @@ class _WidgetsTabState extends State<WidgetsTab> {
   List<Map<String, dynamic>> _sites = const [];
   String? _selected;
 
+  /// Pane widths, held HERE rather than in the editor.
+  ///
+  /// The editor is keyed by site id, so its state is thrown away every time
+  /// somebody clicks a different website — a width kept there would snap back
+  /// to my guess on every click, which is worse than not being draggable.
+  double _listWidth = 260;
+  double _previewWidth = 360;
+
   @override
   void initState() {
     super.initState();
@@ -120,19 +128,134 @@ class _WidgetsTabState extends State<WidgetsTab> {
             api: widget.api,
             siteId: _selected!,
             canEdit: _canEdit,
+            previewWidth: _previewWidth,
+            onPreviewDelta: (delta) => setState(
+              () => _previewWidth = (_previewWidth - delta).clamp(280.0, 640.0),
+            ),
           );
 
     if (!wide) {
       return _selected == null ? list : detail;
     }
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(width: 260, child: list),
-        const VerticalDivider(width: 1),
-        Expanded(child: detail),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(width: _listWidth, child: list),
+            _DragHandle(
+              tooltip: 'Drag to resize the list',
+              onDelta: (delta) => setState(() {
+                // 180 still shows a subdomain without truncating it; past 460
+                // the list is wider than the longest host anybody registers and
+                // the space is simply taken from the editor.
+                _listWidth = (_listWidth + delta).clamp(180.0, 460.0);
+              }),
+            ),
+            Expanded(
+              child: _selected == null
+                  ? detail
+                  : _WidgetEditor(
+                      key: ValueKey(_selected),
+                      api: widget.api,
+                      siteId: _selected!,
+                      canEdit: _canEdit,
+                      previewWidth: _previewWidth,
+                      onPreviewDelta: (delta) => setState(() {
+                        // Dragging LEFT widens the preview, so the sign flips.
+                        // The upper bound leaves the form its 560: below that
+                        // the question rows start wrapping, and a form that
+                        // wraps to make room for a preview of itself is the
+                        // wrong trade.
+                        final room = constraints.maxWidth - _listWidth - 560;
+                        final most = room < 300.0 ? 300.0 : room;
+                        _previewWidth =
+                            (_previewWidth - delta).clamp(280.0, most);
+                      }),
+                    ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// The line between two panes, which you can also pull.
+///
+/// ── Why this is not a plain [VerticalDivider] ──
+///
+/// The widths on this screen were mine: 260 for the site list, 360 for the
+/// preview. Both are guesses about somebody else's monitor, their site count
+/// and whether they are reading the form or the preview at that moment — and a
+/// guess about all three at once is a guess that is wrong for most people.
+/// Pulling the line is how they say which.
+///
+/// ── What it refuses to do ──
+///
+/// It clamps rather than letting a pane be dragged to nothing. A pane collapsed
+/// to two pixels is not a smaller pane, it is a lost one, and the way back is
+/// a hairline somebody has to find. The caller supplies the bounds because only
+/// it knows what its own content stops working at.
+///
+/// ── The invisible part that matters most ──
+///
+/// The hit area is wider than the line. A one-pixel divider is a one-pixel
+/// target, which is a fight with the mouse rather than a control; the divider
+/// stays a hairline and the grab area around it is twelve.
+class _DragHandle extends StatefulWidget {
+  const _DragHandle({
+    required this.onDelta,
+    this.tooltip = 'Drag to resize',
+  });
+
+  /// Pixels the pointer moved since the last frame, positive to the right.
+  final void Function(double delta) onDelta;
+
+  final String tooltip;
+
+  @override
+  State<_DragHandle> createState() => _DragHandleState();
+}
+
+class _DragHandleState extends State<_DragHandle> {
+  bool _hovering = false;
+  bool _dragging = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final lit = _hovering || _dragging;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeLeftRight,
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        // Opaque, so the twelve pixels of padding are draggable rather than
+        // only the hairline drawn inside them.
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragStart: (_) => setState(() => _dragging = true),
+        onHorizontalDragEnd: (_) => setState(() => _dragging = false),
+        onHorizontalDragCancel: () => setState(() => _dragging = false),
+        onHorizontalDragUpdate: (details) => widget.onDelta(details.delta.dx),
+        child: Tooltip(
+          message: widget.tooltip,
+          waitDuration: const Duration(milliseconds: 700),
+          child: SizedBox(
+            width: 12,
+            child: Center(
+              child: Container(
+                width: lit ? 3 : 1,
+                color: lit
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.outlineVariant,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -144,11 +267,18 @@ class _WidgetEditor extends StatefulWidget {
     required this.api,
     required this.siteId,
     required this.canEdit,
+    required this.previewWidth,
+    required this.onPreviewDelta,
   });
 
   final ApiClient api;
   final String siteId;
   final bool canEdit;
+
+  /// Owned by the parent, because this widget is rebuilt from scratch whenever
+  /// a different website is selected.
+  final double previewWidth;
+  final void Function(double delta) onPreviewDelta;
 
   @override
   State<_WidgetEditor> createState() => _WidgetEditorState();
@@ -428,8 +558,11 @@ class _WidgetEditorState extends State<_WidgetEditor> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(child: formPane),
-            const VerticalDivider(width: 1),
-            SizedBox(width: 360, child: _preview(theme)),
+            _DragHandle(
+              tooltip: 'Drag to resize the preview',
+              onDelta: widget.onPreviewDelta,
+            ),
+            SizedBox(width: widget.previewWidth, child: _preview(theme)),
           ],
         );
       },
@@ -858,6 +991,11 @@ class _WidgetEditorState extends State<_WidgetEditor> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: DropdownButtonFormField<String>(
+        // Sizes to its slot and ellipsises, rather than to its longest option.
+        // Without it the button keeps its intrinsic width and overflows the row
+        // by 13px once a pane is dragged narrow — which nothing could do until
+        // the panes became draggable.
+        isExpanded: true,
         initialValue: options.contains(value) ? value : options.first,
         decoration: InputDecoration(labelText: label, isDense: true),
         items: [
@@ -924,6 +1062,9 @@ class _FieldList extends StatelessWidget {
                 Expanded(
                   flex: 2,
                   child: DropdownButtonFormField<String>(
+                    // See the note on the other one: sizes to its slot, so a
+                    // narrowed pane ellipsises instead of overflowing.
+                    isExpanded: true,
                     initialValue: types.contains(fields[i]['type'])
                         ? '${fields[i]['type']}'
                         : types.first,
