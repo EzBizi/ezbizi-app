@@ -166,4 +166,101 @@ class SchedulingAvailabilityTest extends TestCase
             ->getJson('/api/v1/scheduling/availability?zip=75201')
             ->assertForbidden();
     }
+
+    /**
+     * A city is a second way to find an area, and the whole reason it exists.
+     * Somebody on the phone knows "Plano", not the zip.
+     */
+    public function test_an_area_can_be_found_by_a_city_on_one_of_its_zips(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $area = $this->dallas($tenant);
+
+        $this->signedInAs($tenant['admin'])
+            ->putJson("/api/v1/scheduling/areas/{$area->id}/zips", [
+                'zips' => [
+                    ['zip' => '75201', 'city' => 'Dallas'],
+                    ['zip' => '75024', 'city' => 'Plano'],
+                ],
+            ])->assertOk();
+
+        $body = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability?city=Plano')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame('Dallas', $body['matched']['area_name']);
+        $this->assertSame('city', $body['matched']['by']);
+    }
+
+    /** The suggest box offers all three kinds, and says what each one is. */
+    public function test_suggest_offers_areas_cities_and_zips(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $area = $this->dallas($tenant);
+
+        $this->signedInAs($tenant['admin'])
+            ->putJson("/api/v1/scheduling/areas/{$area->id}/zips", [
+                'zips' => [['zip' => '75201', 'city' => 'Dallas']],
+            ])->assertOk();
+
+        $rows = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/suggest?q=Dal')
+            ->assertOk()
+            ->json('data');
+
+        $types = collect($rows)->pluck('type')->all();
+
+        $this->assertContains('area', $types, 'The area named Dallas should be offered.');
+        $this->assertContains('city', $types, 'The city Dallas should be offered separately.');
+
+        // The area and the city are DIFFERENT answers with the same label —
+        // which is exactly why this suggests instead of guessing.
+        $city = collect($rows)->firstWhere('type', 'city');
+        $this->assertSame('Dallas', $city['label']);
+        $this->assertStringContainsString('1 zip', $city['detail']);
+    }
+
+    public function test_suggest_matches_a_zip_by_prefix(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $area = $this->dallas($tenant);
+
+        $this->signedInAs($tenant['admin'])
+            ->putJson("/api/v1/scheduling/areas/{$area->id}/zips", [
+                'zips' => [['zip' => '75201', 'city' => 'Dallas']],
+            ])->assertOk();
+
+        $rows = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/suggest?q=752')
+            ->assertOk()
+            ->json('data');
+
+        $zip = collect($rows)->firstWhere('type', 'zip');
+
+        $this->assertNotNull($zip, 'A zip prefix should suggest the zip.');
+        $this->assertSame('75201', $zip['label']);
+        $this->assertSame($area->id, $zip['area_id']);
+    }
+
+    /** A suggestion must never name a place in another organization. */
+    public function test_suggest_never_leaves_the_organization(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $beta = $this->provisionTenant('Beta', 'beta@example.test');
+
+        $betaArea = $this->dallas($beta);
+
+        $this->signedInAs($beta['admin'])
+            ->putJson("/api/v1/scheduling/areas/{$betaArea->id}/zips", [
+                'zips' => [['zip' => '75201', 'city' => 'Dallas']],
+            ])->assertOk();
+
+        $rows = $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/scheduling/suggest?q=Dal')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame([], $rows, "Alpha must not see Beta's areas or cities.");
+    }
 }

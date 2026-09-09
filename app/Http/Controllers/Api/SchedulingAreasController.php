@@ -204,13 +204,19 @@ class SchedulingAreasController extends Controller
 
         $data = $request->validate([
             'zips' => ['present', 'array'],
-            'zips.*' => ['required', 'string', 'max:16'],
+            // Two accepted shapes on purpose. An entry is either a bare zip
+            // string or `{zip, city}` — the desktop build already shipped
+            // sending strings, and a client older than this deploy must not
+            // start failing the moment the server learns about cities.
+            'zips.*' => ['required'],
+            'zips.*.zip' => ['sometimes', 'string', 'max:16'],
+            'zips.*.city' => ['sometimes', 'nullable', 'string', 'max:120'],
         ]);
 
-        $wanted = collect($data['zips'])->map(fn ($z) => trim($z))->unique()->values();
+        $wanted = $this->readZips($data['zips']);
 
         $clash = ServiceAreaZip::where('franchise_id', $row->franchise_id)
-            ->whereIn('zip', $wanted)
+            ->whereIn('zip', $wanted->keys())
             ->where('service_area_id', '!=', $row->id)
             ->with('serviceArea')
             ->first();
@@ -225,16 +231,48 @@ class SchedulingAreasController extends Controller
         DB::transaction(function () use ($row, $wanted) {
             ServiceAreaZip::where('service_area_id', $row->id)->delete();
 
-            foreach ($wanted as $zip) {
+            foreach ($wanted as $zip => $city) {
                 ServiceAreaZip::create([
                     'franchise_id' => $row->franchise_id,
                     'service_area_id' => $row->id,
-                    'zip' => $zip,
+                    'zip' => (string) $zip,
+                    'city' => $city,
                 ]);
             }
         });
 
         return response()->json(['data' => $this->detail($row->fresh(['slots', 'zips']))]);
+    }
+
+    /**
+     * The posted zip list as `zip => city|null`, keyed so a duplicate zip in
+     * one payload collapses rather than hitting the unique index.
+     *
+     * Accepts a bare string or `{zip, city}` per entry — see the validation
+     * above for why both.
+     *
+     * @param  array<int, mixed>  $entries
+     * @return \Illuminate\Support\Collection<string, string|null>
+     */
+    private function readZips(array $entries): \Illuminate\Support\Collection
+    {
+        $out = collect();
+
+        foreach ($entries as $entry) {
+            $zip = trim((string) (is_array($entry) ? ($entry['zip'] ?? '') : $entry));
+
+            if ($zip === '') {
+                continue;
+            }
+
+            $city = is_array($entry) ? trim((string) ($entry['city'] ?? '')) : '';
+
+            // Last one wins, so a re-send that adds a city to a zip already
+            // stored without one updates it rather than being ignored.
+            $out[$zip] = $city === '' ? null : $city;
+        }
+
+        return $out;
     }
 
     /**
@@ -291,7 +329,11 @@ class SchedulingAreasController extends Controller
             'id' => $area->id,
             'name' => $area->name,
             'franchise_id' => $area->franchise_id,
-            'zips' => $area->zips->pluck('zip')->sort()->values()->all(),
+            'zips' => $area->zips
+                ->sortBy('zip')
+                ->map(fn (ServiceAreaZip $z) => ['zip' => $z->zip, 'city' => $z->city])
+                ->values()
+                ->all(),
             'slots' => $area->slots
                 ->sortBy([['weekday', 'asc'], ['start_time', 'asc']])
                 ->map(fn (ServiceAreaSlot $s) => [

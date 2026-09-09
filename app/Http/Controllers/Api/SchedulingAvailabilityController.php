@@ -48,10 +48,20 @@ class SchedulingAvailabilityController extends Controller
             // not a uuid. `area_id` stays for the rail, which already knows the
             // id of the thing it just drew.
             'area_name' => ['nullable', 'string', 'max:191'],
+            // A city is a set of zips, which may span two areas. When it does,
+            // this returns the FIRST by name rather than pretending the city
+            // has one week — the suggest endpoint is what tells the caller a
+            // city is split before they get here, and it hands back an area_id
+            // when it is not.
+            'city' => ['nullable', 'string', 'max:120'],
             'week' => ['nullable', 'date_format:Y-m-d'],
         ]);
 
-        $searched = $data['zip'] ?? $data['area_name'] ?? $data['area_id'] ?? null;
+        $searched = $data['zip']
+            ?? $data['city']
+            ?? $data['area_name']
+            ?? $data['area_id']
+            ?? null;
 
         if ($searched === null) {
             throw ValidationException::withMessages([
@@ -66,6 +76,7 @@ class SchedulingAvailabilityController extends Controller
             ($data['area_id'] ?? null) !== null => ServiceArea::whereIn('franchise_id', $franchiseIds)
                 ->find($data['area_id']),
             ($data['zip'] ?? null) !== null => $this->areaForZip(trim((string) $data['zip']), $franchiseIds),
+            ($data['city'] ?? null) !== null => $this->areaForCity(trim((string) $data['city']), $franchiseIds),
             default => ServiceArea::whereIn('franchise_id', $franchiseIds)
                 ->where('name', trim((string) $data['area_name']))
                 ->first(),
@@ -106,6 +117,7 @@ class SchedulingAvailabilityController extends Controller
                     'by' => match (true) {
                         ($data['area_id'] ?? null) !== null => 'area',
                         ($data['zip'] ?? null) !== null => 'zip',
+                        ($data['city'] ?? null) !== null => 'city',
                         default => 'name',
                     },
                 ],
@@ -170,6 +182,32 @@ class SchedulingAvailabilityController extends Controller
             ->first();
 
         return $held?->serviceArea;
+    }
+
+    /**
+     * The area covering a city.
+     *
+     * A city is a set of zips and those zips can sit in two areas, so unlike
+     * the zip lookup this is NOT unambiguous by construction. It takes the
+     * first by area name, deterministically, and the suggest endpoint is what
+     * warns that a city is split before anybody picks it — a silent "first
+     * match" would otherwise show one area's week under a city name that
+     * covers two.
+     *
+     * @param  string[]  $franchiseIds
+     */
+    private function areaForCity(string $city, array $franchiseIds): ?ServiceArea
+    {
+        $ids = ServiceAreaZip::whereIn('franchise_id', $franchiseIds)
+            ->where('city', $city)
+            ->pluck('service_area_id')
+            ->unique();
+
+        if ($ids->isEmpty()) {
+            return null;
+        }
+
+        return ServiceArea::whereIn('id', $ids)->orderBy('name')->first();
     }
 
     /**

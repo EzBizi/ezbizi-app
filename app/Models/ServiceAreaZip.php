@@ -17,7 +17,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * A zip is not personal data here. It says where a franchise works, not where
  * anybody lives — the customer's own zip lives on Customer.
  */
-#[Fillable(['organization_id', 'franchise_id', 'service_area_id', 'zip'])]
+#[Fillable(['organization_id', 'franchise_id', 'service_area_id', 'zip', 'city'])]
 class ServiceAreaZip extends Model implements StatesRetention
 {
     public static function retention(): RetentionPolicy
