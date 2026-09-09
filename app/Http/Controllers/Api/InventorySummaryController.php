@@ -77,7 +77,9 @@ class InventorySummaryController extends Controller
             // Each figure carries the list that produced it, so the client links
             // rather than guessing. A figure with no entry here is drawn as text.
             'links' => [
-                'low' => 'stock?low=1',
+                // low_items, not low — see InventorySummary::warnings(). `out`
+                // has no entry at all: nothing on the stock list can be it.
+                'low' => 'stock?low_items=1',
                 'items' => 'items',
                 'locations' => 'locations',
                 'open_purchase_orders' => 'orders',

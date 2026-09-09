@@ -95,7 +95,9 @@ class InventorySummaryApiTest extends TestCase
             ->assertOk()
             ->json('health');
 
-        $this->assertSame('stock?low=1', $health['links']['low']);
+        // low_items, not low: the figure counts items by their total on hand,
+        // so the list it opens has to be filtered the same way.
+        $this->assertSame('stock?low_items=1', $health['links']['low']);
     }
 
     public function test_a_purchase_order_with_no_ordered_on_is_never_called_old(): void
@@ -168,12 +170,21 @@ class InventorySummaryApiTest extends TestCase
         $this->seedOneItemOnHand($tenant, qty: '0.000', reorderAt: '10.000', lastCostMinor: 250);
         $this->seedOneItemOnHand($tenant, qty: '2.000', reorderAt: '10.000', lastCostMinor: 250);
 
-        $keys = array_column(
-            $this->signedInAs($boss)->getJson('/api/v1/inventory/summary')->assertOk()->json('warnings'),
-            'key',
-        );
+        $warnings = $this->signedInAs($boss)
+            ->getJson('/api/v1/inventory/summary')
+            ->assertOk()
+            ->json('warnings');
 
-        $this->assertSame('out_of_stock', $keys[0]);
+        $this->assertSame('out_of_stock', array_column($warnings, 'key')[0]);
+
+        $byKey = array_column($warnings, null, 'key');
+
+        // No link, and the row beneath it proves that is a decision rather
+        // than a response that carries no links at all: an item with nothing
+        // anywhere usually has no balance row, and the stock list is over
+        // balance rows.
+        $this->assertArrayNotHasKey('link', $byKey['out_of_stock']);
+        $this->assertSame('stock?low_items=1', $byKey['below_reorder']['link']);
     }
 
     public function test_no_cost_recorded_is_withheld_without_financials(): void
@@ -336,7 +347,7 @@ class InventorySummaryApiTest extends TestCase
         $this->assertTrue($lines['transferred']['internal']);
     }
 
-    public function test_an_adjustment_downward_counts_as_out(): void
+    public function test_an_adjustment_downward_is_a_negative_adjustment(): void
     {
         $tenant = $this->provisionTenant('Alpha');
         $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
@@ -403,6 +414,182 @@ class InventorySummaryApiTest extends TestCase
         )->keyBy('key');
 
         $this->assertSame(8.0, array_sum($lines['out']['points']));
+    }
+
+    /**
+     * A receive: the only movement source whose line carries no item at all.
+     *
+     * `inventory_receive_lines` has receive_id, purchase_order_line_id and qty
+     * — the item is on the purchase-order LINE, one hop further out
+     * (database/migrations/2026_08_24_160000_create_inventory_tables.php:101-129).
+     * A receive hangs off a purchase order, so the fixture is vendor → order →
+     * order line → receive → receive line; there is no shorter way to make one.
+     *
+     * $item and $into are optional so the visibility test can build a receive
+     * that fails ONE of the two gates at a time.
+     */
+    private function seedOneReceiveToday(
+        array $tenant,
+        string $qty,
+        ?InventoryItem $item = null,
+        ?InventoryLocation $into = null,
+    ): void {
+        $this->inTenant($tenant['org'], function () use ($tenant, $qty, $item, $into) {
+            $into ??= InventoryLocation::factory()->create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+            ]);
+
+            $item ??= InventoryItem::factory()->create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+                'status' => InventoryItemStatus::Active,
+            ]);
+
+            $vendor = \App\Models\InventoryVendor::factory()->create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+            ]);
+
+            $order = \App\Models\InventoryPurchaseOrder::create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+                'vendor_id' => $vendor->id,
+                'number' => 'PO-'.uniqid(),
+                'status' => \App\Support\Inventory\InventoryPurchaseOrderStatus::Open,
+                'ordered_on' => now()->toDateString(),
+            ]);
+
+            $orderLine = \App\Models\InventoryPurchaseOrderLine::create([
+                'organization_id' => $tenant['org']->id,
+                'purchase_order_id' => $order->id,
+                'item_id' => $item->id,
+                'qty_ordered' => $qty,
+                'qty_received' => $qty,
+            ]);
+
+            $receive = \App\Models\InventoryReceive::create([
+                'organization_id' => $tenant['org']->id,
+                'purchase_order_id' => $order->id,
+                'location_id' => $into->id,
+                'received_on' => now()->toDateString(),
+            ]);
+
+            \App\Models\InventoryReceiveLine::create([
+                'organization_id' => $tenant['org']->id,
+                'receive_id' => $receive->id,
+                'purchase_order_line_id' => $orderLine->id,
+                'qty' => $qty,
+            ]);
+        });
+    }
+
+    public function test_a_receive_counts_as_in(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+
+        $this->seedOneReceiveToday($tenant, qty: '7.000');
+
+        $lines = collect(
+            $this->signedInAs($boss)->getJson('/api/v1/inventory/summary')->assertOk()->json('movement.lines')
+        )->keyBy('key');
+
+        // The figure, not its absence: seven received has to arrive as seven.
+        $this->assertSame(7.0, array_sum($lines['in']['points']));
+
+        // And on that line only — a receive is stock arriving, never leaving.
+        $this->assertSame(0.0, array_sum($lines['out']['points']));
+    }
+
+    /**
+     * Reach, tested where the join hops are.
+     *
+     * `received` reaches its item through the purchase-order line and its
+     * place through the receive, so there are two gates and either one alone
+     * lets a sibling company's stock through. The two foreign receives here
+     * fail one gate each: the first has their item in our shed, the second has
+     * our item in theirs. Neither may show, and the ours-only control proves
+     * the line can carry a number at all.
+     */
+    public function test_a_sibling_companys_receive_is_absent_from_movement(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $sibling = $this->inTenant($tenant['org'], fn () => \App\Models\Company::create([
+            'organization_id' => $tenant['org']->id,
+            'name' => 'Beta Co',
+            'is_active' => true,
+        ]));
+
+        $local = $this->userWithRole(
+            $tenant,
+            'Local',
+            ['inventory.view'],
+            onlyAt: $tenant['franchise'],
+        );
+
+        [$theirItem, $theirLocation, $ourItem, $ourLocation] = $this->inTenant(
+            $tenant['org'],
+            fn () => [
+                InventoryItem::factory()->create([
+                    'organization_id' => $tenant['org']->id,
+                    'company_id' => $sibling->id,
+                    'status' => InventoryItemStatus::Active,
+                ]),
+                InventoryLocation::factory()->create([
+                    'organization_id' => $tenant['org']->id,
+                    'company_id' => $sibling->id,
+                ]),
+                InventoryItem::factory()->create([
+                    'organization_id' => $tenant['org']->id,
+                    'company_id' => $tenant['company']->id,
+                    'status' => InventoryItemStatus::Active,
+                ]),
+                InventoryLocation::factory()->create([
+                    'organization_id' => $tenant['org']->id,
+                    'company_id' => $tenant['company']->id,
+                ]),
+            ],
+        );
+
+        $this->seedOneReceiveToday($tenant, qty: '7.000');
+        $this->seedOneReceiveToday($tenant, qty: '100.000', item: $theirItem, into: $ourLocation);
+        $this->seedOneReceiveToday($tenant, qty: '200.000', item: $ourItem, into: $theirLocation);
+
+        $lines = collect(
+            $this->signedInAs($local)->getJson('/api/v1/inventory/summary')->assertOk()->json('movement.lines')
+        )->keyBy('key');
+
+        $this->assertSame(7.0, array_sum($lines['in']['points']));
+
+        // Every line, not just `in`: 107, 207 or 307 anywhere in the block
+        // would mean a foreign receive found a home on some other series.
+        $this->assertSame(
+            7.0,
+            $lines->sum(fn (array $line) => array_sum($line['points'])),
+        );
+    }
+
+    public function test_a_period_the_dashboard_does_not_offer_is_refused(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+
+        $this->signedInAs($boss)
+            ->getJson('/api/v1/inventory/summary?period=nope')
+            ->assertStatus(422);
+
+        // Control: one the dashboard does offer, sent the same way. Without it
+        // the 422 above could equally mean the endpoint refuses any ?period at
+        // all — and nothing else in this file sends one.
+        $this->assertSame(
+            'week',
+            $this->signedInAs($boss)
+                ->getJson('/api/v1/inventory/summary?period=week')
+                ->assertOk()
+                ->json('movement.period'),
+        );
     }
 
     private function seedOneTransferToday(array $tenant, string $qty): void

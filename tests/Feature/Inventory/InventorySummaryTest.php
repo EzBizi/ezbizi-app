@@ -118,6 +118,7 @@ class InventorySummaryTest extends TestCase
                 'company_id' => $sibling->id,
                 'status' => InventoryItemStatus::Active,
                 'reorder_at' => null,
+                'last_cost_minor' => 1000,
             ]);
 
             InventoryBalance::create([
@@ -126,13 +127,41 @@ class InventorySummaryTest extends TestCase
                 'location_id' => $theirs->id,
                 'qty_on_hand' => '99.000',
             ]);
+
+            // Control. Without one item of our own on hand, every figure below
+            // would read zero just as happily if this user could reach nothing
+            // at all — and the test would be about a broken fixture rather
+            // than about the sibling being excluded.
+            $ours = InventoryLocation::factory()->create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+            ]);
+
+            $ourItem = InventoryItem::factory()->create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'status' => InventoryItemStatus::Active,
+                'reorder_at' => null,
+                'last_cost_minor' => 250,
+            ]);
+
+            InventoryBalance::create([
+                'organization_id' => $tenant['org']->id,
+                'item_id' => $ourItem->id,
+                'location_id' => $ours->id,
+                'qty_on_hand' => '2.000',
+            ]);
         });
 
         $counts = $this->countsFor($local);
 
-        $this->assertSame(0, $counts['items']);
-        $this->assertSame(0, $counts['in_stock']);
-        $this->assertSame(0, $counts['stock_value_minor']);
+        // Ours and only ours: one item, in stock, valued at 2 × 250. Their 99
+        // at 1000 each would move every one of these numbers.
+        $this->assertSame(1, $counts['items']);
+        $this->assertSame(1, $counts['in_stock']);
+        $this->assertSame(500, $counts['stock_value_minor']);
     }
 
     /** @return array<string, int> */

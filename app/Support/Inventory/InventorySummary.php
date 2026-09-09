@@ -100,7 +100,7 @@ final class InventorySummary
      * a second full aggregation would be wasted work for no different answer.
      *
      * @param  array{items:int,locations:int,open_purchase_orders:int,in_stock:int,low:int,out:int,stock_value_minor:int}  $counts
-     * @return list<array{key:string,sentence:string,count:int,link:string}>
+     * @return list<array{key:string,sentence:string,count:int,link?:string}>
      */
     public static function warnings(User $user, ViewScope $scope, array $counts, bool $withMoney): array
     {
@@ -108,13 +108,18 @@ final class InventorySummary
 
         // Order is fixed here, not sorted by count: out of stock leads because
         // it is the only one where work has already stopped.
+        //
+        // No link. An item is out of stock when it has nothing anywhere, and
+        // the commonest way to have nothing is to have no balance row at all —
+        // so the list this would open is the one place those items are not.
+        // Sending a destination that cannot hold them is worse than sending
+        // none: the client draws a figure with no link as text.
         $rows[] = [
             'key' => 'out_of_stock',
             'count' => $counts['out'],
             'sentence' => $counts['out'] === 1
                 ? '1 item is out of stock.'
                 : "{$counts['out']} items are out of stock.",
-            'link' => 'stock',
         ];
 
         $rows[] = [
@@ -123,7 +128,11 @@ final class InventorySummary
             'sentence' => $counts['low'] === 1
                 ? '1 item is at or below its reorder point.'
                 : "{$counts['low']} items are at or below their reorder point.",
-            'link' => 'stock?low=1',
+            // low_items, not low: this figure counts ITEMS by their total on
+            // hand, and `low=1` answers per balance row. An item held 3 and 3
+            // against a reorder point of 5 is not counted here and must not be
+            // listed there either.
+            'link' => 'stock?low_items=1',
         ];
 
         $oldOrders = (int) InventoryVisibility::constrain(InventoryPurchaseOrder::query(), $user, $scope)
