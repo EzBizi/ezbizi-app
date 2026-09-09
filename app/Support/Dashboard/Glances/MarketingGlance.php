@@ -152,14 +152,44 @@ final class MarketingGlance extends DescribedGlance
 
             $inPeriod = array_sum($counts);
 
+            /*
+             * ── The ALL-CLEAR sentences are the dangerous ones ───────
+             *
+             * These two fire when there IS data and it is all fine, which
+             * makes them a worse class than the empty state fixed above. An
+             * empty state that overclaims tells somebody there is nothing and
+             * they go and look. An all-clear tells somebody NOTHING NEEDS
+             * THEIR ATTENTION, and they do not look. The failure mode is
+             * silence rather than confusion.
+             *
+             * "Everything sent went out." overclaimed on TWO axes, not one.
+             * `$failed` is scoped by `inView` AND windowed to the period, so
+             * the sentence promised a branch reader that nothing had failed
+             * anywhere, ever — while a refused post on an account they cannot
+             * see sat in the tab, and a failure last month sat outside the
+             * window. Both qualifiers are now in the words.
+             *
+             * `$waiting` is scoped but NOT windowed, deliberately (see the
+             * class docblock), so its sentence carries only the scope. Do not
+             * add a period to it to make the two look alike — it would be
+             * false.
+             *
+             * The COUNT branches are left alone. "1 post did not reach its
+             * account." describes the box's own rows, which is what the rule
+             * permits; and the third sentence names the period for the box.
+             * Neither of these was a wrong TENSE the way Leads' "No star
+             * ratings yet." was — those reviews were present and simply
+             * unrated, so nothing was being awaited. These two were plain
+             * scope claims.
+             */
             $sentences = [
                 $failed === 0
-                    ? 'Everything sent went out.'
+                    ? "Nothing in this view failed this {$period->key}."
                     : ($failed === 1
                         ? '1 post did not reach its account.'
                         : "{$failed} posts did not reach their accounts."),
                 $waiting === 0
-                    ? 'Nothing waiting to go out.'
+                    ? 'Nothing in this view is waiting to go out.'
                     : ($waiting === 1
                         ? '1 post is waiting to go out.'
                         : "{$waiting} posts are waiting to go out."),
