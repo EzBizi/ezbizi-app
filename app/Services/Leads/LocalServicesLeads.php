@@ -79,7 +79,7 @@ class LocalServicesLeads implements LeadReplyChannel
      *                          every row - the clock, 2026-09-08 - gets put
      *                          right without a migration guessing at it.
      */
-    public function sync(SocialConnection $connection, ?int $days = null): array
+    public function sync(SocialConnection $connection, ?int $days = null, bool $withConversations = true): array
     {
         $token = GoogleToken::forConnection($connection, 'google_ads');
         $since = $days !== null ? now()->subDays($days) : $this->since($connection);
@@ -106,7 +106,9 @@ class LocalServicesLeads implements LeadReplyChannel
             $pageToken = $page['next'];
         } while ($pageToken !== null && ++$pages < self::MAX_PAGES);
 
-        $conversations = $this->syncConversations($connection, $token, $days);
+        $conversations = $withConversations
+            ? $this->syncConversations($connection, $token, $days)
+            : ['fetched' => 0, 'created' => 0, 'leads_recovered' => 0];
 
         $connection->forceFill(['last_reached_at' => now()])->save();
 

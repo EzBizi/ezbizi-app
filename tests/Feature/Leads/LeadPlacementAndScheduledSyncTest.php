@@ -394,4 +394,60 @@ class LeadPlacementAndScheduledSyncTest extends TestCase
             'A suspended account stopped the healthy one beside it.',
         );
     }
+
+    /**
+     * Quota tiering. Forty-five accounts every five minutes is past Basic
+     * Access's 15,000 a day and a day over the limit drops the evening's
+     * leads. A quiet account (no lead in thirty days) is read once per half
+     * hour; a producing one every tick, with conversations every other tick.
+     */
+    public function test_quiet_accounts_rest_between_half_hours_and_conversations_read_every_ten_minutes(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $producing = $this->connection($t, '4941850746');
+        $quiet     = $this->connection($t, '3747134697');
+
+        // Both connected yesterday; a connection made in the last half hour is
+        // due at once whatever the clock, and the clock below moves to a
+        // fixed morning, so the stamp must sit well before it.
+        $this->inTenant($t['org'], function () use ($producing, $quiet) {
+            $producing->forceFill(['created_at' => '2026-09-08 09:00:00'])->save();
+            $quiet->forceFill(['created_at' => '2026-09-08 09:00:00'])->save();
+        });
+
+        $this->inTenant($t['org'], fn () => Lead::create([
+            'organization_id' => $t['org']->id, 'company_id' => $t['company']->id,
+            'connection_id' => $producing->getKey(), 'source' => Lead::SOURCE_LOCAL_SERVICES,
+            'remote_id' => 'L-1', 'status' => Lead::STATUS_NEW, 'received_at' => now()->subDay(),
+        ]));
+
+        $this->fakeGoogle();
+
+        $isLeadRead = fn ($r, string $id) => str_contains($r->url(), "/customers/{$id}/") && str_contains((string) ($r->data()['query'] ?? ''), 'FROM local_services_lead ');
+        $isConvRead = fn ($r, string $id) => str_contains($r->url(), "/customers/{$id}/") && str_contains((string) ($r->data()['query'] ?? ''), 'FROM local_services_lead_conversation');
+
+        // 12:07 - neither a half hour nor a ten-minute mark.
+        \Illuminate\Support\Carbon::setTestNow('2026-09-09 12:07:00');
+        $this->artisan('ezbizi:sync-leads')->assertSuccessful();
+        Http::assertSent(fn ($r) => $isLeadRead($r, '4941850746'));
+        Http::assertNotSent(fn ($r) => $isConvRead($r, '4941850746'));
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), '/customers/3747134697/'));
+
+        // 12:10 - a ten-minute mark: the producing account's conversations too.
+        \Illuminate\Support\Carbon::setTestNow('2026-09-09 12:10:00');
+        $this->artisan('ezbizi:sync-leads')->assertSuccessful();
+        Http::assertSent(fn ($r) => $isConvRead($r, '4941850746'));
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), '/customers/3747134697/'));
+
+        // 12:30 - a half hour: the quiet account is read, once.
+        \Illuminate\Support\Carbon::setTestNow('2026-09-09 12:30:00');
+        $this->artisan('ezbizi:sync-leads')->assertSuccessful();
+        Http::assertSent(fn ($r) => $isLeadRead($r, '3747134697'));
+        Http::assertNotSent(fn ($r) => $isConvRead($r, '3747134697'));
+
+        // --days reads everything, every time.
+        \Illuminate\Support\Carbon::setTestNow('2026-09-09 12:37:00');
+        $this->artisan('ezbizi:sync-leads', ['--days' => 3])->assertSuccessful();
+        Http::assertSent(fn ($r) => $isLeadRead($r, '3747134697'));
+    }
 }
