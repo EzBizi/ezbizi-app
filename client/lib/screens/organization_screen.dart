@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
+import '../widgets/brand_colour_card.dart';
 import '../widgets/logo_badge.dart';
 import '../widgets/refused.dart';
 import '../widgets/side_panel.dart';
@@ -304,6 +305,15 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
           api: widget.api,
           organization: tree['organization'] as Map<String, dynamic>,
           onChanged: _load,
+        ),
+
+        // Beside the logo, because they are one idea: how this business looks
+        // wherever we render it for them. UI/UX brand colour layouts 1 + 6,
+        // chosen by Jose 2026-09-09.
+        BrandColourCard(
+          api: widget.api,
+          mayEdit:
+              (tree['organization'] as Map<String, dynamic>)['may_edit'] == true,
         ),
 
         for (final company
