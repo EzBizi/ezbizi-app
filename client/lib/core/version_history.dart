@@ -15,6 +15,7 @@ class VersionHistory {
         'Scheduling shows what you are set up to take each day of the week. The numbers are what you have configured - booked jobs are not counted yet, and the box says so.',
         'Phone shows how many calls were answered and how many were missed, and tells you if voicemails are waiting.',
         'Marketing shows what was published over the period, how many posts are waiting to go out, and how many failed to reach their account. A post sent to three accounts counts as three, because each one can succeed or fail on its own.',
+        'Training shows how many people are due to retake a test. It counts people rather than assignments, and only the people you can already see.',
       ],
     ),
     VersionRelease(
