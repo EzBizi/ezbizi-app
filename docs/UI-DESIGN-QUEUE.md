@@ -947,11 +947,11 @@ finished and cannot. That was wrong — it keys off `connected_at != null`, whet
 plugin has ever read the site, which the module answers exactly. The tier decision
 rests on the opposite-facts argument alone, which is sufficient on its own.*
 
-### 6 · HR · HR record: Training card — **DRAWN, with Jose** (`hr-record-training-card`)
+### 6 · HR · HR record: Training card — **CHOSEN: desktop 3 + mobile 6** (`hr-record-training-card`)
 
 `docs/previews/hr-record-training-card-layouts.html`, committed `f3aaf3b7`. Three desktop,
 three mobile, plus the refused state on a toggle that applies to whichever option is open.
-Jose approved building it; he has the numbers to pick.
+**Jose chose desktop 3 (three counts, then the guides) and mobile 6 (a card per guide, most urgent first) on 2026-09-09.** Sent to HR to build, copying Training for the wording.
 
 **Owner: HR** (`local_4c933357-…`), whose `docs/SESSIONS.md` row names
 `client/lib/screens/hr/*` — and `records_tab.dart` is in it. Training owns the data and the

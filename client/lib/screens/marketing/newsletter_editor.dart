@@ -570,20 +570,24 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
              * What this note may and may not promise.
              *
              * It used to say the time you pick "is the time it goes out
-             * there", naming the PLACE. That holds at franchise scope, where
-             * the branch carries its own zone. Above it the cascade falls back
-             * to the platform default `Etc/GMT+5` — a FIXED offset, which
-             * stands still while the place it is standing in moves an hour in
-             * March. Same wall time, an hour late until November, and nothing
-             * on screen admitting the clock had a say.
+             * there", naming the PLACE. That holds when the view's clock IS
+             * the place's clock. It does not hold when the cascade resolves a
+             * fixed offset, which stands still while the place it is named
+             * after moves an hour in March - same wall time, an hour late
+             * until November, and nothing on screen admitting the clock had a
+             * say.
              *
-             * So the promise is now made about the clock the server actually
-             * used, and the clock is named as soon as there is one to name.
-             * Choosing between real zones and fixed offsets is a platform
-             * decision (Jose's list); saying WHICH ONE YOU GOT is not, and it
-             * costs nothing — the server has been sending
-             * `scheduled_timezone` on every mailing all along and this client
-             * simply never read it.
+             * Do not re-pin this comment to whatever the platform default
+             * happens to be. The version written yesterday named `Etc/GMT+5`
+             * and was false by morning: the default is now `America/New_York`.
+             * The note is correct across both because it promises a wall time
+             * on the clock the SERVER picked and then names that clock, rather
+             * than promising a particular clock.
+             *
+             * Fixed offsets remain selectable, so this stays load-bearing.
+             * Saying which one you got costs nothing - the server has been
+             * sending `scheduled_timezone` on every mailing all along and this
+             * client simply never read it.
              */
             DashboardNote(
               widget.scheduledTimezone == null
