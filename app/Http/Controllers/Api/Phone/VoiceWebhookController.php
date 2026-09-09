@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Phone;
 
 use App\Http\Controllers\Api\Controller;
+use App\Models\PhoneBlockedNumber;
 use App\Models\PhoneCall;
 use App\Support\Phone\Attestation;
 use App\Models\PhoneConnection;
@@ -68,7 +69,28 @@ class VoiceWebhookController extends Controller
         }
 
         if (! $outbound) {
-            $this->lookupQuietly($this->fromE164($request, false));
+            $from = $this->fromE164($request, false);
+
+            // BEFORE anything routes. "Blocked" has to mean the handsets stay
+            // quiet, and every branch below this line ends in a phone ringing
+            // somewhere — a check placed after them would reject the call
+            // having already rung the whole ring group.
+            if (PhoneBlockedNumber::blocks($connection->id, $from)) {
+                $reject = new VoiceResponse;
+                $reject->reject(['reason' => 'rejected']);
+
+                $this->recordStart(
+                    $request,
+                    $connection,
+                    $number,
+                    outbound: false,
+                    blocked: true,
+                );
+
+                return $this->twiml((string) $reject);
+            }
+
+            $this->lookupQuietly($from);
         }
 
         $xml = $number === null
@@ -136,6 +158,7 @@ class VoiceWebhookController extends Controller
         bool $outbound,
         bool $miss = false,
         bool $voicemail = false,
+        bool $blocked = false,
     ): void {
         $sid = (string) $request->input('CallSid', '');
         if ($sid === '') {
@@ -145,7 +168,7 @@ class VoiceWebhookController extends Controller
         $from = $this->fromE164($request, $outbound);
         $to = $this->toE164($request);
 
-        DB::transaction(function () use ($request, $connection, $number, $outbound, $sid, $from, $to, $miss, $voicemail) {
+        DB::transaction(function () use ($request, $connection, $number, $outbound, $sid, $from, $to, $miss, $voicemail, $blocked) {
             // Serialize the initial insert as well as duplicate starts.
             PhoneConnection::query()->whereKey($connection->id)->lockForUpdate()->firstOrFail();
             $call = PhoneCall::query()->where('twilio_sid', $sid)->lockForUpdate()->first();
@@ -158,7 +181,9 @@ class VoiceWebhookController extends Controller
                     'direction' => $outbound ? PhoneCall::DIRECTION_OUTBOUND : PhoneCall::DIRECTION_INBOUND,
                     'from_e164' => $from,
                     'to_e164' => $to,
-                    'status' => PhoneCall::STATUS_RINGING,
+                    'status' => $blocked
+                        ? PhoneCall::STATUS_BLOCKED
+                        : PhoneCall::STATUS_RINGING,
 
                     // The SHAKEN/STIR grade exists only in this payload. No
                     // endpoint will tell us afterwards what this call was
@@ -170,7 +195,13 @@ class VoiceWebhookController extends Controller
                     ),
                 ]);
 
-                $this->events->emit('phone.call.started', $call, $this->payload($call));
+                // Recorded, but nothing downstream is told a customer is
+                // calling. `phone.call.started` is what creates leads and
+                // pings people; raising it here would hand the blocked caller
+                // the notification they could not get by ringing.
+                if (! $blocked) {
+                    $this->events->emit('phone.call.started', $call, $this->payload($call));
+                }
             }
 
             if ($miss) {

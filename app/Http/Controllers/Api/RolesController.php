@@ -173,6 +173,7 @@ class RolesController extends Controller
         $phoneNumbers = $input['phone_numbers'] ?? [];
 
         $this->catalogue->assertGrantable($actor, $requested);
+        $this->catalogue->assertRequirementsMet($requested);
         $this->inboxes->assertGrantable($actor, $inboxes);
         $this->inspections->assertGrantable($actor, $inspections);
         $this->phoneNumbers->assertGrantable($actor, $phoneNumbers);
@@ -237,10 +238,18 @@ class RolesController extends Controller
             if (array_key_exists('permissions', $input)) {
                 $this->catalogue->assertGrantable($actor, $input['permissions']);
 
-                $changed = $role->syncPermissionKeys([
+                // Checked against what will be STORED, not what was sent. The
+                // preserved keys are part of the role afterwards, so a
+                // requirement they satisfy is satisfied — and one they leave
+                // open has to fail here rather than at the next edit.
+                $wantedPermissions = [
                     ...$input['permissions'],
                     ...$this->catalogue->preservedFor($role, $actor),
-                ]);
+                ];
+
+                $this->catalogue->assertRequirementsMet($wantedPermissions);
+
+                $changed = $role->syncPermissionKeys($wantedPermissions);
 
                 // Its own action, and both directions recorded. "Permissions
                 // changed" with no list is the one audit entry somebody will

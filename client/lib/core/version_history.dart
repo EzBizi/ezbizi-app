@@ -8,6 +8,22 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0180',
+      date: '9 Sep 2026',
+      items: [
+        'You can block a nuisance caller, from the call itself in Records or from Settings - Blocked callers. A blocked caller is turned away before any phone rings, and the call still shows in Records so you can see it happened.',
+        'Jobs that came from Thumbtack can report back what happened to them - scheduled, completed, paid or cancelled. Set which of your job statuses mean what under Settings; until you do, nothing is sent.',
+        'A rule can now react to a setting being changed. The trigger fires when somebody saves a different value at any level, or drops an override and lets it inherit again, and does not fire when the save changed nothing.',
+        'Granting somebody a permission that needs another one now says so instead of saving quietly. Assigning training needs permission to monitor it, because the control lives on the screen that monitor opens.',
+        'A new test counts every attempt toward its retake limit, including the one the learner passes. Authors who want retakes after a pass to be free can still turn that off per test.',
+        'Tests written before that option existed have been moved to match, so every test behaves the same way unless its author says otherwise.',
+        'The dashboard no longer offers a way of drawing a box that it will not keep. Choosing Text on a box that only draws charts drew text and then went back to the chart on the next load.',
+        'A dashboard box with only one way to draw it no longer shows a menu at all.',
+        'After a call, the person who took it can be given a moment to write it up before the next one reaches them. Set it under Settings - Tags, from 15 seconds to 5 minutes, or leave it off. They can say they are ready sooner.',
+        'The Training box on the dashboard stops promising a summary that was never planned, and says where the Training screens actually are.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0179',
       date: '9 Sep 2026',
       items: [

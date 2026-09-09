@@ -194,7 +194,9 @@ void main() {
       ),
     );
 
-    expect(find.byType(DashboardChart), findsNothing);
+    // The chart is asked and declines: it is in the tree and takes no space.
+    // The screen no longer second-guesses it with a rule of its own.
+    expect(tester.getSize(find.byType(DashboardChart)), Size.zero);
     expect(find.text('1 person on the books.'), findsOneWidget);
   });
 

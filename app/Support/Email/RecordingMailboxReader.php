@@ -75,6 +75,7 @@ final class RecordingMailboxReader implements MailboxReader
         public readonly MailboxReader $inner,
         private readonly TenantContext $tenant,
         private readonly EventEmitter $events,
+        private readonly HeaderCache $cache,
     ) {}
 
     // ── the four calls that reach the provider ───────────────────
@@ -163,9 +164,31 @@ final class RecordingMailboxReader implements MailboxReader
         return $this->recording($mailbox, fn () => $this->inner->arrivalsSince($mailbox, $mark, $limit));
     }
 
+    /**
+     * Cached for a minute — see {@see HeaderCache::unread} for why.
+     *
+     * ── Cached HERE because this is the one place every call passes ──
+     *
+     * `MailboxReaders::for()` wraps every reader in this class, without
+     * exception, so a cache put here covers all four providers and cannot be
+     * skipped by a caller that reaches for a reader some other way. Caching it
+     * inside each reader instead would be the same code four times and one
+     * place for the fifth provider to forget it.
+     *
+     * ── The cache sits INSIDE the recording, deliberately ────────
+     *
+     * A cached answer means no provider call, so there is no fault to record
+     * and no `email.mailbox_broken` to raise — which is right: nothing was
+     * tried, so nothing failed. Recording a success for a call that never
+     * happened would make a broken mailbox look reachable for up to a minute
+     * after it broke.
+     */
     public function unreadCount(Mailbox $mailbox): int
     {
-        return $this->recording($mailbox, fn () => $this->inner->unreadCount($mailbox));
+        return $this->cache->unread(
+            $mailbox,
+            fn () => $this->recording($mailbox, fn () => $this->inner->unreadCount($mailbox)),
+        );
     }
 
     // ── the two that ask nothing of anybody ──────────────────────

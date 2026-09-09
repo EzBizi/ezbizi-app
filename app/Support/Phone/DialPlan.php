@@ -43,7 +43,7 @@ final class DialPlan
 
         $registered = PhonePresence::query()
             ->where('connection_id', $connection->id)
-            ->where('state', PhonePresence::STATE_REGISTERED)
+            ->available()
             ->whereIn('user_id', $userIds)
             ->pluck('user_id')
             ->all();

@@ -484,7 +484,7 @@ final class TwimlRenderer
         $available = PhonePresence::query()
             ->where('connection_id', $connection->id)
             ->where('user_id', $row->user_id)
-            ->where('state', PhonePresence::STATE_REGISTERED)
+            ->available()
             ->exists();
 
         if (! $available) {

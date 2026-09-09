@@ -48,6 +48,28 @@ final class ModuleDefinition
         public readonly string $label,
         /** @var string[] permission actions, e.g. ['view','create'] */
         public readonly array $actions = self::DEFAULT_ACTIONS,
+        /**
+         * Permissions an action cannot work without, as full keys.
+         *
+         *     actionRequires: ['assign' => ['training.monitor']]
+         *
+         * The roles editor draws a checkbox and one word per action and could
+         * not say this, so an administrator could grant `training.assign`
+         * alone and hand somebody a permission with nothing to click: the
+         * assign control lives inside the Dashboard pane, which `monitor`
+         * opens. Nothing on the screen explained it and nothing stopped it.
+         *
+         * A requirement REFUSES the save; it does not quietly add the missing
+         * key the way `withImpliedView` adds `.view`. That asymmetry is the
+         * point. `.view` is the smallest thing in a module, so implying it
+         * widens nothing. `monitor` is the LARGER disclosure — everyone's
+         * scores — and implying it from the lesser act would silently hand out
+         * more than the administrator ticked. The person saving is the one who
+         * should decide, so they are told what is missing and asked again.
+         *
+         * @var array<string, string[]> action => permission keys it needs
+         */
+        public readonly array $actionRequires = [],
         /** @var TriggerDefinition[] events this module raises, each with its wording */
         public readonly array $triggers = [],
         /** @var ActionDefinition[] things a rule may do here, each with its wording */

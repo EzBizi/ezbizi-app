@@ -147,7 +147,10 @@ class TestsController extends Controller
                 'pass_mark' => $input['pass_mark'] ?? 80,
                 'max_attempts' => $input['max_attempts'] ?? null,
                 'valid_for_days' => $input['valid_for_days'] ?? null,
-                'count_attempts_after_pass' => $input['count_attempts_after_pass'] ?? false,
+                // Defaults ON (owner, 2026-09-09) — and it is THIS line that
+                // decides it, not the column default, which an API create never
+                // reaches because this always writes an explicit value.
+                'count_attempts_after_pass' => $input['count_attempts_after_pass'] ?? true,
             ]);
 
             $this->audit->log('test.created', $test);

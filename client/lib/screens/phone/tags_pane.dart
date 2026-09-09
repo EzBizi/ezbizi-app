@@ -40,6 +40,13 @@ class _TagsPaneState extends State<TagsPane> {
   bool _requireTag = false;
   bool _savingRule = false;
 
+  /// Seconds somebody is left alone after a call. Zero is off.
+  ///
+  /// Lives beside the tag rule because it is the time the tag is written in.
+  /// A company that insists on a tag and gives nobody a moment to pick one has
+  /// made a dialogue people dismiss.
+  int _wrapUpSeconds = 0;
+
   /// Which tag has its palette open, if any.
   String? _colouring;
 
@@ -105,6 +112,7 @@ class _TagsPaneState extends State<TagsPane> {
       setState(() {
         _connectionId = row['id'] as String?;
         _requireTag = row['require_call_tag'] == true;
+        _wrapUpSeconds = (row['wrap_up_seconds'] as num?)?.toInt() ?? 0;
       });
 
       return;
@@ -198,6 +206,36 @@ class _TagsPaneState extends State<TagsPane> {
     });
   }
 
+  /// How long the desk is left alone after a call.
+  ///
+  /// Read back from the answer rather than assumed, for the same reason as the
+  /// rule above: a value that changes on screen and not on the server is the
+  /// shape this module keeps producing.
+  Future<void> _setWrapUp(int seconds) async {
+    final id = _connectionId;
+    if (id == null) return;
+
+    setState(() => _savingRule = true);
+
+    final response = await widget.api.patch('/phone/connections/$id', {
+      'wrap_up_seconds': seconds,
+    });
+
+    if (!mounted) return;
+
+    setState(() {
+      _savingRule = false;
+      if (response.ok) {
+        final data = response.data;
+        _wrapUpSeconds = data is Map
+            ? ((data['wrap_up_seconds'] as num?)?.toInt() ?? 0)
+            : 0;
+      } else {
+        _formError = response.message;
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -260,6 +298,56 @@ class _TagsPaneState extends State<TagsPane> {
                   : 'The person who took the call picks one before the desk '
                         'can start another. Applies to this company.',
               style: theme.textTheme.bodySmall,
+            ),
+          ),
+        ),
+
+        // The time the tag is written in.
+        //
+        // A dropdown of sensible values rather than a number field: what
+        // matters is "a moment" or "long enough to write a note", and a box
+        // that accepts 3600 is a box somebody eventually types 3600 into and
+        // then wonders why the phone stopped ringing.
+        Refused(
+          reason: _canEdit ? null : _editRefusal,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Time to write the call up'),
+                      Text(
+                        _wrapUpSeconds == 0
+                            ? 'The next call can arrive the moment this one '
+                                  'ends.'
+                            : 'No call is sent to that person for '
+                                  '$_wrapUpSeconds seconds after they hang up. '
+                                  'They can say they are ready sooner.',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                DropdownButton<int>(
+                  key: const ValueKey('wrap-up-seconds'),
+                  value: _wrapUpSeconds,
+                  onChanged: _canEdit && !_savingRule && _connectionId != null
+                      ? (value) => value == null ? null : _setWrapUp(value)
+                      : null,
+                  items: const [
+                    DropdownMenuItem(value: 0, child: Text('None')),
+                    DropdownMenuItem(value: 15, child: Text('15 seconds')),
+                    DropdownMenuItem(value: 30, child: Text('30 seconds')),
+                    DropdownMenuItem(value: 60, child: Text('1 minute')),
+                    DropdownMenuItem(value: 120, child: Text('2 minutes')),
+                    DropdownMenuItem(value: 300, child: Text('5 minutes')),
+                  ],
+                ),
+              ],
             ),
           ),
         ),

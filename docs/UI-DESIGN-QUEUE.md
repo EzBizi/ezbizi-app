@@ -625,6 +625,94 @@ been the easy version and would have drifted the first time Phone improved scrub
 a widget to adopt someone else's is a better outcome than either module writing its own**, and
 it is the thing sessions avoid out of deference to each other's folders.
 
+**A placeholder that says "will" is a promise; one that says where it lives is an answer.**
+Ruled 2026-09-09 on the dashboard's coming-soon boxes. Newsletter's entry and its comment
+agree — *"Newsletter keeps its own dashboard inside the tab… Open the Newsletter tab for it"* —
+and the reasoning holds: a second summary a click from the real one restates it and then
+drifts. Training's entry does **not** agree with itself. Its comment says *"no plan puts a
+summary of it on the home screen, so a placeholder is the honest answer rather than a temporary
+one"*; its sentence says *"Training **will** show…"*. **Only the sentence is on screen.**
+
+> **The test for a placeholder: does it describe a destination or a date?** "Will show" is a
+> date with the number left off, and a reader is owed the thing eventually. "Keeps its own
+> dashboard inside the tab, open it" is a destination and is true forever. A placeholder whose
+> comment says permanent and whose copy says coming-soon has picked a fight it will lose in
+> front of a customer.
+
+> **And the drift objection is about a SUMMARY, not a COUNT.** It rules out restating an in-tab
+> dashboard on the home screen. It does not rule out the one number that makes somebody open
+> the tab — a count cannot drift from a dashboard because it is not describing it. Training's
+> "due for retaking" is shown one person at a time on the HR record card, so the org-wide
+> figure is invisible unless you go looking: exactly the shape a glance is for.
+
+**Right about the effect, wrong about the mechanism — and the mechanism is what a peer
+builds on.** Dashboard, 2026-09-09, and the best process note anyone gave me today. Scheduling
+asked whether the dashboard handles a chart with real categories and a zero in every one.
+Dashboard checked, formed the answer *"the chart is not built"*, and — before sending —
+**pinned it as a test. The assertion failed.** `DashboardChart` **is** built; `_chartable`
+only asks whether the slice list is non-empty, and it is `build` that returns
+`SizedBox.shrink()` (`dashboard_chart.dart:44`, verified). The visible effect was right and
+the cause was wrong.
+
+> **This is worse than being wrong about both, because the correct effect supplies the
+> confidence.** A peer does not build on the effect, they build on the mechanism — Scheduling
+> would have designed around a widget that does not exist. **Before handing a peer a rule about
+> your own surface, write the assertion that would fail if the rule were wrong.** Two tests and
+> no production code turned a wrong answer into a measured one.
+
+**Two byte-identical copies of `_chartable` decide whether a chart draws.**
+`dashboard_screen.dart:495` and `hr/dashboard_tab.dart:355`, same switch, same four kinds.
+Nothing is broken today; both agree. But the set of presentation kinds MOVES — Dashboard
+changed which ones a glance may offer this same day — and the day a fifth kind is added to one
+copy, a chart draws on the home screen and silently does not on HR's, falling through
+`default: return false` with no error anywhere. **Same drift class as two definitions of readable.**
+
+> **CORRECTED the same evening, and my answer was wrong.** I recommended a test asserting the
+> copies agree. HR differed out loud and was right; the measurement then made it decisive.
+> **They are not copies of one rule — one already disagrees:**
+>
+> ```
+> _chartable   (both screens)  'pie'||'bar' → slices is List && isNotEmpty
+> isDrawable   (the chart)     'pie'||'bar' → slices.any((s) => s.total > 0)
+> ```
+>
+> A glance with real categories and a zero in every one — the exact case Scheduling asked
+> about — makes the screens say yes and the chart say no. **An agreement test would have pinned
+> a live contradiction in place**, or been written loosely enough to pass and enshrine the
+> weaker rule.
+>
+> My argument was that the two dashboards might legitimately diverge one day. They cannot: the
+> chart decides what it can draw, so a screen disagreeing with it is a bug with a nicer name.
+>
+> **And the fix is smaller than either proposal.** `isDrawable` is strictly stricter than
+> `_chartable` in every branch, and a non-drawable chart already returns `SizedBox.shrink()`
+> (`dashboard_chart.dart:44`) as a bare list child with no wrapping padding. **Deleting
+> `_chartable` from both screens changes what a person sees in exactly zero cases** — two
+> definitions removed, none added, no new API to keep in step.
+>
+> **The general form: before writing a test that two things agree, check that they do.** An
+> agreement test is only a guard if it starts green for the right reason; started against these
+> three it would have been a decision about which of two rules to canonise, taken by accident.
+
+**A test written against a guard outlives the guard and defends it.** HR, 2026-09-09,
+deleting the duplicated `_chartable` (`92014469`). Their own test read:
+
+```dart
+expect(find.byType(DashboardChart), findsNothing);   // before
+expect(tester.getSize(find.byType(DashboardChart)), Size.zero);   // after
+```
+
+**`findsNothing` was not testing the behaviour — it was testing that the guard existed.** The
+widget is absent only because a caller decided not to build it, so deleting the caller's rule,
+correctly, made the test red. A correct simplification reads as a regression, and the person
+doing it has every reason to believe the guard was load-bearing.
+
+> Candidates are everywhere: **`findsNothing` on a widget that can render nothing by itself**
+> is almost always asserting a caller's decision rather than what a person sees. Ask what the
+> reader would notice — nothing occupies no space — and assert *that*: present and `Size.zero`.
+> The version that measures survives the guard being removed, and fails if the widget ever
+> starts taking room.
+
 **An advisory must not wear the failure component.** Web Management, 2026-09-08, asking
 that this be made a rule after the widget contrast work: *"dressing an advisory as a
 failure teaches people to ignore the component that also carries real failures."* The
@@ -681,6 +769,27 @@ travels without the pairing that made it correct.
 ---
 
 ## Known gaps in the four cross-cutting files
+
+**CLOSED 2026-09-09 by Dashboard (`c4254b03`), in my file, without editing it.**
+`tests/Feature/Dashboard/GlanceRegistryTest::test_every_sidebar_tab_has_a_dashboard_icon`
+reads the Dart map with a regex and asserts set equality against `ModuleRegistry`'s sidebar
+tabs — both directions, so a module with no icon fails and so does a key that outlives its
+module. **Ruled strict, and it is structurally right rather than a judgement call:**
+`dashboardPanelIcon` falls back `byModule[key] ?? byModule[key.split('.').first] ?? …`, so a
+dotted glance key resolves to its parent's icon and never needs an entry. One icon per sidebar
+tab is the map's whole job; there is no legitimate key that is not one.
+
+> **The part worth copying is the control.** `assertContains('hr', $drawn, 'The icon map was
+> not read at all.')` — without it, a regex that stopped matching would empty both sides and
+> pass green forever. **A cross-language guard that reads a file needs a positive control or
+> it is decorative.**
+>
+> One hole I found and fed back: the regex class `[a-z_]+` cannot match a dot, so a dotted key
+> — the one shape the rule forbids — is invisible to the guard while being live at runtime.
+> Ran it rather than reasoning about it. `[a-z_.]+` makes it fail as a stray.
+
+**Constraining a shared file from outside, by adding a test rather than editing it, is the
+right move and I would rather more sessions did it.**
 
 **`dashboard_panels.dart:73-75` — a new module can silently get the wrong icon, and
 the gate stays green.** The lookup ends

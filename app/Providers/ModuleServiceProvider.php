@@ -123,16 +123,18 @@ class ModuleServiceProvider extends ServiceProvider
                 // itself. Self-serve signup and staff creation both live in the
                 // control plane (§4.2), outside tenant permissions.
                 actions: ['view', 'edit'],
+                // SettingsController files every settings event against the
+                // tenant root, whatever level the value was written at, because
+                // that is the one of the three that can say where it sits.
+                emits: [Organization::class],
                 triggers: [
                     new TriggerDefinition(
                         key: 'organization.settings_changed',
                         label: 'Setting changed',
                         description: 'Somebody saved a different value for a setting, at '
-                            .'whichever level they set it.',
-                        // Settings are saved without going through the outbox.
-                        // Shown anyway: a tenant who can build a rule on it and
-                        // watch it never fire is worse off than one who is told.
-                        isRaised: false,
+                            .'whichever level they set it — or dropped an override and let '
+                            .'it inherit again. The payload carries the key, the level it '
+                            .'was set at, and the value before and after.',
                     ),
                 ],
                 automationActions: [
@@ -2360,6 +2362,21 @@ class ModuleServiceProvider extends ServiceProvider
                     \App\Models\TrainingAssignment::class,
                 ],
                 actions: ['view', 'monitor', 'manage', 'assign'],
+                /*
+                 * `assign` alone is a role with nothing to click. The control
+                 * that assigns a guide or a test lives in the Dashboard pane,
+                 * and `monitor` is what opens that pane — so an administrator
+                 * could tick Assign, save it cleanly, and hand somebody an
+                 * ordinary-looking screen with no way to do the thing they had
+                 * just been given permission to do.
+                 *
+                 * Deliberately NOT solved by making assign imply monitor.
+                 * Monitor is the larger disclosure — everybody's scores — and
+                 * implying it from the smaller act would widen access past what
+                 * was ticked. The save is refused instead, naming the missing
+                 * one, and the person granting decides.
+                 */
+                actionRequires: ['assign' => ['training.monitor']],
                 triggers: [
                     new TriggerDefinition(
                         key: 'training.assigned',

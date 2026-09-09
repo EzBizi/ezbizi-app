@@ -13,7 +13,10 @@ use App\Support\Dashboard\Glances\InventoryGlance;
 use App\Support\Dashboard\Glances\JobsGlance;
 use App\Support\Dashboard\Glances\BusinessProfileGlance;
 use App\Support\Dashboard\Glances\LeadsGlance;
+use App\Support\Dashboard\Glances\MarketingGlance;
+use App\Support\Dashboard\Glances\PhoneGlance;
 use App\Support\Dashboard\Glances\ReviewsGlance;
+use App\Support\Dashboard\Glances\SchedulingGlance;
 use App\Support\Dashboard\Glances\ServicesGlance;
 use App\Support\Dashboard\Glances\WebManagementGlance;
 use App\Support\Modules\ModuleAvailability;
@@ -52,22 +55,6 @@ class GlanceRegistry
      * @var array<string, array{label: string, sentence: string}>
      */
     private const COMING_SOON = [
-        'marketing' => [
-            'label' => 'Marketing',
-            /*
-             * Reworded 2026-09-08. It read "once compose is live" — a
-             * condition met on 2026-08-28, when Publish now shipped. So the
-             * sentence named a wait that was already over while the box still
-             * was not there, telling somebody the hold-up was a thing that had
-             * happened. What is actually missing is the glance, so that is
-             * what it says.
-             */
-            'sentence' => 'Marketing keeps scheduled and published posts inside the tab. A summary of them here is not built yet.',
-        ],
-        'phone' => [
-            'label' => 'Phone',
-            'sentence' => 'Phone is where the team places and receives calls, and sends texts. Open the Phone tab for the desk.',
-        ],
         /*
          * Added with the Training module, not with a Training glance.
          *
@@ -82,7 +69,27 @@ class GlanceRegistry
          */
         'training' => [
             'label' => 'Training',
-            'sentence' => 'Training will show who has been assigned a guide, and who is due to retake a test.',
+            /*
+             * Was "Training WILL show who has been assigned a guide, and who is
+             * due to retake a test." The comment above called a placeholder the
+             * honest permanent answer and the sentence promised a date; only
+             * the sentence is on screen, so the box was making a commitment
+             * this file had already decided not to keep. UI/UX ruled on it
+             * 2026-09-09 (01614e37): a placeholder that says "will" is a
+             * promise, one that says where the thing lives is an answer, and
+             * only the second stays true forever.
+             *
+             * Their second point is not addressed here and is worth somebody's
+             * time: the drift objection rules out restating an in-tab dashboard
+             * on the home screen, not the one COUNT that makes somebody open
+             * the tab — a count cannot drift from a dashboard because it is not
+             * describing one. "Due to retake" is drawn one person at a time on
+             * the HR record card, so the org-wide figure is invisible unless
+             * you go looking, which is the shape a glance exists for. That is a
+             * TrainingGlance for the Training session to decide on, not a
+             * reason to keep promising it in a sentence meanwhile.
+             */
+            'sentence' => 'Training keeps its own dashboard inside the tab: who has been assigned a guide, who is overdue, and who is due to retake a test. Open the Training tab for it.',
         ],
         /*
          * Added with the Newsletter module, not with a Newsletter glance, and
@@ -104,10 +111,6 @@ class GlanceRegistry
         'monitoring' => [
             'label' => 'Monitoring',
             'sentence' => 'Monitoring will show who is online and on which device here. Open the Monitoring tab for the roster.',
-        ],
-        'scheduling' => [
-            'label' => 'Scheduling',
-            'sentence' => 'Scheduling will show what is booked here once the Schedule tab is live.',
         ],
     ];
 
@@ -131,8 +134,11 @@ class GlanceRegistry
         LeadsGlance::class,
         BusinessProfileGlance::class,
         ReviewsGlance::class,
+        SchedulingGlance::class,
         EmailGlance::class,
         AutomationsGlance::class,
+        PhoneGlance::class,
+        MarketingGlance::class,
     ];
 
     public function __construct(

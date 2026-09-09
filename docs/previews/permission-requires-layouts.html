@@ -1,0 +1,203 @@
+<!doctype html><meta charset="utf-8">
+<title>Roles &rsaquo; a permission that needs another &mdash; layouts</title>
+<style>
+/* Palette from client/lib/core/theme.dart, light: _ink #060808, _muted #5B6672,
+   _line #060808 @ 10%, primary (_cyanDeep) #00708f. Red is the ColorScheme
+   .fromSeed error for light, Material 3's #BA1A1A. */
+:root{--ink:#060808;--muted:#5B6672;--line:rgba(6,8,8,.10);--primary:#00708f;
+      --bad:#BA1A1A;--paper:#fff;--ground:#f4f6f7}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+     font:14px/1.45 -apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:20px 24px 8px}
+h1{margin:0;font-size:18px;font-weight:700;letter-spacing:-.3px}
+#nums{display:flex;flex-wrap:wrap;gap:8px;padding:12px 24px 6px}
+#nums button{font:inherit;font-weight:600;background:var(--paper);color:var(--ink);
+  border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
+#nums button[aria-current=true]{background:var(--primary);color:#fff;border-color:var(--primary)}
+#tog{padding:4px 24px 18px;font-size:13px}
+#tog label{cursor:pointer;user-select:none;font-weight:600}
+#stage{padding:0 24px 48px}
+.cap{font-size:13px;color:var(--muted);margin:0 0 14px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:16px}
+.desk{max-width:600px}
+.phone{width:352px;border:1px solid var(--line);border-radius:26px;background:var(--paper);
+       padding:14px 12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.mod{font-weight:700;display:flex;align-items:center;gap:8px;padding:6px 0 10px}
+.mod .chev{color:var(--muted)}
+.r{display:flex;align-items:flex-start;gap:10px;padding:6px 0}
+.r .box{width:18px;height:18px;border-radius:4px;border:1.6px solid var(--muted);
+        flex:none;margin-top:1px}
+.r .box.on{background:var(--primary);border-color:var(--primary);position:relative}
+.r .box.on:after{content:'';position:absolute;left:5px;top:1px;width:5px;height:10px;
+        border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+.r .box.bad{border-color:var(--bad)}
+.r .lb{flex:1}
+.r .sfx{color:var(--muted);font-weight:400}
+.note{margin:2px 0 8px 28px;font-size:13px;color:var(--bad);display:flex;
+      align-items:baseline;gap:8px;flex-wrap:wrap}
+.note .act{color:var(--primary);font-weight:700;cursor:pointer;white-space:nowrap}
+.sub{margin:0 0 6px 28px;font-size:12px;color:var(--muted)}
+.banner{border:1px solid rgba(186,26,26,.35);background:rgba(186,26,26,.05);
+        border-radius:10px;padding:10px 12px;margin:2px 0 12px;font-size:13px;
+        display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.banner .t{flex:1;color:var(--bad)}
+.banner .act{color:var(--primary);font-weight:700;cursor:pointer}
+.sheet{border:1px solid var(--line);border-radius:14px 14px 0 0;padding:16px 14px 14px;
+       margin-top:12px;box-shadow:0 -2px 10px rgba(0,0,0,.06)}
+.sheet .grab{width:36px;height:4px;border-radius:2px;background:var(--line);
+             margin:0 auto 12px}
+.sheet .h{font-weight:700;margin-bottom:4px}
+.sheet .p{font-size:13px;color:var(--muted);margin-bottom:12px}
+.sheet .btns{display:flex;flex-direction:column;gap:8px}
+.sheet .b{border-radius:9px;padding:11px;text-align:center;font-weight:700}
+.sheet .b.primary{background:var(--primary);color:#fff}
+.sheet .b.ghost{border:1px solid var(--line);color:var(--ink)}
+.pair{margin:0 0 6px 28px;font-size:12px;color:var(--muted)}
+.pair.bad{color:var(--bad);font-weight:600}
+.foot{margin-top:14px;padding-top:10px;border-top:1px solid var(--line);
+      font-size:12px;color:var(--muted)}
+</style>
+<header><h1>Roles &rsaquo; a permission that needs another &mdash; pick one desktop and one mobile</h1></header>
+<div id="nums"></div>
+<div id="tog"><label><input type="checkbox" id="broken" checked> Assign ticked without Monitor
+&mdash; the only state any of this is for</label></div>
+<div id="stage"></div>
+<script>
+/* Every action in the catalogue carries `requires: []`. Exactly ONE in the whole
+   product is non-empty today: training.assign requires training.monitor. So the
+   common row must cost nothing at all. */
+var PLAIN = [['View', true], ['Create', false], ['Edit', false]];
+function broken(){ return document.getElementById('broken').checked; }
+
+function box(on, bad){
+  return '<span class="box' + (on ? ' on' : '') + (bad ? ' bad' : '') + '"></span>';
+}
+function row(label, on, bad, suffix){
+  return '<div class="r">' + box(on, bad) + '<span class="lb">' + label +
+    (suffix ? ' <span class="sfx">' + suffix + '</span>' : '') + '</span></div>';
+}
+function plain(){
+  return PLAIN.map(function(p){ return row(p[0], p[1], false, ''); }).join('');
+}
+function head(){
+  return '<div class="mod"><span class="chev">&#9662;</span>Training</div>';
+}
+function foot(n){
+  return '<div class="foot">' + n + '</div>';
+}
+
+/* 1 — nothing at rest; a line appears under the row only when it is unmet. */
+function D1(){
+  return '<div class="card desk">' + head() + plain() +
+    row('Assign a guide', true, broken(), '') +
+    (broken()
+      ? '<div class="note">Also needs <b>Monitor training</b> before this can be saved.' +
+        '<span class="act">Tick Monitor training</span></div>'
+      : '') +
+    row('Monitor training', !broken(), false, '') +
+    foot('A row with no requirement is untouched: no icon, no suffix, no space reserved.') +
+    '</div>';
+}
+
+/* 2 — the requirement is stated on the row, always, as a muted suffix. */
+function D2(){
+  return '<div class="card desk">' + head() + plain() +
+    row('Assign a guide', true, broken(), '&middot; needs Monitor training') +
+    (broken()
+      ? '<div class="note">Monitor training is not ticked.' +
+        '<span class="act">Tick it</span></div>'
+      : '') +
+    row('Monitor training', !broken(), false, '') +
+    foot('The dependency is readable before you tick anything, and still costs ' +
+         'nothing on the rows that have none.') +
+    '</div>';
+}
+
+/* 3 — one banner at the top of the module, listing whatever is unmet. */
+function D3(){
+  return '<div class="card desk">' + head() +
+    (broken()
+      ? '<div class="banner"><span class="t"><b>Assign a guide</b> needs ' +
+        '<b>Monitor training</b>.</span><span class="act">Tick Monitor training</span></div>'
+      : '') +
+    plain() +
+    row('Assign a guide', true, broken(), '') +
+    row('Monitor training', !broken(), false, '') +
+    foot('One place per module for every unmet requirement, however many there ' +
+         'are. Nothing at all when there are none.') +
+    '</div>';
+}
+
+/* 4 — the same line, but the fix is a full-width target. */
+function M4(){
+  return '<div class="phone">' + head() + plain() +
+    row('Assign a guide', true, broken(), '') +
+    (broken()
+      ? '<div class="note" style="display:block">Also needs <b>Monitor training</b>.' +
+        '<div class="act" style="margin-top:6px">Tick Monitor training</div></div>'
+      : '') +
+    row('Monitor training', !broken(), false, '') +
+    foot('The fix is a line you can hit with a thumb, not a link inside a sentence.') +
+    '</div>';
+}
+
+/* 5 — ticking it raises a sheet: decide once, explicitly. */
+function M5(){
+  return '<div class="phone">' + head() + plain() +
+    row('Assign a guide', true, broken(), '') +
+    row('Monitor training', !broken(), false, '') +
+    (broken()
+      ? '<div class="sheet"><div class="grab"></div>' +
+        '<div class="h">Assign a guide needs Monitor training</div>' +
+        '<div class="p">Monitor training shows one person&rsquo;s results. Assigning ' +
+        'without it cannot be saved.</div>' +
+        '<div class="btns"><div class="b primary">Tick both</div>' +
+        '<div class="b ghost">Leave Assign off</div></div></div>'
+      : '') +
+    foot('Raised at the moment of the tick, and never otherwise. It never ' +
+         'ticks Monitor for you — the server refuses rather than implying it, ' +
+         'so the screen asks rather than deciding.') +
+    '</div>';
+}
+
+/* 6 — a phone has vertical room, so say it under the label, always. */
+function M6(){
+  return '<div class="phone">' + head() + plain() +
+    row('Assign a guide', true, broken(), '') +
+    '<div class="pair' + (broken() ? ' bad' : '') + '">' +
+      (broken() ? 'Needs Monitor training &mdash; not ticked' : 'Needs Monitor training') +
+    '</div>' +
+    row('Monitor training', !broken(), false, '') +
+    foot('Stated under the label rather than hidden behind a tap. A phone has ' +
+         'vertical space and no hover, so a dependency that is only revealed ' +
+         'by touching something is a dependency nobody reads.') +
+    '</div>';
+}
+
+var OPT = {
+  1:['1 &middot; Desktop &mdash; nothing at rest; a line appears only when unmet', D1],
+  2:['2 &middot; Desktop &mdash; the requirement is on the row, always', D2],
+  3:['3 &middot; Desktop &mdash; one banner per module, listing what is unmet', D3],
+  4:['4 &middot; Mobile &mdash; the same line, with a thumb-sized fix', M4],
+  5:['5 &middot; Mobile &mdash; a sheet at the moment of the tick', M5],
+  6:['6 &middot; Mobile &mdash; said under the label, always, no tap to reveal', M6]
+};
+var nums = document.getElementById('nums'), stage = document.getElementById('stage'),
+    tog = document.getElementById('broken'), cur = 1;
+function show(k){
+  cur = k;
+  stage.innerHTML = '<p class="cap">' + OPT[k][0] + '</p>' + OPT[k][1]();
+  Array.prototype.forEach.call(nums.children, function(b){
+    if (b.dataset) b.setAttribute('aria-current', b.dataset.k === String(k));
+  });
+}
+Object.keys(OPT).forEach(function(k){
+  var b = document.createElement('button');
+  b.textContent = (k < 4 ? 'Desktop ' : 'Mobile ') + k;
+  b.dataset.k = k; b.onclick = function(){ show(k); };
+  nums.appendChild(b);
+});
+tog.onchange = function(){ show(cur); };
+show(1);
+</script>
