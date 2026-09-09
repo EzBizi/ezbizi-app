@@ -62,7 +62,7 @@ class InventorySummaryController extends Controller
         if ($counts['items'] === 0 && $counts['locations'] === 0) {
             return [
                 'empty' => true,
-                'sentence' => 'No items in reach.',
+                'sentence' => 'No items to show.',
             ];
         }
 

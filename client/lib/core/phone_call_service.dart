@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../screens/phone/voice_device.dart';
 import 'api_client.dart';
+import 'call_alerts.dart';
 
 /// The softphone, for as long as the app is open — not for as long as the Dial
 /// tab is on screen.
@@ -61,14 +62,25 @@ class PhoneCallService extends ChangeNotifier {
     service._callerId = callerId;
     service._connectionId = connectionId;
     service._started = true;
-    device.onIncoming = (incoming) {
-      service._incomingFrom = incoming.from;
-      service.notifyListeners();
-    };
+    service._alerts = SilentCallAlerts();
+    device.onIncoming = (incoming) => service._ringing(incoming.from);
     device.onRegistrationChanged = service.notifyListeners;
     device.onEnded = service._ended;
 
     return service;
+  }
+
+  /// How a human is told a call is arriving: the tone, the window, the toast.
+  ///
+  /// Injectable because the real one touches three plugins, and a widget test
+  /// that had to have working audio to test a banner would be a test nobody
+  /// could run. [SilentCallAlerts] is the default under [forTest].
+  CallAlerts _alerts = SystemCallAlerts();
+
+  @visibleForTesting
+  set alerts(CallAlerts alerts) {
+    _alerts.dispose();
+    _alerts = alerts;
   }
 
   VoiceDevice? _device;
@@ -83,6 +95,26 @@ class PhoneCallService extends ChangeNotifier {
 
   bool _starting = false;
   bool _started = false;
+
+  /// A call is arriving. ONE place, so the two device wirings cannot drift.
+  ///
+  /// State first, then the alerts. Every alert is fire-and-forget and none is
+  /// awaited: a plugin call awaited under a widget test's fake clock never
+  /// returns, and a desk that could not draw its banner until the speaker
+  /// answered would be worse than one that never made a sound.
+  void _ringing(String from) {
+    _incomingFrom = from;
+    notifyListeners();
+
+    _alerts.incoming(from);
+  }
+
+  /// Nothing is arriving any more, for any reason: answered, declined, given
+  /// up on, or taken by somebody else in the group.
+  void _stopRinging() {
+    _incomingFrom = null;
+    _alerts.stop();
+  }
 
   /// Who is ringing, if anybody. Null the rest of the time.
   String? get incomingFrom => _incomingFrom;
@@ -153,10 +185,7 @@ class PhoneCallService extends ChangeNotifier {
       _callerId = (mine['e164'] ?? '').toString();
 
       _device = device ?? createVoiceDevice();
-      _device!.onIncoming = (incoming) {
-        _incomingFrom = incoming.from;
-        notifyListeners();
-      };
+      _device!.onIncoming = (incoming) => _ringing(incoming.from);
       _device!.onRegistrationChanged = notifyListeners;
       _device!.onEnded = _ended;
 
@@ -230,14 +259,14 @@ class PhoneCallService extends ChangeNotifier {
 
   void accept() {
     _device?.acceptIncoming();
-    _incomingFrom = null;
+    _stopRinging();
     _onCall = true;
     notifyListeners();
   }
 
   void decline() {
     _device?.declineIncoming();
-    _incomingFrom = null;
+    _stopRinging();
     notifyListeners();
   }
 
@@ -266,7 +295,10 @@ class PhoneCallService extends ChangeNotifier {
   void _ended() {
     final wasOnCall = _onCall;
 
-    _incomingFrom = null;
+    // Silence FIRST. The commonest way a call ends is somebody else in the
+    // ring group answering it, and a tone that outlived the call it announced
+    // would be the stuck incoming bar again, wearing a sound.
+    _stopRinging();
     _onCall = false;
     _callsToken++;
     notifyListeners();
@@ -298,7 +330,7 @@ class PhoneCallService extends ChangeNotifier {
 
     _device?.hangUp();
     _onCall = false;
-    _incomingFrom = null;
+    _stopRinging();
     _callsToken++;
     notifyListeners();
 
@@ -317,7 +349,11 @@ class PhoneCallService extends ChangeNotifier {
     _api = null;
     _connectionId = null;
     _callerId = null;
-    _incomingFrom = null;
+
+    // Signing out has to take the sound with it. A tone still ringing on the
+    // sign-in screen belongs to a call the next person at this machine cannot
+    // answer and did not receive.
+    _stopRinging();
     _onCall = false;
     _started = false;
     notifyListeners();

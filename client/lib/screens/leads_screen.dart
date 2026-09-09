@@ -661,6 +661,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                       lead: selected,
                       onStatusChanged: (status) => _setStatus(selected, status),
                       onRead: () => _markRead(selected),
+                      onReplied: _load,
                       onStar: (on) => _mark(selected, starred: on),
                       onNote: (text) =>
                           _mark(selected, note: text, clearNote: text == null),
@@ -690,6 +691,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
               if (routeContext.mounted) Navigator.of(routeContext).pop();
             },
             onRead: () => _markRead(lead),
+            onReplied: _load,
             onStar: (on) => _mark(lead, starred: on),
             onNote: (text) => _mark(lead, note: text, clearNote: text == null),
             session: widget.session,

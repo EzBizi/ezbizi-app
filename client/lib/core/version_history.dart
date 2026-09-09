@@ -8,6 +8,19 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0182',
+      date: '9 Sep 2026',
+      items: [
+        'The training dashboard shows every attempt a person has made at a test, not only their latest one. The three most recent are listed, with a link that says how many more there are.',
+        'A person who has only ever failed a test now appears on their own training record. Before, only a pass or an assignment put them there.',
+        'When the training dashboard has nobody to show for a guide or test, it says so plainly. Before it said nobody was assigned, which was wrong for anyone who can only see part of the organization.',
+        'The Calling as list on Dial shows all of the company numbers again. Tapping it was searching for the number already selected, so it only ever offered that one.',
+        'A number somebody is mid-call on is marked as being on a call and cannot be picked, so two calls never go out on one line.',
+        'Assign training can now be given to a role on its own. It was refused unless Monitor training was given with it, on the mistaken view that it could not be used by itself.',
+        'Boxes on the home screen with nothing to show now say so in plain words. They no longer hint that there is more you are not being shown, and they no longer say the business has none of something when what they mean is that your own view has none.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0181',
       date: '9 Sep 2026',
       items: [
@@ -17,7 +30,7 @@ class VersionHistory {
         'Marketing shows what was published over the period, how many posts are waiting to go out, and how many failed to reach their account. A post sent to three accounts counts as three, because each one can succeed or fail on its own.',
         'Training shows how many people are due to retake a test. It counts people rather than assignments, and only the people you can already see; when there are none it says so in plain words.',
         'Fixed: opening a second ring group for editing without closing the first left the previous group\'s name in the box, so saving could rename the wrong group.',
-        'Monitoring has a new General tab that lays your office out on a floor plan. You place a box for each computer, draw the walls, and assign each box to a person; the box is green when that person is online, red when they are offline, and grey until someone is assigned.',
+        'Monitoring has a new General tab that lays your office out on a floor plan. You place a box for each computer, draw the walls, and assign each box to a person; the box is green when that person is online, red when they are offline, and grey when nobody is assigned, or when the person assigned is someone you are not allowed to see.',
         'Clicking a box shows that person in a panel on the right. With nothing selected the panel summarises the whole plan, so you can see how much of the office is on right now.',
         'A floor plan belongs to an organization, a company or a franchise, and you see the plans your own place covers. Editing one needs its own Monitoring permission, given out per role like the others.',
         'In Roles, a permission that needs another one now says so on the row, before you save rather than after. Ticking Assign a guide without Monitor training says so in place, and it never ticks the other box for you.',

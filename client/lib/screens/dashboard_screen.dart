@@ -415,7 +415,13 @@ class _GlanceBody extends StatelessWidget {
 
     if (comingSoon || data['empty'] == true) {
       return [
-        DashboardNote(_sentenceOf(data) ?? 'Nothing to show yet.'),
+        // "Nothing to show." and not "…yet": the last-resort words a box falls
+        // back to when its glance sent no sentence at all. UI/UX ruled on
+        // 2026-09-09 that an empty sentence describes the BOX, not the world —
+        // "yet" promises a customer that something is coming, and this line is
+        // reached precisely when we do not know what the box holds. It is the
+        // one sentence on the surface with no module behind it to be right.
+        DashboardNote(_sentenceOf(data) ?? 'Nothing to show.'),
         ?earned,
       ];
     }
@@ -537,7 +543,8 @@ class _GlanceBody extends StatelessWidget {
 
     if (sentence != null) return [Text(sentence)];
 
-    return [const DashboardNote('Nothing to show yet.')];
+    // Same fallback, same reason as the one above.
+    return [const DashboardNote('Nothing to show.')];
   }
 
   static String? _sentenceOf(Map<String, dynamic> data) {

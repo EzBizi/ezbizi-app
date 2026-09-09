@@ -44,6 +44,7 @@ class DevicesController extends Controller
 
         $actor = $request->user();
         $canSeeSpecs = $actor->hasPermission('monitoring.specs.view');
+        $canSeeCapture = $actor->hasPermission('monitoring.screenshots.view');
 
         $devices = MonitoredDevice::query()
             ->with('user:id,name,first_name,last_name')
@@ -53,13 +54,13 @@ class DevicesController extends Controller
 
         return response()->json([
             'data' => $devices
-                ->map(fn (MonitoredDevice $d) => $this->present($d, $canSeeSpecs))
+                ->map(fn (MonitoredDevice $d) => $this->present($d, $canSeeSpecs, $canSeeCapture))
                 ->all(),
         ]);
     }
 
     /** @return array<string, mixed> */
-    private function present(MonitoredDevice $d, bool $canSeeSpecs): array
+    private function present(MonitoredDevice $d, bool $canSeeSpecs, bool $canSeeCapture): array
     {
         $row = [
             'id' => $d->id,
@@ -79,6 +80,17 @@ class DevicesController extends Controller
         // shape of the response that specs exist to be granted.
         if ($canSeeSpecs) {
             $row['specs'] = $d->specs;
+        }
+
+        // Why the last capture did not happen, for whoever can see captures at
+        // all — same absent-not-null rule as `specs` above, and gated on the
+        // SAME grant as the screenshots themselves, since it says nothing a
+        // holder of that grant could not already infer from the captures.
+        if ($canSeeCapture) {
+            $row['capture'] = [
+                'last_attempt_at' => $d->capture_last_attempt_at?->toIso8601String(),
+                'last_error' => $d->capture_last_error,
+            ];
         }
 
         return $row;

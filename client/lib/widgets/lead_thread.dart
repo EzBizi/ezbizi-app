@@ -34,6 +34,7 @@ class LeadThread extends StatefulWidget {
     this.player,
     this.onStatusChanged,
     this.onRead,
+    this.onReplied,
     this.onStar,
     this.onNote,
     this.session,
@@ -53,6 +54,19 @@ class LeadThread extends StatefulWidget {
 
   /// Called once when the thread opens: this person has now seen the lead.
   final Future<void> Function()? onRead;
+
+  /// Called after a reply has been accepted by the server.
+  ///
+  /// The row on the left is a CACHE of the newest message — its preview line,
+  /// its time, and which side spoke last, which is also what the Unreplied
+  /// filter reads. The server rebuilds that cache when it stores the reply;
+  /// nothing told the screen, so the thread showed the message and the row
+  /// went on quoting the one before it (Jose, 2026-09-09: "i replied a to sean
+  /// lang, but it does not update on the left side"). Reloading rather than
+  /// patching in place because the list is ordered by last activity: the lead
+  /// somebody just answered belongs at the top, and only the server's order is
+  /// the real one.
+  final Future<void> Function()? onReplied;
 
   /// Star and note are marks on the lead, shared. Each returns the lead as
   /// the server now holds it (author and time on the note), or null when
@@ -219,6 +233,9 @@ class _LeadThreadState extends State<LeadThread> {
       ];
       _compose.clear();
     });
+
+    // The thread has it; the row on the left does not until this fires.
+    await widget.onReplied?.call();
   }
 
   Future<void> _load() async {

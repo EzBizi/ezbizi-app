@@ -195,12 +195,27 @@ class _DashboardPaneState extends State<DashboardPane> {
                   error: _error,
                   onRetry: _load,
                   child: _people.isEmpty
-                      ? const Center(child: Text('Nobody is assigned to, or has attempted, this yet.'))
+                      // Says what SHOWED UP, never what exists: this list is
+                      // bounded by reach over the PERSON (DashboardController::
+                      // people -> reachablePeople), so "nobody is assigned"
+                      // would be FALSE to a franchise manager whose colleagues
+                      // are assigned and simply not theirs to see. "This one"
+                      // rather than "this test" because the pane covers a guide
+                      // OR a test, and naming the object would be wrong half the
+                      // time.
+                      ? const Center(child: Text('Nobody to show for this one.'))
                       : ListView.separated(
                           padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                           itemCount: _people.length,
                           separatorBuilder: (_, _) => const Divider(height: 1),
-                          itemBuilder: (context, i) => _PersonRow(person: _people[i], session: widget.session),
+                          itemBuilder: (context, i) => _PersonRow(
+                            // Keyed to the PERSON: this row holds expansion
+                            // state, and an unkeyed row in a rebuilt list keeps
+                            // the state of whoever stood in that slot before.
+                            key: ValueKey(_people[i]['user_id']),
+                            person: _people[i],
+                            session: widget.session,
+                          ),
                         ),
                 ),
         ),
@@ -500,6 +515,12 @@ class _AssignPaneState extends State<_AssignPane> {
 
   Widget _roleList() {
     if (_roleResults.isEmpty) {
+      // A DELIBERATE world-claim, and it depends on a fact: roles are
+      // ORG-WIDE, so "this organization has none" is true for every
+      // reader. The day roles gain a company or franchise dimension this
+      // sentence becomes false and NOTHING FAILS - no test, no analyzer,
+      // and no reader who could tell. It is stated here so the person
+      // adding that dimension finds it (UI/UX, 2026-09-09).
       return const Center(child: Text('This organization has no roles yet.'));
     }
 
@@ -571,16 +592,46 @@ class _RowStats extends StatelessWidget {
   }
 }
 
-class _PersonRow extends StatelessWidget {
-  const _PersonRow({required this.person, required this.session});
+class _PersonRow extends StatefulWidget {
+  const _PersonRow({super.key, required this.person, required this.session});
 
   final Map<String, dynamic> person;
   final Session session;
 
   @override
+  State<_PersonRow> createState() => _PersonRowState();
+}
+
+class _PersonRowState extends State<_PersonRow> {
+  /// How many attempts are drawn before the "Show all N" affordance.
+  ///
+  /// UI/UX's ruling, 2026-09-09, and the measurement behind it is that this
+  /// row sits inside a `ListView.separated` -- it is a list of PEOPLE, not one
+  /// person at a time. An unbounded block means one person who sat a test
+  /// forty times produces a row that swallows the pane for everybody
+  /// scrolling past them looking for somebody else.
+  static const int _visible = 3;
+
+  bool _showAll = false;
+
+  /// One attempt as one line: when it was sat, what it scored, and whether
+  /// it passed. `score` may legitimately be null -- `testDetailByUser` sends
+  /// it for an attempt that recorded none -- so it says so rather than
+  /// printing "null%".
+  static String _attemptLine(Map attempt, DisplayFormats formats) {
+    final when = formatStamp(attempt['taken_at'], 'Undated', formats: formats);
+    final score = attempt['score'] is num ? '${(attempt['score'] as num).toInt()}%' : 'No score';
+    final outcome = attempt['passed'] == true ? 'Passed' : 'Failed';
+
+    return '$when  -  $score  -  $outcome';
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final me = session.me!;
+    final me = widget.session.me!;
+
+    final person = widget.person;
 
     final name = person['name'] as String? ?? 'Someone';
     final state = person['state'] as String? ?? 'not_started';
@@ -602,6 +653,27 @@ class _PersonRow extends StatelessWidget {
     final hasScore = person.containsKey('score');
     final score = person['score'] is num ? (person['score'] as num).toInt() : null;
 
+    // Every attempt, newest first (owner, 2026-09-09: asked whether this
+    // pane shows a person's whole history or only where they stand now, he
+    // said "all"). Absent on a GUIDE row, which has no attempts to carry --
+    // its history is the progress bar below.
+    //
+    // Drawn only from the SECOND attempt onward, because A ONE-ITEM LIST IS
+    // NOT A SEQUENCE: this block's job is to show change over time, and with
+    // one attempt there is no change for the heading to head.
+    //
+    // Deliberately NOT the reason "the score tag already says it, so the list
+    // repeats a fact" -- that argument does not survive its own logic (UI/UX,
+    // 2026-09-09). At two attempts the latest is still both the tag and the
+    // first line, so that reasoning argues for dropping the current attempt
+    // from the list at every count, which is not what this is. From two, the
+    // tag is a SUMMARY and the list is the RECORD, and a summary appearing
+    // again inside its own detail is context rather than duplication -- the
+    // same relation as a count strip above the rows it counts.
+    final attempts = person['attempts'] is List
+        ? (person['attempts'] as List).whereType<Map>().toList()
+        : const <Map>[];
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Column(
@@ -618,6 +690,36 @@ class _PersonRow extends StatelessWidget {
               if (hasScore) Tag(score == null ? 'No score yet' : '$score%'),
             ],
           ),
+          if (attempts.length > 1) ...[
+            const SizedBox(height: 8),
+            Text('Attempts', style: theme.textTheme.labelSmall),
+            const SizedBox(height: 2),
+            for (final attempt in _showAll ? attempts : attempts.take(_visible))
+              Text(
+                _attemptLine(attempt, me.display),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            // Collapsed, it NAMES THE TOTAL, so the reader knows the size of
+            // what is hidden before deciding to open it -- the same discipline
+            // as an empty sentence describing the box rather than the world.
+            // Absent when nothing is hidden: a control claiming to reveal more
+            // when there is no more is its own small lie.
+            //
+            // It TOGGLES rather than expanding one way (UI/UX, 2026-09-09).
+            // One-way expansion reintroduces the very thing the cap exists to
+            // prevent -- a row swallowing a list of people -- except the reader
+            // causes it and then has no way back short of reloading the pane.
+            // This is the control finishing its own behaviour, not a second
+            // control.
+            if (attempts.length > _visible)
+              TextButton(
+                key: const Key('training.person-toggle-attempts'),
+                onPressed: () => setState(() => _showAll = !_showAll),
+                child: Text(_showAll ? 'Show fewer' : 'Show all ${attempts.length} attempts'),
+              ),
+          ],
           if (fraction != null) ...[
             const SizedBox(height: 8),
             ClipRRect(

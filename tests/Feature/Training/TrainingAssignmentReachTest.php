@@ -798,6 +798,104 @@ class TrainingAssignmentReachTest extends TestCase
      * proves the arm is real: a rule that fires the action must actually
      * write the assignment row, not merely avoid throwing.
      */
+    /**
+     * THE FACT A PERMISSION PREREQUISITE TURNS ON (deploy desk, 2026-09-09).
+     *
+     * 0.0.0180 added `actionRequires: ['assign' => ['training.monitor']]`, so
+     * the role editor now refuses a role holding `training.assign` without
+     * `training.monitor`. The stated reason was that assign alone has no
+     * hand-driven entry point: the only assign control lives in the Dashboard
+     * pane, which needs monitor, so the grant would be invisible rather than
+     * refused.
+     *
+     * It does have one. `ActionRunner::taskContext` runs an automation action
+     * as the RULE'S CREATOR, and `AssignmentWriter::create` gates on
+     * `training.assign` and nothing else — no monitor is asked for anywhere on
+     * that path. So a person holding `training.assign` plus the automations
+     * permissions, and NOT `training.monitor`, can build a rule that assigns
+     * training, and it runs.
+     *
+     * The existing test above proves the arm works but builds its rule as the
+     * tenant ADMIN, who holds every permission including monitor — so it
+     * cannot see this. This one grants exactly two permissions and no more.
+     *
+     * The role is built directly rather than through `RolesController`
+     * deliberately: the controller is where the refusal lives, so going
+     * through it would test the refusal rather than the capability underneath
+     * it. That is the point — the STATE is legal and works, and the only
+     * thing making "assign alone is entry-point-less" true is the refusal
+     * itself.
+     */
+    public function test_a_rule_creator_with_assign_but_not_monitor_can_still_assign(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $riverside = $tenant['franchise'];
+
+        $triggerGuide = $this->aPublishedOrgGuide($tenant, 'Trigger Guide');
+        $targetGuide = $this->aPublishedOrgGuide($tenant, 'Target Guide');
+        $learner = $this->userInFranchise($tenant, $riverside, 'Learner', ['training.view']);
+
+        // Assign and the automations permissions. NO training.monitor.
+        $ruleAuthor = $this->userWithRole($tenant, 'RuleAuthor', [
+            'training.assign',
+            'automations.view',
+            'automations.create',
+            'automations.edit',
+        ]);
+
+        $this->assertFalse(
+            $this->inTenant($tenant['org'], fn () => $ruleAuthor->hasPermission('training.monitor')),
+            'The whole point of this test is that this person cannot monitor.',
+        );
+
+        $automationId = $this->signedInAs($ruleAuthor)->postJson('/api/v1/automations', [
+            'name' => 'Auto-assign without monitoring anybody',
+            'trigger_key' => 'training.completed',
+            'actions' => [
+                [
+                    'type' => 'training.assign',
+                    'guide_id' => $targetGuide->id,
+                    'assignee_type' => 'user',
+                    'assignee_id' => $learner->id,
+                ],
+            ],
+        ])->assertCreated()->json('data.id');
+
+        $this->signedInAs($ruleAuthor)
+            ->patchJson("/api/v1/automations/{$automationId}", ['is_active' => true])
+            ->assertOk();
+
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/guides/{$triggerGuide->id}/seen", ['screen' => 0])
+            ->assertOk();
+
+        $this->inTenant($tenant['org'], function () use ($automationId, $targetGuide, $learner) {
+            $event = AutomationEvent::query()
+                ->where('event_key', 'training.completed')
+                ->latest('occurred_at')
+                ->firstOrFail();
+
+            app(AutomationEngine::class)->deliver($event);
+
+            $run = AutomationRun::query()->where('automation_id', $automationId)->firstOrFail();
+            $this->assertSame(
+                AutomationRun::SUCCEEDED,
+                $run->status,
+                'A rule author holding training.assign but not training.monitor must be able to '
+                    .'assign; got action_results: '.json_encode($run->action_results),
+            );
+
+            $this->assertTrue(
+                TrainingAssignment::query()
+                    ->where('assignee_type', TrainingAssignment::USER)
+                    ->where('assignee_id', $learner->id)
+                    ->where('guide_id', $targetGuide->id)
+                    ->exists(),
+                'training.assign alone is a working entry point, so it is not a no-op grant.',
+            );
+        });
+    }
+
     public function test_the_training_assign_automation_action_actually_assigns(): void
     {
         $tenant = $this->provisionTenant('Alpha');

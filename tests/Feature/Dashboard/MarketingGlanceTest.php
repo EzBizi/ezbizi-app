@@ -216,7 +216,10 @@ class MarketingGlanceTest extends TestCase
         $data = $this->payloadFor($this->alpha['admin'])['data'];
 
         $this->assertTrue($data['empty']);
-        $this->assertSame('Nothing posted or scheduled yet.', $data['sentence']);
+        // "in this view" and not "yet": the box is scoped, so a sentence that
+        // claims the organization has posted nothing is claiming more than the
+        // box can see. UI/UX ruling 30ff2369.
+        $this->assertSame('Nothing posted or scheduled in this view.', $data['sentence']);
     }
 
     /**

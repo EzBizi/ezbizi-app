@@ -124,7 +124,7 @@ class CustomersGlanceTest extends TestCase
 
         $sum = array_sum(array_column($payload['data']['series'][0]['points'], 'value'));
         $this->assertFalse($payload['data']['empty']);
-        $this->assertContains('1 customer.', $payload['data']['sentences']);
+        $this->assertContains('1 customer listed.', $payload['data']['sentences']);
         $this->assertContains('0 new this week.', $payload['data']['sentences']);
         $this->assertSame(0, $sum);
     }

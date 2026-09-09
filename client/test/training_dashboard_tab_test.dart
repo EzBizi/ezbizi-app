@@ -95,6 +95,188 @@ void main() {
 
   // ── 375px: pane is the whole body, Back returns to the list ─────
 
+  // -- The whole history, owner's ruling of 2026-09-09 ("all") --
+
+  testWidgets('the pane lists every attempt, newest first', (tester) async {
+    await _pumpDashboard(
+      tester,
+      rows: [_row(id: 't-1', title: 'Ladder Safety Test', assigned: 1, passed: 1, overdue: 0, retaking: 0)],
+      summary: _summary(assigned: 1, overdue: 0, retaking: 0),
+      people: {
+        't-1': [
+          _person(
+            id: 'u-priya',
+            name: 'Priya Kaur',
+            state: 'passed',
+            score: 90,
+            attempts: [
+              _attempt(takenAt: '2026-09-08T10:00:00Z', score: 90, passed: true),
+              _attempt(takenAt: '2026-09-01T10:00:00Z', score: 40, passed: false),
+            ],
+          ),
+        ],
+      },
+    );
+
+    await tester.tap(find.text('Ladder Safety Test'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Attempts'), findsOneWidget);
+    expect(find.textContaining('90%  -  Passed'), findsOneWidget);
+    expect(find.textContaining('40%  -  Failed'), findsOneWidget);
+  });
+
+  testWidgets('more than three attempts show three, and the affordance names the total', (tester) async {
+    await _pumpDashboard(
+      tester,
+      rows: [_row(id: 't-1', title: 'Ladder Safety Test', assigned: 1, passed: 1, overdue: 0, retaking: 0)],
+      summary: _summary(assigned: 1, overdue: 0, retaking: 0),
+      people: {
+        't-1': [
+          _person(
+            id: 'u-priya',
+            name: 'Priya Kaur',
+            state: 'passed',
+            score: 90,
+            attempts: [
+              _attempt(takenAt: '2026-09-08T10:00:00Z', score: 90, passed: true),
+              _attempt(takenAt: '2026-09-07T10:00:00Z', score: 70, passed: false),
+              _attempt(takenAt: '2026-09-06T10:00:00Z', score: 60, passed: false),
+              _attempt(takenAt: '2026-09-05T10:00:00Z', score: 50, passed: false),
+              _attempt(takenAt: '2026-09-04T10:00:00Z', score: 40, passed: false),
+            ],
+          ),
+        ],
+      },
+    );
+
+    await tester.tap(find.text('Ladder Safety Test'));
+    await tester.pumpAndSettle();
+
+    // The three newest are drawn, the two oldest are not.
+    expect(find.textContaining('90%'), findsWidgets);
+    expect(find.textContaining('70%  -  Failed'), findsOneWidget);
+    expect(find.textContaining('60%  -  Failed'), findsOneWidget);
+    expect(find.textContaining('50%  -  Failed'), findsNothing);
+    expect(find.textContaining('40%  -  Failed'), findsNothing);
+
+    // The affordance names the total, never a bare "Show all".
+    expect(find.text('Show all 5 attempts'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('training.person-toggle-attempts')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('50%  -  Failed'), findsOneWidget);
+    expect(find.textContaining('40%  -  Failed'), findsOneWidget);
+    expect(find.text('Show all 5 attempts'), findsNothing);
+
+    // And back again. A one-way disclosure would let the reader recreate the
+    // very row-swallows-the-pane problem the cap exists to prevent, with no
+    // way out short of reloading.
+    expect(find.text('Show fewer'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('training.person-toggle-attempts')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('50%  -  Failed'), findsNothing);
+    expect(find.text('Show all 5 attempts'), findsOneWidget);
+  });
+
+  testWidgets('exactly three attempts hide nothing, so no affordance claims they do', (tester) async {
+    await _pumpDashboard(
+      tester,
+      rows: [_row(id: 't-1', title: 'Ladder Safety Test', assigned: 1, passed: 1, overdue: 0, retaking: 0)],
+      summary: _summary(assigned: 1, overdue: 0, retaking: 0),
+      people: {
+        't-1': [
+          _person(
+            id: 'u-priya',
+            name: 'Priya Kaur',
+            state: 'passed',
+            score: 90,
+            attempts: [
+              _attempt(takenAt: '2026-09-08T10:00:00Z', score: 90, passed: true),
+              _attempt(takenAt: '2026-09-07T10:00:00Z', score: 70, passed: false),
+              _attempt(takenAt: '2026-09-06T10:00:00Z', score: 60, passed: false),
+            ],
+          ),
+        ],
+      },
+    );
+
+    await tester.tap(find.text('Ladder Safety Test'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('60%  -  Failed'), findsOneWidget);
+    expect(find.byKey(const Key('training.person-toggle-attempts')), findsNothing);
+  });
+
+  testWidgets('an empty pane says what showed up, never that nobody is assigned', (tester) async {
+    // This pane is bounded by reach over the PERSON, so it cannot know whether
+    // anybody is assigned -- only whether anybody it may show is. The sentence
+    // it replaces ("Nobody is assigned to, or has attempted, this yet.") was
+    // FALSE to a franchise manager whose colleagues are assigned and simply
+    // not theirs to see.
+    await _pumpDashboard(
+      tester,
+      rows: [_row(id: 't-1', title: 'Ladder Safety Test', assigned: 0, passed: 0, overdue: 0, retaking: 0)],
+      summary: _summary(assigned: 0, overdue: 0, retaking: 0),
+      people: {'t-1': const []},
+    );
+
+    await tester.tap(find.text('Ladder Safety Test'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nobody to show for this one.'), findsOneWidget);
+    expect(find.textContaining('is assigned'), findsNothing);
+  });
+
+  testWidgets('one attempt draws no history block, because the score tag already is one', (tester) async {
+    await _pumpDashboard(
+      tester,
+      rows: [_row(id: 't-1', title: 'Ladder Safety Test', assigned: 1, passed: 1, overdue: 0, retaking: 0)],
+      summary: _summary(assigned: 1, overdue: 0, retaking: 0),
+      people: {
+        't-1': [
+          _person(
+            id: 'u-priya',
+            name: 'Priya Kaur',
+            state: 'passed',
+            score: 90,
+            attempts: [_attempt(takenAt: '2026-09-08T10:00:00Z', score: 90, passed: true)],
+          ),
+        ],
+      },
+    );
+
+    await tester.tap(find.text('Ladder Safety Test'));
+    await tester.pumpAndSettle();
+
+    // The person is drawn, and the score is still shown as a tag.
+    expect(find.text('Priya Kaur'), findsOneWidget);
+    expect(find.text('90%'), findsOneWidget);
+    expect(find.text('Attempts'), findsNothing);
+  });
+
+  testWidgets('a guide row carries no attempts and draws no history block', (tester) async {
+    await _pumpDashboard(
+      tester,
+      rows: [_row(id: 'g-1', title: 'Ladder Safety Guide', assigned: 1, passed: 0, overdue: 0, retaking: 0)],
+      summary: _summary(assigned: 1, overdue: 0, retaking: 0),
+      people: {
+        'g-1': [
+          _person(id: 'u-dave', name: 'Dave Turner', state: 'in_progress', lastScreen: 1, screenCount: 4),
+        ],
+      },
+    );
+
+    await tester.tap(find.text('Ladder Safety Guide'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Dave Turner'), findsOneWidget);
+    expect(find.text('Attempts'), findsNothing);
+  });
+
   testWidgets('at 375px the pane is the whole body, and Back returns to the list', (tester) async {
     await _pumpDashboard(
       tester,
@@ -513,6 +695,7 @@ Map<String, dynamic> _person({
   int? score,
   int? lastScreen,
   int? screenCount,
+  List<Map<String, dynamic>>? attempts,
 }) => {
     'user_id': id,
     'name': name,
@@ -521,7 +704,14 @@ Map<String, dynamic> _person({
     'score': ?score,
     'last_screen': ?lastScreen,
     'screen_count': ?screenCount,
+    'attempts': ?attempts,
   };
+
+Map<String, dynamic> _attempt({required String takenAt, int? score, required bool passed}) => {
+  'taken_at': takenAt,
+  'score': score,
+  'passed': passed,
+};
 
 Future<void> _pumpDashboard(
   WidgetTester tester, {

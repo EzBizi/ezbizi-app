@@ -2363,20 +2363,36 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
                 actions: ['view', 'monitor', 'manage', 'assign'],
                 /*
-                 * `assign` alone is a role with nothing to click. The control
-                 * that assigns a guide or a test lives in the Dashboard pane,
-                 * and `monitor` is what opens that pane — so an administrator
-                 * could tick Assign, save it cleanly, and hand somebody an
-                 * ordinary-looking screen with no way to do the thing they had
-                 * just been given permission to do.
+                 * `assign` DELIBERATELY declares no `actionRequires`, and the
+                 * history is worth keeping because the obvious reading is wrong.
                  *
-                 * Deliberately NOT solved by making assign imply monitor.
-                 * Monitor is the larger disclosure — everybody's scores — and
-                 * implying it from the smaller act would widen access past what
-                 * was ticked. The save is refused instead, naming the missing
-                 * one, and the person granting decides.
+                 * It carried `['assign' => ['training.monitor']]` from 0.0.0180
+                 * to 0.0.0182, on the reasoning that the only assign control
+                 * lives in the Dashboard pane and `monitor` is what opens it, so
+                 * assign alone was a role with nothing to click.
+                 *
+                 * That reasoning was measured wrong. `ActionRunner::taskContext`
+                 * runs an automation action as the RULE'S CREATOR, and
+                 * `AssignmentWriter::create` gates on `training.assign` and
+                 * nothing else. So the automations builder is a second entry
+                 * point and it needs no monitor: assign alone is a working
+                 * grant. Training proved it by execution, in
+                 * TrainingAssignmentReachTest.
+                 *
+                 * The trap that hid it: the premise was made true BY the
+                 * refusal. With the requirement in place no administrator can
+                 * create that role, so "assign alone has no entry point" became
+                 * self-confirming. The proving test builds the role directly
+                 * rather than through RolesController for exactly that reason.
+                 *
+                 * What it refused was a coherent configuration: may build a
+                 * rule that assigns training, may not read everyone's results.
+                 * That is a sensible role in a product where a company grants
+                 * roles to its own customers, and refusing it forced an admin
+                 * who wanted rule-driven assignment to grant org-wide monitor,
+                 * which is the exact widening the requirement was written to
+                 * avoid.
                  */
-                actionRequires: ['assign' => ['training.monitor']],
                 triggers: [
                     new TriggerDefinition(
                         key: 'training.assigned',

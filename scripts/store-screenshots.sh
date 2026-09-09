@@ -39,6 +39,34 @@ if [ "${1:-}" = "--remote" ]; then
   # message nowhere near the real cause.
   export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH
   cd ~/ezbizi-build
+
+  # integration_test is deliberately absent from pubspec.yaml — declared, it
+  # breaks EVERY Android release build on Flutter 3.41.6, and the whole reason
+  # is written out beside dev_dependencies in client/pubspec.yaml.
+  #
+  # The harness cannot run without it, so the run adds it here and takes it out
+  # again on the way through. It was two edits in a comment before this, which
+  # is a bad place to keep a step that breaks the Play build when it is
+  # forgotten — the failure lands on a release days later, not on the person
+  # who took the screenshots.
+  #
+  # Nothing here can reach the real repo. This half runs on the Mac, against a
+  # tree that both this script and build-app.sh `rm -rf` before every sync.
+  cp pubspec.yaml pubspec.yaml.harness-off
+  trap 'mv -f pubspec.yaml.harness-off pubspec.yaml 2>/dev/null || true' EXIT
+  awk '{print} /^dev_dependencies:[[:space:]]*$/{print "  integration_test:"; print "    sdk: flutter"}'     pubspec.yaml.harness-off > pubspec.yaml
+  # awk prints the file unchanged if its anchor ever moves, and the run would
+  # then die inside `flutter drive` with an error about the target, nowhere near
+  # the cause. Fail here instead, naming the anchor.
+  #
+  # The anchor tolerates trailing whitespace because this tree is synced from
+  # Windows and arrives with CRLF: BSD awk on the Mac does not strip the , so
+  # a bare $ matches nothing there while matching fine on the box that wrote it.
+  if ! grep -q '^  integration_test:' pubspec.yaml; then
+    echo "x could not add integration_test to pubspec.yaml - the 'dev_dependencies:' line it anchors on has moved" >&2
+    exit 5
+  fi
+  flutter pub get > /dev/null
   SHOT_PROBE=false
   if [ "${PROBE:-0}" = "1" ]; then
     SHOT_EMAIL=apple@ezbizi.com; SHOT_PASSWORD=placeholder; SHOT_PROBE=true

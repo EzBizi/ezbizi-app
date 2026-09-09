@@ -104,9 +104,26 @@ final class MarketingGlance extends DescribedGlance
                 ->count();
 
             if ($sentEver === 0 && $waiting === 0) {
+                /*
+                 * "in this view", not "yet" — UI/UX's ruling of 2026-09-09
+                 * (`30ff2369`): a glance sentence describes the BOX, not the
+                 * world.
+                 *
+                 * This box is scoped by `inView` above, so "yet" told a branch
+                 * manager the BUSINESS had published nothing when all they
+                 * were being shown was their own slice of it. The sibling
+                 * sentence twenty lines up already said "in this view" and was
+                 * the form the board settled on, which is the part worth
+                 * knowing: the two sentences in this one file were one
+                 * compliant and one not.
+                 *
+                 * The word "yet" is not banned. It is honest about the box's
+                 * OWN rows — Leads keeps "N leads not yet dealt with." The
+                 * test is what the sentence claims, not which words it uses.
+                 */
                 return $this->payload([
                     'empty' => true,
-                    'sentence' => 'Nothing posted or scheduled yet.',
+                    'sentence' => 'Nothing posted or scheduled in this view.',
                 ]);
             }
 

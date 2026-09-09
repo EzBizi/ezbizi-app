@@ -92,6 +92,68 @@ class TwimlRendererTest extends TestCase
         $this->assertStringNotContainsString('leave a message', $noCallerId);
     }
 
+    /**
+     * A team call the caller can hear ringing.
+     *
+     * ── The defect ───────────────────────────────────────────────────
+     *
+     * `answerOnBridge` holds the caller's leg unanswered until the callee
+     * picks up. That is what keeps an inbound PSTN caller hearing their
+     * carrier's ringing — but a BROWSER caller has no carrier, and no media
+     * flows on an unanswered leg. So calling a colleague was silence: Jose
+     * could not tell whether it was dialling, had failed, or had already been
+     * answered.
+     *
+     * Asserted on the ATTRIBUTE rather than on audio, which no test here can
+     * hear. `ringTone` is the only thing that puts sound in that leg before an
+     * answer, so its presence is the whole claim.
+     */
+    public function test_an_outbound_call_carries_a_ringback_for_the_caller(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$toColleague, $toCustomer, $inbound] = $this->inTenant($t['org'], function () use ($t) {
+            [$number] = $this->lineWithAvailableDesk($t, record: false);
+            $renderer = new TwimlRenderer;
+
+            return [
+                $renderer->inbound($number->fresh(), [
+                    'outbound' => true,
+                    'dial_to' => 'client:someidentity',
+                    'caller_id' => $number->e164,
+                ]),
+                $renderer->inbound($number->fresh(), [
+                    'outbound' => true,
+                    'dial_to' => '+13057242199',
+                    'caller_id' => $number->e164,
+                ]),
+
+                // The control, and the reason this is not set in
+                // dialAttributes: an inbound caller already hears their own
+                // network's ringing, and overriding it would change a path
+                // that works to fix one that does not.
+                $renderer->inbound($number->fresh()),
+            ];
+        });
+
+        $this->assertStringContainsString('ringTone="us"', $toColleague);
+        $this->assertStringContainsString('<Client', $toColleague);
+
+        // A call out to a real number gets it too — same silent leg, same
+        // caller, and the PSTN side does not supply ringback to a browser.
+        $this->assertStringContainsString('ringTone="us"', $toCustomer);
+
+        $this->assertStringNotContainsString(
+            'ringTone',
+            $inbound,
+            'an inbound call now overrides the ringing the caller already had',
+        );
+
+        // And the thing it must not have cost: the leg still waits for a real
+        // answer rather than connecting the caller to a ringing phone.
+        $this->assertStringContainsString('answerOnBridge="true"', $toColleague);
+    }
+
     public function test_recording_notice_is_spoken_when_the_number_records(): void
     {
         $t = $this->provisionTenant();

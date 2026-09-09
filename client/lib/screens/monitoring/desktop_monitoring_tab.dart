@@ -91,6 +91,12 @@ class DesktopMonitoringTab extends StatefulWidget {
   static const String noCapturesYetNote =
       'This device can capture screenshots, but none have landed yet.';
 
+  /// The same empty state when the device HAS told us why. Kept separate so
+  /// the sentence above never has to imply "give it a minute" about a machine
+  /// that has been failing every five minutes since it launched.
+  static const String noCapturesFailingNote =
+      'No captures have landed. The device reported why above.';
+
   static const String noDevicesNote =
       'No devices are running the desktop agent yet.';
 
@@ -887,11 +893,19 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
         ? null
         : DateTime.tryParse(newest['captured_at'] as String? ?? '');
 
+    // "Stopped" is a FAULT: this device is beating right now and still not
+    // delivering. Being offline is not that — a laptop that was shut ten
+    // minutes ago has a perfectly healthy last capture, and calling it
+    // "capture stopped 3m ago" in red reported a bug that did not exist. The
+    // two facts are now shown as two facts. (`!online` used to be OR-ed into
+    // this, which is why every offline device read as broken.)
     final stopped = canCapture &&
+        online &&
         newestAt != null &&
-        (DateTime.now().toUtc().difference(newestAt.toUtc()) >
-                DesktopMonitoringTab.captureInterval * 2 ||
-            !online);
+        DateTime.now().toUtc().difference(newestAt.toUtc()) >
+            DesktopMonitoringTab.captureInterval * 2;
+
+    final captureError = _captureError(device);
 
     final hero = _heroId == null
         ? null
@@ -937,7 +951,20 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
         if (canCapture && newestAt != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 14),
-            child: _FreshnessLine(stopped: stopped, ago: _relativeAge(newestAt)),
+            child: _FreshnessLine(
+              stopped: stopped,
+              offline: !online,
+              ago: _relativeAge(newestAt),
+            ),
+          ),
+        // Why the last attempt produced nothing, straight from the device.
+        // Shown whenever the machine reported one, including next to a
+        // healthy-looking filmstrip — a device that captured fine an hour ago
+        // and is failing NOW is exactly the case the old silence hid.
+        if (canCapture && captureError != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: _NoteCard(captureError),
           ),
         if (!canCapture)
           _NoteCard(DesktopMonitoringTab.noAgentNote)
@@ -951,13 +978,18 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
         else if (_shotsError != null)
           ErrorNote(_shotsError!)
         else if (_shots.isEmpty || hero == null)
-          _NoteCard(DesktopMonitoringTab.noCapturesYetNote)
+          // The reason (when there is one) is already shown above, so this
+          // does not repeat it — it just stops claiming nothing is wrong.
+          _NoteCard(captureError == null
+              ? DesktopMonitoringTab.noCapturesYetNote
+              : DesktopMonitoringTab.noCapturesFailingNote)
         else ...[
           _Hero(
             shot: hero,
             bytes: _bytes[hero['id']],
             stopped: stopped,
-            stoppedAgo: newestAt == null ? '' : _relativeAge(newestAt),
+            offline: !online,
+            newestAgo: newestAt == null ? '' : _relativeAge(newestAt),
           ),
           const SizedBox(height: 12),
           _Filmstrip(
@@ -1040,7 +1072,66 @@ String _relativeAge(DateTime at) {
   return '${ago.inDays}d ago';
 }
 
+/// The device's own reason its last capture produced nothing, as a sentence,
+/// or null when the last attempt succeeded (or predates this reporting).
+///
+/// The slug vocabulary is fixed on both sides — the native capture names the
+/// failing step (windows/runner/monitoring_screenshot.cpp), the client adds
+/// `upload_<status>` for an upload the server refused, and
+/// HeartbeatController::CAPTURE_REASON refuses anything outside the set, so
+/// this switch is exhaustive over what can actually be stored. An unknown
+/// slug still gets a sentence rather than an empty box: a future agent build
+/// reporting a reason this client has never heard of must not read as "no
+/// problem".
+String? _captureError(Map<String, dynamic> device) {
+  final capture = device['capture'];
+  if (capture is! Map) return null;
+
+  final slug = capture['last_error'] as String?;
+  if (slug == null || slug.isEmpty) return null;
+
+  return switch (slug) {
+    // Not a fault at all, which is why it does not read like one: a locked
+    // machine is a person at lunch, and capturing through the lock screen is
+    // not something to fix.
+    'screen_locked' =>
+      'The screen is locked, so captures are paused until it is unlocked.',
+    'jpeg_encoder_missing' =>
+      "This copy of Windows has no JPEG encoder, so captures can't be saved. "
+          'Installing the Media Feature Pack (needed on Windows N editions) '
+          'fixes it.',
+    'com_unavailable' =>
+      'Windows would not start the imaging service this device needs to save '
+          'a capture.',
+    'no_screen' => 'No display was found on this device.',
+    'gdi_failed' || 'blit_failed' || 'pixels_unreadable' =>
+      'Windows refused to hand over the screen contents on this device.',
+    'encode_failed' || 'empty_capture' =>
+      'The screen was read but could not be saved as an image.',
+    'channel_missing' => "This build can't capture the screen.",
+    'upload_403' =>
+      'The server refused the capture: this device is exempt from screen '
+          'monitoring.',
+    'upload_404' =>
+      'The server does not recognise this device yet. It should right itself '
+          'within a minute or two.',
+    'upload_413' || 'upload_422' =>
+      'The capture was rejected as too large or unreadable.',
+    'capture_failed' => 'The capture failed on the device.',
+    _ when slug.startsWith('upload_') =>
+      'The server refused the capture (status ${slug.substring(7)}).',
+    // Deliberately shows the slug: an unrecognised reason is still a reason,
+    // and a support conversation can work with the word.
+    _ => 'The device could not capture its screen ($slug).',
+  };
+}
+
 String _freshLabel(String ago) => 'last capture $ago';
+
+/// The neutral sentence for a device that is simply not on right now. This is
+/// NOT [_stoppedLabel] — nothing is wrong with a machine that was shut down,
+/// and saying "capture stopped" about one manufactured bug reports.
+String _offlineLabel(String ago) => 'last capture $ago · device offline';
 
 /// The one sentence for "the stream is not live right now" — shared between
 /// the freshness line and the hero's own badge so the two can never say it
@@ -1333,29 +1424,44 @@ class _StatusDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 9,
-      height: 9,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: online
-            ? EzBiziTheme.clockIn(context)
-            : Theme.of(context).colorScheme.outlineVariant,
-      ),
+    // A bolt and a struck-through bolt, not two coloured circles: colour was
+    // the ONLY thing separating online from offline here, which fails anyone
+    // who cannot tell this green from this grey, and fails everyone in a
+    // screenshot pasted into a ticket. The shape now carries the fact and the
+    // colour reinforces it.
+    return Icon(
+      online ? Icons.flash_on : Icons.flash_off,
+      size: 13,
+      color: online
+          ? EzBiziTheme.clockIn(context)
+          : Theme.of(context).colorScheme.outlineVariant,
+      semanticLabel: online ? 'Online' : 'Offline',
     );
   }
 }
 
 class _FreshnessLine extends StatelessWidget {
-  const _FreshnessLine({required this.stopped, required this.ago});
+  const _FreshnessLine({
+    required this.stopped,
+    required this.offline,
+    required this.ago,
+  });
 
+  /// A real fault: beating, capture-capable, and still not delivering.
   final bool stopped;
+
+  /// Merely not on. Rendered plainly — see [_offlineLabel].
+  final bool offline;
   final String ago;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final text = stopped ? _stoppedLabel(ago) : _freshLabel(ago);
+    final text = stopped
+        ? _stoppedLabel(ago)
+        : offline
+            ? _offlineLabel(ago)
+            : _freshLabel(ago);
 
     return Text(
       text,
@@ -1436,19 +1542,29 @@ class _Hero extends StatelessWidget {
     required this.shot,
     required this.bytes,
     required this.stopped,
-    required this.stoppedAgo,
+    required this.offline,
+    required this.newestAgo,
   });
 
   final Map<String, dynamic> shot;
   final Uint8List? bytes;
 
-  /// Whether the DEVICE's stream has stopped — not whether this particular
-  /// frame is old. See the class doc comment on [DesktopMonitoringTab].
+  /// Whether the DEVICE is at fault — beating, capture-capable, and silent
+  /// past twice the capture interval. Not "is this frame old".
   final bool stopped;
 
-  /// The newest capture's age, used only when [stopped] — the sentence is
-  /// about the device going quiet, not about how old this exact frame is.
-  final String stoppedAgo;
+  /// Whether the device is simply not on. Kept SEPARATE from [stopped]
+  /// because they need different words and different colours but the SAME
+  /// badge: the honesty rule is about never passing an old frame off as
+  /// current, and a frame from a machine that has been off for forty minutes
+  /// is exactly as not-current as one from a machine that is broken. Tying
+  /// the badge to [stopped] alone (which an earlier version of this did)
+  /// silently removed the label from every offline device.
+  final bool offline;
+
+  /// The newest capture's age — the sentence is about the device, not about
+  /// how old this exact frame is.
+  final String newestAgo;
 
   @override
   Widget build(BuildContext context) {
@@ -1462,8 +1578,10 @@ class _Hero extends StatelessWidget {
     final timeText = capturedAt == null ? '' : _clockTime(capturedAt);
 
     final badgeText = stopped
-        ? _stoppedLabel(stoppedAgo)
-        : (timeText.isEmpty ? ownAgo : '$timeText · $ownAgo');
+        ? _stoppedLabel(newestAgo)
+        : offline
+            ? _offlineLabel(newestAgo)
+            : (timeText.isEmpty ? ownAgo : '$timeText · $ownAgo');
 
     Widget image = bytes == null
         ? Center(
@@ -1473,7 +1591,7 @@ class _Hero extends StatelessWidget {
 
     // "Greyed", per the honesty rule — a dimmed frame reads as not-current
     // at a glance, before anybody has to read the label to know it.
-    if (stopped && bytes != null) {
+    if ((stopped || offline) && bytes != null) {
       image = Opacity(opacity: 0.5, child: image);
     }
 
@@ -1499,6 +1617,8 @@ class _Hero extends StatelessWidget {
                     text: badgeText,
                     background: stopped ? scheme.errorContainer : scheme.inverseSurface,
                     foreground: stopped ? scheme.onErrorContainer : scheme.onInverseSurface,
+                    // ponytail: offline deliberately shares the neutral pair —
+                    // it is a fact, not a fault.
                   ),
                 ),
               ],

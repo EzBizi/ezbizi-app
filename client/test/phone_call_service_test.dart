@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/call_alerts.dart';
 import 'package:ezbizi_client/core/phone_call_service.dart';
 import 'package:ezbizi_client/screens/phone/voice_device.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -227,6 +228,102 @@ void main() {
     );
 
     service.stop();
+  });
+
+  /// A call that arrives makes a noise, raises the window, and stops.
+  ///
+  /// ── Why the bar was not enough ─────────────────────────────────
+  ///
+  /// The incoming bar is a strip across a screen somebody has to be LOOKING
+  /// at. A call arriving while the window was minimised, behind a browser, or
+  /// on another monitor was a call nobody knew about. Jose: we cannot afford
+  /// to lose any call.
+  ///
+  /// Asserted through the alerts collaborator rather than by listening,
+  /// because a test cannot hear — and because the real one touches three
+  /// plugins, which under a fake clock never return.
+  testWidgets('an arriving call rings, and stops when it is answered', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    final alerts = SilentCallAlerts();
+    final service = await _started(tester, device: device);
+    service.alerts = alerts;
+
+    device.ring('+13055550123');
+    await tester.pump();
+
+    expect(alerts.rang, ['+13055550123']);
+    expect(service.incomingFrom, '+13055550123');
+
+    service.accept();
+    await tester.pump();
+
+    expect(alerts.stopped, 1, reason: 'the tone outlived the ringing');
+    expect(service.incomingFrom, isNull);
+
+    service.stop();
+  });
+
+  /// Every way a call stops arriving stops the sound.
+  ///
+  /// The commonest is not a button: a colleague answers first, or the caller
+  /// gives up. A tone that outlived the call it announced would be the stuck
+  /// incoming bar again, wearing a sound.
+  testWidgets('declining, hanging up and the other end going away all silence it', (
+    tester,
+  ) async {
+    for (final ending in ['decline', 'hangUp', 'ended']) {
+      final device = _FakeDevice();
+      final alerts = SilentCallAlerts();
+      final service = await _started(tester, device: device);
+      service.alerts = alerts;
+
+      device.ring('+13055550123');
+      await tester.pump();
+      expect(alerts.rang, hasLength(1), reason: 'never rang for $ending');
+
+      switch (ending) {
+        case 'decline':
+          service.decline();
+        case 'hangUp':
+          service.hangUp();
+        case 'ended':
+          device.end();
+      }
+      await tester.pump();
+
+      expect(
+        alerts.stopped,
+        greaterThan(0),
+        reason: 'still ringing after $ending',
+      );
+      expect(service.incomingFrom, isNull, reason: 'bar stuck after $ending');
+
+      service.stop();
+    }
+  });
+
+  /// Signing out takes the sound with it.
+  ///
+  /// A tone still ringing on the sign-in screen belongs to a call the next
+  /// person at this machine cannot answer and did not receive.
+  testWidgets('signing out silences a call that is still ringing', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    final alerts = SilentCallAlerts();
+    final service = await _started(tester, device: device);
+    service.alerts = alerts;
+
+    device.ring('+13055550123');
+    await tester.pump();
+
+    service.stop();
+    await tester.pump();
+
+    expect(alerts.stopped, greaterThan(0));
+    expect(service.incomingFrom, isNull);
   });
 
   /// A handset asks for a token that can wake it.

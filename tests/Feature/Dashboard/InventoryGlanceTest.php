@@ -163,7 +163,7 @@ class InventoryGlanceTest extends TestCase
         )->toArray();
 
         $this->assertTrue($payload['data']['empty']);
-        $this->assertSame('No items in reach.', $payload['data']['sentence']);
+        $this->assertSame('No items to show.', $payload['data']['sentence']);
     }
 
     public function test_qty_at_or_below_reorder_is_low_and_zero_is_out(): void
@@ -204,8 +204,8 @@ class InventoryGlanceTest extends TestCase
             ],
             $payload['data']['slices'],
         );
-        $this->assertContains('4 items in reach.', $payload['data']['sentences']);
-        $this->assertContains('1 location in reach.', $payload['data']['sentences']);
+        $this->assertContains('4 items listed.', $payload['data']['sentences']);
+        $this->assertContains('1 location listed.', $payload['data']['sentences']);
         $this->assertContains('0 open purchase orders.', $payload['data']['sentences']);
     }
 

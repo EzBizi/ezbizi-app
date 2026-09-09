@@ -26,6 +26,15 @@ class HeartbeatController extends Controller
 
     private const CAPABILITIES = ['activity', 'specs', 'screenshot', 'control'];
 
+    /**
+     * The client's fixed vocabulary for why a capture did not happen. Anything
+     * outside it is refused rather than stored: this string is rendered to a
+     * human, so an unvalidated one would be a way to put arbitrary text — or
+     * something read off the screen — onto the roster. `upload_*` carries the
+     * HTTP status the upload was refused with.
+     */
+    private const CAPTURE_REASON = 'regex:/^(screen_locked|com_unavailable|no_screen|gdi_failed|blit_failed|pixels_unreadable|jpeg_encoder_missing|encode_failed|empty_capture|channel_missing|capture_failed|upload_[0-9]{3})$/';
+
     public function __construct(
         private readonly EventEmitter $events,
         private readonly TenantContext $tenant,
@@ -44,6 +53,10 @@ class HeartbeatController extends Controller
             'segment'             => ['nullable', 'array'],
             'segment.module_key'  => ['required_with:segment', 'string', 'max:64'],
             'segment.dwell_seconds' => ['required_with:segment', 'integer', 'min:0'],
+            'capture'             => ['nullable', 'array'],
+            'capture.ok'          => ['required_with:capture', 'boolean'],
+            'capture.at'          => ['required_with:capture', 'date'],
+            'capture.reason'      => ['nullable', 'string', 'max:40', self::CAPTURE_REASON],
         ]);
 
         // SECURITY exemption: the Lead Developer's own device advertises no
@@ -61,6 +74,13 @@ class HeartbeatController extends Controller
         }
 
         $keepSpecs = in_array('specs', $data['capabilities'], true);
+
+        // SECURITY exemption, same reasoning as the capability strip above: an
+        // exempt device never captures, so it has no capture outcome to report
+        // and a tampered client must not be able to write one onto the roster.
+        $capture = ScreenMonitoringExemption::isExempt($request->user())
+            ? null
+            : ($data['capture'] ?? null);
 
         $device = MonitoredDevice::query()->firstOrNew([
             'organization_id' => $this->tenant->idOrFail(),
@@ -82,6 +102,19 @@ class HeartbeatController extends Controller
         if ($keepSpecs && isset($data['specs'])) {
             $device->specs = $data['specs'];
         }
+
+        // The device is the only thing that can know why a capture did not
+        // happen; a row that is merely MISSING a screenshot cannot tell a
+        // broken encoder from a locked screen from a machine that has not
+        // reached its first tick. `ok` clears the error rather than writing
+        // one, so a device that recovers stops reporting a stale fault.
+        if ($capture !== null) {
+            $device->capture_last_attempt_at = $capture['at'];
+            $device->capture_last_error = $capture['ok'] === true
+                ? null
+                : ($capture['reason'] ?? 'capture_failed');
+        }
+
         $device->save();
 
         if (isset($data['segment'])) {

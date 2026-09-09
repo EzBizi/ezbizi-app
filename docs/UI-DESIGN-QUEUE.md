@@ -22,6 +22,31 @@ live in `docs/previews/`. Jose answers by number.
 
 ## Settled rules
 
+**The danger is not the error. It is that the artefact looks finished.**
+
+Training's, 2026-09-09, drawing three of that day's findings into one shape. Each is a
+different medium and the same failure — **the thing that hides the mistake is the very thing
+that signals care**:
+
+- **A wrong reason survives review**, because it reads as considered. No reason invites the next
+  reader to work it out; a wrong one hands them an argument, and they fix working code to match
+  it.
+- **A correction appended to a note leaves the false summary in play.** The body is right, the
+  one line a reader sees at recall is not, and nothing looks unfinished.
+- **A true sentence resting on an unstated dependency reads as settled.** *"This organization
+  has no roles yet"* is correct only while roles are org-wide; the day one gains a franchise
+  dimension it is false and **nothing fails** — no test, no analyzer, no reader who could tell.
+
+> **So the review question is not "is this right?" but "what would this look like if it were
+> wrong?"** In all three cases: exactly the same. A wrong sentence at least looks wrong to
+> somebody reading the file; a correct-by-dependency one looks like a decision already taken.
+>
+> The practice, in all three media: **write down what the thing depends on, beside it.** The
+> reason under a decision, the current fact at the TOP of a note, the dependency beside a
+> deliberate world-claim. Not for the author — for the reader who has no way to tell a
+> considered artefact from a finished-looking one.
+
+
 **A preview file is the SCREEN, not a document about the screen.** Jose, 2026-09-02:
 *"you did the screen previews wrong, I need to see the actual UI in the html."* The
 Suggestions galleries opened with about eighty lines of reasoning — a locked/found/ask
@@ -843,6 +868,131 @@ ruling by reverting the rule and watching only the right test go red — then re
 `git checkout --` on a file that still held uncommitted work, and threw that work away with the
 sabotage. The technique is safe on a clean file and a footgun on a dirty one. (`cp` to the
 scratchpad first is what made the same technique safe for me three times the same day.)
+
+**A summary repeating into its own detail is context, not duplication — but a one-item list
+is not a sequence.** Ruled on Training's Attempts block, 2026-09-09. It draws from the SECOND
+attempt onward, which is right; the reason given for it was not. *"With one attempt the tag
+above already is the history, so repeating it says one fact twice"* argues for excluding the
+current attempt at **every** count, and at two the latest is still both the tag and the first
+line. The reason that holds is that with one attempt there is no change to show, so the heading
+has nothing to head. **Fix the reason, or the next reader "fixes" the code.**
+
+**An unbounded list inside a ROW is one person deciding how usable a screen is for everyone
+else.** The Attempts block sits in `_PersonRow` inside a `ListView.separated` — a list of
+people. Somebody who sat a test forty times produces a row that swallows the pane, and the cost
+lands on whoever is scrolling past looking for somebody else. **Capped at three, newest first,
+with the affordance NAMING THE TOTAL** — *"Show all 9 attempts"*, so the reader knows the size
+of what is hidden before opening it. Same discipline as an empty sentence describing the box.
+
+> Jose's word was *"all"*. A cap with an affordance that names the count still offers all of
+> it — "all" answered *what the dashboard holds*, against a version that showed only current
+> state. **CONFIRMED by Jose, 2026-09-09, in his own words: "whole history available."**
+> Available, not necessarily all rendered at once — which is precisely what a cap plus a
+> named "Show all 9 attempts" delivers.
+>
+> **Stating the reading is what got it confirmed in one word.** Had I asked "cap at three?" he
+> would have had to reconstruct why; naming the interpretation let him rule on the thing that
+> mattered and leave the number alone.
+
+**Craft ships and tells me; a new element is design; Jose's direct word is neither — it is just
+the job.** Training routed the Attempts block as craft. It is a new element, so normally design;
+what makes their route right is that **Jose ruled it directly**, not the craft carve-out. Worth
+keeping separate so the carve-out does not quietly widen to cover anything a module felt sure
+about.
+
+**The rule is about the CLAIM, not about two phrases.** The sweep found eighteen strings, not
+sixteen, and the last two were invisible to every grep because they used neither forbidden word.
+Phone's box said **"No calls came in."** — false for anyone whose lines are a subset, a
+world-claim in plain English. Dashboard found the client's last-resort fallback saying
+*"Nothing to show yet."*, and their argument is the sharpest of the whole sweep: **that branch
+is reached precisely when we do not know what the box holds.** Every other empty sentence is a
+module making a claim it is in a position to make; that one was the app guessing optimistically
+about somebody else's data. **Grepping for "in reach" and "yet" finds the habits, never the
+rule.**
+
+**ComingSoon is a different question and it was already answered.** Ruled 2026-09-09: those
+sentences are not empty-state copy — a coming-soon box has no query, so it makes no claim about
+the customer's data at all. It falls under the placeholder rule above (*describe a destination,
+not a date*), not the scoping rule. **Measured, the set is two strings, not a category:**
+Newsletter's is compliant, and `Monitoring` still carries both — *"Monitoring **will show** who
+is online … here. Open the Monitoring tab for the roster."* One promise, one destination, in one
+sentence. Drop the promise, keep the destination. **Dashboard's to reword, one string, no
+sweep.**
+
+**A phrase can be simultaneously the best evidence available and inadmissible.** Customers'
+line, and the whole story of this ruling: I cited Leads and Reviews as the board's plain form,
+and those strings break the rule I was citing them for. Web Management then shipped my
+pre-ruling wording because they checked my cited precedent and stopped there; Inventory nearly
+confirmed a verb against Services' strings, which had not landed. **A ruling titled "I cited as
+precedent the form my own rule forbids" deserves a precedent that exists** — cite `025f5afd`,
+the only participle live in a glance.
+
+**The empty-sentence rule is a CORRECTNESS question outside the glances, and the sweep was
+only ever the copy half.** Training measured their own module against it — eight strings, none
+of them glances, none in either count — and found four non-compliant, one of them **false**
+rather than untidy: `dashboard_pane.dart:198` said *"Nobody is assigned to, or has attempted,
+this yet."* in a pane **bounded by reach over the person**, so a franchise manager is told
+nobody is assigned while people are assigned and simply not theirs to see. Training is one
+module of seventeen.
+
+> **Ruled: separate the two, and do not sweep.** The glance strings were a copy decision and
+> they shipped. In-screen empty states get **the discriminator stated once**, each owner
+> applying it to their own module: *is this list filtered by who is asking? Then the sentence
+> may say what showed up, never what exists.* Anything **false** to a scoped reader is a bug and
+> is fixed on sight; the merely imprecise waits until somebody is in the file. A
+> seventeen-module coordinated sweep is a large freeze for a class that is mostly imprecision
+> and occasionally a defect — fix the defects now, let the rest ride.
+
+> **And the COMPLIANT ones are the fragile ones, which is the part nobody expects.** Training's
+> *"This organization has no roles yet."* is correct **only while roles are org-wide**. The day
+> anything gains a franchise dimension, its world-claim becomes false and **nothing fails** —
+> no test, no analyzer, no reader who would know. **A deliberate world-claim should carry a
+> comment saying what it depends on**, because it is the sentence that will rot silently while
+> the non-compliant ones at least look wrong.
+
+**A wrong reason is worse than no reason, because it survives review.** Training's line,
+2026-09-09, after two of their comments in one day stated a true conclusion with the wrong
+argument under it. **No reason invites the next reader to work it out; a wrong reason reads as
+considered, so they inherit the argument instead of the question** — and then "fix" working code
+to match it. Both of theirs would have done exactly that: one argued for dropping the current
+attempt from a list at every count, the other defended a string on a consistency that did not
+exist. **When correcting a decision, correct the reason in the file, and name the discarded one
+so nobody re-derives it.**
+
+**A one-way disclosure is not a finished control.** Training's *"Show all N attempts"* was
+`setState(() => _showAll = true)` — expand once, no way back short of a reload. That
+reintroduces the exact failure the cap was ruled for (a row swallowing a list of people), only
+now the reader causes it and cannot undo it. **Ruled: the same control toggles, label swapping
+to "Show fewer".** That is not the second control they were right to avoid inventing — it is the
+first one completing its own behaviour.
+
+**State inside a row of a recycled list belongs to the SLOT, not the item, unless keyed — and
+the danger is at the SECOND edit, not the first.** Training's refinement, and it is the part
+that makes the rule useful: *"adding state to something inside a ListView is a moment where the
+question announces itself. It would not have announced itself to somebody adding a filter to
+that list a month later — the row would already be stateful and already look finished."* **The
+person who adds the state usually sees it; the person who adds the reordering usually cannot.**
+So this is a fourth member of the *looks finished* family: a stateful row reads as already-solved
+to whoever arrives next.
+
+**A test written from the same mental model as the code inherits its blind spot.** Training's
+one-way *"Show all"* shipped with a test that tapped once and asserted the list opened — which
+**passes on the broken version**. The control that was wrong and the test that could not see it
+came from the same gap, in the same commit. The two-tap test asserting both directions is what a
+different mental model would have written. **Where a control has a state machine, assert the
+return path, not just the departure.**
+
+**A key is copy too.** Renaming `show-all-attempts` to `toggle-attempts` when the control gained
+a second direction: *"a key called 'show all' on a control that also hides is the same small lie
+the empty states spent today losing."* Test keys are read by people, and one that describes half
+a control ages exactly like a sentence that describes half a fact.
+
+**State inside a row of a recycled list belongs to the SLOT, not the item, unless keyed.**
+Training keyed their person row after finding that expanding one person's history and then
+filtering would show *somebody else's* row expanded — `ListView` reuses the element, and the
+expansion state stays with the position. **It would have been reported as a design bug**, and
+the fix is a `ValueKey` on the identity rather than anything in the layout. Candidates: any row
+holding expansion, selection or draft state inside a list that filters or reorders.
 
 **An advisory must not wear the failure component.** Web Management, 2026-09-08, asking
 that this be made a rule after the widget contrast work: *"dressing an advisory as a

@@ -118,7 +118,7 @@ class JobsGlanceTest extends TestCase
     {
         $payload = app(JobsGlance::class)->resolve($this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), [])->toArray();
         $this->assertTrue($payload['data']['empty']);
-        $this->assertSame('No jobs in reach.', $payload['data']['sentence']);
+        $this->assertSame('No jobs to show.', $payload['data']['sentence']);
     }
 
     public function test_revenue_is_not_added_across_currencies(): void

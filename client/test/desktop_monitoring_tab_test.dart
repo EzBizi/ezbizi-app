@@ -291,33 +291,42 @@ void main() {
   );
 
   testWidgets(
-    'a device whose capture has stopped shows "capture stopped N ago" on '
-    'the hero itself, never a frame passed off as live',
+    'an old frame from a device that is off is still labelled on the hero, '
+    'never passed off as current',
     (tester) async {
       // Newest capture and last heartbeat are both 40 minutes old — well
       // past 2x the 5 minute capture interval, and past the 5 minute
-      // online window.
+      // online window. This device is OFF, not broken.
       await _pumpTab(tester, devices: [_staleDevice], shots: _staleShots);
 
-      expect(
-        find.textContaining('capture stopped 40m ago'),
-        findsAtLeastNWidgets(1),
-        reason: 'A device whose last capture is 40 minutes old (and whose '
-            'heartbeat is just as stale) must say the stream has stopped, '
-            'labelled with how long ago — never render the old frame as if '
-            'it were current.',
-      );
-
       final hero = find.byKey(const Key('desktop-monitoring-hero'));
+
+      expect(
+        find.descendant(of: hero, matching: find.textContaining('40m ago')),
+        findsOneWidget,
+        reason: 'The hero itself — not just some header off to the side — '
+            'must say how old this frame is, since the hero is the thing '
+            'somebody could mistake for a live view. This is the honesty '
+            'rule, and it holds for a machine that is merely OFF just as '
+            'much as for one that is faulty: a 40-minute-old picture is '
+            'equally not-current either way. An earlier version of the '
+            'offline/stopped split tied this badge to the fault alone and '
+            'silently dropped the label from every offline device.',
+      );
       expect(
         find.descendant(
           of: hero,
-          matching: find.textContaining('capture stopped 40m ago'),
+          matching: find.textContaining('device offline'),
         ),
         findsOneWidget,
-        reason: 'The hero itself — not just some header off to the side — '
-            'must carry the honesty label, since the hero is the thing '
-            'somebody could mistake for a live view.',
+        reason: 'And it must say WHICH it is. This machine has not beaten '
+            'for 40 minutes; nothing about it is broken.',
+      );
+      expect(
+        find.textContaining('capture stopped'),
+        findsNothing,
+        reason: 'A device that is switched off has not "stopped capturing" '
+            'in the sense worth alarming anyone about.',
       );
     },
   );
@@ -1025,6 +1034,72 @@ void main() {
       );
     },
   );
+
+  group('a device that is merely off is not a device that is broken', () {
+    testWidgets(
+      'an offline device with a recent capture does not say the capture stopped',
+      (tester) async {
+        await _pumpTab(tester, devices: [_recentlyOfflineDevice], shots: _freshShots);
+
+        // The control: the line IS rendered, so a missing "stopped" below
+        // means the wording changed rather than the whole line vanishing.
+        // Two: the freshness line above the frame, and the hero's own badge.
+        // Both, deliberately — the line is what a person reads, the badge is
+        // what stops the frame itself being mistaken for a live view.
+        expect(find.textContaining('last capture'), findsNWidgets(2),
+            reason: 'The freshness line and the hero badge must both be on '
+                'screen for this test to be reading anything at all.');
+        expect(find.textContaining('device offline'), findsNWidgets(2),
+            reason: 'Being off is the fact worth telling — plainly, and in '
+                'both places that describe how current this frame is.');
+        expect(find.textContaining('capture stopped'), findsNothing,
+            reason: 'This capture is two minutes old and healthy. Calling it '
+                '"capture stopped" in red reported a fault that did not '
+                'exist, which is exactly how a support ticket gets opened '
+                'against working scoping.');
+      },
+    );
+
+    testWidgets(
+      'an ONLINE device silent past two intervals still says the capture stopped',
+      (tester) async {
+        await _pumpTab(tester, devices: [_capableDevice], shots: _staleShots);
+
+        expect(find.textContaining('capture stopped'), findsWidgets,
+            reason: 'The positive control for the test above: a device that '
+                'is beating right now and has delivered nothing for over '
+                'twice the capture interval IS at fault, and the wording '
+                'must survive the fix that silenced the false alarm.');
+
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('desktop-monitoring-hero')),
+            matching: find.textContaining('capture stopped 40m ago'),
+          ),
+          findsOneWidget,
+          reason: 'The fault wording belongs on the hero as well, for the '
+              'same reason the offline wording does.',
+        );
+      },
+    );
+  });
+
+  testWidgets(
+    "a device's reported capture failure is shown, in words a person can act on",
+    (tester) async {
+      await _pumpTab(tester, devices: [_failingDevice], shots: const []);
+
+      expect(find.textContaining('Media Feature Pack'), findsOneWidget,
+          reason: 'The whole point of carrying the reason is that it names a '
+              'fix. "None have landed yet" named nothing.');
+      expect(
+        find.text(DesktopMonitoringTab.noCapturesYetNote),
+        findsNothing,
+        reason: 'A device failing every five minutes must not be described '
+            'as one that simply has not got round to it.',
+      );
+    },
+  );
 }
 
 const _capableDevice = {
@@ -1045,6 +1120,31 @@ const _staleDevice = {
   'platform': 'windows',
   'capabilities': ['activity', 'screenshot'],
   'last_seen_at': '__40M_AGO__',
+};
+
+/// Offline, but its last capture is two minutes old — i.e. somebody shut the
+/// machine a moment ago. Nothing is wrong with this device.
+const _recentlyOfflineDevice = {
+  'id': 'dev-1',
+  'user': {'id': 'u-1', 'name': 'Marco Reyes'},
+  'device_key': 'key-1',
+  'label': 'Shop desktop',
+  'platform': 'windows',
+  'capabilities': ['activity', 'screenshot'],
+  'last_seen_at': '__22M_AGO__',
+};
+
+/// Online and capture-capable, and the agent has told us why it is delivering
+/// nothing.
+const _failingDevice = {
+  'id': 'dev-1',
+  'user': {'id': 'u-1', 'name': 'Marco Reyes'},
+  'device_key': 'key-1',
+  'label': 'Shop desktop',
+  'platform': 'windows',
+  'capabilities': ['activity', 'screenshot'],
+  'last_seen_at': '__NOW__',
+  'capture': {'last_attempt_at': '__NOW__', 'last_error': 'jpeg_encoder_missing'},
 };
 
 const _webDevice = {

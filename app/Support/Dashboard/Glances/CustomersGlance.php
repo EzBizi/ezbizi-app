@@ -78,13 +78,19 @@ final class CustomersGlance extends DescribedGlance
             $added = array_sum($counts);
             $periodWord = $period->key;
             $sentences = [
-                // The count IS what the box holds, so a scope qualifier adds
-                // nothing a reader could compare it against: `organization_total`
-                // below is sent and rendered nowhere. If it is ever drawn beside
-                // this line, the sentence needs the qualifier back — two numbers
-                // in one box, one reach-scoped and one not, is where "customers"
-                // alone stops being enough.
-                $book === 1 ? '1 customer.' : "{$book} customers.",
+                // "listed" names what this box did, which is the whole rule:
+                // these are the customers on this screen, counted. NOT "on the
+                // books" — that describes the company's register, and this
+                // number is provably a subset of it, since `organization_total`
+                // below counts the whole tenant and is larger for anyone whose
+                // reach is not the entire organization (§5.2 shares customers
+                // org-wide). A phrase claiming the register while showing a
+                // slice of it is "in reach" wearing different words.
+                //
+                // If that total is ever drawn beside this line, revisit: two
+                // numbers in one box, one scoped and one not, need telling
+                // apart in the sentence rather than by position.
+                $book === 1 ? '1 customer listed.' : "{$book} customers listed.",
                 "{$added} new this {$periodWord}.",
             ];
 

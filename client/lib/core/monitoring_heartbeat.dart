@@ -105,12 +105,35 @@ class MonitoringHeartbeat {
   final Stopwatch _dwell = Stopwatch();
   Map<String, dynamic>? _lastSpecs;
 
+  /// The most recent capture attempt's outcome, or null if this device has
+  /// not attempted one since launch. Sent with every beat until replaced —
+  /// deliberately NOT cleared once sent, so the roster keeps showing the last
+  /// known answer instead of blanking between capture ticks (five minutes of
+  /// "we don't know" every five minutes would be worse than a stale truth).
+  Map<String, Object?>? _lastCapture;
+
   /// Read specs now and hold the result. Keeps the previous value on a null
   /// read (a transient failure should not blank a device that was reporting
   /// specs).
   Future<void> refreshSpecs() async {
     final specs = await _readSpecs();
     if (specs != null) _lastSpecs = specs;
+  }
+
+  /// Record how the last screen capture went, for the next beat to carry.
+  ///
+  /// Called by [ScreenshotService] (wired in main.dart) after every attempt.
+  /// The device is the only thing that knows why a capture did not happen,
+  /// and until this existed it never told anyone: a machine that could not
+  /// capture at all looked exactly like one that had not tried yet. [reason]
+  /// is a short slug from a fixed vocabulary, never free text and never
+  /// anything read off the screen — see monitoring_capture_channel.dart.
+  void reportCapture({required bool ok, String? reason}) {
+    _lastCapture = {
+      'ok': ok,
+      'reason': ?reason,
+      'at': DateTime.now().toUtc().toIso8601String(),
+    };
   }
 
   /// Somebody switched to [moduleKey]. Closes the previous module's segment
@@ -159,6 +182,7 @@ class MonitoringHeartbeat {
       if (_currentModule != null) 'current_module': _currentModule,
       'segment': ?segment,
       'specs': ?specs,
+      'capture': ?_lastCapture,
     };
 
     await _api.post('/monitoring/heartbeat', body);

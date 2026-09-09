@@ -66,7 +66,7 @@ final class BusinessProfileGlance extends DescribedGlance
                     $notLive === 1
                         ? '1 listing is not showing on Google.'
                         : "{$notLive} listings are not showing on Google.",
-                    $total === 1 ? '1 listing in reach.' : "{$total} listings in reach.",
+                    $total === 1 ? '1 listing connected.' : "{$total} listings connected.",
                 ]
                 : [
                     $total === 1 ? '1 listing, showing.' : "All {$total} listings showing.",

@@ -42,7 +42,7 @@ final class ServicesGlance extends DescribedGlance
                     options: [],
                     data: [
                         'empty' => true,
-                        'sentence' => 'No services in reach.',
+                        'sentence' => 'No services listed.',
                     ],
                 );
             }
@@ -71,7 +71,7 @@ final class ServicesGlance extends DescribedGlance
                     'empty' => false,
                     'slices' => $slices,
                     'sentences' => [
-                        $total === 1 ? '1 service in reach.' : "{$total} services in reach.",
+                        $total === 1 ? '1 service listed.' : "{$total} services listed.",
                     ],
                 ],
             );

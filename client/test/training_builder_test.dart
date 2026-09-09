@@ -976,7 +976,7 @@ void main() {
 
       // The empty state itself — the entry point Jose actually used, not a
       // stubbed row.
-      expect(find.text('No guides yet — "New guide" starts one.'), findsOneWidget);
+      expect(find.text('No guides to show — "New guide" starts one.'), findsOneWidget);
 
       final navigator = tester.state<NavigatorState>(find.byType(Navigator));
       expect(navigator.canPop(), isFalse);

@@ -786,6 +786,166 @@ void main() {
     );
   });
 
+  /// Opening the list shows every line, without typing anything first.
+  ///
+  /// ── The defect ─────────────────────────────────────────────────
+  ///
+  /// The field holds the selected line's own description, and `optionsBuilder`
+  /// is handed that text — so tapping to open searched for that exact string
+  /// and matched one thing: itself. A business with thirty numbers looked like
+  /// a business with one, and the picker looked like a label somebody had
+  /// styled as a dropdown by mistake.
+  ///
+  /// The test above never saw it because it TYPES a search term first, which
+  /// is the one path where the filter behaves. Jose reported it as "I should
+  /// be able to choose from among all the numbers of the company".
+  testWidgets('tapping the line picker offers every line, untouched', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    addTearDown(device.dispose);
+
+    await _pump(
+      tester,
+      device: device,
+      size: const Size(900, 800),
+      numbers: const [
+        {
+          'id': 'n-1',
+          'connection_id': 'cx-1',
+          'e164': '+12035550142',
+          'label': 'CT main',
+          'assigned_to_me': true,
+        },
+        {
+          'id': 'n-2',
+          'connection_id': 'cx-1',
+          'e164': '+13055550188',
+          'label': 'Miami',
+          'assigned_to_me': false,
+        },
+        {
+          'id': 'n-3',
+          'connection_id': 'cx-1',
+          'e164': '+19545550111',
+          'label': 'Ana',
+          'assigned_to_me': false,
+        },
+      ],
+    );
+
+    await _tap(tester, find.byType(TextField).first);
+
+    // All three, including the one already selected.
+    expect(find.byKey(const ValueKey('calling-as-n-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('calling-as-n-2')), findsOneWidget);
+    expect(find.byKey(const ValueKey('calling-as-n-3')), findsOneWidget);
+  });
+
+  /// A line somebody is on is shown, and refused.
+  ///
+  /// Hiding it would answer "why can I not see Ana's number" with silence.
+  /// Offering it would put a second call on a number a colleague is mid
+  /// conversation on and send the callback to them.
+  testWidgets('a line already on a call says so and cannot be picked', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    addTearDown(device.dispose);
+
+    await _pump(
+      tester,
+      device: device,
+      size: const Size(900, 800),
+      numbers: const [
+        {
+          'id': 'n-1',
+          'connection_id': 'cx-1',
+          'e164': '+12035550142',
+          'label': 'CT main',
+          'assigned_to_me': true,
+        },
+        {
+          'id': 'n-2',
+          'connection_id': 'cx-1',
+          'e164': '+19545550111',
+          'label': 'Ana',
+          'assigned_to_me': false,
+          'on_call': true,
+          'on_call_with': 'Ana Ventoso',
+        },
+      ],
+    );
+
+    await _tap(tester, find.byType(TextField).first);
+
+    expect(find.text('on a call with Ana Ventoso'), findsOneWidget);
+
+    final busy = tester.widget<ListTile>(
+      find.byKey(const ValueKey('calling-as-n-2')),
+    );
+    expect(busy.enabled, isFalse);
+    expect(busy.onTap, isNull, reason: 'a busy line can still be chosen');
+
+    // The free line beside it is pickable, so "refused" is about this line and
+    // not a list that has stopped working.
+    final free = tester.widget<ListTile>(
+      find.byKey(const ValueKey('calling-as-n-1')),
+    );
+    expect(free.enabled, isTrue);
+    expect(free.onTap, isNotNull);
+  });
+
+  /// Opening the list asks the server again.
+  ///
+  /// "On a call" is true for a moment. The list is loaded once when the tab
+  /// opens, so without this the busy marks are as old as the tab — and a line
+  /// taken since would read as free, which is the direction that puts two
+  /// calls on one number.
+  testWidgets('opening the line picker refetches the lines', (tester) async {
+    final device = _FakeDevice();
+    addTearDown(device.dispose);
+    final seen = <http.Request>[];
+
+    await _pump(
+      tester,
+      device: device,
+      size: const Size(900, 800),
+      seen: seen,
+      numbers: const [
+        {
+          'id': 'n-1',
+          'connection_id': 'cx-1',
+          'e164': '+12035550142',
+          'label': 'CT main',
+          'assigned_to_me': true,
+        },
+        {
+          'id': 'n-2',
+          'connection_id': 'cx-1',
+          'e164': '+13055550188',
+          'label': 'Miami',
+          'assigned_to_me': false,
+        },
+      ],
+    );
+
+    int fetches() => seen
+        .where((r) => r.method == 'GET' && r.url.path.endsWith('/phone/numbers'))
+        .length;
+
+    final before = fetches();
+    expect(before, greaterThan(0), reason: 'the tab never loaded the lines');
+
+    await _tap(tester, find.byType(TextField).first);
+
+    expect(
+      fetches(),
+      greaterThan(before),
+      reason: 'the busy marks are as old as the tab',
+    );
+  });
+
   /// One line is not a choice, and a picker offering it is a control that
   /// cannot do anything.
   testWidgets('a single line is stated rather than offered as a choice', (

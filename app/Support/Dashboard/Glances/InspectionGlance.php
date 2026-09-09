@@ -62,7 +62,7 @@ final class InspectionGlance extends DescribedGlance
                     options: [],
                     data: [
                         'empty' => true,
-                        'sentence' => 'No inspections in reach.',
+                        'sentence' => 'No inspections to show.',
                     ],
                 );
             }
