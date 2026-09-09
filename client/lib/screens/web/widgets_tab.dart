@@ -168,6 +168,15 @@ class _WidgetEditorState extends State<_WidgetEditor> {
 
   /// The colour this business publishes under, or null if it has told us none.
   String? _brand;
+
+  /// Bumped only when a value is set from OUTSIDE the text box — picking a
+  /// preset — so the boxes rebuild and show it.
+  ///
+  /// The fields are keyed on this rather than on their own value, which would
+  /// rebuild them on every keystroke and take the cursor with it. Without it
+  /// the config changed and the box kept the old text, so a customer could
+  /// pick a colour and then type over their own pick without seeing it.
+  int _external = 0;
   List<String> _fieldTypes = const ['text'];
 
   @override
@@ -361,6 +370,7 @@ class _WidgetEditorState extends State<_WidgetEditor> {
         const SizedBox(height: 8),
         _text(theme, 'Accent colour (#rrggbb)', style['accent'],
             (v) => _set('style', 'accent', v)),
+        _presets(theme),
         _text(theme, 'Text on the accent', style['on_accent'],
             (v) => _set('style', 'on_accent', v)),
         _pair(theme, style['on_accent'], style['accent'], 'the accent'),
@@ -456,6 +466,90 @@ class _WidgetEditorState extends State<_WidgetEditor> {
     );
   }
 
+  /// Seven colours a customer can pick instead of typing one.
+  ///
+  /// ── Why each carries its own text colour ──
+  ///
+  /// Picking sets BOTH halves of the pair. If it set only the accent, the old
+  /// text colour would stay and the swatch below could warn about a
+  /// combination we had just offered — which is the failure the presets exist
+  /// to prevent.
+  ///
+  /// ── Why the pairs are a table and not a calculation ──
+  ///
+  /// The server derives text colour by luminance, and a second copy of that
+  /// arithmetic here is a second definition of readable that drifts the day the
+  /// threshold moves. Seven measured pairs are data, not an algorithm. Every
+  /// one clears 4.5:1 against its own text — computed rather than assumed,
+  /// tightest #00838f at 4.64:1.
+  ///
+  /// **#00838f stays whatever else goes.** It is the colour that exposed the
+  /// near-black bug in the server's derivation — 4.18:1 against #111111 and
+  /// 4.64:1 against #000000 — so this list is incidentally a regression suite
+  /// for that constant. Chosen and measured by the UI/UX session, who keep the
+  /// same seven in the organization colour picker.
+  static const List<(String, String)> _swatches = [
+    ('#00838f', '#000000'),
+    ('#0b5cad', '#ffffff'),
+    ('#b3261e', '#ffffff'),
+    ('#2e7d32', '#ffffff'),
+    ('#6a1b9a', '#ffffff'),
+    ('#e65100', '#000000'),
+    ('#37474f', '#ffffff'),
+  ];
+
+  Widget _presets(ThemeData theme) {
+    if (!widget.canEdit) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text('or pick', style: theme.textTheme.bodySmall),
+          for (final (accent, onAccent) in _swatches)
+            Tooltip(
+              message: accent,
+              child: InkWell(
+                onTap: () => setState(() {
+                  final part = _section('style');
+                  part['accent'] = accent;
+                  part['on_accent'] = onAccent;
+                  _config['style'] = part;
+                  _saved = null;
+                  _external++;
+                }),
+                borderRadius: BorderRadius.circular(4),
+                child: Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    color: _colour(accent),
+                    borderRadius: BorderRadius.circular(4),
+                    // Outlined, so a swatch reads as a swatch against any
+                    // background rather than dissolving into the card.
+                    border: Border.all(color: theme.colorScheme.outlineVariant),
+                  ),
+                  child: Center(
+                    child: Text(
+                      'A',
+                      style: TextStyle(
+                        color: _colour(onAccent),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   /// Both hex forms the server keeps (`#rgb` and `#rrggbb`), so a colour that
   /// saves is a colour that gets checked — see `WidgetDefaults::colour`.
   static Color? _colour(Object? v) {
@@ -478,7 +572,7 @@ class _WidgetEditorState extends State<_WidgetEditor> {
       child: TextFormField(
         // Keyed by label so a site swap rebuilds rather than keeping the
         // previous site's text in the box.
-        key: ValueKey('$label:${widget.siteId}'),
+        key: ValueKey('$label:${widget.siteId}:$_external'),
         initialValue: '${value ?? ''}',
         enabled: widget.canEdit,
         style: theme.textTheme.bodyMedium,
