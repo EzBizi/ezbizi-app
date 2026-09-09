@@ -320,6 +320,66 @@ void main() {
     expect(find.byKey(const Key('scheduling-delete-confirm')), findsNothing);
   });
 
+  /// An ALL-CLEAR is the sentence class nobody swept for, and it is worse to
+  /// get wrong than an overclaiming empty state: an empty state that overclaims
+  /// sends somebody to look and they find out, whereas this one tells them
+  /// nothing needs their attention so they never look.
+  ///
+  /// The rail is franchiseIds()-scoped, so at a franchise view an off-pattern
+  /// area in a sibling franchise is invisible here. "Every area follows the
+  /// pattern" would have said the company was consistent when it was not.
+  testWidgets('the all-clear says "in this view", never that every area follows', (
+    tester,
+  ) async {
+    // Both areas follow the pattern, so the all-clear branch is the one drawn.
+    await _pump(
+      tester,
+      areas: const [
+        {
+          'id': 'a-dallas',
+          'name': 'Dallas',
+          'franchise_id': 'fr-1',
+          'zip_count': 18,
+          'follows_pattern': true,
+        },
+        {
+          'id': 'a-plano',
+          'name': 'Plano',
+          'franchise_id': 'fr-1',
+          'zip_count': 7,
+          'follows_pattern': true,
+        },
+      ],
+    );
+
+    expect(
+      find.text('Every area in this view follows the pattern.'),
+      findsOneWidget,
+    );
+
+    // The world-claim must be gone, not merely accompanied.
+    expect(find.text('Every area follows the pattern.'), findsNothing);
+  });
+
+  /// The positive control for the test above. Without it, "findsNothing" on the
+  /// world-claim would also pass if the all-clear branch had stopped rendering
+  /// altogether — a sentence that never draws reads exactly like a sentence
+  /// that draws correctly.
+  testWidgets('an area that differs suppresses the all-clear and is named', (
+    tester,
+  ) async {
+    await _pump(tester);
+
+    expect(
+      find.text('Every area in this view follows the pattern.'),
+      findsNothing,
+      reason: 'Houston differs, so nothing should be claiming all-clear.',
+    );
+
+    // And the exception is named where it cannot be missed.
+    expect(find.text('Houston'), findsNWidgets(2));
+  });
+
   testWidgets('closing a day sends no rows for it, never a zero', (
     tester,
   ) async {
