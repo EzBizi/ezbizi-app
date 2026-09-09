@@ -106,7 +106,7 @@ class FleetGlanceTest extends TestCase
         )->toArray();
 
         $this->assertTrue($payload['data']['empty']);
-        $this->assertSame('No vehicles in reach.', $payload['data']['sentence']);
+        $this->assertSame('No vehicles to show.', $payload['data']['sentence']);
         $this->assertArrayNotHasKey('revenue', $payload['data']);
         $this->assertArrayNotHasKey('amount_minor', $payload['data']);
     }

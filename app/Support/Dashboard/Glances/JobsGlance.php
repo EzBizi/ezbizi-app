@@ -59,7 +59,7 @@ final class JobsGlance extends DescribedGlance
                     options: $this->wireOptions($options),
                     data: [
                         'empty' => true,
-                        'sentence' => 'No jobs in reach.',
+                        'sentence' => 'No jobs to show.',
                         'status_choices' => $statusChoices,
                     ],
                 );

@@ -125,7 +125,7 @@ contain the rows it promises is worse than none, and the rule above already
 covers it: the client draws it as text.
 
 **Empty state.** No items and no locations in reach returns
-`{"empty": true, "sentence": "No items in reach."}` — the sentence the Dashboard
+`{"empty": true, "sentence": "No items to show."}` — the sentence the Dashboard
 box already uses, from the server, not restated in the client.
 
 ## 8. `movement`
