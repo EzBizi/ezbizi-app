@@ -40,6 +40,23 @@ import '../../core/theme.dart';
 /// A wall is any two points, not a run of cells, so diagonals draw as
 /// themselves — `drawLine` does not care about the grid.
 ///
+/// ── Wall mode (Task 7b) ────────────────────────────────────────────
+///
+/// [wallMode] turns the whole canvas into a drawing surface: every tap on it
+/// reports a grid INTERSECTION through [onWallPoint], and the tiles are put
+/// behind an [IgnorePointer] so one tap can never both start a wall and pick up
+/// a computer. That is the whole of the mode conflict story — the two gestures
+/// are not arbitrated at run time, one of them simply does not exist while the
+/// other is on.
+///
+/// The exception is the wall HANDLES, one small target at each existing wall's
+/// midpoint, drawn only in wall mode. They sit above the background detector
+/// and so win the tap (the deepest recognizer in the arena does), which is why
+/// selecting a wall to delete cannot be confused with placing a point: the
+/// point lands wherever the handle is not. Selecting is all a handle does — the
+/// removal itself is a separate press on the toolbar's Delete wall, so a
+/// mis-aimed tap while drawing cannot destroy anything.
+///
 /// ── The three colours, and the honesty rule ────────────────────────
 ///
 /// See [tileColor]. Green and grey are the SAME tokens the PC Specs status dot
@@ -56,6 +73,11 @@ class FloorPlanCanvas extends StatelessWidget {
     required this.onSelectNode,
     this.editable = false,
     this.onNodeMoved,
+    this.wallMode = false,
+    this.onWallPoint,
+    this.pendingWall,
+    this.selectedWallIndex,
+    this.onSelectWall,
   });
 
   /// `{grid:{cols,rows}, walls:[{x1,y1,x2,y2}], nodes:[{id,x,y,label,user_id}]}`
@@ -90,6 +112,35 @@ class FloorPlanCanvas extends StatelessWidget {
   /// canvas is laid out at any other size — so the tab is handed the answer,
   /// not the arithmetic.
   final void Function(String nodeId, int col, int row)? onNodeMoved;
+
+  /// Whether the canvas is drawing walls rather than arranging computers.
+  ///
+  /// One flag, two consequences, and both of them have to be here rather than
+  /// in the tab: taps on the canvas become wall points, and the tiles stop
+  /// taking pointers at all. See the class doc comment.
+  final bool wallMode;
+
+  /// Called with a grid INTERSECTION `(col, row)` — clamped to `0..cols` /
+  /// `0..rows`, which is one more than the cell count because a wall runs along
+  /// cell corners, not through cell centres.
+  ///
+  /// Pixels never leave this file. The tab is handed cells for the same reason
+  /// [onNodeMoved] hands it cells: the cell size falls out of the fit-to-canvas
+  /// rule inside a LayoutBuilder nothing outside can see into, so a caller doing
+  /// its own arithmetic would be guessing at a width.
+  final void Function(int col, int row)? onWallPoint;
+
+  /// The first point of a wall that has been started but not finished, drawn as
+  /// a marker so a half-drawn wall is visible rather than a mode you have to
+  /// remember you are in.
+  final FloorPlanCell? pendingWall;
+
+  /// Which wall (its index in `layout['walls']`) is selected for deletion.
+  final int? selectedWallIndex;
+
+  /// Called with a wall's index when its handle is tapped. Selection only —
+  /// removing it is the toolbar's job, not a tap's.
+  final ValueChanged<int>? onSelectWall;
 
   /// Used when a layout omits its grid. The spec's own example is 40x28.
   static const int defaultCols = 40;
@@ -156,7 +207,9 @@ class FloorPlanCanvas extends StatelessWidget {
         final height = cell * rows;
         final tile = math.min(cell * tileSpan, math.min(width, height));
 
-        return SizedBox(
+        final drawing = wallMode && onWallPoint != null;
+
+        final board = SizedBox(
           width: width,
           height: height,
           child: Stack(
@@ -171,6 +224,9 @@ class FloorPlanCanvas extends StatelessWidget {
                     // `edge` is the token for exactly that weight of line.
                     gridColor: EzBiziTheme.edge(context),
                     wallColor: theme.colorScheme.outline,
+                    pending: wallMode ? pendingWall : null,
+                    selectedWallIndex: wallMode ? selectedWallIndex : null,
+                    accentColor: theme.colorScheme.primary,
                   ),
                 ),
               ),
@@ -185,8 +241,32 @@ class FloorPlanCanvas extends StatelessWidget {
                   width: width,
                   height: height,
                 ),
+              if (wallMode && onSelectWall != null)
+                for (var index = 0; index < walls.length; index++)
+                  _wallHandle(
+                    context,
+                    index: index,
+                    wall: walls[index],
+                    cell: cell,
+                    width: width,
+                    height: height,
+                  ),
             ],
           ),
+        );
+
+        if (!drawing) return board;
+
+        return GestureDetector(
+          key: const Key('floor-plan-wall-surface'),
+          behavior: HitTestBehavior.opaque,
+          onTapUp: (details) => _wallPointAt(
+            details.localPosition,
+            cell: cell,
+            cols: cols,
+            rows: rows,
+          ),
+          child: board,
         );
       },
     );
@@ -222,25 +302,105 @@ class FloorPlanCanvas extends StatelessWidget {
       top: top,
       width: tile,
       height: tile,
-      child: _NodeTile(
-        label: label == null || label.isEmpty ? 'Computer' : label,
-        entry: entry,
-        selected: id == selectedNodeId,
-        onTap: () => onSelectNode(id),
-        // A drag is wired up only when there is both a mode that wants it and
-        // somewhere to report it; either one missing and the tile is Task 6's.
-        onDragged: editable && onNodeMoved != null
-            ? (delta) => _dropAt(
-                id: id,
-                left: left,
-                top: top,
-                delta: delta,
-                cell: cell,
-                cols: cols,
-                rows: rows,
-              )
-            : null,
+      // Wall mode takes the tiles out of the hit test entirely, so one tap can
+      // never both place a wall point and select or drag a computer. Not a
+      // z-order race: while walls are being drawn the tile has no recognizer to
+      // win the arena with. The IgnorePointer is INSIDE the Positioned because
+      // a Stack only positions its direct children.
+      child: IgnorePointer(
+        ignoring: wallMode,
+        child: _NodeTile(
+          label: label == null || label.isEmpty ? 'Computer' : label,
+          entry: entry,
+          selected: id == selectedNodeId,
+          onTap: () => onSelectNode(id),
+          // A drag is wired up only when there is both a mode that wants it and
+          // somewhere to report it; either one missing and the tile is Task 6's.
+          onDragged: editable && onNodeMoved != null
+              ? (delta) => _dropAt(
+                  id: id,
+                  left: left,
+                  top: top,
+                  delta: delta,
+                  cell: cell,
+                  cols: cols,
+                  rows: rows,
+                )
+              : null,
+        ),
       ),
+    );
+  }
+
+  /// A small target at a wall's midpoint, drawn only in wall mode.
+  ///
+  /// Selecting a wall needs somewhere unambiguous to tap: the wall itself is a
+  /// one-pixel-thick line drawn by a painter, which has no hit test at all, and
+  /// widening it into a tappable strip would put an invisible ribbon across the
+  /// grid that swallows the points you are trying to draw with. A handle is
+  /// small, sits where the wall is, exists only while walls are being edited,
+  /// and blocks exactly one intersection while it does.
+  Widget _wallHandle(
+    BuildContext context, {
+    required int index,
+    required FloorPlanWall wall,
+    required double cell,
+    required double width,
+    required double height,
+  }) {
+    final theme = Theme.of(context);
+    final selected = index == selectedWallIndex;
+    final size = math.max(16.0, cell * 1.2);
+
+    final midX = (wall.x1 + wall.x2) / 2 * cell;
+    final midY = (wall.y1 + wall.y2) / 2 * cell;
+
+    return Positioned(
+      key: ValueKey('floor-plan-wall-$index'),
+      left: (midX - size / 2).clamp(0.0, math.max(0.0, width - size)),
+      top: (midY - size / 2).clamp(0.0, math.max(0.0, height - size)),
+      width: size,
+      height: size,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => onSelectWall!(index),
+        child: Semantics(
+          button: true,
+          selected: selected,
+          label: 'Wall ${index + 1}',
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: theme.colorScheme.surface,
+              border: Border.all(
+                color: selected
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.outline,
+                width: selected ? 3 : 1,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Turn a tap on the canvas into the nearest grid INTERSECTION, and report it.
+  ///
+  /// Rounds rather than floors, and clamps to `0..cols` inclusive: a wall runs
+  /// along cell corners, so the last column's right-hand edge is a legal end
+  /// point and flooring would make it unreachable.
+  void _wallPointAt(
+    Offset local, {
+    required double cell,
+    required int cols,
+    required int rows,
+  }) {
+    if (cell <= 0) return;
+
+    onWallPoint!(
+      (local.dx / cell).round().clamp(0, cols),
+      (local.dy / cell).round().clamp(0, rows),
     );
   }
 
@@ -403,6 +563,10 @@ class _NodeTileState extends State<_NodeTile> {
   }
 }
 
+/// One grid INTERSECTION — a corner, not a cell. What a wall's two ends are
+/// made of, and what [FloorPlanCanvas.onWallPoint] reports.
+typedef FloorPlanCell = ({int col, int row});
+
 /// One wall segment, in grid-cell coordinates. Two arbitrary points, so a
 /// diagonal is not a special case.
 @immutable
@@ -463,6 +627,9 @@ class FloorPlanPainter extends CustomPainter {
     required this.walls,
     required this.gridColor,
     required this.wallColor,
+    this.pending,
+    this.selectedWallIndex,
+    this.accentColor,
   });
 
   final int cols;
@@ -470,6 +637,17 @@ class FloorPlanPainter extends CustomPainter {
   final List<FloorPlanWall> walls;
   final Color gridColor;
   final Color wallColor;
+
+  /// The first point of a half-drawn wall, or null. Drawn as a ring so the
+  /// mode is visible on the map itself, not only in the toolbar's words.
+  final FloorPlanCell? pending;
+
+  /// Which wall is selected for removal — drawn in [accentColor] so the thing
+  /// about to be deleted is the thing you can see.
+  final int? selectedWallIndex;
+
+  /// The token both of the above draw in. Null when neither is in play.
+  final Color? accentColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -500,11 +678,42 @@ class FloorPlanPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
 
-    for (final wall in walls) {
+    final accent = accentColor;
+
+    final selectedPaint = accent == null
+        ? null
+        : (Paint()
+          ..color = accent
+          ..strokeWidth = math.max(3, cellW * 0.45)
+          ..strokeCap = StrokeCap.round
+          ..style = PaintingStyle.stroke);
+
+    for (var index = 0; index < walls.length; index++) {
+      final wall = walls[index];
       canvas.drawLine(
         Offset(wall.x1 * cellW, wall.y1 * cellH),
         Offset(wall.x2 * cellW, wall.y2 * cellH),
-        wallPaint,
+        index == selectedWallIndex && selectedPaint != null
+            ? selectedPaint
+            : wallPaint,
+      );
+    }
+
+    // The half-drawn wall's first point: a filled dot with a ring, so it reads
+    // at 375px where the dot alone would be a few pixels of nothing.
+    final start = pending;
+    if (start != null && accent != null) {
+      final centre = Offset(start.col * cellW, start.row * cellH);
+      final radius = math.max(4.0, cellW * 0.5);
+
+      canvas.drawCircle(centre, radius, Paint()..color = accent);
+      canvas.drawCircle(
+        centre,
+        radius * 2,
+        Paint()
+          ..color = accent
+          ..strokeWidth = 2
+          ..style = PaintingStyle.stroke,
       );
     }
   }
@@ -515,5 +724,8 @@ class FloorPlanPainter extends CustomPainter {
       oldDelegate.rows != rows ||
       oldDelegate.gridColor != gridColor ||
       oldDelegate.wallColor != wallColor ||
+      oldDelegate.pending != pending ||
+      oldDelegate.selectedWallIndex != selectedWallIndex ||
+      oldDelegate.accentColor != accentColor ||
       !listEquals(oldDelegate.walls, walls);
 }

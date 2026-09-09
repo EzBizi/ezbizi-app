@@ -13,12 +13,22 @@ import 'floor_plan_canvas.dart';
 /// (spec docs/superpowers/specs/2026-09-09-monitoring-general-map-design.md).
 ///
 /// The tab SHELL — the plan picker, the load of one plan's `layout` + resolved
-/// `status`, the 30s status poll, and the TILE EDITOR (Task 7a: add, move,
-/// delete, assign, save) — mounting [FloorPlanCanvas] as the map area, still
-/// keyed `floor-plan-canvas`. Walls and plan create/rename/delete are Task 7b;
-/// the summary sidebar is Task 8, and the selection this tab holds
-/// ([_selectedNodeId]) is what it will read, which is why the canvas reports
-/// taps here rather than keeping the selection to itself.
+/// `status`, the 30s status poll, the TILE EDITOR (Task 7a: add, move, delete,
+/// assign, save) and, from Task 7b, WALLS and the plans themselves (create with
+/// a scope, rename, delete) — mounting [FloorPlanCanvas] as the map area, still
+/// keyed `floor-plan-canvas`. The summary sidebar is Task 8, and the selection
+/// this tab holds ([_selectedNodeId]) is what it will read, which is why the
+/// canvas reports taps here rather than keeping the selection to itself.
+///
+/// ── Two editing modes, never both ──────────────────────────────────
+///
+/// Inside edit mode there is a second switch: tiles or walls. Wall mode hands
+/// the canvas `wallMode: true`, which takes the tiles out of the hit test
+/// entirely, and drops the tile selection here so the toolbar's three tile
+/// controls have nothing to act on either. So one tap is one thing, always, and
+/// which thing is a mode you can see rather than a gesture you have to aim.
+/// Leaving wall mode discards a half-drawn wall: it was never in the draft, so
+/// there is nothing to undo, and the plan is not dirty because of it.
 ///
 /// ── The two grants, and what each gates ────────────────────────────
 ///
@@ -83,10 +93,11 @@ class GeneralTab extends StatefulWidget {
 
   static const String noPlansNote = 'No floor plans yet.';
 
-  /// Shown under [noPlansNote] only to someone who can edit — creating a plan
-  /// is Task 7b, so this is a hint, not a working button.
+  /// Shown under [noPlansNote] only to someone who can edit — it says the one
+  /// thing about creating a plan that is not obvious from the button.
   static const String addPlanHint =
-      'You can add a floor plan once map editing is available.';
+      'A plan belongs to the organization, to one company or to one franchise. '
+      'You choose which when you name it.';
 
   static const String selectPrompt = 'Select a floor plan to view it.';
 
@@ -94,6 +105,26 @@ class GeneralTab extends StatefulWidget {
   /// a tile are not disabled for a reason the screen never gives.
   static const String selectTileHint =
       'Tap a computer to assign or delete it. Drag one to move it.';
+
+  /// Wall mode, with nothing started. Says both halves — how a wall is drawn
+  /// and how the mode is left — because a mode with no visible way out is how
+  /// somebody ends up dragging tiles that no longer answer.
+  static const String wallHint =
+      'Tap two points on the grid to draw a wall between them; any two, so a '
+      'diagonal works. Tap Drawing walls again to stop. Computers cannot be '
+      'moved while walls are being drawn.';
+
+  /// Wall mode, one point down. The cancel is stated because it is the only
+  /// affordance here that is not a button.
+  static const String wallPendingHint =
+      'Wall started. Tap the other end, or tap the same point again to cancel '
+      'it.';
+
+  /// How a wall is removed. Two steps on purpose: a tap on a wall's handle
+  /// selects it, and Delete wall removes it — so no tap while drawing can take
+  /// a wall away.
+  static const String wallDeleteHint =
+      'Tap the dot on a wall to select it, then Delete wall.';
 
   /// The confirmation for leaving edit mode with unsaved edits. Edits are never
   /// dropped silently: the answer is either "keep editing" (the draft survives,
@@ -124,6 +155,21 @@ class _GeneralTabState extends State<GeneralTab> {
 
   bool _editing = false;
 
+  /// Wall mode. While it is on the canvas is a drawing surface and the tiles
+  /// take no pointers at all — see [FloorPlanCanvas.wallMode]. Only ever true
+  /// inside edit mode; leaving edit mode turns it off.
+  bool _wallMode = false;
+
+  /// The first point of a wall that has been started and not finished. It is
+  /// deliberately NOT in the draft: a half-drawn wall is not part of the plan,
+  /// so it neither marks the plan dirty nor survives leaving wall mode.
+  FloorPlanCell? _pendingWall;
+
+  /// Which wall (its index in the shown layout's `walls`) is selected for
+  /// removal. Indices, not identity: a wall is four numbers with no id, and the
+  /// list is only ever rebuilt whole.
+  int? _selectedWallIndex;
+
   /// The layout being edited — a deep copy of [_layout], made on the first
   /// mutation and dropped on save or discard. Null means "not edited since the
   /// last load", which is also exactly the not-dirty condition.
@@ -132,6 +178,13 @@ class _GeneralTabState extends State<GeneralTab> {
   bool _dirty = false;
   bool _saving = false;
   String? _saveError;
+
+  /// A create / rename / delete in flight, and whatever the server said if one
+  /// was refused. Separate from [_saveError] because they are refused for
+  /// different reasons — a scope you may not use, versus a person you may not
+  /// see — and one of them must not clear the other's sentence off the screen.
+  bool _planBusy = false;
+  String? _planActionError;
 
   /// The assign picker's roster, fetched once per edit session. Null means
   /// "never asked" — which is the state a viewer without `monitoring.map.manage`
@@ -325,6 +378,11 @@ class _GeneralTabState extends State<GeneralTab> {
       _dirty = false;
       _saveError = null;
       _peopleError = null;
+      // Wall mode is a mode INSIDE editing, so it cannot outlive it — and a
+      // half-drawn wall goes with it, having never been part of the plan.
+      _wallMode = false;
+      _pendingWall = null;
+      _selectedWallIndex = null;
     });
 
     final id = _selectedPlanId;
@@ -430,6 +488,91 @@ class _GeneralTabState extends State<GeneralTab> {
   }
 
   List<dynamic> _draftNodes() => _workingLayout()['nodes'] as List<dynamic>;
+
+  List<dynamic> _draftWalls() => _workingLayout()['walls'] as List<dynamic>;
+
+  // ── walls ──────────────────────────────────────────────────────────
+
+  /// Turn wall drawing on or off.
+  ///
+  /// Both directions clear the half-drawn wall and the wall selection, and
+  /// turning it ON also drops the TILE selection. That last one is the mode
+  /// conflict guard on this side of the boundary: the canvas stops giving tiles
+  /// pointers, and the toolbar's tile controls lose the selection they act on,
+  /// so there is no way to reach a computer from a mode that cannot show you
+  /// which one you would be reaching.
+  void _toggleWallMode() {
+    setState(() {
+      _wallMode = !_wallMode;
+      _pendingWall = null;
+      _selectedWallIndex = null;
+      if (_wallMode) _selectedNodeId = null;
+    });
+  }
+
+  /// A grid intersection was tapped while drawing.
+  ///
+  /// The cell arrives already rounded to an intersection and already clamped —
+  /// [FloorPlanCanvas] owns every pixel of that, because it is the only thing
+  /// that knows how wide a cell was laid out. This only decides which of the
+  /// three things a tap means: start a wall, finish one, or cancel the one that
+  /// was started (the same point twice, which would otherwise be a wall of zero
+  /// length — geometry the server accepts and nobody can see).
+  void _wallPoint(int col, int row) {
+    final start = _pendingWall;
+
+    if (start == null) {
+      setState(() {
+        _pendingWall = (col: col, row: row);
+        _selectedWallIndex = null;
+      });
+      return;
+    }
+
+    if (start.col == col && start.row == row) {
+      setState(() => _pendingWall = null);
+      return;
+    }
+
+    // Only now is the draft touched: a wall that was started and abandoned must
+    // not leave the plan dirty.
+    final walls = _draftWalls();
+
+    setState(() {
+      walls.add(<String, dynamic>{
+        'x1': start.col,
+        'y1': start.row,
+        'x2': col,
+        'y2': row,
+      });
+      _pendingWall = null;
+      _dirty = true;
+    });
+  }
+
+  /// A wall's handle was tapped. Selection only — see [_deleteWall].
+  void _selectWall(int index) {
+    setState(() {
+      _selectedWallIndex = index == _selectedWallIndex ? null : index;
+      // Selecting a wall abandons a half-drawn one rather than leaving two
+      // different things half-started at once.
+      _pendingWall = null;
+    });
+  }
+
+  void _deleteWall() {
+    final index = _selectedWallIndex;
+    if (index == null) return;
+
+    final walls = _draftWalls();
+    if (index < 0 || index >= walls.length) return;
+
+    setState(() {
+      walls.removeAt(index);
+      _selectedWallIndex = null;
+      _dirty = true;
+    });
+  }
 
   Map<String, dynamic>? _draftNode(String id) {
     for (final node in _draftNodes()) {
@@ -611,6 +754,224 @@ class _GeneralTabState extends State<GeneralTab> {
     await _loadPlan(planId);
   }
 
+  // ── the plans themselves: create, rename, delete ───────────────────
+
+  /// The scopes this viewer may put a plan at, in org-tree order.
+  ///
+  /// Straight off the session — `me.organization`, `me.companies`,
+  /// `me.franchises` — which is REACH, the same question `ScopeReach::assertCovers`
+  /// answers on the write. Not `companiesInView`: that narrows by the switcher's
+  /// current position, and a plan is created for a place, not for the place you
+  /// happen to be looking at. The franchise heading uses the organization's own
+  /// word for a franchise (§8), never the literal one.
+  List<_ScopeOption> _scopeOptions() {
+    final me = widget.session.me;
+    if (me == null) return const [];
+
+    return [
+      _ScopeOption(
+        type: 'organization',
+        id: me.organization.id,
+        label: 'Organization · ${me.organization.name}',
+      ),
+      for (final company in me.companies)
+        _ScopeOption(
+          type: 'company',
+          id: company.id,
+          label: 'Company · ${company.name}',
+        ),
+      for (final franchise in me.franchises)
+        _ScopeOption(
+          type: 'franchise',
+          id: franchise.id,
+          label: '${me.organization.franchiseLabel} · ${franchise.name}',
+        ),
+    ];
+  }
+
+  /// Name a new plan and choose its scope, then POST it.
+  ///
+  /// The layout is a starter grid rather than nothing: the endpoint would
+  /// default one for us, but a plan whose grid the server chose and a plan whose
+  /// grid this client chose would be two different sizes, and the first save
+  /// from the editor would silently resize somebody's map.
+  ///
+  /// A refusal is SHOWN, not swallowed — `assertCovers` answers a scope above
+  /// the actor's level with a 422 on `scope`, and that sentence is the only part
+  /// of the refusal anybody can act on.
+  Future<void> _createPlan() async {
+    final scopes = _scopeOptions();
+
+    final result = await showSidePanel<Map<String, dynamic>>(
+      context,
+      builder: (context) => _PlanFormPanel(
+        title: 'New floor plan',
+        submitLabel: 'Create plan',
+        initialName: '',
+        scopes: scopes,
+      ),
+    );
+
+    if (result == null || !mounted) return;
+
+    setState(() {
+      _planBusy = true;
+      _planActionError = null;
+    });
+
+    final response = await widget.api.post('/monitoring/floor-plans', {
+      'name': result['name'],
+      'scope': result['scope'],
+      'layout': <String, dynamic>{
+        'grid': <String, dynamic>{
+          'cols': FloorPlanCanvas.defaultCols,
+          'rows': FloorPlanCanvas.defaultRows,
+        },
+        'walls': <dynamic>[],
+        'nodes': <dynamic>[],
+      },
+    });
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() {
+        _planBusy = false;
+        _planActionError = response.reason;
+      });
+      return;
+    }
+
+    final created = response.data;
+    final id = created is Map<String, dynamic> ? created['id'] as String? : null;
+
+    setState(() => _planBusy = false);
+
+    // The list is re-read rather than having the new row pushed onto it: the
+    // server decides the scope LABEL the picker groups by, and a row assembled
+    // here would group under a heading of our own invention.
+    await _loadPlans();
+
+    if (id != null && mounted) _selectPlan(id);
+  }
+
+  /// Rename the selected plan.
+  ///
+  /// The PUT carries the LAYOUT as well as the name, and that is not belt and
+  /// braces: `update` replaces whatever `layout` it is given, so a rename that
+  /// sent only a name would be fine, but one that sent an empty layout would
+  /// erase the plan. Sending the loaded layout back makes the request say what
+  /// it means — this plan, with this name.
+  Future<void> _renamePlan() async {
+    final id = _selectedPlanId;
+    final layout = _layout;
+    if (id == null || layout == null) return;
+
+    final result = await showSidePanel<Map<String, dynamic>>(
+      context,
+      builder: (context) => _PlanFormPanel(
+        title: 'Rename floor plan',
+        submitLabel: 'Save name',
+        initialName: _selectedPlan?['name'] as String? ?? '',
+        // A plan's scope does not move: `update` does not accept one, so
+        // offering the picker here would be a control with nowhere to go.
+        scopes: const [],
+      ),
+    );
+
+    if (result == null || !mounted) return;
+
+    setState(() {
+      _planBusy = true;
+      _planActionError = null;
+    });
+
+    final response = await widget.api.put('/monitoring/floor-plans/$id', {
+      'name': result['name'],
+      'layout': layout,
+    });
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() {
+        _planBusy = false;
+        _planActionError = response.reason;
+      });
+      return;
+    }
+
+    setState(() => _planBusy = false);
+
+    await _loadPlans();
+  }
+
+  /// Delete the selected plan, after saying which one out loud.
+  Future<void> _deletePlan() async {
+    final id = _selectedPlanId;
+    if (id == null) return;
+
+    final name = _selectedPlan?['name'] as String? ?? 'this floor plan';
+
+    final confirmed = await showSidePanel<bool>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Delete floor plan?',
+        actions: [
+          TextButton(
+            key: const Key('plan-delete-cancel'),
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep it'),
+          ),
+          FilledButton(
+            key: const Key('plan-delete-confirm'),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete plan'),
+          ),
+        ],
+        child: Text(
+          '$name, its walls and every computer on it are removed for everyone '
+          'who can see it. This cannot be undone.',
+        ),
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _planBusy = true;
+      _planActionError = null;
+    });
+
+    final response = await widget.api.delete('/monitoring/floor-plans/$id');
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() {
+        _planBusy = false;
+        _planActionError = response.reason;
+      });
+      return;
+    }
+
+    // Nothing is selected any more, and the poll for the plan that is gone stops
+    // before the list is even re-read — a tick against a deleted id would 404.
+    _pollTimer?.cancel();
+    _pollTimer = null;
+
+    setState(() {
+      _planBusy = false;
+      _selectedPlanId = null;
+      _layout = null;
+      _status = null;
+      _planError = null;
+      _selectedNodeId = null;
+    });
+
+    await _loadPlans();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_canView) {
@@ -627,7 +988,11 @@ class _GeneralTabState extends State<GeneralTab> {
 
   Widget _content(BuildContext context) {
     if (_plans.isEmpty) {
-      return _EmptyState(canManage: _canManage);
+      return _EmptyState(
+        canManage: _canManage,
+        error: _planActionError,
+        onAdd: _planBusy ? null : _createPlan,
+      );
     }
 
     return SingleChildScrollView(
@@ -635,6 +1000,26 @@ class _GeneralTabState extends State<GeneralTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (_canManage) ...[
+            _PlanActions(
+              // Every one of these replaces or removes the whole plan, so none
+              // of them is offered while there is an unsaved draft to lose.
+              onCreate: _editing || _planBusy ? null : _createPlan,
+              onRename:
+                  _editing || _planBusy || _selectedPlanId == null ||
+                      _layout == null
+                  ? null
+                  : _renamePlan,
+              onDelete: _editing || _planBusy || _selectedPlanId == null
+                  ? null
+                  : _deletePlan,
+            ),
+            if (_planActionError != null) ...[
+              const SizedBox(height: 8),
+              ErrorNote(_planActionError!),
+            ],
+            const SizedBox(height: 12),
+          ],
           _PlanPicker(
             key: const Key('floor-plan-picker'),
             plans: _plans,
@@ -695,11 +1080,16 @@ class _GeneralTabState extends State<GeneralTab> {
               dirty: _dirty,
               saving: _saving,
               hasSelection: _selectedNodeId != null,
+              wallMode: _wallMode,
+              wallStarted: _pendingWall != null,
+              hasWallSelection: _selectedWallIndex != null,
               onToggleEdit: _toggleEdit,
               onAdd: _addComputer,
               onAssign: _assignSelected,
               onDelete: _deleteSelected,
               onSave: _save,
+              onToggleWall: _toggleWallMode,
+              onDeleteWall: _deleteWall,
             ),
             const SizedBox(height: 8),
           ],
@@ -717,6 +1107,11 @@ class _GeneralTabState extends State<GeneralTab> {
             onSelectNode: _selectNode,
             editable: _editing,
             onNodeMoved: _editing ? _moveNode : null,
+            wallMode: _editing && _wallMode,
+            onWallPoint: _editing && _wallMode ? _wallPoint : null,
+            pendingWall: _pendingWall,
+            selectedWallIndex: _selectedWallIndex,
+            onSelectWall: _editing && _wallMode ? _selectWall : null,
           ),
         ] else
           const SizedBox.shrink(),
@@ -738,22 +1133,37 @@ class _EditToolbar extends StatelessWidget {
     required this.dirty,
     required this.saving,
     required this.hasSelection,
+    required this.wallMode,
+    required this.wallStarted,
+    required this.hasWallSelection,
     required this.onToggleEdit,
     required this.onAdd,
     required this.onAssign,
     required this.onDelete,
     required this.onSave,
+    required this.onToggleWall,
+    required this.onDeleteWall,
   });
 
   final bool editing;
   final bool dirty;
   final bool saving;
   final bool hasSelection;
+
+  /// Wall mode: the three tile controls go dead for the duration, because the
+  /// canvas has stopped giving tiles pointers and a control that can act on a
+  /// tile you cannot select is a control that cannot be aimed.
+  final bool wallMode;
+  final bool wallStarted;
+  final bool hasWallSelection;
+
   final VoidCallback onToggleEdit;
   final VoidCallback onAdd;
   final VoidCallback onAssign;
   final VoidCallback onDelete;
   final VoidCallback onSave;
+  final VoidCallback onToggleWall;
+  final VoidCallback onDeleteWall;
 
   @override
   Widget build(BuildContext context) {
@@ -776,20 +1186,32 @@ class _EditToolbar extends StatelessWidget {
             if (editing) ...[
               FilledButton.tonalIcon(
                 key: const Key('general-add-computer'),
-                onPressed: onAdd,
+                onPressed: wallMode ? null : onAdd,
                 icon: const Icon(Icons.add),
                 label: const Text('Add computer'),
               ),
               OutlinedButton(
                 key: const Key('general-assign-node'),
-                onPressed: hasSelection ? onAssign : null,
+                onPressed: hasSelection && !wallMode ? onAssign : null,
                 child: const Text('Assign person'),
               ),
               OutlinedButton(
                 key: const Key('general-delete-node'),
-                onPressed: hasSelection ? onDelete : null,
+                onPressed: hasSelection && !wallMode ? onDelete : null,
                 child: const Text('Delete computer'),
               ),
+              OutlinedButton.icon(
+                key: const Key('general-draw-wall'),
+                onPressed: onToggleWall,
+                icon: Icon(wallMode ? Icons.close : Icons.timeline),
+                label: Text(wallMode ? 'Drawing walls' : 'Draw wall'),
+              ),
+              if (wallMode)
+                OutlinedButton(
+                  key: const Key('general-delete-wall'),
+                  onPressed: hasWallSelection ? onDeleteWall : null,
+                  child: const Text('Delete wall'),
+                ),
               FilledButton(
                 key: const Key('general-save'),
                 onPressed: dirty && !saving ? onSave : null,
@@ -798,15 +1220,219 @@ class _EditToolbar extends StatelessWidget {
             ],
           ],
         ),
-        if (editing && !hasSelection) ...[
+        if (editing && _hint.isNotEmpty) ...[
           const SizedBox(height: 6),
           Text(
-            GeneralTab.selectTileHint,
+            key: const Key('general-edit-hint'),
+            _hint,
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ],
       ],
+    );
+  }
+
+  /// One line under the toolbar, saying whichever thing is currently true.
+  /// A disabled control whose condition is never stated is a puzzle, and wall
+  /// mode disables four of them at once.
+  String get _hint {
+    if (wallMode) {
+      if (wallStarted) return GeneralTab.wallPendingHint;
+      return hasWallSelection
+          ? GeneralTab.wallDeleteHint
+          : '${GeneralTab.wallHint} ${GeneralTab.wallDeleteHint}';
+    }
+    return hasSelection ? '' : GeneralTab.selectTileHint;
+  }
+}
+
+/// Making, renaming and removing the plans themselves — above the picker,
+/// because they are about which plans there ARE rather than about what is on
+/// one. Shown only with `monitoring.map.manage`; every button here is a request
+/// the server refuses without it.
+///
+/// A [Wrap] for the same reason the edit toolbar is one: three buttons do not
+/// fit 375px on a line. Rename and Delete are null without a loaded selection —
+/// there is no plan for them to be about — and all three are null while an
+/// unsaved draft exists, because each of them would replace or remove the plan
+/// the draft belongs to.
+class _PlanActions extends StatelessWidget {
+  const _PlanActions({
+    required this.onCreate,
+    required this.onRename,
+    required this.onDelete,
+  });
+
+  final VoidCallback? onCreate;
+  final VoidCallback? onRename;
+  final VoidCallback? onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        FilledButton.tonalIcon(
+          key: const Key('general-add-plan'),
+          onPressed: onCreate,
+          icon: const Icon(Icons.add),
+          label: const Text('New floor plan'),
+        ),
+        OutlinedButton(
+          key: const Key('general-rename-plan'),
+          onPressed: onRename,
+          child: const Text('Rename plan'),
+        ),
+        OutlinedButton(
+          key: const Key('general-delete-plan'),
+          onPressed: onDelete,
+          child: const Text('Delete plan'),
+        ),
+      ],
+    );
+  }
+}
+
+/// One place a plan can belong to. [id] is the organization's, company's or
+/// franchise's own id — what `scope.id` carries to `ScopeReach::assertCovers`.
+@immutable
+class _ScopeOption {
+  const _ScopeOption({
+    required this.type,
+    required this.id,
+    required this.label,
+  });
+
+  final String type;
+  final String id;
+  final String label;
+
+  Key get key => ValueKey('plan-scope-$type-$id');
+}
+
+/// Name a plan — and, when it is being created, say where it belongs.
+///
+/// One panel for both, because they are the same form minus a field: a rename
+/// is handed an empty [scopes] and simply has no scope section, rather than a
+/// disabled one that implies the scope could be changed if you found the right
+/// screen. It cannot: `update` does not accept a scope at all.
+///
+/// The scope list is radio-shaped without being a Material Radio — a row per
+/// option with its own state icon. It reads the same and it keeps this file
+/// clear of the group/value API, whose shape has moved twice.
+///
+/// Returns `{name, scope:{type,id}}` (scope omitted for a rename), or null for
+/// a cancel.
+class _PlanFormPanel extends StatefulWidget {
+  const _PlanFormPanel({
+    required this.title,
+    required this.submitLabel,
+    required this.initialName,
+    required this.scopes,
+  });
+
+  final String title;
+  final String submitLabel;
+  final String initialName;
+  final List<_ScopeOption> scopes;
+
+  @override
+  State<_PlanFormPanel> createState() => _PlanFormPanelState();
+}
+
+class _PlanFormPanelState extends State<_PlanFormPanel> {
+  late final TextEditingController _name =
+      TextEditingController(text: widget.initialName);
+
+  late _ScopeOption? _scope =
+      widget.scopes.isEmpty ? null : widget.scopes.first;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  bool get _ready =>
+      _name.text.trim().isNotEmpty &&
+      (widget.scopes.isEmpty || _scope != null);
+
+  void _submit() {
+    if (!_ready) return;
+
+    final scope = _scope;
+
+    Navigator.of(context).pop(<String, dynamic>{
+      'name': _name.text.trim(),
+      if (scope != null)
+        'scope': <String, dynamic>{'type': scope.type, 'id': scope.id},
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return SidePanel(
+      title: widget.title,
+      actions: [
+        TextButton(
+          key: const Key('plan-form-cancel'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('plan-save'),
+          onPressed: _ready ? _submit : null,
+          child: Text(widget.submitLabel),
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            key: const Key('plan-name'),
+            controller: _name,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Plan name',
+              hintText: 'Main office',
+            ),
+            onChanged: (_) => setState(() {}),
+            onSubmitted: (_) => _submit(),
+          ),
+          if (widget.scopes.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text('Who this plan is for', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 4),
+            Text(
+              'Everyone at that level and below can see it. You are only '
+              'offered the levels you can act on.',
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 8),
+            for (final option in widget.scopes)
+              ListTile(
+                key: option.key,
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  option == _scope
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                  color: option == _scope
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+                title: Text(option.label),
+                onTap: () => setState(() => _scope = option),
+              ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -1054,12 +1680,25 @@ class _PlanCounts extends StatelessWidget {
   }
 }
 
-/// No plans yet. An editor additionally sees a hint that they can add one —
-/// creating a plan is Task 7b, so the affordance is a placeholder for now.
+/// No plans yet, and for an editor the way to make the first one.
+///
+/// It carries the SAME `general-add-plan` key the [_PlanActions] row does, and
+/// the two are mutually exclusive — an empty roster or a populated one, never
+/// both — so "the button that makes a plan" is one key wherever you meet it.
+///
+/// A refusal is shown here too. The create that failed is the one that would
+/// have taken this state away, so the sentence explaining it has nowhere else
+/// to be.
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.canManage});
+  const _EmptyState({
+    required this.canManage,
+    required this.error,
+    required this.onAdd,
+  });
 
   final bool canManage;
+  final String? error;
+  final VoidCallback? onAdd;
 
   @override
   Widget build(BuildContext context) {
@@ -1076,9 +1715,7 @@ class _EmptyState extends StatelessWidget {
               const SizedBox(height: 12),
               FilledButton.icon(
                 key: const Key('general-add-plan'),
-                // Task 7b wires this up; a disabled button states the
-                // affordance without pretending to work yet.
-                onPressed: null,
+                onPressed: onAdd,
                 icon: const Icon(Icons.add),
                 label: const Text('New floor plan'),
               ),
@@ -1089,6 +1726,10 @@ class _EmptyState extends StatelessWidget {
                     ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 textAlign: TextAlign.center,
               ),
+              if (error != null) ...[
+                const SizedBox(height: 12),
+                ErrorNote(error!),
+              ],
             ],
           ],
         ),
