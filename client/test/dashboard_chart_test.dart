@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
@@ -266,17 +265,15 @@ void main() {
   /// every one. Scheduling asked whether the dashboard has a convention for
   /// it; it does, and this pins it so the answer stays true.
   ///
-  /// The chart occupies NOTHING — `_GlanceBody._chartable` only asks whether
-  /// the slice list is non-empty, so the `DashboardChart` widget IS built and
-  /// is in the tree; it is `DashboardChart.build` that returns
-  /// `SizedBox.shrink()` when `isDrawable` finds no slice above zero. Seven
-  /// weekday bars all at zero therefore cost no height at all rather than 140
-  /// points of empty frame. Every sentence still renders, which is the half
-  /// that carries the meaning.
+  /// No chart at all, and every sentence kept.
   ///
-  /// Asserted as a measured size rather than as `findsNothing`, because
-  /// `findsNothing` is the wrong claim and fails: the widget exists. What a
-  /// reader is promised is that nothing is DRAWN.
+  /// This was asserted as a measured `Size.zero` when it was written, with a
+  /// note explaining that `findsNothing` was the wrong claim: the screen's
+  /// own `_chartable` said "the list is non-empty, draw it" while the widget
+  /// said "nothing is above zero, paint nothing", so a `DashboardChart` sat
+  /// in the tree at zero height. That contradiction is gone — both sides now
+  /// go through one definition, and the strict one won — so the honest
+  /// assertion is the one a reader would have written first.
   ///
   /// The trap this also pins: `empty: true` would have been the tempting way
   /// to say it, and the empty branch draws exactly ONE sentence
@@ -311,15 +308,14 @@ void main() {
       },
     ]);
 
-    expect(tester.getSize(find.byType(DashboardChart)), Size.zero);
+    expect(find.byType(DashboardChart), findsNothing);
     expect(find.text('Two areas have no hours set.'), findsOneWidget);
     expect(find.text('These are configured, not booked.'), findsOneWidget);
   });
 
   /// The control for the test above: the SAME shape with one non-zero slice
-  /// takes real height. Without it, a change that stopped rendering charts
-  /// entirely would leave that zero-size assertion green and reading like a
-  /// feature.
+  /// does draw. Without it, a change that stopped rendering charts entirely
+  /// would leave that `findsNothing` green and reading like a feature.
   testWidgets('one non-zero slice is enough to draw the chart', (tester) async {
     await _pumpDashboard(tester, [
       {
@@ -342,10 +338,7 @@ void main() {
       },
     ]);
 
-    expect(
-      tester.getSize(find.byType(DashboardChart)).height,
-      greaterThan(0),
-    );
+    expect(find.byType(DashboardChart), findsOneWidget);
     expect(find.text('Two areas have no hours set.'), findsOneWidget);
   });
 
@@ -381,40 +374,6 @@ void main() {
 
     expect(find.text('Two areas have no hours set.'), findsOneWidget);
     expect(find.text('These are configured, not booked.'), findsNothing);
-  });
-
-  /// Two dashboards, one rule about whether a payload can be drawn.
-  ///
-  /// UI/UX found this while verifying something else: `_chartable` is defined
-  /// byte-identically in `screens/dashboard_screen.dart` and in
-  /// `screens/hr/dashboard_tab.dart`. Nothing is broken today, because they
-  /// agree. The hazard is that the set of presentation kinds MOVES — it moved
-  /// on the day this was written — and a fifth kind added to one copy draws a
-  /// chart on the home screen and silently does not on HR's, falling through
-  /// `default: return false` with nothing red anywhere. It would be reported
-  /// as "the HR dashboard is broken" and the cause would sit in a file nobody
-  /// opened.
-  ///
-  /// A test rather than an extraction, and the reason is not taste. One copy
-  /// is mine and one is HR's, so extracting needs their file and their
-  /// session; a test is the only thing that reduces the risk TODAY and within
-  /// one owner's reach. UI/UX preferred it for a second reason worth keeping:
-  /// the two dashboards may one day diverge for a good reason, and this makes
-  /// that a decision somebody takes rather than a thing that happens.
-  ///
-  /// Delete this when the two call one definition. It is scaffolding around a
-  /// duplication, not a rule worth keeping for its own sake.
-  test('both dashboards decide "can this be drawn" the same way', () {
-    final mine = _chartableBody('lib/screens/dashboard_screen.dart');
-    final hr = _chartableBody('lib/screens/hr/dashboard_tab.dart');
-
-    // Controls. Without these, a rename that made both reads return '' would
-    // compare two empty strings and pass green for ever — the exact failure
-    // this kind of source-reading guard exists to avoid.
-    expect(mine, contains('slices'), reason: 'dashboard_screen.dart not read');
-    expect(hr, contains('slices'), reason: 'hr/dashboard_tab.dart not read');
-
-    expect(hr, mine);
   });
 
   testWidgets('coming soon has no how-to-draw menu', (tester) async {
@@ -654,18 +613,3 @@ const _me = {
   'companies': <Map<String, Object?>>[],
   'franchises': <Map<String, Object?>>[],
 };
-
-/// The body of `_chartable` from a client source file, whitespace collapsed.
-///
-/// Line endings are normalised first: this repo has been bitten by CRLF in a
-/// `$`-anchored regex before, and a guard that silently stops matching is
-/// worse than no guard, which is what the control assertions above are for.
-String _chartableBody(String path) {
-  final source = File(path).readAsStringSync().replaceAll('\r\n', '\n');
-  final start = source.indexOf('bool _chartable(');
-  if (start < 0) return '';
-  final end = source.indexOf('\n  }', start);
-  if (end < 0) return '';
-
-  return source.substring(start, end).replaceAll(RegExp(r'\s+'), ' ').trim();
-}

@@ -421,7 +421,7 @@ class _GlanceBody extends StatelessWidget {
     }
 
     return [
-      if (_chartable(presentation, data))
+      if (DashboardChart.canDraw(presentation, data))
         DashboardChart(
           presentation: presentation,
           slices: data['slices'] is List ? data['slices'] as List : null,
@@ -490,17 +490,6 @@ class _GlanceBody extends StatelessWidget {
     final raw = options['earned_statuses'];
     if (raw is! List) return const [];
     return [for (final item in raw) '$item'];
-  }
-
-  static bool _chartable(String presentation, Map<String, dynamic> data) {
-    switch (presentation) {
-      case 'pie' || 'bar':
-        return data['slices'] is List && (data['slices'] as List).isNotEmpty;
-      case 'line' || 'timeline':
-        return data['series'] is List && (data['series'] as List).isNotEmpty;
-      default:
-        return false;
-    }
   }
 
   /// Jobs sends `revenue`; Inventory sends `stock_value` only with financials.
