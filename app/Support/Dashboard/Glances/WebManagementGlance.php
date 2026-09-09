@@ -59,7 +59,22 @@ final class WebManagementGlance extends DescribedGlance
             if ($sites->isEmpty()) {
                 return $this->payload([
                     'empty' => true,
-                    'sentence' => 'No websites are set up yet.',
+                    /*
+                     * "No websites yet.", not "No websites are set up yet."
+                     *
+                     * This query is scoped by company_id, so a franchise reader
+                     * sees a subset — and "none are set up" is a claim about
+                     * the whole organization that this box cannot support. The
+                     * branch below already proves the module knows the
+                     * difference: it sends `organization_total` separately,
+                     * because the count in the box and the count in the
+                     * business are two different facts.
+                     *
+                     * The bare form is also what the board already says next
+                     * door: LeadsGlance "No enquiries yet.", ReviewsGlance
+                     * "No reviews yet."
+                     */
+                    'sentence' => 'No websites yet.',
                 ]);
             }
 
@@ -71,7 +86,15 @@ final class WebManagementGlance extends DescribedGlance
                     $waiting === 1
                         ? '1 website is waiting for its plugin.'
                         : "{$waiting} websites are waiting for their plugin.",
-                    $total === 1 ? '1 website in reach.' : "{$total} websites in reach.",
+                    /*
+                     * The sentence describes the BOX, not the world. The number
+                     * already says exactly what the box holds, so "in reach"
+                     * qualified nothing — UI/UX's ruling of 2026-09-09
+                     * (b543a45a), which reversed their own earlier one after
+                     * measuring that the board already wrote the plain form
+                     * beside it.
+                     */
+                    $total === 1 ? '1 website.' : "{$total} websites.",
                 ]
                 : [
                     $total === 1 ? '1 website, connected.' : "All {$total} websites connected.",
