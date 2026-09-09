@@ -60,8 +60,27 @@ class _TrainingCardState extends State<TrainingCard> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final response = _response;
-    final narrow = MediaQuery.sizeOf(context).width < 600;
 
+    // The CARD's width, not the window's. This widget is built to be placed
+    // in a slot; in a side panel on a desktop the window is wide and the
+    // card is not, and the strip would be drawn into a column that cannot
+    // hold it (UI/UX, 2026-09-09).
+    return LayoutBuilder(
+      builder: (context, constraints) => _card(
+        context,
+        theme,
+        response,
+        narrow: constraints.maxWidth < 600,
+      ),
+    );
+  }
+
+  Widget _card(
+    BuildContext context,
+    ThemeData theme,
+    ApiResponse? response, {
+    required bool narrow,
+  }) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
