@@ -8,6 +8,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0174',
+      date: '9 Sep 2026',
+      items: [
+        'Scheduling: you can add a service area while looking at a company or the whole organization. It used to refuse and tell you to change the switcher at the top first, which meant the one screen that could have asked which branch the area belonged to was the screen refusing to open. It asks now.',
+        'Scheduling: zip codes are separate items you add one at a time and remove individually, instead of one long line of commas where a single mistyped separator could take the whole list with it. Each one saves on its own, so a zip another area already covers is refused on its own rather than refusing every other edit with it.',
+        'Scheduling: a zip code can carry the city it is in, and Availability can then be searched by city - useful when somebody on the phone knows the town and not the postcode.',
+        'Scheduling: the Availability search suggests as you type, and says whether each suggestion is a service area, a city or a zip code. It used to guess from what you typed - all digits meant a zip, anything else meant an area name - so a city found nothing and said "we do not cover that", which was a wrong answer in the right answer\'s words.',
+        'Scheduling: the list of service areas is grouped under the branch that owns each one, with the company named too when two branches share a name. Twenty-six areas from several branches used to arrive as one flat list with nothing saying which belonged to what.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0173',
       date: '9 Sep 2026',
       items: [
