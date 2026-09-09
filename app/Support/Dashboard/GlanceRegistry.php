@@ -14,6 +14,7 @@ use App\Support\Dashboard\Glances\JobsGlance;
 use App\Support\Dashboard\Glances\BusinessProfileGlance;
 use App\Support\Dashboard\Glances\LeadsGlance;
 use App\Support\Dashboard\Glances\ReviewsGlance;
+use App\Support\Dashboard\Glances\SchedulingGlance;
 use App\Support\Dashboard\Glances\ServicesGlance;
 use App\Support\Dashboard\Glances\WebManagementGlance;
 use App\Support\Modules\ModuleAvailability;
@@ -105,10 +106,6 @@ class GlanceRegistry
             'label' => 'Monitoring',
             'sentence' => 'Monitoring will show who is online and on which device here. Open the Monitoring tab for the roster.',
         ],
-        'scheduling' => [
-            'label' => 'Scheduling',
-            'sentence' => 'Scheduling will show what is booked here once the Schedule tab is live.',
-        ],
     ];
 
     /**
@@ -131,6 +128,7 @@ class GlanceRegistry
         LeadsGlance::class,
         BusinessProfileGlance::class,
         ReviewsGlance::class,
+        SchedulingGlance::class,
         EmailGlance::class,
         AutomationsGlance::class,
     ];
