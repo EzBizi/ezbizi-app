@@ -324,8 +324,11 @@ class _HoursPaneState extends State<HoursPane> {
         DropdownButtonFormField<String>(
           // A dropdown sizes itself to its WIDEST menu item unless told not
           // to, so one long label pushes the whole control past the screen —
-          // 185px past it at 375, which is how "Arizona (no DST)" broke a
-          // phone. isExpanded makes it fit its parent and ellipsise instead.
+          // 185px past it at 375, which is how the Arizona label broke a
+          // phone. isExpanded makes it fit its parent and ellipsise instead,
+          // which is why the labels could later be spelled out from "no DST"
+          // to "no daylight saving" without the width coming back — the test
+          // at 375 is what says so rather than the reasoning.
           isExpanded: true,
           initialValue: draft.timezone,
           decoration: const InputDecoration(
@@ -570,10 +573,10 @@ const Map<String, String> _zoneNames = <String, String>{
   'America/Detroit': 'Eastern — Detroit',
   'America/Chicago': 'Central — Chicago',
   'America/Denver': 'Mountain — Denver',
-  'America/Phoenix': 'Arizona (no DST)',
+  'America/Phoenix': 'Arizona (no daylight saving)',
   'America/Los_Angeles': 'Pacific — Los Angeles',
   'America/Anchorage': 'Alaska',
-  'Pacific/Honolulu': 'Hawaii (no DST)',
+  'Pacific/Honolulu': 'Hawaii (no daylight saving)',
   'America/Toronto': 'Eastern — Toronto',
   'America/Winnipeg': 'Central — Winnipeg',
   'America/Edmonton': 'Mountain — Edmonton',
@@ -607,7 +610,7 @@ String _zoneLabel(String zone) {
   if (match != null) {
     final sign = match.group(1) == '+' ? '-' : '+';
 
-    return 'UTC$sign${match.group(2)} (fixed, no DST)';
+    return 'UTC$sign${match.group(2)} (fixed, no daylight saving)';
   }
 
   return zone;
