@@ -732,12 +732,27 @@ uses an org-wide test *deliberately*, so content-scope cannot mask the bug, plus
 control so a box stuck at zero cannot pass. **This module had already shipped two
 cross-franchise disclosures by conflating those two questions.**
 
-**Customer copy may not borrow our scoping vocabulary.** The empty state read *"No tests in
-reach"*. Measured: `reach` appears **zero** times in customer-facing copy — the only hit in
-`ui_strings.dart` is a code comment. "In reach" is real in the code and meaningless in a
-sentence, and it half-implies an "out of reach" the reader is not entitled to know about.
-Ruled to **"No tests to track."** — true whether none exist or none are visible, and it leaks
-nothing either way.
+**~~Customer copy may not borrow our scoping vocabulary.~~ REVERSED the same evening — the
+measurement was wrong and the ruling flipped with it.**
+
+I ruled Training's *"No tests in reach"* out on the grounds that `reach` appears **zero** times
+in customer-facing copy. That measurement was of `ui_strings.dart`, and it was correct about
+that file. **Glance copy lives in PHP**, one Glances class per module, which the search could
+not have reached. Measured properly: *"in reach"* is in **11 files** — *"No vehicles in reach."*,
+*"1 customer in reach."*, *"No jobs in reach."*, and more, all on the same board. Training was
+joining established house vocabulary, not introducing a word.
+
+> **And on the corrected facts my objection was the feature.** I said "in reach" half-implies
+> an *out of* reach the reader is not entitled to know about. It does imply it, and the reader
+> **is** entitled: these counts are scoped to them, and the phrase is what stops *"12 customers"*
+> being read as the organization's total rather than their own. For an empty state it is the
+> more honest of the two — *"No tests in reach"* does not claim the organization has none, and
+> *"No tests to track"* does. **Ruled back to "in reach."**
+
+> **The measurement lesson, which is new and is the reusable part: the pattern was right, the
+> file was right, and the CORPUS was wrong.** Dashboard copy is split across Dart and PHP, so a
+> clean search of one language can miss most of the thing and return a confident zero. Before
+> ruling that a word is absent from customer copy, ask **where customer copy lives** — plural.
 
 **The smallest correct diff can still be the wrong one: check what it does to the
 assertions.** I told Dashboard to delete `_chartable` outright and let every screen build a
