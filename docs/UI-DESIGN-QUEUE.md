@@ -925,6 +925,29 @@ module of seventeen.
 > comment saying what it depends on**, because it is the sentence that will rot silently while
 > the non-compliant ones at least look wrong.
 
+**A wrong reason is worse than no reason, because it survives review.** Training's line,
+2026-09-09, after two of their comments in one day stated a true conclusion with the wrong
+argument under it. **No reason invites the next reader to work it out; a wrong reason reads as
+considered, so they inherit the argument instead of the question** — and then "fix" working code
+to match it. Both of theirs would have done exactly that: one argued for dropping the current
+attempt from a list at every count, the other defended a string on a consistency that did not
+exist. **When correcting a decision, correct the reason in the file, and name the discarded one
+so nobody re-derives it.**
+
+**A one-way disclosure is not a finished control.** Training's *"Show all N attempts"* was
+`setState(() => _showAll = true)` — expand once, no way back short of a reload. That
+reintroduces the exact failure the cap was ruled for (a row swallowing a list of people), only
+now the reader causes it and cannot undo it. **Ruled: the same control toggles, label swapping
+to "Show fewer".** That is not the second control they were right to avoid inventing — it is the
+first one completing its own behaviour.
+
+**State inside a row of a recycled list belongs to the SLOT, not the item, unless keyed.**
+Training keyed their person row after finding that expanding one person's history and then
+filtering would show *somebody else's* row expanded — `ListView` reuses the element, and the
+expansion state stays with the position. **It would have been reported as a design bug**, and
+the fix is a `ValueKey` on the identity rather than anything in the layout. Candidates: any row
+holding expansion, selection or draft state inside a list that filters or reorders.
+
 **An advisory must not wear the failure component.** Web Management, 2026-09-08, asking
 that this be made a rule after the widget contrast work: *"dressing an advisory as a
 failure teaches people to ignore the component that also carries real failures."* The
