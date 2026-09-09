@@ -939,8 +939,21 @@ class _CapacitySettingsState extends State<CapacitySettings> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (differing.isEmpty)
+                // "in this view", because the rail is franchiseIds()-scoped.
+                //
+                // An ALL-CLEAR is worse to get wrong than an empty state. An
+                // empty state that overclaims sends somebody to look and they
+                // find out; this one tells them nothing needs their attention,
+                // so they do not look at all. At a franchise view an
+                // off-pattern area in a sibling franchise is invisible here,
+                // and "every area follows the pattern" would have said the
+                // company was consistent when it was not.
+                //
+                // Depends on the rail staying scoped; pinned in
+                // scheduling_capacity_test.dart rather than left to this
+                // comment, because a comment is not a gate.
                 Text(
-                  'Every area follows the pattern.',
+                  'Every area in this view follows the pattern.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
