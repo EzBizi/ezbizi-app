@@ -15,6 +15,7 @@ import '../../widgets/refused.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
 import '../../widgets/work_schedule_panel.dart';
+import 'training_card.dart';
 import 'onboarding_form.dart';
 
 /// The people (HR plan, "Records").
@@ -92,6 +93,10 @@ class _RecordsTabState extends State<RecordsTab> {
   /// list. Replaces the list rather than opening beside it, the same as the
   /// contract designer: a page of collected answers is not a side panel.
   String? _reading;
+
+  /// Whose. The Training card is about the person, not the onboarding, and
+  /// the onboarding id above cannot say who without another request.
+  String? _readingUser;
 
   /// Opening a record takes a request, so the row that was tapped says so
   /// rather than the whole page going blank.
@@ -201,6 +206,13 @@ class _RecordsTabState extends State<RecordsTab> {
         formats: _formats,
         backLabel: 'All records',
         onBack: () => setState(() => _reading = null),
+        aside: _readingUser == null
+            ? null
+            : TrainingCard(
+                api: widget.api,
+                userId: _readingUser!,
+                formats: _formats,
+              ),
       );
     }
 
@@ -454,7 +466,10 @@ class _RecordsTabState extends State<RecordsTab> {
     }
 
     if (theirs.length == 1) {
-      setState(() => _reading = theirs.first.id);
+      setState(() {
+        _reading = theirs.first.id;
+        _readingUser = id;
+      });
       return;
     }
 
@@ -500,7 +515,10 @@ class _RecordsTabState extends State<RecordsTab> {
 
     if (chosen == null || !mounted) return;
 
-    setState(() => _reading = chosen);
+    setState(() {
+      _reading = chosen;
+      _readingUser = id;
+    });
   }
 
   void _snack(String message, {bool isError = false}) {
