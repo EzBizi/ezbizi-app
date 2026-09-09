@@ -23,6 +23,11 @@ use Tests\TestCase;
  * said "No websites are set up yet." — a statement about the ORGANIZATION,
  * delivered to a reader who can only see part of it. The count line is copy;
  * the empty line was a claim, and a claim needs a test.
+ *
+ * The strings are pinned deliberately. Two board-wide rulings moved them in one
+ * day, and the proposal that reached me was a version behind the queue both
+ * times — so docs/UI-DESIGN-QUEUE.md is what decides, and this test is what
+ * makes a stale proposal go red instead of shipping.
  */
 class WebManagementGlanceTest extends TestCase
 {
@@ -123,7 +128,7 @@ class WebManagementGlanceTest extends TestCase
         $data = $this->glance($branch);
 
         $this->assertTrue($data['empty']);
-        $this->assertSame('No websites yet.', $data['sentence']);
+        $this->assertSame('No websites to show.', $data['sentence']);
 
         // The control: the organization really does have websites, so a
         // sentence claiming otherwise would have been wrong rather than merely
@@ -137,14 +142,16 @@ class WebManagementGlanceTest extends TestCase
         $data = $this->glance($this->alpha['admin']);
 
         $this->assertTrue($data['empty']);
-        $this->assertSame('No websites yet.', $data['sentence']);
+        $this->assertSame('No websites to show.', $data['sentence']);
     }
 
     /**
-     * The count line carries no qualifier.
+     * The count line carries a PARTICIPLE, not a bare number.
      *
-     * The number already says exactly what the box holds, so "in reach" did no
-     * work — UI/UX's ruling of 2026-09-09.
+     * "in reach" went because a reader cannot parse it. What replaced it is NOT
+     * "2 websites.": Services measured all 23 count sentences across 13 glances
+     * and every one carries a qualifier, so a bare count would have been the
+     * only one on the board. "registered" is this module's own verb.
      */
     public function test_the_count_says_what_the_box_holds_and_nothing_more(): void
     {
@@ -155,10 +162,12 @@ class WebManagementGlanceTest extends TestCase
 
         $this->assertFalse($data['empty']);
         $this->assertContains('1 website is waiting for its plugin.', $data['sentences']);
-        $this->assertContains('2 websites.', $data['sentences']);
+        $this->assertContains('2 websites registered.', $data['sentences']);
 
         foreach ($data['sentences'] as $sentence) {
             $this->assertStringNotContainsString('in reach', $sentence);
+            // "yet" went with it: all six boxes carrying it were scoped too.
+            $this->assertStringNotContainsString(' yet', $sentence);
         }
     }
 
@@ -168,7 +177,7 @@ class WebManagementGlanceTest extends TestCase
 
         $data = $this->glance($this->alpha['admin']);
 
-        $this->assertContains('1 website.', $data['sentences']);
+        $this->assertContains('1 website registered.', $data['sentences']);
     }
 
     /** Nothing waiting is a different sentence, and it still has no qualifier. */

@@ -31,10 +31,15 @@ use App\Support\Tenancy\TenantContext;
 final class WebManagementGlance extends DescribedGlance
 {
     protected const KEY = 'web_management';
+
     protected const LABEL = 'Web Management';
+
     protected const PERMISSION = 'web_management.view';
+
     protected const PRESENTATIONS = ['text'];
+
     protected const DEFAULT_PRESENTATION = 'text';
+
     protected const SNAPSHOT = true;
 
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
@@ -70,11 +75,13 @@ final class WebManagementGlance extends DescribedGlance
                      * because the count in the box and the count in the
                      * business are two different facts.
                      *
-                     * The bare form is also what the board already says next
-                     * door: LeadsGlance "No enquiries yet.", ReviewsGlance
-                     * "No reviews yet."
+                     * "to show", not "yet": the ruling took BOTH words. All
+                     * six "yet" boxes were scoped too, so there was no
+                     * exemption to grant, and PhoneGlance already said "No
+                     * phone lines to show." — the form was on the board before
+                     * the rule was written.
                      */
-                    'sentence' => 'No websites yet.',
+                    'sentence' => 'No websites to show.',
                 ]);
             }
 
@@ -88,13 +95,17 @@ final class WebManagementGlance extends DescribedGlance
                         : "{$waiting} websites are waiting for their plugin.",
                     /*
                      * The sentence describes the BOX, not the world. The number
-                     * already says exactly what the box holds, so "in reach"
-                     * qualified nothing — UI/UX's ruling of 2026-09-09
-                     * (b543a45a), which reversed their own earlier one after
-                     * measuring that the board already wrote the plain form
-                     * beside it.
+                     * qualified nothing a reader could parse — UI/UX's ruling
+                     * of 2026-09-09 (b543a45a).
+                     *
+                     * The replacement is a PARTICIPLE, not a bare count. The
+                     * bare "N websites." I was offered would have been the only
+                     * bare count on the board: Services measured all 23 count
+                     * sentences across 13 glances and every one carries a
+                     * qualifier. "registered" is this module's own verb — a
+                     * company registers each host it owns.
                      */
-                    $total === 1 ? '1 website.' : "{$total} websites.",
+                    $total === 1 ? '1 website registered.' : "{$total} websites registered.",
                 ]
                 : [
                     $total === 1 ? '1 website, connected.' : "All {$total} websites connected.",
