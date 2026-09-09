@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0179',
+      date: '9 Sep 2026',
+      items: [
+        'Training: a test\'s attempt limit counts from your last pass rather than for all time. Somebody who certified, let it lapse and then failed a retake was locked out of certifying again for good, with nothing an administrator could reset.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0178',
       date: '9 Sep 2026',
       items: [
