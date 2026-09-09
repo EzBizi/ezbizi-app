@@ -33,6 +33,56 @@ void main() {
     expect(find.text('Edit'), findsOneWidget);
   });
 
+  /// Layout 5, chosen 2026-09-09: a phone leads with today rather than making
+  /// you find it among seven equal rows.
+  testWidgets('on a phone, today is lifted out and not repeated below', (
+    tester,
+  ) async {
+    await _pump(tester, canEdit: false, width: 400, height: 2400);
+
+    // On a phone the card is not inline: the screen shows a summary row that
+    // opens it. Assert the row is what a phone actually gets, then open it.
+    expect(find.text('Mon Tue Wed Thu Fri'), findsOneWidget);
+    await tester.tap(find.text('Mon Tue Wed Thu Fri'));
+    await tester.pumpAndSettle();
+
+    // Independent of the widget's own list indexing: this names the day from
+    // Dart's weekday constants rather than by position, so a `days` list
+    // reordered to start on Sunday fails here instead of shipping a card that
+    // is confidently one day out.
+    final today = switch (DateTime.now().weekday) {
+      DateTime.monday => 'MONDAY',
+      DateTime.tuesday => 'TUESDAY',
+      DateTime.wednesday => 'WEDNESDAY',
+      DateTime.thursday => 'THURSDAY',
+      DateTime.friday => 'FRIDAY',
+      DateTime.saturday => 'SATURDAY',
+      _ => 'SUNDAY',
+    };
+
+    expect(find.text('TODAY · $today'), findsOneWidget);
+
+    // Six short rows, not seven: today is above, and showing it twice is the
+    // failure this layout exists to avoid.
+    final shorts = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final shown = shorts.where((d) => find.text(d).evaluate().isNotEmpty);
+    expect(shown.length, 6, reason: 'Expected six day rows beside the today '
+        'block, found ${shown.length}: ${shown.join(', ')}.');
+
+    final missing = shorts.firstWhere((d) => find.text(d).evaluate().isEmpty);
+    expect(today.substring(0, 3), missing.toUpperCase());
+  });
+
+  testWidgets('the desktop card is unchanged: seven equal rows, no today block', (
+    tester,
+  ) async {
+    await _pump(tester, canEdit: false);
+
+    expect(find.textContaining('TODAY'), findsNothing);
+    expect(find.text('Mon'), findsOneWidget);
+    expect(find.text('Sun'), findsOneWidget);
+  });
+
   testWidgets('no schedule at all says so and still offers nothing to a reader', (
     tester,
   ) async {
@@ -61,8 +111,10 @@ Future<void> _pump(
   WidgetTester tester, {
   required bool canEdit,
   Map<String, Object?>? schedule = _week,
+  double width = 1280,
+  double height = 900,
 }) async {
-  tester.view.physicalSize = const Size(1280, 900);
+  tester.view.physicalSize = Size(width, height);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 

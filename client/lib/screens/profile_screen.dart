@@ -687,44 +687,142 @@ class _WorkScheduleCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            for (final day in days)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 44,
-                      child: Text(title(day), style: theme.textTheme.titleSmall),
-                    ),
-                    if (map[day] is Map) ...[
-                      _chip(
-                        context,
-                        Icons.login,
-                        (map[day] as Map)['start'] as String? ?? '',
-                        EzBiziTheme.clockIn(context),
-                      ),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8),
-                        child: Icon(Icons.arrow_forward, size: 14),
-                      ),
-                      _chip(
-                        context,
-                        Icons.logout,
-                        (map[day] as Map)['end'] as String? ?? '',
-                        EzBiziTheme.clockOut(context),
-                      ),
-                    ] else
-                      Text(
-                        UiStrings.t('time_clock.day_off'),
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                  ],
-                ),
+            // A phone gets a different SHAPE, not a narrower one -- UI/UX work
+            // schedule layouts 1 + 5, chosen by Jose 2026-09-09. The question
+            // a phone is asked is "what am I doing today", and seven equal
+            // rows make you find today before you can answer it.
+            LayoutBuilder(
+              builder: (context, c) => Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: c.maxWidth < 600
+                    ? _phone(context, theme, map)
+                    : [for (final day in days) _row(context, theme, map, day)],
               ),
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _row(
+    BuildContext context,
+    ThemeData theme,
+    Map map,
+    String day,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 44,
+            child: Text(title(day), style: theme.textTheme.titleSmall),
+          ),
+          if (map[day] is Map) ...[
+            _chip(
+              context,
+              Icons.login,
+              (map[day] as Map)['start'] as String? ?? '',
+              EzBiziTheme.clockIn(context),
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8),
+              child: Icon(Icons.arrow_forward, size: 14),
+            ),
+            _chip(
+              context,
+              Icons.logout,
+              (map[day] as Map)['end'] as String? ?? '',
+              EzBiziTheme.clockOut(context),
+            ),
+          ] else
+            Text(
+              UiStrings.t('time_clock.day_off'),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Today at the top, then the rest of the week small.
+  ///
+  /// `DateTime.now().weekday` is 1..7 from Monday, which is the order [days]
+  /// is written in -- so the -1 is an index and not an assumption about
+  /// locale. The week still shows in full underneath: the point is that today
+  /// is found for you, not that the other six stop being reachable.
+  List<Widget> _phone(BuildContext context, ThemeData theme, Map map) {
+    final today = days[DateTime.now().weekday - 1];
+    return [
+      _today(context, theme, map, today),
+      const SizedBox(height: 4),
+      for (final day in days)
+        if (day != today) _row(context, theme, map, day),
+    ];
+  }
+
+  Widget _today(
+    BuildContext context,
+    ThemeData theme,
+    Map map,
+    String today,
+  ) {
+    final window = map[today];
+    final working = window is Map;
+    final tint = working
+        ? EzBiziTheme.clockIn(context)
+        : theme.colorScheme.onSurfaceVariant;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: tint.withValues(alpha: 0.06),
+        border: Border.all(color: tint.withValues(alpha: 0.35)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'TODAY · ${today.toUpperCase()}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: tint,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
+            ),
+          ),
+          const SizedBox(height: 4),
+          if (working)
+            // The times, at the size the one question deserves. No third line:
+            // a schedule day holds `start` and `end` and nothing else, so
+            // anything below this would be invented.
+            Row(
+              children: [
+                Text(
+                  window['start'] as String? ?? '',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    color: EzBiziTheme.clockIn(context),
+                  ),
+                ),
+                Text('  –  ', style: theme.textTheme.headlineSmall),
+                Text(
+                  window['end'] as String? ?? '',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    color: EzBiziTheme.clockOut(context),
+                  ),
+                ),
+              ],
+            )
+          else
+            Text(
+              UiStrings.t('time_clock.day_off'),
+              style: theme.textTheme.headlineSmall?.copyWith(color: tint),
+            ),
+        ],
       ),
     );
   }
