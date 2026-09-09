@@ -55,8 +55,13 @@ class _BrandColourCardState extends State<BrandColourCard> {
   ];
 
   String? _own; // what this organization set, or null
-  String? _effective; // what actually renders — theirs, or the fallback
-  String? _onEffective; // the server's derived text colour
+  // What is actually on the page, and its derived text. These ALWAYS answer:
+  // for a business that has told us nothing they are the fallback and its
+  // text, which is why the not-set state still shows a button. `effective`
+  // would have been null there — it answers "have they told us a colour",
+  // a different question, and the one `_own` already answers here.
+  String? _rendered;
+  String? _onRendered;
   bool _loading = true;
   String? _error;
 
@@ -97,8 +102,8 @@ class _BrandColourCardState extends State<BrandColourCard> {
   void _take(Object? data) {
     final map = data is Map ? data : const {};
     _own = map['organization'] as String?;
-    _effective = map['effective'] as String?;
-    _onEffective = map['on_effective'] as String?;
+    _rendered = map['rendered'] as String?;
+    _onRendered = map['on_rendered'] as String?;
   }
 
   @override
@@ -220,8 +225,8 @@ class _BrandColourCardState extends State<BrandColourCard> {
   );
 
   Widget _preview(ThemeData theme) {
-    final background = _parse(_effective);
-    final foreground = _parse(_onEffective);
+    final background = _parse(_rendered);
+    final foreground = _parse(_onRendered);
 
     // Nothing invented: with no derived colour from the server there is no
     // honest button to draw, so the card shows the controls and stops.
@@ -265,9 +270,9 @@ class _BrandColourCardState extends State<BrandColourCard> {
   /// Names the text colour the SERVER chose, never one worked out here.
   Widget _derived(ThemeData theme) {
     final lines = <String>[
-      if (_onEffective != null)
+      if (_onRendered != null)
         'The text on it is chosen for you — '
-            '${_onEffective == '#000000' ? 'black' : 'white'} on this colour. '
+            '${_onRendered == '#000000' ? 'black' : 'white'} on this colour. '
             'You pick one colour, not a pair.',
       'Companies follow this unless they set their own.',
     ];

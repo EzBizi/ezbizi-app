@@ -13,7 +13,7 @@ void main() {
   testWidgets('not set: says so, and still shows what the site renders', (
     tester,
   ) async {
-    await _pump(tester, own: null, effective: '#0b5cad', on: '#ffffff');
+    await _pump(tester, own: null, rendered: '#0b5cad', on: '#ffffff');
 
     expect(find.textContaining('You have not set a colour'), findsOneWidget);
     expect(find.byKey(BrandColourCard.previewKey), findsOneWidget);
@@ -21,13 +21,13 @@ void main() {
   });
 
   testWidgets('set: the not-set sentence goes away', (tester) async {
-    await _pump(tester, own: '#00838f', effective: '#00838f', on: '#000000');
+    await _pump(tester, own: '#00838f', rendered: '#00838f', on: '#000000');
 
     expect(find.textContaining('You have not set a colour'), findsNothing);
     expect(find.textContaining('black on this colour'), findsOneWidget);
   });
 
-  /// The whole point of reading `on_effective` instead of computing it.
+  /// The whole point of reading `on_rendered` instead of computing it.
   ///
   /// The server here returns a deliberately WRONG pairing — white text on a
   /// near-white colour. A card that derived the text itself would draw black
@@ -36,7 +36,7 @@ void main() {
   testWidgets('the text colour comes from the server, not from arithmetic here', (
     tester,
   ) async {
-    await _pump(tester, own: '#fefefe', effective: '#fefefe', on: '#ffffff');
+    await _pump(tester, own: '#fefefe', rendered: '#fefefe', on: '#ffffff');
 
     final label = tester.widget<Text>(
       find.descendant(
@@ -48,7 +48,7 @@ void main() {
       label.style?.color,
       const Color(0xFFFFFFFF),
       reason: 'The card computed its own text colour instead of using the '
-          'server\'s on_effective, which is how two definitions of readable '
+          'server\'s on_rendered, which is how two definitions of readable '
           'start to drift.',
     );
     expect(find.textContaining('white on this colour'), findsOneWidget);
@@ -61,7 +61,7 @@ void main() {
     await _pump(
       tester,
       own: null,
-      effective: '#0b5cad',
+      rendered: '#0b5cad',
       on: '#ffffff',
       onPut: (colour) {
         sent.add(colour);
@@ -69,6 +69,8 @@ void main() {
           'organization': colour,
           'effective': colour,
           'on_effective': '#000000',
+          'rendered': colour,
+          'on_rendered': '#000000',
         };
       },
     );
@@ -92,12 +94,18 @@ void main() {
     await _pump(
       tester,
       own: '#00838f',
-      effective: '#00838f',
+      rendered: '#00838f',
       on: '#000000',
       mayEdit: false,
       onPut: (colour) {
         sent.add(colour);
-        return {'organization': colour, 'effective': colour, 'on_effective': '#000000'};
+        return {
+          'organization': colour,
+          'effective': colour,
+          'on_effective': '#000000',
+          'rendered': colour,
+          'on_rendered': '#000000',
+        };
       },
     );
 
@@ -124,7 +132,7 @@ void main() {
     await _pump(
       tester,
       own: '#00838f',
-      effective: '#00838f',
+      rendered: '#00838f',
       on: '#000000',
       width: 400,
     );
@@ -138,7 +146,7 @@ void main() {
   testWidgets('on a desktop the hex field sits above the swatches', (
     tester,
   ) async {
-    await _pump(tester, own: '#00838f', effective: '#00838f', on: '#000000');
+    await _pump(tester, own: '#00838f', rendered: '#00838f', on: '#000000');
 
     expect(
       tester.getTopLeft(find.byType(TextFormField)).dy,
@@ -150,7 +158,7 @@ void main() {
   testWidgets('no derived colour means no button rather than a guessed one', (
     tester,
   ) async {
-    await _pump(tester, own: '#00838f', effective: '#00838f', on: null);
+    await _pump(tester, own: '#00838f', rendered: '#00838f', on: null);
 
     expect(find.byKey(BrandColourCard.previewKey), findsNothing);
     expect(find.byKey(BrandColourCard.swatchesKey), findsOneWidget);
@@ -160,7 +168,7 @@ void main() {
 Future<void> _pump(
   WidgetTester tester, {
   required String? own,
-  required String? effective,
+  required String? rendered,
   required String? on,
   bool mayEdit = true,
   double width = 1200,
@@ -176,7 +184,13 @@ Future<void> _pump(
         final body = jsonDecode(request.body) as Map<String, dynamic>;
         final data =
             onPut?.call(body['colour'] as String?) ??
-            {'organization': own, 'effective': effective, 'on_effective': on};
+            {
+              'organization': own,
+              'effective': own,
+              'on_effective': own == null ? null : on,
+              'rendered': rendered,
+              'on_rendered': on,
+            };
         return http.Response(
           jsonEncode({'data': data}),
           200,
@@ -187,8 +201,10 @@ Future<void> _pump(
         jsonEncode({
           'data': {
             'organization': own,
-            'effective': effective,
-            'on_effective': on,
+            'effective': own,
+            'on_effective': own == null ? null : on,
+            'rendered': rendered,
+            'on_rendered': on,
           },
         }),
         200,
