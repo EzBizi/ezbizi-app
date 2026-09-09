@@ -341,6 +341,62 @@ void main() {
     );
   });
 
+  /// THE REPORTED DEFECT (Jose, 2026-09-09): "i replied a to sean lang, but it
+  /// does not update on the left side". The reply reached Google and the
+  /// thread drew it; the row went on quoting the message before it, because
+  /// the widget that sent it had no way to tell the screen holding the list.
+  ///
+  /// The caller is what is tested here. The callback on its own would pass a
+  /// widget test while the screen forgot to pass it — which is the shape of
+  /// this defect, not a hypothetical.
+  testWidgets('a reply updates the row on the left, not only the thread', (
+    tester,
+  ) async {
+    final leads = [
+      _lead(
+        'lead-1',
+        'Sean Lang',
+        from: 'CONSUMER',
+        channel: 'MESSAGE',
+        preview: 'Do you offer free estimates?',
+      ),
+    ];
+
+    await _pump(
+      tester,
+      leads: leads,
+      connections: const [
+        {
+          'provider': 'google_ads',
+          'display_name': '123-456-7890',
+          'status': 'connected',
+        },
+      ],
+    );
+
+    // The control: this is what the row says before anybody replies. The
+    // first lead is already open in the pane beside the list.
+    expect(find.text('Do you offer free estimates?'), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('reply-box')),
+      'On my way',
+    );
+    await tester.tap(find.byKey(const ValueKey('reply-send')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Do you offer free estimates?'),
+      findsNothing,
+      reason: 'the row must stop quoting the message before the reply',
+    );
+    expect(
+      find.textContaining('On my way'),
+      findsWidgets,
+      reason: 'the row now carries what was actually said',
+    );
+  });
+
   testWidgets('an unconnected Thumbtack offers to connect from the sources '
       'panel and says what connecting is for', (tester) async {
     await _pump(tester, leads: const [], connections: const []);
@@ -765,8 +821,69 @@ Future<void> _pump(
       if (request.method == 'POST' &&
           request.url.path.startsWith('/api/v1/leads/')) {
         _posts.add(request.url.path);
+
+        // A reply rebuilds the row's cache of the newest message, the way the
+        // server does when it stores one. Without this the list read after a
+        // send would return the same row and the test could not tell a screen
+        // that refreshes from one that does not.
+        if (request.url.path.endsWith('/messages')) {
+          final text = (jsonDecode(request.body) as Map)['text'] as String;
+          final id = request.url.path.split('/')[4];
+          final i = leads.indexWhere((l) => l['id'] == id);
+
+          if (i >= 0) {
+            leads[i] = {
+              ...leads[i],
+              'last_contact_from': 'ADVERTISER',
+              'last_contact_channel': 'MESSAGE',
+              'last_contact_at': '2026-09-09T18:00:00Z',
+              'last_contact_preview': text,
+            };
+          }
+
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'id': 'c-sent',
+                'channel': 'MESSAGE',
+                'from': 'ADVERTISER',
+                'occurred_at': '2026-09-09T18:00:00Z',
+                'duration_ms': null,
+                'text': text,
+                'attachments': <String>[],
+                'has_recording': false,
+              },
+            }),
+            201,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+
         return http.Response(
           '{"data":{}}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
+      // The thread's own fetch when a row is opened.
+      if (request.method == 'GET' &&
+          request.url.path.startsWith('/api/v1/leads/')) {
+        final id = request.url.path.split('/').last;
+        final lead = leads.firstWhere(
+          (l) => l['id'] == id,
+          orElse: () => const {},
+        );
+
+        return http.Response(
+          jsonEncode({
+            'data': {
+              ...lead,
+              'can_reply': true,
+              'conversations': const [],
+              'customer_matches': const [],
+            },
+          }),
           200,
           headers: {'content-type': 'application/json'},
         );

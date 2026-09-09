@@ -70,7 +70,22 @@ final class LeadsGlance extends DescribedGlance
                     options: [],
                     data: [
                         'empty' => true,
-                        'sentence' => 'No enquiries yet.',
+                        /*
+                         * "In this view", because this box is scoped and the
+                         * sentence it used to carry was not.
+                         *
+                         * It said "No enquiries yet.", which is a claim about
+                         * the ORGANIZATION delivered to a reader who can only
+                         * see part of it. On 2026-09-09 that reader could have
+                         * been a franchise manager with nothing placed in
+                         * their branch while the organization held 40,469
+                         * enquiries — the sentence was not clumsy, it was
+                         * false, and false in the direction that matters most
+                         * here: it tells somebody nothing is arriving when the
+                         * truth is that it is arriving somewhere they cannot
+                         * see. Board-wide ruling, UI/UX 30ff2369.
+                         */
+                        'sentence' => 'No enquiries in this view.',
                     ],
                 );
             }
@@ -100,6 +115,18 @@ final class LeadsGlance extends DescribedGlance
             $periodWord = $period->key;
             $inPeriod   = array_sum($counts);
 
+            /*
+             * The "yet" in "not yet dealt with" STAYS, and a sweep that
+             * removes the word everywhere would be wrong to take it.
+             *
+             * The ruling is not against a word. It is against a claim the box
+             * cannot support: "Nothing posted yet." says the organization has
+             * nothing, from a box that saw part of it. This "yet" qualifies
+             * the LEADS the box is holding and counting — these ones have not
+             * been dealt with — which is the box describing itself. Same shape
+             * as the two Automations strings that keep "in reach" because
+             * there it names a mechanism.
+             */
             $sentences = [
                 $waiting === 1
                     ? '1 lead not yet dealt with.'
