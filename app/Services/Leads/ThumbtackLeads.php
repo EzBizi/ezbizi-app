@@ -11,6 +11,7 @@ use App\Support\Social\ThumbtackNegotiations;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
+use Throwable;
 
 /**
  * A Thumbtack enquiry, turned into a Lead row.
@@ -50,11 +51,13 @@ class ThumbtackLeads
     ) {}
 
     /**
-     * Fetch one negotiation and file it, with everything said on it so far.
+     * File one negotiation, with everything said on it so far.
      *
+     * @param  array<string, mixed>  $carried  the event's own `data` block, when
+     *                                         the caller has one
      * @return array{lead: Lead, created: bool, messages: int}
      */
-    public function absorb(SocialConnection $connection, string $negotiationId): array
+    public function absorb(SocialConnection $connection, string $negotiationId, array $carried = []): array
     {
         $negotiationId = trim($negotiationId);
 
@@ -62,7 +65,34 @@ class ThumbtackLeads
             throw new RuntimeException('Thumbtack sent an event with no negotiation id.');
         }
 
-        $raw = ThumbtackNegotiations::for($connection)->find($negotiationId);
+        /*
+         * THE EVENT ALREADY CONTAINS THE ENQUIRY. Use it, and only call them
+         * when it does not.
+         *
+         * NegotiationCreatedV4 carries the whole negotiation in `data` —
+         * negotiationID, createdAt, the customer's name and phone, the business
+         * and the requested category. Fetching it again by id was a round trip
+         * for something already in our hands.
+         *
+         * It was also the reason nothing could ever be verified. Thumbtack's
+         * own words for the test-negotiation endpoint: "All information in the
+         * test negotiation payload will be synthetic/dummy data ... IDs in the
+         * payload will be randomly generated and will not refer to any real
+         * entities in the Thumbtack system." So a specimen event can never be
+         * fetched back — the fetch 404s by design, and every attempt to prove
+         * this integration end to end died there rather than on anything real.
+         *
+         * And in production it is a lost lead waiting to happen: their API has
+         * no way to list negotiations, so an enquiry whose fetch fails once is
+         * gone for good. The payload cannot fail.
+         *
+         * The fetch stays as the fallback for an event that carries no detail —
+         * MessageCreatedV4 names its negotiation without describing it — where
+         * a round trip is the only way to learn who is asking.
+         */
+        $raw = $this->looksComplete($carried)
+            ? $carried
+            : ThumbtackNegotiations::for($connection)->find($negotiationId);
 
         $result = $this->store($connection, $negotiationId, $raw);
 
@@ -77,7 +107,27 @@ class ThumbtackLeads
             ]);
         }
 
-        $messages = $this->messages($connection, $result['lead'], $negotiationId);
+        /*
+         * The thread is worth having and never worth losing the lead over.
+         *
+         * By this point the enquiry is COMMITTED — who is asking, their number,
+         * what they want. Reading the conversation is a second call that can
+         * fail on its own: a synthetic id from a specimen (their test payload's
+         * ids "will not refer to any real entities"), a thread not readable
+         * yet, a timeout. Letting that throw would roll the caller into a 500,
+         * Thumbtack would retry, and on the retry the lead is already stored
+         * and the same fetch fails again — a permanent 500 on a lead we hold.
+         *
+         * So it is reported and swallowed. The lead stands with no messages
+         * rather than the enquiry being lost to a failure in its footnotes.
+         */
+        $messages = 0;
+
+        try {
+            $messages = $this->messages($connection, $result['lead'], $negotiationId);
+        } catch (Throwable $e) {
+            report($e);
+        }
 
         return [...$result, 'messages' => $messages];
     }
@@ -137,6 +187,23 @@ class ThumbtackLeads
         $this->threads->refresh($lead);
 
         return $new;
+    }
+
+    /**
+     * Enough of a negotiation to file without asking them again.
+     *
+     * The customer is the test: a lead with no name and no phone is a row
+     * nobody can act on, and that is the one case worth spending a round trip
+     * to fix. A MessageCreatedV4 body names its negotiation and describes
+     * nothing, so it falls through to the fetch and is unaffected.
+     *
+     * @param  array<string, mixed>  $carried
+     */
+    private function looksComplete(array $carried): bool
+    {
+        return isset($carried['negotiationID'])
+            && is_array($carried['customer'] ?? null)
+            && trim((string) ($carried['customer']['firstName'] ?? '')) !== '';
     }
 
     /**
