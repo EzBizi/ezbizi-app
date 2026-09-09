@@ -9,6 +9,7 @@
 | Google product | Google Ads API |
 | Host | `googleads.googleapis.com` |
 | Access | **Basic Access — APPROVED 3 September 2026.** Standard Access applied 2026-09-08 (case 3-8972000040872), **DENIED 2026-09-09**: reserved for integrations regularly exceeding 15,000/day with RESOURCE_EXHAUSTED errors; reapply when the box logs them |
+| API contact email | google-ads-api@ezbizi.com, an alias of development@ezbizi.com, set in the API Center 2026-09-09 at Google's request for a role-based address |
 | Quota | 15,000 operations/day |
 | Permissible use | Reporting; one write, a person's reply to a text enquiry (see §7) |
 | Manager account | 706-109-4046 |
