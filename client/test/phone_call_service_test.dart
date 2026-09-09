@@ -229,6 +229,58 @@ void main() {
     service.stop();
   });
 
+  /// A handset asks for a token that can wake it.
+  ///
+  /// ── The defect ─────────────────────────────────────────────────
+  ///
+  /// Twilio can only ring a locked phone by sending a VoIP push, and it only
+  /// sends one when the access token names a push credential. The token
+  /// request said nothing about what was asking, so every token was minted for
+  /// a browser: the TestFlight build registered, dialled out, showed itself
+  /// connected, and never rang.
+  ///
+  /// Asserted on the REQUEST rather than on the device, because the server is
+  /// what decides which credential goes in the grant and this is the only
+  /// sentence that reaches it.
+  testWidgets('a handset asks for a token for its own platform', (
+    tester,
+  ) async {
+    String? body;
+    final device = _FakeDevice()..pushPlatform = 'ios';
+    final service = await _started(
+      tester,
+      device: device,
+      onToken: (sent) => body = sent,
+    );
+
+    expect(
+      body,
+      contains('"platform":"ios"'),
+      reason:
+          'the token request named no platform, so it was minted without a '
+          'push credential and nothing can wake this phone',
+    );
+
+    service.stop();
+  });
+
+  /// And a browser does not.
+  ///
+  /// The control. Without it, a client that hardcoded a platform would pass
+  /// the test above while asking for an APNs credential on every desktop.
+  testWidgets('a browser asks for a token without one', (tester) async {
+    String? body;
+    final service = await _started(
+      tester,
+      device: _FakeDevice(),
+      onToken: (sent) => body = sent,
+    );
+
+    expect(body, isNotNull, reason: 'no token was ever requested');
+    expect(body, isNot(contains('platform')));
+
+    service.stop();
+  });
 }
 
 /// A service that has been through the real [PhoneCallService.start].
@@ -240,9 +292,10 @@ void main() {
 Future<PhoneCallService> _started(
   WidgetTester tester, {
   required VoiceDevice device,
+  void Function(String body)? onToken,
 }) async {
   final service = PhoneCallService.forTest(device)..stop();
-  final starting = service.start(_apiFor(), device: device);
+  final starting = service.start(_apiFor(onToken: onToken), device: device);
 
   await tester.pumpAndSettle();
   await starting;
@@ -250,7 +303,7 @@ Future<PhoneCallService> _started(
   return service;
 }
 
-ApiClient _apiFor() => ApiClient(
+ApiClient _apiFor({void Function(String body)? onToken}) => ApiClient(
   client: MockClient((request) async {
     final path = request.url.path;
 
@@ -266,6 +319,8 @@ ApiClient _apiFor() => ApiClient(
       ]);
     }
     if (path.endsWith('/phone/tokens')) {
+      onToken?.call(request.body);
+
       return http.Response(
         jsonEncode({'token': 'a-token'}),
         200,
@@ -301,6 +356,9 @@ class _FakeDevice implements VoiceDevice {
 
   @override
   Object? get platformView => null;
+
+  @override
+  String? pushPlatform;
 
   @override
   void Function()? onEnded;

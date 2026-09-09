@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:twilio_voice/twilio_voice.dart';
 
 import 'voice_device.dart';
@@ -38,6 +39,16 @@ class MobileVoiceDevice implements VoiceDevice {
 
   @override
   Object? get platformView => null;
+
+  /// A handset, and which kind — so the token it asks for names a credential
+  /// Twilio can wake it with. Null on macOS: it runs the same plugin but is
+  /// never asleep in a pocket, and Apple's VoIP push is an iOS service.
+  @override
+  String? get pushPlatform => switch (defaultTargetPlatform) {
+    TargetPlatform.iOS => 'ios',
+    TargetPlatform.android => 'android',
+    _ => null,
+  };
 
   @override
   bool get supported => true;

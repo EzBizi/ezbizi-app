@@ -171,6 +171,10 @@ class PhoneCallService extends ChangeNotifier {
 
       final token = await api.post('/phone/tokens', {
         'connection_id': _connectionId,
+        // Omitted on a browser. Present on a handset, and it is what makes the
+        // minted token carry a push credential — without it the phone
+        // registers and never rings.
+        if (_device!.pushPlatform != null) 'platform': _device!.pushPlatform,
       });
 
       if (token.ok) {

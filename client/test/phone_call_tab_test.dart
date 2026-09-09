@@ -875,6 +875,9 @@ void main() {
 }
 
 class _FakeDevice implements VoiceDevice {
+  @override
+  String? pushPlatform;
+
   var declined = false;
   var accepted = false;
   String? connectedTo;

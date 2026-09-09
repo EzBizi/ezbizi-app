@@ -74,6 +74,17 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Incoming calls arrive as a VoIP push, and iOS will not deliver one to
+	     an app that has not declared it can be woken for a call. Without `voip`
+	     the device registers with Twilio, outgoing calls work, and an incoming
+	     call simply never arrives — which is exactly what Jose saw on TestFlight
+	     on 2026-09-09. `audio` keeps the call alive once it is answered and the
+	     app goes to the background, which is most of a call. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>voip</string>
+		<string>audio</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

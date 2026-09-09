@@ -55,6 +55,7 @@ class PhoneConnection extends Model implements HoldsSensitiveValues, StatesReten
     protected $fillable = [
         'organization_id', 'scope_type', 'scope_id',
         'kind', 'account_sid', 'api_key_sid', 'twiml_app_sid',
+        'push_credential_ios_sid', 'push_credential_android_sid',
         'status', 'status_reason',
 
         // A company-wide rule: must the person who took a call say what it
@@ -80,6 +81,25 @@ class PhoneConnection extends Model implements HoldsSensitiveValues, StatesReten
             'default_record' => 'boolean',
             'default_transcribe' => 'boolean',
         ];
+    }
+
+    /**
+     * The push credential that can wake a handset on `$platform`, or null.
+     *
+     * Null for a browser, which needs none, and null for a company whose
+     * credential has not been created yet — both mean "mint the token without
+     * one" rather than "refuse", because refusing would take the desk phone
+     * down to fix the mobile one.
+     */
+    public function pushCredentialFor(?string $platform): ?string
+    {
+        $sid = match ($platform) {
+            'ios' => $this->push_credential_ios_sid,
+            'android' => $this->push_credential_android_sid,
+            default => null,
+        };
+
+        return ($sid === null || $sid === '') ? null : (string) $sid;
     }
 
     /**

@@ -41,6 +41,10 @@ VoiceDevice create() {
 /// either. Calls on such a platform ring the person's own handset instead,
 /// which is what `supported: false` tells the Dial tab to do.
 class _SilentVoiceDevice implements VoiceDevice {
+  /// Nothing to wake: this build has no phone at all.
+  @override
+  String? get pushPlatform => null;
+
   /// Never fires. There is no engine here, so there is no call to end — and
   /// the desk's state was never set in the first place.
   @override

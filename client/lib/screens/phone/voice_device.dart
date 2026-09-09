@@ -64,6 +64,28 @@ abstract class VoiceDevice {
   /// Dial tab mounts it at zero size.
   Object? get platformView;
 
+  /// 'ios', 'android', or null for anything that is not a handset.
+  ///
+  /// ── Why the device answers this and not the app ──────────────────
+  ///
+  /// A browser hears an incoming call down the signalling socket it is
+  /// already holding open. A locked phone holds nothing open, so Twilio has to
+  /// send a VoIP push — and it only does that when the ACCESS TOKEN names a
+  /// push credential, which means the token request has to say what is asking
+  /// before it is minted.
+  ///
+  /// Nothing said, so every token was a browser token. The TestFlight build on
+  /// 2026-09-09 registered, dialled out, showed itself connected, and never
+  /// rang once. There was no error anywhere, because outgoing calls need only
+  /// the TwiML application and that was set.
+  ///
+  /// Asked of the DEVICE rather than read from the platform at the call site,
+  /// because the honest answer is not "what OS is this" — the Windows build
+  /// runs a browser inside a desktop app, and macOS runs the handset plugin on
+  /// a machine that never sleeps in a pocket. Only the device knows whether it
+  /// can be woken.
+  String? get pushPlatform => null;
+
   /// Place an outbound call. [to] is E.164 or `client:{identity}`.
   Future<void> connect({required String to, String? callerId});
 

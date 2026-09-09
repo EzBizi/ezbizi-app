@@ -467,7 +467,47 @@ final class HttpTwilioGateway implements TwilioGateway
             ->delete();
     }
 
-    public function accessToken(PhoneConnection $connection, string $identity): string
+    public function createPushCredential(
+        PhoneConnection $connection,
+        string $platform,
+        array $material,
+    ): string {
+        // Created against the SUBACCOUNT, authenticated as the parent. A
+        // credential on the parent account is invisible to a token minted from
+        // the child, and Twilio does not say so — the token is accepted and the
+        // push simply never arrives.
+        $credentials = $this->platformClientForAccount((string) $connection->account_sid)
+            ->notify
+            ->v1
+            ->credentials;
+
+        $name = 'EzBizi '.$platform.' — '.$connection->id;
+
+        $instance = match ($platform) {
+            'ios' => $credentials->create('apn', [
+                'friendlyName' => $name,
+                'certificate' => (string) $material['certificate'],
+                'privateKey' => (string) $material['private_key'],
+
+                // Sandbox APNs is a DIFFERENT service, not a softer one. A
+                // credential on the wrong side of this line delivers nothing
+                // and reports nothing: TestFlight and the App Store are both
+                // production, only a Debug build off Xcode is sandbox.
+                'sandbox' => (bool) ($material['sandbox'] ?? false),
+            ]),
+            'android' => $credentials->create('fcm', [
+                'friendlyName' => $name,
+                'secret' => (string) $material['secret'],
+            ]),
+            default => throw new RuntimeException(
+                "There is no push credential for '{$platform}'."
+            ),
+        };
+
+        return (string) $instance->sid;
+    }
+
+    public function accessToken(PhoneConnection $connection, string $identity, ?string $platform = null): string
     {
         $secret = (string) $connection->credentials;
         $apiKeySid = (string) $connection->api_key_sid;
@@ -488,6 +528,20 @@ final class HttpTwilioGateway implements TwilioGateway
         if ($connection->twiml_app_sid) {
             $grant->setOutgoingApplicationSid((string) $connection->twiml_app_sid);
         }
+
+        // What makes a phone ring. A browser holds its own signalling socket
+        // open and hears the call down it; a locked handset has no socket, so
+        // Twilio sends a VoIP push instead — and only if this claim tells it
+        // which credential to send with. Missing, the phone registers, dials
+        // out, calls itself connected, and never rings.
+        //
+        // Null while the company has no credential yet: the desk phone must
+        // keep working while the mobile one is being provisioned.
+        $push = $connection->pushCredentialFor($platform);
+        if ($push !== null) {
+            $grant->setPushCredentialSid($push);
+        }
+
         $token->addGrant($grant);
 
         return $token->toJWT();

@@ -165,6 +165,9 @@ const _me = {
 
 class _FakeDevice implements VoiceDevice {
   @override
+  String? pushPlatform;
+
+  @override
   void Function(VoiceIncoming incoming)? onIncoming;
 
   @override

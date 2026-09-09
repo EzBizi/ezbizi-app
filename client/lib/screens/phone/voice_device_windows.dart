@@ -31,6 +31,10 @@ import 'voice_device.dart';
 /// mounts it at zero size. It is not a display surface and nothing is drawn in
 /// it — it is there so the permission has somewhere to arrive.
 class WindowsVoiceDevice implements VoiceDevice {
+  /// A browser in a desktop window — same open socket, same no push.
+  @override
+  String? get pushPlatform => null;
+
   static const _virtualHost = 'ezbizisoftphone.local';
   static const _hostPage = 'softphone_host.html';
 

@@ -7,6 +7,11 @@ import 'voice_device.dart';
 VoiceDevice create() => TwilioVoiceDevice();
 
 class TwilioVoiceDevice implements VoiceDevice {
+  /// A browser hears the call down the socket it is already holding open,
+  /// so there is nothing to push to.
+  @override
+  String? get pushPlatform => null;
+
   _JsDevice? _device;
   _JsCall? _active;
   _JsCall? _pending;

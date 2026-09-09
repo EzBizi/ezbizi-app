@@ -165,7 +165,35 @@ interface TwilioGateway
 
     public function releaseIncoming(PhoneConnection $connection, string $incomingSid): void;
 
-    public function accessToken(PhoneConnection $connection, string $identity): string;
+    /**
+     * Register the key that lets Twilio wake a handset, and return its SID.
+     *
+     * `$platform` is 'ios' or 'android'. `$material` is the Apple VoIP
+     * certificate and private key, or the Firebase server key — whichever the
+     * platform uses. Neither ever comes back out of Twilio, which is why the
+     * SID it returns is the only thing worth storing.
+     *
+     * Per CONNECTION and not once for EzBizi, because a push credential
+     * belongs to the Twilio account that mints the token and each company
+     * mints from its own subaccount.
+     *
+     * @param  array<string, mixed>  $material
+     */
+    public function createPushCredential(
+        PhoneConnection $connection,
+        string $platform,
+        array $material,
+    ): string;
+
+    /**
+     * A Voice token for one person on one connection.
+     *
+     * `$platform` is 'ios' or 'android' when the token is going to a PHONE,
+     * and null for a browser. It decides whether the grant names a push
+     * credential — without one Twilio has no way to wake a locked handset, so
+     * the device registers, places calls, and never rings.
+     */
+    public function accessToken(PhoneConnection $connection, string $identity, ?string $platform = null): string;
 
     /**
      * @return array{sid: string, status: string}
