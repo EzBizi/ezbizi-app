@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Branding\Branding;
 use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
 use App\Support\Web\WidgetDefaults;
@@ -70,11 +71,11 @@ class WebWidget extends Model implements StatesRetention
         $own = self::query()->where('site_id', $site->getKey())->first();
 
         if ($own !== null) {
-            return WidgetDefaults::resolve(is_array($own->config) ? $own->config : []);
+            return WidgetDefaults::resolve(is_array($own->config) ? $own->config : [], self::brandFor($site));
         }
 
         if ($site->is_primary) {
-            return WidgetDefaults::all();
+            return WidgetDefaults::all(self::brandFor($site));
         }
 
         $primary = WebSite::query()
@@ -83,14 +84,14 @@ class WebWidget extends Model implements StatesRetention
             ->first();
 
         if ($primary === null) {
-            return WidgetDefaults::all();
+            return WidgetDefaults::all(self::brandFor($site));
         }
 
         $inherited = self::query()->where('site_id', $primary->getKey())->first();
 
         return $inherited === null
-            ? WidgetDefaults::all()
-            : WidgetDefaults::resolve(is_array($inherited->config) ? $inherited->config : []);
+            ? WidgetDefaults::all(self::brandFor($site))
+            : WidgetDefaults::resolve(is_array($inherited->config) ? $inherited->config : [], self::brandFor($site));
     }
 
     /**
@@ -131,8 +132,23 @@ class WebWidget extends Model implements StatesRetention
         $row = self::query()->where('site_id', $primary->getKey())->first();
 
         return $row === null
-            ? WidgetDefaults::all()
-            : WidgetDefaults::resolve(is_array($row->config) ? $row->config : []);
+            ? WidgetDefaults::all(self::brandFor($site))
+            : WidgetDefaults::resolve(is_array($row->config) ? $row->config : [], self::brandFor($site));
+    }
+
+    /**
+     * The colour this site's owner publishes under, if they have told us one.
+     *
+     * The company's, else the organization's, else null — the same inheritance
+     * the logo has, resolved by the same helper, because they are one fact
+     * about one business and a screen showing a logo in one colour scheme and a
+     * button in another would be describing two companies.
+     */
+    private static function brandFor(WebSite $site): ?string
+    {
+        $site->loadMissing('company');
+
+        return Branding::colour($site->company, $site->company?->organization);
     }
 
     /** @return Collection<int, WebWidget> */

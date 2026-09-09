@@ -27,6 +27,7 @@ use Illuminate\Database\Eloquent\Model;
 final class Branding
 {
     public const SQUARE = 'square';
+
     public const WIDE   = 'wide';
 
     /** @var array<string, array{width: int, height: int, label: string, help: string}> */
@@ -111,6 +112,64 @@ final class Branding
         }
 
         return (string) ($effective->updated_at?->getTimestamp() ?? 0);
+    }
+
+    /**
+     * The customer's own colour, resolved the way their logo is.
+     *
+     * The company's if it has one, else the organization's, else null — and
+     * null means we genuinely do not know it, which is different from a colour
+     * somebody chose. Callers that need a colour regardless supply their own
+     * fallback rather than being handed one that pretends to be the customer's.
+     *
+     * Inherited at read time, never copied: changing the organization's changes
+     * every company that never set its own, exactly as the logo does.
+     */
+    public static function colour(?Model $subject, ?Model $organization): ?string
+    {
+        foreach ([$subject, $organization] as $candidate) {
+            $value = $candidate?->brand_colour;
+
+            if (is_string($value) && preg_match('/^#[0-9a-fA-F]{6}$/', $value) === 1) {
+                return strtolower($value);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Black or white, whichever a person can actually read on [$hex].
+     *
+     * Because a brand colour arriving as a default drags a second colour with
+     * it: the text ON the button. Defaulting that to white would put white on
+     * yellow for anybody whose brand is bright, and the screen would warn about
+     * a pair the customer never chose. Derived, so the pair is legible by
+     * construction and the warning is reserved for choices somebody made.
+     *
+     * The threshold is WCAG's own: white text wins when the background's
+     * relative luminance is below 0.179, the point at which contrast against
+     * black overtakes contrast against white.
+     */
+    public static function readableOn(string $hex): string
+    {
+        $hex = ltrim($hex, '#');
+
+        if (strlen($hex) !== 6) {
+            return '#ffffff';
+        }
+
+        $channel = static function (int $byte): float {
+            $c = $byte / 255;
+
+            return $c <= 0.03928 ? $c / 12.92 : (($c + 0.055) / 1.055) ** 2.4;
+        };
+
+        $luminance = 0.2126 * $channel((int) hexdec(substr($hex, 0, 2)))
+            + 0.7152 * $channel((int) hexdec(substr($hex, 2, 2)))
+            + 0.0722 * $channel((int) hexdec(substr($hex, 4, 2)));
+
+        return $luminance > 0.179 ? '#111111' : '#ffffff';
     }
 
     /** "512x512 or 1024x256" — for a refusal that says what would work. */

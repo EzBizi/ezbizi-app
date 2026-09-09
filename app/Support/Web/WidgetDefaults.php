@@ -2,6 +2,8 @@
 
 namespace App\Support\Web;
 
+use App\Support\Branding\Branding;
+
 /**
  * What a chat bubble and a contact form are before anybody configures them,
  * and the rules that decide what a configured one is allowed to be.
@@ -25,13 +27,16 @@ final class WidgetDefaults
     /** The field types a form may ask for. Anything else is not rendered. */
     public const FIELD_TYPES = ['text', 'textarea', 'email', 'tel', 'select'];
 
-    /** @return array<string, mixed> */
-    public static function all(): array
+    /**
+     * @param  string|null  $brand  the customer's own colour, when we know it
+     * @return array<string, mixed>
+     */
+    public static function all(?string $brand = null): array
     {
         return [
             'chat' => self::chat(),
             'form' => self::form(),
-            'style' => self::style(),
+            'style' => self::style($brand),
         ];
     }
 
@@ -74,11 +79,32 @@ final class WidgetDefaults
      * to somebody's website is a widget that looks pasted on. A customer who
      * wants a specific one can say so.
      */
-    public static function style(): array
+    public static function style(?string $brand = null): array
     {
+        /*
+         * The customer's colour when we know it, and a neutral when we do not.
+         *
+         * These render on the CUSTOMER's website as the customer's tool, so
+         * defaulting to EzBizi's own palette would make every contact form look
+         * like an EzBizi advert until somebody noticed — and the person who
+         * would notice is the one least likely to open this screen. Jose's
+         * decision, relayed by Marketing on 2026-09-08.
+         *
+         * #0b5cad survives as the FALLBACK, for the reason UI/UX measured when
+         * it was the default: it is nobody's brand and reads 6.67:1 on white,
+         * so a customer whose colour we do not know gets something legible
+         * rather than something unstyled.
+         *
+         * on_accent is DERIVED, never a constant. A brand colour arriving as a
+         * default drags the text on the button with it, and a fixed white would
+         * put white on yellow for anybody with a bright brand — warning them
+         * about a pair they never chose.
+         */
+        $accent = $brand ?? '#0b5cad';
+
         return [
-            'accent' => '#0b5cad',
-            'on_accent' => '#ffffff',
+            'accent' => $accent,
+            'on_accent' => Branding::readableOn($accent),
             'text' => '#1b1b1b',
             'background' => '#ffffff',
             'font' => 'inherit',
@@ -96,11 +122,11 @@ final class WidgetDefaults
      * @param  array<string, mixed>  $stored
      * @return array<string, mixed>
      */
-    public static function resolve(array $stored): array
+    public static function resolve(array $stored, ?string $brand = null): array
     {
         $chat = array_merge(self::chat(), self::arr($stored, 'chat'));
         $form = array_merge(self::form(), self::arr($stored, 'form'));
-        $style = array_merge(self::style(), self::arr($stored, 'style'));
+        $style = array_merge(self::style($brand), self::arr($stored, 'style'));
 
         return [
             'chat' => [
@@ -123,8 +149,11 @@ final class WidgetDefaults
                 'fields' => self::fields($form['fields'] ?? []),
             ],
             'style' => [
-                'accent' => self::colour($style['accent'] ?? '', '#0b5cad'),
-                'on_accent' => self::colour($style['on_accent'] ?? '', '#ffffff'),
+                'accent' => self::colour($style['accent'] ?? '', $brand ?? '#0b5cad'),
+                'on_accent' => self::colour(
+                    $style['on_accent'] ?? '',
+                    Branding::readableOn($brand ?? '#0b5cad'),
+                ),
                 'text' => self::colour($style['text'] ?? '', '#1b1b1b'),
                 'background' => self::colour($style['background'] ?? '', '#ffffff'),
                 'font' => self::font($style['font'] ?? ''),

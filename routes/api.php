@@ -800,6 +800,11 @@ Route::prefix('v1')
         // guessable path enumerates every organization on the platform.
         // Franchises have none — a franchise is a geography, not a brand.
         Route::get('branding/shapes', [BrandingController::class, 'shapes']);
+        // The colour the business publishes under — read by anybody in the
+        // tenant, like the marks above; written with organizations.edit,
+        // because it changes what strangers see on the public website.
+        Route::get('branding/colour', [BrandingController::class, 'colour']);
+        Route::put('branding/colour', [BrandingController::class, 'setColour']);
         Route::post('branding/organization', [BrandingController::class, 'uploadOrganization']);
         Route::delete('branding/organization', [BrandingController::class, 'destroyOrganization']);
         Route::get('branding/organization', [BrandingController::class, 'organization']);
@@ -1374,6 +1379,10 @@ Route::prefix('v1')
             [MailboxMessagesController::class, 'file']);
         Route::post('email/mailboxes/{mailbox}/messages/{message}/reply',
             [MailboxMessagesController::class, 'reply']);
+        Route::post('email/mailboxes/{mailbox}/messages/{message}/dealt',
+            [MailboxMessagesController::class, 'markDealt']);
+        Route::delete('email/mailboxes/{mailbox}/messages/{message}/dealt',
+            [MailboxMessagesController::class, 'unmarkDealt']);
         Route::post('email/mailboxes/{mailbox}/messages/{message}/seen',
             [MailboxMessagesController::class, 'markSeen']);
         Route::delete('email/mailboxes/{mailbox}/messages/{message}/seen',

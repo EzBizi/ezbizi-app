@@ -9,6 +9,7 @@ use App\Support\Automations\EventEmitter;
 use App\Support\Email\CannotChangeMail;
 use App\Support\Email\CannotReachHost;
 use App\Support\Email\CannotReadMailbox;
+use App\Support\Email\DealtState;
 use App\Support\Email\EmailPictureLoader;
 use App\Support\Email\HeaderCache;
 use App\Support\Email\HtmlEmailSanitiser;
@@ -57,6 +58,7 @@ class MailboxMessagesController extends Controller
         private readonly MailboxAccess $access,
         private readonly MailboxReaders $readers,
         private readonly ReadState $readState,
+        private readonly DealtState $dealtState,
         private readonly HeaderCache $cache,
         private readonly AuditLogger $audit,
         private readonly EventEmitter $events,
@@ -606,6 +608,82 @@ class MailboxMessagesController extends Controller
     }
 
     /**
+     * POST /api/v1/email/mailboxes/{mailbox}/messages/{message}/dealt
+     *
+     * "This one is handled." One fact for the inbox, not one per person.
+     *
+     * ── The read gate, for the reply path's reason ───────────────
+     *
+     * Somebody who may open this inbox may say a message in it is handled.
+     * There is no `email.deal` permission for the same reason there is no
+     * `email.send` one: an inbox somebody can read and answer, but cannot mark
+     * as answered, is a distinction no business has asked for.
+     *
+     * ── It also marks read at the service, when that is switched on ──
+     *
+     * The two settings are one intent. An inbox told to mirror its read state
+     * to Gmail is an inbox where "handled here" should mean "handled there" —
+     * having to mark it twice, in two applications, is the thing that switch
+     * exists to stop. Same best-effort rule as opening: the local fact is the
+     * one that must not be lost, so a provider refusal is reported rather than
+     * thrown.
+     */
+    public function markDealt(Request $request, Mailbox $mailbox, string $message): JsonResponse
+    {
+        $user = $request->user();
+
+        $this->assertMayRead($user, $mailbox, 'mark a message in this inbox');
+
+        $this->dealtState->markDealt($mailbox, $message, $user);
+
+        $this->audit->log('mailbox.message_dealt', $mailbox, [
+            'address'    => $mailbox->address,
+            'message_id' => $message,
+        ]);
+
+        return response()->json([
+            'data' => [
+                'message_id' => $message,
+                'dealt'      => $this->dealtState->dealtWith($mailbox, [$message])[$message] ?? null,
+                'at_source'  => $this->alsoMarkAtSource($mailbox, $message),
+            ],
+        ]);
+    }
+
+    /**
+     * DELETE /api/v1/email/mailboxes/{mailbox}/messages/{message}/dealt
+     *
+     * ── ANYBODY may undo this, unlike "seen" ─────────────────────
+     *
+     * {@see unsee} takes off only the caller's own mark, because "Marta has
+     * seen this" is Marta's fact. "This is handled" is the INBOX'S fact: when
+     * it turns out the customer was never actually answered, whoever notices
+     * has to be able to say so without finding whoever marked it.
+     *
+     * It does not un-mark at the mail service. Marking read there is a
+     * side effect of handling; un-handling something does not make it unread,
+     * and reaching into somebody's Gmail to set UNREAD back is a bigger claim
+     * than this action makes.
+     */
+    public function unmarkDealt(Request $request, Mailbox $mailbox, string $message): JsonResponse
+    {
+        $user = $request->user();
+
+        $this->assertMayRead($user, $mailbox, 'mark a message in this inbox');
+
+        $this->dealtState->forgetDealt($mailbox, $message);
+
+        $this->audit->log('mailbox.message_undealt', $mailbox, [
+            'address'    => $mailbox->address,
+            'message_id' => $message,
+        ]);
+
+        return response()->json([
+            'data' => ['message_id' => $message, 'dealt' => null],
+        ]);
+    }
+
+    /**
      * POST /api/v1/email/mailboxes/{mailbox}/messages/{message}/seen
      *
      * For the case opening does not cover: somebody who has read a message in
@@ -776,8 +854,21 @@ class MailboxMessagesController extends Controller
     {
         $decorated = $this->readState->decorate($mailbox, $page->messages, $user);
 
+        /*
+         * Handled-with is a SEPARATE map rather than a field on each message,
+         * and one query for the page rather than one per row.
+         *
+         * Separate because MessageSummary is what a provider returned — it
+         * describes the mail, and "somebody here has handled this" is a fact
+         * about EzBizi that no provider knows. Folding it into the summary
+         * would put our bookkeeping inside the shape that carries theirs, which
+         * is how a mirror starts.
+         */
+        $ids = array_map(fn (MessageSummary $m) => $m->id, $decorated);
+
         return [
             'messages'    => array_map(fn (MessageSummary $m) => $m->toArray(), $decorated),
+            'dealt'       => $this->dealtState->dealtWith($mailbox, $ids),
             'next_cursor' => $page->nextCursor,
             'approximate_total' => $page->approximateTotal,
             'from_cache'  => $page->fromCache,

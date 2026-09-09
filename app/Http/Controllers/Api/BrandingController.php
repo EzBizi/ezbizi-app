@@ -150,6 +150,75 @@ class BrandingController extends Controller
             : $this->serve($company);
     }
 
+    /**
+     * The colour this business publishes under, read and written.
+     *
+     * ── Why a colour lives beside the logos ──
+     *
+     * It is the same fact about the same subject with the same inheritance: a
+     * company's if it set one, else the organization's, resolved at read time so
+     * changing the organization's changes every company that never did. A logo
+     * in one scheme and a button in another describes two businesses.
+     *
+     * ── What reads it ──
+     *
+     * Web Management's chat and contact-form widgets, which render on the
+     * CUSTOMER's own website. Before this existed their only possible default
+     * was a colour EzBizi chose, which made every customer's contact form look
+     * like an EzBizi advert until somebody noticed.
+     *
+     * ── Why writing needs a permission and reading does not ──
+     *
+     * Reading matches `organization()` and `company()` directly above: everybody
+     * in the tenant sees the mark on every screen, so gating it would only break
+     * the chrome for the people it is drawn for. Writing changes what strangers
+     * see on the company's public website, which is the same weight as replacing
+     * the logo and takes the same permission.
+     */
+    public function colour(Request $request)
+    {
+        $organization = $request->user()->organization;
+
+        return [
+            'data' => [
+                'organization' => $organization->brand_colour,
+                'effective' => Branding::colour(null, $organization),
+            ],
+        ];
+    }
+
+    /** PUT /branding/colour — null clears it and returns the business to no stated colour. */
+    public function setColour(Request $request)
+    {
+        abort_unless(
+            $request->user()->hasPermission('organizations.edit'),
+            403,
+            Refusal::permission('change the organization’s colour')->message(),
+        );
+
+        $input = $request->validate([
+            /*
+             * `#rrggbb` only, and the same shape the widget config accepts. A
+             * looser form would have to be parsed to be trusted, and this value
+             * is interpolated into a stylesheet on a website we do not serve.
+             */
+            'colour' => ['present', 'nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+        ]);
+
+        $organization = $request->user()->organization;
+        $organization->brand_colour = $input['colour'] === null
+            ? null
+            : strtolower($input['colour']);
+        $organization->save();
+
+        return [
+            'data' => [
+                'organization' => $organization->brand_colour,
+                'effective' => Branding::colour(null, $organization),
+            ],
+        ];
+    }
+
     /** The shapes and sizes the cropper must produce. */
     public function shapes(): array
     {

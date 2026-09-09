@@ -947,14 +947,32 @@ finished and cannot. That was wrong — it keys off `connected_at != null`, whet
 plugin has ever read the site, which the module answers exactly. The tier decision
 rests on the opposite-facts argument alone, which is sufficient on its own.*
 
-### 6 · HR · HR record: Training card — **DRAWN, with Jose** (`hr-record-training-card`)
+### 6 · HR · HR record: Training card — **CHOSEN: desktop 3 + mobile 6** (`hr-record--training-card`)
 
 `docs/previews/hr-record-training-card-layouts.html`, committed `f3aaf3b7`. Three desktop,
 three mobile, plus the refused state on a toggle that applies to whichever option is open.
-Jose approved building it; he has the numbers to pick.
+**Jose chose desktop 3 (three counts, then the guides) and mobile 6 (a card per guide, most urgent first) on 2026-09-09.** Sent to HR to build, copying Training for the wording.
 
-**Owner: HR** (`local_4c933357-…`), whose `docs/SESSIONS.md` row names
-`client/lib/screens/hr/*` — and `records_tab.dart` is in it. Training owns the data and the
+**Built by HR** (`local_4c933357-…`), whose `docs/SESSIONS.md` row names
+`client/lib/screens/hr/*` — and `records_tab.dart` is in it.
+
+> **This is a DELEGATION and it is deliberate, so it is logged rather than assumed.**
+> The standing rule is that the UI/UX owner builds what Jose approves and does not hand
+> it back — written after an audit of 28 galleries found the sidebar search, the account
+> profile and the call-desk proportions all approved and never built, one with a release
+> note claiming it had shipped. **The rot is not "someone else typed it", it is "everyone
+> assumed someone else typed it".**
+>
+> Delegated here because HR owns the *neighbour*: the load-bearing part of this design is
+> that the card must not look like their Expiring certifications, which is a relationship
+> between two panels on one screen that only the owner of both can see while working. HR
+> asked for it, named the file and committed to building it.
+>
+> **UI/UX keeps the verification**, which is the half that actually answers the rule: HR
+> sends a SHA, and it is checked against the drawing — the three counts, the lapsed one
+> boxed in the error colour, per-guide cards in urgency order, the ownership footnote
+> present, the refused state showing the server's sentence. **Not delivered until that
+> check passes.** Jose can reverse the delegation in one word; he has been told. Training owns the data and the
 wording; HR owns the screen and builds the card. Endpoint `GET /training/records?user=`
 is live at `routes/api.php:732`, `training.monitor`-gated and bounded by reach over the
 **person**, not the content — that bound was the fix for an audit finding of cross-franchise

@@ -165,6 +165,9 @@ class _WidgetEditorState extends State<_WidgetEditor> {
 
   Map<String, dynamic> _config = {};
   Map<String, dynamic> _inherited = {};
+
+  /// The colour this business publishes under, or null if it has told us none.
+  String? _brand;
   List<String> _fieldTypes = const ['text'];
 
   @override
@@ -193,6 +196,7 @@ class _WidgetEditorState extends State<_WidgetEditor> {
       _inherited = Map<String, dynamic>.from(
           response.body['inherited'] as Map? ?? const {});
       _own = response.body['own'] == true;
+      _brand = response.body['brand'] as String?;
       _fieldTypes = ((response.body['field_types'] as List?) ?? const ['text'])
           .map((type) => '$type')
           .toList();
@@ -335,6 +339,19 @@ class _WidgetEditorState extends State<_WidgetEditor> {
 
         const Divider(height: 32),
         Text('Look', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 4),
+        Text(
+          _brand == null
+              // Said plainly rather than hidden: a business that has told us no
+              // colour is getting OURS on THEIR website, and the person who
+              // would mind is the one least likely to be reading this screen.
+              ? 'These widgets appear on your own website, so they start from '
+                  'your brand colour — you have not set one, so they are using '
+                  'a neutral blue until you do.'
+              : 'Starting from your brand colour, $_brand. Change anything here '
+                  'and this site keeps its own instead.',
+          style: theme.textTheme.bodySmall,
+        ),
         const SizedBox(height: 4),
         Text(
           'Shared by both widgets — a site that sets its accent means it for '

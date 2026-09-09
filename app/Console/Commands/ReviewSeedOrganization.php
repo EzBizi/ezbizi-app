@@ -434,6 +434,20 @@ class ReviewSeedOrganization extends Command
      * definition. Built by hand instead, and published — an unpublished
      * definition cannot be started, so a reviewer would find a Builder with a
      * draft in it and a New Inspection screen offering nothing.
+     *
+     * LEFT ORGANIZATION-WIDE ON PURPOSE — `scope_type` stays NULL, and that is
+     * not an oversight to be tidied. `InspectionScope` reads NULL as "everyone
+     * in this organization", which is exactly right here: the reviewer accounts
+     * are created at organization level and an anonymous store reviewer must
+     * find this inspection whichever company they land in. Scoping it to one of
+     * the demo companies would hide it from a reviewer placed at the other, and
+     * the symptom is an empty New Inspection picker during an App Store review
+     * — a rejected submission, discovered days later, for a change that looked
+     * like a scoping correction.
+     *
+     * A1-Group's ported inspection is the opposite case and is correctly
+     * `scope_type = 'company'`, because it belongs to A-1 Chimney specifically.
+     * The two NULLs mean different things and only one of them is a default.
      */
     private function buildInspection(Organization $org, User $publisher): void
     {
