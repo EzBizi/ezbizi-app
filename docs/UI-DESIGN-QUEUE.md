@@ -694,6 +694,25 @@ copy, a chart draws on the home screen and silently does not on HR's, falling th
 > agreement test is only a guard if it starts green for the right reason; started against these
 > three it would have been a decision about which of two rules to canonise, taken by accident.
 
+**A test written against a guard outlives the guard and defends it.** HR, 2026-09-09,
+deleting the duplicated `_chartable` (`92014469`). Their own test read:
+
+```dart
+expect(find.byType(DashboardChart), findsNothing);   // before
+expect(tester.getSize(find.byType(DashboardChart)), Size.zero);   // after
+```
+
+**`findsNothing` was not testing the behaviour — it was testing that the guard existed.** The
+widget is absent only because a caller decided not to build it, so deleting the caller's rule,
+correctly, made the test red. A correct simplification reads as a regression, and the person
+doing it has every reason to believe the guard was load-bearing.
+
+> Candidates are everywhere: **`findsNothing` on a widget that can render nothing by itself**
+> is almost always asserting a caller's decision rather than what a person sees. Ask what the
+> reader would notice — nothing occupies no space — and assert *that*: present and `Size.zero`.
+> The version that measures survives the guard being removed, and fails if the widget ever
+> starts taking room.
+
 **An advisory must not wear the failure component.** Web Management, 2026-09-08, asking
 that this be made a rule after the widget contrast work: *"dressing an advisory as a
 failure teaches people to ignore the component that also carries real failures."* The
