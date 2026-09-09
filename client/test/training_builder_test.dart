@@ -14,18 +14,20 @@ import 'package:http/testing.dart';
 /// Settings — layout 8 of `docs/previews/training-layouts.html` (Jose's
 /// approved pick, by number): a storyboard, the module's one novel pattern.
 /// [GuideBuilder] draws the strip and the screen editor; [TestBuilder] draws
-/// the four options Jose named and the question editor, standalone or
-/// embedded beside a guide's own strip.
+/// the five options (the original four, plus `count_attempts_after_pass`
+/// from the fifth-option brief, 2026-09-09) and the question editor,
+/// standalone or embedded beside a guide's own strip.
 void main() {
-  // ── The four options, editable ──────────────────────────────────────
+  // ── The five options, editable ────────────────────────────────────────
 
-  testWidgets('the four test options are all editable in the builder', (tester) async {
+  testWidgets('the five test options are all editable in the builder', (tester) async {
     await _pumpTestBuilder(tester, test: _test(id: 't1', title: 'Ladder Safety Quiz'));
 
     expect(find.text('Must finish the guide before the test'), findsOneWidget);
     expect(find.text('Pass mark'), findsOneWidget);
     expect(find.text('Retakes allowed'), findsOneWidget);
     expect(find.text('A pass runs out after'), findsOneWidget);
+    expect(find.text('Retakes after a pass count toward the limit'), findsOneWidget);
 
     // Each is a real, live control — not just a label — bound to the
     // field it edits.
@@ -33,9 +35,10 @@ void main() {
     expect(find.byKey(const Key('training.option-pass-mark')), findsOneWidget);
     expect(find.byKey(const Key('training.option-max-attempts')), findsOneWidget);
     expect(find.byKey(const Key('training.option-valid-for-days')), findsOneWidget);
+    expect(find.byKey(const Key('training.option-count-attempts-after-pass')), findsOneWidget);
   });
 
-  testWidgets('editing all four options and saving sends exactly what was set', (tester) async {
+  testWidgets('editing all five options and saving sends exactly what was set', (tester) async {
     Map<String, dynamic>? sentBody;
 
     await _pumpTestBuilder(
@@ -54,6 +57,7 @@ void main() {
     await tester.enterText(find.byKey(const Key('training.option-pass-mark')), '70');
     await tester.enterText(find.byKey(const Key('training.option-max-attempts')), '3');
     await tester.enterText(find.byKey(const Key('training.option-valid-for-days')), '365');
+    await tester.tap(find.byKey(const Key('training.option-count-attempts-after-pass')));
     await tester.tap(find.byKey(const Key('training.save-test')));
     await tester.pumpAndSettle();
 
@@ -62,6 +66,16 @@ void main() {
     expect(sentBody!['pass_mark'], 70);
     expect(sentBody!['max_attempts'], 3);
     expect(sentBody!['valid_for_days'], 365);
+    expect(sentBody!['count_attempts_after_pass'], isTrue);
+  });
+
+  testWidgets('retakes after a pass count toward the limit defaults to off', (tester) async {
+    await _pumpTestBuilder(tester, test: _test(id: 't1', title: 'Ladder Safety Quiz'));
+
+    final toggle = tester.widget<Switch>(
+      find.byKey(const Key('training.option-count-attempts-after-pass')),
+    );
+    expect(toggle.value, isFalse);
   });
 
   // ── The "Which guide" picker at 375px, with a real guide in it ────────
@@ -355,7 +369,7 @@ void main() {
     await tester.tap(find.text('Carbon Monoxide Awareness'));
     await tester.pumpAndSettle();
 
-    // Reached TestBuilder for real — the four options are on screen.
+    // Reached TestBuilder for real — the options are on screen.
     expect(find.text('Must finish the guide before the test'), findsOneWidget);
     expect(find.text('Pass mark'), findsOneWidget);
     expect(find.byType(Dialog), findsNothing);
@@ -1072,6 +1086,7 @@ Map<String, dynamic> _test({
   int passMark = 80,
   int? maxAttempts,
   int? validForDays,
+  bool countAttemptsAfterPass = false,
   List<Map<String, dynamic>> questions = const [],
   String? companyId,
   String? franchiseId,
@@ -1086,6 +1101,7 @@ Map<String, dynamic> _test({
   'pass_mark': passMark,
   'max_attempts': maxAttempts,
   'valid_for_days': validForDays,
+  'count_attempts_after_pass': countAttemptsAfterPass,
   'question_count': questions.length,
   'questions': questions,
 };

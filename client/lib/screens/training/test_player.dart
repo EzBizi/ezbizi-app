@@ -37,11 +37,43 @@ import '../../widgets/error_note.dart';
 /// used to under-count it — `last_taken_at` only ever says "at least one
 /// prior attempt, or none", which cannot tell one from several — so it
 /// could still offer a Submit the server would 403 whenever several prior
-/// attempts came from an earlier sitting. `attempts_taken`
-/// (`LearnController::attemptCounts`, task-13 review) closes that: it is the
-/// real count, batched the same way `last_score`/`last_passed` already are,
-/// so [_capReached] adding it to [_sessionAttempts] is exact, not a
-/// best-effort under-count.
+/// attempts came from an earlier sitting. `attempts_toward_cap`
+/// (`LearnController::attemptsTowardCap`, task-13 review, renamed and
+/// reworked for the fifth-option brief) closes that: it is the exact number
+/// the server itself compares against `max_attempts` AS OF THE LOAD THAT
+/// fetched [_test], batched the same way `last_score`/`last_passed` already
+/// are, so [_capReached] adding it to [_sessionAttempts] matches the server
+/// exactly for a single retake within one sitting — the case task-13's
+/// review actually found.
+///
+/// ── Never `attempts_taken` for this ──────────────────────────────────
+///
+/// `attempts_taken` is a DIFFERENT field (fifth-option brief): the plain
+/// historical count of every attempt this learner has ever made, whatever
+/// `count_attempts_after_pass` says. On a test where that option is off (the
+/// default), a retake sat while an existing pass is still valid raises
+/// `attempts_taken` without spending a `max_attempts` slot — comparing IT
+/// against `max_attempts` would grey out Submit for exactly the person this
+/// option exists to free (with `max_attempts: 1`, a single pass already
+/// raises `attempts_taken` to 1, and would stay stuck there forever). Only
+/// `attempts_toward_cap` is safe to gate on.
+///
+/// ── A known residual: several free retakes in ONE sitting ────────────
+///
+/// [_sessionAttempts] still adds 1 PER SUBMISSION, on top of the snapshot
+/// [_test] was loaded with, and [_test] is never re-fetched by [_retake].
+/// On a `count_attempts_after_pass: false` test, if a learner keeps passing
+/// across several retakes without leaving this screen, every one of those
+/// retakes is genuinely free server-side (each fresh pass shelters the
+/// next) — but this client-side sum still climbs by 1 each time, and can
+/// eventually latch [_capReached] locally before the server actually would.
+/// The server is still the one true enforcer (`submit()`'s own check, never
+/// weakened by this), so the worst this does is grey out Submit a little
+/// early on a multi-retake-in-one-sitting streak — never let one through the
+/// server would refuse. Left as is (task fifth-option report): the single
+/// retake this docblock is about is the reported case, and a fix here needs
+/// re-fetching [_test] after every submission, a larger behavioural change
+/// this task did not ask for.
 ///
 /// A 403 is still handled defensively rather than trusted never to happen —
 /// a race with another sitting, or a stale read, can still land one. When
@@ -164,8 +196,10 @@ class _TestPlayerState extends State<TestPlayer> {
     final max = _test?['max_attempts'];
     if (max is! num) return false;
 
-    final attemptsTaken = _test?['attempts_taken'];
-    final priorAttempts = attemptsTaken is num ? attemptsTaken.toInt() : 0;
+    // attempts_toward_cap, never attempts_taken — see this class's own
+    // docblock, "Never attempts_taken for this".
+    final attemptsTowardCap = _test?['attempts_toward_cap'];
+    final priorAttempts = attemptsTowardCap is num ? attemptsTowardCap.toInt() : 0;
     return (priorAttempts + _sessionAttempts) >= max.toInt();
   }
 

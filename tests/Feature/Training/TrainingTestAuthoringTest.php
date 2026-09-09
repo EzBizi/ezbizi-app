@@ -9,12 +9,13 @@ use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
 /**
- * `/training/tests` (task-5 brief) — the four builder options that decide
- * how a test is passed, the trust boundary on `questions` (exactly one
- * correct choice per question), the `guide_id` reachability rule this task
- * had to decide, and the same place-scope/authoring-gate rules
- * TrainingGuideScopeTest already proved for guides, proved again here for
- * tests because a correctly-scoped list beside a `show` that route-model
+ * `/training/tests` (task-5 brief) — the five builder options that decide
+ * how a test is passed (the brief's own four, plus `count_attempts_after_pass`
+ * from the fifth-option brief, 2026-09-09), the trust boundary on `questions`
+ * (exactly one correct choice per question), the `guide_id` reachability
+ * rule this task had to decide, and the same place-scope/authoring-gate
+ * rules TrainingGuideScopeTest already proved for guides, proved again here
+ * for tests because a correctly-scoped list beside a `show` that route-model
  * binding resolves by id is the exact bug this module is watching for.
  *
  * `/training/tests` is the AUTHORING surface (Settings tab), gated on
@@ -27,9 +28,9 @@ class TrainingTestAuthoringTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
-    // ── The four options (decision 4) ────────────────────────────
+    // ── The five options (decision 4, plus the fifth-option brief) ───
 
-    public function test_the_four_options_are_stored_as_written(): void
+    public function test_the_five_options_are_stored_as_written(): void
     {
         $tenant = $this->provisionTenant('Alpha');
         $author = $this->userWithRole($tenant, 'Author', ['training.manage']);
@@ -50,6 +51,7 @@ class TrainingTestAuthoringTest extends TestCase
             'pass_mark' => 80,
             'max_attempts' => 3,
             'valid_for_days' => 365,
+            'count_attempts_after_pass' => true,
             'questions' => [[
                 'prompt' => 'A ladder rests at 16 feet. How far out does the base go?',
                 'choices' => [
@@ -64,6 +66,29 @@ class TrainingTestAuthoringTest extends TestCase
         $response->assertJsonPath('data.pass_mark', 80);
         $response->assertJsonPath('data.max_attempts', 3);
         $response->assertJsonPath('data.valid_for_days', 365);
+        $response->assertJsonPath('data.count_attempts_after_pass', true);
+    }
+
+    /**
+     * The fifth option's own default — off, the lenient behaviour — proved
+     * separately from the "stored as written" test above, which always
+     * writes an explicit value and so can never show what an author gets
+     * by saying nothing.
+     */
+    public function test_count_attempts_after_pass_defaults_to_false(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $author = $this->userWithRole($tenant, 'Author', ['training.manage']);
+
+        $response = $this->signedInAs($author)->postJson('/api/v1/training/tests', [
+            'company_id' => $tenant['company']->id,
+            'title' => 'Ladder Safety',
+            'pass_mark' => 80,
+            'questions' => [],
+        ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('data.count_attempts_after_pass', false);
     }
 
     public function test_a_pass_mark_outside_one_to_a_hundred_is_refused(): void
@@ -84,7 +109,7 @@ class TrainingTestAuthoringTest extends TestCase
             ->assertJsonValidationErrors(['pass_mark']);
     }
 
-    public function test_update_changes_the_four_options(): void
+    public function test_update_changes_the_five_options(): void
     {
         $tenant = $this->provisionTenant('Alpha');
         $author = $this->userWithRole($tenant, 'Author', ['training.manage']);
@@ -109,12 +134,14 @@ class TrainingTestAuthoringTest extends TestCase
             'pass_mark' => 90,
             'max_attempts' => 2,
             'valid_for_days' => 30,
+            'count_attempts_after_pass' => true,
         ])
             ->assertOk()
             ->assertJsonPath('data.requires_guide', true)
             ->assertJsonPath('data.pass_mark', 90)
             ->assertJsonPath('data.max_attempts', 2)
-            ->assertJsonPath('data.valid_for_days', 30);
+            ->assertJsonPath('data.valid_for_days', 30)
+            ->assertJsonPath('data.count_attempts_after_pass', true);
     }
 
     public function test_destroy_removes_a_test_you_may_reach(): void

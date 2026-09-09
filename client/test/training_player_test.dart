@@ -209,19 +209,21 @@ void main() {
   // ── The retake cap: an exact count, not an under-count ───────────────
 
   testWidgets(
-    'attempts_taken from an earlier sitting caps Submit exactly, where '
+    'attempts_toward_cap from an earlier sitting caps Submit exactly, where '
     'last_taken_at alone would only under-count it',
     (tester) async {
-      // last_taken_at only proves ONE prior attempt; attempts_taken says
-      // three, which is the real number LearnController::attemptCounts now
-      // sends. A client still gating on last_taken_at alone would compute
-      // 1 >= 3 == false and offer an enabled Submit the server would 403.
+      // last_taken_at only proves ONE prior attempt; attempts_toward_cap
+      // says three, which is the real number
+      // LearnController::attemptsTowardCap now sends. A client still gating
+      // on last_taken_at alone would compute 1 >= 3 == false and offer an
+      // enabled Submit the server would 403.
       await _pumpTest(
         tester,
         test: _testEntry(
           maxAttempts: 3,
           lastTakenAt: '2026-01-01T00:00:00Z',
           attemptsTaken: 3,
+          attemptsTowardCap: 3,
         ),
       );
 
@@ -231,10 +233,45 @@ void main() {
       expect(
         button.onPressed,
         isNull,
-        reason: 'attempts_taken (3) already meets max_attempts (3) — Submit '
-            'must not be offered.',
+        reason: 'attempts_toward_cap (3) already meets max_attempts (3) — '
+            'Submit must not be offered.',
       );
       expect(find.textContaining('This test allows at most 3'), findsOneWidget);
+    },
+  );
+
+  // ── The fifth option: a free retake never gates Submit, even after a
+  //    raw attempts_taken that alone would already meet the cap ─────────
+
+  testWidgets(
+    'a passer whose retake is free is never capped by attempts_taken alone',
+    (tester) async {
+      // The exact regression this option exists to fix, one layer up in the
+      // client: with max_attempts 1 and one prior PASS, attempts_taken is
+      // already 1 (it genuinely happened) — but attempts_toward_cap is 0,
+      // because count_attempts_after_pass is off and that pass still
+      // shelters this retake. Gating on attempts_taken here (the bug this
+      // test guards against) would grey out Submit for exactly the person
+      // the fifth option exists to free.
+      await _pumpTest(
+        tester,
+        test: _testEntry(
+          maxAttempts: 1,
+          lastTakenAt: '2026-01-01T00:00:00Z',
+          attemptsTaken: 1,
+          attemptsTowardCap: 0,
+        ),
+      );
+
+      final button = tester.widget<ElevatedButton>(
+        find.byKey(const Key('training.submit-test')),
+      );
+      expect(
+        button.onPressed,
+        isNotNull,
+        reason: 'attempts_toward_cap (0) is well under max_attempts (1) — '
+            'Submit must still be offered.',
+      );
     },
   );
 
@@ -395,6 +432,13 @@ Map<String, dynamic> _testEntry({
   int? maxAttempts,
   String? lastTakenAt,
   int attemptsTaken = 0,
+  // Defaults to attemptsTaken — most callers do not care about the
+  // fifth-option distinction, and only ever set count_attempts_after_pass
+  // off (its own default), where "nothing has been excluded yet" means the
+  // two numbers agree. A caller exercising the fifth option passes both
+  // explicitly.
+  int? attemptsTowardCap,
+  bool countAttemptsAfterPass = false,
 }) => {
   'type': 'test',
   'id': id,
@@ -406,7 +450,9 @@ Map<String, dynamic> _testEntry({
   'pass_mark': 60,
   'max_attempts': maxAttempts,
   'attempts_taken': attemptsTaken,
+  'attempts_toward_cap': attemptsTowardCap ?? attemptsTaken,
   'valid_for_days': 365,
+  'count_attempts_after_pass': countAttemptsAfterPass,
   'due_for_retaking': false,
   'question_count': 1,
   'questions': [

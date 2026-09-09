@@ -150,6 +150,168 @@ class TrainingGradingTest extends TestCase
         });
     }
 
+    // ── Fifth option: count_attempts_after_pass (fifth-option brief, 2026-09-09) ──
+    //
+    // Default false: a retake sat while an existing pass is still valid does
+    // not spend a `max_attempts` slot. The owner's own framing — the cap is
+    // "meant for failures" — is why a passer improving their score is
+    // exempt but a failer never is, and why a LAPSED pass stops sheltering
+    // retakes the moment it lapses (see the last two tests below).
+
+    public function test_a_passer_retaking_does_not_consume_the_cap_when_the_option_is_off(): void
+    {
+        [$learner, $test] = $this->aTwoQuestionTest(passMark: 40, maxAttempts: 1, countAttemptsAfterPass: false);
+
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [1, 0]])
+            ->assertOk()->assertJsonPath('passed', true);
+
+        // A second slot never existed (max_attempts: 1) — this only succeeds
+        // if the first, already-passed attempt is excluded from the count.
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [1, 0]])
+            ->assertOk()->assertJsonPath('passed', true);
+
+        // And a third, to show it is genuinely uncapped while the pass
+        // holds — not merely one grace attempt.
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [1, 0]])
+            ->assertOk()->assertJsonPath('passed', true);
+    }
+
+    public function test_a_passer_retaking_does_consume_the_cap_when_the_option_is_on(): void
+    {
+        [$learner, $test] = $this->aTwoQuestionTest(passMark: 40, maxAttempts: 1, countAttemptsAfterPass: true);
+
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [1, 0]])
+            ->assertOk()->assertJsonPath('passed', true);
+
+        // Today's strict behaviour, preserved exactly: the pass itself
+        // already spent the one slot.
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [1, 0]])
+            ->assertStatus(403)
+            ->assertJsonPath('message', fn (string $m) => str_contains($m, '1'));
+    }
+
+    public function test_a_failers_attempts_always_count_even_with_the_option_off(): void
+    {
+        [$learner, $test] = $this->aTwoQuestionTest(passMark: 100, maxAttempts: 1, countAttemptsAfterPass: false);
+
+        // [0, 0] never passes against a 100 pass mark (twoQuestions' own
+        // fixture) — there is no pass here to shelter behind, ever.
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [0, 0]])
+            ->assertOk()->assertJsonPath('passed', false);
+
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [0, 0]])
+            ->assertStatus(403)
+            ->assertJsonPath('message', fn (string $m) => str_contains($m, '1'));
+    }
+
+    /**
+     * The expired-pass decision, argued in the task report: once the
+     * sheltering pass itself has lapsed, an attempt sat after it counts
+     * normally again — "held a VALID, unexpired pass" is no longer true, so
+     * the exemption this option grants no longer applies. Seeded directly
+     * (`TrainingExpiryTest::aPassedAttemptExpiring`'s own technique) because
+     * simulating elapsed real time through the HTTP API is not possible:
+     * attempt 1 is a genuine pass whose `expires_on` already fell in the
+     * past BEFORE attempt 2 was ever sat, and attempt 2 (seeded, not a real
+     * submission) sits far enough after that lapse to be unambiguous.
+     */
+    public function test_an_attempt_after_the_sheltering_pass_has_expired_counts_toward_the_cap(): void
+    {
+        [$learner, $test, $tenant] = $this->aTwoQuestionTest(passMark: 40, maxAttempts: 2, countAttemptsAfterPass: false);
+
+        $this->inTenant($tenant['org'], function () use ($learner, $test) {
+            // Passed 30 days ago, good for 10 days — lapsed on day -20.
+            TrainingAttempt::create([
+                'user_id' => $learner->id,
+                'test_id' => $test->id,
+                'answers' => [1, 0],
+                'score' => 50,
+                'passed' => true,
+                'taken_at' => now()->subDays(30),
+                'expires_on' => now()->subDays(20)->toDateString(),
+            ]);
+
+            // Sat on day -5 — 15 days after the pass above already lapsed,
+            // so this one counts on its own account, not sheltered by it.
+            TrainingAttempt::create([
+                'user_id' => $learner->id,
+                'test_id' => $test->id,
+                'answers' => [0, 0],
+                'score' => 0,
+                'passed' => false,
+                'taken_at' => now()->subDays(5),
+                'expires_on' => null,
+            ]);
+        });
+
+        // Both seeded attempts count (the pass on its own account, the
+        // later one because the pass had already lapsed by the time it was
+        // sat) — max_attempts: 2 is already spent.
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [1, 0]])
+            ->assertStatus(403)
+            ->assertJsonPath('message', fn (string $m) => str_contains($m, '2'));
+    }
+
+    /**
+     * The mirror of the test above: the same shape, but the sheltering pass
+     * is STILL valid when the second attempt is sat. That second attempt is
+     * excluded, so only the ORIGINAL pass counts against `max_attempts: 2`
+     * — a third submission (this one, live) still has room.
+     */
+    public function test_an_attempt_taken_while_the_sheltering_pass_is_still_valid_is_excluded_even_seeded(): void
+    {
+        [$learner, $test, $tenant] = $this->aTwoQuestionTest(passMark: 40, maxAttempts: 2, countAttemptsAfterPass: false);
+
+        $this->inTenant($tenant['org'], function () use ($learner, $test) {
+            // Passed 5 days ago, good for 30 days — still valid today.
+            TrainingAttempt::create([
+                'user_id' => $learner->id,
+                'test_id' => $test->id,
+                'answers' => [1, 0],
+                'score' => 50,
+                'passed' => true,
+                'taken_at' => now()->subDays(5),
+                'expires_on' => now()->addDays(25)->toDateString(),
+            ]);
+
+            // Sat one day later, while that pass is still good.
+            TrainingAttempt::create([
+                'user_id' => $learner->id,
+                'test_id' => $test->id,
+                'answers' => [0, 0],
+                'score' => 0,
+                'passed' => false,
+                'taken_at' => now()->subDays(4),
+                'expires_on' => null,
+            ]);
+        });
+
+        // Only the first seeded attempt counts — one slot of two spent —
+        // so this live submission is still admitted.
+        $this->signedInAs($learner)
+            ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [1, 0]])
+            ->assertOk();
+    }
+
+    public function test_null_max_attempts_means_unlimited_retakes_with_the_option_on_too(): void
+    {
+        [$learner, $test] = $this->aTwoQuestionTest(passMark: 100, maxAttempts: null, countAttemptsAfterPass: true);
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->signedInAs($learner)
+                ->postJson("/api/v1/training/learn/tests/{$test->id}/attempts", ['answers' => [0, 0]])
+                ->assertOk();
+        }
+    }
+
     public function test_a_test_with_no_valid_for_days_never_carries_an_expiry(): void
     {
         [$learner, $test] = $this->aTwoQuestionTest(passMark: 40, validForDays: null);
@@ -835,8 +997,12 @@ PHP;
     }
 
     /** @return array{0: User, 1: TrainingTest, 2: array} */
-    private function aTwoQuestionTest(int $passMark, ?int $maxAttempts = null, ?int $validForDays = null): array
-    {
+    private function aTwoQuestionTest(
+        int $passMark,
+        ?int $maxAttempts = null,
+        ?int $validForDays = null,
+        bool $countAttemptsAfterPass = false,
+    ): array {
         $tenant = $this->provisionTenant('Grading-'.Str::random(8));
         $learner = $this->userWithRole($tenant, 'Learner', ['training.view'], onlyAt: $tenant['franchise']);
 
@@ -850,6 +1016,7 @@ PHP;
             'pass_mark' => $passMark,
             'max_attempts' => $maxAttempts,
             'valid_for_days' => $validForDays,
+            'count_attempts_after_pass' => $countAttemptsAfterPass,
         ]));
 
         return [$learner, $test, $tenant];
