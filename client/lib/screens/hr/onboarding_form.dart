@@ -73,6 +73,7 @@ class OnboardingForm extends StatefulWidget {
     this.onChanged,
     this.onBack,
     this.backLabel = 'Back',
+    this.aside,
   });
 
   final ApiClient api;
@@ -99,6 +100,11 @@ class OnboardingForm extends StatefulWidget {
   /// employee's own destination has nowhere, and passes null.
   final VoidCallback? onBack;
   final String backLabel;
+
+  /// Drawn after the form, about the PERSON rather than this onboarding —
+  /// the HR record's Training card. Null everywhere the form is the whole
+  /// page, which is every screen but Records.
+  final Widget? aside;
 
   @override
   State<OnboardingForm> createState() => _OnboardingFormState();
@@ -561,6 +567,10 @@ class _OnboardingFormState extends State<OnboardingForm> {
                 if (form.signatures.isNotEmpty) ...[
                   const SizedBox(height: 28),
                   _signingSection(context, form),
+                ],
+                if (widget.aside case final aside?) ...[
+                  const SizedBox(height: 28),
+                  aside,
                 ],
               ],
             ),
