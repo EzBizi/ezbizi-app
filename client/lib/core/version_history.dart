@@ -11,6 +11,7 @@ class VersionHistory {
       version: '0.0.0174',
       date: '9 Sep 2026',
       items: [
+        'Thumbtack: an enquiry is filed from what Thumbtack sends in the moment, so a slow or failed follow-up read no longer loses it, and a conversation that cannot be read yet arrives as a lead with no messages rather than not at all.',
         'Scheduling: you can add a service area while looking at a company or the whole organization. It used to refuse and tell you to change the switcher at the top first, which meant the one screen that could have asked which branch the area belonged to was the screen refusing to open. It asks now.',
         'Scheduling: zip codes are separate items you add one at a time and remove individually, instead of one long line of commas where a single mistyped separator could take the whole list with it. Each one saves on its own, so a zip another area already covers is refused on its own rather than refusing every other edit with it.',
         'Scheduling: a zip code can carry the city it is in, and Availability can then be searched by city - useful when somebody on the phone knows the town and not the postcode.',
