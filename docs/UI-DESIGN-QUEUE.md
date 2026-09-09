@@ -902,6 +902,29 @@ confirmed a verb against Services' strings, which had not landed. **A ruling tit
 precedent the form my own rule forbids" deserves a precedent that exists** — cite `025f5afd`,
 the only participle live in a glance.
 
+**The empty-sentence rule is a CORRECTNESS question outside the glances, and the sweep was
+only ever the copy half.** Training measured their own module against it — eight strings, none
+of them glances, none in either count — and found four non-compliant, one of them **false**
+rather than untidy: `dashboard_pane.dart:198` said *"Nobody is assigned to, or has attempted,
+this yet."* in a pane **bounded by reach over the person**, so a franchise manager is told
+nobody is assigned while people are assigned and simply not theirs to see. Training is one
+module of seventeen.
+
+> **Ruled: separate the two, and do not sweep.** The glance strings were a copy decision and
+> they shipped. In-screen empty states get **the discriminator stated once**, each owner
+> applying it to their own module: *is this list filtered by who is asking? Then the sentence
+> may say what showed up, never what exists.* Anything **false** to a scoped reader is a bug and
+> is fixed on sight; the merely imprecise waits until somebody is in the file. A
+> seventeen-module coordinated sweep is a large freeze for a class that is mostly imprecision
+> and occasionally a defect — fix the defects now, let the rest ride.
+
+> **And the COMPLIANT ones are the fragile ones, which is the part nobody expects.** Training's
+> *"This organization has no roles yet."* is correct **only while roles are org-wide**. The day
+> anything gains a franchise dimension, its world-claim becomes false and **nothing fails** —
+> no test, no analyzer, no reader who would know. **A deliberate world-claim should carry a
+> comment saying what it depends on**, because it is the sentence that will rot silently while
+> the non-compliant ones at least look wrong.
+
 **An advisory must not wear the failure component.** Web Management, 2026-09-08, asking
 that this be made a rule after the widget contrast work: *"dressing an advisory as a
 failure teaches people to ignore the component that also carries real failures."* The
