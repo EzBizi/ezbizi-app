@@ -11,6 +11,7 @@ class VersionHistory {
       version: '0.0.0176',
       date: '9 Sep 2026',
       items: [
+        'Monitoring: the Lead Developer\'s own machine is never screen-captured, live-viewed, or remote-controlled - it still shows online with its specs, but its screen is off-limits, since that account handles credentials.',
         'The desktop app opens at the size and position you left it, maximized if it was maximized, including after an update. It used to come back at the default size every time.',
       ],
     ),
