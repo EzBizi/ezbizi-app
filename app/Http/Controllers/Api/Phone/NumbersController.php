@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Controller;
 use App\Http\Controllers\Api\Phone\Concerns\ResolvesPhoneConnections;
 use App\Models\Company;
 use App\Models\Franchise;
+use App\Models\PhoneCall;
 use App\Models\PhoneFlow;
 use App\Models\PhoneNumber;
 use App\Models\PhoneRingGroup;
@@ -60,8 +61,10 @@ class NumbersController extends Controller
     {
         $this->authorize('viewAny', PhoneNumber::class);
 
+        $live = $this->linesInUse();
+
         $rows = $this->access->visibleTo($request->user())
-            ->map(fn (PhoneNumber $number) => $this->row($number))
+            ->map(fn (PhoneNumber $number) => $this->row($number, $live))
             ->all();
 
         return response()->json(['data' => $rows]);
@@ -1039,7 +1042,47 @@ class NumbersController extends Controller
             ->value('number_id');
     }
 
-    private function row(PhoneNumber $number): array
+    /**
+     * Which lines have a call on them right now, and whose.
+     *
+     * ── Why the Dial screen needs this ──────────────────────────────
+     *
+     * The Calling as picker offers every line the reader can see, so it offers
+     * lines other people are mid-call on. Dialling out under one of those puts
+     * a second call on a number somebody is already using and sends the
+     * callback to them — and nothing on the screen said the line was busy,
+     * because the list is built from `phone_numbers` and busy is a fact about
+     * `phone_calls`.
+     *
+     * ── One query, computed here and passed down ─────────────────────
+     *
+     * Deliberately NOT memoised on the controller. A route keeps one
+     * controller instance for every request in a test, so a cached map would
+     * make the second assertion in a test read the first request's answer —
+     * a stale "busy" that no amount of re-reading the code explains.
+     *
+     * @return array<string, array{name: ?string}> keyed by number id
+     */
+    private function linesInUse(): array
+    {
+        return PhoneCall::query()
+            ->whereIn('status', [
+                PhoneCall::STATUS_RINGING,
+                PhoneCall::STATUS_IN_PROGRESS,
+            ])
+            ->whereNotNull('number_id')
+            ->with('user:id,name')
+            ->get(['id', 'number_id', 'user_id'])
+            ->mapWithKeys(fn (PhoneCall $call) => [
+                (string) $call->number_id => ['name' => $call->user?->name],
+            ])
+            ->all();
+    }
+
+    /**
+     * @param  array<string, array{name: ?string}>  $live
+     */
+    private function row(PhoneNumber $number, array $live = []): array
     {
         $steps = (new TwimlRenderer)->describe($number);
 
@@ -1098,6 +1141,19 @@ class NumbersController extends Controller
             // the Call tab already loads this list and the alternative is a
             // second request whose answer has to agree with the first.
             'assigned_to_me' => $number->id === $this->myAssignedNumberId(),
+
+            // Whether somebody is on this line at this moment, and who.
+            //
+            // Only populated by index(), which is the list the Dial picker
+            // reads. Every other caller of row() is answering a question about
+            // one number's SETTINGS, where a live-call fact would be a
+            // different subject and one more thing to keep true.
+            //
+            // The name is null when the call has no user on it — an inbound
+            // call still ringing a group belongs to nobody yet, and naming a
+            // person there would be a guess.
+            'on_call' => array_key_exists($number->id, $live),
+            'on_call_with' => $live[$number->id]['name'] ?? null,
 
             // The whole trace, not one boolean out of it.
             //
