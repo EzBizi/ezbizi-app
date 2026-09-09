@@ -387,6 +387,7 @@ class Me {
     required this.companies,
     required this.franchises,
     required this.onboardingId,
+    this.screenMonitoringExempt = false,
     this.timeClock = TimeClockStatus.absent,
   });
 
@@ -607,6 +608,19 @@ class Me {
   /// send the block, which is the same state as far as anybody can tell.
   final String? onboardingId;
 
+  /// SECURITY exemption (Monitoring): this person's own device is never
+  /// screen-captured, live-viewed or remote-controlled.
+  ///
+  /// The desktop agent reads this to skip constructing its capture services
+  /// (ScreenshotService / LiveViewService / RemoteControlService) and to omit
+  /// the `screenshot` capability from its heartbeat — so it still beats
+  /// (online) and reports specs, but never advertises or produces a capture.
+  /// The server strips those capabilities and refuses every screen-reaching
+  /// endpoint regardless; this flag is what lets the agent not even try. False
+  /// for a server that does not send the key — an older one, where the feature
+  /// does not exist and nobody is exempt.
+  final bool screenMonitoringExempt;
+
   /// Punch-clock chrome from `/me`.
   ///
   /// The button is session chrome, the same reason two-factor rides here: it
@@ -738,6 +752,7 @@ class Me {
     companies: companies,
     franchises: franchises,
     onboardingId: onboardingId,
+    screenMonitoringExempt: screenMonitoringExempt,
     timeClock: timeClock,
   );
 
@@ -760,6 +775,7 @@ class Me {
     companies: companies,
     franchises: franchises,
     onboardingId: onboardingId,
+    screenMonitoringExempt: screenMonitoringExempt,
     timeClock: timeClock,
   );
 
@@ -828,6 +844,9 @@ class Me {
         .toList(),
     onboardingId: (json['onboarding'] as Map<String, dynamic>?)?['id']
         ?.toString(),
+    // Absent (an older server) reads as not exempt — the safe default, and
+    // the same state as a person who simply is not the Lead Developer.
+    screenMonitoringExempt: json['screen_monitoring_exempt'] == true,
     timeClock: TimeClockStatus.fromJson(json['time_clock']),
   );
 }

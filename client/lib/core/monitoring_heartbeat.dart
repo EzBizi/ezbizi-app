@@ -62,13 +62,21 @@ typedef SpecsRead = Future<Map<String, dynamic>?> Function();
 /// separate assumption about what this build can do — would let the two
 /// drift: a beat that claims `'screenshot'` while the service that would
 /// actually produce one never runs, or the reverse.
+///
+/// The SECURITY exemption (the Lead Developer's own device, passed in as
+/// [screenMonitoringExempt]) narrows this further: an exempt device declares no
+/// `'screenshot'` capability even where the build could capture, because
+/// main.dart also declines to construct [ScreenshotService] for it — so the
+/// two still agree, they just both stand down.
 class MonitoringHeartbeat {
   MonitoringHeartbeat(
     this._api, {
     Duration interval = const Duration(seconds: 60),
     SpecsRead? readSpecs,
+    bool screenMonitoringExempt = false,
   }) : _interval = interval,
-       _readSpecs = readSpecs ?? const SpecsReader().read {
+       _readSpecs = readSpecs ?? const SpecsReader().read,
+       _screenMonitoringExempt = screenMonitoringExempt {
     // Started immediately, not on the first [enter]. A person who opens the
     // app and never touches the nav (the default screen is exactly where they
     // wanted to be) must still show up as present — the keep-alive is not
@@ -84,6 +92,12 @@ class MonitoringHeartbeat {
   final ApiClient _api;
   final Duration _interval;
   final SpecsRead _readSpecs;
+
+  /// SECURITY exemption: the Lead Developer's own device does not declare the
+  /// `screenshot` capability even where the build could capture, so the roster
+  /// never lists it as capturable. The server strips it regardless (defence in
+  /// depth); this just keeps the agent from advertising what it will never do.
+  final bool _screenMonitoringExempt;
 
   Timer? _timer;
   Timer? _specsTimer;
@@ -139,7 +153,7 @@ class MonitoringHeartbeat {
       // service gates on); 'specs' only when a specs read has succeeded.
       'capabilities': [
         'activity',
-        if (screenshotCaptureSupported) 'screenshot',
+        if (screenshotCaptureSupported && !_screenMonitoringExempt) 'screenshot',
         if (specs != null) 'specs',
       ],
       if (_currentModule != null) 'current_module': _currentModule,

@@ -17,6 +17,7 @@ import 'package:http/testing.dart';
 void main() {
   ({MonitoringHeartbeat heartbeat, List<Map<String, dynamic>> posted}) harness({
     SpecsRead? readSpecs,
+    bool screenMonitoringExempt = false,
   }) {
     final posted = <Map<String, dynamic>>[];
 
@@ -28,7 +29,11 @@ void main() {
     );
 
     return (
-      heartbeat: MonitoringHeartbeat(api, readSpecs: readSpecs),
+      heartbeat: MonitoringHeartbeat(
+        api,
+        readSpecs: readSpecs,
+        screenMonitoringExempt: screenMonitoringExempt,
+      ),
       posted: posted,
     );
   }
@@ -203,6 +208,33 @@ void main() {
             'capture) — an inverted condition on screenshotCaptureSupported '
             "would either drop 'screenshot' here or add it to the FALSE-"
             "branch test above; this pins both directions.",
+      );
+
+      it.heartbeat.dispose();
+    },
+  );
+
+  test(
+    "an exempt device omits 'screenshot' even where the build could capture "
+    '(the SECURITY exemption)',
+    () async {
+      // The TRUE-branch platform (a capture-capable Windows build) — the exact
+      // state the paired test above declares 'screenshot' under. Here the Lead
+      // Developer's exemption must win over it: the capability is dropped even
+      // though screenshotCaptureSupported is true. That is the whole point —
+      // without the exempt gate this beat would carry 'screenshot'.
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      final it = harness(screenMonitoringExempt: true);
+      await it.heartbeat.enter('jobs');
+
+      expect(
+        it.posted.single['capabilities'],
+        ['activity'],
+        reason: 'An exempt device still reports activity (it stays online) but '
+            "must never advertise 'screenshot' — the roster filters to capture-"
+            'capable devices, and the Lead Developer must not appear there.',
       );
 
       it.heartbeat.dispose();

@@ -418,29 +418,49 @@ class _HomeShellState extends State<HomeShell> {
   /// an explicit `initState` assignment rather than a `late final` field
   /// initializer: the identical lazy-init bug (never constructed, never
   /// started) would otherwise apply here too.
-  late final ScreenshotService _screenshots;
+  ///
+  /// Null when this person is screen-monitoring exempt (the Lead Developer):
+  /// the capture service is then never constructed, so it never captures.
+  ScreenshotService? _screenshots;
 
   /// The agent half of Live View (2026-09-02-monitoring-live-view, Part A) —
   /// polls whether a manager is currently watching this device and, only
   /// then, captures and uploads. Same lifecycle as [_heartbeat] and
   /// [_screenshots] and for the same reason: see [_heartbeat]'s doc comment
   /// above for why this has to be an explicit `initState` assignment.
-  late final LiveViewService _liveView;
+  ///
+  /// Null when exempt — it then never polls live-wanted and never uploads.
+  LiveViewService? _liveView;
 
   /// The agent half of Remote Control (2026-09-02-monitoring-remote-control,
   /// Part A) — polls this device's input queue and applies a manager's
   /// mouse/keyboard via the native channel. Same lifecycle as [_liveView] and
   /// for the same reason: see [_heartbeat]'s doc comment above for why this
   /// has to be an explicit `initState` assignment.
-  late final RemoteControlService _remoteControl;
+  ///
+  /// Null when exempt — it then never polls input-pending and applies nothing.
+  RemoteControlService? _remoteControl;
 
   @override
   void initState() {
     super.initState();
-    _heartbeat = MonitoringHeartbeat(widget.api);
-    _screenshots = ScreenshotService(widget.api);
-    _liveView = LiveViewService(widget.api);
-    _remoteControl = RemoteControlService(widget.api);
+
+    // SECURITY exemption: the Lead Developer's own device still beats (online)
+    // and reports specs, but never captures, live-views or is remote-driven —
+    // so the heartbeat starts unconditionally while the three capture services
+    // are simply never constructed for an exempt session. The heartbeat is also
+    // told, so it omits the `screenshot` capability from its beat.
+    final exempt = widget.session.me?.screenMonitoringExempt ?? false;
+
+    _heartbeat = MonitoringHeartbeat(
+      widget.api,
+      screenMonitoringExempt: exempt,
+    );
+    if (!exempt) {
+      _screenshots = ScreenshotService(widget.api);
+      _liveView = LiveViewService(widget.api);
+      _remoteControl = RemoteControlService(widget.api);
+    }
 
     _reminder = ShiftReminderController(
       api: widget.api,
@@ -490,9 +510,10 @@ class _HomeShellState extends State<HomeShell> {
   void dispose() {
     _stopListening?.call();
     _heartbeat.dispose();
-    _screenshots.dispose();
-    _liveView.dispose();
-    _remoteControl.dispose();
+    // Null for an exempt session, where they were never constructed.
+    _screenshots?.dispose();
+    _liveView?.dispose();
+    _remoteControl?.dispose();
 
     // stop(), not dispose(): the service is a singleton that outlives this
     // widget, and the next person to sign in is not this person.
