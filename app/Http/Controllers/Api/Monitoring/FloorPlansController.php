@@ -7,9 +7,13 @@ use App\Models\MonitoredDevice;
 use App\Models\MonitoringFloorPlan;
 use App\Models\User;
 use App\Support\Access\ScopeReach;
+use App\Support\Audit\AuditLogger;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 /**
  * The org's floor plans — the Monitoring "General" tab's read side
@@ -48,7 +52,13 @@ class FloorPlansController extends Controller
      */
     private const ONLINE_WINDOW_MINUTES = 5;
 
-    public function __construct(private readonly ScopeReach $reach) {}
+    /** The scope types a plan may name, mapped to Assignment's constants via ScopeReach::TYPES. */
+    private const SCOPE_TYPES = ['organization', 'company', 'franchise'];
+
+    public function __construct(
+        private readonly ScopeReach $reach,
+        private readonly AuditLogger $audit,
+    ) {}
 
     /** GET /api/v1/monitoring/floor-plans */
     public function index(Request $request): JsonResponse
@@ -106,6 +116,287 @@ class FloorPlansController extends Controller
                 'status' => $this->status($plan, $actor),
             ],
         ]);
+    }
+
+    /**
+     * POST /api/v1/monitoring/floor-plans
+     *
+     * Create a plan at a scope the caller may act on. Two gates, both §4:
+     * the policy answers "may this role add plans at all" (`monitoring.map.manage`),
+     * and `ScopeReach::assertCovers` answers "may this actor place a plan at THAT
+     * level" — a franchise manager naming an org- or sibling-company scope is not
+     * forbidden, they chose a field they are not entitled to, so it is a 422 on
+     * `scope` (assertCovers' own split). The chosen scope is written to the
+     * `assigned_*` trio; `assigned_organization_id` is stamped by the model.
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $this->authorize('create', MonitoringFloorPlan::class);
+
+        $actor = $request->user();
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'scope' => ['required', 'array'],
+            'scope.type' => ['required', 'string', Rule::in(self::SCOPE_TYPES)],
+            // id is required for company/franchise; for organization it is the
+            // tenant org and may be omitted (the model stamps it either way).
+            'scope.id' => ['nullable', 'string'],
+            'layout' => ['sometimes', 'array'],
+        ]);
+
+        $scopeType = $data['scope']['type'];
+        $scopeId = $scopeType === 'organization'
+            ? ($data['scope']['id'] ?? $actor->organization_id)
+            : ($data['scope']['id'] ?? null);
+
+        // A scope above the actor's level is a 422 on `scope`, never a 403.
+        $this->reach->assertCovers($actor, $scopeType, $scopeId, 'scope');
+
+        $layout = $this->validatedLayout($data['layout'] ?? $this->emptyLayout(), $actor);
+
+        $plan = MonitoringFloorPlan::create([
+            'name' => $data['name'],
+            'assigned_company_id' => $scopeType === 'company' ? $scopeId : null,
+            'assigned_franchise_id' => $scopeType === 'franchise' ? $scopeId : null,
+            'layout' => $layout,
+            'created_by' => $actor->getKey(),
+        ]);
+
+        // §2.2: map.manage writes records, so who created which plan when is an
+        // audited fact. The scope names the level, not the whole layout.
+        $this->audit->log('monitoring.map.created', $plan, [
+            'name' => $plan->name,
+            'scope' => $scopeType,
+        ]);
+
+        return response()->json(['data' => $this->present($plan->fresh(), $actor)], Response::HTTP_CREATED);
+    }
+
+    /**
+     * PUT /api/v1/monitoring/floor-plans/{id}
+     *
+     * Rename and/or replace the layout of a plan the caller may reach. The plan
+     * is resolved §3-scoped (constrain + find + 404) exactly like `show`, so a
+     * plan outside reach reads as "does not exist". Scope is NOT changed by an
+     * update in v1 — a `scope` key is simply not accepted, so it cannot move a
+     * plan to a level the actor could not otherwise choose.
+     */
+    public function update(Request $request, string $id): JsonResponse
+    {
+        $this->authorize('update', MonitoringFloorPlan::class);
+
+        $actor = $request->user();
+
+        $plan = $this->reachable($actor, $id);
+
+        $data = $request->validate([
+            'name' => ['sometimes', 'string', 'max:255'],
+            'layout' => ['sometimes', 'array'],
+        ]);
+
+        if (array_key_exists('name', $data)) {
+            $plan->name = $data['name'];
+        }
+
+        if (array_key_exists('layout', $data)) {
+            $plan->layout = $this->validatedLayout($data['layout'], $actor);
+        }
+
+        $changed = array_keys($plan->getDirty());
+        $plan->save();
+
+        // Records WHICH fields changed, not the layout itself — "who edited this
+        // plan and when" is the audited fact; the geometry is on the row already.
+        $this->audit->log('monitoring.map.updated', $plan, ['fields' => $changed]);
+
+        return response()->json(['data' => $this->present($plan->fresh(), $actor)]);
+    }
+
+    /**
+     * DELETE /api/v1/monitoring/floor-plans/{id}
+     *
+     * Remove a plan the caller may reach (§3-scoped find + 404). The name is
+     * captured before deletion so "who removed which plan and when" stays legible
+     * on the audit row that outlives it.
+     */
+    public function destroy(Request $request, string $id): Response
+    {
+        $this->authorize('delete', MonitoringFloorPlan::class);
+
+        $actor = $request->user();
+
+        $plan = $this->reachable($actor, $id);
+
+        $name = $plan->name;
+        $plan->delete();
+
+        $this->audit->log('monitoring.map.deleted', $plan, ['name' => $name]);
+
+        return response()->noContent();
+    }
+
+    /**
+     * Resolve a plan §3-scoped, or 404 — the write side of `show`'s find.
+     *
+     * The reach predicate is built onto the query BEFORE the id lookup, so a plan
+     * the caller may not reach returns null and 404s exactly as one that never
+     * existed does; a row outside reach must never read as "forbidden".
+     */
+    private function reachable(User $actor, string $id): MonitoringFloorPlan
+    {
+        $query = MonitoringFloorPlan::query()->with(['company:id,name', 'franchise:id,name']);
+        $this->reach->constrain($query, $actor);
+
+        $plan = $query->find($id);
+
+        if ($plan === null) {
+            abort(404);
+        }
+
+        return $plan;
+    }
+
+    /** The default layout a plan created with no `layout` starts from — an empty grid. */
+    private function emptyLayout(): array
+    {
+        return ['grid' => ['cols' => 20, 'rows' => 20], 'walls' => [], 'nodes' => []];
+    }
+
+    /**
+     * Validate the `layout` document's shape, and refuse any node assignee the
+     * actor may not see.
+     *
+     * The shape is `{grid:{cols:int,rows:int}, walls:[{x1,y1,x2,y2 ints}],
+     * nodes:[{id:string, x:int, y:int, label:string, user_id:?string}]}`; a
+     * malformed shape is a 422 on `layout`. The load-bearing check is the last:
+     * every non-null node `user_id` must be a person `constrainToVisiblePeople`
+     * returns — one query for the whole set — so a plan tile cannot be assigned
+     * to somebody outside the actor's reach (which would leak that person the
+     * moment the plan is read). Any id absent from the visible set is a 422.
+     *
+     * @return array{grid: array{cols: int, rows: int}, walls: list<array>, nodes: list<array>}
+     *
+     * @throws ValidationException
+     */
+    private function validatedLayout(mixed $layout, User $actor): array
+    {
+        $fail = fn (string $message) => throw ValidationException::withMessages(['layout' => $message]);
+
+        if (! is_array($layout)) {
+            $fail('The layout must be an object.');
+        }
+
+        $grid = $layout['grid'] ?? null;
+        if (! is_array($grid) || ! $this->isInt($grid['cols'] ?? null) || ! $this->isInt($grid['rows'] ?? null)) {
+            $fail('The layout grid must have integer cols and rows.');
+        }
+
+        $walls = $layout['walls'] ?? [];
+        if (! is_array($walls)) {
+            $fail('The layout walls must be a list.');
+        }
+
+        $cleanWalls = [];
+        foreach ($walls as $wall) {
+            if (! is_array($wall)
+                || ! $this->isInt($wall['x1'] ?? null) || ! $this->isInt($wall['y1'] ?? null)
+                || ! $this->isInt($wall['x2'] ?? null) || ! $this->isInt($wall['y2'] ?? null)) {
+                $fail('Each wall must have integer x1, y1, x2 and y2.');
+            }
+
+            $cleanWalls[] = [
+                'x1' => (int) $wall['x1'], 'y1' => (int) $wall['y1'],
+                'x2' => (int) $wall['x2'], 'y2' => (int) $wall['y2'],
+            ];
+        }
+
+        $nodes = $layout['nodes'] ?? [];
+        if (! is_array($nodes)) {
+            $fail('The layout nodes must be a list.');
+        }
+
+        $cleanNodes = [];
+        $assigneeIds = [];
+        foreach ($nodes as $node) {
+            if (! is_array($node)
+                || ! $this->isNonEmptyString($node['id'] ?? null)
+                || ! $this->isInt($node['x'] ?? null) || ! $this->isInt($node['y'] ?? null)
+                || ! is_string($node['label'] ?? null)) {
+                $fail('Each node must have a string id, integer x and y, and a string label.');
+            }
+
+            $userId = $node['user_id'] ?? null;
+            if ($userId !== null && ! is_string($userId)) {
+                $fail('A node user_id must be a string or null.');
+            }
+            if ($userId === '') {
+                $userId = null;
+            }
+            if ($userId !== null) {
+                $assigneeIds[$userId] = true;
+            }
+
+            $cleanNodes[] = [
+                'id' => (string) $node['id'],
+                'x' => (int) $node['x'],
+                'y' => (int) $node['y'],
+                'label' => (string) $node['label'],
+                'user_id' => $userId,
+            ];
+        }
+
+        // CRUCIAL (§3): a tile may only be assigned to somebody the actor can
+        // see. Collect the distinct assignee ids and assert each is returned by
+        // constrainToVisiblePeople — the same predicate the read side hides an
+        // unseeable assignee behind. Any id not in the visible set is refused.
+        $assigneeIds = array_keys($assigneeIds);
+        if ($assigneeIds !== []) {
+            $visible = User::query()
+                ->whereIn('id', $assigneeIds)
+                ->where(fn (Builder $q) => $this->reach->constrainToVisiblePeople($q, $actor))
+                ->pluck('id')
+                ->all();
+
+            if (count($visible) !== count($assigneeIds)) {
+                $fail('You can only assign people you can see.');
+            }
+        }
+
+        return [
+            'grid' => ['cols' => (int) $grid['cols'], 'rows' => (int) $grid['rows']],
+            'walls' => $cleanWalls,
+            'nodes' => $cleanNodes,
+        ];
+    }
+
+    /** True only for a genuine integer — a numeric string is not one (a coord must be typed). */
+    private function isInt(mixed $value): bool
+    {
+        return is_int($value);
+    }
+
+    private function isNonEmptyString(mixed $value): bool
+    {
+        return is_string($value) && $value !== '';
+    }
+
+    /**
+     * The show-shape for one plan — the same body `show` returns, reused by the
+     * write endpoints so a create/update round-trips exactly what a later read
+     * would. Includes the resolved per-node status.
+     *
+     * @return array<string, mixed>
+     */
+    private function present(MonitoringFloorPlan $plan, User $actor): array
+    {
+        return [
+            'id' => $plan->id,
+            'name' => $plan->name,
+            'scope' => $this->scope($plan, $actor),
+            'layout' => $plan->layout,
+            'status' => $this->status($plan, $actor),
+        ];
     }
 
     /**

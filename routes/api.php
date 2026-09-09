@@ -1546,12 +1546,18 @@ Route::prefix('v1')
 
         // ── Monitoring: floor plans, the General tab's read side (2026-09-09-monitoring-general-map, Task 3) ──
         //
-        // A manager opening the map IS navigation, so both reads stay in THIS
-        // idle-bearing group next to the cameras above. The write side
-        // (POST/PUT/DELETE) lands in Task 4. `index` is scoped by ScopeReach,
-        // `show` §3-scoped with a manual find + 404 — see FloorPlansController.
+        // A manager opening the map IS navigation, so the reads stay in THIS
+        // idle-bearing group next to the cameras above. The writes (Task 4) are
+        // admin edits, not a background beat, so they live here too. `index` is
+        // scoped by ScopeReach; `show`/`update`/`destroy` §3-scoped with a manual
+        // find + 404; `store`/`update` validate the chosen scope with
+        // ScopeReach::assertCovers and every node assignee against
+        // constrainToVisiblePeople — see FloorPlansController.
         Route::get('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'index']);
+        Route::post('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'store']);
         Route::get('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'show']);
+        Route::put('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'update']);
+        Route::delete('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'destroy']);
 
         // Changing it while signed in. Needs the current password: a session
         // proves somebody sat down at an unlocked laptop, not that they are the
