@@ -84,6 +84,87 @@ class InventorySummaryApiTest extends TestCase
         $this->assertSame('stock?low=1', $health['links']['low']);
     }
 
+    public function test_a_purchase_order_with_no_ordered_on_is_never_called_old(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            $vendor = \App\Models\InventoryVendor::factory()->create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+            ]);
+
+            // ordered_on is nullable. Ageing a null from zero would mark every
+            // undated order permanently fine, which is the opposite of a warning.
+            \App\Models\InventoryPurchaseOrder::create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+                'vendor_id' => $vendor->id,
+                'number' => 'PO-1',
+                'status' => \App\Support\Inventory\InventoryPurchaseOrderStatus::Open,
+                'ordered_on' => null,
+            ]);
+        });
+
+        $warnings = $this->signedInAs($boss)
+            ->getJson('/api/v1/inventory/summary')
+            ->assertOk()
+            ->json('warnings');
+
+        $this->assertNotContains(
+            'purchase_order_open_a_long_time',
+            array_column($warnings, 'key'),
+        );
+    }
+
+    public function test_a_warning_with_nothing_in_it_is_not_sent(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+
+        $this->seedOneItemOnHand($tenant, qty: '40.000', reorderAt: '10.000', lastCostMinor: 250);
+
+        $warnings = $this->signedInAs($boss)
+            ->getJson('/api/v1/inventory/summary')
+            ->assertOk()
+            ->json('warnings');
+
+        $this->assertNotContains('below_reorder', array_column($warnings, 'key'));
+        $this->assertNotContains('out_of_stock', array_column($warnings, 'key'));
+    }
+
+    public function test_out_of_stock_leads_the_list(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+
+        $this->seedOneItemOnHand($tenant, qty: '0.000', reorderAt: '10.000', lastCostMinor: 250);
+        $this->seedOneItemOnHand($tenant, qty: '2.000', reorderAt: '10.000', lastCostMinor: 250);
+
+        $keys = array_column(
+            $this->signedInAs($boss)->getJson('/api/v1/inventory/summary')->assertOk()->json('warnings'),
+            'key',
+        );
+
+        $this->assertSame('out_of_stock', $keys[0]);
+    }
+
+    public function test_no_cost_recorded_is_withheld_without_financials(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $clerk = $this->userWithRole($tenant, 'Clerk', ['inventory.view']);
+
+        $this->seedOneItemOnHand($tenant, qty: '4.000', reorderAt: null, lastCostMinor: null);
+
+        $keys = array_column(
+            $this->signedInAs($clerk)->getJson('/api/v1/inventory/summary')->assertOk()->json('warnings'),
+            'key',
+        );
+
+        $this->assertNotContains('no_cost_recorded', $keys);
+    }
+
     private function seedOneItemOnHand(array $tenant, string $qty, ?string $reorderAt, ?int $lastCostMinor): void
     {
         $this->inTenant($tenant['org'], function () use ($tenant, $qty, $reorderAt, $lastCostMinor) {

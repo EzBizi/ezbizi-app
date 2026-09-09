@@ -85,6 +85,92 @@ final class InventorySummary
     }
 
     /**
+     * Rows the General tab draws under "needs attention".
+     *
+     * Takes $counts rather than recomputing it: the controller already ran
+     * counts() for the health block, and this runs in the same request, so
+     * a second full aggregation would be wasted work for no different answer.
+     *
+     * @param  array{items:int,locations:int,open_purchase_orders:int,in_stock:int,low:int,out:int,stock_value_minor:int}  $counts
+     * @return list<array{key:string,sentence:string,count:int,link:string}>
+     */
+    public static function warnings(User $user, ViewScope $scope, array $counts, bool $withMoney): array
+    {
+        $rows = [];
+
+        // Order is fixed here, not sorted by count: out of stock leads because
+        // it is the only one where work has already stopped.
+        $rows[] = [
+            'key' => 'out_of_stock',
+            'count' => $counts['out'],
+            'sentence' => $counts['out'] === 1
+                ? '1 item is out of stock.'
+                : "{$counts['out']} items are out of stock.",
+            'link' => 'stock',
+        ];
+
+        $rows[] = [
+            'key' => 'below_reorder',
+            'count' => $counts['low'],
+            'sentence' => $counts['low'] === 1
+                ? '1 item is at or below its reorder point.'
+                : "{$counts['low']} items are at or below their reorder point.",
+            'link' => 'stock?low=1',
+        ];
+
+        $oldOrders = (int) InventoryVisibility::constrain(InventoryPurchaseOrder::query(), $user, $scope)
+            ->whereIn('status', [
+                InventoryPurchaseOrderStatus::Draft,
+                InventoryPurchaseOrderStatus::Open,
+            ])
+            // A null ordered_on cannot be aged, so it is excluded rather than
+            // treated as today — which would make every undated order fine.
+            ->whereNotNull('ordered_on')
+            ->whereDate('ordered_on', '<', now()->subDays(30)->toDateString())
+            ->count();
+
+        $rows[] = [
+            'key' => 'purchase_order_open_a_long_time',
+            'count' => $oldOrders,
+            'sentence' => $oldOrders === 1
+                ? '1 purchase order has been open more than 30 days.'
+                : "{$oldOrders} purchase orders have been open more than 30 days.",
+            'link' => 'orders',
+        ];
+
+        $emptyLocations = (int) InventoryVisibility::constrain(InventoryLocation::query(), $user, $scope)
+            ->whereDoesntHave('balances', fn ($q) => $q->where('qty_on_hand', '>', 0))
+            ->count();
+
+        $rows[] = [
+            'key' => 'location_holding_nothing',
+            'count' => $emptyLocations,
+            'sentence' => $emptyLocations === 1
+                ? '1 location is holding nothing.'
+                : "{$emptyLocations} locations are holding nothing.",
+            'link' => 'locations',
+        ];
+
+        if ($withMoney) {
+            $noCost = (int) InventoryVisibility::constrain(InventoryItem::query(), $user, $scope)
+                ->where('status', InventoryItemStatus::Active)
+                ->whereNull('last_cost_minor')
+                ->count();
+
+            $rows[] = [
+                'key' => 'no_cost_recorded',
+                'count' => $noCost,
+                'sentence' => $noCost === 1
+                    ? '1 item has no cost recorded.'
+                    : "{$noCost} items have no cost recorded.",
+                'link' => 'items',
+            ];
+        }
+
+        return array_values(array_filter($rows, fn (array $row) => $row['count'] > 0));
+    }
+
+    /**
      * @param  Collection<int, string>  $itemIds
      * @return array<string, string> item id → qty decimal string (scale 3)
      */

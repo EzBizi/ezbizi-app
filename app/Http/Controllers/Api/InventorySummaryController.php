@@ -28,13 +28,14 @@ class InventorySummaryController extends Controller
         $user = $request->user();
         $scope = ViewScope::forUser($user);
         $counts = InventorySummary::counts($user, $scope);
+        $withMoney = $user->hasPermission('inventory.financials');
 
         return response()->json([
-            'health' => $this->health($counts, $user->hasPermission('inventory.financials')),
-            'warnings' => [],
-            // Tasks 3 and 4 fill these. They ship with their final SHAPE now —
-            // an empty list and an object with empty members — so that the
-            // client is never written against a shape that later changes type.
+            'health' => $this->health($counts, $withMoney),
+            'warnings' => InventorySummary::warnings($user, $scope, $counts, $withMoney),
+            // Task 4 fills this. It ships with its final SHAPE now — an object
+            // with empty members — so that the client is never written against
+            // a shape that later changes type.
             'movement' => ['period' => 'month', 'buckets' => [], 'lines' => []],
         ]);
     }
