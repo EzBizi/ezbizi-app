@@ -231,6 +231,95 @@ void main() {
     expect(saves.first['zips'] as List, isEmpty);
   });
 
+  /// Delete asks for the area's own name, in the pane, and refuses anything
+  /// else. Without the wrong-name half this test would pass on a confirmation
+  /// that accepted any keystroke, which is a ritual rather than a check.
+  testWidgets('delete needs the area name typed, and no dialog opens', (
+    tester,
+  ) async {
+    var deleted = false;
+
+    await _pump(
+      tester,
+      onRequest: (request) {
+        if (request.method == 'DELETE') {
+          deleted = true;
+          return _json({}, 204);
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('Dallas'));
+    await tester.pumpAndSettle();
+
+    await _reveal(tester, find.text('Delete area'));
+    await tester.tap(find.text('Delete area'));
+    await tester.pumpAndSettle();
+
+    // In the pane, not over it.
+    expect(find.byType(Dialog), findsNothing);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('Delete Dallas?'), findsOneWidget);
+
+    // Reveal before EVERY tap. A tap that misses an off-screen button also
+    // leaves `deleted` false, so without this the two negative assertions
+    // below would pass on a button nobody pressed.
+    await _reveal(tester, find.text('Delete Dallas'));
+
+    // Nothing typed: the button is there and does nothing.
+    await tester.tap(find.text('Delete Dallas'));
+    await tester.pumpAndSettle();
+    expect(deleted, isFalse, reason: 'An empty box must not delete.');
+
+    // The WRONG name must not delete either.
+    await tester.enterText(
+      find.byKey(const Key('scheduling-delete-confirm')),
+      'Houston',
+    );
+    await tester.pumpAndSettle();
+    await _reveal(tester, find.text('Delete Dallas'));
+    await tester.tap(find.text('Delete Dallas'));
+    await tester.pumpAndSettle();
+    expect(deleted, isFalse, reason: 'Another area name must not delete this one.');
+
+    // The right name, spaced and in the wrong case, does.
+    await tester.enterText(
+      find.byKey(const Key('scheduling-delete-confirm')),
+      '  dallas ',
+    );
+    await tester.pumpAndSettle();
+    await _reveal(tester, find.text('Delete Dallas'));
+    await tester.tap(find.text('Delete Dallas'));
+    await tester.pumpAndSettle();
+    expect(deleted, isTrue, reason: 'The area name should confirm it.');
+  });
+
+  /// A typed confirmation must not survive a change of area, or it would
+  /// already match the one you moved to nothing about.
+  testWidgets('switching area drops a half-typed confirmation', (tester) async {
+    await _pump(tester);
+
+    await tester.tap(find.text('Dallas'));
+    await tester.pumpAndSettle();
+
+    await _reveal(tester, find.text('Delete area'));
+    await tester.tap(find.text('Delete area'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('scheduling-delete-confirm')),
+      'Dallas',
+    );
+    await tester.pumpAndSettle();
+
+    // Move to another area. The confirmation should be gone entirely.
+    await tester.tap(find.text('Houston').first);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('scheduling-delete-confirm')), findsNothing);
+  });
+
   testWidgets('closing a day sends no rows for it, never a zero', (
     tester,
   ) async {
@@ -363,6 +452,28 @@ void main() {
     expect(find.text('EVERDOORS › CONNECTICUT'), findsOneWidget);
     expect(find.text('PREMIER › CONNECTICUT'), findsOneWidget);
   });
+}
+
+/// Scrolls the AREA pane (not the rail) until [what] is on screen.
+///
+/// The pane is a lazy ListView, so anything below the fold is not merely
+/// off-screen — it has not been built, and ensureVisible throws "No element"
+/// rather than scrolling to it.
+Future<void> _reveal(WidgetTester tester, Finder what) async {
+  await tester.scrollUntilVisible(
+    what,
+    300,
+    // `.first` is the ListView's own Scrollable. Every TextField in the pane
+    // carries an internal one too, so the unqualified finder matches several
+    // and scrollUntilVisible asks for exactly one.
+    scrollable: find
+        .descendant(
+          of: find.byKey(const Key('scheduling-area-pane')),
+          matching: find.byType(Scrollable),
+        )
+        .first,
+  );
+  await tester.pumpAndSettle();
 }
 
 Future<void> _pump(
