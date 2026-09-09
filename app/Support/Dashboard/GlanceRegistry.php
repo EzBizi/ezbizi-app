@@ -15,6 +15,7 @@ use App\Support\Dashboard\Glances\BusinessProfileGlance;
 use App\Support\Dashboard\Glances\LeadsGlance;
 use App\Support\Dashboard\Glances\ReviewsGlance;
 use App\Support\Dashboard\Glances\ServicesGlance;
+use App\Support\Dashboard\Glances\TrainingGlance;
 use App\Support\Dashboard\Glances\WebManagementGlance;
 use App\Support\Modules\ModuleAvailability;
 use App\Support\Tenancy\TenantContext;
@@ -69,42 +70,6 @@ class GlanceRegistry
             'sentence' => 'Phone is where the team places and receives calls, and sends texts. Open the Phone tab for the desk.',
         ],
         /*
-         * Added with the Training module, not with a Training glance.
-         *
-         * A tab and a dashboard box are one thing here: the completeness test
-         * asserts every sidebar tab has a glance, so declaring the module
-         * without an entry turns the suite red at a line about the dashboard.
-         * Training has its own dashboard INSIDE the tab — who has been assigned
-         * what, who is overdue, who is due for retaking — and no plan puts a
-         * summary of it on the home screen, so a placeholder is the honest
-         * answer rather than a temporary one. A live glance registered later
-         * wins on this key without this entry being removed first.
-         */
-        'training' => [
-            'label' => 'Training',
-            /*
-             * Was "Training WILL show who has been assigned a guide, and who is
-             * due to retake a test." The comment above called a placeholder the
-             * honest permanent answer and the sentence promised a date; only
-             * the sentence is on screen, so the box was making a commitment
-             * this file had already decided not to keep. UI/UX ruled on it
-             * 2026-09-09 (01614e37): a placeholder that says "will" is a
-             * promise, one that says where the thing lives is an answer, and
-             * only the second stays true forever.
-             *
-             * Their second point is not addressed here and is worth somebody's
-             * time: the drift objection rules out restating an in-tab dashboard
-             * on the home screen, not the one COUNT that makes somebody open
-             * the tab — a count cannot drift from a dashboard because it is not
-             * describing one. "Due to retake" is drawn one person at a time on
-             * the HR record card, so the org-wide figure is invisible unless
-             * you go looking, which is the shape a glance exists for. That is a
-             * TrainingGlance for the Training session to decide on, not a
-             * reason to keep promising it in a sentence meanwhile.
-             */
-            'sentence' => 'Training keeps its own dashboard inside the tab: who has been assigned a guide, who is overdue, and who is due to retake a test. Open the Training tab for it.',
-        ],
-        /*
          * Added with the Newsletter module, not with a Newsletter glance, and
          * the reasoning is Training's above rather than Marketing's below.
          *
@@ -146,6 +111,7 @@ class GlanceRegistry
         InspectionGlance::class,
         FleetGlance::class,
         InventoryGlance::class,
+        TrainingGlance::class,
         WebManagementGlance::class,
         ServicesGlance::class,
         LeadsGlance::class,
