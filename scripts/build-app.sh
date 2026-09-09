@@ -51,6 +51,7 @@ APP_FACE="customer"
 RUN_GATES=1
 UPLOAD=0
 ALLOW_DIRTY=0
+ANDROID_APK=0
 TARGETS=()
 
 while [ $# -gt 0 ]; do
@@ -61,8 +62,9 @@ while [ $# -gt 0 ]; do
     --skip-gates) RUN_GATES=0; shift ;;
     --upload)     UPLOAD=1; shift ;;
     --allow-dirty) ALLOW_DIRTY=1; shift ;;
+    --apk)         ANDROID_APK=1; shift ;;
     *) echo "unknown argument: $1" >&2
-       echo "usage: $0 [windows|linux|android|macos|ios]... [--api-base URL] [--face customer|staff] [--skip-gates] [--upload] [--allow-dirty]" >&2
+       echo "usage: $0 [windows|linux|android|macos|ios]... [--api-base URL] [--face customer|staff] [--skip-gates] [--upload] [--allow-dirty] [--apk]" >&2
        exit 2 ;;
   esac
 done
@@ -167,10 +169,26 @@ build_locally() {
   case "$1" in
     # appbundle, not apk. Play has not accepted an APK for a new app since 2021,
     # and the AAB is what the internal testing track distributes from — so the
-    # thing you install on a phone to test comes from this artefact too. An APK
-    # is only worth building to sideload without Play, which is not the path
-    # here; `flutter build apk` is still there by hand if that day comes.
-    android) (cd client && flutter build appbundle --release "${DEFINES[@]}") ;;
+    # thing you install on a phone to test comes from this artefact too.
+    #
+    # --apk is that day arriving early. The sentence above assumes the internal
+    # testing track exists, and while Play holds a new listing for its first
+    # review it does NOT: the .aab is the only artefact, an .aab cannot be
+    # installed on a phone, and there is no track to distribute it through. So
+    # the one thing left to prove — that an incoming call rings a real handset —
+    # has no build anybody can install. --apk produces one, signed with the same
+    # upload key and carrying the same --dart-defines, which is the point of
+    # putting it HERE rather than telling somebody to run `flutter build apk`:
+    # bare, it defaults API_BASE to nothing useful and the app installs fine and
+    # then cannot log in.
+    #
+    # It is not part of a release. Play still gets the .aab.
+    android)
+      if [ "$ANDROID_APK" -eq 1 ]; then
+        (cd client && flutter build apk --release "${DEFINES[@]}")
+      else
+        (cd client && flutter build appbundle --release "${DEFINES[@]}")
+      fi ;;
     *)       (cd client && flutter build "$1" --release "${DEFINES[@]}") ;;
   esac
 }
@@ -198,6 +216,23 @@ for target in windows linux android; do
     build_locally "$target"
   fi
 done
+
+# ── the sideload APK, if one was asked for ──────────────────────
+#
+# release.sh collects the .aab itself; this one is collected here because a
+# release never produces it. Same name shape as every other artefact so the
+# folder stays sorted by version, and -sideload so nobody ever mistakes it for
+# something to upload to Play.
+if wants android && [ "$ANDROID_APK" -eq 1 ]; then
+  APK="client/build/app/outputs/flutter-apk/app-release.apk"
+  if [ ! -f "$APK" ]; then
+    echo "x expected $APK and it is not there" >&2
+    exit 1
+  fi
+  mkdir -p "$DIST/Android"
+  cp "$APK" "$DIST/Android/EzBizi-${VERSION}-${COMMIT}-sideload.apk"
+  echo "  -> $DIST/Android/EzBizi-${VERSION}-${COMMIT}-sideload.apk"
+fi
 
 # ── the two that need the Mac ────────────────────────────────────
 #
