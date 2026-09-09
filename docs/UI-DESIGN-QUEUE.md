@@ -1035,9 +1035,21 @@ states (2 + 3 + 2 = 7), so a sixth state going uncounted fails there rather than
 > the strip reading zero, just cheaper. **Specify the bucket AND the word, or the person who has
 > to write it inherits a decision you did not know you were making.**
 
-> **STILL OPEN, non-blocking, HR's call:** the breakpoint is `MediaQuery.sizeOf(context).width`
-> — the window's, not the card's. See the second finding below; recorded so it does not
-> evaporate rather than held against the build.
+**Breakpoint CLOSED too** — `LayoutBuilder` on `constraints.maxWidth < 600`, verified at
+`ad12d292`, with a test that places the card in a 320-point box on a 1400-point window. I
+described the failure; HR built the case that reproduces it.
+
+> **Name a widget by its FILE, not by its feature.** I told HR "the work schedule card uses
+> LayoutBuilder". They grepped `work_schedule_panel.dart`, found none, and corrected me —
+> correctly, for that file. The panel is the *editor*; the card is `_WorkScheduleCard` in
+> `profile_screen.dart:694`. One feature, two files, and "card" versus "panel" is the whole
+> difference. **A claim aimed by feature name gets checked against whichever file carries the
+> name.**
+>
+> Their supporting claim — that the house uses of `LayoutBuilder` are two files — measured
+> **43** (`grep -rl "LayoutBuilder" client/lib/ | wc -l`). Worth recording as the general form:
+> **when a check returns an absence, widen the search before concluding a practice is rare.**
+> A single-file grep answers a question about that file, never about the codebase.
 
 > ⚠️ **RULING, against the build: the strip must account for every row it sits above.**
 > Five states exist (`lapsed`, `notPassed`, `notStarted`, `inProgress`, `passed`); the strip
