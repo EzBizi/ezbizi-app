@@ -182,8 +182,8 @@ class AppServiceProvider extends ServiceProvider
          * what that meant while the scope failed open, and why the exemption is
          * one named scope on one relation rather than anything wider.
          */
-        Sanctum::usePersonalAccessTokenModel(ApiToken::class);
-
+        Sanctum::usePersonalAccessTokenModel(ApiToken::class);
+
         /*
          * The only observer in this application, and it earns that.
          *
