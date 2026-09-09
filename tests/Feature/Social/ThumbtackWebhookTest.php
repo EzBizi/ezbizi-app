@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Social;
 
+use App\Models\Lead;
 use App\Models\SocialConnection;
 use App\Support\Social\SocialProvider;
 use App\Support\Social\ThumbtackWebhooks;
@@ -164,6 +165,102 @@ class ThumbtackWebhookTest extends TestCase
                 'businessID' => 'shared-biz',
             ])
             ->assertUnauthorized();
+    }
+
+    /**
+     * Thumbtack's REAL payload, copied from their own OpenAPI document.
+     *
+     * Every test above this one used a flat body I invented from the endpoint
+     * reference, and all of them passed while production dropped every event.
+     * The real body is an envelope — eventType under `event`, everything else
+     * under `data` — documented in the `webhooks` section of
+     * api.thumbtack.com/docs/thumbtack_api_latest.json, a top-level key beside
+     * `paths` that reading the endpoint reference never shows.
+     *
+     * The controller read `eventType` at the top level, found nothing, and
+     * returned handled:false to two real enquiries. The businessID and
+     * negotiationID keys were guessed RIGHT, so it authenticated perfectly and
+     * then did nothing — which is why the access log showed 200s and the
+     * database showed no leads.
+     *
+     * This is the fixture that would have caught it, and the one to add to
+     * whenever their envelope changes.
+     */
+    public function test_their_real_envelope_is_recognised_and_becomes_a_lead(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->connection($t, remoteId: 'biz-1', secret: 'the-secret');
+
+        Http::fake([
+            '*/v4/negotiations/*/messages' => Http::response(['data' => []]),
+            '*/v4/negotiations/*'          => Http::response([
+                'negotiationID' => 'neg-1',
+                'createdAt'     => '2026-09-09T12:20:25Z',
+                'customer'      => [
+                    'customerID' => 'cus-1',
+                    'firstName'  => 'Ada',
+                    'lastName'   => 'Sweep',
+                    'phone'      => '+15552345678',
+                ],
+                'request' => ['category' => ['categoryID' => 'cat-1', 'name' => 'Chimney Sweep']],
+            ]),
+        ]);
+
+        $this->withHeader(ThumbtackWebhooks::AUTH_HEADER, 'the-secret')
+            ->postJson(self::URL, [
+                'event' => [
+                    'eventType'   => 'NegotiationCreatedV4',
+                    'webhookID'   => 'wh-1',
+                    'triggeredAt' => '2026-09-09T12:20:25Z',
+                ],
+                'data' => [
+                    'negotiationID' => 'neg-1',
+                    'createdAt'     => '2026-09-09T12:20:25Z',
+                    'customer'      => [
+                        'customerID' => 'cus-1',
+                        'firstName'  => 'Ada',
+                        'lastName'   => 'Sweep',
+                        'phone'      => '+15552345678',
+                    ],
+                    'business' => ['businessID' => 'biz-1', 'name' => 'A-1 Chimney'],
+                ],
+            ])
+            ->assertOk()
+            // handled:true is the whole difference. It read false in production
+            // for every real event, and every test said otherwise.
+            ->assertJsonPath('data.handled', true);
+
+        $this->inTenant($t['org'], function () {
+            $lead = Lead::query()->where('source', 'thumbtack')->first();
+
+            $this->assertNotNull($lead, 'their documented envelope must produce a lead');
+            $this->assertSame('neg-1', $lead->remote_id);
+        });
+    }
+
+    public function test_the_flat_shape_still_works_if_they_ever_send_it(): void
+    {
+        // Kept behind the envelope: one array lookup, and the difference
+        // between a changed envelope losing every enquiry and losing none.
+        $t = $this->provisionTenant('A1-Group');
+        $this->connection($t, remoteId: 'biz-1', secret: 'the-secret');
+
+        Http::fake([
+            '*/v4/negotiations/*/messages' => Http::response(['data' => []]),
+            '*/v4/negotiations/*'          => Http::response([
+                'negotiationID' => 'neg-2',
+                'customer'      => ['customerID' => 'c', 'firstName' => 'B', 'lastName' => 'C', 'phone' => '+15552345678'],
+            ]),
+        ]);
+
+        $this->withHeader(ThumbtackWebhooks::AUTH_HEADER, 'the-secret')
+            ->postJson(self::URL, [
+                'eventType'     => 'NegotiationCreatedV4',
+                'businessID'    => 'biz-1',
+                'negotiationID' => 'neg-2',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.handled', true);
     }
 
     /**
