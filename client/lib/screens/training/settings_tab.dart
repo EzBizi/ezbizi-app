@@ -193,7 +193,9 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
                 ),
                 const SizedBox(height: 8),
                 if (_guides.isEmpty)
-                  const _EmptySection('No guides yet — "New guide" starts one.')
+                  // Scope-filtered: "no guides YET" claims the organization has
+                  // none, which this list cannot know. It says what showed up.
+                  const _EmptySection('No guides to show — "New guide" starts one.')
                 else
                   for (final guide in _guides)
                     _SettingsRow(
@@ -211,7 +213,7 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
                 ),
                 const SizedBox(height: 8),
                 if (_tests.isEmpty)
-                  const _EmptySection('No tests yet — "New test" starts one.')
+                  const _EmptySection('No tests to show — "New test" starts one.')
                 else
                   for (final test in _tests)
                     _SettingsRow(
