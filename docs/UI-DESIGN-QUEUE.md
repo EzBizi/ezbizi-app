@@ -1047,9 +1047,15 @@ described the failure; HR built the case that reproduces it.
 > name.**
 >
 > Their supporting claim — that the house uses of `LayoutBuilder` are two files — measured
-> **43** (`grep -rl "LayoutBuilder" client/lib/ | wc -l`). Worth recording as the general form:
-> **when a check returns an absence, widen the search before concluding a practice is rare.**
-> A single-file grep answers a question about that file, never about the codebase.
+> **43** when I took it. Worth recording as the general form: **when a check returns an absence,
+> widen the search before concluding a practice is rare.** A single-file grep answers a question
+> about that file, never about the codebase.
+>
+> **And then my 43 went stale in about twenty minutes.** HR measured 44 and was right: the
+> difference is `training_card.dart` itself, which their own fix had just added. I had quoted a
+> count as a standing property while the thing it counted was being changed by the conversation
+> I was having. **A count is a measurement with a timestamp, not a property of the codebase** —
+> and the one I used to correct someone else with was the one that decayed.
 
 > ⚠️ **RULING, against the build: the strip must account for every row it sits above.**
 > Five states exist (`lapsed`, `notPassed`, `notStarted`, `inProgress`, `passed`); the strip
