@@ -57,7 +57,7 @@ SELECT COUNT(*) FROM leads WHERE remote_id NOT LIKE 'DEMO-%';   -- real enquirie
 | **That anybody has *set up* coverage and capacity** | Built and unused — a different state from unbuilt, and the two must not be flattened. The capability shipped in `0.0.0137`; `service_areas` and `service_area_slots` both hold **0 rows**, so no customer has created one. This does **not** forbid the "Coverage & capacity" card, which reads *"Set the areas each location covers and how much work a day can take"* — that is capability phrasing, and by the Inspections precedent below, built-and-unused is sellable as a capability and never as usage. **What it forbids is the tense**: "businesses set their coverage", "locations already covering", any sentence implying somebody has. If you are here because you read a 0 and reached for the card, leave the card alone. |
 | **Tasks — RETIRED, not merely unused** | **On the site until 2026-09-03, removed the same day it was checked. The reason it survived is the durable lesson: `27aef957` ("Delete every remaining record of the Tasks module", Jose's, 38 files, ~3,800 lines) swept the row out of `MODULE-OWNERS.md`, both `*TaskLink.php` entries, a `NotificationDispatcher` constant, nine superpowers files, a release note and about thirty other citations — and touched ZERO files under `www/`.** A product-wide removal sweep does not reach the marketing site, and nothing makes it obvious that it did not: every internal trace was gone, so any check that samples the repo concludes the removal was thorough. **When a module is deleted, `www/` is a separate job with a separate owner and it will not be in the sweep's diff.** `9175d19f` drops all 31 `task_*` tables and `51729347` removes it from tables it did not own, both ancestors of `d2d39304` — the SHA `/download/windows.json` names. **The decisive check is not the migration**, since a migration in the deployed tree has not necessarily run; it is that **the deployed client carries zero Tasks screens** (`git ls-tree -r d2d39304 -- client/lib/screens`, filtered for task → 0). A customer on `0.0.0148` has no Tasks screen at all. Removed from the site: the sidebar tab and its "9" pill, the whole `p-task` mock panel, the "Boards for the work that is not a job" card, and one word each in `privacy/` and `terms/`. **A retired module is a harder sweep than an unbuilt one** — it was legitimately on the site for weeks, so it reads as settled copy nobody thinks to re-check. |
 | **"Teams rely on it" about Inspections** | The module is live and has never been used by a customer. Not embarrassing, but not a usage claim. |
-| **Monitoring, Marketing** | Registered, but their dashboard summaries are explicitly placeholders. |
+| **Monitoring, Marketing** | **Half of this row expired on 2026-09-09 and the reason has to be split.** **Marketing's placeholder is gone**: `0.0.0181` gave it a real home-screen box (published / waiting / failed, counted per account), and `GlanceRegistry::GLANCES` now lists `MarketingGlance::class` while `COMING_SOON` holds only `newsletter` and `monitoring`. So the stated reason is false for Marketing. **It changes nothing on the site, and that is the point of writing it down**: everything Marketing contains is already sold under its own cards (Social media, Newsletter), so there was never a Marketing claim resting on this row — do not add one now on the strength of a glance. A dashboard box is not a capability. **Monitoring is still off the site, for a reason that is no longer the glance.** Its `COMING_SOON` entry is deliberate, not pending, and meanwhile the module itself grew real screens: `0.0.0181` a floor plan, `0.0.0176` screen capture, live view and remote control, `0.0.0183` per-device capture-status reasons; `monitoring_floor_plans` and the capture-status column are both in the deployed tree. **The checkable test this row now names is a row count, because the Inspections precedent needs one**: `SELECT COUNT(*) FROM monitoring_floor_plans` and `SELECT COUNT(*) FROM monitored_devices`. Asked of the desk in `0041`. **And a zero would not settle it either way** — this is the one capability on the list whose copy is about watching employees' screens, so built-and-unused does not automatically make it sellable the way Coverage & capacity was. Whoever inverts this row writes the sentence and checks it against the privacy pages, not just against the count. |
 
 ## Enforced at publish time
 
@@ -333,6 +333,57 @@ reaches a person — not "never miss a call", not "your calls reach your team",
 not "phone system". The published card says none of them, and a grep for all
 four phrasings across `www/` returns zero. That check is worth re-running
 whenever this card is edited.
+
+## Web management — PUBLISHED 2026-09-09
+
+A card in the module grid, between Newsletter and Inventory:
+
+```html
+<h3>Web management</h3>
+<p>Your WordPress site takes its phone, address, hours and licence numbers
+   from here, so one change reaches every page &mdash; and each site keeps its
+   own answers. Add the chat bubble and contact form in your own brand colour,
+   and the enquiries they take arrive in Leads.</p>
+```
+
+**It was a gap, not a new capability.** Web management has been in the
+"Live, and safe to sell" list since this file was written and had no card;
+the site named it only inside an HTML comment in the app mock. Nothing shipped
+today to license it. It is here because the daily job is "do not let the site
+go stale", and a module can go stale by never arriving.
+
+Every clause read out of the deployed tree — production is `0.0.0183` at
+`a5234975` (`/download/windows.json`, fetched), which is `main`'s tip, so the
+working tree and the deployed tree are the same commit for once:
+
+    phone, address, hours,    wordpress-plugin/ezbizi/readme.txt enumerates
+    licence                   the shortcodes: [ezbizi_phone] [ezbizi_address]
+                              [ezbizi_hours] [ezbizi_license] and four more
+    one change reaches        the readme's own proposition, in as many words:
+    every page                "You set your details once in EzBizi, put a
+                              shortcode where the value belongs"
+    each site keeps its own   readme, "Each website gets its own answers" — a
+    answers                   subdomain is a separate site with its own token
+    chat bubble and contact   web_widgets (one row per site, JSON config) +
+    form, your brand colour   branding.brand_colour, both migrations deployed
+    arrive in Leads           WebsiteEnquiries.php:177 `Lead::create` on the
+                              site's company, with `source` and `remote_id`
+
+**The last clause is the one under a do-not-list row, and it is deliberately
+in that row's own allowed shape.** "Thumbtack or website enquiries arriving as
+leads" permits *"connect it and enquiries arrive in Leads"* and forbids any
+past tense or count, because `web_chats` was **0** when the desk measured it in
+`0038`. "The enquiries they take arrive in Leads" describes what the code does
+when a visitor uses the widget — the same grammar as the approved Growth card's
+"Connect a Google Ads account and its Local Services enquiries arrive as leads".
+**It says nothing about anybody having connected one.** If that row inverts, this
+sentence needs no edit; if it ever had to be pulled, this card is a second place
+to look and the app mock is a third.
+
+**What the card deliberately does not say: that EzBizi builds or hosts the
+site.** It does not. The customer's WordPress renders; EzBizi holds the facts
+and answers a token. A sentence like "your website, managed from EzBizi" would
+read as a site builder and be false in the direction customers act on.
 
 ## Newsletter — PUBLISHED 2026-09-08
 
