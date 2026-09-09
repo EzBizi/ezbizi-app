@@ -947,6 +947,39 @@ finished and cannot. That was wrong — it keys off `connected_at != null`, whet
 plugin has ever read the site, which the module answers exactly. The tier decision
 rests on the opposite-facts argument alone, which is sufficient on its own.*
 
+### 6 · HR · HR record: Training card — **DRAWN, with Jose** (`hr-record-training-card`)
+
+`docs/previews/hr-record-training-card-layouts.html`, committed `f3aaf3b7`. Three desktop,
+three mobile, plus the refused state on a toggle that applies to whichever option is open.
+Jose approved building it; he has the numbers to pick.
+
+**Owner: HR** (`local_4c933357-…`), whose `docs/SESSIONS.md` row names
+`client/lib/screens/hr/*` — and `records_tab.dart` is in it. Training owns the data and the
+wording; HR owns the screen and builds the card. Endpoint `GET /training/records?user=`
+is live at `routes/api.php:732`, `training.monitor`-gated and bounded by reach over the
+**person**, not the content — that bound was the fix for an audit finding of cross-franchise
+disclosure of named people's results.
+
+**The design problem is the neighbour, not the list.** This card lands beside HR's
+*Expiring certifications*: a 60-day lookahead over licences the employee typed, **theirs**
+to renew. Training's is test passes already lapsed, **ours** to re-assign. Different table,
+different fact, different person responsible — and now the same screen, similar size, both
+about time running out.
+
+> That is this doc's own rule about credentials, one level up: **a screen showing one
+> member of a set whose members look interchangeable is not neutral about the others.**
+> Two panels that look alike get treated alike, and one of them is not the reader's job.
+> So every option carries a line inside the card naming which of the two it is and who
+> acts — drawn as real UI, muted and always present, never an annotation.
+
+**Settled with Training, do not re-open:** it never says "certification" (that word is
+HR's panel's, about a different table); "due for retaking" means **already lapsed**, not
+lapsing soon, deliberately asymmetric with HR's lookahead so it cannot hide that the harm
+has already started; and Training writes nothing into HR's tables.
+
+**The refused state is a normal state of this card, not an error** — it shows a lock and
+the server's sentence, never an empty card.
+
 ### 5 · Web Management · Widgets — the colour pairs shipped unchecked — **BUILT `24a5d314`**
 
 `client/lib/screens/web/widgets_tab.dart`. "Accent colour" and "Text on the accent" are two adjacent free-text hex fields
