@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0177',
+      date: '9 Sep 2026',
+      items: [
+        'Scheduling: deleting a service area now asks you to type its name, in the panel rather than a pop-up box. It says how many zip codes go with it, and anything already booked in that area is left alone.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0176',
       date: '9 Sep 2026',
       items: [
