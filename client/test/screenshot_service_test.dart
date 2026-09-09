@@ -46,7 +46,7 @@ void main() {
       final service = ScreenshotService(
         it.api,
         interval: const Duration(milliseconds: 20),
-        capture: () async => Uint8List.fromList([1, 2, 3, 4, 5]),
+        capture: () async => (bytes: Uint8List.fromList([1, 2, 3, 4, 5]), reason: null),
       );
 
       await Future<void>.delayed(const Duration(milliseconds: 80));
@@ -78,7 +78,7 @@ void main() {
     final service = ScreenshotService(
       it.api,
       interval: const Duration(milliseconds: 20),
-      capture: () async => null,
+      capture: () async => (bytes: null, reason: 'screen_locked'),
     );
 
     await Future<void>.delayed(const Duration(milliseconds: 80));
@@ -108,7 +108,7 @@ void main() {
       final service = ScreenshotService(
         it.api,
         interval: const Duration(milliseconds: 20),
-        capture: () async => Uint8List.fromList([9, 8, 7]),
+        capture: () async => (bytes: Uint8List.fromList([9, 8, 7]), reason: null),
       );
 
       await Future<void>.delayed(const Duration(milliseconds: 80));
@@ -127,4 +127,112 @@ void main() {
       );
     },
   );
+
+  group('every attempt reports its outcome', () {
+    test('a failed capture reports the native reason, and does not upload', () async {
+      final it = harness();
+      final outcomes = <({bool ok, String? reason})>[];
+
+      final service = ScreenshotService(
+        it.api,
+        interval: const Duration(milliseconds: 20),
+        capture: () async => (bytes: null, reason: 'jpeg_encoder_missing'),
+        onOutcome: ({required bool ok, String? reason}) =>
+            outcomes.add((ok: ok, reason: reason)),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      service.dispose();
+
+      expect(outcomes, isNotEmpty,
+          reason: 'A capture that produced nothing must still report — the '
+              'silence is the bug this exists to fix.');
+      expect(outcomes.first.ok, isFalse);
+      expect(outcomes.first.reason, 'jpeg_encoder_missing',
+          reason: "The native side's reason must reach the report intact; "
+              'flattening it to a generic failure is what made this '
+              'undiagnosable in the first place.');
+      expect(
+        it.posted.where((r) => r.url.path.endsWith('/monitoring/screenshots')),
+        isEmpty,
+        reason: 'Nothing to upload.',
+      );
+    });
+
+    test('a successful capture reports ok with no reason', () async {
+      final it = harness();
+      final outcomes = <({bool ok, String? reason})>[];
+
+      final service = ScreenshotService(
+        it.api,
+        interval: const Duration(milliseconds: 20),
+        capture: () async => (bytes: Uint8List.fromList([1, 2, 3]), reason: null),
+        onOutcome: ({required bool ok, String? reason}) =>
+            outcomes.add((ok: ok, reason: reason)),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      service.dispose();
+
+      expect(outcomes.first.ok, isTrue);
+      expect(outcomes.first.reason, isNull,
+          reason: 'A success must CLEAR the reason, not leave the last '
+              'failure standing — a device that recovers has to stop '
+              'reporting a stale fault.');
+    });
+
+    test('an upload the server refuses is reported with its status', () async {
+      final posted = <http.Request>[];
+      final api = ApiClient(
+        client: MockClient((request) async {
+          posted.add(request);
+          return http.Response('{"message":"nope"}', 404);
+        }),
+      );
+      final outcomes = <({bool ok, String? reason})>[];
+
+      final service = ScreenshotService(
+        api,
+        interval: const Duration(milliseconds: 20),
+        capture: () async => (bytes: Uint8List.fromList([1, 2, 3]), reason: null),
+        onOutcome: ({required bool ok, String? reason}) =>
+            outcomes.add((ok: ok, reason: reason)),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      service.dispose();
+
+      expect(posted, isNotEmpty,
+          reason: 'The control for this test: the upload must actually have '
+              'been attempted, or a "refused" reading means nothing.');
+      expect(outcomes.first.ok, isFalse);
+      expect(outcomes.first.reason, 'upload_404',
+          reason: 'A capture that worked and an upload that was refused are '
+              'different faults with different fixes, so the status is kept '
+              'rather than folded into a generic failure.');
+    });
+
+    test('a throwing onOutcome never breaks the capture loop', () async {
+      final it = harness();
+      var attempts = 0;
+
+      final service = ScreenshotService(
+        it.api,
+        interval: const Duration(milliseconds: 20),
+        capture: () async {
+          attempts++;
+          return (bytes: Uint8List.fromList([1, 2, 3]), reason: null);
+        },
+        onOutcome: ({required bool ok, String? reason}) =>
+            throw StateError('the reporter belongs to somebody else'),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      service.dispose();
+
+      expect(attempts, greaterThan(1),
+          reason: 'Reporting is a courtesy to the roster; it must never be '
+              'able to stop the thing it is reporting on.');
+    });
+  });
 }

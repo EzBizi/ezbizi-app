@@ -27,6 +27,7 @@ class MonitoredDevice extends Model implements HoldsPersonalData
         'organization_id', 'user_id', 'device_key', 'label', 'platform',
         'capabilities', 'user_agent', 'ip_address', 'last_seen_at',
         'current_module', 'specs', 'offline_alerted_at',
+        'capture_last_attempt_at', 'capture_last_error',
     ];
 
     protected $casts = [
@@ -34,7 +35,18 @@ class MonitoredDevice extends Model implements HoldsPersonalData
         'specs'              => 'array',
         'last_seen_at'       => 'datetime',
         'offline_alerted_at' => 'datetime',
+        'capture_last_attempt_at' => 'datetime',
     ];
+
+    /*
+     * `capture_last_attempt_at` / `capture_last_error` are deliberately NOT in
+     * personalDataHeld(): they describe what the MACHINE can do — the same
+     * class of fact as `platform`, `capabilities` and `last_seen_at`, none of
+     * which is inventoried either. Adding them would also break the reader:
+     * Erasure::erase() writes the literal "Removed" into the column, which is
+     * outside the fixed slug vocabulary the roster renders (see
+     * HeartbeatController::CAPTURE_REASON).
+     */
 
     public static function retention(): RetentionPolicy
     {
