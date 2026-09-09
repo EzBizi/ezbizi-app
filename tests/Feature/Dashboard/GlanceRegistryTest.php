@@ -157,7 +157,24 @@ class GlanceRegistryTest extends TestCase
 
         $this->assertFalse($array['coming_soon']);
         $this->assertTrue($array['data']['empty']);
-        $this->assertStringContainsString('No websites', $array['data']['sentence']);
+
+        /*
+         * Was `assertStringContainsString('No websites', …)`, which is Web
+         * Management's copy pinned from Dashboard's file — the same coupling
+         * the sibling test above already had to unpick after it held
+         * Marketing's stale wording through a release.
+         *
+         * The docblock says what this test is about: that the box no longer
+         * claims to be coming. `coming_soon` false and `empty` true are that
+         * claim. The wording of the sentence never was, and a wording change
+         * Web Management is entitled to make should not turn red in a file
+         * they do not own.
+         *
+         * Not caught by the deploy desk's sweep for "in reach" and "yet"
+         * (2026-09-09) because this sentence uses neither — which is the
+         * argument for fixing the COUPLING rather than the strings.
+         */
+        $this->assertNotSame('', trim((string) $array['data']['sentence']));
     }
 
     public function test_dashboard_is_not_a_glance(): void
