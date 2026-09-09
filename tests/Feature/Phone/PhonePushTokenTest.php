@@ -117,6 +117,69 @@ class PhonePushTokenTest extends TestCase
         $this->inTenant($t['org'], fn () => $this->clientFor($connection));
     }
 
+    /**
+     * A credential Twilio put on another account is refused, not stored.
+     *
+     * ── Why this guard exists at all ─────────────────────────────────
+     *
+     * When this shipped wrong, the create RESPONSE carried
+     * `account_sid = <the parent>` on all three credentials. The answer was in
+     * the payload and the code returned the SID without reading it, so the
+     * command printed three successes and three columns were filled with
+     * credentials no subaccount token can use.
+     *
+     * The check costs nothing — the field is already there — and it turns the
+     * whole class of mistake from silent into loud. Tested on its own because
+     * the guard is the part that was missing; the request was always fine.
+     */
+    public function test_a_credential_on_the_wrong_account_is_refused(): void
+    {
+        $t = $this->provisionTenant();
+        $connection = $this->connection($t, ['account_sid' => 'AC'.str_repeat('7', 32)]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('has not been stored');
+
+        $this->ownerCheck($connection, 'AC'.str_repeat('0', 32));
+    }
+
+    /** And the right account passes, so the guard is not simply always on. */
+    public function test_a_credential_on_the_right_account_is_accepted(): void
+    {
+        $t = $this->provisionTenant();
+        $sid = 'AC'.str_repeat('6', 32);
+        $connection = $this->connection($t, ['account_sid' => $sid]);
+
+        $this->ownerCheck($connection, $sid);
+
+        $this->addToAssertionCount(1);
+    }
+
+    /**
+     * Twilio saying nothing about the owner is not the same as saying yes.
+     *
+     * An absent `account_sid` would compare equal to nothing and, on a
+     * connection whose own SID were somehow empty, would pass. Named in the
+     * message rather than guessed at.
+     */
+    public function test_a_response_naming_no_account_is_refused(): void
+    {
+        $t = $this->provisionTenant();
+        $connection = $this->connection($t, ['account_sid' => 'AC'.str_repeat('5', 32)]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('(none reported)');
+
+        $this->ownerCheck($connection, '');
+    }
+
+    private function ownerCheck(PhoneConnection $connection, string $ownerAccountSid): void
+    {
+        $method = new \ReflectionMethod(HttpTwilioGateway::class, 'assertOwnedBy');
+        $method->setAccessible(true);
+        $method->invoke(new HttpTwilioGateway, $ownerAccountSid, $connection);
+    }
+
     /** The client `createPushCredential` would use, without a network call. */
     private function clientFor(PhoneConnection $connection): \Twilio\Rest\Client
     {
