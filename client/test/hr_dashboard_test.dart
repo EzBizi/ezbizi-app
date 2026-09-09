@@ -166,6 +166,21 @@ void main() {
     expect(find.text('Nobody on the books yet.'), findsOneWidget);
   });
 
+  /// Configured but nothing in it: real categories, a zero in every one. The
+  /// deleted `_chartable` called that drawable and the painter did not, so a
+  /// chart went into the tree and refused to paint. `canDraw` is the painter's
+  /// own rule, so now nothing is built — and every sentence still renders,
+  /// which is the half that carries the meaning for an organization of one.
+  testWidgets('a bar with a zero in every slice draws nothing and keeps the '
+      'sentences', (tester) async {
+    await _pump(tester, _handler());
+
+    expect(find.byType(DashboardChart), findsNothing);
+    expect(find.text('1 person on the books.'), findsOneWidget);
+    expect(find.text('0 onboardings in flight.'), findsOneWidget);
+    expect(find.text('0 invitations have stalled.'), findsOneWidget);
+  });
+
   testWidgets('a bar is drawn when there is something to plot', (tester) async {
     await _pump(
       tester,
@@ -194,9 +209,10 @@ void main() {
       ),
     );
 
-    // The chart is asked and declines: it is in the tree and takes no space.
-    // The screen no longer second-guesses it with a rule of its own.
-    expect(tester.getSize(find.byType(DashboardChart)), Size.zero);
+    // Not built at all: the screen asks `DashboardChart.canDraw`, which is the
+    // widget's own rule rather than a copy, so there is no chart in the tree
+    // and `findsNothing` is the true claim rather than the convenient one.
+    expect(find.byType(DashboardChart), findsNothing);
     expect(find.text('1 person on the books.'), findsOneWidget);
   });
 

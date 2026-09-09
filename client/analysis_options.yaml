@@ -9,6 +9,28 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  exclude:
+    # The store-screenshot harness, and the ONLY two files in this package that
+    # import integration_test.
+    #
+    # integration_test is deliberately not a dependency — declared, it breaks
+    # every Android release build on Flutter 3.41.6, because the tool writes one
+    # GeneratedPluginRegistrant for all build modes and lists it there while the
+    # release compile path excludes dev dependencies. The full reasoning is in
+    # pubspec.yaml beside dev_dependencies; this file does not repeat it.
+    #
+    # So these two import a package that is not declared, and the analyzer is
+    # right to complain. Excluded rather than left red because a gate that always
+    # fails is a gate people learn to skip, and then the day it fails for a real
+    # reason nobody looks. Six standing issues would have bought exactly that.
+    #
+    # WHEN YOU RUN THE HARNESS: add integration_test back to pubspec.yaml AND
+    # comment out these two lines, so the files you are about to edit are
+    # actually checked. Undo both before any release build.
+    - integration_test/**
+    - test_driver/**
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`

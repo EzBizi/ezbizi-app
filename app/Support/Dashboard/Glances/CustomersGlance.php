@@ -78,7 +78,13 @@ final class CustomersGlance extends DescribedGlance
             $added = array_sum($counts);
             $periodWord = $period->key;
             $sentences = [
-                $book === 1 ? '1 customer in reach.' : "{$book} customers in reach.",
+                // The count IS what the box holds, so a scope qualifier adds
+                // nothing a reader could compare it against: `organization_total`
+                // below is sent and rendered nowhere. If it is ever drawn beside
+                // this line, the sentence needs the qualifier back — two numbers
+                // in one box, one reach-scoped and one not, is where "customers"
+                // alone stops being enough.
+                $book === 1 ? '1 customer.' : "{$book} customers.",
                 "{$added} new this {$periodWord}.",
             ];
 

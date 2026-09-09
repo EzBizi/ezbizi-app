@@ -65,7 +65,12 @@ final class PhoneGlance extends DescribedGlance
             if ($numberIds === []) {
                 return $this->payload([
                     'empty' => true,
-                    'sentence' => 'No phone lines in reach.',
+                    // Describes the BOX, not the world — UI/UX's board-wide
+                    // ruling of 2026-09-09 (b543a45a). "No phone lines yet"
+                    // would be a claim about the organization that a scoped
+                    // box cannot support: a franchise reader seeing a subset
+                    // would be reading something false.
+                    'sentence' => 'No phone lines to show.',
                 ]);
             }
 
@@ -104,9 +109,16 @@ final class PhoneGlance extends DescribedGlance
             if ((int) $counts->sum() === 0) {
                 return $this->payload([
                     'empty' => true,
+                    // Same rule, and the desk's sweep did not reach this one:
+                    // "No calls came in" is a claim about the world, and for a
+                    // franchise reader it is false whenever calls arrived on a
+                    // line they cannot see. The period is named because the
+                    // box has Week/Month/Quarter/Year chips — without it,
+                    // somebody on Week cannot tell an empty week from an empty
+                    // phone system.
                     'sentence' => $waiting > 0
                         ? $this->voicemailSentence($waiting)
-                        : 'No calls came in.',
+                        : 'No calls to show for this period.',
                 ]);
             }
 

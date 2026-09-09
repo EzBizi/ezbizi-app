@@ -1541,13 +1541,29 @@ leads, and Stock is no longer what a user lands on.
   bar-per-day is what the design wants, say so and it becomes a real decision rather
   than a surprise at build time.
 
-**Four choices that are design's, stated as questions:**
+**Five choices that are design's, stated as questions:**
 1. How do the three blocks stack at 375px versus desktop width?
 2. Is `movement` drawn as bars, lines, or stacked areas?
 3. Does `transferred` appear on the chart at all, given it is net zero and flagged
    `internal: true` — plotting it risks reading as extra volume that isn't there;
    dropping it risks making transfers look like they don't happen?
 4. Does `warnings` lead the screen, or sit beneath the health figures?
+5. **What does the empty state offer?** When `health.empty` is `true` the server
+   sends one sentence and nothing else. That fires only for a reader with **no
+   items and no locations** — which is precisely somebody who has never set
+   inventory up, arriving at the module's front door on their first day. A screen
+   that says "No items to show." and offers no way to make the first item is the
+   empty-state-with-no-entry-point trap: the tab is only ever seen working by
+   people who already have data, so nobody notices the beginning is missing. The
+   sentence is the server's and stays; what sits beside it is design's.
+
+> **A note on that sentence, added 2026-09-09.** It reads "No items to show.",
+> not "No items in reach." and not "No items yet." UI/UX ruled board-wide
+> (`b543a45a`) that an empty sentence describes the BOX, not the world: a scoped
+> reader seeing a subset cannot be told the organization has nothing. The same
+> string is served by the Dashboard's Inventory box and by this endpoint on
+> purpose — one sentence, one owner — so if a mockup wants different words here,
+> that is a change to both surfaces and worth saying out loud.
 
 **Constraints that are not design's to choose** (inherited from §*Inherited
 constraints* above, restated here so this brief stands alone): no modals; colours from

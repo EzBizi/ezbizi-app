@@ -20,6 +20,8 @@ class VersionHistory {
         'Monitoring has a new General tab that lays your office out on a floor plan. You place a box for each computer, draw the walls, and assign each box to a person; the box is green when that person is online, red when they are offline, and grey until someone is assigned.',
         'Clicking a box shows that person in a panel on the right. With nothing selected the panel summarises the whole plan, so you can see how much of the office is on right now.',
         'A floor plan belongs to an organization, a company or a franchise, and you see the plans your own place covers. Editing one needs its own Monitoring permission, given out per role like the others.',
+        'In Roles, a permission that needs another one now says so on the row, before you save rather than after. Ticking Assign a guide without Monitor training says so in place, and it never ticks the other box for you.',
+        'Human Resources: a dashboard box with nothing to plot leaves the space to its sentences.',
       ],
     ),
     VersionRelease(

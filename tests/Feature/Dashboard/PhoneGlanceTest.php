@@ -300,7 +300,7 @@ class PhoneGlanceTest extends TestCase
 
         $this->assertTrue($data['empty']);
         $this->assertArrayNotHasKey('slices', $data);
-        $this->assertSame('No phone lines in reach.', $data['sentence']);
+        $this->assertSame('No phone lines to show.', $data['sentence']);
 
         // Positive control: the admin, on the same data, sees the call. So the
         // empty above is this user's reach and not a glance that shows nobody
@@ -318,6 +318,6 @@ class PhoneGlanceTest extends TestCase
         $data = $this->payload()['data'];
 
         $this->assertTrue($data['empty']);
-        $this->assertSame('No calls came in.', $data['sentence']);
+        $this->assertSame('No calls to show for this period.', $data['sentence']);
     }
 }

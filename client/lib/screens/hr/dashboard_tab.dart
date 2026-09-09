@@ -342,16 +342,19 @@ class _GlanceBody extends StatelessWidget {
     }
 
     return [
-      // No guard here: DashboardChart decides what it can draw and draws
-      // nothing when it cannot. A screen-side copy of that rule was a second
-      // definition that had already drifted (UI/UX, 2026-09-09) — and its
-      // "yes" over an all-zero pie still rendered nothing, so removing it
-      // changes what a person sees in zero cases.
-      DashboardChart(
-        presentation: presentation,
-        slices: data['slices'] is List ? data['slices'] as List : null,
-        series: data['series'] is List ? data['series'] as List : null,
-      ),
+      // The chart's own question, asked out loud. `canDraw` and the painter's
+      // `isDrawable` go through one private switch inside the widget, so this
+      // is the definition rather than a copy of it — which is what the deleted
+      // `_chartable` was, and it had drifted: it called an all-zero pie
+      // drawable where the painter did not. Asking here rather than building
+      // and letting the widget decline keeps the tree honest, so a test may
+      // say `findsNothing` and mean it.
+      if (DashboardChart.canDraw(presentation, data))
+        DashboardChart(
+          presentation: presentation,
+          slices: data['slices'] is List ? data['slices'] as List : null,
+          series: data['series'] is List ? data['series'] as List : null,
+        ),
       ..._sentences(data),
     ];
   }
