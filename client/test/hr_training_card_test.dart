@@ -82,6 +82,39 @@ void main() {
     );
   });
 
+  testWidgets('placed in a narrow slot on a wide window, it is the phone '
+      'layout — the card asks its own width, not the window’s', (tester) async {
+    tester.view.physicalSize = const Size(1400, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: ListView(
+            children: [
+              Center(
+                child: SizedBox(
+                  width: 320,
+                  child: TrainingCard(
+                    api: ApiClient(client: MockClient(_recordsHandler)),
+                    userId: 'u-2',
+                    formats: DisplayFormats.fallback,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(TrainingCard.countsKey), findsNothing);
+    expect(find.text('Ladder safety'), findsOneWidget);
+  });
+
   testWidgets('refused: a lock and the server’s sentence, verbatim, and no '
       'counts', (tester) async {
     const sentence =
