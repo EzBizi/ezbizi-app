@@ -1,0 +1,166 @@
+<!doctype html><meta charset="utf-8">
+<title>Your account &rsaquo; Work schedule &mdash; layouts</title>
+<style>
+/* Palette read from client/lib/core/theme.dart, light brightness:
+   _ink #060808, _muted #5B6672, _line #060808 @ 10%, primary #00708f,
+   EzBiziTheme.clockIn #0B8F5B, EzBiziTheme.clockOut #E07070. */
+:root{--ink:#060808;--muted:#5B6672;--line:rgba(6,8,8,.10);--primary:#00708f;
+      --in:#0B8F5B;--out:#E07070;--paper:#fff;--ground:#f4f6f7}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+     font:14px/1.45 -apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:20px 24px 8px}
+h1{margin:0;font-size:18px;font-weight:700;letter-spacing:-.3px}
+#nums{display:flex;flex-wrap:wrap;gap:8px;padding:12px 24px 20px}
+#nums button{font:inherit;font-weight:600;background:var(--paper);color:var(--ink);
+  border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
+#nums button[aria-current=true]{background:var(--primary);color:#fff;border-color:var(--primary)}
+#stage{padding:0 24px 48px}
+.cap{font-size:13px;color:var(--muted);margin:0 0 14px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:16px}
+.desk{max-width:560px}
+.phone{width:352px;border:1px solid var(--line);border-radius:26px;background:var(--paper);
+       padding:14px 12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.hd{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.hd .t{font-weight:600;flex:1}
+.hd .ed{color:var(--primary);font-weight:600;font-size:13px}
+.ic{width:18px;height:18px;flex:none;stroke:var(--ink);fill:none;stroke-width:1.7}
+.row{display:flex;align-items:center;gap:8px;padding:6px 0}
+.day{width:44px;font-weight:600}
+.chip{display:inline-flex;align-items:center;gap:5px;border-radius:999px;
+      padding:3px 10px;font-size:13px;font-weight:600;white-space:nowrap}
+.chip.in{color:var(--in);background:rgba(11,143,91,.10)}
+.chip.out{color:var(--out);background:rgba(224,112,112,.12)}
+.off{color:var(--muted);font-style:italic}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+.wk{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;text-align:center}
+.wk .c{border:1px solid var(--line);border-radius:10px;padding:9px 4px}
+.wk .c.o{background:rgba(6,8,8,.03)}
+.wk .d{font-weight:700;font-size:12px;color:var(--muted);margin-bottom:6px}
+.wk .h{font-size:12px;font-weight:600;line-height:1.5}
+.wk .h .s{color:var(--in)}.wk .h .e{color:var(--out)}
+.tl{margin-top:4px}
+.tl .ax{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);
+        padding-left:52px;margin-bottom:4px}
+.tl .r{display:flex;align-items:center;gap:8px;padding:4px 0}
+.tl .tr{position:relative;flex:1;height:18px;background:rgba(6,8,8,.05);border-radius:5px}
+.tl .b{position:absolute;top:0;bottom:0;border-radius:5px;background:var(--in)}
+.tl .lb{position:absolute;left:8px;top:0;font-size:11px;color:#fff;font-weight:600;line-height:18px}
+.run{display:flex;align-items:baseline;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.run:last-child{border-bottom:0}
+.run .rg{font-weight:700;min-width:92px}
+.run .hrs{font-weight:600}
+.run .hrs .s{color:var(--in)}.run .hrs .e{color:var(--out)}
+.more{color:var(--primary);font-weight:600;font-size:13px;padding-top:10px}
+.today{border:1px solid rgba(11,143,91,.35);background:rgba(11,143,91,.06);
+       border-radius:12px;padding:14px;margin-bottom:12px}
+.today .k{font-size:12px;font-weight:700;color:var(--in);letter-spacing:.4px}
+.today .big{font-size:26px;font-weight:700;letter-spacing:-.6px;margin-top:4px}
+.today .sub{color:var(--muted);font-size:13px;margin-top:2px}
+.rest{display:flex;justify-content:space-between;padding:7px 2px;border-bottom:1px solid var(--line)}
+.rest:last-child{border-bottom:0}
+.rest .d{font-weight:600;color:var(--muted)}
+.strip{display:flex;gap:6px;justify-content:space-between;margin-bottom:14px}
+.strip .p{flex:1;text-align:center;border-radius:10px;padding:8px 0;border:1px solid var(--line);
+          font-weight:700;font-size:13px}
+.strip .p.on{background:rgba(11,143,91,.10);color:var(--in);border-color:rgba(11,143,91,.30)}
+.strip .p.offd{color:var(--muted)}
+.strip .p.sel{background:var(--primary);color:#fff;border-color:var(--primary)}
+.detail{text-align:center;padding:8px 0 2px}
+.detail .d1{font-size:13px;color:var(--muted);font-weight:600;letter-spacing:.4px}
+.detail .d2{font-size:24px;font-weight:700;letter-spacing:-.5px;margin-top:4px}
+.detail .d2 .s{color:var(--in)}.detail .d2 .e{color:var(--out)}
+</style>
+<header><h1>Your account &rsaquo; Work schedule &mdash; pick one desktop and one mobile</h1></header>
+<div id="nums"></div>
+<div id="stage"></div>
+<script>
+var CLOCK = '<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+var W = [['Mon','08:00','17:00'],['Tue','08:00','17:00'],['Wed','08:00','17:00'],
+         ['Thu','08:00','17:00'],['Fri','08:00','15:30'],['Sat','09:00','13:00'],['Sun',null,null]];
+function head(t){ return '<div class="hd">'+CLOCK+'<div class="t">'+t+'</div><div class="ed">Edit</div></div>'; }
+function IN(t){ return '<span class="chip in"><span class="dot"></span>'+t+'</span>'; }
+function OUT(t){ return '<span class="chip out"><span class="dot"></span>'+t+'</span>'; }
+
+function L1(){
+  var r = W.map(function(x){
+    return '<div class="row"><div class="day">'+x[0]+'</div>'+
+      (x[1] ? IN(x[1])+OUT(x[2]) : '<span class="off">Day off</span>')+'</div>';
+  }).join('');
+  return '<div class="card desk">'+head('Work schedule')+r+'</div>';
+}
+function L2(){
+  var r = W.map(function(x){
+    return '<div class="c'+(x[1]?'':' o')+'"><div class="d">'+x[0]+'</div>'+
+      (x[1] ? '<div class="h"><span class="s">'+x[1]+'</span><br><span class="e">'+x[2]+'</span></div>'
+            : '<div class="h off">Off</div>')+'</div>';
+  }).join('');
+  return '<div class="card desk">'+head('Work schedule')+'<div class="wk">'+r+'</div></div>';
+}
+function pos(t){ var p=t.split(':'); return ((+p[0] + p[1]/60) - 6) / 14 * 100; }
+function L3(){
+  var r = W.map(function(x){
+    var bar = x[1] ? '<div class="b" style="left:'+pos(x[1]).toFixed(1)+'%;right:'+
+      (100-pos(x[2])).toFixed(1)+'%"><span class="lb">'+x[1]+'&ndash;'+x[2]+'</span></div>' : '';
+    return '<div class="r"><div class="day">'+x[0]+'</div><div class="tr">'+bar+'</div></div>';
+  }).join('');
+  return '<div class="card desk">'+head('Work schedule')+
+    '<div class="tl"><div class="ax"><span>6am</span><span>10am</span><span>2pm</span>'+
+    '<span>6pm</span><span>8pm</span></div>'+r+'</div></div>';
+}
+function L4(){
+  return '<div class="phone">'+head('Work schedule')+
+    '<div class="run"><div class="rg">Mon&ndash;Thu</div><div class="hrs">'+
+      '<span class="s">08:00</span> &ndash; <span class="e">17:00</span></div></div>'+
+    '<div class="run"><div class="rg">Fri</div><div class="hrs">'+
+      '<span class="s">08:00</span> &ndash; <span class="e">15:30</span></div></div>'+
+    '<div class="run"><div class="rg">Sat</div><div class="hrs">'+
+      '<span class="s">09:00</span> &ndash; <span class="e">13:00</span></div></div>'+
+    '<div class="run"><div class="rg">Sun</div><div class="hrs"><span class="off">Day off</span></div></div>'+
+    '<div class="more">Show every day</div></div>';
+}
+function L5(){
+  var rest = W.filter(function(x){ return x[0] !== 'Tue'; }).map(function(x){
+    return '<div class="rest"><span class="d">'+x[0]+'</span><span>'+
+      (x[1] ? '<b style="color:var(--in)">'+x[1]+'</b> &ndash; <b style="color:var(--out)">'+x[2]+'</b>'
+            : '<span class="off">Day off</span>')+'</span></div>';
+  }).join('');
+  return '<div class="phone">'+head('Work schedule')+
+    '<div class="today"><div class="k">TODAY &middot; TUESDAY</div>'+
+    '<div class="big"><span style="color:var(--in)">08:00</span> &ndash; '+
+    '<span style="color:var(--out)">17:00</span></div>'+
+    '<div class="sub">Clock in from 07:45</div></div>'+rest+'</div>';
+}
+function L6(){
+  var strip = W.map(function(x,i){
+    var cls = i===1 ? 'sel' : (x[1] ? 'on' : 'offd');
+    return '<div class="p '+cls+'">'+x[0].charAt(0)+'</div>';
+  }).join('');
+  return '<div class="phone">'+head('Work schedule')+
+    '<div class="strip">'+strip+'</div>'+
+    '<div class="detail"><div class="d1">TUESDAY</div>'+
+    '<div class="d2"><span class="s">08:00</span> &ndash; <span class="e">17:00</span></div></div></div>';
+}
+var OPT = {
+  1:['1 &middot; Desktop &mdash; seven rows, a chip each way (ships today)', L1],
+  2:['2 &middot; Desktop &mdash; the week as seven columns', L2],
+  3:['3 &middot; Desktop &mdash; the week on one time axis', L3],
+  4:['4 &middot; Mobile &mdash; identical days collapse into one line', L4],
+  5:['5 &middot; Mobile &mdash; today large, the rest beneath', L5],
+  6:['6 &middot; Mobile &mdash; the week as a strip, one day open', L6]
+};
+var nums = document.getElementById('nums'), stage = document.getElementById('stage');
+function show(k){
+  stage.innerHTML = '<p class="cap">'+OPT[k][0]+'</p>' + OPT[k][1]();
+  Array.prototype.forEach.call(nums.children, function(b){
+    b.setAttribute('aria-current', b.dataset.k === String(k));
+  });
+}
+Object.keys(OPT).forEach(function(k){
+  var b = document.createElement('button');
+  b.textContent = (k < 4 ? 'Desktop ' : 'Mobile ') + k;
+  b.dataset.k = k; b.onclick = function(){ show(k); };
+  nums.appendChild(b);
+});
+show(1);
+</script>
