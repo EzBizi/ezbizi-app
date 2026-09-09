@@ -19,6 +19,8 @@ class VersionHistory {
         'Tests written before that option existed have been moved to match, so every test behaves the same way unless its author says otherwise.',
         'The dashboard no longer offers a way of drawing a box that it will not keep. Choosing Text on a box that only draws charts drew text and then went back to the chart on the next load.',
         'A dashboard box with only one way to draw it no longer shows a menu at all.',
+        'After a call, the person who took it can be given a moment to write it up before the next one reaches them. Set it under Settings - Tags, from 15 seconds to 5 minutes, or leave it off. They can say they are ready sooner.',
+        'The Training box on the dashboard stops promising a summary that was never planned, and says where the Training screens actually are.',
       ],
     ),
     VersionRelease(
