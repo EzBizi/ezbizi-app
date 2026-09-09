@@ -861,7 +861,13 @@ of what is hidden before opening it. Same discipline as an empty sentence descri
 
 > Jose's word was *"all"*. A cap with an affordance that names the count still offers all of
 > it — "all" answered *what the dashboard holds*, against a version that showed only current
-> state. **Say which reading you took, so he can overrule the reasoning rather than the number.**
+> state. **CONFIRMED by Jose, 2026-09-09, in his own words: "whole history available."**
+> Available, not necessarily all rendered at once — which is precisely what a cap plus a
+> named "Show all 9 attempts" delivers.
+>
+> **Stating the reading is what got it confirmed in one word.** Had I asked "cap at three?" he
+> would have had to reconstruct why; naming the interpretation let him rule on the thing that
+> mattered and leave the number alone.
 
 **Craft ships and tells me; a new element is design; Jose's direct word is neither — it is just
 the job.** Training routed the Attempts block as craft. It is a new element, so normally design;
