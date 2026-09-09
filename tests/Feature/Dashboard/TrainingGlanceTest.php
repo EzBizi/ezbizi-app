@@ -140,7 +140,7 @@ class TrainingGlanceTest extends TestCase
         $data = $this->resolveFor($monitor);
 
         $this->assertTrue($data['empty']);
-        $this->assertSame('No tests in reach.', $data['sentence']);
+        $this->assertSame('No tests to track.', $data['sentence']);
     }
 
     /**
