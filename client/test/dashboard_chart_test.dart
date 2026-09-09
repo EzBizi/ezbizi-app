@@ -261,6 +261,127 @@ void main() {
     expect(find.byType(DashboardChart), findsOneWidget);
   });
 
+  /// "Configured but empty" — a glance with real categories and a zero in
+  /// every one. Scheduling asked whether the dashboard has a convention for
+  /// it; it does, and this pins it so the answer stays true.
+  ///
+  /// The chart occupies NOTHING — `_GlanceBody._chartable` only asks whether
+  /// the slice list is non-empty, so the `DashboardChart` widget IS built and
+  /// is in the tree; it is `DashboardChart.build` that returns
+  /// `SizedBox.shrink()` when `isDrawable` finds no slice above zero. Seven
+  /// weekday bars all at zero therefore cost no height at all rather than 140
+  /// points of empty frame. Every sentence still renders, which is the half
+  /// that carries the meaning.
+  ///
+  /// Asserted as a measured size rather than as `findsNothing`, because
+  /// `findsNothing` is the wrong claim and fails: the widget exists. What a
+  /// reader is promised is that nothing is DRAWN.
+  ///
+  /// The trap this also pins: `empty: true` would have been the tempting way
+  /// to say it, and the empty branch draws exactly ONE sentence
+  /// (`_sentenceOf` takes `sentence`, or `sentences.first`). A glance whose
+  /// sentences are ordered so the actionable one comes first would silently
+  /// lose the rest. All-zero slices with `empty: false` is the shape that
+  /// keeps them.
+  testWidgets('every slice at zero draws no chart and keeps every sentence', (
+    tester,
+  ) async {
+    await _pumpDashboard(tester, [
+      {
+        'key': 'jobs',
+        'label': 'Jobs',
+        'presentation': 'bar',
+        'allowed_presentations': ['bar', 'text'],
+        'snapshot': true,
+        'coming_soon': false,
+        'options': <String, dynamic>{},
+        'data': {
+          'empty': false,
+          'slices': [
+            {'label': 'Mon', 'total': 0},
+            {'label': 'Tue', 'total': 0},
+            {'label': 'Wed', 'total': 0},
+          ],
+          'sentences': [
+            'Two areas have no hours set.',
+            'These are configured, not booked.',
+          ],
+        },
+      },
+    ]);
+
+    expect(tester.getSize(find.byType(DashboardChart)), Size.zero);
+    expect(find.text('Two areas have no hours set.'), findsOneWidget);
+    expect(find.text('These are configured, not booked.'), findsOneWidget);
+  });
+
+  /// The control for the test above: the SAME shape with one non-zero slice
+  /// takes real height. Without it, a change that stopped rendering charts
+  /// entirely would leave that zero-size assertion green and reading like a
+  /// feature.
+  testWidgets('one non-zero slice is enough to draw the chart', (tester) async {
+    await _pumpDashboard(tester, [
+      {
+        'key': 'jobs',
+        'label': 'Jobs',
+        'presentation': 'bar',
+        'allowed_presentations': ['bar', 'text'],
+        'snapshot': true,
+        'coming_soon': false,
+        'options': <String, dynamic>{},
+        'data': {
+          'empty': false,
+          'slices': [
+            {'label': 'Mon', 'total': 0},
+            {'label': 'Tue', 'total': 3},
+            {'label': 'Wed', 'total': 0},
+          ],
+          'sentences': ['Two areas have no hours set.'],
+        },
+      },
+    ]);
+
+    expect(
+      tester.getSize(find.byType(DashboardChart)).height,
+      greaterThan(0),
+    );
+    expect(find.text('Two areas have no hours set.'), findsOneWidget);
+  });
+
+  /// The other half of the same advice, and the more consequential half.
+  ///
+  /// `empty: true` is the tempting way to say "configured but nothing in it",
+  /// and it draws exactly ONE sentence: `_body` short-circuits to a single
+  /// `DashboardNote(_sentenceOf(data))`, which takes `sentence`, or
+  /// `sentences.first`. A glance that ordered its sentences so the actionable
+  /// one comes first would lose every one after it, silently, with no chart
+  /// either. All-zero slices with `empty: false` is the shape that keeps them.
+  testWidgets('empty draws the first sentence and drops the rest', (
+    tester,
+  ) async {
+    await _pumpDashboard(tester, [
+      {
+        'key': 'jobs',
+        'label': 'Jobs',
+        'presentation': 'bar',
+        'allowed_presentations': ['bar', 'text'],
+        'snapshot': true,
+        'coming_soon': false,
+        'options': <String, dynamic>{},
+        'data': {
+          'empty': true,
+          'sentences': [
+            'Two areas have no hours set.',
+            'These are configured, not booked.',
+          ],
+        },
+      },
+    ]);
+
+    expect(find.text('Two areas have no hours set.'), findsOneWidget);
+    expect(find.text('These are configured, not booked.'), findsNothing);
+  });
+
   testWidgets('coming soon has no how-to-draw menu', (tester) async {
     await _pumpDashboard(tester, _comingSoon());
 
