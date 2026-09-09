@@ -78,6 +78,33 @@ void main() {
     expect(toggle.value, isFalse);
   });
 
+  testWidgets('the one lockout combination warns the author, and only that combination', (tester) async {
+    await _pumpTestBuilder(tester, test: _test(id: 't1', title: 'Ladder Safety Quiz'));
+
+    final warning = find.byKey(const Key('training.option-lockout-warning'));
+
+    // Controls first, so a warning that never renders at all cannot pass this
+    // test: a cap and an expiry with the switch OFF is the DEFAULT shape of a
+    // recurring certification, and it has no dead end - the cap then counts
+    // failures since the learner's last pass.
+    await tester.enterText(find.byKey(const Key('training.option-max-attempts')), '1');
+    await tester.enterText(find.byKey(const Key('training.option-valid-for-days')), '90');
+    await tester.pump();
+    expect(warning, findsNothing);
+
+    // All three: the pass itself spends the only slot, it runs out after 90
+    // days, and no route deletes an attempt - so this learner is finished.
+    await tester.tap(find.byKey(const Key('training.option-count-attempts-after-pass')));
+    await tester.pump();
+    expect(warning, findsOneWidget);
+
+    // Counted retakes and a cap with NO expiry is not the dead end: the pass
+    // never runs out, so the learner never needs a slot they no longer have.
+    await tester.enterText(find.byKey(const Key('training.option-valid-for-days')), '');
+    await tester.pump();
+    expect(warning, findsNothing);
+  });
+
   // ── The "Which guide" picker at 375px, with a real guide in it ────────
   //
   // Review finding: `_pumpTestBuilder` used to hardcode a 900-wide surface

@@ -285,6 +285,45 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
         .toList();
   }
 
+  /// The one combination on this screen that can permanently lock a learner
+  /// out, said where it is chosen rather than discovered by the person it
+  /// happens to: every retake counted + a cap + an expiry means a learner who
+  /// spends the cap can never certify again, and nothing in the product
+  /// removes a past attempt, so no admin can undo it per learner.
+  ///
+  /// The behaviour is the owner's decided call (2026-09-09, told the
+  /// consequence plainly), so this warns and does not refuse — an author who
+  /// wants exactly this still gets it. It is only shown for the ON setting:
+  /// with the switch off the cap counts failures since the last pass, which
+  /// has no such dead end.
+  ///
+  /// A [ListenableBuilder] on the two fields rather than listeners plus
+  /// setState — the switch already rebuilds through setState, and the two
+  /// numbers are the only other inputs the condition reads.
+  Widget _lockoutWarning() {
+    return ListenableBuilder(
+      listenable: Listenable.merge([_maxAttempts, _validForDays]),
+      builder: (context, _) {
+        if (!_countAttemptsAfterPass || _parseInt(_maxAttempts.text) == null || _parseInt(_validForDays.text) == null) {
+          return const SizedBox.shrink();
+        }
+
+        final theme = Theme.of(context);
+
+        return Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(
+            'With all three set, a learner who uses up the retakes can never pass '
+            'this test again: their pass runs out, and every attempt they have '
+            'already made still counts. Nothing removes a past attempt.',
+            key: const Key('training.option-lockout-warning'),
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   void dispose() {
     _title.dispose();
@@ -496,6 +535,7 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
             onChanged: (value) => setState(() => _countAttemptsAfterPass = value),
           ),
         ),
+        _lockoutWarning(),
         const SizedBox(height: 14),
         if (_saveError != null) ...[ErrorNote(_saveError!), const SizedBox(height: 12)],
         Align(
