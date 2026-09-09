@@ -257,6 +257,11 @@ class PermissionCatalogue
                     'action'    => $action,
                     'label'     => $this->actionLabel($action),
                     'grantable' => in_array("{$module->key}.{$action}", $held, true),
+                    // Empty for almost everything. Where it is not, the editor
+                    // has something to say before the save is refused — see
+                    // ModuleDefinition::$actionRequires for why refusing beats
+                    // quietly adding the missing key.
+                    'requires'  => array_values($module->actionRequires[$action] ?? []),
                 ], $module->actions),
             ];
         }
@@ -361,6 +366,63 @@ class PermissionCatalogue
                 'You cannot grant %s, because your own role does not hold it. Nobody can hand '
                 .'out more than they have.',
                 implode(', ', $beyond),
+            )]);
+        }
+    }
+
+    /**
+     * Every granted permission arrives with whatever it cannot work without.
+     *
+     * Declared per module as `actionRequires`; almost nothing declares any.
+     * The one case this was built for: `training.assign` without
+     * `training.monitor` is a role that can assign training and has no control
+     * anywhere to do it with, because the assign button lives in the Dashboard
+     * pane that `monitor` opens. That saved cleanly, and the person holding it
+     * saw an ordinary screen with nothing on it.
+     *
+     * Refuses rather than repairing. `withImpliedView` adds a missing `.view`
+     * silently and that is safe, because `.view` is the least a module can
+     * grant. A requirement can point the other way — `monitor` discloses
+     * everyone's scores — so adding it unasked would hand out more than was
+     * ticked. Naming what is missing and stopping is the honest half.
+     *
+     * Checked against the normalised set, for the reason assertGrantable
+     * documents at length: validating the list somebody SENT while storing a
+     * different, larger one is how the last hole in this file happened.
+     *
+     * @param  string[]  $keys
+     *
+     * @throws ValidationException
+     */
+    public function assertRequirementsMet(array $keys): void
+    {
+        $granted = $this->withImpliedView($keys);
+        $missing = [];
+
+        foreach ($granted as $key) {
+            $module = $this->registry->get($this->moduleOf($key));
+
+            if ($module === null) {
+                continue;
+            }
+
+            $action = str_contains($key, '.') ? substr(strstr($key, '.'), 1) : $key;
+
+            foreach ($module->actionRequires[$action] ?? [] as $needed) {
+                if (! in_array($needed, $granted, true)) {
+                    $missing[] = $key.' needs '.$needed;
+                }
+            }
+        }
+
+        $missing = array_values(array_unique($missing));
+
+        if ($missing !== []) {
+            throw ValidationException::withMessages(['permissions' => sprintf(
+                'This role is missing a permission another one depends on: %s. Tick the missing '
+                .'one as well, or take the other off — granted alone it gives somebody a '
+                .'permission with nothing to use it on.',
+                implode('; ', $missing),
             )]);
         }
     }

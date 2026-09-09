@@ -62,6 +62,16 @@ class _RecordsTabState extends State<RecordsTab> {
   List<_Message> _messages = const [];
   Map<String, String> _labels = const {};
 
+  /// Which phone account each line belongs to.
+  ///
+  /// Needed to block a caller from here: a block belongs to the company's
+  /// account, and a call row names only the line it arrived on.
+  Map<String, String> _connectionOf = const {};
+
+  /// The call whose caller has just been blocked, so the button can say so
+  /// rather than looking like it did nothing.
+  String? _blockedCallId;
+
   late RecordsFilter _filter = widget.initialFilter;
   _Call? _openCall;
   /// The counterpart number whose conversation is open, if any.
@@ -169,6 +179,7 @@ class _RecordsTabState extends State<RecordsTab> {
     }
 
     final labels = <String, String>{};
+    final connections = <String, String>{};
     if (numbersRes.ok) {
       for (final row in (numbersRes.data as List? ?? const [])) {
         if (row is Map<String, dynamic>) {
@@ -176,6 +187,11 @@ class _RecordsTabState extends State<RecordsTab> {
           labels[id] =
               (row['label'] as String?) ??
               formatPhoneNumber(row['e164'] as String?);
+
+          final connection = row['connection_id'] as String?;
+          if (connection != null && connection.isNotEmpty) {
+            connections[id] = connection;
+          }
         }
       }
     }
@@ -183,6 +199,7 @@ class _RecordsTabState extends State<RecordsTab> {
     setState(() {
       _loading = false;
       _labels = labels;
+      _connectionOf = connections;
       _calls = [
         for (final row in (callsRes.data as List? ?? const []))
           if (row is Map<String, dynamic>) _Call.fromJson(row),
@@ -604,8 +621,68 @@ class _RecordsTabState extends State<RecordsTab> {
             child: Text(call.transcript!, style: theme.textTheme.bodyMedium),
           ),
         ],
+
+        // Block from HERE, because this is where somebody is standing when
+        // they decide to. The settings screen has the same list and a box to
+        // type a number into; nobody copies a number out of a call log by
+        // hand if the call is already open in front of them.
+        //
+        // Inbound only. Blocking the number you dialled out to would be
+        // blocking a customer from ever reaching you, from a button that
+        // looks like it is about this one call.
+        if (_canBlock(call)) ...[
+          const SizedBox(height: 20),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: _blockedCallId == call.id
+                ? Text(
+                    '${formatPhoneNumber(call.fromE164)} is blocked. No phone '
+                    'will ring for them.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  )
+                : TextButton.icon(
+                    key: Key('block-caller-${call.id}'),
+                    icon: const Icon(Icons.block_outlined, size: 18),
+                    onPressed: () => _block(call),
+                    label: const Text('Block this caller'),
+                  ),
+          ),
+        ],
       ],
     );
+  }
+
+  /// Inbound, from a real number, on a line whose account we know, by
+  /// somebody allowed to change how calls are routed.
+  bool _canBlock(_Call call) {
+    return call.direction == 'inbound' &&
+        call.fromE164.startsWith('+') &&
+        _connectionOf[call.numberId] != null &&
+        widget.session.me!.can('phone.edit');
+  }
+
+  Future<void> _block(_Call call) async {
+    final connection = _connectionOf[call.numberId];
+    if (connection == null) return;
+
+    final response = await widget.api.post('/phone/blocked-numbers', {
+      'connection_id': connection,
+      'e164': call.fromE164,
+    });
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(response.reason)),
+      );
+
+      return;
+    }
+
+    setState(() => _blockedCallId = call.id);
   }
 
   /// The conversation, oldest at the top, each side on its own side.

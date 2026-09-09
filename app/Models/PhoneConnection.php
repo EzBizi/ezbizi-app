@@ -63,6 +63,11 @@ class PhoneConnection extends Model implements HoldsSensitiveValues, StatesReten
         // why a company setting lives on this row.
         'require_call_tag',
 
+        // Seconds somebody is left alone after a call to finish writing it
+        // up. Zero is off. Company-wide for the same reason the tag rule is:
+        // a rule set per line is one somebody has to set seven times.
+        'wrap_up_seconds',
+
         // What answers a call, decided once for the company. A line may still
         // differ — resolution is `number ?? connection`, see
         // PhoneNumber::resolved() — but nothing has to be set seven times.
@@ -78,6 +83,7 @@ class PhoneConnection extends Model implements HoldsSensitiveValues, StatesReten
             'credentials' => 'encrypted',
             'auth_token' => 'encrypted',
             'require_call_tag' => 'boolean',
+            'wrap_up_seconds' => 'integer',
             'default_record' => 'boolean',
             'default_transcribe' => 'boolean',
         ];

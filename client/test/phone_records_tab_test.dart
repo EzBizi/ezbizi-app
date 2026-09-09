@@ -15,6 +15,8 @@ import 'package:http/testing.dart';
 
 /// Records — layout 4: 25/75 list and detail, stack below 600, play control.
 void main() {
+  _blockingTests();
+
   testWidgets('Records is not Coming soon', (tester) async {
     await _pump(tester, calls: const [], messages: const []);
 
@@ -220,6 +222,59 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle();
 }
 
+/// Blocking the caller from the call you are already looking at.
+///
+/// The settings screen has the same list and a box to type a number into, and
+/// nobody copies a number out of a call log by hand when the call is open in
+/// front of them. This is the entry point that gets used; the other one is the
+/// one you go to when you want to undo it.
+void _blockingTests() {
+  testWidgets('the open call offers to block whoever rang', (tester) async {
+    final seen = <http.Request>[];
+    await _pump(tester, seen: seen);
+
+    // The detail is empty until a call is opened, which is also the only
+    // place the button belongs.
+    await _tap(tester, find.byKey(const Key('phone-record-ca-1')));
+    await _tap(tester, find.byKey(const Key('block-caller-ca-1')));
+
+    final posted = seen
+        .where((r) => r.method == 'POST' && r.url.path.endsWith('/phone/blocked-numbers'))
+        .toList();
+
+    expect(posted, hasLength(1), reason: 'nothing was sent');
+
+    final body = jsonDecode(posted.first.body) as Map<String, dynamic>;
+
+    // The CALLER, not the line they rang. Sending to_e164 would block the
+    // company's own number and take the line off the air.
+    expect(body['e164'], '+12035550199');
+    expect(body['connection_id'], 'pc-1');
+
+    // And it says so afterwards, rather than leaving a button that looks
+    // like it did nothing.
+    expect(find.textContaining('is blocked'), findsOneWidget);
+  });
+
+  /// Not on a call the company placed.
+  ///
+  /// Blocking the number you dialled OUT to blocks a customer from ever
+  /// reaching you, from a button that reads as being about this one call.
+  testWidgets('an outbound call offers no such thing', (tester) async {
+    await _pump(tester, calls: [
+      {..._call, 'id': 'ca-2', 'direction': 'outbound'},
+    ]);
+
+    await _tap(tester, find.byKey(const Key('phone-record-ca-2')));
+
+    // The call IS open — the recording transport proves it — and the block
+    // button is still not there. Without this the test would pass for a
+    // detail pane that failed to open at all.
+    expect(find.byKey(const Key('recording-play')), findsOneWidget);
+    expect(find.byKey(const Key('block-caller-ca-2')), findsNothing);
+  });
+}
+
 Future<void> _pump(
   WidgetTester tester, {
   Size size = const Size(1280, 900),
@@ -278,6 +333,10 @@ MockClientHandler _handler({
         200,
         headers: {'content-type': 'audio/mpeg'},
       );
+    }
+
+    if (path.endsWith('/phone/blocked-numbers') && request.method == 'POST') {
+      return _json({'data': {'id': 'bn-1'}}, 201);
     }
 
     if (path.endsWith('/phone/messages') && request.method == 'GET') {

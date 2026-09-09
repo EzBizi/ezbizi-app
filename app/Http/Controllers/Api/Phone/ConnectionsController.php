@@ -473,6 +473,11 @@ class ConnectionsController extends Controller
         // one was written second would quietly blank the first.
         $input = $request->validate([
             'require_call_tag' => ['sometimes', 'boolean'],
+
+            // Capped at five minutes. Somebody typing 3600 would take the
+            // whole desk out of the ring group for an hour after one call,
+            // and would find out when the phone stopped ringing.
+            'wrap_up_seconds' => ['sometimes', 'integer', 'min:0', 'max:300'],
             'default_flow_id' => ['sometimes', 'nullable', 'string', 'max:191'],
             'default_hours_schedule_id' => ['sometimes', 'nullable', 'string', 'max:191'],
             'default_ring_group_id' => ['sometimes', 'nullable', 'string', 'max:191'],
@@ -512,6 +517,7 @@ class ConnectionsController extends Controller
 
             // A company-wide rule the desk reads, not a per-line one.
             'require_call_tag' => (bool) $connection->require_call_tag,
+            'wrap_up_seconds' => (int) $connection->wrap_up_seconds,
 
             // What answers a call, for every line on this account unless the
             // line says otherwise. General edits these; the lines inherit.

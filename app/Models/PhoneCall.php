@@ -34,6 +34,16 @@ class PhoneCall extends Model implements CarriesAutomationScope, HoldsPersonalDa
     public const STATUS_FAILED = 'failed';
     public const STATUS_CANCELED = 'canceled';
 
+    /**
+     * The company blocked this caller, so no phone ever rang.
+     *
+     * Distinct from every miss above it. `no-answer` says nobody picked up
+     * and somebody might want to call back; this says the call was refused on
+     * purpose, and collapsing the two would put a robocaller in the list of
+     * people owed a callback.
+     */
+    public const STATUS_BLOCKED = 'blocked';
+
     public static function personalDataPurpose(): string
     {
         return 'Call and voicemail history: who dialled whom, how long it lasted, and any '

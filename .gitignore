@@ -18,6 +18,22 @@
 *.keystore
 auth.json
 oauth2*.json
+
+# Service-account keys, added 2026-09-09 after the Android session measured the
+# guard above and found it open where it mattered most. `*credential*` and
+# `*secret*` catch the names somebody INVENTS; they catch none of the names a
+# console actually HANDS you. Firebase downloads `firebase-adminsdk-*.json` and
+# Google Cloud downloads `<project-id>-<hash>.json`, and neither contains the
+# word credential or secret. A key that is silently ignored is a nuisance; a key
+# silently committed is a rotation and a service reset.
+#
+# google-services.json is deliberately NOT matched here: it carries no private
+# key, it belongs in the tree, and the Android build fails at configuration time
+# without it.
+*service-account*.json
+*serviceaccount*.json
+*adminsdk*.json
+ezbizi-506117-*.json
 .netrc
 .npmrc
 id_rsa*

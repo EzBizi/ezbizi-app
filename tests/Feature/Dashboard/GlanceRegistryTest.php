@@ -162,6 +162,51 @@ class GlanceRegistryTest extends TestCase
         $this->assertSame($tabs, $glances);
     }
 
+    /**
+     * The other half of the box, and it had no test at all.
+     *
+     * `dashboardPanelIcon` ends in `?? Icons.insights_outlined`, so a module
+     * the map has not heard of is not an error — it is a generic chart glyph
+     * on every customer's dashboard, drawn beside a correct title, with
+     * nothing red anywhere. That is not hypothetical: business_profile,
+     * leads, monitoring, reviews and tasks each shipped that way and were
+     * found by somebody looking at the screen (fixed in 0f0c278).
+     *
+     * The list lives in Dart and the modules live here, so the assertion has
+     * to read the file. Exact equality in both directions, the same shape as
+     * the glance assertion above: a module with no icon fails, and a key
+     * outlasting the module it was drawn for fails too — `tasks` sat in that
+     * map after the module was deleted.
+     */
+    public function test_every_sidebar_tab_has_a_dashboard_icon(): void
+    {
+        $source = file_get_contents(base_path('client/lib/core/dashboard_panels.dart'));
+
+        // The dot is in the class deliberately, and it is the whole reason the
+        // first version of this guard was decorative in one direction. UI/UX
+        // found it by RUNNING the regex rather than reading it (3d3b1f61):
+        // `[a-z_]+` cannot match `hr.headcount`, so a dotted key was invisible
+        // here while being live at runtime — and a dotted key is precisely the
+        // shape the rule forbids, since `dashboardPanelIcon` already falls
+        // through `key.split('.').first` to the parent's icon and so never
+        // needs its own entry. The one thing the assertion exists to catch was
+        // the one thing it could not see.
+        preg_match_all("/'([a-z_.]+)':\s*Icons\./", $source, $found);
+        $drawn = collect($found[1])->sort()->values()->all();
+
+        // The control: a regex that stopped matching would make every diff
+        // below empty and this test green on an empty map.
+        $this->assertContains('hr', $drawn, 'The icon map was not read at all.');
+
+        $tabs = collect(app(\App\Support\Modules\ModuleRegistry::class)->all())
+            ->filter(fn ($m) => $m->rolesGroup === \App\Support\Modules\ModuleDefinition::ROLES_TAB
+                && $m->sidebar
+                && $m->key !== 'dashboard')
+            ->keys()->sort()->values()->all();
+
+        $this->assertSame($tabs, $drawn);
+    }
+
     public function test_a_live_glance_wins_when_coming_soon_still_lists_the_same_key(): void
     {
         $registry = new class(app(ModuleAvailability::class)) extends GlanceRegistry
