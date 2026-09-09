@@ -182,7 +182,16 @@ class GlanceRegistryTest extends TestCase
     {
         $source = file_get_contents(base_path('client/lib/core/dashboard_panels.dart'));
 
-        preg_match_all("/'([a-z_]+)':\s*Icons\./", $source, $found);
+        // The dot is in the class deliberately, and it is the whole reason the
+        // first version of this guard was decorative in one direction. UI/UX
+        // found it by RUNNING the regex rather than reading it (3d3b1f61):
+        // `[a-z_]+` cannot match `hr.headcount`, so a dotted key was invisible
+        // here while being live at runtime — and a dotted key is precisely the
+        // shape the rule forbids, since `dashboardPanelIcon` already falls
+        // through `key.split('.').first` to the parent's icon and so never
+        // needs its own entry. The one thing the assertion exists to catch was
+        // the one thing it could not see.
+        preg_match_all("/'([a-z_.]+)':\s*Icons\./", $source, $found);
         $drawn = collect($found[1])->sort()->values()->all();
 
         // The control: a regex that stopped matching would make every diff
