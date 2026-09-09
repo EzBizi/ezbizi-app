@@ -11,6 +11,7 @@ use App\Support\Dashboard\Glances\HrGlance;
 use App\Support\Dashboard\Glances\InspectionGlance;
 use App\Support\Dashboard\Glances\InventoryGlance;
 use App\Support\Dashboard\Glances\JobsGlance;
+use App\Support\Dashboard\Glances\PhoneGlance;
 use App\Support\Dashboard\Glances\BusinessProfileGlance;
 use App\Support\Dashboard\Glances\LeadsGlance;
 use App\Support\Dashboard\Glances\ReviewsGlance;
@@ -63,10 +64,6 @@ class GlanceRegistry
              * what it says.
              */
             'sentence' => 'Marketing keeps scheduled and published posts inside the tab. A summary of them here is not built yet.',
-        ],
-        'phone' => [
-            'label' => 'Phone',
-            'sentence' => 'Phone is where the team places and receives calls, and sends texts. Open the Phone tab for the desk.',
         ],
         /*
          * Added with the Training module, not with a Training glance.
@@ -153,6 +150,7 @@ class GlanceRegistry
         ReviewsGlance::class,
         EmailGlance::class,
         AutomationsGlance::class,
+        PhoneGlance::class,
     ];
 
     public function __construct(

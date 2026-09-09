@@ -1,0 +1,155 @@
+<?php
+
+namespace App\Support\Dashboard\Glances;
+
+use App\Models\PhoneCall;
+use App\Models\User;
+use App\Support\Dashboard\DashboardPeriod;
+use App\Support\Dashboard\DescribedGlance;
+use App\Support\Dashboard\GlancePayload;
+use App\Support\Phone\PhoneNumberAccess;
+use App\Support\Tenancy\TenantContext;
+
+/**
+ * Phone box: what happened on the phone this period, and what is waiting.
+ *
+ * ── Why answered / missed and not "calls" ────────────────────────
+ *
+ * A count of calls is a number nobody acts on. The question somebody has on
+ * the home screen is whether the phone is being answered, and that is a
+ * comparison — 40 of 44 reads differently from 40 of 90, and the bare 40 is
+ * the same on both days.
+ *
+ * ── Why voicemails waiting is a sentence and not a slice ─────────
+ *
+ * It is not a share of the period's calls; it is a queue standing right now,
+ * including messages left last month. Putting it in the pie would make the
+ * slices add up to something that is not the total, which is a chart that
+ * lies quietly.
+ *
+ * ── Why blocked calls appear at all ──────────────────────────────
+ *
+ * A blocked caller never rang a phone, so counting it as missed would put a
+ * robocaller in the number somebody reads as "calls we let down". It gets its
+ * own slice, and only when there are any, so a company that blocks nobody
+ * never sees the word.
+ *
+ * ── Visibility ───────────────────────────────────────────────────
+ *
+ * Through [PhoneNumberAccess::readable], the same helper the Records screen
+ * uses. A glance with its own scoping rule would be a second answer to "which
+ * calls are mine", and the two would drift.
+ */
+final class PhoneGlance extends DescribedGlance
+{
+    protected const KEY = 'phone';
+    protected const LABEL = 'Phone';
+    protected const PERMISSION = 'phone.view';
+    protected const PRESENTATIONS = ['pie', 'bar', 'text'];
+    protected const DEFAULT_PRESENTATION = 'pie';
+
+    /**
+     * False: the slices count the PERIOD, not the state of things now.
+     *
+     * "40 answered" is a fact about the chosen month and changes when the
+     * month does. The voicemail sentence beneath it is a snapshot, and that is
+     * said in its own words rather than by mislabelling the whole box.
+     */
+    protected const SNAPSHOT = false;
+
+    public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
+    {
+        return app(TenantContext::class)->run($user->organization, function () use ($user, $period) {
+            $numberIds = app(PhoneNumberAccess::class)->readable($user)->pluck('id')->all();
+
+            if ($numberIds === []) {
+                return $this->payload([
+                    'empty' => true,
+                    'sentence' => 'No phone lines in reach.',
+                ]);
+            }
+
+            // startsOn is a wall clock in the viewer's timezone; created_at is
+            // stored UTC. Bound as instants, or a franchise an hour behind
+            // counts yesterday's calls as today's.
+            $counts = PhoneCall::query()
+                ->whereIn('number_id', $numberIds)
+                ->where('direction', PhoneCall::DIRECTION_INBOUND)
+                ->whereBetween('created_at', [
+                    $period->startsOn->copy()->utc(),
+                    $period->endsOn->copy()->utc(),
+                ])
+                ->selectRaw('status, COUNT(*) as total')
+                ->groupBy('status')
+                ->pluck('total', 'status');
+
+            $answered = (int) ($counts[PhoneCall::STATUS_COMPLETED] ?? 0)
+                + (int) ($counts[PhoneCall::STATUS_IN_PROGRESS] ?? 0);
+
+            $blocked = (int) ($counts[PhoneCall::STATUS_BLOCKED] ?? 0);
+
+            // Everything else that arrived and did not get answered. Written
+            // as a subtraction rather than a list of statuses so a status
+            // added later cannot quietly fall out of the total — which is how
+            // a chart comes to show 38 of 44 with no sixth slice to explain
+            // the gap.
+            $missed = (int) $counts->sum() - $answered - $blocked;
+
+            $waiting = PhoneCall::query()
+                ->whereIn('number_id', $numberIds)
+                ->where('voicemail', true)
+                ->whereNull('dealt_at')
+                ->count();
+
+            if ((int) $counts->sum() === 0) {
+                return $this->payload([
+                    'empty' => true,
+                    'sentence' => $waiting > 0
+                        ? $this->voicemailSentence($waiting)
+                        : 'No calls came in.',
+                ]);
+            }
+
+            $data = [
+                'empty' => false,
+                'slices' => array_values(array_filter([
+                    ['label' => 'Answered', 'total' => $answered],
+                    ['label' => 'Missed', 'total' => $missed],
+
+                    // Only when there are any: a company that blocks nobody
+                    // has no reason to be shown a zero-width slice and a word
+                    // it would have to go and look up.
+                    $blocked > 0 ? ['label' => 'Blocked', 'total' => $blocked] : null,
+                ])),
+            ];
+
+            if ($waiting > 0) {
+                $data['sentences'] = [$this->voicemailSentence($waiting)];
+            }
+
+            return $this->payload($data);
+        });
+    }
+
+    private function voicemailSentence(int $waiting): string
+    {
+        return $waiting === 1
+            ? '1 voicemail is waiting.'
+            : "{$waiting} voicemails are waiting.";
+    }
+
+    /** @param  array<string, mixed>  $data */
+    private function payload(array $data): GlancePayload
+    {
+        return new GlancePayload(
+            key: $this->key(),
+            label: $this->label(),
+            presentation: $this->defaultPresentation(),
+            allowedPresentations: $this->allowedPresentations(),
+            snapshot: $this->snapshot(),
+            comingSoon: false,
+            options: [],
+            data: $data,
+        );
+    }
+}
