@@ -17,6 +17,9 @@ class TwilioVoiceDevice implements VoiceDevice {
   @override
   void Function()? onRegistrationChanged;
 
+  @override
+  void Function()? onEnded;
+
   // The browser grants the microphone against the page itself, so there is
   // no widget that a permission has to reach.
   @override
@@ -34,6 +37,7 @@ class TwilioVoiceDevice implements VoiceDevice {
         (JSAny call) {
           final jsCall = call as _JsCall;
           _pending = jsCall;
+          _watchForEnd(jsCall);
           onIncoming?.call(VoiceIncoming(from: _from(jsCall)));
         }.toJS,
       );
@@ -113,6 +117,7 @@ class TwilioVoiceDevice implements VoiceDevice {
     try {
       final result = await device.connect(options).toDart;
       _active = result as _JsCall;
+      _watchForEnd(_active!);
     } catch (_) {}
   }
 
@@ -138,6 +143,29 @@ class TwilioVoiceDevice implements VoiceDevice {
     _pending = null;
   }
 
+  /// Hear the three ways the SDK says a call is over.
+  ///
+  /// `disconnect` is the customer hanging up on a live call. `cancel` is the
+  /// caller giving up while it rings. `reject` is another device on the same
+  /// identity taking it — which is what happens when a ring group hands the
+  /// call to whoever answered first.
+  ///
+  /// All three collapse to one answer here on purpose: there is no call any
+  /// more. Only the pending/active reference is cleared per event, so a stale
+  /// one cannot be accepted after the fact.
+  void _watchForEnd(_JsCall call) {
+    for (final event in const ['disconnect', 'cancel', 'reject']) {
+      call.on(
+        event.toJS,
+        (JSAny? _) {
+          if (_pending == call) _pending = null;
+          if (_active == call) _active = null;
+          onEnded?.call();
+        }.toJS,
+      );
+    }
+  }
+
   @override
   void dispose() {
     hangUp();
@@ -145,6 +173,7 @@ class TwilioVoiceDevice implements VoiceDevice {
     _device?.destroy();
     _device = null;
     onIncoming = null;
+    onEnded = null;
   }
 
   String _from(_JsCall call) {
@@ -173,6 +202,7 @@ extension type _JsDevice._(JSObject _) implements JSObject {
 
 @JS()
 extension type _JsCall._(JSObject _) implements JSObject {
+  external void on(JSString event, JSFunction handler);
   external void accept();
   external void reject();
   external void disconnect();

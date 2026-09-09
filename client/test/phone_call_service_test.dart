@@ -155,6 +155,80 @@ void main() {
 
     service.stop();
   });
+
+  /// THE CALLER HANGING UP HAS TO CLEAR THE BANNER.
+  ///
+  /// Every path that cleared `incomingFrom` was a local action — accept,
+  /// decline, hang up. A call that ends at the OTHER end is the commonest way
+  /// a ringing call stops ringing: the caller gives up, or somebody else in
+  /// the ring group answers it first and Twilio cancels this leg.
+  ///
+  /// Neither of those goes through a button here, so the bar stayed across the
+  /// top of the app forever, offering to answer a call that no longer existed.
+  /// Reported by Jose on 2026-09-09.
+  testWidgets('a caller who hangs up before anybody answers clears the bar', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    final service = await _started(tester, device: device);
+
+    device.ring('+13057242199');
+    await tester.pump();
+
+    expect(service.incomingFrom, '+13057242199');
+
+    // The caller gives up. No button is pressed, because nobody was there.
+    device.end();
+    await tester.pump();
+
+    expect(
+      service.incomingFrom,
+      isNull,
+      reason: 'the bar is still offering to answer a call that has ended',
+    );
+
+    service.stop();
+  });
+
+  /// AND THE SAME FOR A CALL THAT WAS ANSWERED.
+  ///
+  /// Jose: "ana responded, once the call was over, because the caller hung up,
+  /// the ui also got stuck on the top bar available icon, and stuck on call."
+  ///
+  /// Two things were stuck and the second is the one that matters. `onCall`
+  /// staying true is a Hang up button for a call that is over. But the desk
+  /// also tells the server `on_call`, and ring groups SKIP anybody on a call —
+  /// so a stale one takes that person out of the rotation silently. Worse,
+  /// PresenceController::setMine refuses to overwrite `on_call` on purpose, so
+  /// the person cannot clear it from the availability control either. Only a
+  /// reload fixed it.
+  testWidgets('a call ended by the other end puts the desk back on the hook', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    final service = await _started(tester, device: device);
+
+    device.ring('+13057242199');
+    await tester.pump();
+    service.accept();
+    await tester.pump();
+
+    expect(service.onCall, isTrue);
+
+    // The customer hangs up.
+    device.end();
+    await tester.pump();
+
+    expect(
+      service.onCall,
+      isFalse,
+      reason: 'the desk still thinks it is on a call, so it is still telling '
+          'the server on_call and the ring group is still skipping this person',
+    );
+
+    service.stop();
+  });
+
 }
 
 /// A service that has been through the real [PhoneCallService.start].
@@ -228,6 +302,9 @@ class _FakeDevice implements VoiceDevice {
   @override
   Object? get platformView => null;
 
+  @override
+  void Function()? onEnded;
+
   String? callerId;
   String? connectedTo;
   var accepted = false;
@@ -267,7 +344,12 @@ class _FakeDevice implements VoiceDevice {
   void dispose() {
     disposed = true;
     onIncoming = null;
+    onEnded = null;
   }
 
   void ring(String from) => onIncoming?.call(VoiceIncoming(from: from));
+
+  /// The other end going away — a caller giving up, a colleague answering
+  /// first, or the customer hanging up on a live call. All three arrive here.
+  void end() => onEnded?.call();
 }

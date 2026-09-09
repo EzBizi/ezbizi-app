@@ -62,6 +62,9 @@ class WindowsVoiceDevice implements VoiceDevice {
   void Function()? onRegistrationChanged;
 
   @override
+  void Function()? onEnded;
+
+  @override
   bool get supported => true;
 
   @override
@@ -193,9 +196,14 @@ class WindowsVoiceDevice implements VoiceDevice {
           VoiceIncoming(from: (message['from'] ?? '').toString()),
         );
       case 'ended':
-        // Nothing to hold: the Dial tab tracks its own on-call state and the
-        // page has already stopped the audio.
-        break;
+        // This used to `break` with a comment saying the Dial tab tracked its
+        // own on-call state. That was true when CallTab owned the device; it
+        // stopped being true the moment the device moved into a service the
+        // whole app reads, and the comment outlived the design it described.
+        //
+        // The page has already stopped the audio. What was missing is telling
+        // anybody, so the banner and `on_call` sat there until a reload.
+        onEnded?.call();
     }
   }
 
@@ -226,6 +234,7 @@ class WindowsVoiceDevice implements VoiceDevice {
     _messages = null;
     onIncoming = null;
     onRegistrationChanged = null;
+    onEnded = null;
 
     final controller = _controller;
     _controller = null;

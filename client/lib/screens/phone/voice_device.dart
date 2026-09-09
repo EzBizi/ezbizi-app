@@ -95,6 +95,27 @@ abstract class VoiceDevice {
   /// Inbound ringing. Tests drive this; the web wrapper maps SDK `incoming`.
   void Function(VoiceIncoming incoming)? onIncoming;
 
+  /// The call is over, and NOBODY HERE ASKED FOR THAT.
+  ///
+  /// ── Why this had to exist ────────────────────────────────────
+  ///
+  /// Every way a call used to end went through a button: accept, decline, hang
+  /// up. So the desk cleared its state on the way out of its own methods and
+  /// that looked complete.
+  ///
+  /// It is not, because the commonest ways a call ends are not local. The
+  /// caller gives up while it is ringing. Somebody else in the ring group
+  /// answers first and Twilio cancels this leg. The customer hangs up on a
+  /// live call. None of those press anything here, so the desk kept believing
+  /// a call was in progress: the incoming bar stayed across every screen
+  /// offering to answer a call that no longer existed, and `on_call` stayed
+  /// set on the server, which quietly takes that person out of the ring group.
+  ///
+  /// Fired for all three, deliberately without saying which. The desk's answer
+  /// is the same in each case — there is no call any more — and a device that
+  /// had to name the reason would be three chances to name it wrong.
+  void Function()? onEnded;
+
   void dispose();
 }
 

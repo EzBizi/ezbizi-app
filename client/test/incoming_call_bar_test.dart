@@ -171,6 +171,9 @@ class _FakeDevice implements VoiceDevice {
   void Function()? onRegistrationChanged;
 
   @override
+  void Function()? onEnded;
+
+  @override
   var supported = true;
 
   @override

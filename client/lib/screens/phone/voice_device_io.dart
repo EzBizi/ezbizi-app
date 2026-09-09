@@ -41,6 +41,11 @@ VoiceDevice create() {
 /// either. Calls on such a platform ring the person's own handset instead,
 /// which is what `supported: false` tells the Dial tab to do.
 class _SilentVoiceDevice implements VoiceDevice {
+  /// Never fires. There is no engine here, so there is no call to end — and
+  /// the desk's state was never set in the first place.
+  @override
+  void Function()? onEnded;
+
   // Nothing to mount, so nothing to prepare.
   @override
   Future<void> prepare() async {}
