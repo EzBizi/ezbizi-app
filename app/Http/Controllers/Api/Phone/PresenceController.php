@@ -50,7 +50,20 @@ class PresenceController extends Controller
             ->map(fn (PhonePresence $row) => [
                 'user_id' => $row->user_id,
                 'name' => $row->user?->name ?? '',
-                'state' => $row->state,
+
+                // Not the stored string. A wrap-up that has run out is not a
+                // state at all: routing already treats that person as
+                // available, and reporting `wrap_up` here would put a screen
+                // in front of a supervisor that contradicts who the phone
+                // system is actually ringing.
+                'state' => $row->isWrappingUp()
+                    ? PhonePresence::STATE_WRAP_UP
+                    : ($row->state === PhonePresence::STATE_WRAP_UP
+                        ? PhonePresence::STATE_REGISTERED
+                        : $row->state),
+                'wrap_up_until' => $row->isWrappingUp()
+                    ? $row->wrap_up_until?->toIso8601String()
+                    : null,
                 'updated_at' => $row->updated_at?->toIso8601String(),
             ])
             ->all();

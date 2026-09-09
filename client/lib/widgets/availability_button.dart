@@ -107,6 +107,10 @@ class _AvailabilityButtonState extends State<AvailabilityButton> {
     // On a call is not a state a toggle sets, and not one it can clear. The
     // server refuses to overwrite it; this keeps the button from pretending
     // otherwise while the request is in flight.
+    //
+    // Wrap-up IS clearable, and this is the button that clears it: "registered"
+    // sent while wrapping up is a person saying they are ready, which the
+    // server tells apart from a call ending by the state it already holds.
     final next = _state == 'dnd' ? 'registered' : 'dnd';
 
     setState(() => _busy = true);
@@ -136,11 +140,17 @@ class _AvailabilityButtonState extends State<AvailabilityButton> {
     // device on the same account.
     final onCall = _service.onCall || _state == 'on_call';
 
+    // Finishing the last call. Drawn as its own thing rather than folded into
+    // on-call: the phone is free, the person is not, and somebody glancing at
+    // this needs to know tapping it puts them straight back in the queue.
+    final wrappingUp = !onCall && _state == 'wrap_up';
+
     return IconButton(
       onPressed: _busy || onCall ? null : _toggle,
       tooltip: switch (_state) {
         'dnd' => 'Not taking calls — tap to start again',
         'on_call' => 'On a call',
+        'wrap_up' => 'Finishing the last call — tap when you are ready',
         _ => 'Taking calls — tap to stop',
       },
       icon: Stack(
@@ -160,7 +170,7 @@ class _AvailabilityButtonState extends State<AvailabilityButton> {
               decoration: BoxDecoration(
                 color: away
                     ? theme.colorScheme.error
-                    : onCall
+                    : onCall || wrappingUp
                     ? theme.colorScheme.tertiary
                     : theme.colorScheme.primary,
                 shape: BoxShape.circle,

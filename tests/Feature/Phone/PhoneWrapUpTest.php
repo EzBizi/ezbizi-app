@@ -185,6 +185,48 @@ class PhoneWrapUpTest extends TestCase
             ->assertJsonPath('data.state', PhonePresence::STATE_REGISTERED);
     }
 
+    /**
+     * The team list agrees with who the phone is actually ringing.
+     *
+     * ── The defect this was written for ─────────────────────────
+     *
+     * `index` reported the stored string. Availability is read from the
+     * deadline, so the moment a wrap-up expired the two disagreed: routing
+     * rang somebody the supervisor's screen showed as busy, indefinitely,
+     * because nothing ever rewrites the row. A screen that contradicts the
+     * routing is worse than no screen — it is where "the phone is broken"
+     * reports come from.
+     */
+    public function test_the_team_list_stops_saying_wrap_up_when_it_ends(): void
+    {
+        [$t, $connection, $group, $desk] = $this->desk(wrapUpSeconds: 30);
+
+        Carbon::setTestNow(Carbon::parse('2026-09-09 16:00:00'));
+
+        $this->onACall($t, $connection, $desk);
+        $this->signedInAs($desk)->putJson('/api/v1/phone/presence', [
+            'connection_id' => $connection->id,
+            'state' => 'registered',
+        ])->assertOk();
+
+        $this->signedInAs($desk)
+            ->getJson('/api/v1/phone/presence?connection_id='.$connection->id)
+            ->assertOk()
+            ->assertJsonPath('data.0.state', PhonePresence::STATE_WRAP_UP);
+
+        Carbon::setTestNow(Carbon::parse('2026-09-09 16:00:31'));
+
+        // Reachable AND reported as reachable. Both, in one test, because the
+        // defect was precisely that only one of them moved.
+        $this->assertSame([$desk->id], $this->reachable($t, $group, $connection));
+
+        $this->signedInAs($desk)
+            ->getJson('/api/v1/phone/presence?connection_id='.$connection->id)
+            ->assertOk()
+            ->assertJsonPath('data.0.state', PhonePresence::STATE_REGISTERED)
+            ->assertJsonPath('data.0.wrap_up_until', null);
+    }
+
     /** An hour of wrap-up is somebody's typo, not their intent. */
     public function test_an_absurd_wrap_up_is_refused(): void
     {
