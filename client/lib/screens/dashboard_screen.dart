@@ -258,9 +258,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// Compact, because the header already holds three 48-point move/drag
   /// controls. Coming soon and an empty `allowed_presentations` draw nothing
   /// — a disabled menu would invite somebody to work out why it does nothing.
+  ///
+  /// One option is the same case as none: `web_management` and
+  /// `business_profile` allow only `text`, and a menu whose single entry is
+  /// already ticked is a control that cannot change anything.
   Widget? _presentationMenu(Map<String, dynamic> glance) {
     final options = _presentationsOf(glance);
-    if (options.isEmpty) return null;
+    if (options.length < 2) return null;
 
     final selected = glance['presentation'] as String? ?? 'text';
     final label = glance['label'] as String? ?? 'this box';
@@ -282,13 +286,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  /// Exactly what the server allows, and nothing else.
+  ///
+  /// This used to append `text` to any list that omitted it, as an escape from
+  /// a chart. The server does not accept it back — `declaredPresentation`
+  /// drops a kind the glance never offered to the glance's default — so the
+  /// entry drew text on this frame and the next load put the chart back, with
+  /// no message. A glance that should offer text says so in its own
+  /// `PRESENTATIONS`; every live one already does.
   static List<String> _presentationsOf(Map<String, dynamic> glance) {
     final raw = glance['allowed_presentations'];
-    if (raw is! List || raw.isEmpty) return const [];
+    if (raw is! List) return const [];
 
-    final options = [for (final item in raw) '$item'];
-    if (!options.contains('text')) options.add('text');
-    return options;
+    return [for (final item in raw) '$item'];
   }
 
   static String _labelFor(String presentation) => switch (presentation) {

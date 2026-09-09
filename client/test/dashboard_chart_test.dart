@@ -283,7 +283,34 @@ void main() {
     expect(find.byType(PopupMenuButton<String>), findsNothing);
   });
 
-  testWidgets('text is offered even when the server omitted it', (tester) async {
+  /// `web_management` and `business_profile` are sentence-only glances: their
+  /// allowed list is exactly `['text']`. A menu whose single entry is already
+  /// selected is a control that cannot change anything, which is the same
+  /// argument the empty list is hidden for.
+  testWidgets('one allowed presentation hides the menu too', (tester) async {
+    await _pumpDashboard(
+      tester,
+      _glances(
+        presentation: 'text',
+        allowed: const ['text'],
+        slices: [
+          {'label': 'scheduled', 'total': 2},
+        ],
+      ),
+    );
+
+    expect(find.byType(PopupMenuButton<String>), findsNothing);
+    expect(find.byTooltip('How to draw “Jobs”'), findsNothing);
+  });
+
+  /// The screen used to add `text` to any list that omitted it. The server
+  /// does not accept it back: `declaredPresentation` drops a kind the glance
+  /// never offered to the default, which
+  /// `DashboardTest::test_a_presentation_not_offered_is_dropped_to_the_default`
+  /// pins. So the entry drew text on this frame and the next load put the
+  /// chart back — a control that looked like it worked. The allowed list is
+  /// the server's answer; offer exactly it.
+  testWidgets('only what the server allows is offered', (tester) async {
     await _pumpDashboard(
       tester,
       _glances(
@@ -300,7 +327,7 @@ void main() {
 
     expect(find.text('Pie'), findsOneWidget);
     expect(find.text('Bar'), findsOneWidget);
-    expect(find.text('Text'), findsOneWidget);
+    expect(find.text('Text'), findsNothing);
   });
 
   testWidgets('choosing a presentation writes it with the current glances', (
