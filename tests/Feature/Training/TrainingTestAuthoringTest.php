@@ -70,12 +70,17 @@ class TrainingTestAuthoringTest extends TestCase
     }
 
     /**
-     * The fifth option's own default — off, the lenient behaviour — proved
-     * separately from the "stored as written" test above, which always
-     * writes an explicit value and so can never show what an author gets
-     * by saying nothing.
+     * The fifth option's own default — ON since the owner's ruling of
+     * 2026-09-09 — proved separately from the "stored as written" test
+     * above, which always writes an explicit value and so can never show
+     * what an author gets by saying nothing.
+     *
+     * The column's own `default` cannot be what this pins: `store()` writes
+     * an explicit value on every create, so an API-created test never
+     * reaches the database default at all. This asserts the line that
+     * actually decides it.
      */
-    public function test_count_attempts_after_pass_defaults_to_false(): void
+    public function test_count_attempts_after_pass_defaults_to_true(): void
     {
         $tenant = $this->provisionTenant('Alpha');
         $author = $this->userWithRole($tenant, 'Author', ['training.manage']);
@@ -85,6 +90,28 @@ class TrainingTestAuthoringTest extends TestCase
             'title' => 'Ladder Safety',
             'pass_mark' => 80,
             'questions' => [],
+        ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('data.count_attempts_after_pass', true);
+    }
+
+    /**
+     * The control that makes the test above readable: a create that ignored
+     * the input and always wrote `true` would pass it. An author who asks
+     * for the lenient behaviour explicitly still gets it.
+     */
+    public function test_an_author_can_still_choose_the_lenient_setting_explicitly(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $author = $this->userWithRole($tenant, 'Author', ['training.manage']);
+
+        $response = $this->signedInAs($author)->postJson('/api/v1/training/tests', [
+            'company_id' => $tenant['company']->id,
+            'title' => 'Ladder Safety',
+            'pass_mark' => 80,
+            'questions' => [],
+            'count_attempts_after_pass' => false,
         ]);
 
         $response->assertCreated();

@@ -69,13 +69,46 @@ void main() {
     expect(sentBody!['count_attempts_after_pass'], isTrue);
   });
 
-  testWidgets('retakes after a pass count toward the limit defaults to off', (tester) async {
-    await _pumpTestBuilder(tester, test: _test(id: 't1', title: 'Ladder Safety Quiz'));
+  // Two tests, not one with two pumps: a second pumpWidget in the same test
+  // reuses the TestBuilder element, so initState never runs again and the
+  // switch keeps the first case's value. Measured — written as one test, the
+  // stored-false case read `true` and the assertion was about state left over
+  // from the case above it.
+  //
+  // Neither is a test of "what a NEW test defaults to". That default is the
+  // server's (TestsController::store, ON since 2026-09-09) and this screen
+  // never sees it: creating a test POSTs first and then opens the builder BY
+  // ID, so the payload always carries the field.
 
-    final toggle = tester.widget<Switch>(
-      find.byKey(const Key('training.option-count-attempts-after-pass')),
+  testWidgets('the retake switch is on when the test stores it on', (tester) async {
+    await _pumpTestBuilder(
+      tester,
+      test: _test(id: 't1', title: 'Ladder Safety Quiz', countAttemptsAfterPass: true),
     );
-    expect(toggle.value, isFalse);
+
+    expect(
+      tester
+          .widget<Switch>(find.byKey(const Key('training.option-count-attempts-after-pass')))
+          .value,
+      isTrue,
+    );
+  });
+
+  testWidgets('the retake switch stays off when the test stores it off', (tester) async {
+    // The control, and the hazard it guards: the save path sends this switch
+    // on every save, so a stored `false` read as "unset" would silently flip
+    // an author's own choice the first time somebody opened the test.
+    await _pumpTestBuilder(
+      tester,
+      test: _test(id: 't1', title: 'Ladder Safety Quiz', countAttemptsAfterPass: false),
+    );
+
+    expect(
+      tester
+          .widget<Switch>(find.byKey(const Key('training.option-count-attempts-after-pass')))
+          .value,
+      isFalse,
+    );
   });
 
   testWidgets('the one lockout combination warns the author, and only that combination', (tester) async {
