@@ -12,6 +12,7 @@ use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\ActionRunner;
 use App\Support\Automations\AutomationEngine;
+use App\Support\Automations\AutomationSchedule;
 use App\Support\Automations\CarriesAutomationScope;
 use App\Support\Automations\OutboundWebhook;
 use App\Support\Modules\ActionDefinition;
@@ -26,6 +27,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use InvalidArgumentException;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -50,6 +52,15 @@ class AutomationsController extends Controller
      * event, only the union of their keys.
      */
     private const FIELD_SAMPLE = 200;
+
+    /**
+     * The one trigger that is a clock rather than something happening (§5.5).
+     *
+     * Named once because three places ask the same question — the save check,
+     * the schedule column and the sweep — and a literal repeated three times is
+     * how two of them come to disagree.
+     */
+    public const CLOCK_TRIGGER = 'automation.schedule_reached';
 
     /** What ActionRunner can actually perform. The validator agrees with this. */
     private const IMPLEMENTED_ACTIONS = [
@@ -405,6 +416,52 @@ class AutomationsController extends Controller
         ]]);
     }
 
+    /**
+     * A clock trigger needs a schedule, and a schedule needs the clock trigger.
+     *
+     * Both halves are refused at SAVE rather than discovered later, because
+     * both failures are silent. A rule on `automation.schedule_reached` with no
+     * schedule has a null `next_run_at`, which is exactly what the sweep uses to
+     * skip a rule — so it saves, switches on, looks live and never runs. A
+     * schedule attached to an event trigger is the mirror image: the time is
+     * stored, nothing ever reads it, and the author is left believing their
+     * "when a job completes" rule also runs every Monday.
+     *
+     * The shape of the schedule itself is AutomationSchedule's to judge; its
+     * refusals are already written for a person ("A weekly schedule needs at
+     * least one day of the week, or it never comes round") so they are passed
+     * through rather than restated here.
+     */
+    private function assertScheduleMatchesTrigger(array $input, Request $request): void
+    {
+        $trigger = $input['trigger_key']
+            ?? $request->route('automation')?->trigger_key;
+
+        $scheduled = $trigger === self::CLOCK_TRIGGER;
+        $schedule = $input['schedule'] ?? null;
+
+        if ($scheduled && ! is_array($schedule)) {
+            throw ValidationException::withMessages([
+                'schedule' => 'A rule that runs on a clock needs a time to run at.',
+            ]);
+        }
+
+        if (! $scheduled && $schedule !== null) {
+            throw ValidationException::withMessages([
+                'schedule' => 'Only a rule that runs on a clock has a schedule. '
+                    .'This one runs when something happens.',
+            ]);
+        }
+
+        if ($schedule !== null) {
+            try {
+                AutomationSchedule::assertValid($schedule);
+            } catch (InvalidArgumentException $e) {
+                throw ValidationException::withMessages(['schedule' => $e->getMessage()]);
+            }
+        }
+    }
+
     private function subjectPayload(ModuleDefinition $module): ?array
     {
         if ($module->subject === null) {
@@ -485,6 +542,23 @@ class AutomationsController extends Controller
                 // the instant it is saved will fire before it has been read back.
                 'is_active' => false,
                 'created_by' => $request->user()->getKey(),
+                'schedule' => $input['schedule'] ?? null,
+                /*
+                 * The first occurrence is computed at SAVE, not at first sweep.
+                 *
+                 * A null next_run_at is what the sweep uses to skip a rule, so
+                 * leaving it for the worker to fill in would mean the sweep had
+                 * to read every scheduled rule in every organization once a
+                 * minute to find the ones it had not seen before. One
+                 * computation here, and the index answers the rest.
+                 *
+                 * From NOW, so a schedule typed at 9:05 for "daily at 09:00"
+                 * starts tomorrow rather than firing the moment it is switched
+                 * on for a time that has already passed today.
+                 */
+                'next_run_at' => isset($input['schedule'])
+                    ? (new AutomationSchedule($input['schedule']))->nextAfter(now())
+                    : null,
             ]);
 
             $this->addVersion($automation, $input, $request);
@@ -521,6 +595,24 @@ class AutomationsController extends Controller
             $automation->fill(array_intersect_key($input, array_flip([
                 'name', 'description', 'scope_type', 'scope_id',
             ])));
+
+            /*
+             * A retimed rule gets a new next run, computed from NOW.
+             *
+             * Without this the row keeps the instant the OLD time resolved to,
+             * so somebody who moves a report from 9am to 6am watches it arrive
+             * at 9am once more and reasonably concludes the edit did not save.
+             *
+             * From now rather than from the old next run, for the same reason
+             * the sweep advances from now: a rule moved from 6am to 9am must
+             * not fire twice today.
+             */
+            if (array_key_exists('schedule', $input)) {
+                $automation->schedule = $input['schedule'];
+                $automation->next_run_at = $input['schedule'] === null
+                    ? null
+                    : (new AutomationSchedule($input['schedule']))->nextAfter(now());
+            }
 
             // Re-enabling clears the auto-disable, which is what makes it a
             // deliberate act rather than something that quietly heals.
@@ -775,6 +867,10 @@ class AutomationsController extends Controller
                 // recorded so far would describe something it no longer does.
                 ? ['missing']
                 : ['required', 'string', 'max:100'],
+            // A schedule is only meaningful on the clock trigger, and only the
+            // clock trigger is meaningless without one. Both halves are checked
+            // below rather than here, because the rule is about the PAIR.
+            'schedule' => ['nullable', 'array'],
             // 'company' is accepted because the engine resolves it (see
             // AutomationEngine::scopeOf). It previously validated as legal
             // and then could never match anything, which is worse than
@@ -809,6 +905,8 @@ class AutomationsController extends Controller
         if (isset($input['trigger_key'])) {
             $this->assertTriggerExists($request, $input['trigger_key']);
         }
+
+        $this->assertScheduleMatchesTrigger($input, $request);
 
         // The scope must be OURS. Nothing checked it, and the column has no
         // foreign key — so a rule could name another organization's franchise

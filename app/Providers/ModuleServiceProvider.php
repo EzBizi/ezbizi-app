@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Models\Automation;
 use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Franchise;
@@ -2496,11 +2497,48 @@ class ModuleServiceProvider extends ServiceProvider
                 // "automation", so the module key does too.
                 key: 'automations',
                 label: 'Automations',
-                // Deliberately outside automation itself. An automation that
-                // could create or edit automations is a self-modifying system:
-                // the loop guards count actions, not rules, so a rule that
-                // writes rules escapes them entirely. It stays a human act.
+                // Still no ACTIONS, and the reason is unchanged: an automation
+                // that could create or edit automations is a self-modifying
+                // system, because the loop guards count actions rather than
+                // rules, so a rule that writes rules escapes them entirely. It
+                // stays a human act. The exemption is about actions only — the
+                // trigger below is not a rule writing a rule, it is a clock.
                 automationExemptBecause: 'An automation that could write automations would escape the loop guards.',
+                emits: [Automation::class],
+                triggers: [
+                    /*
+                     * THE CLOCK, and the one trigger that is about no record.
+                     *
+                     * Every other trigger in this application answers "something
+                     * happened to this thing". This one answers "the time you
+                     * asked for came round", which is why it lives on the
+                     * Automations module rather than a business one: it belongs
+                     * to no module's work, and the tab it is reachable from is
+                     * the one where rules are written. Anybody building a rule
+                     * already holds `automations.view`, so the catalogue's reach
+                     * filter is exactly right without a new grant.
+                     *
+                     * ── The subject is the RULE, and that is not cosmetic ────
+                     *
+                     * `NotificationDispatcher::audienceFor` reads the subject to
+                     * decide who hears, and falls through to EVERY ACTIVE USER
+                     * when a record cannot say where it sits. A schedule has no
+                     * record at all, so "email me the weekly report" written at
+                     * one branch would have mailed the whole business — with
+                     * nothing on screen looking wrong. The rule is a record and
+                     * knows its own scope, so it is its own subject and reaches
+                     * the people its author meant. See Automation::automationScope.
+                     */
+                    new TriggerDefinition(
+                        key: 'automation.schedule_reached',
+                        label: 'A time you chose comes round',
+                        description: 'Runs on a clock rather than on something happening — every '
+                            .'day, on chosen days of the week, or once a month. The time is read '
+                            .'in the timezone you pick when you build it, so it stays correct '
+                            .'through daylight saving. It carries when it was due and when it is '
+                            .'next expected.',
+                    ),
+                ],
             ),
 
             /*

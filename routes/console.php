@@ -36,6 +36,17 @@ Schedule::command('ezbizi:expire-impersonations')->everyFiveMinutes()->withoutOv
 // header warns about. Five minutes means a stale lock costs one skipped sweep.
 Schedule::command('ezbizi:dispatch-automation-events')->everyMinute()->withoutOverlapping(5);
 
+// The clock half of the engine: rules that run on a schedule rather than on
+// something happening. It only RAISES `automation.schedule_reached`; the sweep
+// above is still what delivers it, so a scheduled rule and an event-driven one
+// travel the same path from that point on.
+//
+// Every minute, because the finest schedule anyone can set is a minute, and the
+// same short overlap lock for the same reason the line above gives — a stale
+// 24-hour default lock would silently stop every scheduled rule in the product
+// for a day, and nothing would report it.
+Schedule::command('ezbizi:dispatch-due-automations')->everyMinute()->withoutOverlapping(5);
+
 // Scheduled social posts. The composer writes a wall time and leaves the
 // targets `scheduled`; this is the only thing that turns them into `queued`.
 //

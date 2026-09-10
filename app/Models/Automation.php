@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Automations\CarriesAutomationScope;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -17,7 +18,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * immutable version is currently live. Everything that can change lives in
  * automation_versions, so history stays readable after an edit.
  */
-class Automation extends Model
+class Automation extends Model implements CarriesAutomationScope
 {
     use HasFactory;
     use HasUuids;
@@ -30,6 +31,7 @@ class Automation extends Model
     protected $fillable = [
         'organization_id', 'scope_type', 'scope_id', 'name', 'description',
         'trigger_key', 'is_active', 'active_version_id', 'created_by',
+        'schedule', 'next_run_at',
     ];
 
     protected function casts(): array
@@ -37,7 +39,43 @@ class Automation extends Model
         return [
             'is_active'   => 'boolean',
             'disabled_at' => 'datetime',
+            'schedule'    => 'array',
+            'next_run_at' => 'datetime',
         ];
+    }
+
+    /** A rule that runs on a clock rather than on something happening (§5.5). */
+    public function isScheduled(): bool
+    {
+        return $this->schedule !== null && $this->schedule !== [];
+    }
+
+    /**
+     * A scheduled rule is the subject of its OWN event, and that is load-bearing.
+     *
+     * Every other trigger is about a record — a job, a call, an email — and
+     * `NotificationDispatcher::audienceFor` reads that record to decide who
+     * hears. A schedule coming round is about nothing: there is no job and no
+     * customer, only the clock. A subject-less event reaches the fallthrough in
+     * `audienceFor`, which is EVERY ACTIVE USER IN THE ORGANIZATION — so
+     * "email me the weekly report" written by one branch would have mailed the
+     * whole business, and nothing in the builder would have looked wrong.
+     *
+     * The rule is a real record and it already knows where it sits, so it is
+     * its own subject. A franchise-scoped scheduled rule then reaches that
+     * franchise and nobody else, which is what its author meant.
+     *
+     * The two words are `automations.scope_type`'s own, which is why this is a
+     * pass-through rather than a translation: an organization-wide rule answers
+     * [null, null] and only an organization-wide rule covers it.
+     */
+    public function automationScope(): array
+    {
+        return match ($this->scope_type) {
+            'company'   => ['company', $this->scope_id],
+            'franchise' => ['franchise', $this->scope_id],
+            default     => [null, null],
+        };
     }
 
     public function versions(): HasMany
