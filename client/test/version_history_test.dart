@@ -18,9 +18,34 @@ void main() {
     final releases = VersionHistory.releases;
 
     expect(releases, isNotEmpty);
+
+    // Both operands are read from DISK, deliberately, and this used to be the
+    // suite's one intermittent failure.
+    //
+    // The old assertion compared `releases.first.version` — a constant compiled
+    // when the run STARTED — against `VERSION`, read when the test EXECUTED.
+    // The deploy desk bumps both files together in a tree other sessions are
+    // running tests in, so a cut landing between those two moments made them
+    // disagree while neither file was wrong. It went red once, passed in
+    // isolation, and did not recur: the signature of a race, not a defect.
+    //
+    // Reading both files here closes the window from minutes to microseconds,
+    // and it is also the truer statement of the rule — the two FILES must be
+    // bumped in the same commit. The compiled constant is still what every
+    // assertion below checks, where nothing races.
+    final versionFile = File('VERSION').readAsStringSync().trim();
+    final source = File('lib/core/version_history.dart').readAsStringSync();
+    final topOfSource = RegExp(r"version: '([^']+)'").firstMatch(source)?.group(1);
+
     expect(
-      releases.first.version,
-      File('VERSION').readAsStringSync().trim(),
+      topOfSource,
+      isNotNull,
+      reason: 'version_history.dart names no version at all. If its shape has '
+          'changed, this check needs changing with it rather than deleting.',
+    );
+    expect(
+      topOfSource,
+      versionFile,
       reason:
           'A VERSION bump that forgets a note is a date nobody can remember. '
           'Add the row in the same commit.',
