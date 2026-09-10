@@ -201,8 +201,14 @@ window, one **Clock In** button, and **Sign out**. Clock In posts, applies the
 block, and the gate falls away because `lock` is now false. A refused punch
 shows the server sentence under the button.
 
-Desktop (Windows, macOS): on enter `setFullScreen(true)`, `setAlwaysOnTop(true)`,
-`setPreventClose(true)`, `focus()`; on minimize, restore and focus; on window
+Desktop (Windows, macOS): on enter every escape the window manager offers is
+shut — `setResizable(false)`, `setMinimizable(false)`, `setMaximizable(false)`,
+`setClosable(false)`, `setPreventClose(true)`, `setTitleBarStyle(hidden)`,
+`setAlwaysOnTop(true)`, `setFullScreen(true)`, `focus()` — and fullscreen is READ
+BACK and retried, because on 0.0.0173 it silently did not apply and the window
+kept its title bar. A `WindowListener` answers what a flag cannot: minimize
+restores, close refocuses, leaving fullscreen re-enters it. Every one of those
+is given back on release, in reverse, and the listener is disarmed FIRST; on minimize, restore and focus; on window
 restore after sleep, re-assert fullscreen and topmost. On leave release in this
 order: always-on-top, prevent-close, fullscreen. Every release call is
 try/caught on its own so one failure cannot strand the others (A1 Tools shipped

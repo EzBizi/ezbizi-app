@@ -79,6 +79,48 @@ void main() {
 
     expect(session.me!.timeClock.lock, isFalse);
   });
+  testWidgets('the lock screen polls and lets go when the server says so', (
+    tester,
+  ) async {
+    // The shell's 60-second poll does not run here — the shell is not mounted.
+    // Without one of its own the ONLY way out is clocking in from this window,
+    // so a shift opened elsewhere, or the organization switching Lock screen
+    // off, leaves the machine locked on an answer that is no longer true.
+    final polls = <String>[];
+
+    final session = await _pump(
+      tester,
+      onRequest: (r) async {
+        if (r.url.path != '/api/v1/time-clock/me') return null;
+        polls.add(r.url.path);
+
+        return http.Response(
+          jsonEncode({
+            'data': {
+              'time_clock': {
+                'organization_enabled': true,
+                'can_clock': true,
+                'show_button': true,
+                'open': {'id': 's-9', 'clocked_in_at': '2026-09-09T14:00:00Z'},
+                'lock': false,
+              },
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      },
+    );
+
+    expect(session.me!.timeClock.lock, isTrue);
+    expect(polls, isEmpty);
+
+    await tester.pump(const Duration(seconds: 61));
+    await tester.pump();
+
+    expect(polls, ['/api/v1/time-clock/me']);
+    expect(session.me!.timeClock.lock, isFalse);
+  });
 }
 
 Future<Session> _pump(
