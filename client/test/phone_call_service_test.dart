@@ -326,6 +326,47 @@ void main() {
     expect(service.incomingFrom, isNull);
   });
 
+  /// Answering on the handset's own screen puts the desk on a call.
+  ///
+  /// ── The defect ─────────────────────────────────────────────────
+  ///
+  /// On a phone the operating system owns answering, so the desk's accept
+  /// button is never pressed. Jose answered in CallKit and was then asked to
+  /// accept the same call again in the app.
+  ///
+  /// Both halves are asserted, and the second is the one that bites: clearing
+  /// the banner without marking the call would take this person off `on_call`
+  /// at the moment the conversation started, and the ring group would route
+  /// the next caller to somebody mid-sentence.
+  testWidgets('a call answered on the handset is a call the desk is on', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    final service = await _started(tester, device: device);
+
+    device.ring('+13055550199');
+    await tester.pump();
+    expect(service.incomingFrom, isNotNull);
+
+    device.answerNatively();
+    await tester.pump();
+
+    expect(
+      service.incomingFrom,
+      isNull,
+      reason: 'the desk still offers to accept a call already in progress',
+    );
+    expect(
+      service.onCall,
+      isTrue,
+      reason:
+          'the desk cleared the banner without going on call, so this person '
+          'reads as free while they are talking',
+    );
+
+    service.stop();
+  });
+
   /// A handset asks for a token that can wake it.
   ///
   /// ── The defect ─────────────────────────────────────────────────
@@ -437,6 +478,9 @@ http.Response _json(Object body) => http.Response(
 
 class _FakeDevice implements VoiceDevice {
   @override
+  void Function()? onAnswered;
+
+  @override
   void Function(VoiceIncoming incoming)? onIncoming;
 
   @override
@@ -503,6 +547,10 @@ class _FakeDevice implements VoiceDevice {
   }
 
   void ring(String from) => onIncoming?.call(VoiceIncoming(from: from));
+
+  /// Answered in CallKit or the ConnectionService, where a handset's calls are
+  /// actually answered — nothing in the app was pressed.
+  void answerNatively() => onAnswered?.call();
 
   /// The other end going away — a caller giving up, a colleague answering
   /// first, or the customer hanging up on a live call. All three arrive here.

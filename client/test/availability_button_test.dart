@@ -132,6 +132,9 @@ Future<void> _pump(WidgetTester tester, {required String state}) async {
 
 class _FakeDevice implements VoiceDevice {
   @override
+  void Function()? onAnswered;
+
+  @override
   String? pushPlatform;
 
   @override

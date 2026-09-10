@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:ezbizi_client/screens/phone/voice_device.dart';
 import 'package:ezbizi_client/screens/phone/voice_device_mobile.dart';
+import 'package:twilio_voice/twilio_voice.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -161,6 +163,79 @@ void main() {
 
       expect(device.registered, isFalse);
       expect(device.registrationError, contains('fcm_unavailable'));
+    });
+  });
+
+  group('call events', () {
+    /// ── The defect ─────────────────────────────────────────────────
+    ///
+    /// `ringing` is raised for the far end of an OUTGOING call, and this
+    /// treated it as an incoming one. So placing a call raised the desk's own
+    /// incoming banner and asked the caller to accept the call they had just
+    /// made. Jose rang Rodrigo, Rodrigo answered, and he had to accept an
+    /// incoming call from himself to join it.
+    test('ringing is the far end of our own call, not an incoming one', () {
+      final device = MobileVoiceDevice();
+      VoiceIncoming? seen;
+      device.onIncoming = (incoming) => seen = incoming;
+
+      device.handleEvent(CallEvent.ringing);
+
+      expect(
+        seen,
+        isNull,
+        reason:
+            'placing a call asks the caller to accept the call they just made',
+      );
+    });
+
+    /// The control: a real incoming call still raises the banner. Without it
+    /// the test above passes for a device that reports nothing at all.
+    test('an incoming call still raises the banner', () {
+      final device = MobileVoiceDevice();
+      var raised = false;
+      device.onIncoming = (_) => raised = true;
+
+      device.handleEvent(CallEvent.incoming);
+
+      expect(raised, isTrue);
+    });
+
+    /// Answering happens in CallKit on a handset, so the desk has to be told
+    /// or it goes on offering its own accept button for a live call.
+    test('answering natively tells the desk, without ending the call', () {
+      final device = MobileVoiceDevice();
+      var answered = 0;
+      var ended = 0;
+      device.onAnswered = () => answered++;
+      device.onEnded = () => ended++;
+
+      device.handleEvent(CallEvent.answer);
+
+      expect(answered, 1);
+      expect(
+        ended,
+        0,
+        reason:
+            'the desk was told the call was over at the moment it started, '
+            'which takes this person off on_call mid-conversation',
+      );
+    });
+
+    test('the four ways a call ends still end it', () {
+      for (final event in [
+        CallEvent.callEnded,
+        CallEvent.missedCall,
+        CallEvent.declined,
+      ]) {
+        final device = MobileVoiceDevice();
+        var ended = false;
+        device.onEnded = () => ended = true;
+
+        device.handleEvent(event);
+
+        expect(ended, isTrue, reason: '$event left the desk showing a call');
+      }
     });
   });
 

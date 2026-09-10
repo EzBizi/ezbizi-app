@@ -138,6 +138,25 @@ abstract class VoiceDevice {
   /// had to name the reason would be three chances to name it wrong.
   void Function()? onEnded;
 
+  /// The native call UI answered this call, and nothing here pressed anything.
+  ///
+  /// ── Why a phone needs its own signal for this ────────────────────
+  ///
+  /// On a handset the operating system owns answering: CallKit on iOS, a
+  /// ConnectionService on Android. Somebody swipes to answer THERE, so the
+  /// desk's own accept button is never pressed and the desk goes on offering
+  /// it — Jose answered a call in CallKit on 2026-09-10 and was then asked to
+  /// accept the same call again inside the app.
+  ///
+  /// Distinct from [onEnded], which says there is no call: this says there is
+  /// one and it is already connected. Firing onEnded here would clear the bar
+  /// correctly and take the desk off `on_call` at the same moment the
+  /// conversation started.
+  ///
+  /// The browser never raises it — there, pressing accept in the app IS the
+  /// answering, so the desk already knows.
+  void Function()? onAnswered;
+
   void dispose();
 }
 

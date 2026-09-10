@@ -25,6 +25,11 @@ class TwilioVoiceDevice implements VoiceDevice {
   @override
   void Function()? onEnded;
 
+  /// The browser answers through the desk's own button, so the desk
+  /// already knows and nothing raises this.
+  @override
+  void Function()? onAnswered;
+
   // The browser grants the microphone against the page itself, so there is
   // no widget that a permission has to reach.
   @override

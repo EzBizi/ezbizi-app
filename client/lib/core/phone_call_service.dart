@@ -188,6 +188,7 @@ class PhoneCallService extends ChangeNotifier {
       _device!.onIncoming = (incoming) => _ringing(incoming.from);
       _device!.onRegistrationChanged = notifyListeners;
       _device!.onEnded = _ended;
+      _device!.onAnswered = _answeredElsewhere;
 
       // prepare(), then a FRAME, then the token. platformView is null until
       // prepare() has built the controller, so the shell cannot mount the
@@ -253,6 +254,18 @@ class PhoneCallService extends ChangeNotifier {
     if (device == null || !device.supported) return;
 
     await device.connect(to: to, callerId: callerId);
+    _onCall = true;
+    notifyListeners();
+  }
+
+  /// The handset's own call UI answered, so the desk stops offering to.
+  ///
+  /// Not [_ended]: there IS a call, and it has just started. Clearing the
+  /// banner through the ended path would take this person off `on_call` at
+  /// the moment the conversation began, which is the ring group quietly
+  /// routing the next caller to somebody who is busy.
+  void _answeredElsewhere() {
+    _stopRinging();
     _onCall = true;
     notifyListeners();
   }

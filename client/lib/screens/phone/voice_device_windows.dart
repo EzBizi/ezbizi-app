@@ -68,6 +68,10 @@ class WindowsVoiceDevice implements VoiceDevice {
   @override
   void Function()? onEnded;
 
+  /// Same as the browser: the desk's own button does the answering.
+  @override
+  void Function()? onAnswered;
+
   @override
   bool get supported => true;
 

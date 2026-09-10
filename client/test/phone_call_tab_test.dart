@@ -1036,6 +1036,9 @@ void main() {
 
 class _FakeDevice implements VoiceDevice {
   @override
+  void Function()? onAnswered;
+
+  @override
   String? pushPlatform;
 
   var declined = false;

@@ -111,6 +111,10 @@ class MobileVoiceDevice implements VoiceDevice {
   @override
   void Function()? onEnded;
 
+  /// CallKit or the ConnectionService took the call. See [VoiceDevice].
+  @override
+  void Function()? onAnswered;
+
   @override
   Object? get platformView => null;
 
@@ -235,13 +239,33 @@ class MobileVoiceDevice implements VoiceDevice {
     }
   }
 
+  @visibleForTesting
+  void handleEvent(CallEvent event) => _onEvent(event);
+
   void _onEvent(CallEvent event) {
-    if (event == CallEvent.incoming || event == CallEvent.ringing) {
+    // INCOMING ONLY. `ringing` is NOT an incoming call.
+    //
+    // The SDK raises `ringing` for the far end of an OUTGOING call too, and
+    // this treated the two alike — so placing a call raised the desk's own
+    // incoming banner and asked the caller to accept the call they had just
+    // made. Jose hit it on 2026-09-10: he rang Rodrigo, Rodrigo answered, and
+    // he had to accept an incoming call from himself to join.
+    if (event == CallEvent.incoming) {
       // The native call UI already knows who is calling and is already
       // showing them. This tells the desk so its own banner agrees.
       onIncoming?.call(
         VoiceIncoming(from: TwilioVoicePlatform.instance.call.activeCall?.from ?? ''),
       );
+
+      return;
+    }
+
+    // Answered in CallKit or the ConnectionService, where a handset's calls
+    // are actually answered. Without this the desk kept offering its own
+    // accept button for a call already in progress, so answering took two
+    // gestures on two different screens.
+    if (event == CallEvent.answer || event == CallEvent.connected) {
+      onAnswered?.call();
 
       return;
     }
