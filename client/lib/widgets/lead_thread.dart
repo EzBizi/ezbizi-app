@@ -109,6 +109,11 @@ class _LeadThreadState extends State<LeadThread> {
   /// connected. The server says; the screen never guesses from lead_type.
   bool _canReply = false;
 
+  /// Why not, from the channel that refused. Null while a reply can be sent,
+  /// and null on an older server — the composer's fallback sentence names no
+  /// provider, because a screen that invents a reason invents the wrong one.
+  String? _cannotReplyBecause;
+
   /// Customers whose number matches this lead's, for the booking panel.
   List<Map<String, dynamic>> _matches = const [];
 
@@ -259,6 +264,7 @@ class _LeadThreadState extends State<LeadThread> {
             .cast<Map<String, dynamic>>(),
       );
       _canReply = data['can_reply'] == true;
+      _cannotReplyBecause = data['cannot_reply_because'] as String?;
       _canSuggest = data['can_suggest'] == true;
       _matches = List<Map<String, dynamic>>.from(
         (data['customer_matches'] as List? ?? const [])
@@ -478,8 +484,12 @@ class _LeadThreadState extends State<LeadThread> {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
               child: Text(
-                'Google only accepts replies to text enquiries. This one came '
-                'in as a call, so it is answered by calling back.',
+                // The server's sentence, from the channel that refused. The
+                // fallback is source-free on purpose: a screen that invents a
+                // reason invents the wrong one, which is how a Thumbtack
+                // message came to be described as a Google phone call.
+                _cannotReplyBecause ??
+                    'This enquiry cannot be replied to from here.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -936,6 +946,7 @@ String leadHeaderLine(Map<String, dynamic> lead) {
 String sourceWord(String? source) => switch (source) {
   'website_chat' => 'Website chat',
   'website_form' => 'Website form',
+  'thumbtack' => 'Thumbtack',
   _ => 'Google Ads',
 };
 

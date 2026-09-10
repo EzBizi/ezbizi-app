@@ -8,6 +8,7 @@ use App\Models\Job;
 use App\Models\InspectionReport;
 use App\Services\Leads\LeadInsights;
 use App\Services\Leads\LocalServicesLeads;
+use App\Services\Leads\ThumbtackLeads;
 use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
 use App\Support\Files\Attachables;
@@ -69,6 +70,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->tag(
             [
                 LocalServicesLeads::class,
+                ThumbtackLeads::class,
                 WebsiteChatReplies::class,
             ],
             LeadReplies::TAG,

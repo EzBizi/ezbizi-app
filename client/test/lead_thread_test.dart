@@ -157,10 +157,57 @@ void main() {
       player: FakeRecordingPlayer(),
       recordingGate: Completer()..complete(),
       canReply: false,
+      cannotReplyBecause:
+          'Google only accepts replies to text enquiries. '
+          'This one came in as a call, so it is answered by calling back.',
     );
 
     expect(find.byKey(const ValueKey('reply-box')), findsNothing);
     expect(find.textContaining('only accepts replies to text'), findsOneWidget);
+  });
+
+  /// The screen used to WRITE that sentence itself, so every source that could
+  /// not be replied to was described as a Google phone call. The first real
+  /// Thumbtack enquiry was a message thread and was told exactly that
+  /// (Jose, 2026-09-10). The reason comes from the channel that refused.
+  testWidgets('the refusal shown is the one the server gave, whatever the '
+      'source', (tester) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      canReply: false,
+      cannotReplyBecause:
+          'This is a test enquiry from Thumbtack, so there is nobody to reply to.',
+    );
+
+    expect(find.textContaining('nobody to reply to'), findsOneWidget);
+    // The header still reads "Google Ads" because this fixture's lead came
+    // from there. What must be gone is the REFUSAL written in Google's terms.
+    expect(
+      find.textContaining('only accepts replies to text'),
+      findsNothing,
+      reason: 'the provider named must be the one that refused',
+    );
+  });
+
+  /// An older server sends no reason. The fallback names no provider, because
+  /// the screen cannot know which one is right.
+  testWidgets('with no reason given the screen names no provider', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      canReply: false,
+    );
+
+    expect(
+      find.textContaining('cannot be replied to from here'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('only accepts replies to text'), findsNothing);
   });
 
   testWidgets('a refused reply stays in the box with the reason', (
@@ -257,6 +304,7 @@ Future<void> _pump(
   required RecordingPlayer player,
   required Completer<void> recordingGate,
   bool canReply = true,
+  String? cannotReplyBecause,
   String? refuseSend,
   String? suggestion,
   Future<void> Function()? onRead,
@@ -323,6 +371,7 @@ Future<void> _pump(
             'data': {
               'id': 'lead-1',
               'can_reply': canReply,
+              'cannot_reply_because': cannotReplyBecause,
               'can_suggest': suggestion != null,
               'conversations': [
                 {

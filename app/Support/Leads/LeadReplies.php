@@ -30,6 +30,31 @@ final class LeadReplies
     }
 
     /**
+     * Why not, in the refusing channel's own words.
+     *
+     * Null when a reply CAN be sent. The generic sentence is deliberately
+     * source-free: it is what a channel with nothing specific to say falls
+     * back to, and the screen must never fill that gap with one provider's
+     * wording — that is the defect this method exists to end.
+     */
+    public function whyNot(Lead $lead): ?string
+    {
+        $channel = $this->for($lead);
+
+        if ($channel !== null && $channel->canReply($lead)) {
+            return null;
+        }
+
+        if ($channel instanceof ExplainsRefusal) {
+            return $channel->whyNot($lead);
+        }
+
+        return $channel === null
+            ? 'Enquiries from this source cannot be replied to from here.'
+            : 'This enquiry cannot be replied to right now.';
+    }
+
+    /**
      * Resolved on every call, never memoised. A route keeps its controller
      * instance, and in tests every request in a file shares it, so a list
      * cached at construction outlived a channel tagged afterwards and read

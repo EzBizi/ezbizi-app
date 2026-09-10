@@ -14,6 +14,7 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Leads\LeadReplies;
 use App\Support\Numbering\RecordNumberGenerator;
+use App\Support\Scoping\ViewScope;
 use App\Support\Social\GoogleToken;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
@@ -103,6 +104,48 @@ class LeadsController extends Controller
             });
         }
 
+        /*
+         * REACH is a floor; the VIEW is what somebody is looking at now.
+         *
+         * The clause above answers "may this person act here" and stops at the
+         * organization: an owner can act everywhere, so it filtered nothing and
+         * the scope switcher changed the connections band while the list under
+         * it stayed the same. Jose, 2026-09-10, standing in Everdoors › A1
+         * Garage Doors: "i should only see them mixed when im in the
+         * organization level ... right now it's showing me a1chimney and a1
+         * garage doors".
+         *
+         * The rule is SocialConnectionAccess::inView's, one level down — a lead
+         * is placed where its connection was, so the two must agree or the band
+         * says one thing and the rows say another. An organization-scoped
+         * connection is visible in every view there, so a lead filed at
+         * organization level (both columns null) is visible in every view here.
+         * That is why Thumbtack's twelve businesses, connected at organization
+         * level, still appear under a company: their leads belong to no company
+         * because the account belongs to none.
+         *
+         * ConnectionsRespectTheViewTest asserted the band and said in prose
+         * that "index() correctly filters the rows by view". It did not, for
+         * anybody who can act on the organization, and no test read a row.
+         */
+        $view = ViewScope::forUser($user);
+
+        if (! $view->isOrganization()) {
+            $viewCompanyIds = $view->type === ViewScope::COMPANY
+                ? $view->companyIds()
+                // A franchise view covers its own company's work, the same
+                // match inView makes for a company-scoped connection.
+                : array_values(array_filter([Franchise::find($view->id)?->company_id]));
+
+            $viewFranchiseIds = $view->franchiseIds();
+
+            $query->where(function ($q) use ($viewCompanyIds, $viewFranchiseIds) {
+                $q->whereIn('leads.company_id', $viewCompanyIds)
+                    ->orWhereIn('leads.franchise_id', $viewFranchiseIds)
+                    ->orWhere(fn ($w) => $w->whereNull('leads.company_id')->whereNull('leads.franchise_id'));
+            });
+        }
+
         if (is_string($status = $request->query('status')) && $status !== '') {
             $query->where('leads.status', $status);
         }
@@ -184,9 +227,13 @@ class LeadsController extends Controller
             ->values()
             ->all();
 
-        // Whether a reply can go anywhere: Google accepts them for text
-        // enquiries only, and only while the account is connected.
+        // Whether a reply can go anywhere, and when it cannot, WHY — in the
+        // refusing channel's own words. The screen used to carry one sentence
+        // for every source, and it named Google; the first Thumbtack enquiry
+        // was told it had come in as a call on an account Google has never
+        // heard of.
         $data['can_reply'] = $this->replies->canReply($lead);
+        $data['cannot_reply_because'] = $this->replies->whyNot($lead);
 
         // A draft is offered only where a reply can go and the model is on.
         $data['can_suggest'] = $data['can_reply'] && $this->insights->enabled();
@@ -471,11 +518,9 @@ class LeadsController extends Controller
         abort_if(
             $channel === null || ! $channel->canReply($lead),
             Response::HTTP_UNPROCESSABLE_ENTITY,
-            $channel === null
-                ? 'Replies cannot be sent to enquiries from this source.'
-                : ($lead->lead_type !== 'MESSAGE' && $lead->source === Lead::SOURCE_LOCAL_SERVICES
-                    ? 'Google only accepts replies to text enquiries. This one came in as a call.'
-                    : 'This enquiry cannot be replied to right now.'),
+            // Same sentence the screen was already showing, from the same
+            // place, rather than a second copy of one source's rules here.
+            (string) $this->replies->whyNot($lead),
         );
 
         try {

@@ -249,6 +249,25 @@ had found missing against a1tools (646-547-6829, 610-406-7510) present. One
 connection failed: the seeded demo row DEMO-555-0100-01, which has no grant.
 146-421-7121 is marked broken by the same run.
 
+**2026-09-10, the first real Thumbtack enquiry, and two faults it exposed.**
+(1) **No reply channel was tagged for `thumbtack`**, so the composer was not
+drawn — and in its place the thread said "Google only accepts replies to text
+enquiries. This one came in as a call", about a Thumbtack message thread. The
+sentence was hard-coded in the client AND in the controller, both as Google's.
+`ThumbtackLeads` now implements `LeadReplyChannel` (a negotiation IS a message
+thread, so there is no call/message split to respect) and the reason for any
+refusal comes from the channel that refuses, through the optional
+`ExplainsRefusal`. A test enquiry says there is nobody to reply to rather than
+relaying a 404. (2) **The list ignored the scope switcher.** `index()` narrowed
+by REACH, which stops at the organization, so an owner saw every company's
+enquiries in every view: A-1 Chimney's leads under A1 Garage Doors (Jose,
+2026-09-10). It now narrows by `ViewScope` as well, using
+`SocialConnectionAccess::inView`'s rule one level down — a lead filed at
+organization level (both columns null) shows in every view, which is why
+Thumbtack's twelve organization-scoped businesses still appear inside a
+company. `ConnectionsRespectTheViewTest` claimed in prose that the rows were
+filtered and only ever asserted the connections band.
+
 **Thumbtack, same day, two faults found from the box.** (1) A specimen from
 `ezbizi:thumbtack-test-lead` now authenticates and reaches the lead code, then
 `GET /v4/negotiations/{id}` 404s: Thumbtack's own text says specimen ids

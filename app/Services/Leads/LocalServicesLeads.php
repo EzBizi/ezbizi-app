@@ -6,6 +6,7 @@ use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\SocialConnection;
 use App\Support\Automations\EventEmitter;
+use App\Support\Leads\ExplainsRefusal;
 use App\Support\Leads\LeadReplyChannel;
 use App\Support\Leads\LeadThread;
 use App\Support\Social\GoogleAdsOAuth;
@@ -39,7 +40,7 @@ use RuntimeException;
  * touched here; a sweep that reconciled the two would silently revert every
  * manual decision the next time it ran.
  */
-class LocalServicesLeads implements LeadReplyChannel
+class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
 {
     private const TIMEOUT = 20;
 
@@ -312,6 +313,23 @@ class LocalServicesLeads implements LeadReplyChannel
     public function canReply(Lead $lead): bool
     {
         return $lead->lead_type === 'MESSAGE' && $lead->connection_id !== null;
+    }
+
+    /**
+     * The sentence the thread used to hard-code for every source.
+     *
+     * It lives here now because it is TRUE here: Google's
+     * appendLeadConversation takes text only against a message enquiry, and a
+     * call is answered by ringing back.
+     */
+    public function whyNot(Lead $lead): string
+    {
+        if ($lead->connection_id === null) {
+            return 'The Google Ads account this enquiry came through is no longer connected.';
+        }
+
+        return 'Google only accepts replies to text enquiries. This one came in as a call, '
+            .'so it is answered by calling back.';
     }
 
     public function send(Lead $lead, string $text): LeadConversation

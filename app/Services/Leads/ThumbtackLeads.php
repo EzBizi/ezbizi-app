@@ -6,6 +6,8 @@ use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\SocialConnection;
 use App\Support\Automations\EventEmitter;
+use App\Support\Leads\ExplainsRefusal;
+use App\Support\Leads\LeadReplyChannel;
 use App\Support\Leads\LeadThread;
 use App\Support\Social\ThumbtackNegotiations;
 use Illuminate\Support\Carbon;
@@ -43,8 +45,79 @@ use Throwable;
  * duplicating them. That is what lets the controller answer 200 to work it has
  * already done, rather than trying to remember what it has seen.
  */
-class ThumbtackLeads
+class ThumbtackLeads implements ExplainsRefusal, LeadReplyChannel
 {
+    public function source(): string
+    {
+        return Lead::SOURCE_THUMBTACK;
+    }
+
+    /**
+     * A negotiation IS a message thread, so unlike Google there is no
+     * call/message split to respect: what stops a reply is the account being
+     * gone, or there being nobody at the other end.
+     */
+    public function canReply(Lead $lead): bool
+    {
+        return $lead->connection_id !== null
+            && ! $lead->is_test
+            && trim((string) $lead->remote_id) !== '';
+    }
+
+    public function whyNot(Lead $lead): string
+    {
+        if ($lead->is_test) {
+            // Thumbtack's own words for the specimen: its ids "will not refer
+            // to any real entities". A reply would 404 against nobody, and the
+            // screen should say that rather than relay their HTTP status.
+            return 'This is a test enquiry from Thumbtack, so there is nobody to reply to.';
+        }
+
+        return 'The Thumbtack account this enquiry came through is no longer connected.';
+    }
+
+    /**
+     * Say it on the negotiation, and file what we said.
+     *
+     * The row is written from OUR text rather than from their echo: the reply
+     * has been accepted by the time this returns, and a thread that draws
+     * nothing because the response was shaped differently reads as a reply
+     * that never sent. `messageID` is taken when it is there, because it is
+     * the id the next MessageCreatedV4 carries and it is what stops the same
+     * sentence arriving twice.
+     */
+    public function send(Lead $lead, string $text): LeadConversation
+    {
+        $connection = $lead->connection;
+
+        if ($connection === null) {
+            throw new RuntimeException(
+                'The account this enquiry came through is no longer connected, so a reply cannot be sent.',
+            );
+        }
+
+        $sent = ThumbtackNegotiations::for($connection)->reply((string) $lead->remote_id, $text);
+
+        $remoteId = trim((string) ($sent['messageID'] ?? '')) ?: ('sent-'.now()->format('YmdHisv'));
+
+        $row = LeadConversation::create([
+            'organization_id' => $lead->organization_id,
+            'lead_id'         => $lead->getKey(),
+            'remote_id'       => $remoteId,
+            'channel'         => LeadConversation::CHANNEL_MESSAGE,
+            'participant'     => LeadConversation::FROM_ADVERTISER,
+            'occurred_at'     => self::when($sent['sentAt'] ?? null) ?? now(),
+            'text'            => $text,
+        ]);
+
+        // The list's preview line is a cache of the newest row; without this
+        // the reply is in the thread and the list still shows the customer's
+        // last message as the latest thing said.
+        $this->threads->refresh($lead);
+
+        return $row;
+    }
+
     public function __construct(
         private readonly EventEmitter $events,
         private readonly LeadThread $threads,
