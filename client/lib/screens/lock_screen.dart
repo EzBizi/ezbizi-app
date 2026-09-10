@@ -25,6 +25,7 @@ class LockScreen extends StatefulWidget {
 
 class _LockScreenState extends State<LockScreen> with WidgetsBindingObserver {
   Timer? _tick;
+  Timer? _poll;
   bool _busy = false;
   String? _error;
 
@@ -32,10 +33,39 @@ class _LockScreenState extends State<LockScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    unawaited(ClockWindow.lock());
+    // AFTER the first frame, not during it. The 0.0.0173 build asked for
+    // fullscreen from inside initState — the frame where this route is built
+    // is the app's very first — and the window people saw still had its title
+    // bar. ClockWindow verifies and retries as well; this removes the reason
+    // it should have to.
+    WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(ClockWindow.lock()));
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
+
+    // The lock screen has to be able to let go on its own.
+    //
+    // The shell's poll does not run here — the shell is not mounted, this
+    // route replaced it — so until now the ONLY way out was clocking in from
+    // this window. Anything else the server decided (the shift opened on
+    // another device, the organization switching Clock in or Lock screen off,
+    // somebody marking this person exempt) never arrived, and the machine
+    // stayed locked on an answer that was no longer true.
+    _poll = Timer.periodic(const Duration(seconds: 60), (_) => unawaited(_refresh()));
+  }
+
+  /// Ask the server whether this is still locked, and apply whatever it says.
+  /// `lock: false` rebuilds the root into the shell, which disposes this route
+  /// and hands the window back.
+  Future<void> _refresh() async {
+    final response = await widget.api.get('/time-clock/me');
+
+    if (!mounted || !response.ok || response.data is! Map) return;
+
+    final block = (response.data as Map)['time_clock'];
+    if (block is Map) {
+      widget.session.applyTimeClock(Map<String, dynamic>.from(block));
+    }
   }
 
   @override
@@ -47,6 +77,7 @@ class _LockScreenState extends State<LockScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     _tick?.cancel();
+    _poll?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     unawaited(ClockWindow.release());
     super.dispose();
