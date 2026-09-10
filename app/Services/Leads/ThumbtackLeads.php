@@ -338,6 +338,38 @@ class ThumbtackLeads implements ExplainsRefusal, LeadReplyChannel
                 // `status` is deliberately absent from $fromSource. A replayed
                 // webhook must not drag a lead somebody archived back to NEW.
                 $lead->fill($fromSource);
+
+                /*
+                 * AN ORPHAN IS ADOPTED BY THE ACCOUNT THAT ANSWERS FOR IT.
+                 *
+                 * Disconnecting deletes the connection row and the lead's
+                 * `connection_id` goes null with it, which is silent and
+                 * permanent: no token to fetch the thread, no token to reply,
+                 * and the thread says the account is no longer connected. On
+                 * 2026-09-10 Jose disconnected Thumbtack and connected it
+                 * again under A-1 Chimney — the right thing to do, and it left
+                 * a real customer's enquiry belonging to nothing.
+                 *
+                 * Only when the lead has NO connection. A lead already
+                 * attached is left alone: two businesses can appear on one
+                 * negotiation, and the account that first filed it is the one
+                 * whose token has worked.
+                 *
+                 * Placement rides along, because a lead with no company is a
+                 * lead that shows in every view (LeadsController::index) — so
+                 * an orphan is not just unrepliable, it is also filed as
+                 * nobody's.
+                 */
+                if ($lead->connection_id === null) {
+                    $lead->connection_id = $connection->getKey();
+                    $lead->company_id ??= $connection->scope_type === SocialConnection::SCOPE_COMPANY
+                        ? $connection->scope_id
+                        : null;
+                    $lead->franchise_id ??= $connection->leads_franchise_id
+                        ?? ($connection->scope_type === SocialConnection::SCOPE_FRANCHISE
+                            ? $connection->scope_id
+                            : null);
+                }
             }
 
             $lead->save();

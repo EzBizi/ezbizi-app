@@ -123,6 +123,82 @@ class ThumbtackLeadIngestionTest extends TestCase
         );
     }
 
+    /**
+     * Disconnecting takes the connection row with it and the lead's
+     * `connection_id` goes null: no token to read the thread, none to reply,
+     * and a lead with no company shows in every view. Jose disconnected
+     * Thumbtack and connected it again under A-1 Chimney on 2026-09-10 —
+     * exactly the right move — and a real customer's enquiry was left
+     * belonging to nothing. The next event on it adopts it.
+     */
+    public function test_an_orphaned_enquiry_is_adopted_by_the_account_that_answers_for_it(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $connection = $this->connection($t);
+        $this->fakeThumbtack();
+
+        // The state a disconnect leaves behind: the row is here, and nothing
+        // it needs is.
+        $orphan = $this->inTenant($t['org'], fn () => Lead::create([
+            'organization_id' => $t['org']->getKey(),
+            'company_id'      => null,
+            'connection_id'   => null,
+            'source'          => Lead::SOURCE_THUMBTACK,
+            'remote_id'       => 'neg-1',
+            'contact_name'    => 'Reinaldo Ortiz',
+            'status'          => Lead::STATUS_NEW,
+            'received_at'     => now()->subMonth(),
+        ]));
+
+        $this->send($t, ['eventType' => 'MessageCreatedV4', 'negotiationID' => 'neg-1'])->assertOk();
+
+        $fresh = $this->inTenant($t['org'], fn () => Lead::query()->findOrFail($orphan->getKey()));
+
+        $this->assertSame($connection->getKey(), $fresh->connection_id);
+        $this->assertSame($t['company']->getKey(), $fresh->company_id, 'an orphan is also filed as nobody\'s');
+        $this->assertSame(1, $this->inTenant($t['org'], fn () => Lead::query()->count()), 'adopted, not duplicated');
+    }
+
+    /**
+     * The other direction, which is the one that would do harm: a lead that
+     * already has an account keeps it. Two businesses can appear on one
+     * negotiation, and the one whose token filed it is the one that works.
+     */
+    public function test_a_lead_that_already_has_an_account_is_not_moved_to_another(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $first = $this->connection($t);
+        $this->fakeThumbtack();
+
+        $this->send($t, ['eventType' => 'NegotiationCreatedV4', 'negotiationID' => 'neg-1'])->assertOk();
+
+        $second = $this->inTenant($t['org'], function () use ($t) {
+            $row = new SocialConnection;
+            $row->forceFill([
+                'organization_id' => $t['org']->getKey(),
+                'scope_type'      => SocialConnection::SCOPE_COMPANY,
+                'scope_id'        => $t['company']->getKey(),
+                'provider'        => SocialProvider::Thumbtack->value,
+                'remote_id'       => 'biz-2',
+                'display_name'    => 'A second business',
+            ]);
+            $row->connect(['access_token' => 'a', 'refresh_token' => 'r', ThumbtackWebhooks::SECRET_KEY => 'the-secret']);
+            $row->save();
+
+            return $row;
+        });
+
+        $this->withHeader(ThumbtackWebhooks::AUTH_HEADER, 'the-secret')
+            ->postJson(self::URL, ['eventType' => 'MessageCreatedV4', 'negotiationID' => 'neg-1', 'businessID' => 'biz-2'])
+            ->assertOk();
+
+        $this->assertSame(
+            $first->getKey(),
+            $this->inTenant($t['org'], fn () => Lead::query()->firstOrFail())->connection_id,
+        );
+        $this->assertNotSame($second->getKey(), $first->getKey());
+    }
+
     public function test_a_message_event_files_the_enquiry_it_belongs_to(): void
     {
         $t = $this->provisionTenant('A1-Group');
