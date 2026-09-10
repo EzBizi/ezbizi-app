@@ -48,6 +48,7 @@ void main() {
     'never a blank row',
     (tester) async {
       await _pumpScreen(tester, devices: [_agentDevice, _webDevice]);
+      await _openPerson(tester, 'Priya Nair');
 
       final webRow = find.byKey(const ValueKey('monitoring-device-dev-web'));
       expect(webRow, findsOneWidget);
@@ -83,6 +84,7 @@ void main() {
     tester,
   ) async {
     await _pumpScreen(tester, devices: [_agentDevice, _webDevice]);
+    await _openPerson(tester, 'Marco Reyes');
 
     final agentRow = find.byKey(const ValueKey('monitoring-device-dev-agent'));
     expect(agentRow, findsOneWidget);
@@ -105,6 +107,7 @@ void main() {
       final withheld = Map<String, dynamic>.from(_agentDevice)..remove('specs');
 
       await _pumpScreen(tester, devices: [withheld]);
+      await _openPerson(tester, 'Marco Reyes');
 
       final row = find.byKey(const ValueKey('monitoring-device-dev-agent'));
       expect(
@@ -149,6 +152,7 @@ void main() {
       final device = {..._agentDevice, 'last_seen_at': threeMinutesAgo};
 
       await _pumpScreen(tester, devices: [device]);
+      await _openPerson(tester, 'Marco Reyes');
 
       final row = find.byKey(const ValueKey('monitoring-device-dev-agent'));
 
@@ -341,6 +345,36 @@ void main() {
     expect(moduleScreens['monitoring'], isNotNull);
   });
 
+  testWidgets(
+    'the roster opens collapsed: a person is listed, their specs are not, '
+    'until the card is opened',
+    (tester) async {
+      await _pumpScreen(tester, devices: [_agentDevice]);
+
+      // Collapsing is only defensible because the header still answers the
+      // question the tab exists for, so that half is asserted too.
+      expect(find.text('Marco Reyes'), findsOneWidget);
+
+      final row = find.byKey(const ValueKey('monitoring-device-dev-agent'));
+      expect(
+        row,
+        findsNothing,
+        reason:
+            'A collapsed card must not render its device row. If this finds '
+            'one, the roster is expanded by default again and every '
+            '_openPerson call in this file is dead weight that would keep '
+            'passing without noticing.',
+      );
+
+      await _openPerson(tester, 'Marco Reyes');
+
+      // Positive control for the assertion above: the row it proved absent
+      // is reachable, so that absence is the collapse rather than a renamed
+      // key or a fixture that never rendered anything at all.
+      expect(row, findsOneWidget);
+    },
+  );
+
   group('friendlyDeviceName rule', () {
     testWidgets(
       'a device with a null label on the web platform renders "Browser", '
@@ -351,6 +385,7 @@ void main() {
           ..['label'] = null;
 
         await _pumpScreen(tester, devices: [noLabel]);
+        await _openPerson(tester, 'Priya Nair');
 
         final row = find.byKey(const ValueKey('monitoring-device-dev-web-nolabel'));
         expect(row, findsOneWidget);
@@ -385,6 +420,7 @@ void main() {
         final agentSecond = {..._agentDevice, 'id': 'dev-agent-active'};
 
         await _pumpScreen(tester, devices: [browserFirst, agentSecond]);
+        await _openPerson(tester, 'Marco Reyes');
 
         expect(
           find.byKey(const ValueKey('monitoring-device-dev-agent-active')),
@@ -498,6 +534,7 @@ void main() {
         };
 
         await _pumpScreen(tester, devices: [_agentDevice, staleDevice]);
+        await _openPerson(tester, 'Marco Reyes');
 
         // The active device renders immediately.
         expect(
@@ -547,6 +584,7 @@ void main() {
         };
 
         await _pumpScreen(tester, devices: [_agentDevice, secondActive]);
+        await _openPerson(tester, 'Marco Reyes');
 
         // Only the first (selected-by-default) device row shows at once —
         // never both active rows stacked together.
@@ -604,6 +642,7 @@ void main() {
         };
 
         await _pumpScreen(tester, devices: [recent, older]);
+        await _openPerson(tester, 'Marco Reyes');
 
         expect(
           find.byKey(const ValueKey('monitoring-device-dev-recent')),
@@ -655,6 +694,19 @@ const _webDevice = {
   'last_seen_at': '2026-08-28T20:00:00Z',
   'current_module': 'customers',
 };
+
+/// Opens one person's card in the roster.
+///
+/// PC Specs renders every person COLLAPSED (pc_specs_tab.dart), so a test
+/// that wants a device row has to open the card the way a person would.
+/// Deliberately NOT folded into [_pumpScreen]: doing it there would open
+/// every card for every test and leave the collapsed default asserted by
+/// nothing, which is the failure mode where the behaviour changes and the
+/// suite stays green.
+Future<void> _openPerson(WidgetTester tester, String name) async {
+  await tester.tap(find.text(name));
+  await tester.pumpAndSettle();
+}
 
 Future<void> _pumpScreen(
   WidgetTester tester, {
