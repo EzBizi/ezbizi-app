@@ -387,6 +387,43 @@ class LeadConversationsTest extends TestCase
     }
 
     /**
+     * The filter reported OUR fetch state as the customer's behaviour.
+     *
+     * Conversations are read on a slower tick than leads — ten minutes against
+     * five, and slower again on a day the Google quota runs out, because the
+     * second pass is the half designed to lose. Until that read lands
+     * `last_contact_from` is null, so a lead from somebody who had just rung
+     * was absent from "who is waiting on me", then appeared minutes later with
+     * nothing about the customer having changed.
+     *
+     * A lead exists because somebody made an enquiry. No call or message held
+     * means nobody has replied to them, which is what the filter is asked.
+     */
+    public function test_an_enquiry_whose_conversations_have_not_been_read_yet_still_counts_as_waiting(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $connection = $this->connected($t);
+
+        // Exactly what one tick of the scheduler leaves behind: the lead
+        // discovered, its conversations not fetched yet.
+        $this->fakeGoogle([$this->leadRow('333', 'Just rang')], []);
+        $this->sync($t, $connection);
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->firstOrFail());
+
+        // The control: this is the state under test, not a lead that has been
+        // replied to and not a lead with a thread.
+        $this->assertNull($lead->last_contact_from);
+
+        $names = $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/leads?unreplied=1')
+            ->assertOk()
+            ->json('data.*.contact_name');
+
+        $this->assertSame(['Just rang'], $names);
+    }
+
+    /**
      * Every stored time was four hours old, and a migration cannot know by
      * how much: the offset is the account's, not the platform's. Re-reading
      * a window refreshes every row in it from Google, clock included.

@@ -153,7 +153,29 @@ class LeadsController extends Controller
         // "Who is waiting on me": the enquirer spoke last. The one filter with
         // data behind it; Unread and Starred are not drawn until they have some.
         if ($request->boolean('unreplied')) {
-            $query->where('leads.last_contact_from', LeadConversation::FROM_CONSUMER);
+            /*
+             * NOBODY HAS REPLIED INCLUDES NOBODY HAS FETCHED.
+             *
+             * `last_contact_from` is a cache of the newest CONVERSATION, and
+             * conversations are read on a slower tick than leads — ten minutes
+             * against five, and slower still on the day the Google quota runs
+             * out, since the second pass is the half designed to lose. Until
+             * that read lands the column is null, and a filter matching only
+             * CONSUMER answered "nobody is waiting" about somebody who had
+             * just rung.
+             *
+             * The same lead flipped INTO the filter minutes later with nothing
+             * about the customer having changed, which is the tell: it was
+             * reporting our fetch state as their behaviour.
+             *
+             * Null means no call or message is held, and a lead exists because
+             * somebody made an enquiry. Nobody has replied to them — that is
+             * what this filter is asked, and it is true in both readings.
+             */
+            $query->where(function ($q) {
+                $q->where('leads.last_contact_from', LeadConversation::FROM_CONSUMER)
+                    ->orWhereNull('leads.last_contact_from');
+            });
         }
 
         if ($request->boolean('unread')) {

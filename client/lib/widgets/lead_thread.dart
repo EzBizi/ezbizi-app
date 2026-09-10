@@ -722,8 +722,14 @@ class _LeadThreadState extends State<LeadThread> {
     child: Padding(
       padding: const EdgeInsets.all(24),
       child: Text(
-        'Nothing said yet. Google has not recorded a call or message on this '
-        'enquiry.',
+        // NOT "Google has not recorded a call or message on this enquiry."
+        // That is a claim about Google's records made from ours, and it is
+        // false in the ordinary case: the call is read on a slower tick than
+        // the enquiry, so a lead that arrived a minute ago has one and this
+        // screen had not fetched it yet. It reads as "the customer said
+        // nothing", which is the one thing it must never say wrongly.
+        'Nothing has reached EzBizi on this enquiry yet. A call or message '
+        'usually appears within a few minutes of the enquiry itself.',
         style: theme.textTheme.bodySmall?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,
         ),

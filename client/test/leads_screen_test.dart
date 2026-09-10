@@ -830,10 +830,15 @@ void _conversationRowTests() {
 
     expect(find.byType(AppBar), findsOneWidget);
     expect(find.byType(BackButton), findsOneWidget);
+    // NOT "Google has not recorded a call or message on this enquiry": a
+    // claim about Google's records made from ours, and false in the ordinary
+    // case, because conversations are read on a slower tick than leads. It
+    // read as "the customer said nothing", which is the one thing this screen
+    // must never say wrongly.
     expect(
       find.text(
-        'Nothing said yet. Google has not recorded a call or '
-        'message on this enquiry.',
+        'Nothing has reached EzBizi on this enquiry yet. A call or message '
+        'usually appears within a few minutes of the enquiry itself.',
       ),
       findsOneWidget,
     );
