@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:twilio_voice/twilio_voice.dart';
 
 import 'voice_device.dart';
@@ -30,13 +31,54 @@ class MobileVoiceDevice implements VoiceDevice {
   /// Registration is a platform channel, and its two interesting outcomes —
   /// an error and a call that never returns — cannot be reached through the
   /// real plugin in a test. Everything else here is the real thing.
-  MobileVoiceDevice({Future<bool?> Function(String token)? register})
-    : _register = register ?? _registerWithPlugin;
+  MobileVoiceDevice({
+    Future<bool?> Function(String token, String? deviceToken)? register,
+    Future<String?> Function()? readDeviceToken,
+  }) : _register = register ?? _registerWithPlugin,
+       _readDeviceToken = readDeviceToken ?? _readFcmToken;
 
-  final Future<bool?> Function(String token) _register;
+  final Future<bool?> Function(String token, String? deviceToken) _register;
+  final Future<String?> Function() _readDeviceToken;
 
-  static Future<bool?> _registerWithPlugin(String token) =>
-      TwilioVoicePlatform.instance.setTokens(accessToken: token);
+  static Future<bool?> _registerWithPlugin(String token, String? deviceToken) =>
+      TwilioVoicePlatform.instance
+          .setTokens(accessToken: token, deviceToken: deviceToken);
+
+  /// The Android app's FCM registration token, from the native side.
+  ///
+  /// ── Why Android needs this and iOS does not ──────────────────────
+  ///
+  /// `twilio_voice`'s Android half REFUSES to register without it. It is the
+  /// first thing `TOKENS` checks, before it stores the access token and before
+  /// it reaches `registerForCallInvites`:
+  ///
+  ///     val deviceToken = call.argument<String>("deviceToken") ?: run {
+  ///         result.error(MALFORMED_ARGUMENTS,
+  ///             "No 'deviceToken' provided or invalid type", null)
+  ///         return@onMethodCall
+  ///     }
+  ///
+  /// We passed none, so Android registration had never once happened — on a
+  /// handset as much as on an emulator, and regardless of the push credential
+  /// sitting ready on the Twilio subaccount.
+  ///
+  /// iOS is different: there the plugin fills `deviceToken` itself from
+  /// PushKit, so Dart supplying one would be wrong rather than merely
+  /// unnecessary.
+  ///
+  /// ── Why a method channel and not firebase_messaging ──────────────
+  ///
+  /// The Firebase messaging SDK is already inside the Android binary —
+  /// `twilio_voice` pulls it natively and the `google-services` plugin
+  /// generates the config it reads. Adding the Dart packages would have
+  /// brought an iOS pod that swizzles APNs delegate methods, to reach an SDK
+  /// Kotlin can already see, on the one path that had just started working.
+  static Future<String?> _readFcmToken() async {
+    if (defaultTargetPlatform != TargetPlatform.android) return null;
+
+    return const MethodChannel('com.ezbizi.app/fcm')
+        .invokeMethod<String>('getToken');
+  }
 
   /// How long registration is given before the desk stops waiting.
   ///
@@ -123,7 +165,31 @@ class MobileVoiceDevice implements VoiceDevice {
     }
 
     try {
-      final registered = await _register(token).timeout(_registrationTimeout);
+      // Inside the timeout as well: reading the token is a platform channel
+      // too, and a channel that never answers is the failure shape this whole
+      // method exists to make legible.
+      final deviceToken = await _readDeviceToken().timeout(
+        _registrationTimeout,
+      );
+
+      if (defaultTargetPlatform == TargetPlatform.android &&
+          (deviceToken == null || deviceToken.isEmpty)) {
+        // Said here rather than left to the plugin. Its refusal reads "No
+        // 'deviceToken' provided or invalid type", which describes the
+        // argument; this describes the cause, which is the thing somebody can
+        // act on.
+        _registered = false;
+        _registrationError =
+            'This device has no Firebase messaging token, so Twilio has no way '
+            'to reach it. Calls out will work; calls in will not arrive.';
+
+        return;
+      }
+
+      final registered = await _register(
+        token,
+        deviceToken,
+      ).timeout(_registrationTimeout);
 
       _registered = registered ?? false;
 
