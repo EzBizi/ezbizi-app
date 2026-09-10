@@ -53,9 +53,22 @@ final class LeadsGlance extends DescribedGlance
             // alone would hide every lead that arrived through a connection
             // scoped at the top — which, for a single-company tenant, is all
             // of them.
-            $inReach = fn ($query) => $query->where(
-                fn ($q) => $q->whereNull('franchise_id')->orWhereIn('franchise_id', $reachable),
-            );
+            /*
+             * Scope, and one thing beside it: `is_test` is excluded HERE
+             * rather than at each of the three call sites, so a fourth count
+             * added later cannot forget it.
+             *
+             * A specimen from `ezbizi:thumbtack-test-lead` is a real row with
+             * a real Thumbtack id, and the number this box leads with is the
+             * one that means a member of the public is waiting for a call
+             * back. A test enquiry raising that alarm is the same failure as
+             * missing a real one, in the other direction.
+             */
+            $inReach = fn ($query) => $query
+                ->where('is_test', false)
+                ->where(
+                    fn ($q) => $q->whereNull('franchise_id')->orWhereIn('franchise_id', $reachable),
+                );
 
             $total = (int) $inReach(Lead::query())->count();
 

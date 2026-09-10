@@ -110,7 +110,39 @@ class ThumbtackTestLead extends Command
                         ->latest('created_at')
                         ->first();
 
+                    /*
+                     * MARKED, so nobody has to work out later that this row is
+                     * not a customer.
+                     *
+                     * The row carries a real Thumbtack negotiation id and is
+                     * otherwise indistinguishable from an enquiry; on
+                     * 2026-09-10 it was one comparison away from being reported
+                     * as the first Thumbtack customer on the marketing site.
+                     *
+                     * TWO conditions, and the second one is the safety. A lead
+                     * appearing in this window is almost certainly the one we
+                     * asked for — but "almost" is doing real work there, and
+                     * marking a REAL enquiry as a test would drop a member of
+                     * the public out of the dashboard's waiting count. So the
+                     * phone must also not be a number anybody could ring:
+                     * Thumbtack's specimen is "statically populated" (their
+                     * words) and carries 1234567890, while a real payload
+                     * carries E.164 in customer.phone. If they change the
+                     * placeholder this stops marking and says so, which is the
+                     * direction that fails safely.
+                     */
+                    $reachable = str_starts_with((string) $lead->phone, '+');
+
+                    if ($reachable) {
+                        $this->warn('A lead arrived after '.($i + 1).'s, and it does not look like a specimen.');
+                        $this->warn('Its phone is a number somebody could ring, so this may be a REAL enquiry');
+                        $this->warn('that happened to arrive just now. Leaving it unmarked — check it by hand.');
+                    } else {
+                        $lead->forceFill(['is_test' => true])->save();
+                    }
+
                     $this->info('A lead arrived after '.($i + 1).'s.');
+                    $this->line('  marked   : '.($reachable ? 'NO — see above' : 'yes, is_test'));
                     $this->line('  contact  : '.($lead->contact_name ?? '(none)'));
                     $this->line('  phone    : '.($lead->phone ?? '(none)'));
                     $this->line('  category : '.($lead->category ?? '(none)'));

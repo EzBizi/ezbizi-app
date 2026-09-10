@@ -263,6 +263,27 @@ the dead tokens: **Jose reconnects Thumbtack once, after 12870b19 is live**,
 never before. Webhook delivery does not need the token, so new enquiries still
 store meanwhile; threads and replies do not.
 
+**A specimen says so on the row, from 2026-09-10.** `ezbizi:thumbtack-test-lead`
+fires Thumbtack's own webhook, which is what makes it a proof of the pipe — and
+leaves a row with a genuine negotiation id that reads exactly like a customer.
+The daily catalog read `thumbtack = 1` and was one comparison away from
+announcing the first Thumbtack customer on the marketing site; the deploy desk
+settled it by hand against a control phone number. So `leads.is_test` exists
+(same name and meaning as `automation_runs.is_test`), the command marks the row
+it caused, the dashboard box leaves test rows out of every count, and the list
+draws a **Test** badge. The question is now SQL anybody can run:
+
+```sql
+SELECT source, COUNT(*) FROM leads WHERE is_test = 0 GROUP BY source;
+```
+
+The marking is deliberately one-sided. It marks only a row that arrived in the
+command's own window AND carries a phone nobody could ring — Thumbtack's
+specimen is "statically populated" and a real payload carries E.164 — because
+missing a mark leaves a visible test row, while marking a real enquiry would
+drop a person waiting for a call back out of the count that exists to catch
+exactly that.
+
 ## 7 · Compliance
 
 `www/google-ads-api/` is written for Google's reviewers and must stay true to

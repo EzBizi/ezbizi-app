@@ -863,6 +863,11 @@ class LeadsController extends Controller
         return [
             'id'            => $lead->id,
             'source'        => $lead->source,
+
+            // A specimen from `ezbizi:thumbtack-test-lead`. It stays in the
+            // list — seeing it is how somebody knows the pipe works — and the
+            // row says what it is rather than reading as the first customer.
+            'is_test'       => (bool) $lead->is_test,
             'contact_name'  => $lead->contact_name,
             'phone'         => $lead->phone,
             'email'         => $lead->email,

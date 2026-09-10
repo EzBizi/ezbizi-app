@@ -62,7 +62,7 @@ class LeadsGlanceTest extends TestCase
         return app(TenantContext::class)->run($this->alpha['org'], $fn);
     }
 
-    private function lead(?Franchise $franchise, string $status = Lead::STATUS_NEW): Lead
+    private function lead(?Franchise $franchise, string $status = Lead::STATUS_NEW, bool $test = false): Lead
     {
         static $n = 0;
         $n++;
@@ -72,6 +72,7 @@ class LeadsGlanceTest extends TestCase
             'company_id'      => $this->alpha['company']->id,
             'franchise_id'    => $franchise?->id,
             'source'          => Lead::SOURCE_LOCAL_SERVICES,
+            'is_test'         => $test,
             'remote_id'       => 'L-'.$n,
             'status'          => $status,
             'received_at'     => now()->subHour(),
@@ -215,5 +216,40 @@ class LeadsGlanceTest extends TestCase
         foreach ($data['sentences'] as $sentence) {
             $this->assertStringNotContainsString('in reach', $sentence);
         }
+    }
+
+    /**
+     * A specimen must not raise the alarm this box exists to raise.
+     *
+     * `ezbizi:thumbtack-test-lead` fires Thumbtack's own webhook, so the row
+     * it produces is real in every respect except the customer. The number
+     * this glance leads with means somebody is waiting for a call back, and a
+     * test enquiry sitting in it is a false alarm of exactly the kind the
+     * module's standing instruction is about, pointing the other way.
+     */
+    public function test_a_specimen_enquiry_is_not_counted_as_somebody_waiting(): void
+    {
+        $this->lead(null, test: true);
+
+        $data = $this->glance($this->alpha['admin']);
+
+        // The control, and it is the whole test: the row EXISTS and is
+        // reachable by this reader, so an empty box here can only be the
+        // marker doing its work rather than an empty table.
+        $this->assertSame(1, $this->inTenant(fn () => Lead::query()->withoutGlobalScopes()->count()));
+        $this->assertTrue($data['empty']);
+        $this->assertSame('No enquiries in this view.', $data['sentence']);
+    }
+
+    public function test_a_specimen_beside_real_enquiries_is_left_out_of_every_count(): void
+    {
+        $this->lead(null);
+        $this->lead(null);
+        $this->lead(null, test: true);
+
+        $data = $this->glance($this->alpha['admin']);
+
+        $this->assertContains('2 leads not yet dealt with.', $data['sentences']);
+        $this->assertContains('2 arrived this month.', $data['sentences']);
     }
 }

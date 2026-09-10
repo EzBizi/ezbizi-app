@@ -1134,6 +1134,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      // A specimen, not a customer. First on the row because
+                      // it changes how everything after it should be read.
+                      if (lead['is_test'] == true) ...[
+                        const SizedBox(width: 8),
+                        _Badge('Test', key: ValueKey('test-badge-$id')),
+                      ],
                       // The channel badge is drawn only when it says something
                       // the source badge does not. "Call · Google" is two
                       // facts; a chat row read "Chat · Chat" and a form row
@@ -1272,7 +1278,7 @@ class _SourceBadge extends StatelessWidget {
 
 /// "Call" or "Text". Never PHONE_CALL, never "LS Ads".
 class _Badge extends StatelessWidget {
-  const _Badge(this.text, {required this.call});
+  const _Badge(this.text, {super.key, this.call = false});
 
   final String text;
   final bool call;

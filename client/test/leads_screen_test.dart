@@ -64,6 +64,48 @@ void main() {
   });
   _triageTests();
 
+  /// A specimen from `ezbizi:thumbtack-test-lead` is a real row with a real
+  /// Thumbtack id. It stays in the list — seeing it is how somebody knows the
+  /// pipe works — and it says what it is, because on 2026-09-10 one of these
+  /// was nearly reported as the first Thumbtack customer.
+  testWidgets(
+    'a test lead wears a Test badge and a customer enquiry does not',
+    (tester) async {
+      await _pump(
+        tester,
+        leads: [
+          {
+            ..._lead('lead-1', 'Test Customer'),
+            'source': 'thumbtack',
+            'is_test': true,
+          },
+          {..._lead('lead-2', 'Marcus Bell'), 'source': 'thumbtack'},
+        ],
+        connections: const [
+          {
+            'id': 'tb-1',
+            'provider': 'thumbtack',
+            'display_name': 'A1 Chimney',
+            'status': 'connected',
+          },
+        ],
+      );
+
+      expect(find.byKey(const ValueKey('test-badge-lead-1')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('test-badge-lead-2')),
+        findsNothing,
+        reason: 'the badge must mark the specimen, not every Thumbtack row',
+      );
+
+      // The row is still a lead in every other respect, and still reachable.
+      // findsWidgets, not one: the first lead is open in the thread pane at
+      // this width, so its name is on the row and in the thread header.
+      expect(find.text('Test Customer'), findsWidgets);
+      expect(find.byKey(const ValueKey('source-badge-lead-1')), findsOneWidget);
+    },
+  );
+
   testWidgets('with nothing connected the empty state says so, rather than '
       'reporting a quiet week', (tester) async {
     await _pump(tester, leads: const [], connections: const []);

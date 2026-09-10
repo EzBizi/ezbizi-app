@@ -163,7 +163,7 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
 
     protected $fillable = [
         'organization_id', 'company_id', 'franchise_id', 'connection_id', 'job_id',
-        'source', 'remote_id', 'contact_name', 'phone', 'email', 'phone_digits',
+        'source', 'is_test', 'remote_id', 'contact_name', 'phone', 'email', 'phone_digits',
         'lead_type', 'category', 'service', 'locale', 'summary', 'note', 'note_by_user_id', 'note_updated_at',
         'status', 'classification', 'classified_at', 'starred_at', 'source_status', 'charge_status', 'received_at', 'synced_at',
         'last_contact_at', 'last_contact_channel', 'last_contact_from', 'last_contact_preview',
@@ -172,6 +172,7 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
     protected function casts(): array
     {
         return [
+            'is_test' => 'boolean',
             'received_at' => 'datetime',
             'synced_at' => 'datetime',
             'last_contact_at' => 'datetime',
