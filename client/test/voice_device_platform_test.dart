@@ -17,6 +17,7 @@ import 'package:ezbizi_client/screens/phone/voice_device_windows.dart';
 /// hears ringing and assumes nobody is in.
 void main() {
   _bridgeContract();
+  _surfaceContract();
 
   tearDown(() => debugDefaultTargetPlatformOverride = null);
 
@@ -66,6 +67,72 @@ void main() {
     // Null until setup() builds the controller — but the getter exists, which
     // is what stops the Dial tab from having to know which device it holds.
     expect(() => io.create().platformView, returnsNormally);
+  });
+}
+
+/// The size of the surface, which is not a cosmetic choice.
+///
+/// ── Why this is read off the file too ────────────────────────────
+///
+/// `buildVoiceDeviceView` only builds the Webview for an INITIALISED
+/// `WebviewController`, and there is no WebView2 in a Flutter test to
+/// initialise one — the branch that matters cannot be pumped. So this reads
+/// the source, exactly as [_bridgeContract] does and for the same reason.
+///
+/// What it is defending: the surface was `SizedBox(0, 0)`, and
+/// `webview_windows` makes the surface visible unconditionally
+/// (`webview.cc:140`) while applying `put_Bounds` only from `SetSurfaceSize`,
+/// which early-returns unless BOTH dimensions exceed zero (`webview.cc:381`,
+/// read in the pinned 0.4.0). Zero therefore means visible-and-never-bounded:
+/// a top-level window keeping WebView2's default rect, invisible, with no
+/// `WS_EX_TRANSPARENT` — so it hit-tests and eats every click inside it.
+///
+/// Bar lost the left half of an ultrawide to it. On an ordinary monitor the
+/// unbounded rect lands off-screen, which is why it shipped: the defect was
+/// always there and the display decided whether it hurt. That is precisely
+/// the shape no reviewer and no widget test catches, and why the one-pixel
+/// box needs something that fails rather than a comment asking nicely.
+void _surfaceContract() {
+  final file = File('lib/screens/phone/voice_view_io.dart').readAsStringSync();
+
+  // COMMENTS STRIPPED, because the docblock quotes the defect it is warning
+  // about — `SizedBox(width: 0, height: 0)` is written out up there, and a
+  // guard that fires on the explanation forbids explaining.
+  final source = file
+      .split('\n')
+      .where((line) => !line.trimLeft().startsWith('//'))
+      .join('\n');
+
+  test('the WebView2 surface is never zero-sized', () {
+    expect(
+      RegExp(r'width:\s*0\s*[,)]').hasMatch(source),
+      isFalse,
+      reason: 'a zero-width surface is never bounded, so it keeps WebView2 '
+          "default rect as a click-eating window over the user's desktop",
+    );
+
+    expect(
+      RegExp(r'height:\s*0\s*[,)]').hasMatch(source),
+      isFalse,
+      reason: 'the same, for height — SetSurfaceSize requires BOTH',
+    );
+  });
+
+  /// The control. Without it, deleting the whole surface passes the two
+  /// assertions above perfectly, and the phone registers but hears nobody.
+  test('and it is still mounted, hidden rather than removed', () {
+    expect(source, contains('wvw.Webview('));
+    expect(
+      source,
+      contains('Opacity('),
+      reason: 'one visible pixel in the corner of every desk in the company',
+    );
+    expect(
+      source,
+      isNot(contains('Offstage(')),
+      reason: 'Offstage unmounts the platform view: no microphone prompt, and '
+          'a phone that registers and cannot hear anybody',
+    );
   });
 }
 
