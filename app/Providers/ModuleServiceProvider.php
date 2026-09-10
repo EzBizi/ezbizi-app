@@ -2637,6 +2637,84 @@ class ModuleServiceProvider extends ServiceProvider
              * organization's own data. They are still gated as they always were:
              * on holding the view permission of every exportable resource.
              */
+
+            /*
+             * Reports (docs/superpowers/specs/2026-09-10-reports-design.md).
+             *
+             * A builder rather than a fixed catalogue: somebody composes a
+             * report across modules, saves it, and other people run it. What is
+             * readable comes from `Support/Reports/ReportMap`, and a table
+             * absent from that map cannot be reported on at all.
+             *
+             * THREE PERMISSIONS, AND `build` IS THE LARGE ONE. `view` opens the
+             * tab and runs what you have been given; `build` composes, which
+             * means seeing every column of every module you can already open,
+             * money included; `export` downloads a run. An organization that
+             * wants somebody to run reports but not write them grants `view`
+             * alone, which is expected to be the common case. Both `build` and
+             * `export` require `view` — the roles editor draws one word per
+             * action and could not otherwise say that building without the tab
+             * is a grant with nothing to click.
+             *
+             * NO TRIGGERS YET, so no `emits:`. Reports observes other modules'
+             * records rather than owning one that anything would react to; if a
+             * "report was run" trigger is ever wanted, its subject is the saved
+             * report and that is the day this gains an `emits:`.
+             */
+            new ModuleDefinition(
+                key: 'reports',
+                label: 'Reports',
+                auditActionPrefixes: ['report'],
+                actions: ['view', 'build', 'export'],
+                actionRequires: [
+                    'build'  => ['reports.view'],
+                    'export' => ['reports.view'],
+                ],
+                automationActions: [
+                    new ActionDefinition(
+                        key: 'report.send',
+                        label: 'Email a report',
+                        description: 'Runs a saved report and emails the result to the people '
+                            .'you name. The report is run with the scope of the rule itself, so a rule '
+                            .'belonging to one franchise cannot mail a report covering the whole '
+                            .'organization.',
+                        /*
+                         * SPELLED OUT, AND IT IS LOAD-BEARING. ActionDefinition
+                         * derives the execution type as everything after the
+                         * FIRST dot, so `report.send` left alone becomes the bare
+                         * word `send`, in a namespace every module shares.
+                         *
+                         * Nothing collides with it today — all 28 declared
+                         * actions were checked and none derives to bare `send`;
+                         * `phone.sms.send` has two dots and derives to
+                         * `sms.send`. So this prevents a FUTURE collision, which
+                         * is the only kind available here. Note also that the
+                         * constructor validates the dotted shape only when the
+                         * type is passed explicitly, so the careful form is the
+                         * one that can fail and the derived form is never
+                         * checked at all.
+                         */
+                        executionType: 'report.send',
+                        /*
+                         * The report and the recipients come from the rule's own
+                         * configuration, not from whatever record the event was
+                         * about: "email the weekly job report when a month
+                         * closes" has no subject to read them from. Same shape as
+                         * phone.sms.send.
+                         *
+                         * DELIBERATELY ABSENT FROM AutomationsController::
+                         * IMPLEMENTED_ACTIONS until the runner arm exists. That
+                         * const publishes `implemented: true`, which would let a
+                         * tenant build and save a rule that throws on every run
+                         * and auto-disables itself. Declared-without-const draws
+                         * as "Not built yet" and cannot be selected, which is the
+                         * honest state today.
+                         */
+                        subjectBound: false,
+                    ),
+                ],
+                rolesGroup: ModuleDefinition::ROLES_TAB,
+            ),
         ];
     }
 }
