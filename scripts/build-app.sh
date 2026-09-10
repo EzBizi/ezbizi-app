@@ -132,9 +132,15 @@ BUILT_AT=$(date -u +'%Y-%m-%d %H:%M')
 
 # Apple wants a monotonic CFBundleVersion, exactly as Play wants a rising
 # versionCode, and Flutter defaults both to pubspec's `1.0.0+1` unless told
-# otherwise. Android already derives its number from client/VERSION inside
-# build.gradle.kts; this is the same arithmetic for the platforms that cannot
-# read that file themselves. 0.0.0103 -> 103.
+# otherwise. 0.0.0103 -> 103.
+#
+# EVERY platform now, from the ONE read of client/VERSION above. Android used to
+# do this arithmetic again for itself inside build.gradle.kts, off a second read
+# of the file, and that is the bug: a build shipped declaring versionCode 9999
+# while its filename said 0.0.0184, because the deploy desk held VERSION at
+# 0.0.9999 for fifteen seconds as a sabotage control and the two reads landed
+# either side of it. A wrong filename is cosmetic; a wrong versionCode reaching
+# Play permanently burns every number beneath it.
 BUILD_NUMBER=$(printf '%s' "$VERSION" | tr -d '.' | sed 's/^0*//')
 BUILD_NUMBER=${BUILD_NUMBER:-1}
 
@@ -185,9 +191,9 @@ build_locally() {
     # It is not part of a release. Play still gets the .aab.
     android)
       if [ "$ANDROID_APK" -eq 1 ]; then
-        (cd client && flutter build apk --release "${DEFINES[@]}")
+        (cd client && flutter build apk --release           --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${DEFINES[@]}")
       else
-        (cd client && flutter build appbundle --release "${DEFINES[@]}")
+        (cd client && flutter build appbundle --release           --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${DEFINES[@]}")
       fi ;;
     *)       (cd client && flutter build "$1" --release "${DEFINES[@]}") ;;
   esac

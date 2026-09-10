@@ -37,14 +37,27 @@ val keyProperties = Properties().apply {
 }
 val hasUploadKey = keyProperties.getProperty("storeFile") != null
 
-// One number governs every platform. client/VERSION is the same file the web
-// build and build-app.sh read, so a build's version string is the same wherever
-// it is reported. Play needs versionCode to rise on every upload and never
-// repeat — 0.0.0097 becomes 97, which does exactly that for as long as VERSION
-// is bumped, and it is bumped for every release anyway.
-val ezbiziVersion = rootProject.file("../VERSION").takeIf { it.exists() }
-    ?.readText()?.trim()
-val ezbiziVersionCode = ezbiziVersion?.replace(".", "")?.trimStart('0')?.toIntOrNull()
+// This file deliberately does NOT read client/VERSION.
+//
+// It used to, and that was the bug: build-app.sh reads it for the artefact
+// filename and Gradle read it again for versionCode, and the two reads are not
+// the same instant on a tree with twenty sessions in it. One build shipped
+// declaring versionCode 9999 while its filename said 0.0.0184, because the
+// deploy desk held VERSION at 0.0.9999 for about fifteen seconds as a sabotage
+// control and the two reads landed either side of it.
+//
+// The filename being wrong is cosmetic. versionCode is not: Play requires it to
+// rise forever, so ONE upload at 9999 permanently burns every number beneath it
+// and the listing could never ship 185. Android refuses the same thing locally,
+// INSTALL_FAILED_VERSION_DOWNGRADE, which is how this was demonstrated.
+//
+// build-app.sh now reads the file ONCE and passes both values in as
+// --build-name and --build-number, which arrive here as flutter.versionName
+// and flutter.versionCode. Do not put the read back.
+//
+// A build made WITHOUT build-app.sh gets pubspec 1.0.0+1 instead. Deliberate:
+// useless to upload and harmless, which is the right way round for an artefact
+// nobody stamped.
 
 android {
     namespace = "com.ezbizi.ezbizi_client"
@@ -89,8 +102,8 @@ android {
         // it is visible here rather than discovered on a customer's phone.
         minSdk = 26
         targetSdk = flutter.targetSdkVersion
-        versionCode = ezbiziVersionCode ?: flutter.versionCode
-        versionName = ezbiziVersion ?: flutter.versionName
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
     }
 
     signingConfigs {
