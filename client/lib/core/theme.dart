@@ -261,6 +261,50 @@ class EzBiziTheme {
           color: isDark ? Colors.white70 : _muted,
           height: 1.5,
         ),
+        // The MOST-USED slot in the app, and until now the emptiest.
+        //
+        // Measured 2026-09-10, after Reports asked rather than guessing: 469
+        // call sites across 113 files, and `bodySmall` resolved to
+        // `fontSize: null, fontWeight: null`. An unlisted slot does not fall
+        // back to Material's default -- it arrives carrying a colour and
+        // nothing else -- so every one of them rendered at the ambient size,
+        // which is 14, which is `bodyMedium`. **The app drew a distinction 469
+        // times that nobody could see.**
+        //
+        // 12 because it has to sit between `labelSmall`'s 11 and `bodyMedium`'s
+        // 14 and be visibly neither; it is also Material's own value, so the
+        // 469 authors who wrote "small" got what they were asking for. Colour
+        // and height follow `bodyMedium` so only the SIZE changes at those call
+        // sites, not the palette.
+        bodySmall: TextStyle(
+          fontSize: 12,
+          color: isDark ? Colors.white70 : _muted,
+          height: 1.45,
+        ),
+        // Three call sites, same fault, fixed while the file is open.
+        bodyLarge: TextStyle(
+          fontSize: 16,
+          color: isDark ? Colors.white : _ink,
+          height: 1.5,
+        ),
+        // The rest of the label family, found by the widened guard on its first
+        // run -- 51 uses of `labelLarge` and 11 of `labelMedium`, all unfilled.
+        //
+        // They are FIELD labels ("When it is asked", "Who fills it in"), not
+        // button text, so they belong with `labelSmall` below rather than with
+        // body copy: somebody who reaches for a label slot is asking for
+        // emphasis. Weights sit under `labelSmall`'s w700, which stays the most
+        // emphatic because it is also the uppercase one.
+        labelLarge: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: isDark ? Colors.white : _ink,
+        ),
+        labelMedium: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: isDark ? Colors.white70 : _muted,
+        ),
         labelSmall: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w700,

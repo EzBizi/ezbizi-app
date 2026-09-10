@@ -230,6 +230,34 @@ void main() {
         }
       }
 
+      // EVERY slot the app asks for must have a SIZE. The weight rule below
+      // only inspects display/headline/title, which is why this fault reached
+      // its fourth instance: `bodySmall` sat unfilled with 469 call sites
+      // across 113 files, rendering at the ambient 14 -- identical to
+      // `bodyMedium`, so the app drew a distinction nobody could see.
+      //
+      // An unlisted slot arrives carrying a colour and nothing else. That is
+      // invisible by eye precisely because it inherits something plausible,
+      // which is what let three earlier ones ship.
+      for (final theme in {
+        'light': EzBiziTheme.light(),
+        'dark': EzBiziTheme.dark(),
+      }.entries) {
+        for (final name in asked) {
+          final style = _slot(theme.value.textTheme, name);
+          if (style == null) continue;
+
+          expect(
+            style.fontSize,
+            isNotNull,
+            reason: 'textTheme.$name is used in lib/ but ${theme.key} leaves it '
+                'unfilled, so every call site renders at whatever size the '
+                'surrounding text happens to be. Define it in theme.dart, or '
+                'stop asking for it.',
+          );
+        }
+      }
+
       final headings = asked
           .where((n) =>
               n.startsWith('display') ||
@@ -453,6 +481,16 @@ TextStyle? _slot(TextTheme t, String name) => switch (name) {
   'titleLarge' => t.titleLarge,
   'titleMedium' => t.titleMedium,
   'titleSmall' => t.titleSmall,
+  // The body and label slots were missing from this switch, and THAT is why an
+  // unfilled `bodySmall` survived three earlier rounds of this same fault: any
+  // assertion written above resolved it to null and skipped it silently. The
+  // guard was healthy and pointed one level away from the subject.
+  'bodyLarge' => t.bodyLarge,
+  'bodyMedium' => t.bodyMedium,
+  'bodySmall' => t.bodySmall,
+  'labelLarge' => t.labelLarge,
+  'labelMedium' => t.labelMedium,
+  'labelSmall' => t.labelSmall,
   _ => null,
 };
 
