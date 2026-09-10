@@ -86,9 +86,18 @@ Describe $hit "THE WINDOW THAT OWNS THAT PIXEL"
 $root = [Probe]::GetAncestor($hit, 2)
 if ($root -ne $hit) { Describe $root "  its top-level parent" }
 
-Write-Output "EVERY WINDOW EZBIZI OWNS:"
-$ez = @(Get-Process -Name ezbizi -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
-if ($ez.Count -eq 0) { Write-Output "  ezbizi.exe is not running"; return }
+# msedgewebview2 as well as ezbizi, and this is not optional.
+#
+# The first version of this script listed only ezbizi.exe's own windows and
+# would have MISSED the bug it was written for: the offender was a WebView2
+# surface in the msedgewebview2 child process. An app's windows are not only
+# the ones in its process.
+Write-Output "EVERY WINDOW EZBIZI OWNS, INCLUDING ITS WEBVIEW2 CHILDREN:"
+$ez = @(
+  Get-Process -Name ezbizi, msedgewebview2 -ErrorAction SilentlyContinue |
+    ForEach-Object { $_.Id }
+)
+if ($ez.Count -eq 0) { Write-Output "  neither ezbizi.exe nor msedgewebview2.exe is running"; return }
 $rows = @()
 $cb = [Probe+EnumProc]{
   param($h, $l)
@@ -100,16 +109,41 @@ $cb = [Probe+EnumProc]{
     $r = New-Object Probe+RECT
     [Probe]::GetWindowRect($h, [ref]$r) | Out-Null
     $ex = [Probe]::GetWindowLongPtr($h, -20).ToInt64()
+    $flags = @()
+    if ($ex -band 0x00000020) { $flags += 'TRANSPARENT' }
+    if ($ex -band 0x00080000) { $flags += 'LAYERED' }
+    if ($ex -band 0x00000080) { $flags += 'TOOLWINDOW' }
+    if ($ex -band 0x08000000) { $flags += 'NOACTIVATE' }
+    $owner = try { (Get-Process -Id $procId -ErrorAction Stop).ProcessName } catch { '?' }
     $script:rows += [PSCustomObject]@{
-      Handle  = ('0x{0:X}' -f $h.ToInt64())
+      Proc    = $owner
       Vis     = [Probe]::IsWindowVisible($h)
       Class   = $cls.ToString()
       Rect    = "$($r.L),$($r.T) to $($r.R),$($r.B)"
       Size    = "$($r.R - $r.L) x $($r.B - $r.T)"
-      ExStyle = ('0x{0:X}' -f $ex)
+      Flags   = ($flags -join '+')
     }
   }
   return $true
 }
 [Probe]::EnumWindows($cb, [IntPtr]::Zero) | Out-Null
-$rows | Format-Table -AutoSize | Out-String -Width 200 | Write-Output
+
+# Only a VISIBLE window with area can eat a click. The rest are IME and
+# message-only helpers, and msedgewebview2 has dozens of them -- printing them
+# buries the one row that matters. The count is printed so the absence is
+# readable rather than silent.
+$canEat = @($rows | Where-Object { $_.Vis -and $_.Size -notmatch '^(0|1) x (0|1)$' })
+$hidden = $rows.Count - $canEat.Count
+if ($canEat.Count -eq 0) {
+  Write-Output "  no visible window with area -- nothing here can eat a click"
+} else {
+  $canEat | Format-Table -AutoSize | Out-String -Width 200 | Write-Output
+}
+Write-Output ("  ({0} invisible or 0x0/1x1 helper windows not shown)" -f $hidden)
+Write-Output ""
+Write-Output "WHAT A HEALTHY READING LOOKS LIKE:"
+Write-Output "  ezbizi's FLUTTER_RUNNER_WIN32_WINDOW, and nothing else with area."
+Write-Output "  A LAYERED+TOOLWINDOW+NOACTIVATE row from msedgewebview2 with real"
+Write-Output "  width and height, and NO TRANSPARENT flag, is the bug: a headless"
+Write-Output "  WebView2 left visible and never bounded. It hit-tests, so it eats"
+Write-Output "  every click inside its rect. Fixed for EzBizi in 0.0.0188."
