@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0192',
+      date: '10 Sep 2026',
+      items: [
+        'Reports: build a report from your own data. Pick a starting record, pull in columns from what it connects to, filter it, save it by name, and anyone you grant it to can run it. Jobs, customers and people to start with - more of the business will be added to what a report can reach.',
+        'Reports is administrator-only until you hand it out. Running a saved report and building one are separate permissions, so you can let somebody run what you built without letting them change it.',
+        'The machines list leads with the person now, not the computers name, and every card is the same size whether or not it has something to show.',
+        'The machines list keeps itself up to date while you watch it, instead of showing what was true when you opened the tab.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0191',
       date: '10 Sep 2026',
       items: [
