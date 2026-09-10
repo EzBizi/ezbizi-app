@@ -125,6 +125,33 @@ class ReportsApiTest extends TestCase
     }
 
     /**
+     * A resource whose permission does not exist is invisible to EVERYBODY,
+     * administrators included: User::hasPermission runs ModuleAvailability
+     * before the role is consulted, and the administrator short-circuit lives
+     * downstream of that. So a map entry naming a permission no module
+     * declares is a resource nobody can ever report on, and nothing else would
+     * say so.
+     */
+    public function test_every_mapped_resource_is_offered_to_an_administrator(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $body = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/reports/fields')
+            ->assertOk()
+            ->json('data');
+
+        foreach (array_keys(\App\Support\Reports\ReportMap::all()) as $key) {
+            $this->assertArrayHasKey(
+                $key,
+                $body,
+                "{$key} is in ReportMap but an administrator is not offered it, which "
+                .'means its permission is not one any registered module declares',
+            );
+        }
+    }
+
+    /**
      * The picker must not advertise a module the person cannot open at all.
      */
     public function test_the_field_list_hides_a_module_the_person_has_no_permission_for(): void

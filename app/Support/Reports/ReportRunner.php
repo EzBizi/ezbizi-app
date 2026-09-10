@@ -230,14 +230,17 @@ final class ReportRunner
             $whereNull($table.'.deleted_at');
         }
 
-        foreach ($resource['scope'] as $column) {
-            $ids = match ($column) {
-                'franchise_id' => $view->franchiseIds(),
+        // COLUMN => SOURCE. The source is named in the map rather than guessed
+        // from the column, because `jobs.franchise_id` and `franchises.id` are
+        // both answered by the same list of franchise ids.
+        foreach ($resource['scope'] as $column => $source) {
+            $ids = match ($source) {
+                'franchise' => $view->franchiseIds(),
                 default => throw new LogicException(
-                    "ReportMap declares scope column '{$column}' on '{$table}', and this "
-                    .'runner does not know which view ids resolve it. Teach it here rather '
-                    .'than dropping the filter — an unresolved scope column must never '
-                    .'become an unscoped table.'
+                    "ReportMap scopes '{$table}.{$column}' by '{$source}', and this runner "
+                    .'does not know which view ids resolve that. Teach it here rather than '
+                    .'dropping the filter — an unresolved scope source must never become an '
+                    .'unscoped table.'
                 ),
             };
 

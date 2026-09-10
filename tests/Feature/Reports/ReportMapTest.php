@@ -55,11 +55,34 @@ class ReportMapTest extends TestCase
                 .'so nothing can confine it to one tenant',
             );
 
-            foreach ($resource['scope'] as $column) {
+            foreach (array_keys($resource['scope']) as $column) {
                 $this->assertContains(
                     $column,
                     $actual,
                     "{$key} declares scope column '{$column}' which {$resource['table']} does not have",
+                );
+            }
+        }
+    }
+
+    /**
+     * The map names a SOURCE per scope column, and the runner must know every
+     * one of them. An unknown source throws at run time; this fails at test
+     * time instead, which is the difference between a report nobody can run
+     * and a build nobody can merge.
+     */
+    public function test_every_scope_source_is_one_the_runner_can_resolve(): void
+    {
+        $known = ['franchise'];
+
+        foreach (ReportMap::all() as $key => $resource) {
+            foreach ($resource['scope'] as $column => $source) {
+                $this->assertContains(
+                    $source,
+                    $known,
+                    "{$key} scopes '{$column}' by '{$source}', which ReportRunner cannot "
+                    .'resolve. Add the case to ReportRunner::applyScope and to this list, '
+                    .'in that order.',
                 );
             }
         }
