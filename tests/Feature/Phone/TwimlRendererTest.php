@@ -719,6 +719,119 @@ class TwimlRendererTest extends TestCase
     }
 
     /**
+     * "Press 9 to hear these options again", and it plays them again.
+     *
+     * ── Why this is not just another routing branch ──────────────
+     *
+     * Every phone menu has a repeat key and this one did not, so a caller who
+     * missed which key was which had to hang up and ring back. Jose asked for
+     * it while looking at the four actions a key could take.
+     *
+     * The awkward part is the recording notice, not the menu. The notice is
+     * said on the pass that does NOT play a menu — that is what stopped it
+     * being said twice — and a repeat press arrives with Digits, which is
+     * exactly the shape of the pass that connects somebody. So a repeat has to
+     * be recognised before the notice is decided, or pressing 9 three times
+     * tells the caller three more times that the call may be recorded.
+     */
+    public function test_a_repeat_key_plays_the_menu_again(): void
+    {
+        $t = $this->provisionTenant();
+
+        $xml = $this->inTenant($t['org'], function () use ($t) {
+            $number = $this->lineWithRepeat($t);
+
+            return (new TwimlRenderer)->inbound(
+                $number->fresh(),
+                ['digits' => '9', 'skip_menu' => true],
+            );
+        });
+
+        $this->assertStringContainsString('<Gather', $xml);
+        $this->assertStringContainsString('Press 1 for the desk, 9 to hear this again.', $xml);
+    }
+
+    /** And it says nothing about recording, because it is a menu pass. */
+    public function test_a_repeat_does_not_say_the_notice_again(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$first, $repeat] = $this->inTenant($t['org'], function () use ($t) {
+            $number = $this->lineWithRepeat($t);
+            $renderer = new TwimlRenderer;
+
+            return [
+                $renderer->inbound($number->fresh(), []),
+                $renderer->inbound(
+                    $number->fresh(),
+                    ['digits' => '9', 'skip_menu' => true],
+                ),
+            ];
+        });
+
+        $gather = strpos($repeat, '<Gather');
+        $this->assertNotFalse($gather, 'the repeat did not play the menu');
+
+        $this->assertStringNotContainsString(
+            RecordingNotice::sentence(),
+            substr($repeat, 0, $gather),
+            'a caller who asks to hear the menu again is told again that the '
+            .'call may be recorded, once per press',
+        );
+
+        // The control: the first pass is a menu pass too, and the two must be
+        // the same document. A repeat that quietly dropped the ring-group
+        // fallthrough would leave a caller who then says nothing in silence.
+        $this->assertSame(
+            substr_count($first, '<Dial'),
+            substr_count($repeat, '<Dial'),
+            'the repeated menu is not the same menu',
+        );
+    }
+
+    /** A key that is not the repeat key still routes, and still says it. */
+    public function test_an_ordinary_key_is_unaffected_by_the_repeat_option(): void
+    {
+        $t = $this->provisionTenant();
+
+        $xml = $this->inTenant($t['org'], function () use ($t) {
+            $number = $this->lineWithRepeat($t);
+
+            return (new TwimlRenderer)->inbound(
+                $number->fresh(),
+                ['digits' => '1', 'skip_menu' => true],
+            );
+        });
+
+        $this->assertStringNotContainsString('<Gather', $xml);
+        $this->assertStringContainsString('<Dial', $xml);
+        $this->assertStringContainsString(RecordingNotice::sentence(), $xml);
+    }
+
+    /** A recorded line whose menu offers 1 to ring and 9 to hear it again. */
+    private function lineWithRepeat(array $t): PhoneNumber
+    {
+        [$number, $user] = $this->lineWithAvailableDesk($t, record: true);
+        $group = $this->group($this->connectionOf($number), [$user->id]);
+
+        $flow = PhoneFlow::query()->create([
+            'connection_id' => $number->connection_id,
+            'name' => 'Main menu',
+            'nodes' => [
+                'type' => 'menu',
+                'prompt' => 'Press 1 for the desk, 9 to hear this again.',
+                'options' => [
+                    ['digit' => '1', 'action' => 'ring_group', 'ring_group_id' => $group->id],
+                    ['digit' => '9', 'action' => 'repeat'],
+                ],
+            ],
+        ]);
+        $number->forceFill(['flow_id' => $flow->id])->save();
+
+        return $number;
+    }
+
+    /**
      * A menu line with a recorded line, and the two documents a call produces.
      *
      * @return array{0: string, 1: string} the menu pass, then the digit pass

@@ -65,11 +65,24 @@ final class TwimlRenderer
         $closed = ! $outbound && $this->closed($number, $context);
         $digits = (string) ($context['digits'] ?? '');
 
+        // Resolved once, up here, because ONE of the options changes what kind
+        // of pass this is rather than where the call goes.
+        $option = ($outbound || $digits === '' || $closed)
+            ? null
+            : $this->menuOption($number, $digits);
+
+        // "Press 9 to hear these options again" asks for the menu, so this
+        // pass plays a menu exactly as the first one did — and must therefore
+        // say nothing about recording, or a caller who repeats the menu twice
+        // is told twice more.
+        $repeat = ($option['action'] ?? '') === 'repeat';
+
         // A caller who has already pressed something is not being asked again,
         // whether or not the webhook remembered to say so. skip_menu and
         // Digits arrive together from Twilio; a renderer that trusted only the
         // flag would swallow the notice on any call made without it.
-        $skipMenu = $outbound || $digits !== '' || (bool) ($context['skip_menu'] ?? false);
+        $skipMenu = ! $repeat
+            && ($outbound || $digits !== '' || (bool) ($context['skip_menu'] ?? false));
         $prompt = ($skipMenu || $closed) ? null : $this->menuPrompt($number);
 
         if ($prompt === null) {
@@ -86,20 +99,26 @@ final class TwimlRenderer
         // it before anything else. An unrecognised key falls through to the
         // line's ring group rather than hanging up: the commonest reason for a
         // stray digit is a caller mashing a key to reach a person.
-        if (! $outbound && $digits !== '') {
-            $option = $this->menuOption($number, $digits);
+        if ($option !== null && ! $repeat) {
+            $this->takeMenuOption($response, $number, $option, $language, $context);
 
-            if ($option !== null) {
-                $this->takeMenuOption($response, $number, $option, $language, $context);
-
-                return (string) $response;
-            }
+            return (string) $response;
         }
 
         if ($prompt !== null) {
             // One digit, and Twilio posts back to this same URL — which is why
             // no action is set. numDigits keeps it from waiting out the timeout
             // after a single press.
+            //
+            // A repeat key lands right back here, which is what makes it a
+            // repeat, and nothing counts the passes. That is deliberate: every
+            // phone system in the world offers "hear these options again"
+            // without a limit, the caller is the one holding the line, and a
+            // cap would end somebody's call mid-menu for pressing the key we
+            // told them to press. If an auto-dialer ever makes this expensive,
+            // the counter goes in the Gather's action URL — which means giving
+            // this Gather an action, and that in turn means moving the timeout
+            // fallthrough below into that endpoint.
             $gather = $response->gather([
                 'language' => $language,
                 'numDigits' => 1,

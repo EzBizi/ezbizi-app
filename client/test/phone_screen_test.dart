@@ -1098,6 +1098,66 @@ void main() {
       expect((options.first as Map)['ring_group_id'], 'rg-1');
     });
 
+    /// A key can send the caller back to the top of the menu.
+    ///
+    /// Jose asked for it while looking at what a key could do: ring a group,
+    /// take a message, forward, or say something and hang up. Every phone menu
+    /// in the world also offers "to hear these options again" and this one did
+    /// not — so a caller who missed which key was which had to hang up and
+    /// ring back, which on a busy line is a lost job.
+    ///
+    /// It needs no configuration, which is exactly why it is worth a test:
+    /// there is no group to pick and no number to type, so a save that
+    /// silently dropped the option would look identical to one that worked.
+    testWidgets('a key can repeat the menu', (tester) async {
+      Map<String, dynamic>? sent;
+
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        ringGroups: const [
+          {'id': 'rg-1', 'name': 'Front desk', 'connection_id': 'cx-1'},
+        ],
+        onFlow: (body) => sent = body,
+      );
+
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('IVR menus'));
+      await _tap(tester, find.text('Add a menu'));
+
+      await tester.enterText(find.byType(TextFormField).at(0), 'Main menu');
+      await tester.enterText(
+        find.byType(TextFormField).at(1),
+        'Press 9 to hear this again.',
+      );
+      await tester.pumpAndSettle();
+
+      await _scrollTo(
+        tester,
+        find.byKey(const ValueKey('action:0')),
+        within: find.byKey(const ValueKey('flow-form')),
+      );
+      await tester.tap(find.byKey(const ValueKey('action:0')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Repeat the menu').last);
+      await tester.pumpAndSettle();
+
+      await _scrollTo(
+        tester,
+        find.text('Save'),
+        within: find.byKey(const ValueKey('flow-form')),
+      );
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(sent, isNotNull, reason: 'the save was refused');
+
+      final options = sent!['options'] as List;
+      expect(options, hasLength(1));
+      expect((options.first as Map)['action'], 'repeat');
+    });
+
     testWidgets('two keys doing different things is refused before it is sent', (tester) async {
       var posted = false;
 

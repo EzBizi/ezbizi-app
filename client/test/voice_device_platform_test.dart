@@ -18,6 +18,7 @@ import 'package:ezbizi_client/screens/phone/voice_device_windows.dart';
 void main() {
   _bridgeContract();
   _surfaceContract();
+  _webRingContract();
 
   tearDown(() => debugDefaultTargetPlatformOverride = null);
 
@@ -70,6 +71,63 @@ void main() {
   });
 }
 
+/// One ringtone on the web, and it is EzBizi's.
+///
+/// ── Why this is read off the file as well ────────────────────────
+///
+/// `voice_device_web.dart` is `dart:js_interop` throughout. It compiles only
+/// for the web and does not exist to a VM test, so nothing here can construct
+/// the device, let alone hear it. `flutter build web` proves it compiles; this
+/// proves it still says what it must.
+///
+/// The Voice SDK rings for an incoming call by default, and [CallAlerts] rings
+/// too, on every platform. On the web both sound at once — Jose heard the
+/// EzBizi tone with what he described as the sound of calling somebody
+/// underneath it, and only in a browser, which is the only place that SDK
+/// runs.
+///
+/// The second assertion is the one worth having. Turning the OUTGOING tone off
+/// as well is the obvious tidy-up, and outbound ringback on a browser leg was
+/// silent until `<Dial ringTone>` was added for it — so that tidy-up risks
+/// restoring a bug somebody already reported, in a place no test can hear.
+void _webRingContract() {
+  final source = _code('lib/screens/phone/voice_device_web.dart');
+
+  test('the SDK does not ring over the top of ours', () {
+    expect(
+      source,
+      contains('_silenceOwnRing(device)'),
+      reason: 'the browser rings twice for one incoming call',
+    );
+
+    expect(
+      source,
+      contains('incoming(false.toJS)'),
+      reason: 'something is called and nothing is switched off',
+    );
+  });
+
+  test('and the outgoing tone is left alone', () {
+    expect(
+      RegExp(r'outgoing\(\s*false').hasMatch(source),
+      isFalse,
+      reason: 'silencing the outgoing tone may be what restores the silent '
+          'outbound ringback — that path has no test that can hear it',
+    );
+  });
+}
+
+/// A source file with its comments stripped.
+///
+/// The docblocks in these files quote the very patterns the guards forbid —
+/// `SizedBox(width: 0, height: 0)` is written out in one of them — and a guard
+/// that fires on the explanation forbids explaining.
+String _code(String path) => File(path)
+    .readAsStringSync()
+    .split('\n')
+    .where((line) => !line.trimLeft().startsWith('//'))
+    .join('\n');
+
 /// The size of the surface, which is not a cosmetic choice.
 ///
 /// ── Why this is read off the file too ────────────────────────────
@@ -93,15 +151,7 @@ void main() {
 /// the shape no reviewer and no widget test catches, and why the one-pixel
 /// box needs something that fails rather than a comment asking nicely.
 void _surfaceContract() {
-  final file = File('lib/screens/phone/voice_view_io.dart').readAsStringSync();
-
-  // COMMENTS STRIPPED, because the docblock quotes the defect it is warning
-  // about — `SizedBox(width: 0, height: 0)` is written out up there, and a
-  // guard that fires on the explanation forbids explaining.
-  final source = file
-      .split('\n')
-      .where((line) => !line.trimLeft().startsWith('//'))
-      .join('\n');
+  final source = _code('lib/screens/phone/voice_view_io.dart');
 
   test('the WebView2 surface is never zero-sized', () {
     expect(

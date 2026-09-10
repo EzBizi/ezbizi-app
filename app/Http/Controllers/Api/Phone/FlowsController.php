@@ -141,7 +141,7 @@ class FlowsController extends Controller
             // Ten, because a caller cannot press an eleventh key.
             'options' => ['present', 'array', 'max:10'],
             'options.*.digit' => ['required', 'string', 'distinct', 'regex:/^[0-9*#]$/'],
-            'options.*.action' => ['required', Rule::in(['ring_group', 'voicemail', 'forward', 'hangup'])],
+            'options.*.action' => ['required', Rule::in(['ring_group', 'voicemail', 'forward', 'hangup', 'repeat'])],
             'options.*.ring_group_id' => [
                 'nullable',
                 'required_if:options.*.action,ring_group',

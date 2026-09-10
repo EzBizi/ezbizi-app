@@ -51,6 +51,25 @@ class TwilioVoiceDevice implements VoiceDevice {
           onIncoming?.call(VoiceIncoming(from: _from(jsCall)));
         }.toJS,
       );
+      // ── ONE RINGTONE, and it is ours ────────────────────────────
+      //
+      // The Voice SDK plays its own incoming ring by default, and EzBizi
+      // plays one too — see CallAlerts, which every platform uses. On the web
+      // both sound at once, which is what Jose reported: the EzBizi tone, and
+      // underneath it what he described as the sound of calling somebody.
+      //
+      // Ours is the one that survives, because it is the same alert on
+      // Windows, Android and iOS, and a browser tab that rings differently
+      // from the desktop app is a tab people learn to ignore.
+      //
+      // Only `incoming` is turned off. The OUTGOING tone is left alone
+      // deliberately: outbound ringback on a browser leg was silent until
+      // <Dial ringTone> was added for it, so this SDK sound is either
+      // inaudible on that path or it is the thing making it work, and I have
+      // measured neither. Turning it off to be tidy is how that fix gets
+      // quietly undone.
+      _silenceOwnRing(device);
+
       _device = device;
 
       // ── Why this needs a timeout and not just a catch ────────────
@@ -194,6 +213,20 @@ class TwilioVoiceDevice implements VoiceDevice {
     } catch (_) {}
     return '';
   }
+
+  /// Turn off the SDK's own incoming ring, if this build of it has one.
+  ///
+  /// Guarded rather than called straight: `audio` is absent when the browser
+  /// gives the SDK no audio context to work with, and an exception here would
+  /// land in setup()'s catch and report the device as unregistered — a phone
+  /// that cannot take calls at all, in the name of a duplicate tone.
+  void _silenceOwnRing(_JsDevice device) {
+    try {
+      device.audio?.incoming(false.toJS);
+    } catch (_) {
+      // A tone too many is survivable. Not registering is not.
+    }
+  }
 }
 
 @JS('Twilio')
@@ -208,6 +241,19 @@ extension type _JsDevice._(JSObject _) implements JSObject {
   external void destroy();
   external void disconnectAll();
   external void on(JSString event, JSFunction handler);
+
+  /// Null when the browser handed the SDK no audio helper — see
+  /// [TwilioVoiceDevice._silenceOwnRing].
+  external _JsAudio? get audio;
+}
+
+/// `Device.audio`, which owns the sounds the SDK plays for itself.
+@JS()
+extension type _JsAudio._(JSObject _) implements JSObject {
+  /// Passing false stops the SDK ringing for an incoming call. Called with no
+  /// argument it reports the current setting, which is why the bool is
+  /// explicit here rather than defaulted.
+  external void incoming(JSBoolean on);
 }
 
 @JS()

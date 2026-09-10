@@ -39,6 +39,10 @@ class _FlowsPaneState extends State<FlowsPane> {
     ('voicemail', 'Take a message'),
     ('forward', 'Forward the call'),
     ('hangup', 'Say something and hang up'),
+
+    // Every phone menu has one, and this one did not: a caller who missed
+    // which key was which had no way back and had to hang up and ring again.
+    ('repeat', 'Repeat the menu'),
   ];
 
   bool _loading = true;
