@@ -450,4 +450,53 @@ class LeadPlacementAndScheduledSyncTest extends TestCase
         $this->artisan('ezbizi:sync-leads', ['--days' => 3])->assertSuccessful();
         Http::assertSent(fn ($r) => $isLeadRead($r, '3747134697'));
     }
+
+    /**
+     * Every account's leads before any account's messages.
+     *
+     * Both halves spend the same quota and they are not worth the same. In one
+     * pass per account, the day the 15,000 ceiling is reached the accounts
+     * late in the list lose BOTH — their enquiries stop arriving because an
+     * earlier account's message history spent the last of it. The fleet
+     * reached sixty accounts on 2026-09-10 and Google's own counter put the
+     * hour at 730 requests, so this stopped being hypothetical.
+     */
+    public function test_leads_are_read_for_every_account_before_any_conversations_are(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $first  = $this->connection($t, '4941850746');
+        $second = $this->connection($t, '3747134697');
+
+        foreach ([$first, $second] as $i => $connection) {
+            $this->inTenant($t['org'], fn () => Lead::create([
+                'organization_id' => $t['org']->id, 'company_id' => $t['company']->id,
+                'connection_id' => $connection->getKey(), 'source' => Lead::SOURCE_LOCAL_SERVICES,
+                'remote_id' => 'L-order-'.$i, 'status' => Lead::STATUS_NEW, 'received_at' => now()->subDay(),
+            ]));
+        }
+
+        $this->fakeGoogle();
+
+        // A ten-minute mark, so both accounts are due for conversations too.
+        \Illuminate\Support\Carbon::setTestNow('2026-09-10 12:10:00');
+        $this->artisan('ezbizi:sync-leads')->assertSuccessful();
+
+        $kinds = [];
+
+        foreach (Http::recorded() as [$request]) {
+            $query = (string) ($request->data()['query'] ?? '');
+
+            if (str_contains($query, 'FROM local_services_lead ')) {
+                $kinds[] = 'lead';
+            } elseif (str_contains($query, 'FROM local_services_lead_conversation')) {
+                $kinds[] = 'conversation';
+            }
+        }
+
+        $this->assertSame(
+            ['lead', 'lead', 'conversation', 'conversation'],
+            $kinds,
+            'Discovery for the whole fleet must come before detail for any of it.',
+        );
+    }
 }

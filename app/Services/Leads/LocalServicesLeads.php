@@ -122,6 +122,26 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
     }
 
     /**
+     * The conversations alone, for a lead read that has already happened.
+     *
+     * Exists so the scheduler can put every account's LEAD read ahead of any
+     * account's conversation read. Both halves cost the same quota and they
+     * are not worth the same: a lead is somebody the business has not spoken
+     * to yet, and the messages on it are detail that the next tick will fetch
+     * just as well.
+     */
+    public function conversationsFor(SocialConnection $connection, ?int $days = null): array
+    {
+        $token = GoogleToken::forConnection($connection, 'google_ads');
+
+        $result = $this->syncConversations($connection, $token, $days);
+
+        $connection->forceFill(['last_reached_at' => now()])->save();
+
+        return $result;
+    }
+
+    /**
      * Store one lead and, if it is new, say so.
      *
      * Outside the transaction on purpose: emitting inside one means an

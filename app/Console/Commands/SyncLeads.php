@@ -119,6 +119,29 @@ class SyncLeads extends Command
         $halfHour = $minute % 30 < 5;
         $tenMin   = $minute % 10 < 5;
 
+        /*
+         * TWO PASSES, AND THE ORDER IS THE POINT.
+         *
+         * Both halves spend the same quota and they are not worth the same. A
+         * lead is a member of the public nobody has spoken to yet; the
+         * messages on it are detail the next tick fetches just as well. In one
+         * pass per account, the day the ceiling is reached the accounts late
+         * in the list lose BOTH — their enquiries stop arriving because an
+         * earlier account's message history spent the last of the quota.
+         *
+         * So every due account's leads are read first, and conversations are
+         * read afterwards with whatever is left. RESOURCE_EXHAUSTED then costs
+         * detail rather than discovery, whatever hour it arrives at.
+         *
+         * This matters now because the fleet grew to sixty accounts on
+         * 2026-09-10 and Google's own counter put the last hour at 730
+         * requests, which annualises past the 15,000 ceiling. Going over is
+         * how Standard Access is earned — Google refused it on 2026-09-09 for
+         * not yet needing it — and it must not be how an evening's enquiries
+         * are lost.
+         */
+        $due = [];
+
         foreach ($connections as $connection) {
             $organization = $organizations->get($connection->organization_id);
 
@@ -145,18 +168,27 @@ class SyncLeads extends Command
                 continue;
             }
 
+            $due[] = [
+                'connection'    => $connection,
+                'organization'  => $organization,
+                'conversations' => $forced || $fresh || ($producing && $tenMin),
+            ];
+        }
+
+        foreach ($due as $item) {
+            [$connection, $organization] = [$item['connection'], $item['organization']];
+
             try {
                 $result = $this->tenant->run(
                     $organization,
                     fn () => $this->localServices->sync(
                         $connection,
                         $forced ? (int) $this->option('days') : null,
-                        withConversations: $forced || $fresh || ($producing && $tenMin),
+                        withConversations: false,
                     ),
                 );
 
-                $fetched  += $result['fetched'];
-                $messages += $result['conversations']['created'];
+                $fetched += $result['fetched'];
             } catch (Throwable $e) {
                 /*
                  * One account must not stop the other twenty-one. A suspended
@@ -170,6 +202,36 @@ class SyncLeads extends Command
                 $failed++;
 
                 Log::warning('Scheduled lead sync failed for one connection.', [
+                    'connection_id' => $connection->getKey(),
+                    'provider'      => $connection->provider,
+                    'reason'        => $e->getMessage(),
+                ]);
+            }
+        }
+
+        // The second pass, and the one that is allowed to fail. Every enquiry
+        // is already filed by the time this runs.
+        foreach ($due as $item) {
+            if (! $item['conversations']) {
+                continue;
+            }
+
+            [$connection, $organization] = [$item['connection'], $item['organization']];
+
+            try {
+                $result = $this->tenant->run(
+                    $organization,
+                    fn () => $this->localServices->conversationsFor(
+                        $connection,
+                        $forced ? (int) $this->option('days') : null,
+                    ),
+                );
+
+                $messages += $result['created'];
+            } catch (Throwable $e) {
+                $failed++;
+
+                Log::warning('Scheduled conversation sync failed for one connection.', [
                     'connection_id' => $connection->getKey(),
                     'provider'      => $connection->provider,
                     'reason'        => $e->getMessage(),
