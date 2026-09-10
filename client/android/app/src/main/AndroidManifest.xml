@@ -49,6 +49,33 @@
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
+        <!-- The only path an incoming Twilio call has into this app.
+
+             twilio_voice ships VoiceFirebaseMessagingService but does NOT
+             declare it in its own manifest, and nothing else did either:
+             measured on the shipped 0.0.0183 artefact, the merged manifest
+             contained 0 references to it while correctly containing
+             TVConnectionService from the same library, so the query worked and
+             the absence was real.
+
+             Without this, MESSAGING_EVENT resolves only to the Firebase SDK’s
+             own fallback service, which knows nothing about Twilio. So
+             registration succeeds, Twilio sends the push, FCM delivers it, and
+             the handset never rings - three green steps and a dead end. Its
+             onNewToken is also the plugin’s token-rotation path, which was dead
+             for the same reason rather than merely unbuilt.
+
+             The firebase_messaging Dart plugin would normally contribute this
+             declaration. We deliberately do not use it (see MainActivity.kt),
+             so it has to be here. -->
+        <service
+            android:name="com.twilio.twilio_voice.fcm.VoiceFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
