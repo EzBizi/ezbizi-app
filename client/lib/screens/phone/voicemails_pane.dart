@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../core/timestamps.dart';
 import '../../core/theme.dart';
 import 'recording_playback_bar.dart';
 import 'recording_player.dart';
@@ -300,6 +301,23 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
                     style: theme.textTheme.titleSmall,
                   ),
                 ),
+
+                // WHEN it was left. A list of messages with no times in it
+                // cannot be worked through — "ring them back" depends on
+                // whether they rang an hour ago or last Tuesday.
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Text(
+                    formatListStamp(
+                      message.createdAt,
+                      '',
+                      formats: widget.session.me!.display,
+                    ),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
                 if (message.dealt)
                   Text(
                     'Dealt with',
@@ -338,9 +356,9 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
             Text(
               message.transcript?.trim().isNotEmpty == true
                   ? message.transcript!
-                  : 'No transcript. Twilio returns nothing for audio it cannot '
-                        'make out, which is not an error — the recording is '
-                        'still the record.',
+                  : 'No transcript. Either transcription is off for this '
+                        'line or Twilio could not make the audio out — the '
+                        'recording is still the record.',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: message.transcript?.trim().isNotEmpty == true
                     ? null
@@ -405,18 +423,29 @@ class _Voicemail {
     required this.transcript,
     required this.recordingSid,
     required this.dealt,
+    required this.createdAt,
   });
 
   final String id;
   final String from;
+  /// The MESSAGE, written down — not the call it was left on.
+  ///
+  /// `transcript` is live transcription of the whole conversation, which on a
+  /// line with a menu is our own greeting, the recording notice and the IVR
+  /// prompt before the caller says a word. Both used to be one column, so this
+  /// screen read callers their own menu back to them.
   final String? transcript;
   final String? recordingSid;
   final bool dealt;
 
+  /// When it was left. A voicemail with no time on it cannot be triaged.
+  final String createdAt;
+
   factory _Voicemail.fromJson(Map<String, dynamic> json) => _Voicemail(
     id: (json['id'] ?? '').toString(),
     from: (json['from_e164'] ?? '').toString(),
-    transcript: json['transcript'] as String?,
+    createdAt: (json['created_at'] ?? '').toString(),
+    transcript: json['voicemail_transcript'] as String?,
     recordingSid: json['recording_sid'] as String?,
     dealt: json['dealt_at'] != null,
   );

@@ -597,6 +597,12 @@ class _RecordsTabState extends State<RecordsTab> {
             if (line.isNotEmpty) line,
             formatStamp(call.createdAt, '', formats: formats),
             if (call.durationSeconds != null) _clock(call.durationSeconds!),
+
+            // Who took it. An inbound call rings a whole ring group, so the
+            // record used to say a call was answered without saying by whom —
+            // and a customer ringing back to continue the conversation could
+            // not be put through to the person they had it with.
+            if (call.answeredByName != null) 'Answered by ${call.answeredByName}',
           ].where((part) => part.isNotEmpty).join(' · '),
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
@@ -610,17 +616,27 @@ class _RecordsTabState extends State<RecordsTab> {
             load: () => widget.api.getBytes('/phone/calls/${call.id}/recording'),
           ),
         ],
-        if (call.transcript != null && call.transcript!.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            color: theme.colorScheme.surfaceContainerHighest.withValues(
-              alpha: 0.4,
+        // Two transcripts, and they are not the same thing: the live one is
+        // the conversation, the other is the message left after it. A call can
+        // have both, and showing one under the other's heading is how the
+        // Voicemail screen came to read callers their own IVR prompt back.
+        for (final part in [
+          ('Call transcript', call.transcript),
+          ('Voicemail message', call.voicemailTranscript),
+        ])
+          if (part.$2 != null && part.$2!.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text(part.$1, style: theme.textTheme.labelMedium),
+            const SizedBox(height: 4),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              color: theme.colorScheme.surfaceContainerHighest.withValues(
+                alpha: 0.4,
+              ),
+              child: Text(part.$2!, style: theme.textTheme.bodyMedium),
             ),
-            child: Text(call.transcript!, style: theme.textTheme.bodyMedium),
-          ),
-        ],
+          ],
 
         // Block from HERE, because this is where somebody is standing when
         // they decide to. The settings screen has the same list and a box to
@@ -782,7 +798,16 @@ class _Call {
     this.tag,
     this.tagColor,
     this.peerName,
+    this.answeredByName,
+    this.voicemailTranscript,
   });
+
+  /// Which of the people it rang picked up, when that is known.
+  final String? answeredByName;
+
+  /// The message left afterwards, which is a different recording from the call
+  /// and a different Twilio transcription.
+  final String? voicemailTranscript;
 
   /// Who the other end is, when it is a colleague rather than a number. A
   /// call to a teammate is addressed to a Voice identity, so without this the
@@ -824,6 +849,8 @@ class _Call {
     transcript: json['transcript'] as String?,
     createdAt: json['created_at'] as String? ?? '',
     peerName: json['peer_name'] as String?,
+    answeredByName: json['answered_by_name'] as String?,
+    voicemailTranscript: json['voicemail_transcript'] as String?,
     tag: json['tag'] as String?,
     tagColor: json['tag_color'] as String?,
     errorCode: json['error_code'] as String?,

@@ -422,7 +422,7 @@ class TwimlRendererTest extends TestCase
         });
 
         $this->assertStringContainsString('<Dial', $xml);
-        $this->assertStringContainsString('<Client>'.$identity.'</Client>', $xml);
+        $this->assertStringContainsString('>'.$identity.'</Client>', $xml);
         $this->assertStringContainsString('answerOnBridge="true"', $xml);
         $this->assertStringContainsString('record="record-from-answer-dual"', $xml);
         $this->assertStringNotContainsString('<Gather', $xml);
@@ -589,7 +589,7 @@ class TwimlRendererTest extends TestCase
         // Routed, not re-prompted.
         $this->assertStringNotContainsString('<Gather', $xml);
         $this->assertStringContainsString('<Dial', $xml);
-        $this->assertStringContainsString('<Client>', $xml);
+        $this->assertStringContainsString('<Client', $xml);
     }
 
     public function test_pressing_the_voicemail_key_records_instead_of_ringing(): void
@@ -617,7 +617,11 @@ class TwimlRendererTest extends TestCase
         });
 
         $this->assertStringContainsString('<Record', $xml);
-        $this->assertStringNotContainsString('<Client>', $xml);
+
+        // '<Client' and not '<Client>': the tag carries a url attribute now,
+        // so the closed form would be absent from a document that dialled the
+        // whole ring group and this assertion would pass on the defect.
+        $this->assertStringNotContainsString('<Client', $xml);
     }
 
     /**

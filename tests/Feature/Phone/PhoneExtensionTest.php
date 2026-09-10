@@ -122,6 +122,12 @@ class PhoneExtensionTest extends TestCase
         $this->assertStringContainsString('<Dial', $xml);
         $this->assertStringContainsString($identity, $xml);
         $this->assertStringNotContainsString('<Record', $xml);
+
+        // And the person who picks up is written down. An extension dial names
+        // one person but still rings each of their devices, so the leg that
+        // answers is no more knowable here than in a ring group — the same
+        // <Client url> is what reports it.
+        $this->assertStringContainsString('/phone/answered/', $xml);
     }
 
     /**

@@ -308,7 +308,12 @@ class CallsController extends Controller
      * really is an identity — a page of ordinary calls asks nothing extra.
      *
      * @param  \Illuminate\Support\Collection<int, PhoneCall>  $calls
-     * @return array<string, string> identity hex => person's name
+     * Keyed by BOTH forms a person can be named in a call row: the hyphen-less
+     * identity a client leg carries, and the plain id in `answered_by`. One
+     * pass over the page, one lookup, and the caller does not have to know
+     * which shape it holds.
+     *
+     * @return array<string, string> identity hex or user id => person's name
      */
     private function colleagueNames($calls): array
     {
@@ -320,6 +325,10 @@ class CallsController extends Controller
                     $identities[ClientIdentity::userPartOf($leg)] = true;
                 }
             }
+
+            if (is_string($call->answered_by) && $call->answered_by !== '') {
+                $identities[$call->answered_by] = true;
+            }
         }
 
         if ($identities === []) {
@@ -328,9 +337,10 @@ class CallsController extends Controller
 
         $names = [];
         foreach (User::query()->get(['id', 'name']) as $user) {
-            $hex = ClientIdentity::of($user);
-            if (isset($identities[$hex])) {
-                $names[$hex] = (string) $user->name;
+            foreach ([ClientIdentity::of($user), (string) $user->id] as $key) {
+                if (isset($identities[$key])) {
+                    $names[$key] = (string) $user->name;
+                }
             }
         }
 
@@ -377,6 +387,13 @@ class CallsController extends Controller
             'peer_name' => $colleagues[ClientIdentity::userPartOf($outside)] ?? null,
             'status' => $call->status,
 
+            // WHICH of the people it rang picked up. An inbound call rings a
+            // whole ring group, so "answered" named nobody and a customer
+            // ringing back to continue a conversation could not be put through
+            // to the person they had it with.
+            'answered_by' => $call->answered_by,
+            'answered_by_name' => $colleagues[(string) $call->answered_by] ?? null,
+
             // Why it failed, where Twilio said. A row that says "failed" and
             // nothing else is what turned four separate outbound defects into
             // four rounds of guessing.
@@ -391,6 +408,12 @@ class CallsController extends Controller
             'dealt_at' => $call->dealt_at?->toIso8601String(),
             'recording_sid' => $call->recording_sid,
             'transcript' => $call->transcript,
+
+            // The MESSAGE, not the call. Live transcription writes down the
+            // whole conversation including our own greeting and menu, so a
+            // voicemail screen fed from `transcript` reads the caller their
+            // own IVR prompt back.
+            'voicemail_transcript' => $call->voicemail_transcript,
             'customer_id' => $customerIds[$outside] ?? null,
             'created_at' => $call->created_at?->toIso8601String(),
         ];

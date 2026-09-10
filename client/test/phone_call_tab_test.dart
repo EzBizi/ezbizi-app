@@ -57,6 +57,26 @@ void main() {
   });
 
 
+  /// A row says who took the call, and when it happened.
+  ///
+  /// The list was ordered by time and printed none of it, and an inbound call
+  /// rings a whole ring group so "Incoming" named nobody. Jose asked for both:
+  /// a customer ringing back wants the person they spoke to, and "did they
+  /// call this morning or last week" should not need the Records tab.
+  testWidgets('a recent call names who answered it and when', (tester) async {
+    await _pump(tester, size: const Size(900, 800));
+
+    expect(
+      find.textContaining('Adeline Ruiz'),
+      findsOneWidget,
+      reason: 'the row says a call was answered without saying by whom',
+    );
+
+    // Not today, so the row carries the date rather than a bare clock — which
+    // is the only reading that tells a week-old call from this morning.
+    expect(find.textContaining('2026'), findsOneWidget);
+  });
+
   /// The reader can drag the line between two columns.
   ///
   /// Every fixed split is wrong for two of the three things somebody does at
@@ -1221,6 +1241,7 @@ MockClientHandler _handler({
             'to_e164': '+12035550142',
             'status': 'completed',
             'created_at': '2026-09-08T17:00:00+00:00',
+            'answered_by_name': 'Adeline Ruiz',
           },
         ],
       });

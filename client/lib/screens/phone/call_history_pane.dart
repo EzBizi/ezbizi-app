@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 
 /// Recent calls, beside the dial pad.
 ///
@@ -27,11 +28,16 @@ class CallHistoryPane extends StatefulWidget {
   const CallHistoryPane({
     super.key,
     required this.api,
+    required this.formats,
     required this.onPick,
     this.reloadToken = 0,
   });
 
   final ApiClient api;
+
+  /// How this organization writes a clock and a date. Required rather than
+  /// defaulted, for the reason [formatStamp] gives.
+  final DisplayFormats formats;
 
   /// Puts a number in the dial field. Never places the call.
   final void Function(String e164) onPick;
@@ -159,9 +165,28 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
         style: theme.textTheme.bodyMedium,
       ),
       subtitle: Text(
-        row.subtitle,
+        // Who took it, when there is a who. A call that rang the whole front
+        // desk used to say only "Incoming", so a customer ringing back to
+        // continue a conversation could not be put through to the person they
+        // had it with.
+        row.answeredByName == null
+            ? row.subtitle
+            : '${row.subtitle} · ${row.answeredByName}',
         style: theme.textTheme.bodySmall?.copyWith(
           color: row.missed ? theme.colorScheme.error : null,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+
+      // WHEN, right-aligned, the way every call list is laid out — today's
+      // calls by the clock and older ones by the date. The list was ordered by
+      // time and showed none of it, so "did they ring this morning or last
+      // week" had to be answered from the Records tab.
+      trailing: Text(
+        formatListStamp(row.createdAt, '', formats: widget.formats),
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
         ),
       ),
       onTap: peer.startsWith('+') ? () => widget.onPick(peer) : null,
@@ -172,6 +197,7 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
 class _Row {
   const _Row({
     this.peerName,
+    this.answeredByName,
     required this.direction,
     required this.from,
     required this.to,
@@ -212,8 +238,13 @@ class _Row {
   /// Who the other end is, when it is a colleague rather than a number.
   final String? peerName;
 
+  /// Which of the people it rang picked up. Null on a call nobody answered,
+  /// and on every call placed before the server started recording it.
+  final String? answeredByName;
+
   factory _Row.fromJson(Map<String, dynamic> json) => _Row(
     peerName: json['peer_name'] as String?,
+    answeredByName: json['answered_by_name'] as String?,
     direction: (json['direction'] ?? '').toString(),
     from: (json['from_e164'] ?? '').toString(),
     to: (json['to_e164'] ?? '').toString(),

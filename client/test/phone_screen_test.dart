@@ -1859,7 +1859,15 @@ void main() {
           'from_e164': '+13055550100',
           'to_e164': '+12035550142',
           'voicemail': true,
-          'transcript': 'Can somebody call me back about the chimney',
+
+          // BOTH, because a transcribed line produces both and this screen
+          // must show exactly one of them. `transcript` is the live
+          // transcription of the whole call — our greeting, the recording
+          // notice, the menu — and it is what this screen used to print,
+          // which is what Jose reported as transcripts turning up among his
+          // voicemails.
+          'transcript': 'Thank you for calling A-1 Chimney. Press one.',
+          'voicemail_transcript': 'Can somebody call me back about the chimney',
           'created_at': '2026-09-03T10:00:00+00:00',
         },
       ],
@@ -1874,6 +1882,14 @@ void main() {
       findsOneWidget,
       reason: 'the transcript was not shown on the voicemail',
     );
+    expect(
+      find.textContaining('Press one'),
+      findsNothing,
+      reason: 'the voicemail shows the call transcript, menu prompt and all',
+    );
+
+    // And WHEN it was left, or a list of messages cannot be worked through.
+    expect(find.textContaining('2026'), findsWidgets);
   });
 
   /// A box nothing routes to says so, instead of looking like a quiet week.

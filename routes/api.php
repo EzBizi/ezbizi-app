@@ -85,6 +85,7 @@ use App\Http\Controllers\Api\Phone\TrustController as PhoneTrustController;
 use App\Http\Controllers\Api\Phone\BlockedNumbersController as PhoneBlockedNumbersController;
 use App\Http\Controllers\Api\Phone\VoicemailBoxesController as PhoneVoicemailBoxesController;
 use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookController;
+use App\Http\Controllers\Api\Phone\AnsweredWebhookController as PhoneAnsweredWebhookController;
 use App\Http\Controllers\Api\Phone\WhisperWebhookController as PhoneWhisperWebhookController;
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
@@ -510,6 +511,16 @@ Route::post('v1/phone/sms/{organization}/{connection}', PhoneSmsWebhookControlle
 Route::match(['get', 'post'], 'v1/phone/whisper/{organization}/{connection}/{number}', PhoneWhisperWebhookController::class)
     ->middleware('throttle:120,1')
     ->name('phone.whisper.webhook');
+
+/*
+| Requested on the leg that ANSWERS a group dial, and on no other — which is
+| the only way Twilio will tell us which of the people it rang picked up.
+| Throttled higher than the whisper: a busy line rings many people, but only
+| one request lands per answered call.
+*/
+Route::match(['get', 'post'], 'v1/phone/answered/{organization}/{connection}/{user}', PhoneAnsweredWebhookController::class)
+    ->middleware('throttle:240,1')
+    ->name('phone.answered.webhook');
 
 Route::post('v1/phone/status/{organization}/{connection}', PhoneStatusWebhookController::class)
     ->middleware('throttle:120,1')

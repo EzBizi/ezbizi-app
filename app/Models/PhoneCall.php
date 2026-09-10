@@ -68,14 +68,16 @@ class PhoneCall extends Model implements CarriesAutomationScope, HoldsPersonalDa
                 Erasure::drop('A call row is nothing but that exchange. Blanking the numbers '
                     .'leaves a SID with no parties; the row goes, and Twilio media is deleted '
                     .'by the purge path that reads these declarations.')),
-            new PersonalDataEntry('user_id', PersonalDataEntry::IDENTITY,
-                'Which employee answered or placed the call, when that is known.',
+            new PersonalDataEntry('user_id, answered_by', PersonalDataEntry::IDENTITY,
+                'Which employee placed the call, and which of the people it rang picked '
+                .'it up, when that is known.',
                 Erasure::keep('A foreign key to the account the purge anonymises at its home. '
                     .'Nulling it here would orphan a dated call from the person who took it '
                     .'without removing anything about them.')),
-            new PersonalDataEntry('recording_sid, transcription_sid, transcript', PersonalDataEntry::CONTENT,
-                'Pointers at recorded audio, any transcript SID Twilio produced, and the '
-                .'concatenated final transcript text we keep on the row. The media itself is '
+            new PersonalDataEntry('recording_sid, transcription_sid, transcript, voicemail_transcript', PersonalDataEntry::CONTENT,
+                'Pointers at recorded audio, any transcript SID Twilio produced, the '
+                .'concatenated final transcript text we keep on the row, and separately the '
+                .'text of any message left on voicemail. The media itself is '
                 .'personal content about whoever spoke.',
                 Erasure::drop('Goes with the call row. The purge also asks Twilio to delete '
                     .'the recording so the SID cannot be replayed later.')),
@@ -85,6 +87,12 @@ class PhoneCall extends Model implements CarriesAutomationScope, HoldsPersonalDa
     public static function personalDataAbout(Model $subject): ?Builder
     {
         if ($subject instanceof User) {
+            // Calls they PLACED, and deliberately not ones they answered.
+            // These rows are erased by dropping them, and an inbound call is
+            // as much the customer's record as the employee's — losing it
+            // because the person who picked up has left would erase somebody
+            // who did not ask to be. `answered_by` is declared instead as a
+            // key to an account anonymised at its own home.
             return static::query()->where('user_id', $subject->getKey());
         }
 
@@ -110,10 +118,11 @@ class PhoneCall extends Model implements CarriesAutomationScope, HoldsPersonalDa
     protected $fillable = [
         'organization_id', 'number_id', 'connection_id',
         'twilio_sid', 'parent_sid', 'direction',
-        'from_e164', 'to_e164', 'user_id', 'status',
+        'from_e164', 'to_e164', 'user_id', 'answered_by', 'status',
         'error_code', 'error_message',
         'attestation',
         'duration_seconds', 'recording_sid', 'transcription_sid', 'transcript',
+        'voicemail_transcript',
         'voicemail', 'dealt_at',
         'tag_id', 'tagged_by', 'tagged_at',
     ];

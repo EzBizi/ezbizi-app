@@ -60,6 +60,37 @@ final class ClientIdentity
         return $at === false ? $identity : substr($identity, 0, $at);
     }
 
+    /**
+     * The user id an identity names, in the shape the database stores it.
+     *
+     * `of()` strips the hyphens because Twilio allows only alphanumerics and
+     * underscore in an identity, so the person half is a UUID minus its four
+     * hyphens and nothing else — put them back at the fixed offsets and it is
+     * the id again. Null for anything that is not 32 hex characters, which is
+     * the honest answer for an identity minted by something other than this
+     * class.
+     *
+     * Wanted because a webhook that learns WHICH identity answered a call has
+     * a person to record and only a string to go on; the alternative is a
+     * scan of every user comparing hyphen-stripped ids.
+     */
+    public static function uuidOf(string $identity): ?string
+    {
+        $person = self::userPartOf($identity);
+
+        if (preg_match('/^[0-9a-fA-F]{32}$/', $person) !== 1) {
+            return null;
+        }
+
+        return strtolower(implode('-', [
+            substr($person, 0, 8),
+            substr($person, 8, 4),
+            substr($person, 12, 4),
+            substr($person, 16, 4),
+            substr($person, 20, 12),
+        ]));
+    }
+
     /** Whether this identity belongs to this person, device or no device. */
     public static function belongsTo(string $identity, User $user): bool
     {

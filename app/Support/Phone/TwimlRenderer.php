@@ -566,15 +566,15 @@ final class TwimlRenderer
         );
 
         if ($devices->isEmpty()) {
-            $dial->client(ClientIdentity::of($row->user));
+            $identity = ClientIdentity::of($row->user);
+            $dial->client($identity, $this->answeredBy($number, $identity));
 
             return;
         }
 
         foreach ($devices as $device) {
-            $dial->client(
-                ClientIdentity::of($row->user, (string) $device->device_id),
-            );
+            $identity = ClientIdentity::of($row->user, (string) $device->device_id);
+            $dial->client($identity, $this->answeredBy($number, $identity));
         }
     }
 
@@ -667,7 +667,7 @@ final class TwimlRenderer
 
         $dial = $response->dial(null, $attributes);
         foreach ($batches[$index] as $identity) {
-            $dial->client($identity);
+            $dial->client($identity, $this->answeredBy($number, $identity));
         }
     }
 
@@ -749,7 +749,8 @@ final class TwimlRenderer
             // A colleague's browser. Both ends are ours and both are already
             // looking at a screen that says the call is recorded, so there is
             // nobody here who has not been told.
-            $dial->client(substr($to, strlen('client:')));
+            $identity = substr($to, strlen('client:'));
+            $dial->client($identity, $this->answeredBy($number, $identity));
 
             return;
         }
@@ -770,6 +771,32 @@ final class TwimlRenderer
         }
 
         $dial->number($to, $numberAttributes);
+    }
+
+    /**
+     * Attributes that make the answering `<Client>` name itself.
+     *
+     * ── Why a round trip on pick-up is worth it ──────────────────
+     *
+     * A ring group dials everybody at once and Twilio reports only that the
+     * dial completed, never which leg won. `url` is fetched on the leg that
+     * ANSWERS and on no other, so the request landing is the fact — see
+     * AnsweredWebhookController.
+     *
+     * It costs the person who picked up one HTTP round trip before they hear
+     * the caller, which is why it is attached only where the answer is in
+     * doubt: a dial with several `<Client>` nouns in it. The empty document it
+     * fetches bridges immediately.
+     */
+    private function answeredBy(PhoneNumber $number, string $identity): array
+    {
+        return [
+            'url' => route('phone.answered.webhook', [
+                'organization' => $number->organization_id,
+                'connection' => $number->connection_id,
+                'user' => $identity,
+            ]),
+        ];
     }
 
     /**

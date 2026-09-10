@@ -781,6 +781,7 @@ class _CallTabState extends State<CallTab> {
               width: history,
               child: CallHistoryPane(
                 api: widget.api,
+                formats: widget.session.me!.display,
                 reloadToken: _historyToken,
                 onPick: (e164) => setState(() {
                   _destination.text = e164;

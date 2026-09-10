@@ -267,3 +267,32 @@ String formatStamp(
 
   return '${formats.formatDate(at)} ${formats.formatTime(at.hour, at.minute)}';
 }
+
+/// A stamp in a LIST, where the day is usually today and the column is narrow.
+///
+/// [formatStamp] always writes both halves, which is right for a detail field
+/// somebody is reading once. A list of calls is the other case: forty rows, the
+/// same date on most of them, and a column about eleven characters wide. Every
+/// phone anybody owns solves it the same way — the clock for today, the
+/// calendar for anything older — so this does too.
+///
+/// [now] is injectable because "today" is the whole behaviour and a test that
+/// cannot move the day can only assert the branch it happens to be in.
+String formatListStamp(
+  Object? iso,
+  String fallback, {
+  required DisplayFormats formats,
+  DateTime? now,
+}) {
+  final at = iso is String ? DateTime.tryParse(iso)?.toLocal() : null;
+
+  if (at == null) return fallback;
+
+  final today = (now ?? DateTime.now()).toLocal();
+  final sameDay =
+      at.year == today.year && at.month == today.month && at.day == today.day;
+
+  return sameDay
+      ? formats.formatTime(at.hour, at.minute)
+      : formats.formatDate(at);
+}

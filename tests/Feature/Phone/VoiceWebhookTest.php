@@ -433,7 +433,7 @@ class VoiceWebhookTest extends TestCase
         $xml = $response->getContent();
         $this->assertStringContainsString('<Response', $xml);
         $this->assertStringContainsString('<Dial', $xml);
-        $this->assertStringContainsString('<Client>'.$identity.'</Client>', $xml);
+        $this->assertStringContainsString('>'.$identity.'</Client>', $xml);
         $this->assertStringContainsString('answerOnBridge="true"', $xml);
         $this->assertStringNotContainsString('VoiceWebhookController', $xml);
         $this->assertStringNotContainsString('PhoneCall', $xml);
@@ -553,8 +553,8 @@ class VoiceWebhookTest extends TestCase
         $xml = $first->getContent();
 
         $this->assertSame(10, $this->clientCount($xml));
-        $this->assertStringContainsString('<Client>'.$identities[0].'</Client>', $xml);
-        $this->assertStringNotContainsString('<Client>'.$identities[10].'</Client>', $xml);
+        $this->assertStringContainsString('>'.$identities[0].'</Client>', $xml);
+        $this->assertStringNotContainsString('>'.$identities[10].'</Client>', $xml);
 
         $action = $this->dialAction($xml);
         $this->assertNotSame('', $action);
@@ -567,7 +567,7 @@ class VoiceWebhookTest extends TestCase
         $next = $second->getContent();
 
         $this->assertSame(1, $this->clientCount($next));
-        $this->assertStringContainsString('<Client>'.$identities[10].'</Client>', $next);
+        $this->assertStringContainsString('>'.$identities[10].'</Client>', $next);
         $this->assertStringNotContainsString('Please leave a message after the tone.', $next);
     }
 
