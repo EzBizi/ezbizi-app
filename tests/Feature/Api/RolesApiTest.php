@@ -127,6 +127,26 @@ class RolesApiTest extends TestCase
         // showed the reasoning can be wrong in a way that hides itself. A new
         // entry here should be a decision somebody argued for, not a diff
         // nobody read.
+        //
+        // This asserted an EMPTY list until 2026-09-10, when Reports shipped
+        // the first requirement anybody had argued for. The guard worked
+        // exactly as intended and caught it on the release gate -- the desk had
+        // read and accepted the argument and then forgotten the guard existed.
+        //
+        // So it is an allowlist now, not an emptiness check, and the reasoning
+        // for each entry lives here rather than in a merge message nobody
+        // re-reads. Adding a key still costs an argument; it just has somewhere
+        // to be written down.
+        //
+        //   reports  `build` and `export` both require `reports.view`. Neither
+        //            is reachable without it -- the tab is what you compose and
+        //            export FROM -- so the requirement describes the product
+        //            rather than restricting it. Contrast `training.assign`,
+        //            which was removed because an automation could reach it
+        //            without `training.monitor`: the premise was made true by
+        //            the refusal itself.
+        $argued = ['reports'];
+
         $declaring = [];
 
         foreach (app(ModuleRegistry::class)->all() as $key => $module) {
@@ -135,7 +155,9 @@ class RolesApiTest extends TestCase
             }
         }
 
-        $this->assertSame([], $declaring);
+        sort($declaring);
+
+        $this->assertSame($argued, $declaring);
     }
 
     public function test_a_role_payload_cannot_make_itself_administrator(): void
