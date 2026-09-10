@@ -11,7 +11,7 @@ class VersionHistory {
       version: '0.0.0184',
       date: '10 Sep 2026',
       items: [
-        'Android can register with the calling network at all. It never could: the plugin refuses without a device token from Google and the app was not sending one, so a call could never have arrived on an Android phone whatever was set up on the server. This does not yet mean an Android handset rings - there is one more gap, and it is named below.',
+        'Android now supplies the device token from Google that the calling network demands before it will accept a registration at all. The app had never sent one, so an Android phone could not have received a call whatever was set up on the server. What this does NOT say is that a handset now registers or rings: more of the chain is in place, not the whole of it, and nobody has yet watched either happen.',
         'Fixed: placing a call no longer asks you to accept the call you just made. Ringing a colleague raised your own incoming banner and offered you the call you were placing.',
         'Fixed: answering a call on the iPhone call screen no longer asks you to accept it a second time inside the app.',
         'A phone that cannot join the calling network now says what went wrong, instead of telling you to reload the page. It was showing a message about a page and a network for a fault that was neither, because the real reason was being thrown away before anyone could read it.',
