@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0187',
+      date: '10 Sep 2026',
+      items: [
+        'Recent calls and Records name the person who answered. An incoming call rings a whole ring group and nothing recorded which of them picked up; the handset that answers now says so.',
+        'Recent calls and Voicemail show when a call came in - the clock for today, the date for anything older, in the format your organization uses.',
+        'Voicemail shows the message that was left, rather than a transcript of the whole call. The two were sharing one place to be stored, and the voicemail one was being thrown away before it got there, so most messages looked as though nothing had been said.',
+        'An enquiry keeps working after its account is disconnected and connected again. Disconnecting used to cut every enquiry that account had already delivered off from the thing that reads and replies to it, in the middle of a conversation, with nothing saying so.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0186',
       date: '10 Sep 2026',
       items: [
