@@ -27,6 +27,29 @@ final class ActionDefinition extends AutomationDeclaration
         $this->executionType = $executionType
             ?? substr($key, strpos($key, '.') + 1);
 
+        /*
+         * THIS CHECKS THE SAFE FORM AND IGNORES THE UNSAFE ONE.
+         *
+         * It runs only when `$executionType` was passed, and it demands a dot.
+         * A DERIVED type — the default, and what 25 of the 28 declared actions
+         * use — is never checked at all, and is usually the bare word after the
+         * first dot: `create`, `deactivate`, `update_field`, `start`.
+         *
+         * That is backwards from how it reads. Spelling the type out is the
+         * careful thing to do, and it is the only thing that can fail here;
+         * leaving it to derive is the thing that silently produces a bare word
+         * in a namespace every module shares.
+         *
+         * It is deliberately NOT tightened to refuse bare derived types,
+         * because a bare type is CORRECT for a genuinely generic action: four
+         * modules share `update_field` on purpose, and two share
+         * `change_status`. What separates a correct sharing from an accidental
+         * one is whether the action is one implementation applied to several
+         * subjects, and no regex can see that. So the rule stays a matter of
+         * judgement, and this comment is where the judgement is written down —
+         * ask whether your action is generic, and spell the type out when it is
+         * not. Raised by the Reports session, 2026-09-10.
+         */
         if ($executionType !== null
             && ! preg_match('/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/', $this->executionType)) {
             throw new \InvalidArgumentException(
