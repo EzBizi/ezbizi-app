@@ -5,9 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// The PC Specs grid's card and its load meters.
 ///
-/// The load-bearing tests here are the two about ABSENCE: a machine that has
-/// not said how busy it is must not render as an idle one, and a machine whose
-/// owner is exempt must not render as a broken one. Both are cases where the
+/// The load-bearing test here is the one about ABSENCE: a machine that has not
+/// said how busy it is must not render as an idle one — the case where the
 /// wrong answer looks exactly like a normal reading.
 void main() {
   Widget wrap(Widget child) => MaterialApp(
@@ -16,7 +15,7 @@ void main() {
 
   MachineCard card({
     bool online = true,
-    bool exempt = false,
+    bool reserveActivityLine = false,
     int? cpu,
     int? ram,
     int? disk,
@@ -28,7 +27,7 @@ void main() {
         person: 'Marco Reyes',
         online: online,
         seenLabel: '3m ago',
-        exempt: exempt,
+        reserveActivityLine: reserveActivityLine,
         cpuPercent: cpu,
         ramPercent: ram,
         diskPercent: disk,
@@ -52,14 +51,45 @@ void main() {
     expect(find.textContaining('12%'), findsOneWidget);
   });
 
-  testWidgets('an exempt machine says Protected rather than looking broken',
+  testWidgets('the person leads the card and the machine sits under them',
       (tester) async {
-    await tester.pumpWidget(wrap(card(exempt: true)));
-    expect(find.text('Protected'), findsOneWidget);
+    await tester.pumpWidget(wrap(card()));
 
-    // Control: the badge is the exemption, not something every card carries.
-    await tester.pumpWidget(wrap(card(exempt: false)));
-    expect(find.text('Protected'), findsNothing);
+    // Both are on the card; the test is which one is the HEADING. Asserting
+    // only that both appear would pass with them in either order, which is
+    // the whole of what this change was.
+    final person = tester.widget<Text>(find.text('Marco Reyes'));
+    final machine = tester.widget<Text>(find.text('DESKTOP-AI4K9IP'));
+    final theme = Theme.of(tester.element(find.text('Marco Reyes')));
+
+    expect(person.style, theme.textTheme.titleSmall,
+        reason: 'A roster is read to find a person, so the person is the title.');
+    expect(machine.style, theme.textTheme.labelSmall,
+        reason: 'The machine qualifies the answer, it is not what is looked up.');
+  });
+
+  testWidgets('every card in a grid is the same height, with or without a window',
+      (tester) async {
+    // The bug this pins: cards with no active window came up a line short, so
+    // the offline ones looked like a rendering fault rather than like
+    // machines that had reported less.
+    await tester.pumpWidget(wrap(card(
+      reserveActivityLine: true,
+      activeWindow: 'Workiz - Estimate - Microsoft Edge',
+    )));
+    final withWindow = tester.getSize(find.byType(Card)).height;
+
+    await tester.pumpWidget(wrap(card(reserveActivityLine: true)));
+    final without = tester.getSize(find.byType(Card)).height;
+
+    expect(without, withWindow,
+        reason: 'A card with nothing in front still holds the line open.');
+
+    // Control: the reservation is a CHOICE the grid makes, not something
+    // every card pays for — with nothing anywhere to show, the row goes.
+    await tester.pumpWidget(wrap(card(reserveActivityLine: false)));
+    expect(tester.getSize(find.byType(Card)).height, lessThan(without),
+        reason: 'Reserving a row nobody can fill is dead space on every card.');
   });
 
   testWidgets('a live machine says Live, an offline one says when it was seen',

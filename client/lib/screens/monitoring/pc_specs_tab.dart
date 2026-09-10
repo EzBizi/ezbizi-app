@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -75,10 +77,33 @@ class _PcSpecsTabState extends State<PcSpecsTab> {
   /// shows that thing, clicking nothing shows everything.
   String? _selectedPersonId;
 
+  /// The roster reloads itself on this cadence.
+  ///
+  /// The agent measures and beats every 60 seconds, so anything longer than
+  /// that shows a machine's load later than it had to; anything much shorter
+  /// re-fetches rows that cannot have changed. 30s is the General tab's own
+  /// poll, and two Monitoring tabs disagreeing about how fresh "now" is would
+  /// be a difference nobody could explain.
+  ///
+  /// It exists because a live-looking meter that never moves is a worse lie
+  /// than a stale number that admits it: this screen used to load once and
+  /// then sit there, so a card left open through a lunch break was still
+  /// drawing the CPU load from before it.
+  static const Duration refreshEvery = Duration(seconds: 30);
+
+  Timer? _refresh;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _refresh = Timer.periodic(refreshEvery, (_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _refresh?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -330,6 +355,14 @@ class _MachineGrid extends StatelessWidget {
     final cardWidth =
         columns == 1 ? available : (available - (columns - 1) * 12) / columns;
 
+    // Asked of the whole grid, not per card: it is what makes every card the
+    // same height, so it has to be one answer for all of them.
+    final anyActivity = people.any((person) {
+      final screen = currentDeviceFor(person.devices, isOnline)['screen_context'];
+      final window = screen is Map ? screen['active_window'] as String? : null;
+      return window != null && window.isNotEmpty;
+    });
+
     return Wrap(
       spacing: 12,
       runSpacing: 12,
@@ -337,13 +370,13 @@ class _MachineGrid extends StatelessWidget {
         for (final person in people)
           SizedBox(
             width: cardWidth > 0 ? cardWidth : null,
-            child: _cardFor(person),
+            child: _cardFor(person, reserveActivityLine: anyActivity),
           ),
       ],
     );
   }
 
-  Widget _cardFor(_Person person) {
+  Widget _cardFor(_Person person, {required bool reserveActivityLine}) {
     final device = currentDeviceFor(person.devices, isOnline);
     final specs = device['specs'];
     final map =
@@ -358,7 +391,7 @@ class _MachineGrid extends StatelessWidget {
       sessions: _sessionsFor(person),
       online: isOnline(device),
       seenLabel: seenAgo(device['last_seen_at'] as String?),
-      exempt: device['screen_exempt'] == true,
+      reserveActivityLine: reserveActivityLine,
       cpuPercent: _asInt(map['cpu_percent']),
       ramPercent: _asInt(map['ram_percent']),
       diskPercent: _diskPercent(map['drives']),
