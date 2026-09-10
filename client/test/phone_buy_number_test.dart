@@ -15,34 +15,159 @@ import 'package:http/testing.dart';
 /// comes back with numbers in the wrong town, which reads as Twilio having
 /// nothing rather than as EzBizi losing the question.
 void main() {
-  testWidgets('the panel is a button until it is opened', (tester) async {
+  /// The search is the screen, not a thing behind a button on it.
+  ///
+  /// This used to assert the opposite — that the panel was a button until it
+  /// was opened — which described the step Jose asked to remove: somebody who
+  /// has navigated to Buy a number is asked to say so again, and nothing
+  /// behind the button is destructive.
+  testWidgets('the search is there without opening anything', (tester) async {
     await _pump(tester);
 
     expect(find.text('Buy a new line'), findsOneWidget);
-    expect(find.text('Search'), findsNothing);
+    expect(find.widgetWithText(FilledButton, 'Search'), findsOneWidget);
+    expect(
+      find.widgetWithText(OutlinedButton, 'Buy a new line'),
+      findsNothing,
+      reason: 'the extra step is back',
+    );
+  });
+
+  /// The three things Jose named, side by side.
+  ///
+  /// They are not Twilio's three: a vanity number is a local or toll-free one
+  /// searched by what its digits spell. The modes are how the choice is made,
+  /// and the type is derived from them.
+  testWidgets('local, toll-free and vanity are offered as modes', (
+    tester,
+  ) async {
+    await _pump(tester);
+
+    for (final mode in ['Local number', 'Toll-free', 'Vanity']) {
+      expect(
+        find.widgetWithText(SegmentedButton<String>, mode),
+        findsOneWidget,
+        reason: '$mode is not offered',
+      );
+    }
+  });
+
+  /// A toll-free prefix reaches Twilio as an area code, which is what it is.
+  testWidgets('a toll-free prefix is searched for', (tester) async {
+    final asked = <Uri>[];
+    await _pump(tester, onGet: asked.add);
+
+    await _mode(tester, 'Toll-free');
+    await _pick(tester, const Key('buy-toll-free-prefix'), '833');
+    await _search(tester);
+
+    final q = _lastSearch(asked);
+    expect(q['type'], 'toll_free');
+    expect(q['area_code'], '833');
+  });
+
+  /// A vanity search is letters on whichever kind of number was asked for.
+  testWidgets('a vanity search sends the letters and the kind', (tester) async {
+    final asked = <Uri>[];
+    await _pump(tester, onGet: asked.add);
+
+    await _mode(tester, 'Vanity');
+    await tester.enterText(_field('Spells or contains'), 'CHIMNEY');
+    await _search(tester);
+
+    final q = _lastSearch(asked);
+    expect(q['contains'], 'CHIMNEY');
+    expect(
+      q['type'],
+      'local',
+      reason: 'a vanity number is a real kind of number, not a fourth type',
+    );
+  });
+
+  /// Switching modes does not carry the previous mode's answer along.
+  ///
+  /// Through VANITY rather than toll-free, and that is the whole point of the
+  /// test. Toll-free does not read the area-code field at all — it sends its
+  /// prefix instead — so a left-behind 561 could not reach the query even if
+  /// nothing cleared it, and the first version of this test passed with the
+  /// clearing sabotaged.
+  ///
+  /// Vanity does read it. A 561 carried in from a local search silently pins
+  /// a vanity search to one area code, which comes back nearly empty and
+  /// reads as "no numbers spell that".
+  testWidgets('switching modes drops the filter that belonged to the last one', (
+    tester,
+  ) async {
+    final asked = <Uri>[];
+    await _pump(tester, onGet: asked.add);
+
+    await tester.enterText(_field('Area code'), '561');
+    await _mode(tester, 'Vanity');
+
+    expect(
+      find.text('Spells or contains'),
+      findsOneWidget,
+      reason: 'this mode does not show the field the test is about',
+    );
+
+    await tester.enterText(_field('Spells or contains'), 'CHIMNEY');
+    await _search(tester);
+
+    final q = _lastSearch(asked);
+    expect(q['contains'], 'CHIMNEY');
+    expect(q['area_code'], isNull, reason: 'the last mode pinned this search');
+  });
+
+  /// The state is picked, not remembered.
+  testWidgets('a state is chosen from a list and sent as its code', (
+    tester,
+  ) async {
+    final asked = <Uri>[];
+    await _pump(tester, onGet: asked.add);
+
+    await _pick(tester, const ValueKey('buy-region-US'), 'Florida');
+    await _search(tester);
+
+    expect(_lastSearch(asked)['in_region'], 'FL');
+  });
+
+  /// US and Canada are the two this business buys in, so they are the two at
+  /// the top — and the rest are a filter away rather than a scroll away.
+  testWidgets('the country list leads with the ones we buy in', (tester) async {
+    await _pump(tester);
+
+    final menu = tester.widget<DropdownMenu<String>>(
+      find.byKey(const Key('buy-country')),
+    );
+
+    expect(menu.enableFilter, isTrue, reason: 'ninety countries and no search');
+    expect(
+      menu.dropdownMenuEntries.take(2).map((e) => e.value),
+      ['US', 'CA'],
+    );
+    expect(menu.initialSelection, 'US');
   });
 
   testWidgets('every filter typed reaches the API', (tester) async {
     final asked = <Uri>[];
     await _pump(tester, onGet: asked.add);
 
-    await _open(tester);
-
     await tester.enterText(_field('Area code'), '561');
-    await tester.enterText(_field('Contains'), '2468');
-    await tester.enterText(_field('City'), 'Jupiter');
-    await tester.enterText(_field('State'), 'FL');
+    await _pick(tester, const ValueKey('buy-region-US'), 'Florida');
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Search'));
+    // City is a refinement rather than a question everybody is asked, so it
+    // lives under More options now.
+    await tester.tap(find.widgetWithText(TextButton, 'More options'));
     await tester.pumpAndSettle();
+    await tester.enterText(_field('City'), 'Jupiter');
 
-    final search = asked.lastWhere((u) => u.path.endsWith('/numbers/available'));
-    final q = search.queryParameters;
+    await _search(tester);
+
+    final q = _lastSearch(asked);
 
     expect(q['scope_type'], 'organization');
     expect(q['scope_id'], 'org-1');
     expect(q['area_code'], '561');
-    expect(q['contains'], '2468');
     expect(q['in_locality'], 'Jupiter');
     expect(q['in_region'], 'FL');
 
@@ -68,7 +193,6 @@ void main() {
       ],
     );
 
-    await _open(tester);
     await tester.tap(find.widgetWithText(FilledButton, 'Search'));
     await tester.pumpAndSettle();
 
@@ -103,7 +227,6 @@ void main() {
       ],
     );
 
-    await _open(tester);
     await tester.tap(find.widgetWithText(FilledButton, 'Search'));
     await tester.pumpAndSettle();
 
@@ -146,7 +269,6 @@ void main() {
       ],
     );
 
-    await _open(tester);
     await tester.tap(find.widgetWithText(FilledButton, 'Search'));
     await tester.pumpAndSettle();
 
@@ -164,7 +286,6 @@ void main() {
   ) async {
     await _pump(tester, available: const []);
 
-    await _open(tester);
     await tester.tap(find.widgetWithText(FilledButton, 'Search'));
     await tester.pumpAndSettle();
 
@@ -175,8 +296,6 @@ void main() {
     tester,
   ) async {
     await _pump(tester);
-    await _open(tester);
-
     expect(find.text('LATA'), findsNothing);
 
     await tester.tap(find.widgetWithText(TextButton, 'More options'));
@@ -198,8 +317,33 @@ final Finder _rowBuy = find.descendant(
   matching: find.widgetWithText(FilledButton, 'Buy'),
 );
 
-Future<void> _open(WidgetTester tester) async {
-  await tester.tap(find.widgetWithText(OutlinedButton, 'Buy a new line'));
+Future<void> _search(WidgetTester tester) async {
+  await tester.tap(find.widgetWithText(FilledButton, 'Search'));
+  await tester.pumpAndSettle();
+}
+
+/// What the last search actually asked Twilio for.
+///
+/// The artefact, not the tap: a filter that is on screen and never reaches
+/// the query comes back as numbers in the wrong town, which reads as Twilio
+/// having nothing rather than as EzBizi losing the question.
+Map<String, String> _lastSearch(List<Uri> asked) => asked
+    .lastWhere((u) => u.path.endsWith('/numbers/available'))
+    .queryParameters;
+
+Future<void> _mode(WidgetTester tester, String label) async {
+  await tester.tap(find.text(label));
+  await tester.pumpAndSettle();
+}
+
+/// Open a DropdownMenu and choose one of its entries by label.
+Future<void> _pick(WidgetTester tester, Key menu, String label) async {
+  await tester.tap(find.descendant(of: find.byKey(menu), matching: find.byType(TextField)));
+  await tester.pumpAndSettle();
+
+  // The menu draws its entries in an overlay, so the label exists twice once
+  // it is open — in the field and in the list. `.last` is the list.
+  await tester.tap(find.text(label).last);
   await tester.pumpAndSettle();
 }
 
@@ -223,10 +367,18 @@ Future<void> _pump(
       }
 
       if (path.endsWith('/phone/numbers/countries')) {
+        // DELIBERATELY OUT OF ORDER, and with the two we care about buried.
+        //
+        // The first version of this fake listed US and CA first, which is
+        // what the screen is supposed to arrange — so the sorting was never
+        // exercised and removing it left every test green.
         return _json({
           'data': [
-            {'country_code': 'US', 'country': 'United States'},
+            {'country_code': 'AU', 'country': 'Australia'},
+            {'country_code': 'GB', 'country': 'United Kingdom'},
             {'country_code': 'CA', 'country': 'Canada'},
+            {'country_code': 'DE', 'country': 'Germany'},
+            {'country_code': 'US', 'country': 'United States'},
           ],
         });
       }

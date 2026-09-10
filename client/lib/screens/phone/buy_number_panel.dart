@@ -48,18 +48,75 @@ class BuyNumberPanel extends StatefulWidget {
 }
 
 class _BuyNumberPanelState extends State<BuyNumberPanel> {
-  static const _types = <String, String>{
-    'local': 'Local',
+  /// What somebody came here to buy, which is not the same question as
+  /// Twilio's `type`.
+  ///
+  /// Twilio has three types — local, toll_free, mobile — and a VANITY number
+  /// is not one of them: it is either of the first two, searched by what the
+  /// digits spell. Jose asked for all three side by side because that is how
+  /// the choice is actually made ("I want an 800 number" / "I want one that
+  /// spells CHIMNEY"), so the modes are what he named and the type is derived.
+  static const _modes = <String, String>{
+    'local': 'Local number',
     'toll_free': 'Toll-free',
+    'vanity': 'Vanity',
     'mobile': 'Mobile',
   };
 
-  bool _open = false;
+  /// The toll-free prefixes in service. Twilio searches these through
+  /// `area_code`, which is why the field is shared: to the API an 833 is an
+  /// area code like any other.
+  ///
+  /// Listed rather than typed because there are eight of them, they are not
+  /// guessable, and a typo returns "no numbers" rather than "no such prefix".
+  static const _tollFreePrefixes = ['800', '833', '844', '855', '866', '877', '888'];
+
+  /// US states and Canadian provinces, for the places where Twilio actually
+  /// honours a region filter. Everywhere else the field stays free text,
+  /// because a list of the world's subdivisions that we maintain by hand is a
+  /// list that is wrong somewhere.
+  static const _regions = <String, Map<String, String>>{
+    'US': {
+      'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas',
+      'CA': 'California', 'CO': 'Colorado', 'CT': 'Connecticut',
+      'DE': 'Delaware', 'DC': 'District of Columbia', 'FL': 'Florida',
+      'GA': 'Georgia', 'HI': 'Hawaii', 'ID': 'Idaho', 'IL': 'Illinois',
+      'IN': 'Indiana', 'IA': 'Iowa', 'KS': 'Kansas', 'KY': 'Kentucky',
+      'LA': 'Louisiana', 'ME': 'Maine', 'MD': 'Maryland',
+      'MA': 'Massachusetts', 'MI': 'Michigan', 'MN': 'Minnesota',
+      'MS': 'Mississippi', 'MO': 'Missouri', 'MT': 'Montana',
+      'NE': 'Nebraska', 'NV': 'Nevada', 'NH': 'New Hampshire',
+      'NJ': 'New Jersey', 'NM': 'New Mexico', 'NY': 'New York',
+      'NC': 'North Carolina', 'ND': 'North Dakota', 'OH': 'Ohio',
+      'OK': 'Oklahoma', 'OR': 'Oregon', 'PA': 'Pennsylvania',
+      'RI': 'Rhode Island', 'SC': 'South Carolina', 'SD': 'South Dakota',
+      'TN': 'Tennessee', 'TX': 'Texas', 'UT': 'Utah', 'VT': 'Vermont',
+      'VA': 'Virginia', 'WA': 'Washington', 'WV': 'West Virginia',
+      'WI': 'Wisconsin', 'WY': 'Wyoming',
+    },
+    'CA': {
+      'AB': 'Alberta', 'BC': 'British Columbia', 'MB': 'Manitoba',
+      'NB': 'New Brunswick', 'NL': 'Newfoundland and Labrador',
+      'NS': 'Nova Scotia', 'NT': 'Northwest Territories', 'NU': 'Nunavut',
+      'ON': 'Ontario', 'PE': 'Prince Edward Island', 'QC': 'Quebec',
+      'SK': 'Saskatchewan', 'YT': 'Yukon',
+    },
+  };
+
   bool _advanced = false;
 
-  String _type = 'local';
+  String _mode = 'local';
   String _country = 'US';
+  String? _tollFreePrefix;
   List<_Country> _countries = const [];
+
+  /// Twilio's `type`, which for a vanity search is whichever kind of number
+  /// the letters are wanted on.
+  String get _type => _mode == 'vanity' ? _vanityType : _mode;
+  String _vanityType = 'local';
+
+  /// Whether this country's subdivisions are ones we can offer as a list.
+  bool get _regionsKnown => _regions.containsKey(_country);
 
   final _areaCode = TextEditingController();
   final _contains = TextEditingController();
@@ -119,6 +176,12 @@ class _BuyNumberPanelState extends State<BuyNumberPanel> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _loadCountries();
+  }
+
+  @override
   void didUpdateWidget(BuyNumberPanel old) {
     super.didUpdateWidget(old);
 
@@ -131,7 +194,7 @@ class _BuyNumberPanelState extends State<BuyNumberPanel> {
         _note = null;
         _countries = const [];
       });
-      if (_open) _loadCountries();
+      _loadCountries();
     }
   }
 
@@ -143,8 +206,24 @@ class _BuyNumberPanelState extends State<BuyNumberPanel> {
 
     if (!mounted || !response.ok) return;
 
+    final listed = _Country.listFrom(response.body);
+
+    // US AND CANADA FIRST, then the rest alphabetically.
+    //
+    // Twilio returns them in its own order and this is a US business selling
+    // to US and Canadian customers. Sorting the two it will actually buy in
+    // to the top costs nothing and saves typing into the filter every time;
+    // the filter is still there for the other ninety.
+    const home = ['US', 'CA'];
+    listed.sort((a, b) {
+      final ai = home.indexOf(a.code);
+      final bi = home.indexOf(b.code);
+      if (ai != bi) return (ai == -1 ? 99 : ai).compareTo(bi == -1 ? 99 : bi);
+      return a.name.compareTo(b.name);
+    });
+
     setState(() {
-      _countries = _Country.listFrom(response.body);
+      _countries = listed;
       if (_countries.isNotEmpty && !_countries.any((c) => c.code == _country)) {
         _country = _countries.first.code;
       }
@@ -175,7 +254,15 @@ class _BuyNumberPanelState extends State<BuyNumberPanel> {
       if (value.isNotEmpty) query[key] = value;
     }
 
-    put('area_code', _areaCode);
+    // A toll-free prefix IS an area code to Twilio, so the two share the
+    // field — and only one of them is on screen at a time, which is what
+    // keeps that from being confusing rather than clever.
+    if (_mode == 'toll_free') {
+      if (_tollFreePrefix != null) query['area_code'] = _tollFreePrefix!;
+    } else {
+      put('area_code', _areaCode);
+    }
+
     put('contains', _contains);
     put('in_locality', _locality);
     put('in_region', _region);
@@ -249,34 +336,17 @@ class _BuyNumberPanelState extends State<BuyNumberPanel> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    if (!_open) {
-      return Align(
-        alignment: Alignment.centerLeft,
-        child: OutlinedButton.icon(
-          icon: const Icon(Icons.add_call, size: 18),
-          label: const Text('Buy a new line'),
-          onPressed: () {
-            setState(() => _open = true);
-            if (_countries.isEmpty) _loadCountries();
-          },
-        ),
-      );
-    }
-
+    // NO BUTTON IN FRONT OF IT.
+    //
+    // This screen is called Buy a number and it held a button reading "Buy a
+    // new line" that revealed the search. Jose asked for it to go: the extra
+    // step asks somebody who has already navigated here to say so again, and
+    // nothing behind it is destructive — searching spends a Twilio query and
+    // buys nothing until a row is picked and confirmed.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text('Buy a new line', style: theme.textTheme.labelLarge),
-            ),
-            TextButton(
-              onPressed: () => setState(() => _open = false),
-              child: const Text('Close'),
-            ),
-          ],
-        ),
+        Text('Buy a new line', style: theme.textTheme.labelLarge),
         Text(
           'What Twilio has for sale. Nothing is bought until you pick one.',
           style: theme.textTheme.bodySmall,
@@ -319,68 +389,111 @@ class _BuyNumberPanelState extends State<BuyNumberPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // WHAT KIND, first and as buttons rather than a dropdown.
+        //
+        // Four things, all of them short, and the choice changes which fields
+        // appear underneath — a dropdown hides that relationship behind a tap
+        // and makes the fields look like they moved on their own.
+        SegmentedButton<String>(
+          segments: [
+            for (final entry in _modes.entries)
+              ButtonSegment(value: entry.key, label: Text(entry.value)),
+          ],
+          selected: {_mode},
+          showSelectedIcon: false,
+          onSelectionChanged: (picked) => setState(() {
+            _mode = picked.first;
+
+            // The old mode's answer is not this one's question. Leaving an
+            // area code behind when somebody switches to toll-free searches
+            // for a toll-free number in the 561 area code, which is nothing.
+            if (_mode != 'local') _areaCode.clear();
+            if (_mode != 'vanity') _contains.clear();
+            if (_mode != 'toll_free') _tollFreePrefix = null;
+          }),
+        ),
+
+        const SizedBox(height: 12),
+
         Wrap(
           spacing: 12,
           runSpacing: 12,
           children: [
-            SizedBox(
-              width: 170,
-              child: DropdownButtonFormField<String>(
-                initialValue: _type,
-                // Without this the menu sizes to its widest label and spills
-                // out of the box — "United States Minor Outlying Islands"
-                // defeats any width worth typing.
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Kind',
-                  border: OutlineInputBorder(),
-                  isDense: true,
+            _countryPicker(),
+
+            // ── Local: where the number should sound like it is from ──
+            if (_mode == 'local' || _mode == 'mobile') ...[
+              _regionPicker(),
+              _field(_areaCode, 'Area code', width: 130, hint: '561'),
+            ],
+
+            // ── Toll-free: which prefix ────────────────────────────
+            if (_mode == 'toll_free')
+              SizedBox(
+                width: 200,
+                child: DropdownMenu<String?>(
+                  key: const Key('buy-toll-free-prefix'),
+                  initialSelection: _tollFreePrefix,
+                  width: 200,
+                  label: const Text('Prefix'),
+                  inputDecorationTheme: const InputDecorationTheme(
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  dropdownMenuEntries: [
+                    // "Any" first, because the reason most people buy
+                    // toll-free is that it is toll-free, not that it is 833.
+                    const DropdownMenuEntry(value: null, label: 'Any'),
+                    for (final prefix in _tollFreePrefixes)
+                      DropdownMenuEntry(value: prefix, label: prefix),
+                  ],
+                  onSelected: (value) =>
+                      setState(() => _tollFreePrefix = value),
                 ),
-                items: [
-                  for (final entry in _types.entries)
-                    DropdownMenuItem(
-                      value: entry.key,
-                      child: Text(entry.value),
-                    ),
-                ],
-                onChanged: (value) => setState(() => _type = value ?? 'local'),
               ),
-            ),
-            SizedBox(
-              width: 220,
-              child: DropdownButtonFormField<String>(
-                initialValue:
-                    _countries.any((c) => c.code == _country) ? _country : null,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Country',
-                  border: OutlineInputBorder(),
-                  isDense: true,
+
+            // ── Vanity: what the digits should spell ───────────────
+            if (_mode == 'vanity') ...[
+              SizedBox(
+                width: 190,
+                child: DropdownMenu<String>(
+                  key: const Key('buy-vanity-type'),
+                  initialSelection: _vanityType,
+                  width: 190,
+                  label: const Text('On a'),
+                  inputDecorationTheme: const InputDecorationTheme(
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  dropdownMenuEntries: const [
+                    DropdownMenuEntry(value: 'local', label: 'Local number'),
+                    DropdownMenuEntry(value: 'toll_free', label: 'Toll-free'),
+                  ],
+                  onSelected: (value) =>
+                      setState(() => _vanityType = value ?? 'local'),
                 ),
-                items: [
-                  for (final c in _countries)
-                    DropdownMenuItem(
-                      value: c.code,
-                      child: Text(c.name, overflow: TextOverflow.ellipsis),
-                    ),
-                ],
-                onChanged: (value) =>
-                    setState(() => _country = value ?? _country),
               ),
-            ),
-            _field(_areaCode, 'Area code', width: 120, hint: '561'),
-            _field(
-              _contains,
-              'Contains',
-              width: 180,
-              hint: '2468 or CHIM',
-              helper: '* matches one, % matches many',
-            ),
-            _field(_locality, 'City', width: 180),
-            _field(_region, 'State', width: 110, hint: 'FL'),
-            _field(_postalCode, 'ZIP', width: 120),
+              _field(
+                _contains,
+                'Spells or contains',
+                width: 240,
+                hint: 'CHIMNEY, 2468, 55*',
+                helper: 'Letters use the keypad. * any one, % any run',
+              ),
+              if (_vanityType == 'local')
+                _field(_areaCode, 'Area code', width: 130, hint: '561'),
+            ],
           ],
         ),
+
+        if (_mode == 'vanity') ...[
+          const SizedBox(height: 6),
+          Text(
+            'Letters are matched on the phone keypad, so CHIMNEY finds '
+            '244-6639. Fewer letters find far more numbers.',
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
 
         const SizedBox(height: 8),
         Wrap(
@@ -421,6 +534,10 @@ class _BuyNumberPanelState extends State<BuyNumberPanel> {
             spacing: 12,
             runSpacing: 12,
             children: [
+              _field(_locality, 'City', width: 180, hint: 'Jupiter'),
+              _field(_postalCode, 'ZIP', width: 120),
+              if (!_regionsKnown)
+                _field(_region, 'State or province', width: 170),
               _field(
                 _nearNumber,
                 'Near number',
@@ -463,6 +580,87 @@ class _BuyNumberPanelState extends State<BuyNumberPanel> {
           ),
         ],
       ],
+    );
+  }
+
+  /// The country, with a filter, because there are ninety of them.
+  ///
+  /// `DropdownMenu` rather than `DropdownButtonFormField` for exactly that:
+  /// the old one was a ninety-item scroll with no way to type, and the two
+  /// countries this business buys in were wherever Twilio happened to put
+  /// them. They are pinned to the top now — see [_loadCountries] — and
+  /// anything else is two letters of typing away.
+  Widget _countryPicker() {
+    final known = _countries.any((c) => c.code == _country);
+
+    return SizedBox(
+      width: 240,
+      child: DropdownMenu<String>(
+        key: const Key('buy-country'),
+
+        // Rebuilt when the list arrives: DropdownMenu takes its initial
+        // selection once, and the countries are fetched after the first
+        // frame, so without this the box stays empty until somebody opens it.
+        initialSelection: known ? _country : null,
+        width: 240,
+        enableFilter: true,
+        requestFocusOnTap: true,
+        label: const Text('Country'),
+        inputDecorationTheme: const InputDecorationTheme(
+          border: OutlineInputBorder(),
+          isDense: true,
+        ),
+        dropdownMenuEntries: [
+          for (final c in _countries)
+            DropdownMenuEntry(value: c.code, label: c.name),
+        ],
+        onSelected: (value) => setState(() {
+          _country = value ?? _country;
+
+          // A region code is only meaningful inside its own country: FL in
+          // Canada is nothing, and leaving it behind searches for nothing
+          // while looking like a filter that is doing something.
+          _region.clear();
+        }),
+      ),
+    );
+  }
+
+  /// State or province, as a list where we can be sure of the list.
+  ///
+  /// Jose asked to pick the state rather than remember its code. That is
+  /// answerable for the US and Canada and not for the rest of the world
+  /// without a table we would have to maintain, so outside those two the
+  /// field stays free text under More options — offering a wrong list is
+  /// worse than offering none.
+  Widget _regionPicker() {
+    if (!_regionsKnown) return const SizedBox.shrink();
+
+    final regions = _regions[_country]!;
+    final chosen = _region.text.trim().toUpperCase();
+
+    return SizedBox(
+      width: 240,
+      child: DropdownMenu<String?>(
+        key: ValueKey('buy-region-$_country'),
+        initialSelection: regions.containsKey(chosen) ? chosen : null,
+        width: 240,
+        enableFilter: true,
+        requestFocusOnTap: true,
+        label: Text(_country == 'CA' ? 'Province' : 'State'),
+        inputDecorationTheme: const InputDecorationTheme(
+          border: OutlineInputBorder(),
+          isDense: true,
+        ),
+        dropdownMenuEntries: [
+          // Anywhere first: a state is a narrowing, and somebody who wants a
+          // 561 number does not also need to say Florida.
+          const DropdownMenuEntry(value: null, label: 'Anywhere'),
+          for (final entry in regions.entries)
+            DropdownMenuEntry(value: entry.key, label: entry.value),
+        ],
+        onSelected: (value) => setState(() => _region.text = value ?? ''),
+      ),
     );
   }
 
