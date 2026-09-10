@@ -35,18 +35,27 @@ class PhoneDeviceRegistration extends Model implements StatesRetention
     }
 
     /**
-     * Rows are replaced in place and expire by being ignored.
+     * The shortest window this codebase sweeps on, and that is the point.
      *
-     * Nothing here is worth keeping once a device stops asking for tokens, and
-     * nothing reads a row older than the deadline — so retention is about
-     * tidiness, not about behaviour.
+     * ── Why this is a privacy decision, not housekeeping ─────────────
+     *
+     * A row here ties a named person to a particular handset. It stops being
+     * USEFUL ninety minutes after that device last asked for a token — see
+     * [STALE_AFTER_MINUTES], which is what decides whether it is dialled — so
+     * everything kept beyond that is a record of which devices somebody owns,
+     * held for no working reason.
+     *
+     * One month is the shortest window this policy can express, not a judgement
+     * that a month is the right length. If the sweep ever takes a finer unit,
+     * this should take it.
      */
     public static function retention(): RetentionPolicy
     {
         return RetentionPolicy::window(1, 'last_seen_at',
             'One row per live app install, refreshed every time that install asks '
-            .'for a Voice token. A row older than the dial deadline is already '
-            .'ignored when deciding what to ring.'
+            .'for a Voice token. It stops being read 90 minutes after that, so what '
+            .'remains is a record of whose handset is whose and is swept as soon as '
+            .'this policy can express.'
         );
     }
 

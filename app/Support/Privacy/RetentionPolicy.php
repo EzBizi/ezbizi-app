@@ -75,15 +75,22 @@ final class RetentionPolicy
      * silently matched nothing in exactly the table that grows fastest, which is
      * indistinguishable from a table that was already clean.
      *
-     * The eight tables this governs today are `automation_events` (occurred_at),
+     * The nine tables this governs today are `automation_events` (occurred_at),
      * `invitations` (created_at), `monitoring_activity` (occurred_at),
      * `notifications` (created_at), `password_resets` (created_at),
-     * `phone_calls` (created_at), `phone_messages` (created_at) and
-     * `staff_messages` (created_at). It said four before Phone added call and
-     * SMS rows with the same three-month window as business audit (spec §11),
-     * and seven before colleagues could message each other — that one is two
-     * years rather than three months, because a working conversation is not an
-     * audit trail and keeping it forever would quietly make it one.
+     * `phone_calls` (created_at), `phone_device_registrations` (last_seen_at),
+     * `phone_messages` (created_at) and `staff_messages` (created_at). It said
+     * four before Phone added call and SMS rows with the same three-month
+     * window as business audit (spec §11), and seven before colleagues could
+     * message each other — that one is two years rather than three months,
+     * because a working conversation is not an audit trail and keeping it
+     * forever would quietly make it one.
+     *
+     * The ninth is the shortest window in the list, and deliberately: a device
+     * registration ties a named person to a particular handset, and it stops
+     * being useful ninety minutes after that handset last asked for a token.
+     * Anything kept past that is a record of which devices somebody owns,
+     * held for no working reason.
      *
      * Others time their rows by something other than creation — `audit_events`
      * by `occurred_at`, `automation_runs` by `started_at` — but neither is swept
