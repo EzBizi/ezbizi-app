@@ -26,13 +26,14 @@ class MonitoredDevice extends Model implements HoldsPersonalData
     protected $fillable = [
         'organization_id', 'user_id', 'device_key', 'label', 'platform',
         'capabilities', 'user_agent', 'ip_address', 'last_seen_at',
-        'current_module', 'specs', 'offline_alerted_at',
+        'current_module', 'specs', 'screen_context', 'offline_alerted_at',
         'capture_last_attempt_at', 'capture_last_error',
     ];
 
     protected $casts = [
         'capabilities'       => 'array',
         'specs'              => 'array',
+        'screen_context'     => 'array',
         'last_seen_at'       => 'datetime',
         'offline_alerted_at' => 'datetime',
         'capture_last_attempt_at' => 'datetime',
@@ -79,11 +80,18 @@ class MonitoredDevice extends Model implements HoldsPersonalData
                 .'graphics, drives, uptime, its wifi network and local address, how '
                 .'much it has sent and received, how long since someone touched it, '
                 .'whether the screen is locked, which programs are open, what it '
-                .'has installed and which addresses those programs are talking to. '
-                .'On a device that is not exempt it also carries the title of the '
-                .'window in front and of every open browser tab, which can name '
-                .'what a person is working on — those are shown only to a role '
-                .'that may also see screenshots.',
+                .'has installed and which addresses those programs are talking to.',
+                Erasure::erase()),
+
+            // Its own column, and its own CATEGORY, for the reason the
+            // migration gives: this is what a person is doing, not a fact
+            // about the hardware, and the inventory endpoint publishes the
+            // category to whoever asks what is held about them.
+            new PersonalDataEntry('screen_context', PersonalDataEntry::ACTIVITY,
+                'The title of the window in front on a desktop agent, and of every '
+                .'open browser tab, which can name what a person is working on. '
+                .'Shown only to a role that may also see screenshots, and never '
+                .'reported at all by a device exempt from screen monitoring.',
                 Erasure::erase()),
         ];
     }

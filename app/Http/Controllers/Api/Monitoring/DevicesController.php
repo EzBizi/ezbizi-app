@@ -107,21 +107,16 @@ class DevicesController extends Controller
         // a caller who lacks `monitoring.specs.view` should not learn from the
         // shape of the response that specs exist to be granted.
         if ($canSeeSpecs) {
-            $specs = $d->specs;
+            $row['specs'] = $d->specs;
+        }
 
-            // The window title and the browser tabs ride in the specs blob
-            // because the agent reads them in the same pass, but they are NOT
-            // specs: they are what is on the screen right now, the same class
-            // of thing a screenshot shows. So they need the screenshot grant,
-            // not the hardware one — `monitoring.specs.view` alone buys you
-            // what the machine IS, never what is on it.
-            if (! $canSeeCapture && is_array($specs)) {
-                foreach (ScreenMonitoringExemption::SCREEN_CONTENT_SPEC_KEYS as $key) {
-                    unset($specs[$key]);
-                }
-            }
-
-            $row['specs'] = $specs;
+        // What is ON the screen — the window in front, the open tabs — rather
+        // than what the machine is. Gated on the SAME grant as the screenshots
+        // themselves, because it is the same class of thing: a tab list is a
+        // slower screenshot. `monitoring.specs.view` alone buys what the
+        // machine IS, never what is on it.
+        if ($canSeeCapture) {
+            $row['screen_context'] = $d->screen_context;
         }
 
         // Why the last capture did not happen, for whoever can see captures at

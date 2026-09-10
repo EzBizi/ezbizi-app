@@ -50,23 +50,29 @@ class ScreenContentSpecsTest extends TestCase
             'organization_id' => $alpha['org']->id,
             'user_id' => $alpha['admin']->getKey(),
             'capabilities' => ['activity', 'specs'],
-            'specs' => ['ram_gb' => 31] + $this->screenContent(),
+            'specs' => ['ram_gb' => 31],
+            'screen_context' => $this->screenContent(),
         ]));
 
         // Hardware only: may see what the machine IS, never what is on it.
         $hardware = $this->userWithRole($alpha, 'Hardware', [
             'monitoring.view', 'monitoring.specs.view',
         ]);
-        $specs = $this->signedInAs($hardware)->getJson('/api/v1/monitoring/devices')
+        $row = $this->signedInAs($hardware)->getJson('/api/v1/monitoring/devices')
             ->assertOk()
-            ->json('data.0.specs');
+            ->json('data.0');
 
-        $this->assertSame(31, $specs['ram_gb'], 'Positive control: the hardware '
-            .'keys must survive, or "no screen content" only means "no specs at all".');
+        $this->assertSame(31, $row['specs']['ram_gb'], 'Positive control: the '
+            .'hardware keys must survive, or "no screen content" only means '
+            .'"no specs at all".');
 
+        $this->assertArrayNotHasKey('screen_context', $row,
+            'What is on the screen is not bought by the hardware grant.');
+
+        // Belt and braces: the keys must not have leaked back into `specs`
+        // either, which is where they arrive from the agent.
         foreach (ScreenMonitoringExemption::SCREEN_CONTENT_SPEC_KEYS as $key) {
-            $this->assertArrayNotHasKey($key, $specs,
-                "specs.$key is what is on the screen, so the hardware grant must not buy it.");
+            $this->assertArrayNotHasKey($key, $row['specs']);
         }
 
         // The same row, read by somebody who may see the screen itself.
@@ -75,7 +81,7 @@ class ScreenContentSpecsTest extends TestCase
         ]);
         $withContent = $this->signedInAs($screen)->getJson('/api/v1/monitoring/devices')
             ->assertOk()
-            ->json('data.0.specs');
+            ->json('data.0.screen_context');
 
         // The control that makes the assertions above readable: this content IS
         // reachable on this row, so its absence for the hardware role is the
@@ -107,15 +113,19 @@ class ScreenContentSpecsTest extends TestCase
             'specs' => ['ram_gb' => 31] + $this->screenContent(),
         ])->assertSuccessful();
 
-        $stored = MonitoredDevice::withoutGlobalScopes()
-            ->where('device_key', 'key-lead')->sole()->specs;
+        $device = MonitoredDevice::withoutGlobalScopes()
+            ->where('device_key', 'key-lead')->sole();
 
+        $this->assertNull($device->screen_context,
+            'A Lead Developer handles credentials; what is on their screen is '
+            .'exactly what the exemption exists to keep off the roster.');
+
+        // And it must not have been left behind in specs on the way past.
         foreach (ScreenMonitoringExemption::SCREEN_CONTENT_SPEC_KEYS as $key) {
-            $this->assertArrayNotHasKey($key, $stored,
-                "A Lead Developer handles credentials; specs.$key is exactly the "
-                .'kind of thing the exemption exists to keep off the roster.');
+            $this->assertArrayNotHasKey($key, $device->specs);
         }
 
+        $stored = $device->specs;
         $this->assertSame(31, $stored['ram_gb'], 'Positive control: an exempt '
             .'device still reports its hardware and still shows as online — the '
             .'exemption draws a line, it does not switch the device off.');
@@ -134,11 +144,14 @@ class ScreenContentSpecsTest extends TestCase
             'specs' => ['ram_gb' => 16] + $this->screenContent(),
         ])->assertSuccessful();
 
-        $stored = MonitoredDevice::withoutGlobalScopes()
-            ->where('device_key', 'key-ordinary')->sole()->specs;
+        $device = MonitoredDevice::withoutGlobalScopes()
+            ->where('device_key', 'key-ordinary')->sole();
 
+        // Sent inside `specs` — the agent's wire shape is unchanged — and
+        // lifted into its own column on the way in.
         foreach ($this->screenContent() as $key => $value) {
-            $this->assertSame($value, $stored[$key]);
+            $this->assertSame($value, $device->screen_context[$key]);
+            $this->assertArrayNotHasKey($key, $device->specs);
         }
     }
 
