@@ -868,9 +868,19 @@ class _HomeShellState extends State<HomeShell> {
             // The bar and the rail were both plain surface, so on a light theme
             // they met as one continuous white field and the sidebar read as part
             // of the header. One pixel fixes it; nothing else would.
-            bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(1),
-              child: Container(height: 1, color: EzBiziTheme.edge(context)),
+            bottom: _BarStates(
+              // A state is not a control, and states already have a home here:
+              // `_timeClockNotice` is described in this file as sitting "as a
+              // one-line strip under the AppBar, same family as the two-factor
+              // chip". The chip was simply never put in it.
+              //
+              // On a phone that is not tidiness. Measured at 375 with both
+              // showing, the actions row runs off the right edge -- these two
+              // are conditional, so the worst case is worse than any screenshot
+              // of a healthy account.
+              twoFactor: !wide && me.twoFactorEnrolmentRequired,
+              readOnly: !wide && me.organization.isReadOnly,
+              onTwoFactor: _showProfile,
             ),
             leading: wide
                 ? IconButton(
@@ -925,19 +935,39 @@ class _HomeShellState extends State<HomeShell> {
                   api: widget.api,
                   session: widget.session,
                 );
-                // Clock in must stay in this bar at 375px, not drop into a
-                // menu. When the title slot is tighter than the brand row,
-                // scale the brand rather than the punch control.
-                if (constraints.maxWidth < 240) {
-                  return FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [...brand, switcher],
-                    ),
-                  );
+
+                // On a phone the brand row does not shrink -- it goes.
+                //
+                // This used to be `FittedBox(scaleDown)` below 240px, and Jose
+                // reported the result as "the ezbizi logo itself is impossible
+                // to see" (2026-09-10). It was not truncated, it was SCALED
+                // past reading: a mark nobody can read still takes its width
+                // and says nothing, which is worse than absence.
+                //
+                // So the wordmark, the rule and the company logo are dropped
+                // together below 900, and the switcher gets the whole slot. It
+                // still NAMES the company in words, which is what the logo was
+                // saying in pixels -- nothing that identifies the business is
+                // lost, only a second copy of it.
+                if (!wide) {
+                  // The switcher draws NOTHING for a single-company business
+                  // (`ScopeSwitcher.hasChoices`) — there is nowhere else to
+                  // stand. Dropping the brand and leaning on it to name the
+                  // company would have left those organizations with a bar that
+                  // identifies nothing: a hamburger and some icons.
+                  //
+                  // So when it has nothing to offer, the name is said plainly.
+                  // Asking the switcher rather than re-deriving the condition
+                  // here keeps one definition of "is there a choice".
+                  return ScopeSwitcher.hasChoices(me)
+                      ? switcher
+                      : Text(
+                          me.scope.label,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleSmall,
+                        );
                 }
+
                 return Row(
                   children: [
                     ...brand,
@@ -952,6 +982,10 @@ class _HomeShellState extends State<HomeShell> {
                   open: me.timeClock.open != null,
                   busy: _punching,
                   onPressed: _punch,
+                  // Icon only on a phone, which is what buys the room for
+                  // availability to stay in the bar beside it (Jose, layout 6
+                  // plus his amendment, 2026-09-10).
+                  compact: !wide,
                 ),
 
               // Beside Clock In, because they are the same kind of fact: am I
@@ -970,6 +1004,13 @@ class _HomeShellState extends State<HomeShell> {
               // Cycles system -> light -> dark rather than toggling two states: the
               // default is "match my device", and a two-way switch would silently
               // throw that away the first time anybody touched it.
+              // Desktop only, by Jose's word (2026-09-10): "we can get rid of
+              // the light-dark mode switcher and have it only managed via your
+              // account on mobile". It was always a shortcut to the account
+              // setting rather than a second one, so removing it here removes a
+              // path and never a capability -- which is the only reason it is
+              // safe to drop rather than relocate.
+              if (wide)
               IconButton(
                 tooltip: switch (me.theme) {
                   'light' => 'Light — switch to dark',
@@ -1004,7 +1045,7 @@ class _HomeShellState extends State<HomeShell> {
               // A chip beside the read-only one rather than a modal: same kind
               // of statement about the state of the session, and it stays
               // visible while they act on it.
-              if (me.twoFactorEnrolmentRequired)
+              if (wide && me.twoFactorEnrolmentRequired)
                 Padding(
                   padding: const EdgeInsets.only(right: 12),
                   child: ActionChip(
@@ -1020,7 +1061,7 @@ class _HomeShellState extends State<HomeShell> {
                     onPressed: _showProfile,
                   ),
                 ),
-              if (me.organization.isReadOnly)
+              if (wide && me.organization.isReadOnly)
                 Padding(
                   padding: const EdgeInsets.only(right: 12),
                   child: Chip(
@@ -1444,12 +1485,93 @@ class _HomeShellState extends State<HomeShell> {
 ///
 /// The test worth applying to anything perpetual added to this bar: it has to
 /// END, and by being acted on rather than by timing out.
+/// The rule under the top bar, and on a phone the states that would otherwise
+/// crowd the actions beside it.
+///
+/// Two of the bar's items are CONDITIONAL and neither is a control you press to
+/// do the day's work: "Set up two-factor" and "Read only" are things that are
+/// TRUE. On a desktop there is room for them among the buttons. On a phone
+/// there is not -- with both showing, the actions row overflows -- and a strip
+/// under the bar is where this file already says such a thing belongs.
+///
+/// Draws the bare 1px rule when neither applies, which is every healthy
+/// account, so the common case costs exactly what it did before.
+class _BarStates extends StatelessWidget implements PreferredSizeWidget {
+  const _BarStates({
+    required this.twoFactor,
+    required this.readOnly,
+    required this.onTwoFactor,
+  });
+
+  final bool twoFactor;
+  final bool readOnly;
+  final VoidCallback onTwoFactor;
+
+  bool get _any => twoFactor || readOnly;
+
+  @override
+  Size get preferredSize => Size.fromHeight(_any ? 49 : 1);
+
+  @override
+  Widget build(BuildContext context) {
+    final rule = Container(height: 1, color: EzBiziTheme.edge(context));
+    if (!_any) return rule;
+
+    final scheme = Theme.of(context).colorScheme;
+    final tint = scheme.errorContainer.withValues(alpha: 0.4);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: 48,
+          // Scrolls rather than wraps: two chips fit at 375, and a third state
+          // added later would otherwise silently push the strip to two rows and
+          // move every screen down.
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            children: [
+              if (twoFactor)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ActionChip(
+                    avatar: const Icon(Icons.shield_outlined, size: 16),
+                    label: const Text('Set up two-factor'),
+                    backgroundColor: tint,
+                    onPressed: onTwoFactor,
+                  ),
+                ),
+              if (readOnly)
+                Chip(
+                  avatar: const Icon(Icons.lock_outline, size: 16),
+                  label: const Text('Read only'),
+                  backgroundColor: tint,
+                ),
+            ],
+          ),
+        ),
+        rule,
+      ],
+    );
+  }
+}
+
 class _ClockButton extends StatefulWidget {
   const _ClockButton({
     required this.open,
     required this.busy,
     required this.onPressed,
+    this.compact = false,
   });
+
+  /// Icon only, no label, for the phone bar (Jose, 2026-09-10: "make the clock
+  /// out as an icon instead only without the words").
+  ///
+  /// The two states stay legible without the word because the ICON differs by
+  /// shape, not only by colour -- `logout` against `login` -- so this does not
+  /// rest on telling coral from green.
+  final bool compact;
 
   /// A shift is open — the button says Clock Out, and the chip breathes.
   final bool open;
@@ -1535,7 +1657,11 @@ class _ClockButtonState extends State<_ClockButton>
           child: OutlinedButton.icon(
             onPressed: widget.busy ? null : widget.onPressed,
             icon: Icon(widget.open ? Icons.logout : Icons.login, size: 18),
-            label: Text(label),
+            // Compact keeps the Tooltip above and drops only the word. An
+            // IconButton would have been the obvious swap and would have lost
+            // the outline and the breathing halo, which are what make a live
+            // shift visible at a glance.
+            label: widget.compact ? const SizedBox.shrink() : Text(label),
             style: OutlinedButton.styleFrom(
               foregroundColor: color,
               disabledForegroundColor: color.withValues(alpha: 0.55),
@@ -1543,7 +1669,10 @@ class _ClockButtonState extends State<_ClockButton>
               // Transparent so the animated fill behind it shows through
               // instead of the two stacking into a flat block.
               backgroundColor: Colors.transparent,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              // Tighter without a word: `OutlinedButton.icon` still lays out a
+              // gap for the label, so 12 either side of an empty one reads as a
+              // mis-centred icon.
+              padding: EdgeInsets.symmetric(horizontal: widget.compact ? 6 : 12),
               minimumSize: const Size(0, 32),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               visualDensity: VisualDensity.compact,

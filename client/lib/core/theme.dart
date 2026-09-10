@@ -268,12 +268,18 @@ class EzBiziTheme {
   ///
   /// Takes a BuildContext for exactly that reason. An earlier version hardcoded
   /// the ink colour and the second half of the name vanished in dark mode.
+  /// Reaches the wordmark in a test without matching its text: the name is
+  /// split across two spans, so `find.text('EzBizi')` finds nothing and reads
+  /// as absence rather than as the wrong finder.
+  static const wordmarkKey = Key('ezbizi-wordmark');
+
   static Widget wordmark(BuildContext context, {double size = 28}) {
     final onSurface = Theme.of(context).brightness == Brightness.dark
         ? Colors.white
         : _ink;
 
     return RichText(
+      key: wordmarkKey,
       text: TextSpan(
         children: [
           TextSpan(

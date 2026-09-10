@@ -58,15 +58,23 @@ class ScopeSwitcher extends StatelessWidget {
     );
   }
 
+  /// Is there anywhere else to stand? One franchise and no company to roll up
+  /// into means there is not, and this draws nothing.
+  ///
+  /// Exposed because the top bar needs the same answer: on a phone it drops the
+  /// wordmark and the company logo and lets this control name the business, so
+  /// it has to know when this control will not be there to do it. One
+  /// definition with two callers, rather than the condition copied into the
+  /// shell where the two could drift apart and leave a phone bar identifying
+  /// nothing at all.
+  static bool hasChoices(Me me) =>
+      me.franchises.length > 1 || me.companies.length > 1;
+
   @override
   Widget build(BuildContext context) {
     final me = session.me!;
 
-    // One franchise and no company to roll up into: there is nowhere else to
-    // stand.
-    if (me.franchises.length <= 1 && me.companies.length <= 1) {
-      return const SizedBox.shrink();
-    }
+    if (!hasChoices(me)) return const SizedBox.shrink();
 
     final scheme = Theme.of(context).colorScheme;
 

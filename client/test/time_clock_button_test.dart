@@ -352,11 +352,51 @@ void main() {
     );
 
     expect(tester.takeException(), isNull);
-    expect(_inAppBar('Clock In'), findsOneWidget);
-    expect(tester.getRect(_inAppBar('Clock In')).right, lessThanOrEqualTo(375));
+
+    // The point of this test is that the punch control stays in the BAR at 375
+    // rather than dropping into a menu — not that it carries a word. Since
+    // 2026-09-10 it is icon-only on a phone (Jose: "make the clock out as an
+    // icon instead only without the words"), which is what buys the room for
+    // availability to stay beside it.
+    //
+    // Asserting the label would have been asserting the old implementation of
+    // this test's own intent, and it went red on a change that satisfies it.
+    expect(_inAppBarIcon(Icons.login), findsOneWidget);
+    expect(
+      tester.getRect(_inAppBarIcon(Icons.login)).right,
+      lessThanOrEqualTo(375),
+    );
+    expect(_inAppBar('Clock In'), findsNothing);
     expect(find.byType(PopupMenuButton<String>), findsOneWidget);
   });
+
+  testWidgets('the word comes back on a desktop', (tester) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await _pumpShell(
+      tester,
+      timeClock: _clock(),
+      size: const Size(1280, 900),
+      modules: [
+        {
+          'key': 'services',
+          'label': 'Services',
+          'available': true,
+          'reachable': true,
+        },
+      ],
+    );
+
+    expect(_inAppBar('Clock In'), findsOneWidget);
+  });
 }
+
+Finder _inAppBarIcon(IconData icon) => find.descendant(
+  of: find.byType(AppBar),
+  matching: find.byIcon(icon),
+);
 
 Finder _inAppBar(String label) => find.descendant(
   of: find.byType(AppBar),
