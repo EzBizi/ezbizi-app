@@ -199,3 +199,55 @@ module trigger without an `emits:` declaration passed all of them and failed the
 box gate on `AutomationSubjectScopeTest`, which is the test that stops a notify
 rule reaching every active user. The registry is shared; its suite is part of any
 hand-over that touches it.
+
+## Two ways a commit check lies (Automations + Reports, 2026-09-10)
+
+Both were found by the sessions they bit, and both leave a **green that proves
+nothing**. Neither is a bug in `index-landmines.sh`; run correctly it has
+caught real staged deletions.
+
+### 1 · `export GIT_INDEX_FILE` poisons every later command in the same call
+
+The private-index recipe starts with `export GIT_INDEX_FILE=<tmp>`. In bash
+that export lasts the whole invocation and is inherited by children — so a
+`git ls-files`, a `git reset`, or `./scripts/index-landmines.sh` **later in the
+same call** reads the throwaway file, not the shared index.
+
+Measured on this tree rather than reasoned, with a control that makes it
+readable — a private index built from `HEAD~30` so the two must differ:
+
+    with the export in scope   STALE ... 76 entries, staged deletions
+    with no export             0 stale, 0 live
+
+Same script, same tree, same second. **Every "0 stale, 0 live" reported in the
+same call as an export was a statement about a temporary file that was about to
+be deleted.** It could not have said anything else.
+
+**Do the verification in a SEPARATE Bash call from the commit.** Not
+`unset GIT_INDEX_FILE && ...` on the end of the chain — that is correct today
+and wrong the moment somebody appends one more `&&`. A separate call cannot be
+got wrong by editing.
+
+### 2 · The landmine check is a SNAPSHOT, not a lock
+
+Reports ran it, it said clean, they then ran a path-limited `git add` — and
+between those two moments another session's file was staged in the shared
+index. The commit took both. It deleted 23 lines from a file its own message
+never mentions.
+
+**A path-limited `git add` keeps other files out of your staging. It does
+nothing about lines another session has already staged in a file you are also
+touching.**
+
+So immediately before committing, read this as a **gate**, not a note:
+
+    git diff --cached --name-only
+
+**If it prints a path you did not add, stop.** Do not commit. In Reports' case
+it printed the path, and the commit went ahead anyway.
+
+### Fixing it afterwards
+
+Restore the lines in a NEW commit; do not rewrite history — the bad commit may
+already have been pulled by the desk or another session. Reports did this
+correctly at `3d8e0654`.
