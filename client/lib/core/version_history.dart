@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0188',
+      date: '10 Sep 2026',
+      items: [
+        'Fixed, Windows: EzBizi could stop part of your desktop accepting clicks. On a wide screen, with EzBizi on one side, a band of the other side went dead - while the app was running, while it was minimised, and until it was killed outright. An invisible window that the softphone needs was being left unmeasured, so it sat where it landed and swallowed every click inside itself. It is now one pixel, inside the window, where it can reach nothing.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0187',
       date: '10 Sep 2026',
       items: [
