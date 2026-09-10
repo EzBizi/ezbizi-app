@@ -8,6 +8,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0185',
+      date: '10 Sep 2026',
+      items: [
+        'An incoming call now rings every device you have open, instead of whichever one the phone network happened to pick. With the desk open on a PC and the app on a phone, only one of them rang and there was no way to tell which it would be. First one to answer takes the call and the rest stop ringing.',
+        'On a phone the top bar is no longer crowded: the EzBizi mark and the duplicate company logo are gone, Clock In and Clock Out are an icon, and the light and dark switch moves to Your account. Set up two-factor and Read only now sit in a strip under the bar instead of squeezing the buttons.',
+        'A test enquiry is marked as one, so it never reads as your first customer.',
+        'The Leads box on the home screen ignores test enquiries when it counts who is waiting.',
+        'Android now declares the part of the app an incoming call arrives on, which was missing from every build ever made. Together with the device token in the last release, that is the whole of what was absent - but nobody has yet watched an Android handset register or ring, and this does not claim they do.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0184',
       date: '10 Sep 2026',
       items: [
