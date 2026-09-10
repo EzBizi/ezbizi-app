@@ -1388,6 +1388,35 @@ finished and cannot. That was wrong — it keys off `connected_at != null`, whet
 plugin has ever read the site, which the module answers exactly. The tier decision
 rests on the opposite-facts argument alone, which is sufficient on its own.*
 
+### 8 · Reports · the builder and the run view — **DRAWN, with Jose**
+
+`docs/previews/reports-builder-layouts.html`. Three desktop, three mobile, with two toggles:
+a person holding `reports.view` but not `reports.build`, and a report that returned no rows.
+Backend is built (`session/reports`, `4fa40a4b`); there is no Flutter screen at all, and
+`module_screens.dart` has no `reports` entry. Reports routed it here rather than shipping a
+screen, which is correct — a builder is a new arrangement, not a state change inside one.
+
+**Four rulings that hold whichever layout wins:**
+
+- **Build and run are different screens, not one screen with a mode.** `reports.build` and
+  `reports.view` are separate permissions, so a runner must get a list and results — never a
+  builder with its controls greyed. A disabled builder tells somebody the app is for other
+  people; a list of things they can run tells them what they have.
+- **A phone RUNS; it does not build.** An unlimited-hop field picker at 375px is a worse copy
+  of a thing that works on a desktop, and offering it invites starting a report you cannot
+  finish. All three mobile options are run views, and one says plainly where building happens.
+- **The two empty states must not look alike.** *"No reports built yet"* and *"This report
+  found nothing"* are opposite facts and the same blank table serves both badly. **And the
+  second must not read as broken:** a report can legitimately return zero for a narrow
+  franchise reach and plenty for that person's manager, so it says so.
+- **The 5,000 cap line disappears when there are no rows.** "The first 5,000" of nothing is not
+  a truthful sentence about the box, and a red line under an empty table reads as a fault.
+
+> **One thing the endpoint constrains that the drawings had to respect:** `GET /reports/fields`
+> returns relations as `{'to': …}` only — **the edge has no label.** So a picker can say
+> *"Jobs › Customers"* but cannot name the relationship, which rules out any design that leans
+> on reading the hop as a phrase.
+
 ### 7 · Organization · Brand colour picker — **DRAWN, with Jose**
 
 `docs/previews/brand-colour-picker-layouts.html`, committed `f38e797f`. Three desktop,

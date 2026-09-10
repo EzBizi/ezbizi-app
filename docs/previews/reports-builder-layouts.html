@@ -1,0 +1,275 @@
+<!doctype html><meta charset="utf-8">
+<title>Reports &mdash; layouts</title>
+<style>
+/* Palette from client/lib/core/theme.dart, light: _ink #060808, _muted #5B6672,
+   _line #060808 @ 10%, primary (_cyanDeep) #00708f. Error is the
+   ColorScheme.fromSeed default for light, #BA1A1A. */
+:root{--ink:#060808;--muted:#5B6672;--line:rgba(6,8,8,.10);--primary:#00708f;
+      --bad:#BA1A1A;--paper:#fff;--ground:#f4f6f7;--soft:rgba(6,8,8,.03)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+     font:14px/1.45 -apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:20px 24px 8px}
+h1{margin:0;font-size:18px;font-weight:700;letter-spacing:-.3px}
+#nums{display:flex;flex-wrap:wrap;gap:8px;padding:12px 24px 6px}
+#nums button{font:inherit;font-weight:600;background:var(--paper);color:var(--ink);
+  border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
+#nums button[aria-current=true]{background:var(--primary);color:#fff;border-color:var(--primary)}
+#tog{padding:4px 24px 16px;font-size:13px}
+#tog label{cursor:pointer;user-select:none;font-weight:600;margin-right:20px}
+#stage{padding:0 24px 48px}
+.cap{font-size:13px;color:var(--muted);margin:0 0 14px;max-width:760px}
+.note{font-size:12px;color:var(--muted);max-width:760px;margin-top:12px;line-height:1.55}
+.note b{color:var(--ink)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:16px}
+.desk{max-width:860px}
+.phone{width:375px;border:1px solid var(--line);border-radius:24px;background:var(--paper);
+       padding:14px 12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.hd{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.hd .t{font-weight:700;flex:1;font-size:15px}
+.btn{border-radius:8px;padding:7px 13px;font-weight:700;font-size:13px;
+     background:var(--primary);color:#fff;display:inline-block}
+.btn.ghost{background:transparent;color:var(--primary);border:1px solid var(--line)}
+.two{display:flex;gap:16px;align-items:flex-start}
+.pane{border:1px solid var(--line);border-radius:10px;padding:12px}
+.pane.l{width:250px;flex:none}
+.pane.r{flex:1;min-width:0}
+.sub{font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.4px;
+     text-transform:uppercase;margin:0 0 8px}
+.tree{font-size:13px}
+.tree .res{font-weight:700;padding:5px 0}
+.tree .col{padding:3px 0 3px 18px;color:var(--muted);display:flex;gap:8px;align-items:center}
+.tree .col.on{color:var(--ink);font-weight:600}
+.box{width:14px;height:14px;border:1.5px solid var(--muted);border-radius:3px;flex:none}
+.box.on{background:var(--primary);border-color:var(--primary)}
+.hop{padding:4px 0 4px 18px;color:var(--primary);font-weight:600;font-size:12px}
+.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);
+      border-radius:999px;padding:4px 10px;font-size:12px;font-weight:600;margin:0 6px 6px 0}
+.pill .x{color:var(--muted);font-weight:700}
+.filt{display:flex;gap:6px;align-items:center;font-size:12px;margin-bottom:6px;flex-wrap:wrap}
+.filt .f{border:1px solid var(--line);border-radius:7px;padding:5px 9px;font-weight:600}
+table{border-collapse:collapse;width:100%;font-size:12px;margin-top:4px}
+th{text-align:left;font-weight:700;padding:7px 8px;border-bottom:1px solid var(--line);
+   color:var(--muted);white-space:nowrap}
+td{padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+.capline{font-size:12px;color:var(--bad);font-weight:600;margin-top:10px}
+.empty{padding:22px 12px;text-align:center;color:var(--muted);font-size:13px}
+.empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:6px}
+.steps{display:flex;gap:6px;margin-bottom:12px;font-size:12px;font-weight:700}
+.steps .s{flex:1;text-align:center;padding:7px 4px;border-radius:8px;border:1px solid var(--line);
+          color:var(--muted)}
+.steps .s.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+.steps .s.done{color:var(--primary);border-color:rgba(0,112,143,.4)}
+.row{display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.row .nm{flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+         white-space:nowrap}
+.row .by{font-size:12px;color:var(--muted)}
+.rcard{border:1px solid var(--line);border-radius:10px;padding:11px;margin-bottom:8px}
+.rcard .k{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;
+          letter-spacing:.3px}
+.rcard .v{font-weight:600}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:13px}
+.kv .k2{color:var(--muted)}
+.count{font-size:24px;font-weight:800;letter-spacing:-.5px}
+.addcol{color:var(--primary);font-weight:700;cursor:pointer}
+</style>
+<header><h1>Reports &mdash; pick one desktop and one mobile</h1></header>
+<div id="nums"></div>
+<div id="tog">
+  <label><input type="checkbox" id="viewer"> Somebody with <code>reports.view</code> but not <code>reports.build</code></label>
+  <label><input type="checkbox" id="none"> The report returned no rows</label>
+</div>
+<div id="stage"></div>
+<script>
+function viewer(){ return document.getElementById('viewer').checked; }
+function none(){ return document.getElementById('none').checked; }
+
+var COLS = ['Job','Customer','Franchise','Booked','Total'];
+var ROWS = [
+  ['Chimney sweep','Marcus Bell','New Jersey','4 Jun 2026','$240.00'],
+  ['Liner install','Priya Raman','New Jersey','2 Jun 2026','$1,880.00'],
+  ['Cap replacement','Dan Ortiz','New York','29 May 2026','$310.00']
+];
+
+function table(){
+  return '<table><tr>' + COLS.map(function(c){ return '<th>'+c+'</th>'; }).join('') + '</tr>' +
+    ROWS.map(function(r){
+      return '<tr>' + r.map(function(c){ return '<td>'+c+'</td>'; }).join('') + '</tr>';
+    }).join('') + '</table>' +
+    '<div class="capline">Showing the first 5,000 rows. This report matched more.</div>';
+}
+
+/* The two empty states must not look alike: one means nobody has built
+   anything, the other means this report found nothing — and the second is a
+   legitimate answer for a narrow franchise reach, never a fault. */
+function emptyResults(){
+  return '<div class="empty"><b>This report found nothing.</b>' +
+    'No rows matched, for the records you can see. Somebody with a wider reach ' +
+    'may get results from the same report.</div>';
+}
+function emptyLibrary(){
+  return '<div class="empty"><b>No reports built yet.</b>' +
+    (viewer()
+      ? 'Somebody who can build reports has to make the first one.'
+      : 'Build one and it appears here for everybody who can run it.') +
+    '</div>';
+}
+function results(){ return none() ? emptyResults() : table(); }
+
+function head(title, action){
+  return '<div class="hd"><div class="t">' + title + '</div>' +
+    (action && !viewer() ? '<span class="btn">' + action + '</span>' : '') + '</div>';
+}
+
+function fieldTree(){
+  return '<div class="pane l"><p class="sub">Fields</p><div class="tree">' +
+    '<div class="res">Jobs</div>' +
+    '<div class="col on"><span class="box on"></span>Title</div>' +
+    '<div class="col on"><span class="box on"></span>Booked for</div>' +
+    '<div class="col on"><span class="box on"></span>Total</div>' +
+    '<div class="col"><span class="box"></span>Status</div>' +
+    '<div class="hop">&rsaquo; through to Customers</div>' +
+    '<div class="col on" style="padding-left:34px"><span class="box on"></span>Name</div>' +
+    '<div class="col" style="padding-left:34px"><span class="box"></span>Email</div>' +
+    '<div class="hop" style="padding-left:34px">&rsaquo; through to Franchises</div>' +
+    '<div class="col on" style="padding-left:50px"><span class="box on"></span>Name</div>' +
+    '</div></div>';
+}
+
+function chosen(){
+  return '<p class="sub">Columns</p>' +
+    COLS.map(function(c){
+      return '<span class="pill">' + c + '<span class="x">&times;</span></span>';
+    }).join('') +
+    '<p class="sub" style="margin-top:12px">Filters</p>' +
+    '<div class="filt"><span class="f">Jobs</span><span class="f">Booked for</span>' +
+    '<span class="f">is after</span><span class="f">1 May 2026</span>' +
+    '<span class="x" style="color:var(--muted);font-weight:700">&times;</span></div>' +
+    (viewer() ? '' : '<div class="addcol">+ Add a filter</div>');
+}
+
+/* 1 — two panes: the fields on the left, the report on the right. */
+function D1(){
+  return '<div class="card desk">' + head('Jobs booked since May', 'Save') +
+    '<div class="two">' + fieldTree() +
+    '<div class="pane r">' + chosen() +
+    '<p class="sub" style="margin-top:14px">Results</p>' + results() +
+    '</div></div></div>';
+}
+
+/* 2 — stepped, with a summary that stays. */
+function D2(){
+  return '<div class="card desk">' + head('New report', 'Save') +
+    '<div class="steps"><div class="s done">1 &middot; Start with</div>' +
+    '<div class="s done">2 &middot; Columns</div>' +
+    '<div class="s on">3 &middot; Filters</div>' +
+    '<div class="s">4 &middot; Run</div></div>' +
+    '<div class="pane"><p class="sub">Starting with Jobs &middot; 5 columns chosen</p>' +
+    chosen() + '</div>' +
+    '<p class="sub" style="margin-top:14px">Preview</p>' + results() + '</div>';
+}
+
+/* 3 — the table is the builder. */
+function D3(){
+  var head3 = '<table><tr>' + COLS.map(function(c){
+      return '<th>' + c + ' <span style="color:var(--muted);font-weight:400">&times;</span></th>';
+    }).join('') + '<th class="addcol">+ column</th></tr>' +
+    ROWS.map(function(r){
+      return '<tr>' + r.map(function(c){ return '<td>'+c+'</td>'; }).join('') + '<td></td></tr>';
+    }).join('') + '</table>' +
+    '<div class="capline">Showing the first 5,000 rows. This report matched more.</div>';
+
+  return '<div class="card desk">' + head('Jobs booked since May', 'Save') +
+    '<div class="filt"><span class="f">Jobs</span><span class="f">Booked for</span>' +
+    '<span class="f">is after</span><span class="f">1 May 2026</span>' +
+    (viewer() ? '' : '<span class="addcol">+ filter</span>') + '</div>' +
+    (none() ? emptyResults() : head3) + '</div>';
+}
+
+/* 4 — a phone runs reports; it does not build them. */
+function M4(){
+  return '<div class="phone">' + head('Reports', null) +
+    (none() ? emptyLibrary() :
+      '<div class="row"><span class="nm">Jobs booked since May</span>' +
+        '<span class="by">Run</span></div>' +
+      '<div class="row"><span class="nm">Customers with no job this year</span>' +
+        '<span class="by">Run</span></div>' +
+      '<div class="row"><span class="nm">People starting this month</span>' +
+        '<span class="by">Run</span></div>') +
+    '<div class="note" style="margin-top:14px">Reports are built on a computer. ' +
+    'Everything saved there runs here.</div></div>';
+}
+
+/* 5 — the answer before the data. */
+function M5(){
+  return '<div class="phone">' + head('Jobs booked since May', null) +
+    (none()
+      ? emptyResults()
+      : '<div class="rcard"><div class="k">Rows</div><div class="count">5,000+</div>' +
+        '<div class="capline" style="margin-top:4px">Showing the first 5,000. ' +
+        'This report matched more.</div></div>' +
+        ROWS.map(function(r){
+          return '<div class="rcard">' +
+            COLS.map(function(c,i){
+              return '<div class="kv"><span class="k2">'+c+'</span><span>'+r[i]+'</span></div>';
+            }).join('') + '</div>';
+        }).join('')) +
+    '</div>';
+}
+
+/* 6 — the grid itself, scrolled. */
+function M6(){
+  return '<div class="phone">' + head('Jobs booked since May', null) +
+    (none() ? emptyResults() :
+      '<div style="overflow-x:auto;border:1px solid var(--line);border-radius:10px;' +
+      'padding:0 8px">' + table() + '</div>') +
+    '<div class="note" style="margin-top:12px">The first column stays put while the ' +
+    'rest scrolls, so a row never loses what it is about.</div></div>';
+}
+
+var OPT = {
+  1:['1 &middot; Desktop &mdash; fields on the left, the report on the right', D1,
+     'The shape a builder usually takes, and it survives the hard part of this one: the '
+     +'field tree can go <b>unlimited hops</b> — Jobs &rsaquo; Customers &rsaquo; Franchises — '
+     +'and a left pane can grow downward forever without the rest of the screen moving.'],
+  2:['2 &middot; Desktop &mdash; one step at a time, with the choices kept in view', D2,
+     'Kinder to somebody building their first report, worse for the tenth. Every change to a '
+     +'finished report means walking the steps again, and iteration is what people actually do.'],
+  3:['3 &middot; Desktop &mdash; the table is the builder', D3,
+     'You add a column by pressing + in the header and filter under the heading you are '
+     +'filtering. Nothing is abstract — the thing you edit is the thing you get. The weakness '
+     +'is the hop: reaching a field three tables away has no natural home in a header row.'],
+  4:['4 &middot; Mobile &mdash; a list of saved reports; running only', M4,
+     'A phone runs what a desk built. An unlimited-hop field picker at 375px would be a worse '
+     +'version of a thing that already works on a computer, and offering it would invite '
+     +'somebody to start a report they cannot finish.'],
+  5:['5 &middot; Mobile &mdash; the count first, then the rows as cards', M5,
+     'The question a phone asks is "how many" more often than "which ones". The count and the '
+     +'cap line arrive before the data, and each row is readable without scrolling sideways.'],
+  6:['6 &middot; Mobile &mdash; the real grid, scrolled sideways', M6,
+     'For somebody who needs the actual table on site. Honest about being a table rather than '
+     +'pretending a phone is a spreadsheet; the first column stays put so a row keeps its name.']
+};
+
+var nums = document.getElementById('nums'), stage = document.getElementById('stage'),
+    v = document.getElementById('viewer'), n = document.getElementById('none'), cur = 1;
+function show(k){
+  cur = k;
+  var o = OPT[k];
+  stage.innerHTML = '<p class="cap">' + o[0] + '</p>' + o[1]() +
+                    '<div class="note">' + o[2] + '</div>';
+  Array.prototype.forEach.call(nums.children, function(b){
+    if (b.dataset) b.setAttribute('aria-current', b.dataset.k === String(k));
+  });
+}
+Object.keys(OPT).forEach(function(k){
+  var b = document.createElement('button');
+  b.textContent = (k < 4 ? 'Desktop ' : 'Mobile ') + k;
+  b.dataset.k = k; b.onclick = function(){ show(k); };
+  nums.appendChild(b);
+});
+v.onchange = function(){ show(cur); };
+n.onchange = function(){ show(cur); };
+show(1);
+</script>
