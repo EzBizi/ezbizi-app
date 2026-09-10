@@ -118,6 +118,7 @@ how stale.
 | Customers | `local_90d427a5-c0b9-46e5-864a-efe9eb5b72da` | EzBizi - Customer Module | 2026-09-04 | `ezbizi-c2 [9c1c83]` — its fifth name today |
 | Notifications | `local_7b312565-f2f8-44cf-ac5e-5426683f2cbf` | EzBizi - Notifications Module | 2026-09-04 | `ezbizi-b2 [708399]` |
 | Training | `local_d30258ab-af2b-4b1b-9cf5-b0926fbe06ec` | EzBizi - Training Module | 2026-09-04 | `ezbizi-0f [d43683]` |
+| Reports | `local_a0b9e184-04b2-4a70-84f0-361cd88bba1d` | EzBizi - Reports Module | 2026-09-10 | New tab, Jose's, registered 17:11 UTC. Owns no files yet - in design, and no `reports` key exists in ModuleServiceProvider, module_screens.dart or GlanceRegistry (verified by the desk). **Three unrelated things answer a grep for "report" and none of them are this module:** Inspection's InspectionReportsController/InspectionReportPolicy, Dashboard's shared `ReportsOverAPeriod` widget base, and Inspection's "Generated Reports" chip. |
 | AWS migration (cwd `H:\Development\AWS`) | `local_079b6a6c-b0c8-49f9-8568-152a1dd2a6b1` | MIGRATION | 2026-09-04 | `aws-68` at 15:57 UTC (inferred from cwd, not confirmed) |
 
 **Website daily catalog** is not a role: a new session is started for it each
