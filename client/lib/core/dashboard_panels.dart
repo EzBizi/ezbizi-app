@@ -70,6 +70,7 @@ IconData dashboardPanelIcon(String key) {
     'services': Icons.handyman_outlined,
     'email': Icons.inbox_outlined,
     'automations': Icons.bolt_outlined,
+    'reports': Icons.assessment_outlined,
     'reviews': Icons.reviews_outlined,
     'leads': Icons.person_search_outlined,
     'business_profile': Icons.storefront_outlined,

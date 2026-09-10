@@ -90,6 +90,7 @@ use App\Http\Controllers\Api\Phone\WhisperWebhookController as PhoneWhisperWebho
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ReviewsController;
+use App\Http\Controllers\Api\ReportsController;
 use App\Http\Controllers\Api\RolesController;
 use App\Http\Controllers\Api\SchedulingAreasController;
 use App\Http\Controllers\Api\SchedulingAvailabilityController;
@@ -682,6 +683,18 @@ Route::prefix('v1')
         Route::post('services/labels', [ServiceLabelsController::class, 'store']);
         Route::delete('services/labels/{id}', [ServiceLabelsController::class, 'destroy']);
         Route::apiResource('services', ServicesController::class);
+
+        /*
+         * Reports — a builder over the ReportMap
+         * (docs/superpowers/specs/2026-09-10-reports-design.md).
+         *
+         * `fields` and `run` are declared BEFORE the apiResource: registered
+         * after it, `reports/fields` would be swallowed by `reports/{id}` and
+         * arrive as a show() for a report called "fields".
+         */
+        Route::get('reports/fields', [ReportsController::class, 'fields']);
+        Route::post('reports/{id}/run', [ReportsController::class, 'run']);
+        Route::apiResource('reports', ReportsController::class)->parameters(['reports' => 'id']);
 
         /*
          * Scheduling — capacity per slot, per weekday, per service area

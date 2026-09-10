@@ -15,6 +15,7 @@ use App\Support\Dashboard\Glances\BusinessProfileGlance;
 use App\Support\Dashboard\Glances\LeadsGlance;
 use App\Support\Dashboard\Glances\MarketingGlance;
 use App\Support\Dashboard\Glances\PhoneGlance;
+use App\Support\Dashboard\Glances\ReportsGlance;
 use App\Support\Dashboard\Glances\ReviewsGlance;
 use App\Support\Dashboard\Glances\SchedulingGlance;
 use App\Support\Dashboard\Glances\ServicesGlance;
@@ -41,7 +42,7 @@ class GlanceRegistry
         'hr', 'customers', 'jobs', 'scheduling', 'inspection', 'marketing',
         'web_management', 'phone', 'fleet_management', 'inventory',
         'services', 'leads', 'reviews', 'business_profile', 'email', 'training',
-        'automations', 'monitoring', 'newsletter',
+        'automations', 'monitoring', 'newsletter', 'reports',
     ];
 
     /**
@@ -105,6 +106,7 @@ class GlanceRegistry
         AutomationsGlance::class,
         PhoneGlance::class,
         MarketingGlance::class,
+        ReportsGlance::class,
     ];
 
     public function __construct(
