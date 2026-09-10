@@ -185,6 +185,43 @@ class ReportMapTest extends TestCase
         }
     }
 
+    /**
+     * TWO EDGES FROM ONE RESOURCE TO THE SAME TARGET NEED LABELS.
+     *
+     * The field picker names a hop by its TARGET — "Jobs › Customers" — because
+     * the map declares no human label for an edge, and today it does not need
+     * one: there is a single relation in the whole product. The moment a second
+     * edge from the same resource reaches the same target (`customer` and
+     * `billing_contact` both landing on customers), the tree shows the
+     * identical phrase twice and the target stops identifying the edge. That is
+     * not a cosmetic gap — it is the picker misreporting which way through the
+     * graph a column came from.
+     *
+     * So the trigger is enforced rather than written down: add the second edge
+     * and this goes red, naming what it needs. Condition agreed with UI/UX
+     * (7d4a286a) after they measured the map and found the single relation.
+     *
+     * Watched red by temporarily declaring a second `billing_contact` edge to
+     * customers on jobs; the failure named both edges.
+     */
+    public function test_two_relations_to_the_same_target_would_need_labels(): void
+    {
+        foreach (ReportMap::all() as $key => $resource) {
+            $targets = array_column($resource['relations'], 'to');
+            $duplicated = array_keys(array_filter(array_count_values($targets), fn ($n) => $n > 1));
+
+            $this->assertSame(
+                [],
+                $duplicated,
+                "{$key} declares more than one relation to '".implode("', '", $duplicated)."'. "
+                .'The field picker names a hop by its target, so two edges to the same place '
+                .'draw the identical phrase twice and no longer say which one a column came '
+                .'through. Give every relation on this resource a human label, render that '
+                .'instead of the target name, and delete this assertion.',
+            );
+        }
+    }
+
     public function test_get_returns_null_for_an_unknown_resource(): void
     {
         $this->assertNull(ReportMap::get('not_a_resource'));
