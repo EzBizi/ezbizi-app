@@ -34,6 +34,23 @@ final class ScreenMonitoringExemption
      * True iff an ACTIVE `lead_developer` PlatformStaff shares the user's
      * (lower-cased) email. One `exists()` query, no rows loaded.
      */
+    /**
+     * The `specs` keys that are SCREEN CONTENT rather than facts about the
+     * machine — what a person has in front of them, not what they are running
+     * it on. Everything else in that blob describes hardware.
+     *
+     * They ride in `specs` only because the agent reads them in the same
+     * pass, and they are named here, once, because three places have to agree
+     * about them: the agent declines to send them when exempt, the heartbeat
+     * strips them again if a tampered client sends them anyway, and the
+     * roster shows them only to a role that may also see screenshots. A key
+     * added to the agent and forgotten in one of those three would leak
+     * quietly, so the list lives in one file and the others read it.
+     *
+     * @var string[]
+     */
+    public const SCREEN_CONTENT_SPEC_KEYS = ['active_window', 'browser_tabs'];
+
     public static function isExempt(?User $user): bool
     {
         if ($user === null || $user->email === null) {

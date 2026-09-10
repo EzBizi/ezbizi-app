@@ -78,10 +78,12 @@ class MonitoredDevice extends Model implements HoldsPersonalData
                 'What a desktop agent reports about the machine: processor, memory, '
                 .'graphics, drives, uptime, its wifi network and local address, how '
                 .'much it has sent and received, how long since someone touched it, '
-                .'whether the screen is locked, and which programs are open. On a '
-                .'device that is not exempt it also carries the title of the window '
-                .'in front, which can name what a person is working on — that one '
-                .'key is shown only to a role that may also see screenshots.',
+                .'whether the screen is locked, which programs are open, what it '
+                .'has installed and which addresses those programs are talking to. '
+                .'On a device that is not exempt it also carries the title of the '
+                .'window in front and of every open browser tab, which can name '
+                .'what a person is working on — those are shown only to a role '
+                .'that may also see screenshots.',
                 Erasure::erase()),
         ];
     }

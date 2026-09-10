@@ -47,6 +47,10 @@ target_link_libraries(${BINARY_NAME} PRIVATE "wlanapi.lib")
 # (GetAdaptersAddresses / GetIfEntry2), and inet_ntop from ws2_32.
 target_link_libraries(${BINARY_NAME} PRIVATE "iphlpapi.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "ws2_32.lib")
+
+# Browser tab titles come from the accessibility tree; there is no Win32
+# call for a tab, because a tab is not a window.
+target_link_libraries(${BINARY_NAME} PRIVATE "uiautomationcore.lib")
 # Screen capture (BitBlt/GetDIBits), JPEG encoding (WIC), and the COM APIs
 # WIC needs, for the primary-monitor screenshot channel. See
 # monitoring_screenshot.cpp.

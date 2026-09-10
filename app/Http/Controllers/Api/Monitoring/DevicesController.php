@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Monitoring;
 use App\Http\Controllers\Api\Controller;
 use App\Models\MonitoredDevice;
 use App\Support\Access\ScopeReach;
+use App\Support\Monitoring\ScreenMonitoringExemption;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -81,14 +82,16 @@ class DevicesController extends Controller
         if ($canSeeSpecs) {
             $specs = $d->specs;
 
-            // `active_window` rides in the specs blob because the agent reads
-            // it in the same pass, but it is NOT a spec: it is the title of
-            // what is on screen right now, which is the same class of thing a
-            // screenshot shows. So it needs the screenshot grant, not the
-            // hardware one — `monitoring.specs.view` alone buys you what the
-            // machine IS, never what is on it.
+            // The window title and the browser tabs ride in the specs blob
+            // because the agent reads them in the same pass, but they are NOT
+            // specs: they are what is on the screen right now, the same class
+            // of thing a screenshot shows. So they need the screenshot grant,
+            // not the hardware one — `monitoring.specs.view` alone buys you
+            // what the machine IS, never what is on it.
             if (! $canSeeCapture && is_array($specs)) {
-                unset($specs['active_window']);
+                foreach (ScreenMonitoringExemption::SCREEN_CONTENT_SPEC_KEYS as $key) {
+                    unset($specs[$key]);
+                }
             }
 
             $row['specs'] = $specs;
