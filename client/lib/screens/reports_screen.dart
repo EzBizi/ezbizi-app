@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/error_note.dart';
+import 'reports/report_builder.dart';
 import 'reports/report_run_view.dart';
 
 /// Reports (spec `docs/superpowers/specs/2026-09-10-reports-design.md`).
@@ -49,6 +50,7 @@ class ReportsScreen extends StatefulWidget {
 
 class _ReportsScreenState extends State<ReportsScreen> {
   SavedReportSummary? _open;
+  bool _building = false;
   List<SavedReportSummary>? _reports;
   String? _error;
   bool _loading = true;
@@ -116,21 +118,24 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget _header(BuildContext context, {required bool canBuildHere}) {
     return Row(
       children: [
-        if (_open != null)
+        if (_open != null || _building)
           IconButton(
-            onPressed: () => setState(() => _open = null),
+            onPressed: () => setState(() {
+              _open = null;
+              _building = false;
+            }),
             icon: const Icon(Icons.arrow_back),
             tooltip: 'All reports',
           ),
         Expanded(
           child: Text(
-            _open?.name ?? 'Reports',
+            _building ? 'New report' : (_open?.name ?? 'Reports'),
             style: Theme.of(context).textTheme.headlineSmall,
           ),
         ),
-        if (canBuildHere && _open == null)
+        if (canBuildHere && _open == null && !_building)
           FilledButton.icon(
-            onPressed: () {},
+            onPressed: () => setState(() => _building = true),
             icon: const Icon(Icons.add),
             label: const Text('New report'),
           ),
@@ -141,6 +146,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget _body(BuildContext context, BoxConstraints constraints) {
     // In place rather than a dialog: the development rules allow screens and
     // side panels only, and a table inside a modal is unreadable on a phone.
+    if (_building) {
+      return ReportBuilder(
+        api: widget.api,
+        onSaved: (_) {
+          setState(() => _building = false);
+          _load();
+        },
+      );
+    }
+
     final open = _open;
 
     if (open != null) {

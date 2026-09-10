@@ -129,6 +129,38 @@ void main() {
     expect(find.byTooltip('All reports'), findsOneWidget);
   });
 
+  testWidgets('New report opens the builder in place, never a dialog', (
+    tester,
+  ) async {
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) {
+        if (request.url.path.endsWith('/reports/fields')) {
+          return _json({
+            'data': {
+              'jobs': {
+                'label': 'Jobs',
+                'columns': {
+                  'title': {'label': 'Title', 'type': 'string'},
+                },
+                'relations': <String, dynamic>{},
+              },
+            },
+          });
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('New report'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextField, 'Name this report'), findsOneWidget);
+    expect(find.byType(Dialog), findsNothing);
+    expect(find.byTooltip('All reports'), findsOneWidget);
+  });
+
   testWidgets('a narrow screen says reports are built on a computer', (
     tester,
   ) async {
