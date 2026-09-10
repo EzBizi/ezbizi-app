@@ -8,6 +8,24 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0190',
+      date: '10 Sep 2026',
+      items: [
+        'Automations: a rule can now run on a clock - every day, on days of the week you pick, or once a month - at a time you set in the timezone you choose, so it stays right when the clocks change.',
+        'PC Specs is now a card for each computer, showing how hard it is working - processor, memory and disk - so a machine that is struggling stands out without opening anything.',
+        'Clicking a computer shows everything it has reported: what is inside it, its drives, the network it is on, how long since anyone touched it, and what is open. There is a search box for finding one by machine, person, or what they have in front of them.',
+        'A caller who has just rung shows under Unreplied straight away, instead of appearing minutes later.',
+        'An enquiry with nothing on it yet says so in EzBizis own words, rather than claiming Google recorded nothing.',
+        'An enquiry is fetched before any accounts message history, so a busy day cannot cost you a lead.',
+        'A Google booking is named as a booking and says where to find the customers details. It used to arrive as an unnamed enquiry badged as a text message, showing an empty message nobody had sent.',
+        'Nobody has to point a company at its own voicemail box any more - a company without one adopts the box it already has.',
+        'The Buy a number tab opens straight into the search, and local, toll-free and vanity are each their own. Local takes a state or province and an area code, toll-free takes a prefix, and vanity takes letters, digits and wildcards on whichever kind of number you want them on.',
+        'The country picker is searchable and leads with the US and Canada, instead of ninety entries in whatever order they arrived in.',
+        'A phone menu can offer a key that repeats the menu. Every phone system has one; this did not, so a caller who missed which key was which had to hang up and ring back.',
+        'On the web an incoming call rings once. Two tones were playing at once, and the second one kept going after the caller had hung up.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0189',
       date: '10 Sep 2026',
       items: [
