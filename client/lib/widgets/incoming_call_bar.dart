@@ -116,6 +116,13 @@ class IncomingCallBar extends StatelessWidget {
               onPressed: onOpenDial,
               child: const Text('Go to the phone'),
             ),
+            // MOVE IT, rather than hang up and ring back.
+            //
+            // Jose asked for this by name. It sits beside Hang up because the
+            // moment somebody wants it is the moment they are standing up,
+            // and this bar is the one part of the phone that is on screen in
+            // every module — which is where they will be looking.
+            _MoveCallButton(service: service),
             OutlinedButton(
               key: const Key('on-call-hang-up'),
               onPressed: service.hangUp,
@@ -124,6 +131,68 @@ class IncomingCallBar extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// "Move to my phone", and what it says when it cannot.
+///
+/// Its own widget because it is the only part of this bar with state: the
+/// request takes a moment, and a button that can be pressed twice would ask
+/// Twilio to redirect the same call twice — the second one aimed at a leg that
+/// has already moved.
+///
+/// The failure is shown in place rather than as a snack bar. Somebody who has
+/// just pressed this is holding a live call and about to walk away from the
+/// screen; "that call has already ended" has to be readable where they are
+/// looking, not two seconds ago at the bottom of the window.
+class _MoveCallButton extends StatefulWidget {
+  const _MoveCallButton({required this.service});
+
+  final PhoneCallService service;
+
+  @override
+  State<_MoveCallButton> createState() => _MoveCallButtonState();
+}
+
+class _MoveCallButtonState extends State<_MoveCallButton> {
+  bool _moving = false;
+  String? _error;
+
+  Future<void> _move() async {
+    setState(() {
+      _moving = true;
+      _error = null;
+    });
+
+    final reason = await widget.service.transferToMyOtherDevices();
+    if (!mounted) return;
+
+    setState(() {
+      _moving = false;
+      _error = reason;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (_error != null) {
+      return Text(
+        _error!,
+        key: const Key('on-call-move-error'),
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.error,
+        ),
+      );
+    }
+
+    return OutlinedButton.icon(
+      key: const Key('on-call-move'),
+      icon: const Icon(Icons.phonelink_ring_outlined, size: 18),
+      label: Text(_moving ? 'Moving…' : 'Move to my phone'),
+      onPressed: _moving ? null : _move,
     );
   }
 }

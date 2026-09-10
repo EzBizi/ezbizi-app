@@ -1261,6 +1261,14 @@ Route::prefix('v1')
 
         Route::post('phone/calls/bridge', [PhoneCallsController::class, 'bridge']);
 
+        /*
+        | Move the call I am on to my other devices. No {call} in the path on
+        | purpose — a browser knows its own leg's SID and the row is keyed on
+        | the customer's, so the server finds the call rather than trusting a
+        | client to name one it cannot see.
+        */
+        Route::post('phone/calls/transfer', [PhoneCallsController::class, 'transfer']);
+
         Route::get('phone/calls', [PhoneCallsController::class, 'index']);
         Route::get('phone/calls/{call}/recording', [PhoneCallsController::class, 'recording']);
 

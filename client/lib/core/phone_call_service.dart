@@ -305,6 +305,37 @@ class PhoneCallService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Move the call I am on to my other signed-in devices.
+  ///
+  /// ── Why the server is asked rather than told ─────────────────
+  ///
+  /// This device knows its own leg, not the customer's, and the customer's is
+  /// the one that has to move — redirecting our own would take the phone away
+  /// from the person holding it and leave the customer bridged to nothing. So
+  /// it sends WHO is asking and from WHERE, and the server finds the call.
+  ///
+  /// Returns null when it worked, and the reason when it did not — most often
+  /// that the call ended while somebody was reaching for the button, which is
+  /// a fact about the call rather than a fault.
+  Future<String?> transferToMyOtherDevices() async {
+    final api = _api;
+    if (api == null) return 'The phone is not connected.';
+
+    final response = await api.post('/phone/calls/transfer', {
+      'from_device_id': DeviceIdentity.value,
+    });
+
+    if (response.ok) {
+      // Deliberately NOT hanging up here. Twilio drops this leg when it
+      // redirects the customer's, and the device tells us through onEnded —
+      // ending it ourselves would race that and could hang up the call a
+      // moment before the other phone answered.
+      return null;
+    }
+
+    return response.reason;
+  }
+
   void accept() {
     _device?.acceptIncoming();
     _stopRinging();

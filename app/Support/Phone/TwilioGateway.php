@@ -226,6 +226,21 @@ interface TwilioGateway
         string $twiml,
     ): array;
 
+    /**
+     * Point a call that is ALREADY UP at new TwiML.
+     *
+     * This is how a live call moves between devices. The customer's leg is
+     * redirected, which ends the `<Dial>` currently bridging it and starts a
+     * new one — so the handset that was on the call drops and whichever device
+     * the new document names begins to ring, with the customer held on the
+     * whole time.
+     *
+     * The SID must be the CUSTOMER's leg. Redirecting the client leg would
+     * take the phone away from the person holding it and leave the customer
+     * bridged to nothing.
+     */
+    public function redirectCall(PhoneConnection $connection, string $callSid, string $twiml): void;
+
     public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body): array;
 
     /**

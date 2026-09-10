@@ -595,6 +595,13 @@ final class HttpTwilioGateway implements TwilioGateway
         ];
     }
 
+    public function redirectCall(PhoneConnection $connection, string $callSid, string $twiml): void
+    {
+        $this->connectionClient($connection)
+            ->calls($callSid)
+            ->update(['twiml' => $twiml]);
+    }
+
     public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body): array
     {
         $message = $this->connectionClient($connection)->messages->create($to, [

@@ -84,6 +84,85 @@ void main() {
     expect(find.byKey(const Key('on-call-bar')), findsNothing);
   });
 
+  /// A live call can be moved to the phone in your pocket.
+  ///
+  /// ── Why it is on this bar and not on the dial pad ────────────
+  ///
+  /// Jose asked for it as the RingCentral behaviour: answer at the desk, and
+  /// take the call with you. The moment somebody wants it is the moment they
+  /// are standing up, so it has to be on the one part of the phone that is on
+  /// screen in every module — which is this strip, and is why the test stands
+  /// on the dashboard rather than on Dial.
+  ///
+  /// Asserts the REQUEST, not the tap. A button that flips to "Moving…" and
+  /// sends nothing looks exactly like one that works, right up until the call
+  /// stays where it was.
+  testWidgets('a call can be moved to my other devices from anywhere', (
+    tester,
+  ) async {
+    final seen = <http.Request>[];
+    final device = _FakeDevice();
+
+    await _pumpShell(
+      tester,
+      seen: seen,
+      device: device,
+      handle: (request) => request.url.path.endsWith('/phone/calls/transfer')
+          ? _json({'data': {'ringing': 1}})
+          : null,
+    );
+
+    device.ring('+13055550100');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('incoming-call-answer')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('on-call-move')));
+    await tester.pumpAndSettle();
+
+    final asked = seen.lastWhere(
+      (r) => r.url.path.endsWith('/phone/calls/transfer'),
+      orElse: () => throw StateError('the call was never asked to move'),
+    );
+
+    // The device asking names itself, or the transfer rings the desk it is
+    // being moved away from and nothing appears to happen.
+    expect(
+      jsonDecode(asked.body)['from_device_id'],
+      isNotEmpty,
+      reason: 'the server cannot tell which device to leave out',
+    );
+  });
+
+  /// A call that ended first says so where the reader is looking.
+  ///
+  /// The refusal is the commonest outcome of pressing this a second too late,
+  /// and somebody who has just pressed it is about to walk away from the
+  /// screen. Shown in place rather than in a snack bar at the bottom of a
+  /// window they have stopped watching.
+  testWidgets('a refused move is said on the bar itself', (tester) async {
+    final device = _FakeDevice();
+
+    await _pumpShell(
+      tester,
+      device: device,
+      handle: (request) => request.url.path.endsWith('/phone/calls/transfer')
+          ? _json({'message': 'That call has already ended.'}, 409)
+          : null,
+    );
+
+    device.ring('+13055550100');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('incoming-call-answer')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('on-call-move')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('on-call-move-error')), findsOneWidget);
+    expect(find.textContaining('already ended'), findsOneWidget);
+  });
+
   /// Nobody calling, nothing drawn.
   testWidgets('a quiet phone takes up no room at all', (tester) async {
     PhoneCallService.overrideForTest = PhoneCallService.forTest(_FakeDevice());
@@ -95,19 +174,40 @@ void main() {
   });
 }
 
-Future<void> _pumpShell(WidgetTester tester) async {
+/// Pumps the shell, and — when a [device] is given — wires the desk to the
+/// SAME api the shell is using and installs it before the first frame.
+///
+/// Both halves matter. A service with no api cannot make a request, so a test
+/// about a request would pass on silence; and the shell reads
+/// `PhoneCallService.current` while it builds, so a service installed after
+/// the pump is a phone the strip never sees.
+Future<ApiClient> _pumpShell(
+  WidgetTester tester, {
+  List<http.Request>? seen,
+  http.Response? Function(http.Request request)? handle,
+  _FakeDevice? device,
+}) async {
   tester.view.physicalSize = const Size(1280, 900);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
   final api = ApiClient(
     client: MockClient((request) async {
+      seen?.add(request);
+
       if (request.url.path.endsWith('/me')) return _json({'data': _me});
+
+      final answered = handle?.call(request);
+      if (answered != null) return answered;
 
       // The bodies are not the point here; they may render their own error.
       return _json({'message': 'not stubbed'}, 500);
     }),
   );
+
+  if (device != null) {
+    PhoneCallService.overrideForTest = PhoneCallService.forTest(device, api: api);
+  }
 
   final session = Session(api);
   await tester.runAsync(() => session.adopt('tok'));
@@ -123,6 +223,8 @@ Future<void> _pumpShell(WidgetTester tester) async {
     ),
   );
   await tester.pumpAndSettle();
+
+  return api;
 }
 
 http.Response _json(Object body, [int status = 200]) => http.Response(

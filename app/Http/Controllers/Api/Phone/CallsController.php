@@ -6,10 +6,12 @@ use App\Http\Controllers\Api\Controller;
 use App\Models\Customer;
 use App\Models\PhoneCall;
 use App\Models\PhoneConnection;
+use App\Models\PhoneDeviceRegistration;
 use App\Support\Phone\ClientIdentity;
 use App\Models\User;
 use App\Support\Phone\PhoneNumberAccess;
 use App\Support\Phone\TwilioGateway;
+use App\Support\Phone\TwimlRenderer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -26,6 +28,7 @@ class CallsController extends Controller
     public function __construct(
         private readonly PhoneNumberAccess $access,
         private readonly TwilioGateway $twilio,
+        private readonly TwimlRenderer $renderer,
     ) {}
 
     /**
@@ -244,6 +247,141 @@ class CallsController extends Controller
             ->all();
 
         return response()->json(['data' => $rows]);
+    }
+
+    /**
+     * POST /api/v1/phone/calls/transfer — move the call I am on to my other devices.
+     *
+     * ── What this is for ─────────────────────────────────────────────
+     *
+     * Jose asked for it by name: a call answered at the desk should be able to
+     * follow you to your phone on the way out of the door, the way RingCentral
+     * does it. Before this the only way to move a call was to hang up on the
+     * customer and ring them back from the other device.
+     *
+     * ── Why the CUSTOMER's leg is the one that moves ────────────────
+     *
+     * A live call is two legs bridged by a `<Dial>`. Redirecting the customer's
+     * leg at new TwiML ends that Dial — so the handset holding the call drops,
+     * the customer stays connected to Twilio throughout, and the new document
+     * rings whatever it names. Redirecting the other leg would take the phone
+     * away from the person holding it and leave the customer bridged to
+     * nothing.
+     *
+     * ── Why the client does not say which call ──────────────────────
+     *
+     * It cannot, honestly. A browser knows its own leg's SID, not the
+     * customer's, and the row is keyed on the customer's. The server knows who
+     * is asking and which call they are on — `answered_by` for one that rang
+     * them, `user_id` for one they placed — so it looks it up rather than
+     * trusting a SID from a client that would have to be told it in the first
+     * place.
+     *
+     * ── Every OTHER device, not a chosen one ────────────────────────
+     *
+     * The asking device names itself and is left out; everything else this
+     * person has registered rings at once, and the first to answer takes the
+     * call. That is what "move it to my phone" means when somebody is walking
+     * away from a desk, and it needs no picker on a screen they are no longer
+     * looking at.
+     */
+    public function transfer(Request $request): JsonResponse
+    {
+        $input = $request->validate([
+            // Which device is asking, so it is not one of the ones rung. A
+            // client too old to send it still transfers; it just also rings
+            // itself, which is visible and harmless rather than silent.
+            'from_device_id' => ['sometimes', 'nullable', 'string', 'max:64'],
+        ]);
+
+        $user = $request->user();
+
+        $call = PhoneCall::query()
+            ->where('status', PhoneCall::STATUS_IN_PROGRESS)
+            ->where(fn ($q) => $q
+                ->where('answered_by', $user->id)
+                ->orWhere('user_id', $user->id))
+            ->latest('created_at')
+            ->first();
+
+        if ($call === null) {
+            return response()->json([
+                'message' => 'You are not on a call right now.',
+            ], Status::HTTP_CONFLICT);
+        }
+
+        $connection = $call->connection;
+        $number = $call->number_id === null ? null : PhoneNumber::query()->find($call->number_id);
+
+        if ($connection === null || $number === null) {
+            return response()->json([
+                'message' => 'That call is not on a line EzBizi can move it from.',
+            ], Status::HTTP_CONFLICT);
+        }
+
+        // NO permission check on the line, deliberately. The query above only
+        // finds a call this person answered or placed, so they are already on
+        // it — a grant check here could only refuse somebody their own live
+        // call, which is a guard inventing a problem rather than catching one.
+
+        $targets = $this->otherDevices(
+            $connection,
+            (string) $user->id,
+            (string) ($input['from_device_id'] ?? ''),
+        );
+
+        if ($targets === []) {
+            return response()->json([
+                'message' => 'No other device of yours is signed in to take it.',
+            ], Status::HTTP_CONFLICT);
+        }
+
+        try {
+            $this->twilio->redirectCall(
+                $connection,
+                (string) $call->twilio_sid,
+                $this->renderer->transfer($number, $targets),
+            );
+        } catch (\Throwable) {
+            // The commonest reason is that the call ended while somebody was
+            // reaching for the button. Said as a fact about the call rather
+            // than as a server error, because nothing is broken.
+            return response()->json([
+                'message' => 'That call has already ended.',
+            ], Status::HTTP_CONFLICT);
+        }
+
+        return response()->json(['data' => [
+            'call_id' => $call->id,
+            'ringing' => count($targets),
+        ]]);
+    }
+
+    /**
+     * Every live device this person has except the one asking.
+     *
+     * @return list<string> Voice identities
+     */
+    private function otherDevices(
+        PhoneConnection $connection,
+        string $userId,
+        string $fromDeviceId,
+    ): array {
+        $user = User::query()->find($userId);
+        if ($user === null) {
+            return [];
+        }
+
+        $out = [];
+        foreach (PhoneDeviceRegistration::liveFor((string) $connection->id, [$userId]) as $device) {
+            if ((string) $device->device_id === $fromDeviceId && $fromDeviceId !== '') {
+                continue;
+            }
+
+            $out[] = ClientIdentity::of($user, (string) $device->device_id);
+        }
+
+        return $out;
     }
 
     /** GET /api/v1/phone/calls/{call}/recording */

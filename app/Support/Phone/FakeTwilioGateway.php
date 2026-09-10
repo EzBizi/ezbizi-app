@@ -410,6 +410,18 @@ final class FakeTwilioGateway implements TwilioGateway
         ];
     }
 
+    /** Set to make a redirect fail, the way an ended call does. */
+    public ?string $failRedirectWith = null;
+
+    public function redirectCall(PhoneConnection $connection, string $callSid, string $twiml): void
+    {
+        $this->record(__FUNCTION__, [$connection->id, $callSid, $twiml]);
+
+        if ($this->failRedirectWith !== null) {
+            throw new RuntimeException($this->failRedirectWith);
+        }
+    }
+
     public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body): array
     {
         $this->record(__FUNCTION__, [$connection->id, $from, $to, $body]);

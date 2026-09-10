@@ -193,6 +193,97 @@ final class TwimlRenderer
     }
 
     /**
+     * A live call, pointed at somebody's other devices.
+     *
+     * ── What this document replaces ──────────────────────────────
+     *
+     * It is handed to Twilio for a call that is ALREADY UP — see
+     * CallsController::transfer — and it replaces the `<Dial>` currently
+     * bridging the customer to a handset. That Dial ends, so the device
+     * holding the call drops, and these ring instead. The customer is on the
+     * line for all of it and hears ringing rather than silence.
+     *
+     * ── Why it can still reach voicemail ─────────────────────────
+     *
+     * `action` with a batch past the first. Nobody is obliged to pick the call
+     * back up — the phone may be in a pocket, or the walk to the van may take
+     * longer than the ring — and a transfer that nobody answers must not drop
+     * the customer. The action lands in afterDial(), which at batch > 0 takes
+     * a message instead of ringing round again.
+     *
+     * The recording, if the line records, is a NEW recording: redirecting ends
+     * the Dial that was making the old one. Two files for one conversation is
+     * the honest outcome and better than the alternative, which is losing the
+     * second half.
+     *
+     * @param  list<string>  $identities  Voice identities, already resolved
+     */
+    public function transfer(PhoneNumber $number, array $identities): string
+    {
+        $response = new VoiceResponse;
+
+        if ($identities === []) {
+            // Nothing to ring. Says so rather than hanging up on a customer
+            // who is still holding — the caller did nothing wrong and this is
+            // a state the person transferring can hear about afterwards.
+            $response->say(
+                'That call could not be moved, because no other device answered.',
+                ['language' => $this->language($number)],
+            );
+            $this->voicemail($response, $number, $this->language($number));
+
+            return (string) $response;
+        }
+
+        $context = [
+            'batch' => 1,
+            'dial_action' => $this->transferAction($number),
+            'recording_status_callback' => $this->webhookUrl($number, 'recording'),
+        ];
+
+        $dial = $response->dial(null, $this->dialAttributes(
+            $number,
+            timeout: 30,
+            sequential: false,
+            context: $context,
+        ));
+
+        // Ringback into the customer's leg while their call is being moved.
+        // Without it a transfer sounds exactly like being cut off, for as long
+        // as it takes somebody to get their phone out.
+        $dial->setRingTone('us');
+
+        foreach ($identities as $identity) {
+            $dial->client($identity, $this->answeredBy($number, $identity));
+        }
+
+        return (string) $response;
+    }
+
+    /**
+     * Where a transferred Dial reports to when it ends.
+     *
+     * Batch 2 rather than 1: afterDial() reads it to decide whether to ring
+     * round again, and a transfer has already had its one attempt.
+     */
+    private function transferAction(PhoneNumber $number): string
+    {
+        return route('phone.voice.webhook', [
+            'organization' => $number->organization_id,
+            'connection' => $number->connection_id,
+        ]).'?batch=2';
+    }
+
+    /** The recording callback for this line's connection. */
+    private function webhookUrl(PhoneNumber $number, string $kind): string
+    {
+        return route('phone.'.$kind.'.webhook', [
+            'organization' => $number->organization_id,
+            'connection' => $number->connection_id,
+        ]);
+    }
+
+    /**
      * Next Dial batch or overflow after a Dial ends (spec §7, Task 10).
      *
      * @param  array<string, mixed>  $context
