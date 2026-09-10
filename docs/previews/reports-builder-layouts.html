@@ -79,17 +79,21 @@ td{padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
 <div id="tog">
   <label><input type="checkbox" id="viewer"> Somebody with <code>reports.view</code> but not <code>reports.build</code></label>
   <label><input type="checkbox" id="none"> The report returned no rows</label>
+  <label><input type="checkbox" id="grow"> Show a deeper hop &mdash; not in the map today</label>
 </div>
 <div id="stage"></div>
 <script>
 function viewer(){ return document.getElementById('viewer').checked; }
 function none(){ return document.getElementById('none').checked; }
 
-var COLS = ['Job','Customer','Franchise','Booked','Total'];
+/* Real labels from ReportMap, not invented ones. Jobs and Customers are two of
+   the three reportable resources (the third is People) and `customer` is the
+   ONLY declared edge in the product. */
+var COLS = ['Number','Title','Scheduled','Amount','Name','City'];
 var ROWS = [
-  ['Chimney sweep','Marcus Bell','New Jersey','4 Jun 2026','$240.00'],
-  ['Liner install','Priya Raman','New Jersey','2 Jun 2026','$1,880.00'],
-  ['Cap replacement','Dan Ortiz','New York','29 May 2026','$310.00']
+  ['J-1041','Chimney sweep','4 Jun 2026','$240.00','Marcus Bell','Newark'],
+  ['J-1038','Liner install','2 Jun 2026','$1,880.00','Priya Raman','Newark'],
+  ['J-1030','Cap replacement','29 May 2026','$310.00','Dan Ortiz','Yonkers']
 ];
 
 function table(){
@@ -123,17 +127,29 @@ function head(title, action){
 }
 
 function fieldTree(){
+  /* Drawn from the REAL map: three resources, one edge. An earlier version of
+     this file showed "Jobs > Customers > Franchises", and Franchises is not a
+     reportable resource — invented depth, which would have had a layout judged
+     on a capability the product does not have. Depth is on a toggle instead,
+     marked as what the shape is FOR rather than what it holds. */
+  var grown = document.getElementById('grow').checked;
   return '<div class="pane l"><p class="sub">Fields</p><div class="tree">' +
     '<div class="res">Jobs</div>' +
+    '<div class="col on"><span class="box on"></span>Number</div>' +
     '<div class="col on"><span class="box on"></span>Title</div>' +
-    '<div class="col on"><span class="box on"></span>Booked for</div>' +
-    '<div class="col on"><span class="box on"></span>Total</div>' +
+    '<div class="col on"><span class="box on"></span>Scheduled</div>' +
+    '<div class="col on"><span class="box on"></span>Amount</div>' +
     '<div class="col"><span class="box"></span>Status</div>' +
-    '<div class="hop">&rsaquo; through to Customers</div>' +
+    '<div class="hop">&rsaquo; customer &rsaquo; Customers</div>' +
     '<div class="col on" style="padding-left:34px"><span class="box on"></span>Name</div>' +
+    '<div class="col on" style="padding-left:34px"><span class="box on"></span>City</div>' +
     '<div class="col" style="padding-left:34px"><span class="box"></span>Email</div>' +
-    '<div class="hop" style="padding-left:34px">&rsaquo; through to Franchises</div>' +
-    '<div class="col on" style="padding-left:50px"><span class="box on"></span>Name</div>' +
+    (grown
+      ? '<div class="hop" style="padding-left:34px;opacity:.65">'
+        + '&rsaquo; franchise &rsaquo; Franchises <i>(not declared yet)</i></div>'
+        + '<div class="col" style="padding-left:50px;opacity:.65">'
+        + '<span class="box"></span>Name</div>'
+      : '') +
     '</div></div>';
 }
 
@@ -143,7 +159,7 @@ function chosen(){
       return '<span class="pill">' + c + '<span class="x">&times;</span></span>';
     }).join('') +
     '<p class="sub" style="margin-top:12px">Filters</p>' +
-    '<div class="filt"><span class="f">Jobs</span><span class="f">Booked for</span>' +
+    '<div class="filt"><span class="f">Jobs</span><span class="f">Scheduled</span>' +
     '<span class="f">is after</span><span class="f">1 May 2026</span>' +
     '<span class="x" style="color:var(--muted);font-weight:700">&times;</span></div>' +
     (viewer() ? '' : '<div class="addcol">+ Add a filter</div>');
@@ -181,7 +197,7 @@ function D3(){
     '<div class="capline">Showing the first 5,000 rows. This report matched more.</div>';
 
   return '<div class="card desk">' + head('Jobs booked since May', 'Save') +
-    '<div class="filt"><span class="f">Jobs</span><span class="f">Booked for</span>' +
+    '<div class="filt"><span class="f">Jobs</span><span class="f">Scheduled</span>' +
     '<span class="f">is after</span><span class="f">1 May 2026</span>' +
     (viewer() ? '' : '<span class="addcol">+ filter</span>') + '</div>' +
     (none() ? emptyResults() : head3) + '</div>';
@@ -231,8 +247,10 @@ function M6(){
 var OPT = {
   1:['1 &middot; Desktop &mdash; fields on the left, the report on the right', D1,
      'The shape a builder usually takes, and it survives the hard part of this one: the '
-     +'field tree can go <b>unlimited hops</b> — Jobs &rsaquo; Customers &rsaquo; Franchises — '
-     +'and a left pane can grow downward forever without the rest of the screen moving.'],
+     +'field tree can go <b>unlimited hops</b>, and a left pane grows downward forever without '
+     +'the rest of the screen moving. <b>Today that is vacuous:</b> three resources and one '
+     +'edge, so nothing is more than one hop from anything. This shape is chosen for the map as '
+     +'it grows, not for how it looks now — the toggle shows the difference.'],
   2:['2 &middot; Desktop &mdash; one step at a time, with the choices kept in view', D2,
      'Kinder to somebody building their first report, worse for the tenth. Every change to a '
      +'finished report means walking the steps again, and iteration is what people actually do.'],
@@ -253,7 +271,8 @@ var OPT = {
 };
 
 var nums = document.getElementById('nums'), stage = document.getElementById('stage'),
-    v = document.getElementById('viewer'), n = document.getElementById('none'), cur = 1;
+    v = document.getElementById('viewer'), n = document.getElementById('none'),
+    g = document.getElementById('grow'), cur = 1;
 function show(k){
   cur = k;
   var o = OPT[k];
@@ -271,5 +290,6 @@ Object.keys(OPT).forEach(function(k){
 });
 v.onchange = function(){ show(cur); };
 n.onchange = function(){ show(cur); };
+g.onchange = function(){ show(cur); };
 show(1);
 </script>

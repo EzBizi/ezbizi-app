@@ -1412,6 +1412,16 @@ screen, which is correct — a builder is a new arrangement, not a state change 
 - **The 5,000 cap line disappears when there are no rows.** "The first 5,000" of nothing is not
   a truthful sentence about the box, and a red line under an empty table reads as a fault.
 
+> **A second correction, and this one was in MY artifact rather than my note.** The first
+> drawing showed a field tree reading *"Jobs › Customers › Franchises"*. **Franchises is not a
+> reportable resource** — `ReportMap` declares three (`jobs`, `customers`, `users`) and exactly
+> **one** edge. It also used a column called "Booked for", which does not exist; the real one is
+> "Scheduled". **A gallery with invented data asks for a decision about a capability the product
+> does not have** — Jose would have judged a layout partly on a depth that cannot be reached.
+> Redrawn from `ReportMap`'s own labels, with depth moved to a toggle marked *not in the map
+> today*, so the reason the left-tree shape was chosen is still visible without pretending it
+> pays off yet. Reports flagged the vacuum; the invented columns were mine to find.
+
 > **CORRECTED by Reports, and I had it half wrong.** I read the `array_map` callback in
 > `fields`, saw it return `['to' => …]`, and concluded the edge had no name. **The name is the
 > KEY:** `array_map` preserves string keys, so the payload is
