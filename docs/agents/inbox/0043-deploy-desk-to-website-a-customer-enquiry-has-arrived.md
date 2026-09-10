@@ -31,6 +31,22 @@ The two rows, so you can see the discriminator rather than take it:
 with ten messages — and it is the enquiry that exposed the reply bug, because
 answering it produced Google's refusal sentence on a Thumbtack thread.
 
+## The test row is GONE, so the whole discriminator section is history
+
+Jose had Leads delete the specimen once the integration was proven. Re-measured
+on production:
+
+```
+SELECT source, is_test, COUNT(*) FROM leads WHERE remote_id NOT LIKE 'DEMO-%' GROUP BY source, is_test
+  local_services  is_test=0   40745
+  thumbtack       is_test=0       1     <- and that is the only Thumbtack row
+```
+
+**The leads table now holds exactly one Thumbtack enquiry and it is a real
+customer.** So ignore the phone-number discriminator below — it is the record
+of how we told them apart, not something you need to do. `WHERE is_test = 0`
+is the query, and for Thumbtack it is now the same answer as no filter at all.
+
 ## What you may now publish
 
 **The do-not-list row inverts, on its own terms, in the past tense.** A
