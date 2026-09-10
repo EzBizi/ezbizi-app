@@ -49,17 +49,38 @@ final class TwimlRenderer
         //
         // Outbound puts it on the callee's leg instead, with <Number url> —
         // see dialParty(). Eleven US states require every party to consent.
-        if (! $outbound && $number->resolvedFlag('record')) {
-            $response->say(RecordingNotice::forNumber($number), ['language' => $language]);
+        //
+        // ── Why this is not simply said here ────────────────────────
+        //
+        // Twilio runs this document again when a caller presses a menu key —
+        // same URL, now with Digits — so a line with an IVR said the notice,
+        // played the menu, and said the notice a second time after the press.
+        // Jose reported hearing it twice.
+        //
+        // Once per CALL, then, rather than once per document: skipped on a
+        // pass whose whole job is to play a menu, and said on the pass that
+        // actually goes on to connect somebody. The menu's own timeout path
+        // says it too — see below — because that path reaches a person or a
+        // recording without a second document to say it in.
+        $closed = ! $outbound && $this->closed($number, $context);
+        $digits = (string) ($context['digits'] ?? '');
+
+        // A caller who has already pressed something is not being asked again,
+        // whether or not the webhook remembered to say so. skip_menu and
+        // Digits arrive together from Twilio; a renderer that trusted only the
+        // flag would swallow the notice on any call made without it.
+        $skipMenu = $outbound || $digits !== '' || (bool) ($context['skip_menu'] ?? false);
+        $prompt = ($skipMenu || $closed) ? null : $this->menuPrompt($number);
+
+        if ($prompt === null) {
+            $this->recordingNotice($response, $number, $language, $outbound);
         }
 
-        if (! $outbound && $this->closed($number, $context)) {
+        if ($closed) {
             $this->afterHours($response, $number, $language, $context);
 
             return (string) $response;
         }
-
-        $digits = (string) ($context['digits'] ?? '');
 
         // A caller who has pressed something is answering the menu, so route on
         // it before anything else. An unrecognised key falls through to the
@@ -75,8 +96,6 @@ final class TwimlRenderer
             }
         }
 
-        $skipMenu = $outbound || (bool) ($context['skip_menu'] ?? false);
-        $prompt = $skipMenu ? null : $this->menuPrompt($number);
         if ($prompt !== null) {
             // One digit, and Twilio posts back to this same URL — which is why
             // no action is set. numDigits keeps it from waiting out the timeout
@@ -89,6 +108,13 @@ final class TwimlRenderer
 
             // Nothing pressed: Gather falls through to here on timeout, and the
             // call must still reach somebody rather than ending in silence.
+            //
+            // The notice belongs HERE rather than above the menu. This branch
+            // reaches a person or a voicemail recording inside this same
+            // document, so there is no second pass to say it in — and a caller
+            // who waits the menu out would otherwise be recorded having been
+            // told nothing.
+            $this->recordingNotice($response, $number, $language, $outbound);
             $this->ringOrVoicemail($response, $number, $context);
 
             return (string) $response;
@@ -359,6 +385,27 @@ final class TwimlRenderer
     /**
      * @param  array<string, mixed>  $context
      */
+    /**
+     * "This call may be recorded", once, and only where it is true.
+     *
+     * Outbound says nothing here: that document runs on the EMPLOYEE's leg,
+     * so this line used to warn the person doing the recording and leave the
+     * person being recorded unwarned. The callee hears it through
+     * `<Number url>` in dialParty().
+     */
+    private function recordingNotice(
+        VoiceResponse $response,
+        PhoneNumber $number,
+        string $language,
+        bool $outbound,
+    ): void {
+        if ($outbound || ! $number->resolvedFlag('record')) {
+            return;
+        }
+
+        $response->say(RecordingNotice::forNumber($number), ['language' => $language]);
+    }
+
     private function startTranscription(VoiceResponse $response, array $context): void
     {
         $attributes = [

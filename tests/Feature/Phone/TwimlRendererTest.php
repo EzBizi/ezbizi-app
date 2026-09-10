@@ -715,6 +715,126 @@ class TwimlRendererTest extends TestCase
     }
 
     /**
+     * A menu line with a recorded line, and the two documents a call produces.
+     *
+     * @return array{0: string, 1: string} the menu pass, then the digit pass
+     */
+    private function menuCall(array $t, string $digit): array
+    {
+        return $this->inTenant($t['org'], function () use ($t, $digit) {
+            [$number, $user] = $this->lineWithAvailableDesk($t, record: true);
+            $group = $this->group($this->connectionOf($number), [$user->id]);
+
+            $flow = PhoneFlow::query()->create([
+                'connection_id' => $number->connection_id,
+                'name' => 'Main menu',
+                'nodes' => [
+                    'type' => 'menu',
+                    'prompt' => 'Press 1 for the desk.',
+                    'options' => [
+                        ['digit' => '1', 'action' => 'ring_group', 'ring_group_id' => $group->id],
+                    ],
+                ],
+            ]);
+            $number->forceFill(['flow_id' => $flow->id])->save();
+
+            $renderer = new TwimlRenderer;
+
+            return [
+                $renderer->inbound($number->fresh(), []),
+                $renderer->inbound($number->fresh(), ['digits' => $digit, 'skip_menu' => true]),
+            ];
+        });
+    }
+
+    private function connectionOf(PhoneNumber $number): PhoneConnection
+    {
+        return PhoneConnection::query()->findOrFail($number->connection_id);
+    }
+
+    /**
+     * A caller hears the consent sentence once, not once per document.
+     *
+     * ── The report ───────────────────────────────────────────────────
+     *
+     * Jose called a line with a menu and heard: "this call may be recorded",
+     * the menu, and then — after pressing 1 — "this call may be recorded"
+     * again. Both were true and neither was wrong on its own, which is why it
+     * survived: Twilio re-POSTs to the SAME voice URL when a key is pressed,
+     * so the document is rendered twice and every top-level <Say> in it is
+     * spoken twice.
+     *
+     * What a caller HEARS is not how often the sentence appears in the XML.
+     * The menu document carries it too, but after the <Gather> — reached only
+     * when the caller says nothing and the menu times out. So this walks the
+     * path Jose walked: what is spoken before the menu, and what the pressed
+     * key produces.
+     */
+    public function test_a_menu_line_says_the_recording_notice_exactly_once(): void
+    {
+        $t = $this->provisionTenant();
+        [$menu, $pressed] = $this->menuCall($t, '1');
+
+        $gather = strpos($menu, '<Gather');
+        $this->assertNotFalse($gather, 'this line plays no menu, so it tests nothing');
+
+        $before = substr($menu, 0, $gather);
+        $this->assertStringNotContainsString(
+            RecordingNotice::sentence(),
+            $before,
+            'the caller is told about recording, hears the menu, presses a key '
+            .'and is told again — which is what Jose reported',
+        );
+
+        // And the pass that actually rings somebody still says it, once.
+        $this->assertSame(1, substr_count($pressed, RecordingNotice::sentence()));
+        $this->assertStringContainsString('<Dial', $pressed);
+    }
+
+    /**
+     * Waiting the menu out is still recorded, and still warned.
+     *
+     * The Gather has no action, so silence falls through to the ring group
+     * INSIDE the menu document — there is no second pass to carry the notice.
+     * Suppressing it on the menu pass without this would record a caller who
+     * had been told nothing, which is the failure worth having a law about.
+     */
+    public function test_a_caller_who_presses_nothing_is_still_told(): void
+    {
+        $t = $this->provisionTenant();
+        [$menu] = $this->menuCall($t, '1');
+
+        $this->assertStringContainsString('<Gather', $menu);
+        $this->assertStringContainsString(RecordingNotice::sentence(), $menu);
+
+        // After the menu, not before it: a caller who presses 1 immediately
+        // never reaches this line, and that is the whole point.
+        $this->assertGreaterThan(
+            strpos($menu, '<Gather'),
+            strpos($menu, RecordingNotice::sentence()),
+        );
+    }
+
+    /**
+     * A line with no menu still says it, on its one and only pass.
+     *
+     * The control. Without it, "say it only when there is no Gather ahead"
+     * and "never say it at all" are the same green.
+     */
+    public function test_a_line_with_no_menu_still_says_it_once(): void
+    {
+        $t = $this->provisionTenant();
+
+        $xml = $this->inTenant($t['org'], function () use ($t) {
+            [$number] = $this->lineWithAvailableDesk($t, record: true);
+
+            return (new TwimlRenderer)->inbound($number->fresh(), []);
+        });
+
+        $this->assertSame(1, substr_count($xml, RecordingNotice::sentence()));
+    }
+
+    /**
      * @param  array{org: \App\Models\Organization, franchise: \App\Models\Franchise}  $tenant
      * @return array{0: PhoneNumber, 1: User}
      */
