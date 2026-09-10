@@ -11,6 +11,8 @@ class VersionHistory {
       version: '0.0.0185',
       date: '10 Sep 2026',
       items: [
+        'Fixed: after a call ended, the app bar stayed on On a call until the app was restarted. That also kept ring groups skipping that person, so their phone quietly stopped ringing and nothing on screen said why.',
+        'Fixed: on a phone, the Dial pad had a back arrow that led into a second copy of the team list and left you stuck there.',
         'An incoming call now rings every device you have open, instead of whichever one the phone network happened to pick. With the desk open on a PC and the app on a phone, only one of them rang and there was no way to tell which it would be. First one to answer takes the call and the rest stop ringing.',
         'On a phone the top bar is no longer crowded: the EzBizi mark and the duplicate company logo are gone, Clock In and Clock Out are an icon, and the light and dark switch moves to Your account. Set up two-factor and Read only now sit in a strip under the bar instead of squeezing the buttons.',
         'A test enquiry is marked as one, so it never reads as your first customer.',
