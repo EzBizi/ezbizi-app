@@ -1,0 +1,243 @@
+<!doctype html><meta charset="utf-8">
+<title>Mobile top bar &mdash; layouts</title>
+<style>
+/* Dark palette from client/lib/core/theme.dart, to match the screenshot:
+   surface #10161B, _ink #060808, primary (_cyan) #00AEEF, white text,
+   EzBiziTheme.clockOut dark #FF8A80, clockIn dark #3DDC97, divider white12. */
+:root{--bg:#0b1015;--surface:#10161B;--ink:#fff;--muted:#93A1AD;
+      --line:rgba(255,255,255,.12);--cyan:#00AEEF;--out:#FF8A80;--in:#3DDC97;
+      --page:#0b1015}
+*{box-sizing:border-box}
+body{margin:0;background:#f4f6f7;color:#060808;
+     font:14px/1.45 -apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:20px 24px 8px}
+h1{margin:0;font-size:18px;font-weight:700;letter-spacing:-.3px}
+#nums{display:flex;flex-wrap:wrap;gap:8px;padding:12px 24px 6px}
+#nums button{font:inherit;font-weight:600;background:#fff;color:#060808;
+  border:1px solid rgba(6,8,8,.12);border-radius:999px;padding:7px 14px;cursor:pointer}
+#nums button[aria-current=true]{background:#00708f;color:#fff;border-color:#00708f}
+#tog{padding:4px 24px 16px;font-size:13px}
+#tog label{cursor:pointer;user-select:none;font-weight:600;margin-right:18px}
+#stage{padding:0 24px 48px;display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start}
+.cap{font-size:13px;color:#5B6672;margin:0 0 14px;max-width:640px}
+.note{font-size:12px;color:#5B6672;max-width:330px;margin-top:10px;line-height:1.5}
+.note b{color:#060808}
+/* phone */
+.phone{width:375px;background:var(--page);border-radius:22px;overflow:hidden;
+       border:1px solid rgba(6,8,8,.18);box-shadow:0 2px 8px rgba(0,0,0,.10)}
+.status{display:flex;justify-content:space-between;align-items:center;
+        padding:8px 14px 4px;color:var(--ink);font-size:12px;opacity:.85}
+.bar{display:flex;align-items:center;gap:8px;padding:10px 10px;
+     background:var(--surface);border-bottom:1px solid var(--line);color:var(--ink)}
+.bar.two{flex-wrap:wrap;row-gap:8px}
+.ic{width:22px;height:22px;flex:none;stroke:var(--ink);fill:none;stroke-width:1.8}
+.ic.sm{width:19px;height:19px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--cyan);
+     position:absolute;right:-1px;bottom:-1px;border:1.5px solid var(--surface)}
+.wrap{position:relative;display:flex;flex:none}
+.wordmark{font-weight:800;letter-spacing:-.4px;font-size:15px;color:var(--ink);flex:none}
+.wordmark.tiny{font-size:6px;opacity:.75}
+.sep{width:1px;height:18px;background:var(--line);flex:none}
+.co{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--out);
+    color:var(--out);border-radius:999px;padding:7px 14px;font-weight:700;
+    font-size:15px;white-space:nowrap;flex:none}
+.co.small{padding:5px 10px;font-size:13px;gap:5px}
+.co .icx{width:16px;height:16px;stroke:var(--out);fill:none;stroke-width:2}
+.scope{display:inline-flex;align-items:center;gap:5px;color:var(--ink);
+       font-size:13px;font-weight:600;min-width:0;flex:1}
+.scope .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scope.fixed{flex:none}
+.chip{border:1px solid var(--line);border-radius:999px;padding:3px 9px;
+      font-size:11px;font-weight:700;white-space:nowrap;flex:none}
+.chip.warn{color:#FFD08A;border-color:rgba(255,208,138,.45)}
+.chip.ro{color:var(--muted)}
+.av{width:26px;height:26px;border-radius:50%;flex:none;
+    background:linear-gradient(135deg,#d9a066,#8fd3f4)}
+.title{font-weight:700;font-size:15px;flex:1;min-width:0;overflow:hidden;
+       text-overflow:ellipsis;white-space:nowrap}
+.spacer{flex:1;min-width:0}
+.page{padding:14px 16px 20px;color:var(--ink)}
+.h1{font-size:26px;font-weight:800;letter-spacing:-.5px;margin:0 0 10px}
+.h1.gone{display:none}
+.card{border:1px solid var(--line);border-radius:12px;padding:12px;color:var(--muted);
+      font-size:12px}
+.drawerhint{font-size:11px;color:var(--muted);padding:6px 12px 0}
+.strip{display:flex;gap:8px;align-items:center;padding:7px 12px;
+       background:rgba(255,255,255,.04);border-bottom:1px solid var(--line);
+       font-size:11px}
+.clockchip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;
+     padding:5px 11px;font-weight:700;font-size:13px;white-space:nowrap;flex:none;
+     background:rgba(255,138,128,.15);color:var(--out);border:1px solid rgba(255,138,128,.4)}
+</style>
+<header><h1>Mobile top bar &mdash; the bar is carrying ten things at 375px</h1></header>
+<div id="nums"></div>
+<div id="tog">
+  <label><input type="checkbox" id="worst"> Worst case: two-factor + read-only chips also showing</label>
+  <label><input type="checkbox" id="now" checked> Show today's bar for comparison</label>
+</div>
+<div id="stage"></div>
+<script>
+var MENU = '<svg class="ic" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>';
+var PHONE = '<svg class="ic" viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a12 12 0 005 5L15 13l5 2v4a1 1 0 01-1 1A16 16 0 014 5a1 1 0 011-1z"/></svg>';
+var BELL = '<svg class="ic" viewBox="0 0 24 24"><path d="M18 16v-5a6 6 0 10-12 0v5l-2 2h16l-2-2z"/><path d="M10 21h4"/></svg>';
+var MOON = '<svg class="ic" viewBox="0 0 24 24"><path d="M20 14a8 8 0 01-10-10 8 8 0 1010 10z"/></svg>';
+var OUTIC = '<svg class="icx" viewBox="0 0 24 24"><path d="M14 4h4a1 1 0 011 1v14a1 1 0 01-1 1h-4"/><path d="M9 16l4-4-4-4M13 12H3"/></svg>';
+var CHEV = '<svg class="ic sm" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></svg>';
+
+function worst(){ return document.getElementById('worst').checked; }
+function chips(){
+  return worst()
+    ? '<span class="chip warn">2FA</span><span class="chip ro">Read only</span>'
+    : '';
+}
+function wrapIc(svg, dot){
+  return '<span class="wrap">' + svg + (dot ? '<span class="dot"></span>' : '') + '</span>';
+}
+function strip(){
+  /* The two conditional chips are STATES, not controls. `main.dart:619` already
+     describes a one-line strip under the AppBar as "the same family as the
+     two-factor chip" -- the home exists, the chips are just not in it. */
+  return worst()
+    ? '<div class="strip"><span class="chip warn">Set up 2FA</span>'
+      + '<span class="chip ro">Read only</span></div>'
+    : '';
+}
+function phone(bar, opts){
+  opts = opts || {};
+  return '<div class="phone">' +
+    '<div class="status"><span>14:32</span><span>&#9679;&#9679;&#9679; &#9679; 29</span></div>' +
+    bar + (opts.inlineChips ? '' : strip()) +
+    '<div class="page"><div class="h1' + (opts.noHeading ? ' gone' : '') + '">Dashboard</div>' +
+    (opts.drawer ? '<div class="drawerhint">Company shown at the top of the menu</div>' : '') +
+    '<div class="card">Human Resources &middot; 2 people on the books.</div></div></div>';
+}
+
+/* TODAY — what the screenshot shows. FittedBox scales the brand down until it
+   fits, so the wordmark is not truncated, it is shrunk past reading. */
+function NOW(){
+  return phone('<div class="bar">' + MENU +
+    '<span class="wordmark tiny">EzBizi</span><span class="sep"></span>' +
+    '<span class="wordmark tiny">A1</span>' +
+    '<span class="scope"><span class="nm">A-1 Chimney</span>' + CHEV + '</span>' +
+    '<span class="co">' + OUTIC + 'Clock Out</span>' +
+    wrapIc(PHONE, true) + MOON + BELL + chips() +
+    '<span class="av"></span></div>', {inlineChips: true});
+}
+
+/* 1 — drop the chrome, keep every control. */
+function M1(){
+  return phone('<div class="bar">' + MENU +
+    '<span class="scope"><span class="nm">A-1 Chimney</span>' + CHEV + '</span>' +
+    '<span class="co">' + OUTIC + 'Clock Out</span>' +
+    wrapIc(PHONE, true) + BELL + '<span class="av"></span></div>');
+}
+
+/* 2 — the scope moves into the menu it belongs to. */
+function M2(){
+  return phone('<div class="bar">' + MENU +
+    '<span class="title">Dashboard</span>' +
+    '<span class="co">' + OUTIC + 'Clock Out</span>' +
+    wrapIc(PHONE, true) + BELL + '<span class="av"></span></div>',
+    {noHeading: true, drawer: true});
+}
+
+/* 3 — the punch control becomes a state chip carrying elapsed time. */
+function M3(){
+  return phone('<div class="bar">' + MENU +
+    '<span class="wordmark">EzBizi</span><span class="sep"></span>' +
+    '<span class="scope"><span class="nm">A-1 Chimney</span>' + CHEV + '</span>' +
+    '<span class="clockchip">&#9679; 6h 12m</span>' +
+    wrapIc(PHONE, true) + BELL + '<span class="av"></span></div>');
+}
+
+/* 4 — two rows: identity above, controls below. */
+function M4(){
+  return phone('<div class="bar two">' +
+    '<div style="display:flex;align-items:center;gap:8px;width:100%">' + MENU +
+      '<span class="wordmark">EzBizi</span><span class="sep"></span>' +
+      '<span class="scope"><span class="nm">A-1 Chimney</span>' + CHEV + '</span>' +
+      '</div>' +
+    '<div style="display:flex;align-items:center;gap:10px;width:100%">' +
+      '<span class="co">' + OUTIC + 'Clock Out</span><span class="spacer"></span>' +
+      wrapIc(PHONE, true) + BELL + '<span class="av"></span></div></div>');
+}
+
+/* 5 — the bar becomes the page heading, reclaiming the strip below it. */
+function M5(){
+  return phone('<div class="bar">' + MENU +
+    '<span class="title">Dashboard &middot; <span style="font-weight:600;opacity:.7">A-1 Chimney</span></span>' +
+    '<span class="clockchip">&#9679; 6h 12m</span>' +
+    wrapIc(BELL, true) + '<span class="av"></span></div>',
+    {noHeading: true});
+}
+
+/* 6 — the right cluster collapses into the avatar. */
+function M6(){
+  return phone('<div class="bar">' + MENU +
+    '<span class="wordmark">EzBizi</span><span class="sep"></span>' +
+    '<span class="scope"><span class="nm">A-1 Chimney</span>' + CHEV + '</span>' +
+    '<span class="co">' + OUTIC + 'Clock Out</span>' +
+    '<span class="wrap"><span class="av"></span><span class="dot"></span></span></div>');
+}
+
+var OPT = {
+  1:['1 &mdash; Drop the chrome, keep every control',
+     M1,
+     'Wordmark, divider and company logo go. Nothing that <b>does</b> anything is removed &mdash; '
+     +'only the marks that say which app you already opened. The scope picker still names the '
+     +'company in words, which is what the logo was saying in pixels.'],
+  2:['2 &mdash; The scope moves into the menu it belongs to',
+     M2,
+     'Whose business am I in is a navigation fact, so it moves to the top of the drawer and the '
+     +'bar carries the page name instead. Frees the entire left cluster, and the big heading '
+     +'below the bar disappears with it.'],
+  3:['3 &mdash; The punch control becomes a state chip',
+     M3,
+     'Clock Out becomes a tinted chip carrying elapsed time; tapping it opens the same confirm. '
+     +'Says more than the button did &mdash; you can see how long you have been on &mdash; in about '
+     +'a third of the width. The brand survives because there is room again.'],
+  4:['4 &mdash; Two rows: identity above, controls below',
+     M4,
+     'Nothing is removed or shrunk; the bar is simply given the height it needs. Costs a strip of '
+     +'vertical space on every screen, which is the thing a phone has least of.'],
+  5:['5 &mdash; The bar becomes the page heading',
+     M5,
+     'The bar and the &ldquo;Dashboard&rdquo; heading under it are two strips of chrome saying '
+     +'different things. Merge them and one strip disappears entirely. Availability folds into '
+     +'the avatar; the clock is a chip.'],
+  6:['6 &mdash; The right cluster collapses into the avatar',
+     M6,
+     'Availability, notifications and theme live behind the avatar, which carries one badge for '
+     +'all of them. Keeps the brand and the full Clock Out button. The cost is that stopping your '
+     +'phone ringing becomes two taps, which is what moving it into the bar was meant to fix.']
+};
+
+var nums = document.getElementById('nums'), stage = document.getElementById('stage'),
+    worstBox = document.getElementById('worst'), nowBox = document.getElementById('now'), cur = 1;
+
+function show(k){
+  cur = k;
+  var o = OPT[k];
+  var html = '<div><p class="cap">' + o[0] + '</p>' + o[1]() +
+             '<div class="note">' + o[2] + '</div></div>';
+  if (nowBox.checked) {
+    html += '<div><p class="cap">Today &mdash; for comparison</p>' + NOW() +
+      '<div class="note">The wordmark is not truncated, it is <b>scaled down until it fits</b> '
+      + '(<code>FittedBox</code> below 240px in the title slot). A mark shrunk past reading still '
+      + 'takes its space and says nothing.</div></div>';
+  }
+  stage.innerHTML = html;
+  Array.prototype.forEach.call(nums.children, function(b){
+    if (b.dataset) b.setAttribute('aria-current', b.dataset.k === String(k));
+  });
+}
+Object.keys(OPT).forEach(function(k){
+  var b = document.createElement('button');
+  b.textContent = 'Option ' + k;
+  b.dataset.k = k; b.onclick = function(){ show(k); };
+  nums.appendChild(b);
+});
+worstBox.onchange = function(){ show(cur); };
+nowBox.onchange = function(){ show(cur); };
+show(1);
+</script>

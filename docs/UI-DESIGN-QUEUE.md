@@ -994,6 +994,24 @@ expansion state stays with the position. **It would have been reported as a desi
 the fix is a `ValueKey` on the identity rather than anything in the layout. Candidates: any row
 holding expansion, selection or draft state inside a list that filters or reorders.
 
+**Scaling to fit does not make something smaller, it makes it unreadable — and it still costs
+the space.** Jose, 2026-09-10: *"the ezbizi logo itself is impossible to see."* The cause is not
+truncation. `main.dart:934` wraps the brand row in `FittedBox(fit: BoxFit.scaleDown)` when the
+title slot is under 240px, so at 375 the wordmark and the company logo are **shrunk past
+legibility rather than dropped**. A mark nobody can read occupies its width and communicates
+nothing, which is strictly worse than absence.
+
+> **`FittedBox` is the right tool for something that must stay whole and the wrong one for
+> chrome.** On a phone, decide what to DROP; scaling is what you reach for when you have not
+> decided. The test: if it were absent, would anyone notice? If not, it should be absent.
+
+**A state is not a control, and states have a strip of their own.** The same bar carries two
+CONDITIONAL chips — two-factor-required and read-only — inline among the buttons, so the worst
+case is worse than any screenshot shows: measured at 375 it runs off the right edge. `main.dart:
+619` already describes a one-line strip under the AppBar as *"the same family as the two-factor
+chip"*. **The home exists; the chips are simply not in it.** Whatever else is decided about that
+bar, the conditional chips belong under it — they are things that are TRUE, not things you press.
+
 **An advisory must not wear the failure component.** Web Management, 2026-09-08, asking
 that this be made a rule after the widget contrast work: *"dressing an advisory as a
 failure teaches people to ignore the component that also carries real failures."* The
