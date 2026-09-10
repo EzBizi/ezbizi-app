@@ -12,6 +12,7 @@ import '../screens/jobs_screen.dart';
 import '../screens/business_profile_screen.dart';
 import '../screens/leads_screen.dart';
 import '../screens/monitoring/monitoring_screen.dart';
+import '../screens/reports_screen.dart';
 import '../screens/reviews_screen.dart';
 import '../screens/marketing_screen.dart';
 import '../screens/phone_screen.dart';
@@ -66,6 +67,13 @@ final Map<String, ModuleScreen> moduleScreens = {
   'scheduling': ModuleScreen(
     Icons.calendar_month_outlined,
     (api, session) => SchedulingScreen(api: api, session: session),
+  ),
+  // The glyph matches the 'reports' row in dashboard_panels.dart deliberately:
+  // the rail and the dashboard naming the same module with the same mark is
+  // the point of the two maps agreeing.
+  'reports': ModuleScreen(
+    Icons.assessment_outlined,
+    (api, session) => ReportsScreen(api: api, session: session),
   ),
   'inspection': ModuleScreen(
     Icons.fact_check_outlined,
