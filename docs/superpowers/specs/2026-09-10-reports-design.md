@@ -181,30 +181,44 @@ the third argument, `array $companyChain = []`, verified at
 `app/Models/Automation.php:66`. Omitting it silently answers "does not cover" for
 every company-scoped rule.
 
-### Scheduled triggers are Automations' work, not Reports'
+### Scheduled triggers are Automations' work, and as of 2026-09-10 they exist
 
-There is **no time-based trigger in the engine today**. `AutomationEngine.php:44-69`
-states that every time value in the class is a duration, that there is no timezone in
-it at all and that this is *"a property to keep rather than a gap to fill"*, and that
-§5.5 requires DST be settled before schedules are built — naming `item.low`,
-`vehicle.service_due` and `vehicle.insurance_expiring` as declared-and-unraised for
-that reason. The Automations session confirmed independently that it declares none
-and, at the time it answered, planned none.
+**This section said "run this report every Monday is blocked" for about two hours and
+that is no longer true.** It is corrected in place rather than annotated, because a
+stale claim with a correction underneath it still reads as the claim.
 
-**Jose then assigned the scheduling work to Automations** (2026-09-10). So "run this
-report every Monday" is theirs to build, with `report.send` as the payload. Reports
-does not wait on it: the action is useful on ordinary event-driven rules from day
-one, and a Reports-local cron would be both the thing Jose's ruling forbids and the
-fourth scheduler in this application.
+What was true when this spec was written: the engine had no time-based trigger at
+all. `AutomationEngine.php:44-69` said every time value in the class was a duration,
+that there was no timezone in it and that this was *"a property to keep rather than a
+gap to fill"*, and that §5.5 required DST be settled before schedules were built.
+The Automations session confirmed it declared none and planned none.
 
-One inherited hazard, recorded so whoever builds it does not rediscover it: social
-and newsletter scheduling store the **pair** — wall-clock time and zone name — and
-re-resolve on each run, which is the right shape. But the zone list is a union of
-twelve real IANA places and `Etc/GMT±N` fixed offsets, and **the default is
-`Etc/GMT+5`**, a fixed offset with no daylight saving. Storing the pair makes DST
-*fixable*; it does not make it *fixed*. A tenant who never touched the setting gets a
-schedule an hour off local civil time from March to November. The default is Jose's
-call.
+**Jose assigned the work to Automations the same afternoon, and they shipped the
+server half in `a63f78a2`** — verified at HEAD from this session rather than taken on
+report: `automation.schedule_reached` is declared at `ModuleServiceProvider.php:2533`,
+with `AutomationSchedule`, a `DispatchDueAutomations` command and a per-minute sweep
+behind it. A rule carries a schedule — daily, chosen weekdays, or a day of the month
+— with the time and the zone it was typed in, and the wall clock is re-resolved in
+its own zone on every advance, so 9am New York is 14:00 UTC in January and 13:00 in
+July. The builder UI is not drawn yet; a schedule can be set through the API.
+
+So a scheduled report is reachable as soon as `report.send` has a runner arm.
+**Reports still builds no scheduler** — that was never about whether one existed, it
+is Jose's ruling about where it lives.
+
+One consequence that lands directly on `report.send`: a scheduled event's subject is
+**the rule itself**, because a schedule is about no record and a subject-less event
+falls through `audienceFor` to every active user. That means a scheduled
+`report.send` already carries a scope to check the report against — the rule's own —
+so the guard in the section above has something to compare with rather than needing a
+special case for scheduled runs.
+
+The DST hazard that motivated the delay is handled by that re-resolution, but the
+thing underneath it is not, and it is still Jose's call: the organization timezone
+list is a union of twelve real IANA places and `Etc/GMT±N` fixed offsets, and **the
+default is `Etc/GMT+5`**, a fixed offset with no daylight saving. Re-resolving a wall
+clock in a zone that has no DST cannot produce DST. A tenant who never touched the
+setting still gets a schedule an hour off local civil time from March to November.
 
 ## Guards
 
