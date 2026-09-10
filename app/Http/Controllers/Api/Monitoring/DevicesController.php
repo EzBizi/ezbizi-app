@@ -47,21 +47,36 @@ class DevicesController extends Controller
         $canSeeSpecs = $actor->hasPermission('monitoring.specs.view');
         $canSeeCapture = $actor->hasPermission('monitoring.screenshots.view');
 
+        // ONE query for the whole roster rather than a lookup per row, and
+        // `email` has to be selected below for it to mean anything: the
+        // exemption is anchored on the address, so a relation that omitted the
+        // column would answer "nobody is exempt" for everyone, silently and
+        // without an error — a wrong answer rather than a slow one.
+        $exemptEmails = ScreenMonitoringExemption::exemptEmails();
+
         $devices = MonitoredDevice::query()
-            ->with('user:id,name,first_name,last_name')
+            ->with('user:id,name,first_name,last_name,email')
             ->whereHas('user', fn (Builder $u) => $this->reach->constrainToVisiblePeople($u, $actor))
             ->orderByDesc('last_seen_at')
             ->get();
 
         return response()->json([
             'data' => $devices
-                ->map(fn (MonitoredDevice $d) => $this->present($d, $canSeeSpecs, $canSeeCapture))
+                ->map(fn (MonitoredDevice $d) => $this->present(
+                    $d, $canSeeSpecs, $canSeeCapture, $exemptEmails
+                ))
                 ->all(),
         ]);
     }
 
     /** @return array<string, mixed> */
-    private function present(MonitoredDevice $d, bool $canSeeSpecs, bool $canSeeCapture): array
+    /** @param  string[]  $exemptEmails  lower-cased, from ScreenMonitoringExemption */
+    private function present(
+        MonitoredDevice $d,
+        bool $canSeeSpecs,
+        bool $canSeeCapture,
+        array $exemptEmails = [],
+    ): array
     {
         $row = [
             'id' => $d->id,
@@ -74,27 +89,34 @@ class DevicesController extends Controller
             'ip_address' => $d->ip_address,
             'last_seen_at' => $d->last_seen_at?->toIso8601String(),
             'current_module' => $d->current_module,
+
+            // Whether this device's owner is exempt from screen monitoring, so
+            // the roster can say so plainly instead of leaving a machine that
+            // reports no captures looking broken.
+            //
+            // Told rather than inferred: a caller COULD deduce it today from
+            // a windows device that declares `specs` but not `screenshot`,
+            // and that deduction would silently become wrong the first time
+            // any other reason to withhold `screenshot` appears. It leaks
+            // nothing new — the capability list already implies it.
+            'screen_exempt' => $d->user->email !== null
+                && in_array(mb_strtolower($d->user->email), $exemptEmails, true),
         ];
 
         // The key is genuinely ABSENT without the grant, not present-and-null:
         // a caller who lacks `monitoring.specs.view` should not learn from the
         // shape of the response that specs exist to be granted.
         if ($canSeeSpecs) {
-            $specs = $d->specs;
+            $row['specs'] = $d->specs;
+        }
 
-            // The window title and the browser tabs ride in the specs blob
-            // because the agent reads them in the same pass, but they are NOT
-            // specs: they are what is on the screen right now, the same class
-            // of thing a screenshot shows. So they need the screenshot grant,
-            // not the hardware one — `monitoring.specs.view` alone buys you
-            // what the machine IS, never what is on it.
-            if (! $canSeeCapture && is_array($specs)) {
-                foreach (ScreenMonitoringExemption::SCREEN_CONTENT_SPEC_KEYS as $key) {
-                    unset($specs[$key]);
-                }
-            }
-
-            $row['specs'] = $specs;
+        // What is ON the screen — the window in front, the open tabs — rather
+        // than what the machine is. Gated on the SAME grant as the screenshots
+        // themselves, because it is the same class of thing: a tab list is a
+        // slower screenshot. `monitoring.specs.view` alone buys what the
+        // machine IS, never what is on it.
+        if ($canSeeCapture) {
+            $row['screen_context'] = $d->screen_context;
         }
 
         // Why the last capture did not happen, for whoever can see captures at

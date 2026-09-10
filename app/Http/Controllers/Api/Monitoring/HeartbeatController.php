@@ -102,24 +102,36 @@ class HeartbeatController extends Controller
         if ($keepSpecs && isset($data['specs'])) {
             $specs = $data['specs'];
 
-            // SECURITY exemption, third application of the same rule:
-            // A window title and a list of browser tabs carry the CONTENT of
-            // the screen — a customer name, a subject line, the job somebody
-            // has open — rather than anything about the hardware. The Lead
-            // Developer's screen is exempt from monitoring, so they are
-            // stripped here even though the client already declines to send
-            // them: a tampered client must not be able to write them.
-            //
-            // Everything else in `specs` is about the MACHINE and stays: an
-            // exempt device still shows its RAM, its disks and whether it is
-            // online, which is exactly the line the exemption draws.
-            if (ScreenMonitoringExemption::isExempt($request->user())) {
-                foreach (ScreenMonitoringExemption::SCREEN_CONTENT_SPEC_KEYS as $key) {
+            // Screen content arrives INSIDE specs because the agent reads it
+            // in the same pass — a fact about the agent, not about the data.
+            // It is lifted into its own column here so that §9 can call it
+            // what it is (activity, not a fact about the hardware), erasure
+            // can drop it on its own, and the roster can withhold it by
+            // leaving a column out rather than by unsetting keys.
+            $screenContext = [];
+            foreach (ScreenMonitoringExemption::SCREEN_CONTENT_SPEC_KEYS as $key) {
+                if (array_key_exists($key, $specs)) {
+                    $screenContext[$key] = $specs[$key];
                     unset($specs[$key]);
                 }
             }
 
+            // SECURITY exemption: a window title and a list of browser tabs
+            // carry the CONTENT of the screen — a customer name, a subject
+            // line, the job somebody has open. The Lead Developer's screen is
+            // exempt from monitoring, so none of it is kept, even though the
+            // client already declines to send it: a tampered client must not
+            // be able to write it. The hardware half of specs is untouched, so
+            // an exempt device still shows online with its RAM and its disks.
+            if (ScreenMonitoringExemption::isExempt($request->user())) {
+                $screenContext = [];
+            }
+
             $device->specs = $specs;
+
+            // Written on every beat that carries specs, so closing a browser
+            // clears the tabs rather than leaving yesterday's on the roster.
+            $device->screen_context = $screenContext === [] ? null : $screenContext;
         }
 
         // The device is the only thing that can know why a capture did not
