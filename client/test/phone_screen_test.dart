@@ -1158,6 +1158,131 @@ void main() {
       expect((options.first as Map)['action'], 'repeat');
     });
 
+    /// A key that rings one person.
+    ///
+    /// `TwimlRenderer` has dialled an extension from a menu key since
+    /// extensions existed, and it is tested — from a `PhoneFlow` row a test
+    /// wrote itself. This editor offered four actions and none of them was
+    /// this one, so the only way to reach the code was to be a test. Green
+    /// renderer, feature nobody could switch on.
+    testWidgets('a key can ring one person by extension', (tester) async {
+      Map<String, dynamic>? sent;
+
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        ringGroups: const [
+          {'id': 'rg-1', 'name': 'Front desk', 'connection_id': 'cx-1'},
+        ],
+        extensions: const [
+          {'user_id': 'u-1', 'name': 'Bar', 'extension': '102'},
+
+          // Everybody is on that roster, holder or not. A person with no
+          // extension is not something a key can ring.
+          {'user_id': 'u-2', 'name': 'Ada', 'extension': null},
+        ],
+        onFlow: (body) => sent = body,
+      );
+
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('IVR menus'));
+      await _tap(tester, find.text('Add a menu'));
+
+      await tester.enterText(find.byType(TextFormField).at(0), 'Main menu');
+      await tester.enterText(
+        find.byType(TextFormField).at(1),
+        'Press 2 for Bar.',
+      );
+      await tester.pumpAndSettle();
+
+      await _scrollTo(
+        tester,
+        find.byKey(const ValueKey('action:0')),
+        within: find.byKey(const ValueKey('flow-form')),
+      );
+      await tester.tap(find.byKey(const ValueKey('action:0')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ring one person').last);
+      await tester.pumpAndSettle();
+
+      await _scrollTo(
+        tester,
+        find.byKey(const ValueKey('extension:0')),
+        within: find.byKey(const ValueKey('flow-form')),
+      );
+      await tester.tap(find.byKey(const ValueKey('extension:0')));
+      await tester.pumpAndSettle();
+
+      // Only the person who holds one is offered.
+      expect(find.textContaining('Ada'), findsNothing);
+
+      await tester.tap(find.text('102 · Bar').last);
+      await tester.pumpAndSettle();
+
+      await _scrollTo(
+        tester,
+        find.text('Save'),
+        within: find.byKey(const ValueKey('flow-form')),
+      );
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(sent, isNotNull, reason: 'the save was refused');
+
+      final options = sent!['options'] as List;
+      expect(options, hasLength(1));
+      expect((options.first as Map)['action'], 'extension');
+      expect((options.first as Map)['extension'], '102');
+    });
+
+    /// A key that rings one person with nobody named posts no digits, and the
+    /// renderer sends that caller to voicemail — so the key answers, and
+    /// nobody who presses it knows they were meant to reach a person.
+    testWidgets('a key that rings nobody in particular is refused before it is sent', (tester) async {
+      var posted = false;
+
+      await _pump(
+        tester,
+        connections: const [conn],
+        approvedCompanyIds: const ['co-1'],
+        extensions: const [
+          {'user_id': 'u-1', 'name': 'Bar', 'extension': '102'},
+        ],
+        onFlow: (_) => posted = true,
+      );
+
+      await _tap(tester, find.text('Settings'));
+      await _tap(tester, find.text('IVR menus'));
+      await _tap(tester, find.text('Add a menu'));
+
+      await tester.enterText(find.byType(TextFormField).at(0), 'Main menu');
+      await tester.enterText(find.byType(TextFormField).at(1), 'Press 2.');
+      await tester.pumpAndSettle();
+
+      await _scrollTo(
+        tester,
+        find.byKey(const ValueKey('action:0')),
+        within: find.byKey(const ValueKey('flow-form')),
+      );
+      await tester.tap(find.byKey(const ValueKey('action:0')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ring one person').last);
+      await tester.pumpAndSettle();
+
+      // The extension is left unchosen on purpose.
+      await _scrollTo(
+        tester,
+        find.text('Save'),
+        within: find.byKey(const ValueKey('flow-form')),
+      );
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Say which extension each key rings.'), findsOneWidget);
+      expect(posted, isFalse);
+    });
+
     testWidgets('two keys doing different things is refused before it is sent', (tester) async {
       var posted = false;
 

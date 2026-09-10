@@ -34,8 +34,8 @@ use App\Support\Phone\TwimlRenderer;
  *
  * ── What an option may do ────────────────────────────────────────
  *
- * ring_group · voicemail · forward · hangup. Every one of those is something
- * the renderer actually performs today.
+ * ring_group · voicemail · forward · hangup · repeat · extension. Every one
+ * of those is something the renderer actually performs today.
  */
 class FlowsController extends Controller
 {
@@ -141,7 +141,7 @@ class FlowsController extends Controller
             // Ten, because a caller cannot press an eleventh key.
             'options' => ['present', 'array', 'max:10'],
             'options.*.digit' => ['required', 'string', 'distinct', 'regex:/^[0-9*#]$/'],
-            'options.*.action' => ['required', Rule::in(['ring_group', 'voicemail', 'forward', 'hangup', 'repeat'])],
+            'options.*.action' => ['required', Rule::in(['ring_group', 'voicemail', 'forward', 'hangup', 'repeat', 'extension'])],
             'options.*.ring_group_id' => [
                 'nullable',
                 'required_if:options.*.action,ring_group',
@@ -155,6 +155,16 @@ class FlowsController extends Controller
                 'max:16',
             ],
             'options.*.say' => ['nullable', 'string', 'max:500'],
+
+            // Same shape ExtensionsController stores, because these digits are
+            // looked up against those rows at call time. Anything else is a key
+            // that tells every caller who presses it there is no such extension.
+            'options.*.extension' => [
+                'nullable',
+                'required_if:options.*.action,extension',
+                'string',
+                'regex:/^\d{2,8}$/',
+            ],
         ]);
     }
 
@@ -198,6 +208,7 @@ class FlowsController extends Controller
                     'ring_group_id' => $option['ring_group_id'] ?? null,
                     'number' => $option['number'] ?? null,
                     'say' => $option['say'] ?? null,
+                    'extension' => $option['extension'] ?? null,
                 ], static fn ($value) => $value !== null && $value !== ''),
                 $input['options'],
             )),
