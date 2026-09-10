@@ -204,32 +204,41 @@ void main() {
     );
   });
 
-  testWidgets('at 375 one pane at a time, with Back', (tester) async {
+  /// ── What this test used to pin, and why it was wrong ──────────
+  ///
+  /// It asserted a "Back to the team" arrow on the pad and walked through it
+  /// into a roster inside the Dial pane. That arrow went FORWARD into a list,
+  /// on a screen whose only way out was to pick somebody — which selected them
+  /// as well as leaving. Jose reported it on 2026-09-10 as getting stuck on
+  /// the team screen, and he was right: Team has been its own sub-tab beside
+  /// Dial since the tabs were split, so the copy inside Dial was a duplicate
+  /// reachable only through a trap.
+  ///
+  /// The test was green throughout, because it was pinning the behaviour
+  /// rather than judging it.
+  testWidgets('at 375 the pad has no way into a roster it does not own', (
+    tester,
+  ) async {
     await _pump(tester, size: const Size(375, 800));
 
     expect(find.byKey(const Key('phone-call-pad')), findsOneWidget);
-    expect(find.byKey(const Key('phone-call-teammates')), findsNothing);
     expect(find.byKey(const Key('phone-call-person')), findsNothing);
     expect(find.text('Calling as'), findsOneWidget);
-    expect(find.byTooltip('Back to the team'), findsOneWidget);
 
-    await _tap(tester, find.byTooltip('Back to the team'));
+    expect(
+      find.byTooltip('Back to the team'),
+      findsNothing,
+      reason: 'the pad still offers the arrow that strands somebody in a '
+          'roster the Team tab already holds',
+    );
+    expect(find.byKey(const Key('phone-call-teammates')), findsNothing);
 
-    expect(find.byKey(const Key('phone-call-teammates')), findsOneWidget);
-    expect(find.byKey(const Key('phone-call-pad')), findsNothing);
-    expect(find.text('Maya Chen'), findsOneWidget);
-    expect(find.text('Calling as'), findsNothing);
-
-    await _tap(tester, find.text('Maya Chen'));
-
-    expect(find.byKey(const Key('phone-call-pad')), findsOneWidget);
-    expect(find.text('Calling as'), findsOneWidget);
-
+    // The CONTROL: the customer pane is still reachable and still comes back,
+    // so the pad has not simply lost its navigation.
     await _tap(tester, find.byTooltip('To the customer'));
 
     expect(find.byKey(const Key('phone-call-person')), findsOneWidget);
     expect(find.byKey(const Key('phone-call-pad')), findsNothing);
-    expect(find.text('Messages'), findsOneWidget);
     expect(find.byTooltip('Back to the pad'), findsOneWidget);
 
     await _tap(tester, find.byTooltip('Back to the pad'));

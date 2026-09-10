@@ -45,7 +45,17 @@ class CallTab extends StatefulWidget {
   State<CallTab> createState() => _CallTabState();
 }
 
-enum _CallPane { teammates, pad, person }
+/// Which single pane a narrow screen is showing.
+///
+/// `teammates` is GONE, not merely unused. The roster became its own sub-tab
+/// beside Dial, and the copy of it inside Dial was reachable only by a back
+/// arrow on the pad — an arrow that went FORWARD into a list, on a screen
+/// whose only way out was to pick somebody, which selected them as well as
+/// leaving. Jose reported it as getting stuck there, which is what it was.
+///
+/// Removed from the enum rather than left unreferenced so that nothing can
+/// route to a pane the app no longer offers a way back from.
+enum _CallPane { pad, person }
 
 class _CallTabState extends State<CallTab> {
   static const _refusal =
@@ -796,7 +806,7 @@ class _CallTabState extends State<CallTab> {
             SizedBox(
               key: const Key('phone-call-pad'),
               width: pad,
-              child: _padPane(showBack: false, showPerson: false),
+              child: _padPane(showPerson: false),
             ),
 
             if (showCustomer) ...[
@@ -883,13 +893,9 @@ class _CallTabState extends State<CallTab> {
 
   Widget _narrow() {
     return switch (_pane) {
-      _CallPane.teammates => KeyedSubtree(
-        key: const Key('phone-call-teammates'),
-        child: _teammatesPane(),
-      ),
       _CallPane.pad => KeyedSubtree(
         key: const Key('phone-call-pad'),
-        child: _padPane(showBack: true, showPerson: true),
+        child: _padPane(showPerson: true),
       ),
       _CallPane.person => KeyedSubtree(
         key: const Key('phone-call-person'),
@@ -1041,7 +1047,8 @@ class _CallTabState extends State<CallTab> {
     );
   }
 
-  Widget _padPane({required bool showBack, required bool showPerson}) {
+  /// No `showBack`: there is nothing behind the pad any more.
+  Widget _padPane({required bool showPerson}) {
     final theme = Theme.of(context);
     final number = _selected;
 
@@ -1064,7 +1071,6 @@ class _CallTabState extends State<CallTab> {
       child: _padColumn(
         theme,
         number,
-        showBack: showBack,
         showPerson: showPerson,
       ),
     );
@@ -1073,26 +1079,18 @@ class _CallTabState extends State<CallTab> {
   Widget _padColumn(
     ThemeData theme,
     _Number? number, {
-    required bool showBack,
     required bool showPerson,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: EdgeInsets.fromLTRB(showBack ? 4 : 12, 8, 8, 8),
+          padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
                 children: [
-                  if (showBack)
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back),
-                      tooltip: 'Back to the team',
-                      onPressed: () =>
-                          setState(() => _pane = _CallPane.teammates),
-                    ),
                   Text(
                     'Calling as',
                     style: theme.textTheme.bodySmall?.copyWith(
