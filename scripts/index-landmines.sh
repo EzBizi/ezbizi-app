@@ -60,12 +60,12 @@ set -euo pipefail
 trap 'echo "  index-landmines.sh ABORTED before its summary (line $LINENO) - the index is UNKNOWN, not clean" >&2' ERR
 cd "$(dirname "$0")/.."
 
-# ── THE SHARED INDEX, OR NOTHING ─────────────────────────────────
+# ── THE SHARED INDEX, WHATEVER SHELL ASKS ────────────────────────
 #
-# Every git command below reads whatever $GIT_INDEX_FILE names. The whole
-# point of this script is the index the NEXT bare `git commit` will use, and
-# that is the shared one — so being pointed at a private index makes it answer
-# a question nobody asked.
+# Every git command below reads whatever $GIT_INDEX_FILE names. The question
+# this script exists to answer is about the index the NEXT bare `git commit`
+# will use — the shared one — so being pointed at a private index makes it
+# answer a question nobody asked.
 #
 # It is worse than useless there, because of the shape of the recipe it exists
 # to protect. A private-index commit does this:
@@ -75,29 +75,47 @@ cd "$(dirname "$0")/.."
 #     git commit-tree ... ; git update-ref refs/heads/main "$COMMIT" "$BASE"
 #     bash scripts/index-landmines.sh          # <- still exported
 #
-# That private index was built from the tree that was just committed, so it
-# agrees with HEAD by construction. The check CANNOT report anything. It
-# prints "0 stale, 0 live", the session records that its index is clean, and
-# the real shared index goes on holding the pre-commit snapshot this script
-# was written to catch.
+# That private index was built from the tree just committed, so it agrees with
+# HEAD by construction. The check CANNOT report anything. It prints "0 stale,
+# 0 live", the session records that its index is clean, and the shared index
+# goes on holding the pre-commit snapshot this script was written to catch.
 #
 # Measured on 2026-09-10 rather than argued: the same private index missing one
 # file HEAD carries reports "1 stale — staged DELETION"; built from HEAD it
-# reports "0 stale, 0 live" no matter what the shared index holds. Four
-# commits that day ended with the check running under the export, and a peer
-# found three landmines the session had already declared clean — one of them a
-# staged deletion of a migration, which a bare commit would have removed from
-# the repo.
+# reports "0 stale, 0 live" no matter what the shared index holds. Four commits
+# that day ended with the check running under the export, and a peer found
+# three landmines the session had already declared clean — one a staged
+# deletion of a migration, which a bare commit would have removed from the repo.
 #
-# Refused rather than unset. Unsetting it silently would answer the right
-# question in a shell whose next command still expects the wrong one.
+# ── WARN, ANSWER ANYWAY, AND STILL FAIL ─────────────────────────
+#
+# This refused outright at first. Leads argued it back, and they were right:
+# exiting leaves the shared index UNEXAMINED at the exact moment landmines are
+# made — the second after `update-ref` — which is when somebody most needs the
+# answer and least expects to be told to come back.
+#
+# So: say it loudly, unset the variable for this script's own git calls, and
+# report the shared index properly. `unset` here cannot reach the caller — a
+# child process never edits its parent's environment — so the shell that ran
+# this still has its private index for whatever it does next, exactly as
+# before. The objection that stopped me doing this was that unsetting would be
+# silent; it is not silent, and it exits non-zero, which is what makes the
+# habit correct itself instead of being tutted at.
 if [ -n "${GIT_INDEX_FILE:-}" ]; then
-  echo "  index-landmines.sh REFUSES to run with GIT_INDEX_FILE set." >&2
-  echo "  It is pointed at $GIT_INDEX_FILE, not the shared index, and an" >&2
-  echo "  index built from the commit you just made agrees with HEAD by" >&2
-  echo "  construction — this would print '0 stale, 0 live' and mean nothing." >&2
-  echo "  Run it in a SEPARATE shell from the private-index commit." >&2
-  exit 2
+  echo "  index-landmines.sh was run with GIT_INDEX_FILE set." >&2
+  echo "  That names $GIT_INDEX_FILE, not the shared index — and an index built" >&2
+  echo "  from the commit you just made agrees with HEAD by construction, so" >&2
+  echo "  reading it would print '0 stale, 0 live' and mean nothing." >&2
+  echo "  Ignoring it and reading the SHARED index below. Run this in a separate" >&2
+  echo "  shell from the private-index commit and the warning goes away." >&2
+  echo >&2
+  unset GIT_INDEX_FILE
+
+  # NON-ZERO WHATEVER THE INDEX SAYS, and enforced at exit rather than at one
+  # branch: the summary below leaves by several routes, and a clean tree
+  # reached the wrong way must still not read as a pass to whatever ran this.
+  # A route that already fails keeps its own code.
+  trap 'code=$?; [ "$code" = 0 ] && exit 2; exit "$code"' EXIT
 fi
 
 HEAD_SHA=$(git rev-parse HEAD)
