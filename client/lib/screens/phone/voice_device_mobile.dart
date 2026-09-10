@@ -25,8 +25,40 @@ import 'voice_device.dart';
 /// configuration state, not a defect, and [registered] reports it honestly
 /// rather than claiming a phone that can take calls.
 class MobileVoiceDevice implements VoiceDevice {
+  /// The plugin call, injectable so the failures below can be tested.
+  ///
+  /// Registration is a platform channel, and its two interesting outcomes —
+  /// an error and a call that never returns — cannot be reached through the
+  /// real plugin in a test. Everything else here is the real thing.
+  MobileVoiceDevice({Future<bool?> Function(String token)? register})
+    : _register = register ?? _registerWithPlugin;
+
+  final Future<bool?> Function(String token) _register;
+
+  static Future<bool?> _registerWithPlugin(String token) =>
+      TwilioVoicePlatform.instance.setTokens(accessToken: token);
+
+  /// How long registration is given before the desk stops waiting.
+  ///
+  /// ── Why a timeout is not belt and braces here ────────────────────
+  ///
+  /// The iOS half of `twilio_voice` returns from `tokens` WITHOUT calling
+  /// `result(...)` when its PushKit device token is nil:
+  ///
+  ///     guard let deviceToken = deviceToken else {
+  ///         self.sendPhoneCallEvents(description: "LOG|Device token is nil…")
+  ///         return
+  ///     }
+  ///
+  /// so the Dart future never completes. `start()` awaits this, which means a
+  /// phone with no VoIP push token does not fail to register — it stops,
+  /// forever, holding the whole desk startup behind it. A timeout turns that
+  /// into a state somebody can be shown.
+  static const _registrationTimeout = Duration(seconds: 20);
+
   StreamSubscription<CallEvent>? _events;
   bool _registered = false;
+  String? _registrationError;
 
   @override
   void Function(VoiceIncoming incoming)? onIncoming;
@@ -56,9 +88,15 @@ class MobileVoiceDevice implements VoiceDevice {
   @override
   bool get registered => _registered;
 
-  // Native SDK; a failure surfaces through its own callbacks, not here.
+  /// Why registration failed, in the platform's own words where it gave any.
+  ///
+  /// This used to be a hardcoded null with a comment saying failures surface
+  /// through the SDK's callbacks. They do not: a refused `setTokens` throws
+  /// here and was swallowed by a bare `catch (_)`, so the desk fell back to
+  /// its generic banner — which tells the reader to reload the page and
+  /// suspect their network, on a phone, for a fault that is neither.
   @override
-  String? get registrationError => null;
+  String? get registrationError => _registrationError;
 
   // The native SDK owns its own audio session; no widget is involved.
   @override
@@ -66,26 +104,68 @@ class MobileVoiceDevice implements VoiceDevice {
 
   @override
   Future<void> setup(String token) async {
+    // The microphone is asked for here rather than at the moment somebody
+    // presses Call: a permission prompt arriving on top of a ringing call is
+    // a call that gets missed while the prompt is read.
+    //
+    // In its OWN try, and deliberately not fatal. A phone that cannot reach
+    // the microphone is a different fault from one that cannot register, with
+    // a different fix, and registering anyway is right — the OS asks again
+    // when a call actually starts. Sharing a try meant a mic failure was
+    // reported as "not connected to the phone network", which is the wrong
+    // sentence about the wrong subsystem.
     try {
-      // The microphone is asked for here rather than at the moment somebody
-      // presses Call: a permission prompt arriving on top of a ringing call is
-      // a call that gets missed while the prompt is read.
       if (!await TwilioVoicePlatform.instance.hasMicAccess()) {
         await TwilioVoicePlatform.instance.requestMicAccess();
       }
+    } catch (_) {
+      // Nothing to say here that registration will not say better.
+    }
 
-      final registered = await TwilioVoicePlatform.instance.setTokens(
-        accessToken: token,
-      );
+    try {
+      final registered = await _register(token).timeout(_registrationTimeout);
 
       _registered = registered ?? false;
 
-      await _events?.cancel();
-      _events = TwilioVoicePlatform.instance.callEventsListener.listen(_onEvent);
-    } catch (_) {
-      // A refused token, or a platform channel that is not there. The desk
-      // has a state for a phone that cannot take a call.
+      if (!_registered) {
+        _registrationError =
+            'Twilio did not accept this device, and gave no reason.';
+      }
+
+      await _listen();
+    } on TimeoutException {
+      // The iOS nil-device-token path, which never answers. Named rather than
+      // reported as a generic failure, because the fix is a provisioning one
+      // and the generic text sends somebody to look at their wifi.
       _registered = false;
+      _registrationError =
+          'The phone did not finish registering. On iPhone this is what a '
+          'missing VoIP push token looks like.';
+    } catch (error) {
+      // A refused token, a platform channel that is not there, or Android
+      // rejecting the call for want of a device token. The message is kept:
+      // "No 'deviceToken' provided" is the whole diagnosis, and discarding it
+      // is what made this look like a network fault for as long as it did.
+      _registered = false;
+      _registrationError = '$error';
+    }
+  }
+
+  /// Subscribe to the SDK's call events.
+  ///
+  /// Separated so a test can drive [setup] without a platform channel, and so
+  /// a failure to subscribe cannot be mistaken for a failure to register.
+  Future<void> _listen() async {
+    try {
+      await _events?.cancel();
+      // onError, because a channel that is not there reports it as a stream
+      // ERROR rather than by throwing from listen() — so a try/catch around
+      // this line alone does not catch it.
+      _events = TwilioVoicePlatform.instance.callEventsListener
+          .listen(_onEvent, onError: (_) {}, cancelOnError: false);
+    } catch (_) {
+      // The desk is registered either way; events arriving is a separate
+      // concern and one the incoming-call bar reports on its own.
     }
   }
 
