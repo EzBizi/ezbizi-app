@@ -378,6 +378,60 @@ MAC_DEFINES="${MAC_DEFINES} --build-name=${VERSION} --build-number=${BUILD_NUMBE
         echo "✗ xcodebuild -exportArchive reported success but left no .pkg on the Mac" >&2
         exit 1
       fi
+
+    # ── exactly one profile per name, because the bad case is SILENT ──
+    #
+    # Apple session, 2026-09-10, found this by grepping scripts/ for every
+    # profile-shaped string and getting zero hits: nothing anywhere checked
+    # that a provisioning profile is installed, correctly named, or unique.
+    # The knowledge lived in a comment in ExportOptions.plist -- "Name it
+    # exactly as the portal does, or the export fails" -- which is a comment
+    # naming a hazard and leaving it.
+    #
+    # Most of that hazard is loud, and loud is fine: a missing or misnamed
+    # profile fails at export with a clear message, and a binary claiming an
+    # entitlement its profile lacks is a hard signing failure. Neither can
+    # ship a wrong artefact.
+    #
+    # DUPLICATE NAMES are the silent one. xcodebuild resolves by Name, so two
+    # profiles both called "EzBizi Mac App Store" leave the choice to
+    # directory order. If the stale one wins and the binary claims nothing
+    # extra -- which is macOS today, no aps-environment in its entitlements --
+    # it signs cleanly, uploads cleanly, and ships a package whose profile
+    # lacks push. Nothing in the log would differ. The relay was in exactly
+    # that state for the minutes between the new profiles being installed and
+    # the old ones deleted.
+    #
+    # An unreachable probe WARNS rather than refuses: "no profile named X"
+    # and "I could not ask" are two different facts, and only the first is a
+    # reason to stop a release. The identity checks below still gate the build.
+    MAC_PROFILE_NAMES=$(ssh -o BatchMode=yes "$MAC_REMOTE" \
+      'for f in ~/Library/MobileDevice/Provisioning\ Profiles/*; do
+         [ -f "$f" ] || continue
+         security cms -D -i "$f" 2>/dev/null | plutil -extract Name raw - 2>/dev/null
+       done' 2>/dev/null) || MAC_PROFILE_NAMES=""
+
+    if [ -z "$MAC_PROFILE_NAMES" ]; then
+      echo "! could not read the provisioning profiles on the relay - not blocking," >&2
+      echo "  but nothing has confirmed which profile xcodebuild will pick." >&2
+    else
+      for want in "EzBizi App Store" "EzBizi Mac App Store"; do
+        n=$(printf '%s\n' "$MAC_PROFILE_NAMES" | grep -cxF "$want")
+        if [ "$n" != "1" ]; then
+          echo "x expected exactly one profile named '${want}' on the relay, found ${n}." >&2
+          if [ "$n" = "0" ]; then
+            echo "  Install it from the portal, naming it EXACTLY as the portal does." >&2
+          else
+            echo "  Two profiles of one name: xcodebuild picks by directory order, so a" >&2
+            echo "  stale one can sign and upload a package silently missing an" >&2
+            echo "  entitlement. Delete the old one from" >&2
+            echo "  ~/Library/MobileDevice/Provisioning Profiles/ before building." >&2
+          fi
+          exit 1
+        fi
+      done
+      echo "  profiles ok - one each of 'EzBizi App Store' and 'EzBizi Mac App Store'"
+    fi
       scp -q "${MAC_REMOTE}:${PKG_REMOTE}" "${DIST_APPLE}/EzBizi-${VERSION}-${COMMIT}-macos.pkg"
       echo "  → ${DIST_APPLE}/EzBizi-${VERSION}-${COMMIT}-macos.pkg"
 
