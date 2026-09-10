@@ -117,6 +117,62 @@ class ReportRunnerTest extends TestCase
     }
 
     /**
+     * THE CASE THAT WAS UNEXPRESSIBLE UNTIL THE performed_by EDGE EXISTED.
+     *
+     * `jobs.performed_by_user_id` is NULLABLE, so a job nobody has been
+     * credited with is a real row. It must still appear in a report carrying a
+     * technician column, with the name blank — if the join's conditions were in
+     * WHERE instead of ON, the row would vanish and the report would quietly
+     * under-count the work done.
+     *
+     * The docblock below explains why this could previously only be tested
+     * through a soft-deleted customer: `jobs.customer_id` is NOT NULL, so a job
+     * with no customer cannot exist at all.
+     */
+    public function test_a_row_with_nothing_to_join_to_is_still_returned(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $this->makeJob($tenant, ['title' => 'Nobody credited', 'performed_by_user_id' => null]);
+
+        $result = $this->runReport([
+            'root'    => 'jobs',
+            'columns' => [
+                ['resource' => 'jobs', 'column' => 'title'],
+                ['resource' => 'users', 'column' => 'name'],
+            ],
+            'filters' => [],
+        ], $tenant['admin']);
+
+        $this->assertCount(1, $result->rows, 'a job with no technician was dropped by the join');
+        $this->assertSame('Nobody credited', $result->rows[0]['jobs.title']);
+        $this->assertNull($result->rows[0]['users.name']);
+    }
+
+    /** The positive half: a job that DOES name somebody reports the name. */
+    public function test_a_job_reports_the_person_who_performed_it(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $this->makeJob($tenant, [
+            'title'                => 'Credited',
+            'performed_by_user_id' => $tenant['admin']->id,
+        ]);
+
+        $result = $this->runReport([
+            'root'    => 'jobs',
+            'columns' => [
+                ['resource' => 'jobs', 'column' => 'title'],
+                ['resource' => 'users', 'column' => 'name'],
+            ],
+            'filters' => [],
+        ], $tenant['admin']);
+
+        $this->assertSame('Credited', $result->rows[0]['jobs.title']);
+        $this->assertNotNull($result->rows[0]['users.name']);
+    }
+
+    /**
      * THE LEFT JOIN MUST STAY A LEFT JOIN, and this is the case that proves it.
      *
      * Scope conditions on a joined table belong in the ON clause. Put them in
@@ -178,6 +234,13 @@ class ReportRunnerTest extends TestCase
         ], $tenant['admin']);
     }
 
+    /**
+     * Re-pointed on 2026-09-10 when the `performed_by` edge made jobs -> users
+     * reachable. It was the second tripwire to fire on that one line, which is
+     * what both were for: a change in reach must be a deliberate edit here, not
+     * a silent widening. `customers` declares no outgoing relations, so nothing
+     * can be reached from it.
+     */
     public function test_it_refuses_a_resource_it_cannot_reach_by_a_declared_edge(): void
     {
         $tenant = $this->provisionTenant('Alpha');
@@ -185,8 +248,11 @@ class ReportRunnerTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
 
         $this->runReport([
-            'root'    => 'jobs',
-            'columns' => [['resource' => 'users', 'column' => 'email']],
+            'root'    => 'customers',
+            'columns' => [
+                ['resource' => 'customers', 'column' => 'name'],
+                ['resource' => 'jobs', 'column' => 'title'],
+            ],
             'filters' => [],
         ], $tenant['admin']);
     }
