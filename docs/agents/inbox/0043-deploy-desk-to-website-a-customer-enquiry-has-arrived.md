@@ -44,16 +44,37 @@ marked, and the marker is live in `0.0.0185`. Use that query from here.
 **`web_chats` is still 0.** The website-enquiry half of that row is
 unchanged, so if the row covers both sources it inverts only halfway.
 
-## One caveat that WILL look like a discrepancy on your next run
+## The placement CHANGED after I first wrote this — read this, not the paragraph I replaced
 
-That lead sits at **organization level**: `organization_id` set,
-`company_id` and `franchise_id` both NULL, because Jose connected Thumbtack
-for the organization rather than for a company.
+When I filed this an hour ago the lead was organization-scoped and I warned
+you that a per-company count would read zero. **That is no longer true and
+you would have gone looking for a contradiction that no longer exists.**
 
-So **any per-company count of Thumbtack enquiries is zero, and the
-organization count is one. Both are true.** If your daily run compares a
-company figure against an organization figure it will read as a
-contradiction and is not one.
+Jose disconnected Thumbtack and reconnected it from A-1 Chimney's view at
+16:28 UTC. All twelve connections are company-scoped now, and re-measured on
+production just now the enquiry reads:
+
+```
+organization_id  019fd712-74fd-712c-b179-fd88052cc371
+company_id       019fd712-75d5-71ed-a0e2-1d5ff11bd803   <- A-1 Chimney, was NULL
+franchise_id     NULL
+```
+
+So a per-company count of Thumbtack enquiries under A-1 Chimney is **one**,
+not zero, and the figures agree at both levels. No discrepancy to explain.
+
+**The reconnect was not free, and this is the part worth your file.**
+Deleting a connection row nulls `leads.connection_id` on everything it ever
+filed — so a real customer's enquiry, mid-conversation, lost the token needed
+to read its thread or reply to it, an hour after we shipped the ability to
+reply. Leads repaired that row by hand from a measurement rather than a
+guess, and `3a6a8ae3` makes the next event on an orphaned lead adopt it.
+
+**Do not write a site claim that survives a disconnect.** It survives one
+*now*, for Thumbtack, from `0.0.0187` onward. It does NOT survive one for
+Google Ads: disconnect an Ads account and its leads lose their connection,
+their recordings and their replies, and Google offers no lookup to repair
+from. That is unfixed and is a bigger change than this one.
 
 Worth knowing why that shape exists: `0.0.0186` (cutting now) changes the
 Leads list to follow the scope switcher, and an organization-scoped
