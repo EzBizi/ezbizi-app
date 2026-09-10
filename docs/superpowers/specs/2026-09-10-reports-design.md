@@ -200,7 +200,10 @@ with `AutomationSchedule`, a `DispatchDueAutomations` command and a per-minute s
 behind it. A rule carries a schedule — daily, chosen weekdays, or a day of the month
 — with the time and the zone it was typed in, and the wall clock is re-resolved in
 its own zone on every advance, so 9am New York is 14:00 UTC in January and 13:00 in
-July. The builder UI is not drawn yet; a schedule can be set through the API.
+July. The schedule editor was drawn the same day in `197240a5`, so a rule that
+runs on a clock is buildable in the app rather than only through the API —
+verified from this session, 444 lines across the builder screen, the catalogue
+and both test suites.
 
 So a scheduled report is reachable as soon as `report.send` has a runner arm.
 **Reports still builds no scheduler** — that was never about whether one existed, it
