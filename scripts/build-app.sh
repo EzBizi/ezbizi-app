@@ -217,6 +217,34 @@ for target in windows linux android; do
   fi
 done
 
+# ── the version must not have moved under the build ─────────────
+#
+# VERSION is read TWICE per build and by two different things: this script
+# reads it for the artefact's filename and its stamp, and
+# android/app/build.gradle.kts reads it again for versionName/versionCode. On a
+# tree with twenty sessions in it those two reads are not the same instant.
+#
+# It happened: 0.0.0184-cbb8aff1+-sideload.apk went out declaring versionCode
+# 9999, versionName 0.0.9999, because a peer had VERSION at 0.0.9999 (what you
+# set to test the desktop update offer) while Gradle read it. The filename said
+# 0184 and the artefact said 9999, and nothing complained.
+#
+# The filename is cosmetic. versionCode is not: Play requires it to rise
+# forever, so ONE upload at 9999 permanently burns every number below it and
+# the listing can never ship 185 again. There is no undo for that.
+#
+# Cheaper to notice here than to explain to Play, so: re-read the file and
+# refuse to hand back an artefact whose stamp is already a lie.
+VERSION_AFTER=$(tr -d '[:space:]' < client/VERSION)
+if [ "$VERSION_AFTER" != "$VERSION" ]; then
+  echo "x client/VERSION moved during this build: ${VERSION} -> ${VERSION_AFTER}" >&2
+  echo "  The artefacts are stamped from two different reads and at least one is" >&2
+  echo "  wrong. Nothing is safe to upload. Find out who is holding VERSION" >&2
+  echo "  (0.0.9999 is the desktop-update test value) and build again when it is" >&2
+  echo "  settled." >&2
+  exit 1
+fi
+
 # ── the sideload APK, if one was asked for ──────────────────────
 #
 # release.sh collects the .aab itself; this one is collected here because a
