@@ -89,6 +89,16 @@ final class ReportMap
                 ],
                 'relations' => [
                     'customer' => ['to' => 'customers', 'local' => 'customer_id', 'foreign' => 'id'],
+                    /*
+                     * Who did the work. `performed_by_user_id` is NULLABLE, and
+                     * that is the case the ON-clause scoping exists for: a job
+                     * nobody has been credited with must still appear in a
+                     * report that shows a technician column, with the name
+                     * blank. `customer_id` is NOT NULL, so until this edge
+                     * existed that behaviour could only be tested through a
+                     * soft-deleted customer.
+                     */
+                    'performed_by' => ['to' => 'users', 'local' => 'performed_by_user_id', 'foreign' => 'id'],
                 ],
             ],
 

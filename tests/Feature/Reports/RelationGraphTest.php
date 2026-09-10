@@ -28,18 +28,33 @@ class RelationGraphTest extends TestCase
     }
 
     /**
-     * `users` is in the map and jobs declares no edge to it, which makes it the
-     * control: unreachable because of the EDGES, not because the target is
-     * unknown. Without it, a graph that returned null for everything would pass
-     * the unknown-target test below and look correct.
+     * The control: unreachable because of the EDGES, not because the target is
+     * unknown. Without it, a graph that returned null for everything would
+     * satisfy the unknown-target test below and look correct.
      *
-     * When somebody later declares that edge, this assertion goes red. That is
-     * the point — change it in the same commit as the edge, deliberately.
+     * This used to be `jobs -> users`, and it went red the day the
+     * `performed_by` edge was declared — which is what it was for. Changed in
+     * the same commit as the edge, deliberately, and re-pointed at a pair that
+     * is still unreachable: `customers` declares no outgoing relations at all,
+     * so nothing can be reached FROM it. If somebody later gives customers an
+     * edge, this goes red again and wants the same deliberate look.
      */
-    public function test_a_mapped_resource_with_no_edge_to_it_is_unreachable(): void
+    public function test_a_mapped_resource_with_no_edge_from_it_reaches_nothing(): void
     {
-        $this->assertNotNull(ReportMap::get('users'), 'users must be mapped for this to be a control');
-        $this->assertNull(RelationGraph::pathBetween('jobs', 'users'));
+        $this->assertNotNull(ReportMap::get('customers'), 'customers must be mapped for this to be a control');
+        $this->assertSame([], ReportMap::get('customers')['relations'], 'customers has grown an edge; re-point this control');
+
+        $this->assertNull(RelationGraph::pathBetween('customers', 'jobs'));
+    }
+
+    /** The edge added on 2026-09-10, and the reach it buys. */
+    public function test_a_job_reaches_the_person_who_performed_it(): void
+    {
+        $path = RelationGraph::pathBetween('jobs', 'users');
+
+        $this->assertCount(1, $path);
+        $this->assertSame('performed_by_user_id', $path[0]['local']);
+        $this->assertSame('users', $path[0]['to']);
     }
 
     public function test_an_unknown_target_is_unreachable_rather_than_guessed(): void
