@@ -42,6 +42,11 @@ target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "shell32.lib")
 # WLAN API, for the Wi-Fi SSID/signal reads in monitoring_specs.cpp.
 target_link_libraries(${BINARY_NAME} PRIVATE "wlanapi.lib")
+
+# Local address, link type and per-adapter traffic counters for PC Stats
+# (GetAdaptersAddresses / GetIfEntry2), and inet_ntop from ws2_32.
+target_link_libraries(${BINARY_NAME} PRIVATE "iphlpapi.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "ws2_32.lib")
 # Screen capture (BitBlt/GetDIBits), JPEG encoding (WIC), and the COM APIs
 # WIC needs, for the primary-monitor screenshot channel. See
 # monitoring_screenshot.cpp.

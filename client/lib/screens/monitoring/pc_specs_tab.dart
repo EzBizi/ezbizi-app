@@ -350,10 +350,13 @@ class _PersonTile extends StatelessWidget {
         : ' · ${stale.length} earlier';
 
     return ExpansionTile(
-      // Expanded on first render: the roster's own screen test asserts on a
-      // device row without a tap, and an admin scanning the crew wants the
-      // specs already in view rather than a second click per person.
-      initiallyExpanded: true,
+      // Collapsed on first render (ExpansionTile's own initiallyExpanded
+      // defaults to false, so this is an absence rather than a setting).
+      // The roster's job is to be scannable: with a row of specs under every
+      // person, ten people fill the screen and "who is on" — the one thing
+      // the whole tab exists to answer — needs scrolling to see. The status
+      // bolt, the name, the module they are in and the session count all sit
+      // in the collapsed header, so the specs are the only thing a tap costs.
       title: Row(
         children: [
           _StatusDot(online: anyOnline),
