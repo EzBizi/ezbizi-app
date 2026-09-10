@@ -8,6 +8,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0186',
+      date: '10 Sep 2026',
+      items: [
+        'Recent calls and Records name the colleague instead of a long string of letters and numbers. A call to a teammate is addressed to them rather than to a number, and the app was showing you the address.',
+        'A caller is told about recording once, not twice. Pressing a menu key made the phone system read the whole greeting again, notice included.',
+        'Voicemail catches messages when nobody picks up.',
+        'A Thumbtack enquiry can be replied to from the thread. A refusal now names the source that refused rather than always naming Google, which was telling you that Google does not accept replies to calls when the enquiry was a Thumbtack message.',
+        'The Leads list follows the view you are in: a company sees its own enquiries, and everything only at organization level. It was showing one company the enquiries of another.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0185',
       date: '10 Sep 2026',
       items: [
