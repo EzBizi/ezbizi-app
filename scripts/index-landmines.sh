@@ -60,6 +60,46 @@ set -euo pipefail
 trap 'echo "  index-landmines.sh ABORTED before its summary (line $LINENO) - the index is UNKNOWN, not clean" >&2' ERR
 cd "$(dirname "$0")/.."
 
+# ── THE SHARED INDEX, OR NOTHING ─────────────────────────────────
+#
+# Every git command below reads whatever $GIT_INDEX_FILE names. The whole
+# point of this script is the index the NEXT bare `git commit` will use, and
+# that is the shared one — so being pointed at a private index makes it answer
+# a question nobody asked.
+#
+# It is worse than useless there, because of the shape of the recipe it exists
+# to protect. A private-index commit does this:
+#
+#     export GIT_INDEX_FILE=/tmp/mine
+#     git read-tree "$BASE"; git update-index --add -- <paths>
+#     git commit-tree ... ; git update-ref refs/heads/main "$COMMIT" "$BASE"
+#     bash scripts/index-landmines.sh          # <- still exported
+#
+# That private index was built from the tree that was just committed, so it
+# agrees with HEAD by construction. The check CANNOT report anything. It
+# prints "0 stale, 0 live", the session records that its index is clean, and
+# the real shared index goes on holding the pre-commit snapshot this script
+# was written to catch.
+#
+# Measured on 2026-09-10 rather than argued: the same private index missing one
+# file HEAD carries reports "1 stale — staged DELETION"; built from HEAD it
+# reports "0 stale, 0 live" no matter what the shared index holds. Four
+# commits that day ended with the check running under the export, and a peer
+# found three landmines the session had already declared clean — one of them a
+# staged deletion of a migration, which a bare commit would have removed from
+# the repo.
+#
+# Refused rather than unset. Unsetting it silently would answer the right
+# question in a shell whose next command still expects the wrong one.
+if [ -n "${GIT_INDEX_FILE:-}" ]; then
+  echo "  index-landmines.sh REFUSES to run with GIT_INDEX_FILE set." >&2
+  echo "  It is pointed at $GIT_INDEX_FILE, not the shared index, and an" >&2
+  echo "  index built from the commit you just made agrees with HEAD by" >&2
+  echo "  construction — this would print '0 stale, 0 live' and mean nothing." >&2
+  echo "  Run it in a SEPARATE shell from the private-index commit." >&2
+  exit 2
+fi
+
 HEAD_SHA=$(git rev-parse HEAD)
 stale=0
 live=0
