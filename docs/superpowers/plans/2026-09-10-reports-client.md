@@ -36,7 +36,7 @@
 
   **3 and 5 must not share a widget.** Refused means *you may not* — a lock and the server's sentence, never an empty table. Empty results means *there is nothing, for you*. A reader who cannot tell them apart learns nothing from either.
 
-- **Spacing and type are tokens, never literals.** Card padding 16, gaps 12, the mobile count in `headlineSmall`. **Section labels are blocked on UI/UX** — see the open question at the end of this plan; do not pick a slot.
+- **Spacing and type are tokens, never literals.** Card padding 16, gaps 12, the mobile count in `headlineSmall`. Section labels are `labelSmall` as it stands (11px, `w700`, `letterSpacing: 1.2`, muted); small print is `bodySmall`, which is 12px since `30f6bcf6`.
 - **No modal dialogs.** Screens or side panels (development rules). Touch and 375px must work.
 - **Theme colours only**, never literals, never decorative gradients.
 - **`client/lib/core/module_screens.dart` is UI/UX's file.** One `reports` entry, the same way Training took one. Tell them after; do not redesign around it.
@@ -505,13 +505,19 @@ git commit -m "Reports: the builder, a field tree beside the report"
 | `report.send` | Needs the runner arm and the rule-vs-report scope check |
 | More reportable resources | Backend work. Three resources and one edge make the tree look thin; Inventory, Fleet, Services and HR are each a map entry plus edges, and Jose has been asked for a priority order |
 
-## Blocked on an answer before Task 1 starts
+## The type question, answered
 
-**Which slot section labels use.** UI/UX specified `bodySmall`, uppercased, `letterSpacing: .4`, in `onSurfaceVariant`. **`bodySmall` is not defined in `client/lib/core/theme.dart`** — the TextTheme block at `:238-268` defines `headlineSmall`, `titleLarge`, `titleMedium`, `titleSmall`, `bodyMedium` and `labelSmall`, and its own docblock records that unfilled slots were already a bug three times. A slot left out renders with **no size and no weight**; it does not fall back.
+**Resolved 2026-09-10 by UI/UX (`30f6bcf6`), and asking rather than picking found a product-wide defect.**
 
-`labelSmall` is the existing uppercase-section-label slot (11px, `w700`, `letterSpacing: 1.2`, `_muted`) and is probably what was meant — but `.4` is much tighter than `1.2`, so taking it silently would be picking. Asked; not picking. Do not write a literal and do not substitute a slot to get moving.
+`bodySmall` did not exist in `client/lib/core/theme.dart` when this plan was written. It resolved to `fontSize: null, fontWeight: null` across **469 call sites in 113 files** — an unlisted slot arrives carrying a colour and nothing else, so all 469 rendered at the ambient 14, which is `bodyMedium`. The app drew a distinction 469 times that nobody could see.
 
-`headlineSmall` for the mobile count is defined and fine. `onSurfaceVariant` is not set in `theme.dart` but `ColorScheme.fromSeed` at `:104` derives it, so it resolves rather than failing — flagged to UI/UX in case a specific tone was intended.
+It is now `fontSize: 12`, between `labelSmall`'s 11 and `bodyMedium`'s 14, colour and height following `bodyMedium` so only the size moved. **Use it as specified.**
+
+**Section labels use `labelSmall` as it stands** — UI/UX withdrew the `.4` letterspacing themselves: 1.2 is correct for uppercase, because tighter tracking on capitals is what makes them look cramped. No new slot.
+
+`onSurfaceVariant` is derived by `ColorScheme.fromSeed` and resolves to a real tone. Use it.
+
+**Why this is in the plan rather than deleted.** The reason it reached a fourth instance is that the conventions guard's own `_slot()` resolver returned null for anything outside display/headline/title, so every body and label slot fell through and any assertion above it passed. A healthy instrument aimed one level beside the subject. If a type slot ever looks wrong on this screen, suspect the slot is unfilled before suspecting your widget.
 
 ## The thing most likely to be wrong
 
