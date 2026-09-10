@@ -93,6 +93,42 @@ void main() {
     expect(find.textContaining('No rows matched'), findsNothing);
   });
 
+  testWidgets('tapping a report opens its run in place, never a dialog', (
+    tester,
+  ) async {
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) {
+        if (request.url.path.endsWith('/run')) {
+          return _json({
+            'data': {
+              'columns': [
+                {'key': 'jobs.title', 'label': 'Title', 'type': 'string'},
+              ],
+              'rows': [
+                {'jobs.title': 'Sweep'},
+              ],
+              'capped': false,
+              'count': 1,
+              'cap': 5000,
+            },
+          });
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('Open jobs'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sweep'), findsOneWidget);
+    // Screens and side panels, never a modal (development rules).
+    expect(find.byType(Dialog), findsNothing);
+    // The header becomes the report's name, with a way back.
+    expect(find.byTooltip('All reports'), findsOneWidget);
+  });
+
   testWidgets('a narrow screen says reports are built on a computer', (
     tester,
   ) async {
