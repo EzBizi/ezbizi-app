@@ -5,6 +5,8 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import 'device_display.dart';
+import 'machine_card.dart';
+import 'machine_detail.dart';
 
 /// PC Specs — the device roster (people, each expandable inline to their
 /// devices — no modal) plus an at-a-glance panel.
@@ -63,6 +65,16 @@ class _PcSpecsTabState extends State<PcSpecsTab> {
   String? _error;
   List<Map<String, dynamic>> _devices = [];
 
+  /// What the search box holds. Matched against the machine name, the person
+  /// and the active window - the three things somebody actually looks a
+  /// machine up by. Not the IP, which nobody remembers.
+  String _query = '';
+
+  /// The person whose machine the panel is showing, or null for the summary of
+  /// the whole room. Same rule the General tab's map follows: clicking a thing
+  /// shows that thing, clicking nothing shows everything.
+  String? _selectedPersonId;
+
   @override
   void initState() {
     super.initState();
@@ -104,6 +116,11 @@ class _PcSpecsTabState extends State<PcSpecsTab> {
   @override
   Widget build(BuildContext context) {
     final people = _groupByPerson(_devices);
+    final shown = _matching(people);
+
+    // A selection survives a refresh but not a filter that hides it: a panel
+    // describing a machine you can no longer see on the grid is a puzzle.
+    final selected = shown.where((p) => p.id == _selectedPersonId).firstOrNull;
 
     return AsyncBody(
       loading: _loading,
@@ -112,19 +129,41 @@ class _PcSpecsTabState extends State<PcSpecsTab> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final wide = constraints.maxWidth >= PcSpecsTab.splitAbove;
-          final roster = _Roster(
-            people: people,
-            isOnline: _isOnline,
-            session: widget.session,
+
+          final grid = Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _SearchRow(
+                query: _query,
+                showing: shown.length,
+                total: people.length,
+                onChanged: (value) => setState(() => _query = value),
+              ),
+              const SizedBox(height: 12),
+              _MachineGrid(
+                people: shown,
+                isOnline: _isOnline,
+                session: widget.session,
+                selectedPersonId: _selectedPersonId,
+                onSelect: (id) => setState(
+                  () => _selectedPersonId = _selectedPersonId == id ? null : id,
+                ),
+                maxWidth: constraints.maxWidth,
+                wide: wide,
+              ),
+            ],
           );
-          final panel = _GlancePanel(people: people, isOnline: _isOnline);
+
+          final panel = selected == null
+              ? _GlancePanel(people: people, isOnline: _isOnline)
+              : _selectedDetail(selected);
 
           if (!wide) {
             return SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [roster, const SizedBox(height: 16), panel],
+                children: [grid, const SizedBox(height: 16), panel],
               ),
             );
           }
@@ -134,7 +173,7 @@ class _PcSpecsTabState extends State<PcSpecsTab> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(child: roster),
+                Expanded(child: grid),
                 const SizedBox(width: 16),
                 SizedBox(width: PcSpecsTab.panelWidth, child: panel),
               ],
@@ -144,6 +183,273 @@ class _PcSpecsTabState extends State<PcSpecsTab> {
       ),
     );
   }
+
+  /// The people whose name, machine name or active window matches [_query].
+  /// An empty query matches everybody rather than nobody.
+  List<_Person> _matching(List<_Person> people) {
+    final needle = _query.trim().toLowerCase();
+    if (needle.isEmpty) return people;
+
+    return people.where((person) {
+      if (person.name.toLowerCase().contains(needle)) return true;
+
+      return person.devices.any((device) {
+        final specs = device['specs'];
+        final screen = device['screen_context'];
+        final haystack = <String?>[
+          machineTitle(device),
+          if (screen is Map) screen['active_window'] as String?,
+          if (specs is Map) specs['os_version'] as String?,
+        ];
+        return haystack.any(
+          (value) => value != null && value.toLowerCase().contains(needle),
+        );
+      });
+    }).toList();
+  }
+
+  Widget _selectedDetail(_Person person) {
+    final device = currentDeviceFor(person.devices, _isOnline);
+    final specs = device['specs'];
+    final screen = device['screen_context'];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () => setState(() => _selectedPersonId = null),
+                child: const Text('Show everyone'),
+              ),
+            ),
+            _PersonBody(person: person, isOnline: _isOnline),
+            const SizedBox(height: 12),
+            MachineDetail(
+              title: machineTitle(device),
+              person: person.name,
+              specs: specs is Map<String, dynamic> ? specs : null,
+              screenContext: screen is Map<String, dynamic> ? screen : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The search field and the count beside it.
+///
+/// The count says "7 of 42" rather than just "7", because a filtered list that
+/// only reports what it kept cannot tell you it is filtered at all.
+class _SearchRow extends StatelessWidget {
+  const _SearchRow({
+    required this.query,
+    required this.showing,
+    required this.total,
+    required this.onChanged,
+  });
+
+  final String query;
+  final int showing;
+  final int total;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: TextFormField(
+            key: const Key('monitoring-machine-search'),
+            initialValue: query,
+            onChanged: onChanged,
+            decoration: const InputDecoration(
+              isDense: true,
+              prefixIcon: Icon(Icons.search),
+              hintText: 'Search machines, people, active window',
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          showing == total ? '$total' : '$showing of $total',
+          style: Theme.of(context).textTheme.labelMedium,
+        ),
+      ],
+    );
+  }
+}
+
+/// The machines, laid out as cards that reflow with the pane.
+class _MachineGrid extends StatelessWidget {
+  const _MachineGrid({
+    required this.people,
+    required this.isOnline,
+    required this.session,
+    required this.selectedPersonId,
+    required this.onSelect,
+    required this.maxWidth,
+    required this.wide,
+  });
+
+  final List<_Person> people;
+  final bool Function(Map<String, dynamic>) isOnline;
+  final Session session;
+  final String? selectedPersonId;
+  final ValueChanged<String> onSelect;
+  final double maxWidth;
+  final bool wide;
+
+  /// Narrower than this and a meter and its number start fighting for the same
+  /// few characters, so the grid drops a column rather than shrinking further.
+  static const double minCardWidth = 300;
+
+  @override
+  Widget build(BuildContext context) {
+    if (people.isEmpty) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'No devices have reported in yet.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ),
+      );
+    }
+
+    // The pane, less the panel and the gaps, is what the cards actually get.
+    final available =
+        wide ? maxWidth - PcSpecsTab.panelWidth - 48 : maxWidth - 32;
+    final columns =
+        available <= 0 ? 1 : (available / minCardWidth).floor().clamp(1, 4);
+    final cardWidth =
+        columns == 1 ? available : (available - (columns - 1) * 12) / columns;
+
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: [
+        for (final person in people)
+          SizedBox(
+            width: cardWidth > 0 ? cardWidth : null,
+            child: _cardFor(person),
+          ),
+      ],
+    );
+  }
+
+  Widget _cardFor(_Person person) {
+    final device = currentDeviceFor(person.devices, isOnline);
+    final specs = device['specs'];
+    final map =
+        specs is Map<String, dynamic> ? specs : const <String, dynamic>{};
+    final screen = device['screen_context'];
+
+    return MachineCard(
+      key: ValueKey('monitoring-machine-${person.id}'),
+      title: machineTitle(device),
+      person: person.name,
+      module: _moduleFor(device),
+      sessions: _sessionsFor(person),
+      online: isOnline(device),
+      seenLabel: seenAgo(device['last_seen_at'] as String?),
+      exempt: device['screen_exempt'] == true,
+      cpuPercent: _asInt(map['cpu_percent']),
+      ramPercent: _asInt(map['ram_percent']),
+      diskPercent: _diskPercent(map['drives']),
+      diskFreeLabel: _diskFree(map),
+      activeWindow: screen is Map ? screen['active_window'] as String? : null,
+      selected: person.id == selectedPersonId,
+      onTap: () => onSelect(person.id),
+    );
+  }
+
+  /// "1 active - 20 earlier", or just "offline" when none of a person's
+  /// devices is. Word for word what the roster's tile subtitle said before the
+  /// grid replaced it: the count of a person's OTHER sessions is not visible
+  /// anywhere on a card that shows only their current machine, and it is how
+  /// somebody notices they are still signed in on a machine they left.
+  String? _sessionsFor(_Person person) {
+    final active = person.devices.where(isOnline).length;
+    final earlier = person.devices.length - (active > 0 ? active : 1);
+    final suffix = earlier > 0 ? ' · $earlier earlier' : '';
+    return active > 0 ? '$active active$suffix' : 'offline$suffix';
+  }
+
+  /// The tab this device is on, worded the way the nav words it. Null when
+  /// the device is offline: "on Leads" about a machine nobody is signed in at
+  /// is a claim about the past dressed as the present.
+  String? _moduleFor(Map<String, dynamic> device) {
+    if (!isOnline(device)) return null;
+    final key = device['current_module'] as String?;
+    if (key == null || key.isEmpty) return null;
+    return _moduleLabel(session, key);
+  }
+
+  static int? _asInt(Object? value) => value is int ? value : null;
+
+  /// How full the biggest fixed drive is. The biggest rather than the first,
+  /// because Windows enumerates drives in its own order, and "the drive that
+  /// matters" is the one the room is on.
+  static int? _diskPercent(Object? drives) {
+    final biggest = _biggestDrive(drives);
+    if (biggest == null) return null;
+
+    final total = biggest['total_gb'];
+    final free = biggest['free_gb'];
+    if (total is! int || free is! int || total <= 0) return null;
+
+    return (100 * (total - free) / total).round().clamp(0, 100);
+  }
+
+  static String? _diskFree(Map<String, dynamic> specs) {
+    final biggest = _biggestDrive(specs['drives']);
+    final free = biggest == null ? specs['disk_free_gb'] : biggest['free_gb'];
+    return free is int ? '$free GB free' : null;
+  }
+
+  static Map? _biggestDrive(Object? drives) {
+    if (drives is! List) return null;
+
+    Map? biggest;
+    for (final drive in drives.whereType<Map>()) {
+      final total = drive['total_gb'];
+      if (total is! int) continue;
+      final best = biggest?['total_gb'];
+      if (best is! int || total > best) biggest = drive;
+    }
+    return biggest;
+  }
+}
+
+/// The device a person's card and panel describe: their newest ONLINE machine,
+/// preferring the desktop agent over a browser tab, and falling back to their
+/// most recently seen device when nothing of theirs is online.
+///
+/// Public because the card and the detail panel must not disagree about which
+/// machine they are describing - one function, called twice.
+Map<String, dynamic> currentDeviceFor(
+  List<Map<String, dynamic>> devices,
+  bool Function(Map<String, dynamic>) isOnline,
+) {
+  final active = devices.where(isOnline).toList()..sort(_byAgentThenRecency);
+  return active.isNotEmpty ? active.first : _mostRecentlySeen(devices);
+}
+
+/// What to call a machine: the name it reports for itself, falling back to the
+/// device label the roster already knows how to word.
+String machineTitle(Map<String, dynamic> device) {
+  final specs = device['specs'];
+  if (specs is Map) {
+    final name = specs['computer_name'];
+    if (name is String && name.trim().isNotEmpty) return name;
+  }
+  return friendlyDeviceName(device);
 }
 
 /// One person and the devices they are signed in from, in the order the
@@ -261,82 +567,36 @@ num? _diskFreeGb(Map<String, dynamic> device) {
 
 /// The people-first roster: a card per person, expanded inline to their
 /// devices — never a dialog.
-class _Roster extends StatelessWidget {
-  const _Roster({
-    required this.people,
-    required this.isOnline,
-    required this.session,
-  });
-
-  final List<_Person> people;
-  final bool Function(Map<String, dynamic>) isOnline;
-  final Session session;
-
-  @override
-  Widget build(BuildContext context) {
-    if (people.isEmpty) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            'No devices have reported in yet.',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-        ),
-      );
-    }
-
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          for (var i = 0; i < people.length; i++) ...[
-            if (i > 0) Divider(height: 1, color: EzBiziTheme.edge(context)),
-            _PersonTile(
-              person: people[i],
-              isOnline: isOnline,
-              session: session,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _PersonTile extends StatelessWidget {
-  const _PersonTile({
-    required this.person,
-    required this.isOnline,
-    required this.session,
-  });
+/// One person's devices, as the detail panel shows them: the device they are
+/// actually on, a switcher when more than one of theirs is live, and their
+/// earlier sessions folded away behind a toggle.
+///
+/// This is what the roster's expandable person tile used to render inline,
+/// lifted out unchanged when the tab became a grid. Kept rather than rebuilt
+/// because it carries three things the grid's cards deliberately do not: the
+/// exact sentence for a device that CANNOT report specs, the different
+/// sentence for one whose specs were WITHHELD from this viewer, and the
+/// switcher for somebody signed in from two machines at once. A card says how
+/// busy a machine is; only this says why it might be saying nothing.
+class _PersonBody extends StatelessWidget {
+  const _PersonBody({required this.person, required this.isOnline});
 
   final _Person person;
   final bool Function(Map<String, dynamic>) isOnline;
-  final Session session;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Agent devices (screenshot- or specs-capable) sort first, so a person
-    // signed in from both their desktop app and a browser tab defaults to
-    // the desktop app — not whichever session happened to arrive first from
-    // the server. Owner: the switcher should land on the machine, not the
-    // browser.
+
+    // Agent devices sort first, so somebody signed in from both their desktop
+    // app and a browser tab defaults to the desktop app - not whichever
+    // session happened to arrive first from the server.
     final active = person.devices.where(isOnline).toList()
       ..sort(_byAgentThenRecency);
-    final anyOnline = active.isNotEmpty;
-    final current = person.devices.isEmpty
-        ? null
-        : person.devices.first['current_module'] as String?;
 
-    // What actually gets a row: every active device, or — when nobody is
-    // online — the single most-recently-seen one, so the tile is never
-    // empty just because everyone signed out. Every device NOT shown here
-    // folds into the stale group below, collapsed behind a toggle rather
-    // than listed as an equal to the device someone is actually on right
-    // now — that equal-weight listing is the clutter this rewrite exists
-    // to remove (owner: "it should only show the active one").
+    // Every active device, or - when nobody is online - the single
+    // most-recently-seen one, so this is never empty just because everyone
+    // signed out. Everything else folds into the stale group below.
     final shown = active.isNotEmpty
         ? active
         : [_mostRecentlySeen(person.devices)];
@@ -345,50 +605,9 @@ class _PersonTile extends StatelessWidget {
       for (final device in person.devices)
         if (!shownIds.contains(device['id'])) device,
     ];
-    final earlierSuffix = stale.isEmpty
-        ? ''
-        : ' · ${stale.length} earlier';
 
-    return ExpansionTile(
-      // Collapsed on first render (ExpansionTile's own initiallyExpanded
-      // defaults to false, so this is an absence rather than a setting).
-      // The roster's job is to be scannable: with a row of specs under every
-      // person, ten people fill the screen and "who is on" — the one thing
-      // the whole tab exists to answer — needs scrolling to see. The status
-      // bolt, the name, the module they are in and the session count all sit
-      // in the collapsed header, so the specs are the only thing a tap costs.
-      title: Row(
-        children: [
-          _StatusDot(online: anyOnline),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              person.name,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleMedium,
-            ),
-          ),
-          // Flexible rather than a bare Text: at 375px the dot, the name and
-          // this together are wider than the row ExpansionTile hands the
-          // title, and a non-flexible child there is what overflowed by 13
-          // pixels before this — see the 375px test.
-          Flexible(
-            child: Text(
-              anyOnline && current != null && current.isNotEmpty
-                  ? 'on ${_moduleLabel(session, current)}'
-                  : 'offline',
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
-              textAlign: TextAlign.right,
-              style: theme.textTheme.bodyMedium,
-            ),
-          ),
-        ],
-      ),
-      subtitle: Text(
-        anyOnline ? '${shown.length} active$earlierSuffix' : 'offline$earlierSuffix',
-        style: theme.textTheme.bodyMedium,
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (shown.length > 1)
           _ActiveDeviceSwitcher(devices: shown, isOnline: isOnline)
@@ -398,13 +617,9 @@ class _PersonTile extends StatelessWidget {
             device: shown.first,
             online: isOnline(shown.first),
           ),
-        // Collapsed by default (ExpansionTile's own initiallyExpanded
-        // defaults to false) — a nested tile rather than a hand-rolled
-        // bool, since ExpansionTile already owns exactly the expand/collapse
-        // state this needs.
         if (stale.isNotEmpty)
           ExpansionTile(
-            tilePadding: const EdgeInsets.fromLTRB(24, 0, 16, 0),
+            tilePadding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
             title: Text(
               'Show ${stale.length} earlier '
               'session${stale.length == 1 ? '' : 's'}',
