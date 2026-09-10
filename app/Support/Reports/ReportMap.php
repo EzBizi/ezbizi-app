@@ -3,6 +3,7 @@
 namespace App\Support\Reports;
 
 use App\Models\Customer;
+use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\User;
 
@@ -27,6 +28,13 @@ use App\Models\User;
  * `organization_id` is not listed because it is not optional: the runner
  * applies it to every table unconditionally, and ReportMapTest refuses a
  * resource whose table lacks it.
+ *
+ * Each entry is COLUMN => SOURCE, where the source names which list of ids
+ * from the caller's view resolves it. The column alone is not enough: `jobs`
+ * is confined by its own `franchise_id`, and `franchises` by its `id`, and
+ * both are answered by the same `ViewScope::franchiseIds()`. Naming the source
+ * is what lets a table be scoped by a column that is not called
+ * `<something>_id`.
  *
  * ── An empty scope is a decision, and it has to say so ───────────
  *
@@ -58,7 +66,7 @@ final class ReportMap
      *     table: string,
      *     label: string,
      *     permission: string,
-     *     scope: list<string>,
+     *     scope: array<string, string>,
      *     shared_because: ?string,
      *     soft_deletes: bool,
      *     columns: array<string, array{label: string, type: string}>,
@@ -73,7 +81,7 @@ final class ReportMap
                 'table'          => 'jobs',
                 'label'          => 'Jobs',
                 'permission'     => 'jobs.view',
-                'scope'          => ['franchise_id'],
+                'scope'          => ['franchise_id' => 'franchise'],
                 'shared_because' => null,
                 'soft_deletes'   => true,
                 'columns'        => [
@@ -99,6 +107,7 @@ final class ReportMap
                      * soft-deleted customer.
                      */
                     'performed_by' => ['to' => 'users', 'local' => 'performed_by_user_id', 'foreign' => 'id'],
+                    'branch' => ['to' => 'franchises', 'local' => 'franchise_id', 'foreign' => 'id'],
                 ],
             ],
 
@@ -123,6 +132,34 @@ final class ReportMap
                     'postal_code' => ['label' => 'ZIP',     'type' => 'string'],
                     'is_active'   => ['label' => 'Active',  'type' => 'boolean'],
                     'created_at'  => ['label' => 'Created', 'type' => 'datetime'],
+                ],
+                'relations' => [],
+            ],
+
+            /*
+             * Added 2026-09-10 so a report can say WHICH BRANCH. Jobs already
+             * carried `franchise_id` and there was nothing to join it to, so
+             * "jobs by branch" — the ordinary question in a business shaped
+             * Organization / Company / Franchise — could not be asked at all.
+             *
+             * Scoped by its own `id`, which is the reason `scope` names a
+             * source rather than trusting the column name: the same
+             * `franchiseIds()` answers `jobs.franchise_id` and `franchises.id`.
+             */
+            'franchises' => [
+                'model'          => Franchise::class,
+                'table'          => 'franchises',
+                'label'          => 'Branches',
+                'permission'     => 'franchises.view',
+                'scope'          => ['id' => 'franchise'],
+                'shared_because' => null,
+                'soft_deletes'   => true,
+                'columns'        => [
+                    'name'       => ['label' => 'Branch',   'type' => 'string'],
+                    'timezone'   => ['label' => 'Timezone', 'type' => 'string'],
+                    'currency'   => ['label' => 'Currency', 'type' => 'string'],
+                    'is_active'  => ['label' => 'Active',   'type' => 'boolean'],
+                    'created_at' => ['label' => 'Created',  'type' => 'datetime'],
                 ],
                 'relations' => [],
             ],

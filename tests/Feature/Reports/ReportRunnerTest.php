@@ -208,6 +208,75 @@ class ReportRunnerTest extends TestCase
         $this->assertNull($result->rows[0]['customers.name'], 'a deleted customer was still named');
     }
 
+    /** A report can name the branch a job belongs to. */
+    public function test_a_job_reports_its_branch(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $this->makeJob($tenant, ['title' => 'Sweep']);
+
+        $result = $this->runReport([
+            'root'    => 'jobs',
+            'columns' => [
+                ['resource' => 'jobs', 'column' => 'title'],
+                ['resource' => 'franchises', 'column' => 'name'],
+            ],
+            'filters' => [],
+        ], $tenant['admin']);
+
+        $this->assertSame('Sweep', $result->rows[0]['jobs.title']);
+        $this->assertSame($tenant['franchise']->name, $result->rows[0]['franchises.name']);
+    }
+
+    /**
+     * `franchises` is the first resource scoped by its OWN id rather than by a
+     * `<something>_id` pointing elsewhere, which is why the map names a source
+     * per column. If that resolved wrongly, a person would get the whole
+     * organization's branch list — reach, leaking through the one table whose
+     * rows ARE the places.
+     */
+    public function test_a_branch_outside_this_persons_reach_is_not_reported(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $other = $this->extraFranchise($tenant, 'Alpha F2');
+
+        $limited = $this->userWithRole(
+            $tenant,
+            'One Franchise',
+            ['reports.view', 'franchises.view'],
+            onlyAt: $tenant['franchise'],
+        );
+
+        $result = $this->runReport([
+            'root'    => 'franchises',
+            'columns' => [['resource' => 'franchises', 'column' => 'name']],
+            'filters' => [],
+        ], $limited);
+
+        $names = array_column($result->rows, 'franchises.name');
+
+        $this->assertContains($tenant['franchise']->name, $names);
+        $this->assertNotContains($other->name, $names, 'a branch outside reach was reported');
+    }
+
+    /** The positive control: an administrator with both does see both. */
+    public function test_a_branch_inside_reach_is_reported(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $other = $this->extraFranchise($tenant, 'Alpha F2');
+
+        $result = $this->runReport([
+            'root'    => 'franchises',
+            'columns' => [['resource' => 'franchises', 'column' => 'name']],
+            'filters' => [],
+        ], $tenant['admin']);
+
+        $names = array_column($result->rows, 'franchises.name');
+
+        $this->assertContains($tenant['franchise']->name, $names);
+        $this->assertContains($other->name, $names);
+    }
+
     public function test_it_refuses_a_resource_that_is_not_in_the_map(): void
     {
         $tenant = $this->provisionTenant('Alpha');
