@@ -4,8 +4,13 @@ namespace Tests\Feature\Phone;
 
 use App\Models\PhoneConnection;
 use App\Models\PhoneFlow;
+use App\Models\PhoneExtension;
 use App\Models\PhoneNumber;
+use App\Models\PhonePresence;
 use App\Models\PhoneRingGroup;
+use App\Models\Role;
+use App\Models\User;
+use App\Support\Phone\ClientIdentity;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -244,6 +249,134 @@ class PhoneFlowTest extends TestCase
         $this->assertSame('ring_group', $flow->nodes['options'][0]['action']);
         $this->assertSame($group->id, $flow->nodes['options'][0]['ring_group_id']);
         $this->assertSame('voicemail', $flow->nodes['options'][1]['action']);
+    }
+
+    /**
+     * A key that rings one person, built the way a person builds one.
+     *
+     * The renderer has dialled an extension from a menu key since extensions
+     * existed, and `PhoneExtensionTest` proves it does — by writing the
+     * `PhoneFlow` row itself. Nothing could ask it to: this endpoint refused
+     * `extension` in `Rule::in`, so the whole action was reachable only from a
+     * test fixture. Green renderer, dead feature, no red anywhere.
+     *
+     * Asserted through the renderer rather than only against the stored nodes,
+     * because a stored shape the renderer walks past is the failure this
+     * module keeps having.
+     */
+    public function test_a_key_can_ring_one_person_by_extension(): void
+    {
+        [$t, $connection, $group] = $this->connectedCompany();
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+
+        $bar = $this->inTenant($t['org'], function () use ($t, $connection) {
+            $role = Role::query()->firstOrCreate(
+                ['organization_id' => $t['org']->id, 'name' => 'Desk'],
+                ['is_system' => false],
+            );
+
+            $user = User::query()->create([
+                'organization_id' => $t['org']->id,
+                'role_id' => $role->id,
+                'name' => 'Bar',
+                'email' => 'bar@'.$t['org']->slug.'.test',
+                'password' => 'a-real-password',
+                'is_active' => true,
+            ]);
+
+            PhonePresence::query()->create([
+                'connection_id' => $connection->id,
+                'user_id' => $user->id,
+                'state' => PhonePresence::STATE_REGISTERED,
+            ]);
+
+            PhoneExtension::query()->create([
+                'organization_id' => $t['org']->id,
+                'connection_id' => $connection->id,
+                'user_id' => $user->id,
+                'extension' => '102',
+            ]);
+
+            return $user;
+        });
+
+        $created = $this->signedInAs($editor)->postJson('/api/v1/phone/flows', [
+            'connection_id' => $connection->id,
+            'name' => 'Main menu',
+            'prompt' => 'Press 1 for the desk, 2 for Bar.',
+            'options' => [
+                ['digit' => '1', 'action' => 'ring_group', 'ring_group_id' => $group->id],
+                ['digit' => '2', 'action' => 'extension', 'extension' => '102'],
+            ],
+        ])->assertCreated();
+
+        // The digits have to survive the store and read back: the pane reloads
+        // this list to draw the key it just saved.
+        $this->assertSame('102', $created->json('data.options.1.extension'));
+
+        $flow = $this->inTenant(
+            $t['org'],
+            fn () => PhoneFlow::query()->find($created->json('data.id')),
+        );
+
+        $this->assertSame('extension', $flow->nodes['options'][1]['action']);
+        $this->assertSame('102', $flow->nodes['options'][1]['extension']);
+
+        // And a caller pressing 2 reaches Bar's handset.
+        [$xml, $identity] = $this->inTenant($t['org'], function () use ($t, $connection, $flow, $bar) {
+            $number = PhoneNumber::query()->create([
+                'organization_id' => $t['org']->id,
+                'connection_id' => $connection->id,
+                'scope_type' => PhoneNumber::SCOPE_COMPANY,
+                'scope_id' => $t['company']->id,
+                'twilio_sid' => 'PNextextextextextextextextextext',
+                'e164' => '+15615559002',
+                'label' => 'Main',
+                'after_hours' => 'voicemail',
+                'flow_id' => $flow->id,
+            ]);
+
+            return [
+                (new TwimlRenderer)->inbound($number->fresh(), ['digits' => '2']),
+                ClientIdentity::of($bar),
+            ];
+        });
+
+        $this->assertStringContainsString('<Dial', $xml);
+        $this->assertStringContainsString($identity, $xml);
+    }
+
+    /**
+     * Digits nobody could ever hold.
+     *
+     * The renderer resolves these against `phone_extensions` at call time, so
+     * a key carrying letters, or no digits at all, answers every caller with
+     * "there is no extension" and then takes a message. It responds, which is
+     * why nobody would report it.
+     */
+    public function test_a_key_with_digits_that_are_not_an_extension_shape_is_refused(): void
+    {
+        [$t, $connection, ] = $this->connectedCompany();
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+
+        $this->signedInAs($editor)->postJson('/api/v1/phone/flows', [
+            'connection_id' => $connection->id,
+            'name' => 'Main menu',
+            'prompt' => 'Press 2.',
+            'options' => [
+                ['digit' => '2', 'action' => 'extension', 'extension' => 'reception'],
+            ],
+        ])->assertStatus(422)->assertJsonValidationErrors('options.0.extension');
+
+        // And a key that rings one person with nobody named at all.
+        $this->signedInAs($editor)->postJson('/api/v1/phone/flows', [
+            'connection_id' => $connection->id,
+            'name' => 'Main menu',
+            'prompt' => 'Press 2.',
+            'options' => [
+                ['digit' => '2', 'action' => 'extension'],
+            ],
+        ])->assertStatus(422)->assertJsonValidationErrors('options.0.extension');
     }
 
     public function test_two_options_cannot_share_a_key(): void

@@ -40,6 +40,10 @@ class _FlowsPaneState extends State<FlowsPane> {
     ('forward', 'Forward the call'),
     ('hangup', 'Say something and hang up'),
 
+    // The renderer has dialled an extension from a menu key since extensions
+    // existed; nothing could ever ask it to. A key here was the missing half.
+    ('extension', 'Ring one person'),
+
     // Every phone menu has one, and this one did not: a caller who missed
     // which key was which had no way back and had to hang up and ring again.
     ('repeat', 'Repeat the menu'),
@@ -51,6 +55,7 @@ class _FlowsPaneState extends State<FlowsPane> {
   List<_Flow> _flows = const [];
   List<_Group> _groups = const [];
   List<_Conn> _connections = const [];
+  List<_Ext> _extensions = const [];
 
   _Draft? _draft;
   bool _saving = false;
@@ -78,6 +83,7 @@ class _FlowsPaneState extends State<FlowsPane> {
       widget.api.get('/phone/flows'),
       widget.api.get('/phone/ring-groups'),
       widget.api.get('/phone/connections'),
+      widget.api.get('/phone/extensions'),
     ]);
 
     if (!mounted) return;
@@ -96,6 +102,7 @@ class _FlowsPaneState extends State<FlowsPane> {
       _flows = _Flow.listFrom(results[0].body);
       _groups = _Group.listFrom(results[1].body);
       _connections = _Conn.listFrom(results[2].body);
+      _extensions = _Ext.listFrom(results[3].body);
       _loading = false;
     });
   }
@@ -132,6 +139,14 @@ class _FlowsPaneState extends State<FlowsPane> {
       return;
     }
 
+    // A key set to ring one person with nobody chosen posts no digits, and the
+    // renderer sends that caller to voicemail — so the key answers, which is
+    // exactly why nobody would report it as broken.
+    if (draft.options.any((o) => o.action == 'extension' && o.extension.trim().isEmpty)) {
+      setState(() => _formError = 'Say which extension each key rings.');
+      return;
+    }
+
     setState(() {
       _saving = true;
       _formError = null;
@@ -148,6 +163,7 @@ class _FlowsPaneState extends State<FlowsPane> {
             if (option.action == 'ring_group') 'ring_group_id': option.groupId,
             if (option.action == 'forward') 'number': option.number.trim(),
             if (option.action == 'hangup') 'say': option.say.trim(),
+            if (option.action == 'extension') 'extension': option.extension.trim(),
           },
       ],
     };
@@ -528,6 +544,41 @@ class _FlowsPaneState extends State<FlowsPane> {
               ),
             ],
 
+            if (option.action == 'extension') ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                key: ValueKey('extension:$index'),
+                initialValue: _extensions.any((e) => e.extension == option.extension)
+                    ? option.extension
+                    : null,
+                decoration: const InputDecoration(
+                  labelText: 'Which extension',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                // The extensions somebody actually holds, not free digits: the
+                // renderer looks these up, and digits nobody holds make a key
+                // that says "there is no extension" to every caller.
+                items: [
+                  for (final e in _extensions)
+                    DropdownMenuItem(
+                      value: e.extension,
+                      child: Text('${e.extension} · ${e.name}'),
+                    ),
+                ],
+                onChanged: (v) => setState(() => option.extension = v ?? ''),
+              ),
+              if (_extensions.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    'Nobody has an extension yet. Give somebody one on Users '
+                    'first — a key that reaches nobody is worse than no key.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+            ],
+
             if (option.action == 'hangup') ...[
               const SizedBox(height: 12),
               TextFormField(
@@ -556,6 +607,7 @@ class _OptionDraft {
     this.groupId,
     this.number = '',
     this.say = '',
+    this.extension = '',
   });
 
   factory _OptionDraft.blank() =>
@@ -566,6 +618,7 @@ class _OptionDraft {
   String? groupId;
   String number;
   String say;
+  String extension;
 }
 
 class _Draft {
@@ -604,6 +657,7 @@ class _Draft {
           groupId: option['ring_group_id']?.toString(),
           number: option['number']?.toString() ?? '',
           say: option['say']?.toString() ?? '',
+          extension: option['extension']?.toString() ?? '',
         ),
     ],
   );
@@ -673,6 +727,31 @@ class _Group {
     return data
         .whereType<Map<String, dynamic>>()
         .map((r) => _Group(id: r['id'].toString(), name: r['name']?.toString() ?? 'Group'))
+        .toList(growable: false);
+  }
+}
+
+/// An extension somebody holds, as the roster on Users reports it.
+@immutable
+class _Ext {
+  const _Ext({required this.extension, required this.name});
+
+  final String extension;
+  final String name;
+
+  static List<_Ext> listFrom(dynamic payload) {
+    final data = payload is Map ? payload['data'] : payload;
+    if (data is! List) return const [];
+
+    // Everybody is listed, holder or not — that roster answers "who has not
+    // got one yet", which is not the question a menu key asks.
+    return data
+        .whereType<Map<String, dynamic>>()
+        .where((r) => (r['extension']?.toString() ?? '').isNotEmpty)
+        .map((r) => _Ext(
+              extension: r['extension'].toString(),
+              name: r['name']?.toString() ?? 'Somebody',
+            ))
         .toList(growable: false);
   }
 }
