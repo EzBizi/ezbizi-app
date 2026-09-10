@@ -17,11 +17,26 @@
 - **Two surfaces, one screen, split at 900px.** Option 1 above, option 5 below. The number is a starting point, not a ruling — check it against the real tree at 900–1100px and say if it wants moving.
 - **A phone runs; it does not build.** UI/UX ruling, accepted. No field tree below the split, and the mobile surface says reports are built on a computer rather than hiding the fact.
 - **Build and run are different surfaces, not one surface with a disabled mode.** A greyed builder tells somebody the app is for other people. Without `reports.build` there is no New button at all — a list of what they can run.
-- **The two empty states are opposite facts and must not share a sentence.**
-  - Nothing built yet: *"No reports built yet."* (plus the way to build one, only if they hold `reports.build`)
-  - A run that matched nothing, verbatim from UI/UX: *"No rows matched, for the records you can see. Somebody with a wider reach may get results from the same report."*
-  The second must never read as a fault. A person's franchise reach legitimately narrows a report, and the reader is not entitled to conclude anything about rows outside it.
-- **The cap line appears only when the cap actually bit.** `capped` is a separate boolean from `count` in the run response precisely so this is never inferred — a report with exactly 5,000 real rows is not truncated. "The first 5,000" of nothing is not a truthful sentence, and a red line under an empty table reads as a fault.
+- **Copy is verbatim from UI/UX (`89398365`). Do not improve it at build time.** Four blocks, heading then body:
+
+  | Where | Heading | Body |
+  |---|---|---|
+  | Empty results, any layout | **This report found nothing.** | No rows matched, for the records you can see. Somebody with a wider reach may get results from the same report. |
+  | Empty library, can build | **No reports built yet.** | Build one and it appears here for everybody who can run it. |
+  | Empty library, run only | **No reports built yet.** | Somebody who can build reports has to make the first one. |
+  | Row cap, only when `capped` | — | Showing the first 5,000 rows. This report matched more. |
+
+  The two empty-library sentences differ by permission and that difference is the point: the run-only one says somebody else has to make the first report, so it does not read as the reader's own dead end. An earlier draft of this plan had one sentence for both.
+
+- **The cap line is MUTED, never the error colour.** Nothing failed, the reader did nothing wrong, the report worked — it is an advisory, and dressing it as a failure spends the credibility of the screens where red does mean stop. It appears only when `capped` is true and there are rows: `capped` is a separate boolean from `count` precisely so this is never inferred, and a report with exactly 5,000 real rows is not truncated.
+
+- **Seven states, all built, not the two that are easy to reach:**
+
+  1. loading · 2. request failed (`ErrorNote`, the server's sentence) · 3. **refused** · 4. empty library · 5. empty results · 6. results · 7. results capped.
+
+  **3 and 5 must not share a widget.** Refused means *you may not* — a lock and the server's sentence, never an empty table. Empty results means *there is nothing, for you*. A reader who cannot tell them apart learns nothing from either.
+
+- **Spacing and type are tokens, never literals.** Card padding 16, gaps 12, the mobile count in `headlineSmall`. **Section labels are blocked on UI/UX** — see the open question at the end of this plan; do not pick a slot.
 - **No modal dialogs.** Screens or side panels (development rules). Touch and 375px must work.
 - **Theme colours only**, never literals, never decorative gradients.
 - **`client/lib/core/module_screens.dart` is UI/UX's file.** One `reports` entry, the same way Training took one. Tell them after; do not redesign around it.
@@ -77,13 +92,44 @@ void main() {
     expect(find.text('Open jobs'), findsOneWidget);
   });
 
-  testWidgets('with no reports it says none are built, not that none matched', (
+  testWidgets('an empty library tells a builder they can make the first one', (
     tester,
   ) async {
-    await _pumpReports(tester, reports: []);
+    await _pumpReports(tester, reports: [], canBuild: true);
 
     expect(find.textContaining('No reports built yet'), findsOneWidget);
+    expect(
+      find.textContaining('Build one and it appears here'),
+      findsOneWidget,
+    );
     // The other empty state belongs to a RUN, and the two mean opposite things.
+    expect(find.textContaining('No rows matched'), findsNothing);
+  });
+
+  testWidgets('an empty library tells a runner somebody else makes the first', (
+    tester,
+  ) async {
+    await _pumpReports(tester, reports: [], canBuild: false);
+
+    expect(find.textContaining('No reports built yet'), findsOneWidget);
+    expect(
+      find.textContaining('Somebody who can build reports has to make the first one'),
+      findsOneWidget,
+    );
+    // Must not read as this reader's own dead end.
+    expect(find.textContaining('Build one and it appears here'), findsNothing);
+  });
+
+  testWidgets('a refusal is a lock and a sentence, never an empty table', (
+    tester,
+  ) async {
+    await _pumpReports(tester, status: 403, body: {
+      'message': 'You do not have permission to see this report.',
+    });
+
+    expect(find.textContaining('do not have permission'), findsOneWidget);
+    // State 3 and state 5 are different facts and must not share a widget.
+    expect(find.textContaining('No reports built yet'), findsNothing);
     expect(find.textContaining('No rows matched'), findsNothing);
   });
 
@@ -145,7 +191,7 @@ if (session.can('reports.build')) ... // the New report control
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `cd client && flutter test test/reports_screen_test.dart`
-Expected: PASS, 4 tests.
+Expected: PASS, 6 tests.
 
 - [ ] **Step 5: Add the module entry and confirm the tab draws**
 
@@ -208,6 +254,7 @@ void main() {
   testWidgets('a run that matched nothing does not read as a fault', (tester) async {
     await _pumpRun(tester, width: 1200, run: _noRows);
 
+    expect(find.text('This report found nothing.'), findsOneWidget);
     expect(
       find.textContaining('No rows matched, for the records you can see'),
       findsOneWidget,
@@ -229,7 +276,10 @@ void main() {
   testWidgets('the cap line appears when the cap did bite', (tester) async {
     await _pumpRun(tester, width: 1200, run: _capped);
 
-    expect(find.textContaining('first 5,000'), findsOneWidget);
+    expect(
+      find.text('Showing the first 5,000 rows. This report matched more.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('an empty run shows no cap line even if capped were true', (
@@ -290,18 +340,27 @@ static const String noRows =
 ```
 
 ```dart
-// Only when the cap actually bit AND there are rows to have been cut.
-if (run.capped && run.rows.isNotEmpty) ... 'Showing the first ${run.cap} rows.'
+// Only when the cap actually bit AND there are rows to have been cut, and in
+// the MUTED colour rather than the error one. Nothing failed here: the reader
+// did nothing wrong and the report worked. Dressing an advisory as a failure
+// spends the credibility of the screens where red does mean stop.
+if (run.capped && run.rows.isNotEmpty)
+  Text(
+    'Showing the first 5,000 rows. This report matched more.',
+    style: theme.textTheme.bodyMedium,   // muted, never colorScheme.error
+  )
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `cd client && flutter test test/reports_run_test.dart`
-Expected: PASS, 7 tests.
+Expected: PASS, 8 tests.
 
 - [ ] **Step 5: Prove the empty-state sentences cannot be swapped**
 
-Swap the two sentences in the source, re-run, and confirm **both** the list test from Task 1 and the run test here go red. Then restore.
+Swap the empty-results body with the empty-library body in the source, re-run, and confirm **both** the list tests from Task 1 and the run test here go red. Then restore.
+
+Do the same for the two empty-LIBRARY sentences: give the run-only case the builder's wording and confirm the runner test goes red. Those two differ only by permission, which makes them the pair most likely to be "simplified" into one string by somebody tidying up.
 
 This is the one pair in the client that a copy edit could quietly invert, and inverting them tells somebody their data is missing when it is merely out of reach. Restore by editing back, not `git checkout --`, which would discard the rest of the working tree.
 
@@ -445,6 +504,14 @@ git commit -m "Reports: the builder, a field tree beside the report"
 | Grouping and the chart | Deliberately after the flat table works — a wrong number is worse than no number |
 | `report.send` | Needs the runner arm and the rule-vs-report scope check |
 | More reportable resources | Backend work. Three resources and one edge make the tree look thin; Inventory, Fleet, Services and HR are each a map entry plus edges, and Jose has been asked for a priority order |
+
+## Blocked on an answer before Task 1 starts
+
+**Which slot section labels use.** UI/UX specified `bodySmall`, uppercased, `letterSpacing: .4`, in `onSurfaceVariant`. **`bodySmall` is not defined in `client/lib/core/theme.dart`** — the TextTheme block at `:238-268` defines `headlineSmall`, `titleLarge`, `titleMedium`, `titleSmall`, `bodyMedium` and `labelSmall`, and its own docblock records that unfilled slots were already a bug three times. A slot left out renders with **no size and no weight**; it does not fall back.
+
+`labelSmall` is the existing uppercase-section-label slot (11px, `w700`, `letterSpacing: 1.2`, `_muted`) and is probably what was meant — but `.4` is much tighter than `1.2`, so taking it silently would be picking. Asked; not picking. Do not write a literal and do not substitute a slot to get moving.
+
+`headlineSmall` for the mobile count is defined and fine. `onSurfaceVariant` is not set in `theme.dart` but `ColorScheme.fromSeed` at `:104` derives it, so it resolves rather than failing — flagged to UI/UX in case a specific tone was intended.
 
 ## The thing most likely to be wrong
 
