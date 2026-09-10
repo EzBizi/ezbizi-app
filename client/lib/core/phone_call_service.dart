@@ -57,9 +57,17 @@ class PhoneCallService extends ChangeNotifier {
     VoiceDevice device, {
     String callerId = '+12035550142',
     String connectionId = 'cx-test',
+
+    // Without an api the desk cannot RELEASE presence, so every test built on
+    // this harness silently skipped the request that clears `on_call` on the
+    // server — and a stuck `on_call` takes somebody out of the ring group
+    // until they restart the app. Optional, so existing callers are unchanged,
+    // but a test about what happens when a call ends wants one.
+    ApiClient? api,
   }) {
     final service = PhoneCallService._();
     service._device = device;
+    service._api = api;
     service._callerId = callerId;
     service._connectionId = connectionId;
     service._started = true;
@@ -67,6 +75,7 @@ class PhoneCallService extends ChangeNotifier {
     device.onIncoming = (incoming) => service._ringing(incoming.from);
     device.onRegistrationChanged = service.notifyListeners;
     device.onEnded = service._ended;
+    device.onAnswered = service._answeredElsewhere;
 
     return service;
   }
@@ -124,6 +133,24 @@ class PhoneCallService extends ChangeNotifier {
   /// Audio is flowing, either way.
   bool get onCall => _onCall;
   bool _onCall = false;
+
+  /// Bumped once the server has actually been told a call is over.
+  ///
+  /// ── The race this closes ─────────────────────────────────────────
+  ///
+  /// Ending a call cleared `_onCall` and notified listeners FIRST, then fired
+  /// the request that clears `on_call` on the server. The app bar's listener
+  /// refetches presence when a call ends — so it read the server while the
+  /// release was still in flight, was told `on_call`, believed it, and never
+  /// asked again. The icon stayed on a call that had ended until the app was
+  /// restarted, on desktop and on mobile.
+  ///
+  /// Notifying twice is not enough on its own: the bar only reloads when
+  /// `onCall` CHANGES, and by then it already has. So the second notify
+  /// carries a token, and anything that reads presence from the server watches
+  /// this rather than guessing at timing.
+  int get presenceToken => _presenceToken;
+  int _presenceToken = 0;
 
   /// The desk answered Twilio and can take a call.
   bool get registered => _device?.registered ?? false;
@@ -344,6 +371,11 @@ class PhoneCallService extends ChangeNotifier {
       'connection_id': connectionId,
       'state': 'registered',
     });
+
+    // Now, and not before: anybody reading presence from the server before
+    // this point is told the call is still going.
+    _presenceToken++;
+    notifyListeners();
   }
 
   void hangUp() {

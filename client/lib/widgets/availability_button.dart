@@ -73,6 +73,18 @@ class _AvailabilityButtonState extends State<AvailabilityButton> {
   void _deskChanged() {
     if (!mounted) return;
 
+    // The server has settled since the last look — the desk has finished
+    // telling it the call is over. Refetch, because the read taken the moment
+    // the call ended was answered while `on_call` was still set, and believing
+    // that one is how the icon stuck until the app restarted.
+    final token = _service.presenceToken;
+    if (token != _wasPresenceToken) {
+      _wasPresenceToken = token;
+      _load();
+
+      return;
+    }
+
     final onCall = _service.onCall;
     if (onCall == _wasOnCall) return;
     _wasOnCall = onCall;
@@ -87,6 +99,7 @@ class _AvailabilityButtonState extends State<AvailabilityButton> {
   }
 
   bool _wasOnCall = false;
+  int _wasPresenceToken = 0;
 
   Future<void> _load() async {
     final response = await widget.api.get('/phone/presence/me');

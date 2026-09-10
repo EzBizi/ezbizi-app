@@ -81,7 +81,94 @@ void main() {
           'reload used to be needed for',
     );
   });
+  /// ── The defect this exists for ─────────────────────────────────
+  ///
+  /// The desk clears `on_call` locally, tells its listeners, and THEN fires
+  /// the request that clears `on_call` on the server. So the button refetched
+  /// presence while the server still said `on_call`, believed it, and never
+  /// asked again — the icon stayed on a call that had ended until the app was
+  /// restarted, on desktop and on mobile. Jose reported it on 0.0.0184.
+  ///
+  /// The tests above could not see it because their fake server answered
+  /// `registered` to every request whatever had happened. This one HOLDS
+  /// state: it answers `on_call` until the release actually lands, which is
+  /// what the real server does.
+  testWidgets('the icon does not believe a presence read taken mid-release', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+
+    final server = _PresenceServer();
+    final api = ApiClient(client: MockClient((r) async => server.handle(r)));
+
+    // The service needs the api to RELEASE presence — without one the request
+    // that clears on_call is skipped, and this test would pass for a desk that
+    // never told the server anything.
+    final started = PhoneCallService.forTest(device, api: api);
+    PhoneCallService.overrideForTest = started;
+
+    await _pump(tester, server: server, api: api);
+
+    // A call arrives, is answered, and the server is told — which is what the
+    // webhook does on a real call.
+    device.ring('+13057242199');
+    started.accept();
+    server.state = 'on_call';
+    await tester.pump();
+
+    expect(_dotColour(tester), _onCallColour(tester));
+
+    // The customer hangs up. The desk clears its own state and releases
+    // presence; the release is a request and does not land instantly.
+    device.end();
+    await tester.pumpAndSettle();
+
+    expect(
+      server.state,
+      'registered',
+      reason: 'the desk never released on_call, so the ring group will keep '
+          'skipping this person',
+    );
+
+    expect(
+      _dotColour(tester),
+      isNot(_onCallColour(tester)),
+      reason: 'the icon is stuck on a call that ended — it read presence '
+          'before the release landed and never asked again',
+    );
+  });
 }
+
+/// A presence endpoint that remembers, because the bug is about ordering.
+class _PresenceServer {
+  String state = 'registered';
+  int reads = 0;
+
+  http.Response handle(http.Request request) {
+    final path = request.url.path;
+
+    if (path.endsWith('/phone/presence') && request.method == 'PUT') {
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      state = (body['state'] ?? state).toString();
+
+      return _json({'data': {'state': state}});
+    }
+
+    if (path.endsWith('/phone/presence/me')) {
+      reads++;
+
+      return _json({'data': {'has_line': true, 'state': state}});
+    }
+
+    return _json({'data': <String, Object?>{}});
+  }
+}
+
+http.Response _json(Object body) => http.Response(
+  jsonEncode(body),
+  200,
+  headers: {'content-type': 'application/json'},
+);
 
 Color _dotColour(WidgetTester tester) {
   final dot = tester.widget<Container>(
@@ -98,24 +185,23 @@ Color _onCallColour(WidgetTester tester) => Theme.of(
   tester.element(find.byType(AvailabilityButton)),
 ).colorScheme.tertiary;
 
-Future<void> _pump(WidgetTester tester, {required String state}) async {
-  final api = ApiClient(
+Future<void> _pump(
+  WidgetTester tester, {
+  String? state,
+  _PresenceServer? server,
+  ApiClient? api,
+}) async {
+  final client = api ?? ApiClient(
     client: MockClient((request) async {
+      if (server != null) return server.handle(request);
+
       if (request.url.path.endsWith('/phone/presence/me')) {
-        return http.Response(
-          jsonEncode({
-            'data': {'has_line': true, 'state': state},
-          }),
-          200,
-          headers: {'content-type': 'application/json'},
-        );
+        return _json({
+          'data': {'has_line': true, 'state': state ?? 'registered'},
+        });
       }
 
-      return http.Response(
-        jsonEncode({'data': <String, Object?>{}}),
-        200,
-        headers: {'content-type': 'application/json'},
-      );
+      return _json({'data': <String, Object?>{}});
     }),
   );
 
@@ -123,7 +209,7 @@ Future<void> _pump(WidgetTester tester, {required String state}) async {
     MaterialApp(
       theme: EzBiziTheme.light(),
       home: Scaffold(
-        appBar: AppBar(actions: [AvailabilityButton(api: api)]),
+        appBar: AppBar(actions: [AvailabilityButton(api: client)]),
       ),
     ),
   );
