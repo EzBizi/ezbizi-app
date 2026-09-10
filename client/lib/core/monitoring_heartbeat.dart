@@ -68,6 +68,15 @@ typedef SpecsRead = Future<Map<String, dynamic>?> Function();
 /// `'screenshot'` capability even where the build could capture, because
 /// main.dart also declines to construct [ScreenshotService] for it — so the
 /// two still agree, they just both stand down.
+/// The `specs` keys that are screen CONTENT rather than facts about the
+/// machine. Mirrors ScreenMonitoringExemption::SCREEN_CONTENT_SPEC_KEYS on
+/// the server, which strips the same keys on ingest and gates them on read —
+/// this copy exists so an exempt agent never puts them on the wire at all.
+const List<String> screenContentSpecKeys = <String>[
+  'active_window',
+  'browser_tabs',
+];
+
 class MonitoringHeartbeat {
   MonitoringHeartbeat(
     this._api, {
@@ -125,14 +134,19 @@ class MonitoringHeartbeat {
     final specs = await _readSpecs();
     if (specs == null) return;
 
-    // SECURITY exemption: `active_window` is the title of whatever is in
-    // front, which is screen CONTENT rather than anything about the machine —
-    // it can name a customer, a subject line, a document. An exempt device
-    // does not report it at all, the same way it does not capture. Everything
-    // else in specs describes the hardware and still goes: an exempt machine
-    // is still online, still shows its RAM and its disks. The server strips
-    // this too (HeartbeatController), so a tampered client gains nothing.
-    if (_screenMonitoringExempt) specs.remove('active_window');
+    // SECURITY exemption: some of what the agent reads is screen CONTENT
+    // rather than anything about the machine — the title of the window in
+    // front, and the browser tabs, can each name a customer, a subject line,
+    // a document. An exempt device does not report those at all, the same way
+    // it does not capture. Everything else in specs describes the hardware
+    // and still goes: an exempt machine is still online and still shows its
+    // RAM and its disks. The server strips them too (HeartbeatController), so
+    // a tampered client gains nothing by keeping them.
+    if (_screenMonitoringExempt) {
+      for (final key in screenContentSpecKeys) {
+        specs.remove(key);
+      }
+    }
 
     _lastSpecs = specs;
   }

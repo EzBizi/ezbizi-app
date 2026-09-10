@@ -9,17 +9,24 @@
 // clang-format on
 #include <dwmapi.h>
 #include <psapi.h>
+#include <uiautomation.h>
+#include <wrl/client.h>
 #include <winternl.h>
 #include <wlanapi.h>
 
 #include "monitoring_specs.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
+
+using Microsoft::WRL::ComPtr;
 
 using flutter::EncodableList;
 using flutter::EncodableMap;
@@ -372,6 +379,348 @@ BOOL CALLBACK CollectWindow(HWND hwnd, LPARAM param) {
   return TRUE;
 }
 
+// ── Installed programs ────────────────────────────────────────────
+//
+// The three Uninstall keys Windows actually uses: 64-bit machine-wide,
+// 32-bit machine-wide under WOW6432Node, and this user's own. A program can
+// appear in more than one, so names are de-duplicated.
+//
+// Read ONCE per app launch and cached. The list changes when somebody
+// installs something, which is not a thing that happens between two
+// heartbeats, and walking several hundred registry keys every minute on the
+// platform thread to re-learn the same answer would be the expensive kind of
+// thorough.
+void AddInstalledPrograms(EncodableMap& m) {
+  static bool read = false;
+  static std::vector<std::string> cached;
+
+  if (!read) {
+    read = true;
+
+    struct Root {
+      HKEY hive;
+      const wchar_t* path;
+      DWORD flag;
+    };
+    const Root roots[] = {
+        {HKEY_LOCAL_MACHINE,
+         L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+         KEY_WOW64_64KEY},
+        {HKEY_LOCAL_MACHINE,
+         L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+         KEY_WOW64_32KEY},
+        {HKEY_CURRENT_USER,
+         L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall", 0},
+    };
+
+    for (const Root& root : roots) {
+      HKEY key = nullptr;
+      if (::RegOpenKeyExW(root.hive, root.path, 0, KEY_READ | root.flag,
+                          &key) != ERROR_SUCCESS) {
+        continue;
+      }
+
+      for (DWORD i = 0;; ++i) {
+        wchar_t name[256] = {0};
+        DWORD name_len = 256;
+        if (::RegEnumKeyExW(key, i, name, &name_len, nullptr, nullptr, nullptr,
+                            nullptr) != ERROR_SUCCESS) {
+          break;
+        }
+
+        HKEY entry = nullptr;
+        if (::RegOpenKeyExW(key, name, 0, KEY_READ | root.flag, &entry) !=
+            ERROR_SUCCESS) {
+          continue;
+        }
+
+        // SystemComponent=1 is how Windows marks the runtimes and hotfixes it
+        // does not show in Apps & Features either; matching that keeps the
+        // list to things a person would recognise as installed software.
+        DWORD system_component = 0;
+        DWORD size = sizeof(system_component);
+        DWORD type = 0;
+        if (::RegQueryValueExW(entry, L"SystemComponent", nullptr, &type,
+                               reinterpret_cast<LPBYTE>(&system_component),
+                               &size) == ERROR_SUCCESS &&
+            type == REG_DWORD && system_component == 1) {
+          ::RegCloseKey(entry);
+          continue;
+        }
+
+        wchar_t display[512] = {0};
+        size = sizeof(display);
+        type = 0;
+        if (::RegQueryValueExW(entry, L"DisplayName", nullptr, &type,
+                               reinterpret_cast<LPBYTE>(display),
+                               &size) == ERROR_SUCCESS &&
+            type == REG_SZ) {
+          std::string program = Narrow(display);
+          if (!program.empty() &&
+              std::find(cached.begin(), cached.end(), program) ==
+                  cached.end()) {
+            cached.push_back(program);
+          }
+        }
+        ::RegCloseKey(entry);
+      }
+      ::RegCloseKey(key);
+    }
+
+    std::sort(cached.begin(), cached.end());
+  }
+
+  if (cached.empty()) return;
+
+  EncodableList list;
+  for (const std::string& program : cached) {
+    list.push_back(EncodableValue(program));
+  }
+  m[EncodableValue("installed_programs")] = EncodableValue(list);
+}
+
+// The executable behind a pid, for the connection list. Separate from
+// ProcessNameOf(HWND) because a connection's owner usually has no window at
+// all — a background updater is exactly the kind of thing worth seeing here.
+std::string ProcessNameOfPid(DWORD pid) {
+  if (pid == 0) return std::string();
+
+  HANDLE process = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+  if (process == nullptr) return std::string();
+
+  wchar_t path[MAX_PATH] = {0};
+  DWORD size = MAX_PATH;
+  const BOOL ok = ::QueryFullProcessImageNameW(process, 0, path, &size);
+  ::CloseHandle(process);
+  if (!ok || size == 0) return std::string();
+
+  std::wstring full(path, size);
+  const size_t slash = full.find_last_of(L'\\');
+  std::wstring leaf = slash == std::wstring::npos ? full : full.substr(slash + 1);
+  const size_t dot = leaf.find_last_of(L'.');
+  if (dot != std::wstring::npos) leaf = leaf.substr(0, dot);
+
+  return Narrow(leaf.c_str());
+}
+
+// ── Established connections ───────────────────────────────────────
+//
+// Which program is talking to which address, IPv4 and IPv6. ESTABLISHED only:
+// a listening socket says what a machine is willing to accept, which is a
+// different question and a much longer list.
+void AddConnections(EncodableMap& m) {
+  EncodableList list;
+  // A machine with a browser open holds a lot of sockets; past a point this
+  // is weight on every heartbeat rather than information.
+  constexpr size_t kMax = 60;
+
+  auto add = [&list](const std::string& process, const char* address,
+                     uint16_t port) {
+    if (list.size() >= kMax) return;
+    EncodableMap row;
+    row[EncodableValue("process")] = EncodableValue(process);
+    row[EncodableValue("remote_address")] = EncodableValue(std::string(address));
+    row[EncodableValue("remote_port")] = EncodableValue(static_cast<int64_t>(port));
+    list.push_back(EncodableValue(row));
+  };
+
+  // IPv4.
+  {
+    ULONG size = 0;
+    if (::GetExtendedTcpTable(nullptr, &size, FALSE, AF_INET,
+                              TCP_TABLE_OWNER_PID_ALL, 0) ==
+        ERROR_INSUFFICIENT_BUFFER) {
+      std::vector<uint8_t> buffer(size);
+      auto* table = reinterpret_cast<MIB_TCPTABLE_OWNER_PID*>(buffer.data());
+      if (::GetExtendedTcpTable(table, &size, FALSE, AF_INET,
+                                TCP_TABLE_OWNER_PID_ALL, 0) == NO_ERROR) {
+        for (DWORD i = 0; i < table->dwNumEntries && list.size() < kMax; ++i) {
+          const auto& row = table->table[i];
+          if (row.dwState != MIB_TCP_STATE_ESTAB) continue;
+
+          in_addr addr{};
+          addr.S_un.S_addr = row.dwRemoteAddr;
+          char text[INET_ADDRSTRLEN] = {0};
+          if (::inet_ntop(AF_INET, &addr, text, sizeof(text)) == nullptr) {
+            continue;
+          }
+          const std::string process = ProcessNameOfPid(row.dwOwningPid);
+          if (process.empty()) continue;
+
+          add(process, text, ::ntohs(static_cast<u_short>(row.dwRemotePort)));
+        }
+      }
+    }
+  }
+
+  // IPv6. Same call, different family and a different row type — hence the
+  // duplication rather than a template over two unrelated structs.
+  {
+    ULONG size = 0;
+    if (::GetExtendedTcpTable(nullptr, &size, FALSE, AF_INET6,
+                              TCP_TABLE_OWNER_PID_ALL, 0) ==
+        ERROR_INSUFFICIENT_BUFFER) {
+      std::vector<uint8_t> buffer(size);
+      auto* table = reinterpret_cast<MIB_TCP6TABLE_OWNER_PID*>(buffer.data());
+      if (::GetExtendedTcpTable(table, &size, FALSE, AF_INET6,
+                                TCP_TABLE_OWNER_PID_ALL, 0) == NO_ERROR) {
+        for (DWORD i = 0; i < table->dwNumEntries && list.size() < kMax; ++i) {
+          const auto& row = table->table[i];
+          if (row.dwState != MIB_TCP_STATE_ESTAB) continue;
+
+          in6_addr addr{};
+          memcpy(&addr, row.ucRemoteAddr, sizeof(addr));
+          char text[INET6_ADDRSTRLEN] = {0};
+          if (::inet_ntop(AF_INET6, &addr, text, sizeof(text)) == nullptr) {
+            continue;
+          }
+          const std::string process = ProcessNameOfPid(row.dwOwningPid);
+          if (process.empty()) continue;
+
+          add(process, text, ::ntohs(static_cast<u_short>(row.dwRemotePort)));
+        }
+      }
+    }
+  }
+
+  if (!list.empty()) m[EncodableValue("connections")] = EncodableValue(list);
+}
+
+// ── Browser tabs ──────────────────────────────────────────────────
+//
+// The one thing here that cannot be had cheaply. A tab is not a window, so
+// there is no Win32 call for it: the titles come from UI Automation walking
+// the browser's accessibility tree, which costs hundreds of milliseconds on a
+// machine with a lot of tabs open.
+//
+// That cost is why this does NOT run inline. ReadSpecs is served on the
+// platform thread, and half a second of frozen UI every minute would be a
+// worse bug than the missing feature — so the scan runs on its own thread and
+// leaves its answer in a cache that ReadSpecs copies. The first read after
+// launch therefore has no tabs and reports the key as ABSENT rather than as
+// an empty list: "nobody has any tabs open" and "we have not looked yet" are
+// different facts and the roster is entitled to tell them apart.
+std::mutex g_tabs_mutex;
+std::vector<std::string> g_tabs;
+bool g_tabs_known = false;
+std::atomic<bool> g_tabs_scanning{false};
+
+bool IsBrowserProcess(const std::string& name) {
+  static const char* kBrowsers[] = {"chrome", "msedge", "firefox",
+                                    "brave",  "opera",  "vivaldi"};
+  for (const char* browser : kBrowsers) {
+    if (_stricmp(name.c_str(), browser) == 0) return true;
+  }
+  return false;
+}
+
+BOOL CALLBACK CollectBrowserWindow(HWND hwnd, LPARAM param) {
+  auto* windows = reinterpret_cast<std::vector<HWND>*>(param);
+  if (windows->size() >= 6) return FALSE;
+
+  if (!::IsWindowVisible(hwnd)) return TRUE;
+  if (::GetWindow(hwnd, GW_OWNER) != nullptr) return TRUE;
+  if (::GetWindowTextLengthW(hwnd) <= 0) return TRUE;
+  if (!IsBrowserProcess(ProcessNameOf(hwnd))) return TRUE;
+
+  windows->push_back(hwnd);
+  return TRUE;
+}
+
+void ScanBrowserTabs() {
+  std::vector<std::string> found;
+
+  // MTA: this is a worker thread of our own, so it owns its apartment and
+  // nothing else on it cares which model we pick.
+  const HRESULT com = ::CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+  const bool owns_com = SUCCEEDED(com);
+
+  if (owns_com || com == RPC_E_CHANGED_MODE) {
+    ComPtr<IUIAutomation> automation;
+    if (SUCCEEDED(::CoCreateInstance(CLSID_CUIAutomation, nullptr,
+                                     CLSCTX_INPROC_SERVER,
+                                     IID_PPV_ARGS(&automation))) &&
+        automation) {
+      std::vector<HWND> browsers;
+      ::EnumWindows(CollectBrowserWindow,
+                    reinterpret_cast<LPARAM>(&browsers));
+
+      ComPtr<IUIAutomationCondition> is_tab;
+      VARIANT tab_type;
+      ::VariantInit(&tab_type);
+      tab_type.vt = VT_I4;
+      tab_type.lVal = UIA_TabItemControlTypeId;
+
+      if (SUCCEEDED(automation->CreatePropertyCondition(
+              UIA_ControlTypePropertyId, tab_type, &is_tab)) &&
+          is_tab) {
+        for (HWND browser : browsers) {
+          ComPtr<IUIAutomationElement> root;
+          if (FAILED(automation->ElementFromHandle(browser, &root)) || !root) {
+            continue;
+          }
+
+          ComPtr<IUIAutomationElementArray> tabs;
+          if (FAILED(root->FindAll(TreeScope_Descendants, is_tab.Get(),
+                                   &tabs)) ||
+              !tabs) {
+            continue;
+          }
+
+          int count = 0;
+          tabs->get_Length(&count);
+          for (int i = 0; i < count && found.size() < 40; ++i) {
+            ComPtr<IUIAutomationElement> tab;
+            if (FAILED(tabs->GetElement(i, &tab)) || !tab) continue;
+
+            BSTR name = nullptr;
+            if (FAILED(tab->get_CurrentName(&name)) || name == nullptr) {
+              continue;
+            }
+            std::string title = Narrow(name);
+            ::SysFreeString(name);
+
+            if (!title.empty() &&
+                std::find(found.begin(), found.end(), title) == found.end()) {
+              found.push_back(title);
+            }
+          }
+        }
+      }
+      ::VariantClear(&tab_type);
+    }
+  }
+
+  if (owns_com) ::CoUninitialize();
+
+  {
+    std::lock_guard<std::mutex> lock(g_tabs_mutex);
+    g_tabs = std::move(found);
+    g_tabs_known = true;
+  }
+  g_tabs_scanning = false;
+}
+
+void AddBrowserTabs(EncodableMap& m) {
+  {
+    std::lock_guard<std::mutex> lock(g_tabs_mutex);
+    if (g_tabs_known) {
+      EncodableList list;
+      for (const std::string& title : g_tabs) {
+        list.push_back(EncodableValue(title));
+      }
+      m[EncodableValue("browser_tabs")] = EncodableValue(list);
+    }
+  }
+
+  // Kick the next scan, unless one is already running. `exchange` rather than
+  // a read-then-write: two refreshes can overlap if one scan runs long, and
+  // starting a second walk of the same trees would cost twice for one answer.
+  if (!g_tabs_scanning.exchange(true)) {
+    std::thread(ScanBrowserTabs).detach();
+  }
+}
+
 void AddActivity(EncodableMap& m) {
   // How long since the last keystroke or mouse move, anywhere on the machine.
   LASTINPUTINFO input{};
@@ -435,6 +784,9 @@ EncodableMap ReadSpecs() {
   AddOsVersion(m);
   AddNetwork(m);
   AddActivity(m);
+  AddInstalledPrograms(m);
+  AddConnections(m);
+  AddBrowserTabs(m);
 
   int64_t cpu = 0;
   if (CpuPercentSinceLastCall(&cpu)) {
