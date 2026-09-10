@@ -8,6 +8,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0189',
+      date: '10 Sep 2026',
+      items: [
+        'The lock screen now holds the whole screen: it cannot be minimised, resized or closed, and it lets go by itself when the shift is opened somewhere else or the organization switches the lock off.',
+        'PC Specs opens as a list again. Every person is one line showing whether they are on and what they are doing; the details of their machine are one click away instead of always on screen.',
+        'The desktop app now reports much more about the machine it runs on - processor, graphics, memory and CPU load, every drive, the network it is on and how much it has moved, how long since anyone touched it, whether the screen is locked, and which programs are open.',
+        'It also reports what is installed on a machine, which programs are talking to the internet, and the titles of open browser tabs. Tab titles and the window in front are shown only to a role that can already see screenshots, and a device that is exempt from monitoring reports neither.',
+        'What EzBizi records about a persons screen - the window in front and open browser tabs - is now listed separately from what it records about their machine, so a request for the data a business holds about someone answers that question in the right words.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0188',
       date: '10 Sep 2026',
       items: [
