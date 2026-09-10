@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/device_identity.dart';
 import 'package:ezbizi_client/core/call_alerts.dart';
 import 'package:ezbizi_client/core/phone_call_service.dart';
 import 'package:ezbizi_client/screens/phone/voice_device.dart';
@@ -400,6 +401,61 @@ void main() {
     );
 
     service.stop();
+  });
+
+  /// The token request names this install, so a call can ring it.
+  ///
+  /// ── The defect ─────────────────────────────────────────────────
+  ///
+  /// A `<Dial>` makes exactly one call leg per `<Client>` noun, so an identity
+  /// naming only a person rang whichever of their devices Twilio picked. Jose
+  /// had the desk open on a PC and the app on an iPhone, both registered, and
+  /// only the iPhone rang. The server can only dial both if the client says
+  /// which install is asking.
+  testWidgets('the token request says which device is asking', (tester) async {
+    String? body;
+    final service = await _started(
+      tester,
+      device: _FakeDevice(),
+      onToken: (sent) => body = sent,
+    );
+
+    expect(body, isNotNull, reason: 'no token was ever requested');
+
+    final sent = jsonDecode(body!) as Map<String, dynamic>;
+    final id = (sent['device_id'] as String?) ?? '';
+
+    expect(
+      id,
+      isNotEmpty,
+      reason: 'the server cannot tell this install from any other, so it can '
+          'only ring one of them',
+    );
+
+    // Hex only: it becomes half of a Twilio client identity, and those are
+    // alphanumeric. A stray hyphen makes an identity the SDK will not accept.
+    expect(
+      RegExp(r'^[0-9a-f]+$').hasMatch(id),
+      isTrue,
+      reason: 'device id "$id" is not usable inside an identity',
+    );
+
+    expect((sent['device_label'] as String?) ?? '', isNotEmpty);
+
+    service.stop();
+  });
+
+  /// The same install twice is the same name.
+  ///
+  /// A fresh id per launch would leave a trail of registrations, and ten of
+  /// them would fill the dial list with dead endpoints while the caller waits
+  /// out the timeout.
+  test('the device id is stable across reads', () {
+    final first = DeviceIdentity.value;
+
+    DeviceIdentity.forget();
+
+    expect(DeviceIdentity.value, first);
   });
 
   /// And a browser does not.

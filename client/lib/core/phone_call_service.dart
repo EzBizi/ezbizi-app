@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../screens/phone/voice_device.dart';
 import 'api_client.dart';
+import 'device_identity.dart';
 import 'call_alerts.dart';
 
 /// The softphone, for as long as the app is open — not for as long as the Dial
@@ -201,6 +202,13 @@ class PhoneCallService extends ChangeNotifier {
 
       final token = await api.post('/phone/tokens', {
         'connection_id': _connectionId,
+
+        // WHICH INSTALL IS ASKING, so a call can ring this one as well as the
+        // others. A `<Dial>` makes one leg per `<Client>`, so an identity that
+        // named only the person rang whichever device Twilio picked — the desk
+        // open on a PC stayed silent while the phone in a pocket rang.
+        'device_id': DeviceIdentity.value,
+        'device_label': DeviceIdentity.label,
         // Omitted on a browser. Present on a handset, and it is what makes the
         // minted token carry a push credential — without it the phone
         // registers and never rings.

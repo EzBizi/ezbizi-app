@@ -418,8 +418,11 @@ class VoiceWebhookController extends Controller
             ->where('connection_id', $connection->id)
             ->whereNotNull('number_id')
             ->get()
+            // belongsTo, not equality: an identity now carries a device
+            // suffix, and comparing the whole string would stop finding the
+            // extension the moment a person registered a second device.
             ->first(fn (PhoneExtension $row) => $row->user !== null
-                && ClientIdentity::of($row->user) === $identity);
+                && ClientIdentity::belongsTo($identity, $row->user));
 
         return (string) ($extension?->number?->e164 ?? '');
     }

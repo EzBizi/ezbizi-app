@@ -3,6 +3,7 @@
 namespace App\Support\Phone;
 
 use App\Models\PhoneConnection;
+use App\Models\PhoneDeviceRegistration;
 use App\Models\PhonePresence;
 use App\Models\PhoneRingGroup;
 use App\Models\User;
@@ -124,6 +125,20 @@ final class DialPlan
             ->get()
             ->keyBy(fn (User $user) => (string) $user->id);
 
+        // ONE IDENTITY PER DEVICE, not per person.
+        //
+        // `<Dial>` makes exactly one call leg per `<Client>` noun, so a person
+        // named once could only ever ring one of their devices — whichever
+        // Twilio picked. Measured on 2026-09-10: three inbound calls, three
+        // legs each, never two for the same person, while Jose had the desk
+        // open on a PC and the app on an iPhone and only the iPhone rang.
+        //
+        // A person with no live device row still gets their bare identity.
+        // That is the pre-rollout shape and an older client that sends no
+        // device id keeps working exactly as it did.
+        $devices = PhoneDeviceRegistration::liveFor($connection->id, $userIds)
+            ->groupBy(fn (PhoneDeviceRegistration $row) => (string) $row->user_id);
+
         $identities = [];
         foreach ($userIds as $id) {
             $user = $users->get($id);
@@ -131,7 +146,17 @@ final class DialPlan
                 continue;
             }
 
-            $identities[] = ClientIdentity::of($user);
+            $mine = $devices->get($id);
+
+            if ($mine === null || $mine->isEmpty()) {
+                $identities[] = ClientIdentity::of($user);
+
+                continue;
+            }
+
+            foreach ($mine as $device) {
+                $identities[] = ClientIdentity::of($user, (string) $device->device_id);
+            }
         }
 
         if ($identities === []) {

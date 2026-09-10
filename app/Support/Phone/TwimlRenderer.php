@@ -2,6 +2,7 @@
 
 namespace App\Support\Phone;
 
+use App\Models\PhoneDeviceRegistration;
 use App\Models\PhoneExtension;
 use App\Models\PhoneFlow;
 use App\Models\PhoneHoursSchedule;
@@ -509,7 +510,25 @@ final class TwimlRenderer
             context: $context,
         ));
 
-        $dial->client(ClientIdentity::of($row->user));
+        // Every device that person has, for the same reason the ring group
+        // dials each one: a single `<Client>` is a single leg, so naming the
+        // person alone reaches whichever endpoint Twilio chooses.
+        $devices = PhoneDeviceRegistration::liveFor(
+            (string) $connection->id,
+            [(string) $row->user->id],
+        );
+
+        if ($devices->isEmpty()) {
+            $dial->client(ClientIdentity::of($row->user));
+
+            return;
+        }
+
+        foreach ($devices as $device) {
+            $dial->client(
+                ClientIdentity::of($row->user, (string) $device->device_id),
+            );
+        }
     }
 
     /**

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Phone;
 
 use App\Http\Controllers\Api\Controller;
 use App\Models\PhoneConnection;
+use App\Models\PhoneDeviceRegistration;
 use App\Support\Phone\ClientIdentity;
 use App\Support\Phone\PhoneNumberAccess;
 use App\Support\Phone\TwilioGateway;
@@ -41,6 +42,22 @@ class TokensController extends Controller
             // handsets stopped ringing: a phone needs the token to name a push
             // credential, and only the phone knows which one it can receive.
             'platform' => ['sometimes', 'nullable', Rule::in(['ios', 'android'])],
+
+            // WHICH INSTALL IS ASKING.
+            //
+            // A Voice identity now names a device as well as a person, because
+            // `<Dial>` makes one call leg per `<Client>` noun — so a person
+            // named once rings one device, whichever Twilio picks. Jose had
+            // the desk on a PC and the app on an iPhone, both registered, and
+            // only the iPhone rang.
+            //
+            // Optional: an older client sends none and gets the bare identity
+            // it always had. Hex only, because it becomes half of a Twilio
+            // identity and those are alphanumeric.
+            'device_id' => ['sometimes', 'nullable', 'string', 'max:64', 'regex:/^[A-Za-z0-9]+$/'],
+
+            // What to call it when somebody is choosing where to send a call.
+            'device_label' => ['sometimes', 'nullable', 'string', 'max:64'],
         ]);
 
         $connection = PhoneConnection::query()->findOrFail($input['connection_id']);
@@ -50,7 +67,30 @@ class TokensController extends Controller
             return response()->json(['message' => self::NO_LINE], Response::HTTP_FORBIDDEN);
         }
 
-        $identity = ClientIdentity::of($user);
+        $deviceId = (string) ($input['device_id'] ?? '');
+
+        if ($deviceId !== '') {
+            // Written on every token request, which is also the heartbeat.
+            // A device that stops asking stops being dialled once it falls
+            // past the deadline — nothing has to run to clean it up, and a
+            // browser tab closed without warning costs one stale row rather
+            // than one of the ten `<Client>` slots forever.
+            PhoneDeviceRegistration::query()->updateOrCreate(
+                [
+                    'connection_id' => $connection->id,
+                    'user_id' => $user->id,
+                    'device_id' => $deviceId,
+                ],
+                [
+                    'organization_id' => $this->tenant->idOrFail(),
+                    'label' => $input['device_label'] ?? null,
+                    'platform' => $input['platform'] ?? null,
+                    'last_seen_at' => now(),
+                ],
+            );
+        }
+
+        $identity = ClientIdentity::of($user, $deviceId);
         $token = $this->twilio->accessToken($connection, $identity, $input['platform'] ?? null);
 
         return response()->json([
