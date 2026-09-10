@@ -43,7 +43,7 @@ submission, a filing — never for permission.
 | **Quotes, billing, invoicing, estimates, payments** | Does not exist. 151 production tables searched for `quote` / `invoic` / `bill` / `estimate` return nothing, and no such module is registered among 26. The only `payment` match is `vehicle_payments` — Fleet recording what it paid for a van. Removed in `6c67efb`. |
 | **Scheduling a job onto a calendar** | Not built, and **test the relation, not a column.** The obvious check — "`jobs` has no scheduled-date column" — is already false: `jobs.scheduled_for` (datetime) and `jobs.assigned_role_id` exist on production, and **0 of 25 jobs have either set**. The durable test is structural: **no table carries both a job reference and a date-or-slot reference.** `service_area_slots` is `(service_area_id, weekday, start_time, end_time, max_jobs)` — a recurring weekly capacity *template* with no `job_id`, no date and no per-occurrence row, so it cannot express "this job, this day, this slot" even in principle. That stays true until the module is actually built, which is exactly when the claim should change. |
 | **Training** | **PUBLISHED 2026-09-09 as a capability card — this row now governs only what may NOT be added to it, and the tense rule is the whole of it.** The card reads *"Write the guide, set the test, give it to the people who need it, and see who still owes what."* — four imperatives and no completed action, deliberately. **The row count this row has always named was finally taken**, by the deploy desk on production release `20260908222755-a18b059a9080`, answering `0037` in `0038`: `training_attempts` **0**, `training_progress` **0**, `training_assignments` **0**. Nobody has ever sat one. That is precisely the Coverage & capacity / Inspections state — built and unused, sellable as a capability and never as usage — so **no sentence may say or imply that anybody has trained**: not "teams train on it", not "your team is up to date", not a number of guides completed. Reachability was re-verified in the deployed tree rather than taken from the release note: `ModuleServiceProvider.php:2288` registers `key: 'training'`, label Training, actions `view/monitor/manage/assign`, so it is in the sidebar and the roles editor; `client/lib/core/module_screens.dart:113` maps it to a screen. **Note how far the REASON travelled while the verdict stood still** — this row said in turn: the tables are missing (false), the tables are empty, the server shipped without a sidebar entry, and now nothing but the tense. Three of those four would have been fixed by "just add the card" on the wrong day. **The original entry follows, because the correction it records is the reason the row survived to be right:** **Corrected 2026-09-02 — the old reason was false.** Its five tables *are* on production (`training_assignments`, `training_attempts`, `training_guides`, `training_progress`, `training_tests`); the row used to say they were not. The verdict does not change, but the reason does: **all five are empty**, so nothing has ever been assigned, attempted or completed. The checkable test is a row count in those tables, not their existence — the old test would now pass and the claim would still be false. **Corrected again 2026-09-08: it now has screens.** `0.0.0151` shipped the server side with no sidebar entry, and the deploy desk said in `0035` "do not describe Training as available" — then `0.0.0159` shipped *"Training is now something you can actually use — read a guide, sit its test, and see who owes what"*, and production is `0.0.0168`. **So the reason has moved twice and the verdict has not.** It is no longer unbuilt and no longer invisible; it is built-and-unused, which the Inspections precedent says is sellable as a capability. **It is still held, deliberately, because the row count is the test this row names and this run could not take one** — a scheduled run cannot reach the desk to ask, and the five tables are not readable from here. **Do not resolve this by reasoning; resolve it by asking.** The next run that reaches the desk should ask for the row count in `training_attempts` and `training_progress`, and if nothing has ever been attempted, a capability card is allowed by the same precedent that allows Coverage & capacity — with the tense rule that comes with it: never "teams train on it". |
-| **Phone / Communication** | **PUBLISHED 2026-09-04 as a card reading "Your business numbers in one place — dial, texts and voicemail…" — the row now governs only what may NOT be added to it.** **Jose approved it for the site on 2026-09-03** (relayed by the deploy session, which put the 2-of-7 fraction to him explicitly). **The approval covers the capability, not any particular sentence, and the fraction has not moved.** Draft copy is below, unpublished, awaiting his sight of the actual words. Everything following is the measurement that shapes them.<br><br>**The old blocker has partly lifted; the answer is still no to the strong claim, for a smaller reason.** The row used to say no production line had a ring group and every inbound call reached voicemail. As of 2026-09-02 `phone_ring_groups` has **2 rows**, and **2 of 7** `phone_numbers` carry a non-null `ring_group_id`. So calls to those two reach a person. **Five of seven still dead-end at voicemail**, which is why "phone system" remains an overstatement rather than a promise kept — and the module was renamed **Communication** in `0.0.0141`, so any future copy names that, not "Phone". The checkable test: `phone_numbers` with a non-null `ring_group_id`, as a fraction of all of them. Do not write the claim off a lifted gate; write it off the fraction. |
+| **Phone / Communication** | **PUBLISHED 2026-09-04 as a card reading "Your business numbers in one place — dial, texts and voicemail…" — the row now governs only what may NOT be added to it.** **Jose approved it for the site on 2026-09-03** (relayed by the deploy session, which put the fraction to him explicitly — 2 of 7 at the time, 6 of 12 on 2026-09-10). **The approval covers the capability, not any particular sentence, and the fraction has moved without changing anything the card may say.** Draft copy is below, unpublished, awaiting his sight of the actual words. Everything following is the measurement that shapes them.<br><br>**The old blocker has partly lifted; the answer is still no to the strong claim, for a smaller reason.** The row used to say no production line had a ring group and every inbound call reached voicemail. Re-measured on production 2026-09-10 by the desk in `0042`: **6 of 12** `phone_numbers` carry a non-null `ring_group_id` (it was 2 of 7 on 2026-09-02). So calls to those six reach a person. **Six of twelve still dead-end at voicemail** — the fraction roughly doubled and the SHAPE HELD, which is why the rule under it did not move, which is why "phone system" remains an overstatement rather than a promise kept — and the module was renamed **Communication** in `0.0.0141`, so any future copy names that, not "Phone". The checkable test: `phone_numbers` with a non-null `ring_group_id`, as a fraction of all of them. Do not write the claim off a lifted gate; write it off the fraction. |
 | **Local Services enquiries arriving as leads** | **INVERTED 2026-09-09 — THIS IS NOW TRUE, AND THE CLAIM IS PUBLISHED. Everything after this paragraph is the history of how it was kept off the site while it was false; read it as method, not as a live prohibition.** The deploy desk ran this row's own test through `artisan tinker` on production release `20260908222755-a18b059a9080` and answered in `0038`: **`leads` with a `remote_id` not beginning `DEMO-` → 23,905, every one of them `source = local_services`**, against the 8 seeded rows this row spent three attempts learning to exclude. The test that was written to catch a decoy did its job and then reported the real thing. Published the same day in the Growth card: *"Connect a Google Ads account and its Local Services enquiries arrive as leads, each carrying the calls and messages that came with it."* The conversation half is `LeadThread` + `LeadConversation` in the deployed tree, whose docblock says Google's Local Services put it there first. **What would put this row back:** the count returning to 0, which would mean a wipe rather than a quiet failure. **And keep the tense rule even now** — the rows are Google's real enquiries into a real advertiser's account, which is what makes the *capability* claim true; it is still not a sentence about how many businesses use EzBizi, and nothing here licenses "teams rely on it". **The original entry, kept whole because its method is the most reused thing in this file:** **Contradicted, not merely unverified — and the evidence is a decoy.** Querying production returns `source = local_services` on 8 leads, which reads exactly like the confirmation this row has been waiting for. All 8 were created in the *same second* and none carries a provider id: they are `leads:seed-demo`, run on production by the deploy session on 2026-08-31. The `source` string was written by the seeder, not by Google. **True count of real Local Services enquiries: 0**, re-confirmed 2026-09-02. **The test this row used to name does not work, and saying so is the point.** It told you to look for a provider `external_id`; there is no `external_id` column on `leads` and none anywhere in `database/migrations/`, so the check silently has nothing to compare and a careful session runs it, finds nothing, and cannot tell "no real leads" from "no such column". **The first replacement written for this row was also wrong, and it is left here as the warning.** It said a genuine enquiry has a `connection_id` and a non-null `synced_at` while a seeded one has neither — reasoned from the real sync path (`LocalServicesLeads.php:216,228`) without ever opening the seeder. **`LeadsSeedDemo.php:132,143` writes both**, pointing `connection_id` at a genuine `social_connections` row it creates. The seeded rows are indistinguishable from real ones on every field that describes *how a lead arrives*, because the seeder's whole job is to look real. **The test that works is the one the seeder deliberately leaves behind:** `LeadsSeedDemo.php:45` stamps `private const PREFIX = 'DEMO-'` onto `remote_id` on every row it plants (`:128`). So — **a real enquiry's `remote_id` is Google's own id and never begins `DEMO-`:**
 
 ```sql
@@ -51,13 +51,14 @@ SELECT COUNT(*) FROM leads WHERE remote_id NOT LIKE 'DEMO-%';   -- real enquirie
 ```
 
 **Measured on production 2026-09-03, and the dump is the proof rather than the count:** `remote_id NOT LIKE 'DEMO-%'` → **0**, out of 8 leads, **0 with a null `remote_id`** — so nothing hides in a third state between the two tests. All eight rows carry `has_connection_id = 1` **and** `has_synced_at = 1`, which is the wrong test failing visibly in the data: it would have counted all eight as real and reported the module in use. A count alone would have agreed with both tests; only the dump separates them. Note the command takes `--live`, which is how fiction reached production in the first place. **Read the seeder before trusting any test meant to exclude it** — three tests have now been written for this one row, and the two derived from the real code path both failed, because a good seeder imitates exactly the fields that path writes. This forbids the marketing claim, not the compliance page; see below. |
-| **Thumbtack or website enquiries arriving as leads** | **NEW 2026-09-09, and it is the Local Services row one stage earlier.** `0.0.0162`–`0.0.0167` shipped Thumbtack ingestion, a chat bubble and a contact form, all landing in Leads through the same `LeadThread` door — so the *code* does it, and the release notes read like an arrival. Measured on production by the deploy desk in `0038`: `social_connections` where provider = thumbtack **0**, `web_chats` **0**, `web_sites` 3. **No enquiry has arrived from either.** Jose's twelve Thumbtack businesses were disconnected before the webhook fix shipped and have not been reconnected. The endpoints are live and answer from outside (`POST /api/v1/web/chat` → 400 "No key was given"), which is exactly the evidence that proves the door and not the traffic. **Allowed today: "connect it and enquiries arrive in Leads"** — capability phrasing, which is what the Growth card now says for Google. **Forbidden: "enquiries arrive", any past tense, any count.** The checkable test is the same one that just inverted the Local Services row, per source: `SELECT source, COUNT(*) FROM leads WHERE remote_id NOT LIKE 'DEMO-%' GROUP BY source` — today it returns `local_services` alone. **Invert this row when a second source appears in that result, do not delete it.** |
+| **Thumbtack or website enquiries arriving as leads** | **HALF-INVERTED 2026-09-10. THUMBTACK IS NOW TRUE AND PUBLISHED; the website-chat half is unchanged and still conditional.** The desk answered twice in one day and the SECOND answer supersedes the first, which is the whole lesson of this edit. `0042` measured `thumbtack = 1` and said do not invert: that row was `ThumbtackTestLead` firing Thumbtack's own `POST /webhooks/test-negotiation`, with placeholder phone `1234567890`, and `remote_id NOT LIKE 'DEMO-%'` let it straight through because a real Thumbtack id has no `DEMO-` prefix. `0043` re-measured an hour later: a **real customer enquiry** had arrived (`remote_id` `575864197057708035`, phone `4142023918`, created 2026-09-10 15:00:47, ten messages), and Jose had Leads delete the specimen. **The query is now `WHERE is_test = 0`** — `leads.is_test` exists and the marker is live in `0.0.0185`, so the phone-number discriminator is history rather than a step to repeat. Production reads `local_services is_test=0 40745`, `thumbtack is_test=0 1`. Published the same day in the Growth card: *"Connect Thumbtack and its enquiries arrive the same way, carrying the messages that came with them, and you reply from the same screen."* Every clause read out of the deployed tree at `8588589e` (`/download/windows.json` = `0.0.0192`): `ThumbtackLeads::store()` files a `Lead` with `source => Lead::SOURCE_THUMBTACK`; `messages()` files `LeadConversation` rows; `send()` posts the reply and `ThumbtackLeads` is **tagged** into `LeadReplies::TAG` at `AppServiceProvider.php:70-75` beside `LocalServicesLeads` — the tag was checked, not the interface, because a class implementing `LeadReplyChannel` that nothing tags is invisible to `LeadReplies::for()`. That tagging is also what FIXED the bug this very enquiry exposed: replying on a Thumbtack thread used to emit Google's refusal sentence. **`web_chats` is still 0**, so the website-chat half keeps the conditional shape — Web management's card already uses it ("the enquiries they take arrive in Leads") and needs no edit. **What would put the Thumbtack half back:** `WHERE is_test = 0` returning 0 for `thumbtack`, which is a wipe. **And still no usage claim** — one enquiry, from Jose's own twelve connections. The card says what happens when you connect one; it does not say businesses rely on it. |
 | **That a post reaches every connected network, or reaches a TikTok profile** | Nine networks connect; **five publish** — corrected upward 2026-09-02, see below. `Publishers::for()` returns a publisher for Facebook Pages, Threads, Instagram, Pinterest and TikTok, and `default => null` for LinkedIn, YouTube, X and Bluesky, which `refusalFor()` answers with "Publishing to X is not built yet". **TikTok posts to the creator's DRAFTS, not the profile** — TikTok requires an audit before an app may post publicly and ours has not had it, so somebody must finish the post in the TikTok app. Pinterest is **images only**; video publishing does not exist. Flagged 2026-08-31 by the deploy session as a live false statement in the in-app release notes; corrected on the site the same day. The checkable test: does `Publishers::for()` return non-null for that provider. |
 | **Suggestions** | **INVERTED 2026-09-03 — it *is* on production, and this row said the opposite for a day.** All 17 commits are in the deployed tree (`git merge-base --is-ancestor 486668c 15c9762f` → true), merged at `e718748a`, and they were already in the *previous* production commit `678c3e83` — so it shipped in a deploy nobody announced, not in the 20:32 push. `create_suggestions_table` is in the deployed tree, so **the table test this row named has flipped to yes**, and production `client/VERSION` is `0.0.0147`. **The two design facts have not changed and still mean "present in the app" proves nothing either way**: it is still absent from `ModuleRegistry` (0 hits in the deployed tree) so a module count never sees it, and still pinned unconditionally for every user (`client/lib/main.dart:687` in the deployed tree — it was `:724` on the branch; re-read the line, do not trust this number). **Still do not put it on the site, for an entirely new reason.** The two screen layouts reached production *before* Jose reviewed them — he had delegated the choice for one night on the understanding they could change — and a defect is open against the §9 privacy inventory under-reporting the suggestion count. Neither makes the feature untrue; both make "we shipped this" a sentence we might have to retract. Revisit when the layouts are reviewed and the defect is closed. |
 | **That anybody has *set up* coverage and capacity** | Built and unused — a different state from unbuilt, and the two must not be flattened. The capability shipped in `0.0.0137`; `service_areas` and `service_area_slots` both hold **0 rows**, so no customer has created one. This does **not** forbid the "Coverage & capacity" card, which reads *"Set the areas each location covers and how much work a day can take"* — that is capability phrasing, and by the Inspections precedent below, built-and-unused is sellable as a capability and never as usage. **What it forbids is the tense**: "businesses set their coverage", "locations already covering", any sentence implying somebody has. If you are here because you read a 0 and reached for the card, leave the card alone. |
 | **Tasks — RETIRED, not merely unused** | **On the site until 2026-09-03, removed the same day it was checked. The reason it survived is the durable lesson: `27aef957` ("Delete every remaining record of the Tasks module", Jose's, 38 files, ~3,800 lines) swept the row out of `MODULE-OWNERS.md`, both `*TaskLink.php` entries, a `NotificationDispatcher` constant, nine superpowers files, a release note and about thirty other citations — and touched ZERO files under `www/`.** A product-wide removal sweep does not reach the marketing site, and nothing makes it obvious that it did not: every internal trace was gone, so any check that samples the repo concludes the removal was thorough. **When a module is deleted, `www/` is a separate job with a separate owner and it will not be in the sweep's diff.** `9175d19f` drops all 31 `task_*` tables and `51729347` removes it from tables it did not own, both ancestors of `d2d39304` — the SHA `/download/windows.json` names. **The decisive check is not the migration**, since a migration in the deployed tree has not necessarily run; it is that **the deployed client carries zero Tasks screens** (`git ls-tree -r d2d39304 -- client/lib/screens`, filtered for task → 0). A customer on `0.0.0148` has no Tasks screen at all. Removed from the site: the sidebar tab and its "9" pill, the whole `p-task` mock panel, the "Boards for the work that is not a job" card, and one word each in `privacy/` and `terms/`. **A retired module is a harder sweep than an unbuilt one** — it was legitimately on the site for weeks, so it reads as settled copy nobody thinks to re-check. |
 | **"Teams rely on it" about Inspections** | The module is live and has never been used by a customer. Not embarrassing, but not a usage claim. |
-| **Monitoring, Marketing** | **Half of this row expired on 2026-09-09 and the reason has to be split.** **Marketing's placeholder is gone**: `0.0.0181` gave it a real home-screen box (published / waiting / failed, counted per account), and `GlanceRegistry::GLANCES` now lists `MarketingGlance::class` while `COMING_SOON` holds only `newsletter` and `monitoring`. So the stated reason is false for Marketing. **It changes nothing on the site, and that is the point of writing it down**: everything Marketing contains is already sold under its own cards (Social media, Newsletter), so there was never a Marketing claim resting on this row — do not add one now on the strength of a glance. A dashboard box is not a capability. **Monitoring is still off the site, for a reason that is no longer the glance.** Its `COMING_SOON` entry is deliberate, not pending, and meanwhile the module itself grew real screens: `0.0.0181` a floor plan, `0.0.0176` screen capture, live view and remote control, `0.0.0183` per-device capture-status reasons; `monitoring_floor_plans` and the capture-status column are both in the deployed tree. **The checkable test this row now names is a row count, because the Inspections precedent needs one**: `SELECT COUNT(*) FROM monitoring_floor_plans` and `SELECT COUNT(*) FROM monitored_devices`. Asked of the desk in `0041`. **And a zero would not settle it either way** — this is the one capability on the list whose copy is about watching employees' screens, so built-and-unused does not automatically make it sellable the way Coverage & capacity was. Whoever inverts this row writes the sentence and checks it against the privacy pages, not just against the count. |
+| **That a call reaches an ANDROID handset** | **NEW 2026-09-10, and it is the understatement trap running backwards.** `0.0.0184` gave Android the device token for the calling network and later work declared the service an incoming push arrives on — both were missing, and the release notes read like a phone that rings. **The desk said it twice, unprompted, in `0042` and again in `0043`: nobody has yet observed an Android handset register or ring.** Registering with a calling network is not a handset ringing, and the release note says so in its own bullet rather than leaving the reader to infer it. The site says nothing about mobile calling today and must not start: the Communication card is about numbers, roles, dial, texts and voicemail, and none of that implies a device. **The checkable test is an observation, not a row count** — somebody has to watch an Android handset ring. Invert it when the desk says they did, not when a manifest entry appears. |
+| **Monitoring, Marketing** | **Half of this row expired on 2026-09-09 and the reason has to be split.** **Marketing's placeholder is gone**: `0.0.0181` gave it a real home-screen box (published / waiting / failed, counted per account), and `GlanceRegistry::GLANCES` now lists `MarketingGlance::class` while `COMING_SOON` holds only `newsletter` and `monitoring`. So the stated reason is false for Marketing. **It changes nothing on the site, and that is the point of writing it down**: everything Marketing contains is already sold under its own cards (Social media, Newsletter), so there was never a Marketing claim resting on this row — do not add one now on the strength of a glance. A dashboard box is not a capability. **Monitoring is still off the site, for a reason that is no longer the glance.** Its `COMING_SOON` entry is deliberate, not pending, and meanwhile the module itself grew real screens: `0.0.0181` a floor plan, `0.0.0176` screen capture, live view and remote control, `0.0.0183` per-device capture-status reasons; `monitoring_floor_plans` and the capture-status column are both in the deployed tree. **The checkable test this row now names is a row count, because the Inspections precedent needs one**: `SELECT COUNT(*) FROM monitoring_floor_plans` and `SELECT COUNT(*) FROM monitored_devices`. Asked of the desk in `0041`. **And a zero would not settle it either way** — this is the one capability on the list whose copy is about watching employees' screens, so built-and-unused does not automatically make it sellable the way Coverage & capacity was. Whoever inverts this row writes the sentence and checks it against the privacy pages, not just against the count. **THE MONITORING REASON IS REPLACED, 2026-09-10, and the row still holds.** The row count it named was taken by the desk in `0042`: `monitoring_floor_plans` **2**, `monitored_devices` **49**. So built-and-unused is FALSE — somebody drew plans and forty-nine machines are checking in, and the Inspections precedent would ordinarily make that sellable. **It is held for a reason no count can settle:** the copy would be about watching employees' screens, and `0.0.0189` widened exactly that — the desktop app now reports open programs, which programs talk to the internet, and the titles of open browser tabs. **That needs a decision from Jose, not a measurement**, and it is the one item on this list where "do as you recommend" does not obviously reach, because the risk is not accuracy. **Do not invert this on the strength of 2 and 49.** Whoever writes the sentence checks it against `privacy/` as well as against the count. The old reason — "its dashboard summary is a placeholder" — is now the WRONG REASON rather than a wrong conclusion: `GlanceRegistry::COMING_SOON` still holds `monitoring` deliberately. |
 
 ## Enforced at publish time
 
@@ -301,8 +302,8 @@ Dial, Messages, Voicemail). Role-level access to the company's lines is what
 `0.0.0141` shipped, replacing a per-line tick per role.
 
 **What it deliberately does not say, and why the fraction outranks the
-approval.** Two of seven production lines route to a ring group; five still
-dead-end at voicemail. So no sentence may imply a call reaches a person:
+approval.** Six of twelve production lines route to a ring group; six still
+dead-end at voicemail (2 of 7 when this was written; re-measured 2026-09-10). So no sentence may imply a call reaches a person:
 not "your calls reach your team", not "never miss a call", not "phone
 system". The approved thing is that Communication exists and does what the
 card says. **An approval to describe a capability is not evidence the
@@ -327,8 +328,9 @@ against the code before it shipped**, not taken from the draft:
                                   now gets its company's lines by reach, not one
                                   tick at a time"
 
-**The fraction still governs what may not be said.** 2 of 7 production lines
-route to a ring group; five land in voicemail. So no sentence may imply a call
+**The fraction still governs what may not be said.** 6 of 12 production lines
+route to a ring group; six land in voicemail (2 of 7 when written, re-measured
+2026-09-10 — doubling the numerator did not change the half). So no sentence may imply a call
 reaches a person — not "never miss a call", not "your calls reach your team",
 not "phone system". The published card says none of them, and a grep for all
 four phrasings across `www/` returns zero. That check is worth re-running
@@ -645,6 +647,132 @@ published.** The warning goes to stderr, on the deploy session's terminal, in a
 run that ends in success. Nobody watching from here would see it. That is the
 mechanism behind the rule above, and it is why the check has to be a fetch of the
 public URL rather than any report about the release.
+
+## Thumbtack — PUBLISHED 2026-09-10, and the desk corrected itself in an hour
+
+The Growth card gained one sentence, beside the Google one it copies:
+
+```html
+<p>Track where new work comes from &mdash; down to the advert that produced the
+   enquiry. Connect a Google Ads account and its Local Services enquiries arrive
+   as leads, each carrying the calls and messages that came with it. Connect
+   Thumbtack and its enquiries arrive the same way, carrying the messages that
+   came with them, and you reply from the same screen.</p>
+```
+
+**Clause by clause, out of the deployed tree at `8588589e` (= `0.0.0192`, from
+`/download/windows.json`), not out of the release note:**
+
+    connect Thumbtack        ThumbtackOAuth.php in the deployed tree; 12
+                             social_connections rows, provider thumbtack
+    enquiries arrive as      ThumbtackLeads::store() -> Lead::create with
+    leads                    source => Lead::SOURCE_THUMBTACK
+    carrying the messages    ThumbtackLeads::messages() files LeadConversation
+                             rows per negotiation message
+    you reply from the       send() posts to ThumbtackNegotiations and files the
+    same screen              reply; AND ThumbtackLeads is TAGGED into
+                             LeadReplies::TAG at AppServiceProvider.php:70
+
+**The tag is the clause that needed checking, not the interface.** `ThumbtackLeads
+implements LeadReplyChannel` proves nothing on its own — `LeadReplies::for()`
+reads the container tag, so a channel nobody tags is invisible and the screen
+falls through to a generic refusal. Same shape as `IMPLEMENTED_ACTIONS` in
+`ACTIVE-CONSTRAINTS.md`: declaring a thing is half of it, and the other half is
+in a different file. Here the tagging is also what *fixed* the bug this very
+enquiry exposed — replying on a Thumbtack thread used to emit Google's refusal
+sentence, because one provider's wording was filling a gap that had no channel.
+
+**Two desk answers, an hour apart, opposite verdicts — and the second one is a
+measurement, not a change of mind.** `0042` said "the second lead source is a
+TEST, not a customer" and was right when written: the row was `ThumbtackTestLead`
+firing Thumbtack's own `POST /webhooks/test-negotiation`, with placeholder phone
+`1234567890`. `0043` supersedes it — a real enquiry landed at 15:00:47 and Jose
+had the specimen deleted. **Read an inbox in number order and act on the last one
+that speaks.** A run that stopped at `0042` would have held a true claim off the
+site for a day and written down a phone-number discriminator that no longer
+applies to anything.
+
+**The query is `WHERE is_test = 0`.** `leads.is_test` shipped in `0.0.0185`
+precisely because the test row was indistinguishable from a customer's without
+inspecting a phone number. That is the third test written for this family of rows
+and the first that depends on neither a seeder's prefix nor a placeholder.
+
+### A claim that does not survive a disconnect, and one that does
+
+**Recorded because it is a property of a published sentence, not of a module.**
+Deleting a connection row nulls `leads.connection_id` on everything it ever filed.
+For Thumbtack that is now repaired automatically — `3a6a8ae3` makes the next event
+on an orphaned lead adopt it, from `0.0.0187`. **For Google Ads it is not.**
+Disconnect an Ads account and its leads lose their connection, their recordings
+and their replies, and Google offers no lookup to repair from. Unfixed, and a
+bigger change than the Thumbtack one.
+
+The Growth card survives this in both halves because both clauses describe what
+happens *when you connect*, never what stays true afterwards. **If anybody ever
+writes "your enquiries and their recordings stay with the customer", that sentence
+is false for Google Ads the moment somebody disconnects** — and a disconnect is a
+normal thing a customer does, not an incident.
+
+## Reports — DRAFTED AND HELD 2026-09-10, on one question this run cannot answer
+
+`0.0.0192` shipped a real Reports module **and it is the deployed release** —
+`/download/windows.json` reads `0.0.0192` built `8588589e`, which is the tree every
+clause below was read from. The site has no card for it, and by the Web management
+precedent ("a module can go stale by never arriving") that is a gap rather than a
+caution.
+
+Drafted, unpublished:
+
+```html
+<h3>Reports</h3>
+<p>Build a report from your own records &mdash; start from jobs, customers or
+   people, pull in the columns from what they connect to, filter it and save it by
+   name. Running a saved report and building one are separate permissions, so you
+   can let somebody run what you built without letting them change it.</p>
+```
+
+    jobs, customers, people  ReportMap::all() — three resources keyed jobs /
+                             customers / users, each with a hand-listed column set
+    what they connect to     the same entries carry `relations` edges; the builder
+                             walks them and never composes an ON clause
+    save it by name          saved_reports migration: name(120), unique on
+                             (organization_id, name), definition JSON
+    separate permissions     ModuleServiceProvider.php:2665 key `reports`, actions
+                             view / build / export, with actionRequires putting
+                             build and export behind reports.view
+    reachable                client/lib/core/module_screens.dart:74 maps `reports`
+                             to ReportsScreen
+
+**The one thing this run could not check is whether the migration RAN.** Every
+clause above is a property of the deployed *tree*; `saved_reports` is a migration
+dated 2026-09-10, and this file's own Tasks row says in as many words that a
+migration in the deployed tree has not necessarily run. For Tasks the decisive
+check was the deployed client, which is satisfied here — but Tasks was proving an
+ABSENCE, and a present screen over a missing table is a card pointing at an error.
+
+**So the question, spelled out the way the two rows that inverted on 2026-09-09
+were spelled out** — asked of the desk in `0045`:
+
+```sql
+SELECT COUNT(*) FROM saved_reports;   -- 0 is a fine answer; an ERROR is not
+```
+
+**A zero publishes the card** under the Coverage & capacity / Newsletter precedent:
+built-and-unused is sellable as a capability, and the drafted copy is imperatives
+with no completed action in it. **An error holds it**, because the table would not
+exist. Note this is the opposite reading of a zero from every other row in this
+file, and that is deliberate: here the zero is not the measurement — the absence of
+an error is.
+
+**What the card deliberately does not say.** `ReportMap` publishes `amount_minor`
+and `currency` on jobs, and the module registration says "money included". **No
+sentence about money goes on this card.** Not because it is untrue, but because
+this site's hardest-won removal was the billing family, `bill` is a
+machine-enforced forbidden term, and a Reports card is exactly where a sentence
+about what the work was worth would read as innocent and put it back. It also says
+nothing about who may reach it: administrator-only until Jose grants
+`reports.view` is a permission default, and the Newsletter row already settled that
+those change nothing here.
 
 ## Two things that make this easier than it looks
 
