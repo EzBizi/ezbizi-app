@@ -11,6 +11,7 @@ class VersionHistory {
       version: '0.0.0191',
       date: '10 Sep 2026',
       items: [
+        'An IVR key can send a caller straight to one persons extension. The phone system has dialled extensions from a menu key since extensions existed, but the API rejected the action and the menu editor never offered it, so nobody could switch it on. The editor names the person rather than taking free digits, so a key cannot point at an extension nobody holds.',
         'A call can follow you to your phone. Answer at the desk, press Move to my phone on the call strip, and every other device you are signed in to rings. The customer stays connected throughout and hears ringing rather than silence. Until now the only way to move a call was to hang up on the customer and ring them back.',
         'The pin that keeps the customer panel open now survives leaving Communication and coming back, and follows you to another machine. It used to live only in the screen, so keep this open between calls meant until you look at something else.',
         'Small print across the whole app is now actually smaller than body text. It never was: the style used for captions and secondary lines had no size of its own, so it came out the same size as ordinary text in 113 files. Most screens will look slightly different because of it.',
