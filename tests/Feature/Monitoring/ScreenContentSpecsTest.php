@@ -142,6 +142,47 @@ class ScreenContentSpecsTest extends TestCase
         }
     }
 
+    public function test_the_roster_says_which_devices_are_exempt(): void
+    {
+        // Guards a trap rather than a feature: the exemption is anchored on the
+        // EMAIL, and the roster eager-loads the user with an explicit column
+        // list. Drop `email` from that list and this flag answers "nobody is
+        // exempt" for everybody — silently, with no error and no failing query.
+        // So the assertion that matters is the TRUE one.
+        $alpha = $this->provisionTenant('Alpha');
+        $lead = $alpha['admin'];
+
+        PlatformStaff::create([
+            'name' => 'Lead '.$lead->email,
+            'email' => $lead->email,
+            'password' => 'a-sufficiently-long-staff-password',
+            'tier' => PlatformStaff::TIER_LEAD,
+            'is_active' => true,
+        ]);
+
+        $ordinary = $this->userWithRole($alpha, 'Ordinary', ['monitoring.view']);
+
+        foreach ([$lead, $ordinary] as $owner) {
+            $this->inTenant($alpha['org'], fn () => MonitoredDevice::factory()->create([
+                'organization_id' => $alpha['org']->id,
+                'user_id' => $owner->getKey(),
+                'device_key' => 'dk-'.$owner->getKey(),
+                'capabilities' => ['activity', 'specs'],
+            ]));
+        }
+
+        $rows = collect($this->signedInAs($ordinary)
+            ->getJson('/api/v1/monitoring/devices')->assertOk()->json('data'))
+            ->keyBy(fn (array $row) => $row['user']['id']);
+
+        $this->assertTrue($rows[$lead->getKey()]['screen_exempt'],
+            'A Lead Developer device must be reported as exempt — if this is '
+            .'false, the user relation is probably not selecting `email`.');
+
+        // The control: without it, a flag hardcoded to true would pass above.
+        $this->assertFalse($rows[$ordinary->getKey()]['screen_exempt']);
+    }
+
     public function test_every_named_screen_content_key_is_exercised_by_this_file(): void
     {
         // A guard on the loops above: they iterate the constant, so they are

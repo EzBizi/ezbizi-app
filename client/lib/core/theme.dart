@@ -43,6 +43,18 @@ class EzBiziTheme {
           ? const Color(0xFF3DDC97)
           : const Color(0xFF0B8F5B);
 
+  /// The middle step of a load meter — "getting full", between [clockIn] and
+  /// the scheme's own error red.
+  ///
+  /// Exists because a two-colour meter has to choose between calling 64% full
+  /// fine and calling it broken, and neither is true. Amber rather than
+  /// orange-red so it reads as a different word from the error colour rather
+  /// than a lighter shade of it.
+  static Color meterWarning(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFFE0A93B)
+          : const Color(0xFFB37400);
+
   /// Punch-out coral for the outlined top-bar chip, same constraint as [clockIn].
   static Color clockOut(BuildContext context) =>
       Theme.of(context).brightness == Brightness.dark
