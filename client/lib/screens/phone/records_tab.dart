@@ -735,8 +735,15 @@ class _RecordsTabState extends State<RecordsTab> {
   }
 
   String _callTitle(_Call call) {
-    final who = call.direction == 'inbound' ? call.fromE164 : call.toE164;
+    // The colleague's name where there is one. Records listed a call to a
+    // teammate as 32 characters of hex, because a client call is addressed to
+    // a Voice identity rather than a number.
+    final who =
+        call.peerName ??
+        (call.direction == 'inbound' ? call.fromE164 : call.toE164);
+
     if (call.voicemail) return 'Voicemail · $who';
+
     return call.direction == 'inbound' ? 'Inbound · $who' : 'Outbound · $who';
   }
 
@@ -774,7 +781,13 @@ class _Call {
     this.errorMessage,
     this.tag,
     this.tagColor,
+    this.peerName,
   });
+
+  /// Who the other end is, when it is a colleague rather than a number. A
+  /// call to a teammate is addressed to a Voice identity, so without this the
+  /// record reads as 32 characters of hex.
+  final String? peerName;
 
   final String id;
   final String numberId;
@@ -810,6 +823,7 @@ class _Call {
     recordingSid: json['recording_sid'] as String?,
     transcript: json['transcript'] as String?,
     createdAt: json['created_at'] as String? ?? '',
+    peerName: json['peer_name'] as String?,
     tag: json['tag'] as String?,
     tagColor: json['tag_color'] as String?,
     errorCode: json['error_code'] as String?,

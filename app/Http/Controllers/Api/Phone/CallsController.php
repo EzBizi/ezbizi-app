@@ -5,6 +5,9 @@ namespace App\Http\Controllers\Api\Phone;
 use App\Http\Controllers\Api\Controller;
 use App\Models\Customer;
 use App\Models\PhoneCall;
+use App\Models\PhoneConnection;
+use App\Support\Phone\ClientIdentity;
+use App\Models\User;
 use App\Support\Phone\PhoneNumberAccess;
 use App\Support\Phone\TwilioGateway;
 use Illuminate\Http\JsonResponse;
@@ -190,10 +193,38 @@ class CallsController extends Controller
 
         $boxId = (string) $request->query('box_id', '');
         if ($boxId !== '') {
+            // RESOLVED, not the raw column.
+            //
+            // A line's voicemail box is `number ?? connection` — the company
+            // sets one default and a line may override it, which is the whole
+            // point of company defaults and is what routing actually obeys
+            // (`PhoneNumber::resolved`). This filter read the column alone, so
+            // a company that set its default centrally instead of on every
+            // line had EVERY box show empty while All voicemails showed the
+            // messages sitting in them.
+            //
+            // Jose reported it as clicking A-1 Chimney Mailbox and seeing
+            // nothing. Two answers to "which box does this line use", and the
+            // screen was asking the one that does not decide anything.
             $query->where('voicemail', true)->whereIn(
                 'number_id',
                 PhoneNumber::query()
-                    ->where('voicemail_box_id', $boxId)
+                    ->where(function ($line) use ($boxId) {
+                        $line->where('voicemail_box_id', $boxId)
+                            ->orWhere(function ($default) use ($boxId) {
+                                // '' is a cleared field, not a choice — the
+                                // same reading `resolved()` takes.
+                                $default->where(fn ($unset) => $unset
+                                    ->whereNull('voicemail_box_id')
+                                    ->orWhere('voicemail_box_id', ''))
+                                    ->whereIn(
+                                        'connection_id',
+                                        PhoneConnection::query()
+                                            ->where('default_voicemail_box_id', $boxId)
+                                            ->pluck('id'),
+                                    );
+                            });
+                    })
                     ->pluck('id'),
             );
         }
@@ -206,9 +237,10 @@ class CallsController extends Controller
         $calls = $query->get();
 
         $customerIds = $this->customerIdsByPhone($calls);
+        $colleagues = $this->colleagueNames($calls);
 
         $rows = $calls
-            ->map(fn (PhoneCall $call) => $this->row($call, $customerIds))
+            ->map(fn (PhoneCall $call) => $this->row($call, $customerIds, $colleagues))
             ->all();
 
         return response()->json(['data' => $rows]);
@@ -261,6 +293,50 @@ class CallsController extends Controller
             ->all();
     }
 
+    /**
+     * Names for the call legs that are colleagues rather than phone numbers.
+     *
+     * ── What the history was showing ────────────────────────────────
+     *
+     * A call to a teammate is addressed to a Voice identity, not a number,
+     * and the webhook stores that identity in `to_e164` — so Recent calls
+     * listed rows reading `01a020d0417c714ca5bf7fb3304070e1`. Correct data,
+     * and unreadable: Jose asked what the strings were, which is the right
+     * question to ask of a call log that names nobody.
+     *
+     * Resolved once for the page rather than per row, and only when a leg
+     * really is an identity — a page of ordinary calls asks nothing extra.
+     *
+     * @param  \Illuminate\Support\Collection<int, PhoneCall>  $calls
+     * @return array<string, string> identity hex => person's name
+     */
+    private function colleagueNames($calls): array
+    {
+        $identities = [];
+        foreach ($calls as $call) {
+            foreach ([$call->from_e164, $call->to_e164] as $leg) {
+                $leg = (string) $leg;
+                if ($leg !== '' && ! str_starts_with($leg, '+')) {
+                    $identities[ClientIdentity::userPartOf($leg)] = true;
+                }
+            }
+        }
+
+        if ($identities === []) {
+            return [];
+        }
+
+        $names = [];
+        foreach (User::query()->get(['id', 'name']) as $user) {
+            $hex = ClientIdentity::of($user);
+            if (isset($identities[$hex])) {
+                $names[$hex] = (string) $user->name;
+            }
+        }
+
+        return $names;
+    }
+
     private function outsideNumber(PhoneCall $call): string
     {
         return $call->direction === PhoneCall::DIRECTION_INBOUND
@@ -272,7 +348,10 @@ class CallsController extends Controller
      * @param  array<string, string>  $customerIds
      * @return array<string, mixed>
      */
-    private function row(PhoneCall $call, array $customerIds = []): array
+    /**
+     * @param  array<string, string>  $colleagues
+     */
+    private function row(PhoneCall $call, array $customerIds = [], array $colleagues = []): array
     {
         $outside = $this->outsideNumber($call);
 
@@ -291,6 +370,11 @@ class CallsController extends Controller
             'direction' => $call->direction,
             'from_e164' => $call->from_e164,
             'to_e164' => $call->to_e164,
+
+            // Who the other end IS, when it is a colleague rather than a
+            // number. Null for an ordinary call, so the screen falls back
+            // to formatting the number exactly as it always did.
+            'peer_name' => $colleagues[ClientIdentity::userPartOf($outside)] ?? null,
             'status' => $call->status,
 
             // Why it failed, where Twilio said. A row that says "failed" and

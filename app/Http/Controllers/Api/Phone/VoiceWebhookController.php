@@ -479,10 +479,30 @@ class VoiceWebhookController extends Controller
         return $this->clip((string) $request->input('To', ''));
     }
 
+    /**
+     * A call leg, short enough for the column that holds it.
+     *
+     * ── Why the client branch names the person ──────────────────────
+     *
+     * `from_e164` / `to_e164` are 32 characters, which is exactly the length
+     * of a user id with its hyphens removed. So `substr($value, 7, 32)` used
+     * to keep precisely the person half of `client:<person>_<device>` — a
+     * correct result reached by coincidence, and one that would have started
+     * truncating mid-device the day either id changed length.
+     *
+     * Said outright now. The record keeps WHO the other end was, which is what
+     * the history shows and what a customer lookup needs; which of that
+     * person's devices took the call is not stored, and the column is the
+     * reason.
+     */
     private function clip(string $value): string
     {
         if (str_starts_with($value, 'client:')) {
-            return substr($value, strlen('client:'), 32);
+            return substr(
+                ClientIdentity::userPartOf(substr($value, strlen('client:'))),
+                0,
+                32,
+            );
         }
 
         return substr($value, 0, 32);

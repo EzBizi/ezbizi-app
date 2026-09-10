@@ -68,6 +68,24 @@ class VoicemailBoxesController extends Controller
             'organization_id' => $this->tenant->idOrFail(),
         ]);
 
+        // THE FIRST BOX BECOMES THE COMPANY'S, because otherwise it is a box
+        // nothing points at.
+        //
+        // A line's voicemail box is `number ?? connection`, so a freshly made
+        // box catches nothing until somebody also sets it on a line or as the
+        // company default — two more screens, neither of them mentioned where
+        // the box was made. Jose made "A-1 Chimney Mailbox", eleven lines went
+        // on taking messages under no box at all, and clicking his own box
+        // showed an empty list. Measured: own-lines 0, connection default
+        // none, eleven lines with no box of their own.
+        //
+        // Only when the company has NO default yet, so this can never take a
+        // choice away from somebody who has made one. A second box is still an
+        // ordinary box and still has to be pointed at deliberately.
+        if (! $connection->default_voicemail_box_id) {
+            $connection->forceFill(['default_voicemail_box_id' => $box->id])->save();
+        }
+
         return response()->json(['data' => $this->row($box)], Response::HTTP_CREATED);
     }
 

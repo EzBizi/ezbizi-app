@@ -149,7 +149,15 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
             ? theme.colorScheme.error
             : theme.colorScheme.onSurfaceVariant,
       ),
-      title: Text(formatPhoneNumber(peer), style: theme.textTheme.bodyMedium),
+      // The colleague's NAME when the other end is one. A call to a teammate
+      // is addressed to a Voice identity rather than a number, so this listed
+      // rows reading `01a020d0417c714ca5bf7fb3304070e1` until the server
+      // started sending who that is. Falls back to formatting the number,
+      // which is every ordinary call.
+      title: Text(
+        row.peerName ?? formatPhoneNumber(peer),
+        style: theme.textTheme.bodyMedium,
+      ),
       subtitle: Text(
         row.subtitle,
         style: theme.textTheme.bodySmall?.copyWith(
@@ -163,6 +171,7 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
 
 class _Row {
   const _Row({
+    this.peerName,
     required this.direction,
     required this.from,
     required this.to,
@@ -200,7 +209,11 @@ class _Row {
     };
   }
 
+  /// Who the other end is, when it is a colleague rather than a number.
+  final String? peerName;
+
   factory _Row.fromJson(Map<String, dynamic> json) => _Row(
+    peerName: json['peer_name'] as String?,
     direction: (json['direction'] ?? '').toString(),
     from: (json['from_e164'] ?? '').toString(),
     to: (json['to_e164'] ?? '').toString(),
