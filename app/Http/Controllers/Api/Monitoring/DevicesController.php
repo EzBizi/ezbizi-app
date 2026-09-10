@@ -79,7 +79,19 @@ class DevicesController extends Controller
         // a caller who lacks `monitoring.specs.view` should not learn from the
         // shape of the response that specs exist to be granted.
         if ($canSeeSpecs) {
-            $row['specs'] = $d->specs;
+            $specs = $d->specs;
+
+            // `active_window` rides in the specs blob because the agent reads
+            // it in the same pass, but it is NOT a spec: it is the title of
+            // what is on screen right now, which is the same class of thing a
+            // screenshot shows. So it needs the screenshot grant, not the
+            // hardware one — `monitoring.specs.view` alone buys you what the
+            // machine IS, never what is on it.
+            if (! $canSeeCapture && is_array($specs)) {
+                unset($specs['active_window']);
+            }
+
+            $row['specs'] = $specs;
         }
 
         // Why the last capture did not happen, for whoever can see captures at

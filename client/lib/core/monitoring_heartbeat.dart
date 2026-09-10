@@ -83,8 +83,14 @@ class MonitoringHeartbeat {
     // conditional on ever having changed modules.
     _timer = Timer.periodic(_interval, (_) => unawaited(_post()));
     unawaited(refreshSpecs()); // first read, non-blocking
+    // Every minute, alongside the beat. It used to be every fifteen, which
+    // was fine while specs meant "how much RAM does this machine have" and is
+    // wrong now that they carry live load: a CPU figure is measured BETWEEN
+    // reads (see CpuPercentSinceLastCall in monitoring_specs.cpp), so a
+    // fifteen-minute gap makes "busy" mean the last quarter of an hour, and a
+    // roster showing that as a live meter would be quietly lying.
     _specsTimer = Timer.periodic(
-      const Duration(minutes: 15),
+      const Duration(seconds: 60),
       (_) => unawaited(refreshSpecs()),
     );
   }
@@ -117,7 +123,18 @@ class MonitoringHeartbeat {
   /// specs).
   Future<void> refreshSpecs() async {
     final specs = await _readSpecs();
-    if (specs != null) _lastSpecs = specs;
+    if (specs == null) return;
+
+    // SECURITY exemption: `active_window` is the title of whatever is in
+    // front, which is screen CONTENT rather than anything about the machine —
+    // it can name a customer, a subject line, a document. An exempt device
+    // does not report it at all, the same way it does not capture. Everything
+    // else in specs describes the hardware and still goes: an exempt machine
+    // is still online, still shows its RAM and its disks. The server strips
+    // this too (HeartbeatController), so a tampered client gains nothing.
+    if (_screenMonitoringExempt) specs.remove('active_window');
+
+    _lastSpecs = specs;
   }
 
   /// Record how the last screen capture went, for the next beat to carry.

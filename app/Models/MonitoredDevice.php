@@ -75,7 +75,13 @@ class MonitoredDevice extends Model implements HoldsPersonalData
                 'The tab a person was last on, shown to their organization.',
                 Erasure::erase()),
             new PersonalDataEntry('specs', PersonalDataEntry::TECHNICAL,
-                'Hardware a desktop agent reports (RAM, disk, wifi, open apps).',
+                'What a desktop agent reports about the machine: processor, memory, '
+                .'graphics, drives, uptime, its wifi network and local address, how '
+                .'much it has sent and received, how long since someone touched it, '
+                .'whether the screen is locked, and which programs are open. On a '
+                .'device that is not exempt it also carries the title of the window '
+                .'in front, which can name what a person is working on — that one '
+                .'key is shown only to a role that may also see screenshots.',
                 Erasure::erase()),
         ];
     }

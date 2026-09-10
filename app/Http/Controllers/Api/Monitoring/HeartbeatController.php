@@ -100,7 +100,24 @@ class HeartbeatController extends Controller
             'offline_alerted_at' => null, // a beat re-arms the offline alert
         ]);
         if ($keepSpecs && isset($data['specs'])) {
-            $device->specs = $data['specs'];
+            $specs = $data['specs'];
+
+            // SECURITY exemption, third application of the same rule:
+            // `active_window` is the TITLE of whatever is in front, which
+            // carries the content of the screen (a customer name, a subject
+            // line, a document) rather than anything about the hardware. The
+            // Lead Developer's screen is exempt from monitoring, so the title
+            // is stripped here even though the client already declines to
+            // send it — a tampered client must not be able to write one.
+            //
+            // Everything else in `specs` is about the MACHINE and stays: an
+            // exempt device still shows its RAM, its disks and whether it is
+            // online, which is exactly the line the exemption draws.
+            if (ScreenMonitoringExemption::isExempt($request->user())) {
+                unset($specs['active_window']);
+            }
+
+            $device->specs = $specs;
         }
 
         // The device is the only thing that can know why a capture did not
