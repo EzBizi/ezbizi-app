@@ -123,6 +123,18 @@ dependencies {
     // desugaring on, this supplies the backported library it desugars against.
     // Neither does anything without the other.
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+
+    // Already in this app, and already in the APK - twilio_voice pulls
+    // firebase-messaging:24.1.0 and it is measurably in the shipped artefact.
+    // It is declared `implementation` there, though, so it is NOT on this
+    // module’s compile classpath: measured with a control, twilio_voice and
+    // flutter_local_notifications both present in releaseCompileClasspath and
+    // firebase-messaging absent from it while present in releaseRuntimeClasspath.
+    //
+    // So this line buys COMPILE visibility for MainActivity.kt, not a new
+    // dependency. Pinned to the exact version twilio_voice resolves so there is
+    // never a second one to reconcile; no download size is added.
+    implementation("com.google.firebase:firebase-messaging:24.1.0")
 }
 
 flutter {
