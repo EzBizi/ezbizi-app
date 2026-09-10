@@ -52,7 +52,11 @@ table{border-collapse:collapse;width:100%;font-size:12px;margin-top:4px}
 th{text-align:left;font-weight:700;padding:7px 8px;border-bottom:1px solid var(--line);
    color:var(--muted);white-space:nowrap}
 td{padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
-.capline{font-size:12px;color:var(--bad);font-weight:600;margin-top:10px}
+/* NOT the error colour, though I drew it that way first. A row cap is not a
+   failure: nothing went wrong, the reader did nothing wrong, and the report
+   worked. Dressing a limit in error red is the advisory-wearing-the-failure-
+   component mistake, and it is paid for by the screens where red means stop. */
+.capline{font-size:12px;color:var(--muted);font-weight:600;margin-top:10px}
 .empty{padding:22px 12px;text-align:center;color:var(--muted);font-size:13px}
 .empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:6px}
 .steps{display:flex;gap:6px;margin-bottom:12px;font-size:12px;font-weight:700}
