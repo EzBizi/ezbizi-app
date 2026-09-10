@@ -48,7 +48,7 @@ void main() {
     'never a blank row',
     (tester) async {
       await _pumpScreen(tester, devices: [_agentDevice, _webDevice]);
-      await _openPerson(tester, 'Priya Nair');
+      await _openPerson(tester, 'u-priya');
 
       final webRow = find.byKey(const ValueKey('monitoring-device-dev-web'));
       expect(webRow, findsOneWidget);
@@ -84,7 +84,7 @@ void main() {
     tester,
   ) async {
     await _pumpScreen(tester, devices: [_agentDevice, _webDevice]);
-    await _openPerson(tester, 'Marco Reyes');
+    await _openPerson(tester, 'u-marco');
 
     final agentRow = find.byKey(const ValueKey('monitoring-device-dev-agent'));
     expect(agentRow, findsOneWidget);
@@ -107,7 +107,7 @@ void main() {
       final withheld = Map<String, dynamic>.from(_agentDevice)..remove('specs');
 
       await _pumpScreen(tester, devices: [withheld]);
-      await _openPerson(tester, 'Marco Reyes');
+      await _openPerson(tester, 'u-marco');
 
       final row = find.byKey(const ValueKey('monitoring-device-dev-agent'));
       expect(
@@ -152,7 +152,7 @@ void main() {
       final device = {..._agentDevice, 'last_seen_at': threeMinutesAgo};
 
       await _pumpScreen(tester, devices: [device]);
-      await _openPerson(tester, 'Marco Reyes');
+      await _openPerson(tester, 'u-marco');
 
       final row = find.byKey(const ValueKey('monitoring-device-dev-agent'));
 
@@ -346,32 +346,95 @@ void main() {
   });
 
   testWidgets(
-    'the roster opens collapsed: a person is listed, their specs are not, '
-    'until the card is opened',
+    'the grid shows a card per person and the detail panel only after one is '
+    'chosen',
     (tester) async {
       await _pumpScreen(tester, devices: [_agentDevice]);
 
-      // Collapsing is only defensible because the header still answers the
-      // question the tab exists for, so that half is asserted too.
+      // The card answers the tab's question on its own, which is the whole
+      // reason the detail can wait for a click.
       expect(find.text('Marco Reyes'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('monitoring-machine-u-marco')),
+        findsOneWidget,
+      );
 
       final row = find.byKey(const ValueKey('monitoring-device-dev-agent'));
       expect(
         row,
         findsNothing,
         reason:
-            'A collapsed card must not render its device row. If this finds '
-            'one, the roster is expanded by default again and every '
-            '_openPerson call in this file is dead weight that would keep '
-            'passing without noticing.',
+            'Nothing is selected, so no machine detail should be on screen. '
+            'If this finds a device row, the panel is showing somebody by '
+            'default and every _openPerson call in this file is dead weight '
+            'that would keep passing without noticing.',
       );
 
-      await _openPerson(tester, 'Marco Reyes');
+      await _openPerson(tester, 'u-marco');
 
-      // Positive control for the assertion above: the row it proved absent
-      // is reachable, so that absence is the collapse rather than a renamed
+      // Positive control for the assertion above: the row it proved absent is
+      // reachable, so that absence is the selection rule rather than a renamed
       // key or a fixture that never rendered anything at all.
       expect(row, findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'searching narrows the grid, and the count says what it is hiding',
+    (tester) async {
+      await _pumpScreen(tester, devices: [_agentDevice, _webDevice]);
+
+      final marco = find.byKey(const ValueKey('monitoring-machine-u-marco'));
+      final priya = find.byKey(const ValueKey('monitoring-machine-u-priya'));
+
+      expect(marco, findsOneWidget);
+      expect(priya, findsOneWidget);
+      expect(find.text('2'), findsOneWidget,
+          reason: 'Unfiltered, the count is just the total.');
+
+      await tester.enterText(
+        find.byKey(const Key('monitoring-machine-search')),
+        'priya',
+      );
+      await tester.pumpAndSettle();
+
+      expect(priya, findsOneWidget);
+      expect(marco, findsNothing);
+
+      // The load-bearing half. A filtered grid that reported only what it
+      // kept would read as "this organization has one machine", which is a
+      // different and alarming statement. "1 of 2" says a filter is on.
+      expect(find.text('1 of 2'), findsOneWidget);
+
+      // Control: clearing brings the other one back, so the disappearance
+      // above was the filter rather than a card that failed to build.
+      await tester.enterText(
+        find.byKey(const Key('monitoring-machine-search')),
+        '',
+      );
+      await tester.pumpAndSettle();
+      expect(marco, findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'a search matching nobody says so, rather than showing everybody',
+    (tester) async {
+      await _pumpScreen(tester, devices: [_agentDevice, _webDevice]);
+
+      await tester.enterText(
+        find.byKey(const Key('monitoring-machine-search')),
+        'zzzz-no-such-machine',
+      );
+      await tester.pumpAndSettle();
+
+      // An empty needle matches everybody; a needle that matches nothing must
+      // not fall back to that, which is the easy way to write this wrong.
+      expect(find.byKey(const ValueKey('monitoring-machine-u-marco')),
+          findsNothing);
+      expect(find.byKey(const ValueKey('monitoring-machine-u-priya')),
+          findsNothing);
+      expect(find.text('0 of 2'), findsOneWidget);
     },
   );
 
@@ -385,7 +448,7 @@ void main() {
           ..['label'] = null;
 
         await _pumpScreen(tester, devices: [noLabel]);
-        await _openPerson(tester, 'Priya Nair');
+        await _openPerson(tester, 'u-priya');
 
         final row = find.byKey(const ValueKey('monitoring-device-dev-web-nolabel'));
         expect(row, findsOneWidget);
@@ -420,7 +483,7 @@ void main() {
         final agentSecond = {..._agentDevice, 'id': 'dev-agent-active'};
 
         await _pumpScreen(tester, devices: [browserFirst, agentSecond]);
-        await _openPerson(tester, 'Marco Reyes');
+        await _openPerson(tester, 'u-marco');
 
         expect(
           find.byKey(const ValueKey('monitoring-device-dev-agent-active')),
@@ -534,7 +597,7 @@ void main() {
         };
 
         await _pumpScreen(tester, devices: [_agentDevice, staleDevice]);
-        await _openPerson(tester, 'Marco Reyes');
+        await _openPerson(tester, 'u-marco');
 
         // The active device renders immediately.
         expect(
@@ -584,7 +647,7 @@ void main() {
         };
 
         await _pumpScreen(tester, devices: [_agentDevice, secondActive]);
-        await _openPerson(tester, 'Marco Reyes');
+        await _openPerson(tester, 'u-marco');
 
         // Only the first (selected-by-default) device row shows at once —
         // never both active rows stacked together.
@@ -642,7 +705,7 @@ void main() {
         };
 
         await _pumpScreen(tester, devices: [recent, older]);
-        await _openPerson(tester, 'Marco Reyes');
+        await _openPerson(tester, 'u-marco');
 
         expect(
           find.byKey(const ValueKey('monitoring-device-dev-recent')),
@@ -703,8 +766,8 @@ const _webDevice = {
 /// every card for every test and leave the collapsed default asserted by
 /// nothing, which is the failure mode where the behaviour changes and the
 /// suite stays green.
-Future<void> _openPerson(WidgetTester tester, String name) async {
-  await tester.tap(find.text(name));
+Future<void> _openPerson(WidgetTester tester, String personId) async {
+  await tester.tap(find.byKey(ValueKey('monitoring-machine-$personId')));
   await tester.pumpAndSettle();
 }
 
