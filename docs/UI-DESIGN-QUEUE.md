@@ -1412,10 +1412,23 @@ screen, which is correct — a builder is a new arrangement, not a state change 
 - **The 5,000 cap line disappears when there are no rows.** "The first 5,000" of nothing is not
   a truthful sentence about the box, and a red line under an empty table reads as a fault.
 
-> **One thing the endpoint constrains that the drawings had to respect:** `GET /reports/fields`
-> returns relations as `{'to': …}` only — **the edge has no label.** So a picker can say
-> *"Jobs › Customers"* but cannot name the relationship, which rules out any design that leans
-> on reading the hop as a phrase.
+> **CORRECTED by Reports, and I had it half wrong.** I read the `array_map` callback in
+> `fields`, saw it return `['to' => …]`, and concluded the edge had no name. **The name is the
+> KEY:** `array_map` preserves string keys, so the payload is
+> `"relations": {"customer": {"to": "customers"}}`. Verified in PHP rather than reasoned about.
+> **I read what the transform RETURNED and never looked at what it was keyed by** — the name was
+> in the structure, one level up from where I was reading.
+>
+> What is genuinely missing is a **human** label: `customer`, not "the customer on the job".
+> Titleising the key works until a relation is called `owning_franchise` or `performed_by`.
+>
+> **Ruled: do not add one speculatively, and here is the exact trigger.** Measured, `ReportMap`
+> holds **one** relation in the whole product — `jobs.customer → customers` — so *"Jobs ›
+> Customers"* names the hop unambiguously and a label buys nothing. **The moment two relations
+> from one resource point at the SAME target** (say `customer` and `billing_contact`, both to
+> customers), the target name stops identifying the edge, the tree shows the same phrase twice,
+> and a human label becomes required rather than nice. It is one field in `ReportMap` and one
+> line in the controller at that point.
 
 ### 7 · Organization · Brand colour picker — **DRAWN, with Jose**
 
