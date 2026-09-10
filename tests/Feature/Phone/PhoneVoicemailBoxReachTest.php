@@ -8,6 +8,7 @@ use App\Models\PhoneNumber;
 use App\Models\PhoneNumberGrant;
 use App\Models\PhoneVoicemailBox;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -132,6 +133,191 @@ class PhoneVoicemailBoxReachTest extends TestCase
             $first,
             $this->inTenant($t['org'], fn () => $connection->fresh()->default_voicemail_box_id),
         );
+    }
+
+    /**
+     * Deleting the company's box hands the job to another, not to nothing.
+     *
+     * `destroy()` repointed the LINES and forgot the connection, so removing a
+     * default left every line inheriting an id that resolves to nothing — the
+     * same box-nothing-points-at defect from the other end, and this time
+     * wearing a setting that looks like somebody chose it.
+     */
+    public function test_deleting_the_default_box_hands_it_to_the_next(): void
+    {
+        [$t, $connection, , $desk] = $this->line();
+
+        $first = $this->signedInAs($desk)->postJson('/api/v1/phone/voicemail-boxes', [
+            'connection_id' => $connection->id,
+            'name' => 'Main',
+        ])->assertCreated()->json('data.id');
+
+        $second = $this->signedInAs($desk)->postJson('/api/v1/phone/voicemail-boxes', [
+            'connection_id' => $connection->id,
+            'name' => 'Sales',
+        ])->assertCreated()->json('data.id');
+
+        $this->signedInAs($desk)
+            ->deleteJson('/api/v1/phone/voicemail-boxes/'.$first)
+            ->assertOk();
+
+        $this->assertSame(
+            $second,
+            $this->inTenant($t['org'], fn () => $connection->fresh()->default_voicemail_box_id),
+            'the company still points at a box that no longer exists',
+        );
+    }
+
+    /**
+     * And with nothing left to hand it to, it says so rather than dangling.
+     *
+     * The control for the test above: a reassignment that always found
+     * "another box" would have to invent one, and a stale id and a null read
+     * identically at the routing end while only one of them is honest.
+     */
+    public function test_deleting_the_last_box_leaves_the_company_pointing_at_nothing(): void
+    {
+        [$t, $connection, , $desk] = $this->line();
+
+        $only = $this->signedInAs($desk)->postJson('/api/v1/phone/voicemail-boxes', [
+            'connection_id' => $connection->id,
+            'name' => 'Only',
+        ])->assertCreated()->json('data.id');
+
+        $this->signedInAs($desk)
+            ->deleteJson('/api/v1/phone/voicemail-boxes/'.$only)
+            ->assertOk();
+
+        $this->assertNull(
+            $this->inTenant($t['org'], fn () => $connection->fresh()->default_voicemail_box_id),
+        );
+    }
+
+    /**
+     * A box made before any of this catches messages without being asked.
+     *
+     * Jose's A-1 Chimney Mailbox predates the rule that a new box claims the
+     * company default, so that rule left exactly the box which reported the
+     * bug still catching nothing. His words: it should be set automatically.
+     *
+     * This drives the backfill over the state production was actually in — a
+     * box, and a connection pointing nowhere.
+     */
+    public function test_an_older_box_is_adopted_by_its_company(): void
+    {
+        [$t, $connection, , $desk] = $this->line();
+
+        $box = $this->inTenant($t['org'], function () use ($t, $connection) {
+            $box = PhoneVoicemailBox::query()->create([
+                'organization_id' => $t['org']->id,
+                'connection_id' => $connection->id,
+                'name' => 'A-1 Chimney Mailbox',
+            ]);
+
+            // The state the create rule cannot reach: a box that exists and a
+            // company pointed at nothing.
+            $connection->forceFill(['default_voicemail_box_id' => null])->save();
+
+            return $box;
+        });
+
+        $this->runBackfill();
+
+        $this->assertSame(
+            $box->id,
+            $this->inTenant($t['org'], fn () => $connection->fresh()->default_voicemail_box_id),
+            'the box still catches nothing and Jose still has to find a screen',
+        );
+    }
+
+    /**
+     * And a company that has chosen keeps its choice.
+     *
+     * The control. A backfill that simply wrote the oldest box everywhere
+     * would pass the test above and silently redirect every company that had
+     * deliberately picked a different one.
+     */
+    public function test_the_backfill_does_not_overwrite_a_choice(): void
+    {
+        [$t, $connection, , $desk] = $this->line();
+
+        $chosen = $this->inTenant($t['org'], function () use ($t, $connection) {
+            // Two boxes, and the one the company wants is NOT the oldest.
+            PhoneVoicemailBox::query()->create([
+                'organization_id' => $t['org']->id,
+                'connection_id' => $connection->id,
+                'name' => 'Older',
+                'created_at' => now()->subDay(),
+            ]);
+
+            $chosen = PhoneVoicemailBox::query()->create([
+                'organization_id' => $t['org']->id,
+                'connection_id' => $connection->id,
+                'name' => 'The one they picked',
+            ]);
+
+            $connection->forceFill(['default_voicemail_box_id' => $chosen->id])->save();
+
+            return $chosen;
+        });
+
+        $this->runBackfill();
+
+        $this->assertSame(
+            $chosen->id,
+            $this->inTenant($t['org'], fn () => $connection->fresh()->default_voicemail_box_id),
+        );
+    }
+
+    /**
+     * A company pointed at a box that has been deleted is repointed.
+     *
+     * That id resolves to nothing, which is the same as having no box while
+     * looking like a setting somebody made — the worse of the two, because it
+     * stops anybody looking.
+     */
+    public function test_a_stale_default_is_repointed(): void
+    {
+        [$t, $connection, , $desk] = $this->line();
+
+        $box = $this->inTenant($t['org'], function () use ($t, $connection) {
+            $box = PhoneVoicemailBox::query()->create([
+                'organization_id' => $t['org']->id,
+                'connection_id' => $connection->id,
+                'name' => 'Live box',
+            ]);
+
+            $connection->forceFill([
+                'default_voicemail_box_id' => (string) Str::uuid(),
+            ])->save();
+
+            return $box;
+        });
+
+        $this->runBackfill();
+
+        $this->assertSame(
+            $box->id,
+            $this->inTenant($t['org'], fn () => $connection->fresh()->default_voicemail_box_id),
+        );
+    }
+
+    /**
+     * The migration itself, run again over the current data.
+     *
+     * RefreshDatabase has already migrated, and it ran before these fixtures
+     * existed — so a test that trusted that run would be asserting against an
+     * empty table and could not fail.
+     */
+    private function runBackfill(): void
+    {
+        $file = database_path(
+            'migrations/2026_09_10_170000_point_every_company_at_a_voicemail_box.php',
+        );
+
+        $this->assertFileExists($file, 'the backfill this test names is not there');
+
+        (require $file)->up();
     }
 
     /**

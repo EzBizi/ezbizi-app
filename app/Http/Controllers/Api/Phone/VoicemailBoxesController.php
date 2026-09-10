@@ -118,6 +118,30 @@ class VoicemailBoxesController extends Controller
             ->where('voicemail_box_id', $box->id)
             ->update(['voicemail_box_id' => null]);
 
+        // AND THE COMPANY, which was the half this forgot.
+        //
+        // Lines were repointed and the connection was not, so deleting the
+        // company's default left every line inheriting an id that resolves to
+        // nothing — the same "box nothing points at" defect, arrived at from
+        // the other end, and this time wearing a setting that looks deliberate.
+        //
+        // Handed to the next oldest box rather than nulled, because a company
+        // with a box and no default is precisely the state that had eleven of
+        // Jose's lines taking messages nobody could find. Null only when that
+        // was the last box, where there is genuinely nothing to point at.
+        if ($connection->default_voicemail_box_id === $box->id) {
+            $next = PhoneVoicemailBox::query()
+                ->where('connection_id', $connection->id)
+                ->whereKeyNot($box->id)
+                ->orderBy('created_at')
+                ->orderBy('id')
+                ->first();
+
+            $connection->forceFill([
+                'default_voicemail_box_id' => $next?->id,
+            ])->save();
+        }
+
         $box->delete();
 
         return response()->json(['data' => ['id' => $box->id, 'deleted' => true]]);
