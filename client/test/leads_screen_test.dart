@@ -843,6 +843,44 @@ void _conversationRowTests() {
       findsOneWidget,
     );
   });
+
+  /// A booking is an appointment somebody made on the ad, not a nameless
+  /// enquiry and not a text message.
+  ///
+  /// Google returns `contactDetails: []` for lead_type BOOKING (measured
+  /// against production, 2026-09-10) and there is no other field and no other
+  /// resource carrying the customer. The row said "Unnamed enquiry", badged it
+  /// "Text" because BOOKING fell through the channel switch, and the thread
+  /// drew an empty message bubble attributed to the customer.
+  testWidgets('a Google booking is named as one, badged as one, and says where '
+      'the details are', (tester) async {
+    await _pump(
+      tester,
+      leads: [
+        {
+          'id': 'b-1',
+          'source': 'local_services',
+          'lead_type': 'BOOKING',
+          'contact_name': null,
+          'phone': null,
+          'status': 'new',
+          'received_at': '2026-09-10T17:27:03Z',
+          'last_contact_channel': 'BOOKING',
+          'last_contact_at': '2026-09-10T17:27:03Z',
+        },
+      ],
+      connections: _connected,
+    );
+
+    expect(find.text('Booking through Google'), findsWidgets);
+    expect(find.text('Unnamed enquiry'), findsNothing);
+    expect(
+      find.text('Text'),
+      findsNothing,
+      reason: 'BOOKING fell through the channel switch and read as a message',
+    );
+    expect(find.text('Booking'), findsOneWidget);
+  });
 }
 
 final _posts = <String>[];

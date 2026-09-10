@@ -192,6 +192,38 @@ the Bedrock console shows for Claude in `us-east-1`; it is not guessed here.
   (needs an S3 bucket and Amazon Transcribe, both his to provision).
 - Cost at A-1 Chimney's volume, measured: single digits a month.
 
+## 4c · "Unnamed enquiry" is two different absences
+
+Measured against production on 2026-09-10, after Jose asked what they were.
+
+**Bookings (451).** `lead_type = BOOKING` is somebody pressing Book on the ad.
+Google answers `"contactDetails": []` — an empty list, not a missing key — and
+there is nowhere else to look: `googleAdsFields:search` lists SIXTEEN selectable
+fields on `local_services_lead` and not one describes a booking, `note.description`
+is empty on them, and a catalogue search for any field named `*booking*` returns
+hotel and video-campaign settings only. The customer is in Google's Local
+Services inbox and not on the wire. The row now says "Booking through Google",
+badges "Booking" rather than falling through the channel switch to "Text", and
+the thread draws a line saying where the details are instead of an empty message
+bubble attributed to the customer.
+
+**Google's retention (about 14,000).** Contact details age out of the API:
+
+| Year | Leads held | With no name and no number |
+|---|---|---|
+| 2024 | 6,040 | 6,040 (100%) |
+| 2025 | 22,629 | 8,007 (35%) |
+| 2026 | 12,085 | 392 (3%) |
+
+Nothing is wrong with those rows and nothing can be recovered — they arrived in
+the ten-year re-read, and Google no longer holds what it once sent. Worth knowing
+before somebody reports the backfill as broken.
+
+**Two fields we do NOT select and could.** `local_services_lead.note.description`
+(the business's own note on the lead, written in Google's UI — a bare
+`local_services_lead.note` is refused, the sub-field is not) and
+`lead_feedback_submitted`. Neither helps a booking; both are there if wanted.
+
 ## 5 · `login-customer-id` is per connection
 
 Never an installation-wide config value. The manager an account sits under is a

@@ -750,6 +750,8 @@ class _LeadThreadState extends State<LeadThread> {
       final Widget body;
       if (c['channel'] == 'PHONE_CALL') {
         body = _callRow(theme, c, who: who, when: when);
+      } else if (c['channel'] == 'BOOKING') {
+        body = _bookingRow(theme, when: when);
       } else {
         body = _message(theme, c, mine: mine, who: who, when: when);
       }
@@ -765,6 +767,40 @@ class _LeadThreadState extends State<LeadThread> {
         ),
       );
     },
+  );
+
+  /// A booking, and where the details are.
+  ///
+  /// It used to draw an empty message bubble: Google sends no text on a
+  /// booking conversation, so the thread showed a blank box attributed to the
+  /// customer, which reads as a message they sent and left empty.
+  Widget _bookingRow(ThemeData theme, {required String when}) => Container(
+    padding: const EdgeInsets.fromLTRB(11, 9, 11, 8),
+    decoration: BoxDecoration(
+      color: theme.colorScheme.surface,
+      border: Border.all(color: theme.colorScheme.outlineVariant),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          'Booked through Google · $when',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          'Google does not send the customer on a booking. Their name, number '
+          'and the time they chose are in your Local Services inbox.',
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    ),
   );
 
   Widget _message(
@@ -919,6 +955,24 @@ String leadTitle(Map<String, dynamic> lead) {
   if (name != null && name.isNotEmpty) return name;
   final phone = lead['phone'] as String?;
   if (phone != null && phone.isNotEmpty) return formatPhoneNumber(phone);
+
+  /*
+   * A booking is not a nameless enquiry, it is an appointment.
+   *
+   * Google's API returns `contactDetails: []` for lead_type BOOKING —
+   * measured against production on 2026-09-10, and there is nowhere else to
+   * look: the API's own field catalogue lists sixteen selectable fields on
+   * local_services_lead and not one of them describes a booking, while a
+   * search for any field named *booking* returns hotel and video campaign
+   * settings only. The customer's details are in Google's Local Services
+   * inbox, not on the wire.
+   *
+   * So "Unnamed enquiry" was true and useless. Naming the thing it IS lets
+   * somebody act on it; 451 of these were sitting in the list looking like
+   * enquiries nobody could identify.
+   */
+  if (lead['lead_type'] == 'BOOKING') return 'Booking through Google';
+
   return 'Unnamed enquiry';
 }
 
@@ -987,6 +1041,9 @@ String channelWord(String? channel) => switch (channel) {
   'PHONE_CALL' => 'Call',
   'LIVECHAT' => 'Chat',
   'FORM' => 'Form',
+  // Somebody pressed Book on the Google ad. It fell through to "Text" and
+  // put a message badge on an appointment nobody had written a word on.
+  'BOOKING' => 'Booking',
   _ => 'Text',
 };
 
