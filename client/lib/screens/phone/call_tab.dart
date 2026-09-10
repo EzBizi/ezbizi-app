@@ -122,6 +122,13 @@ class _CallTabState extends State<CallTab> {
     super.initState();
     _service = widget.service ?? PhoneCallService.current;
     _service.addListener(_onServiceChanged);
+
+    // The pin, from the person rather than from this screen. Read here and not
+    // in the field initialiser because the field belongs to a State that is
+    // built fresh every time somebody opens Communication — which is exactly
+    // the moment the old pin was lost.
+    _customerPinned = widget.session.me?.phoneCustomerPanelPinned ?? false;
+
     _load();
   }
 
@@ -342,6 +349,8 @@ class _CallTabState extends State<CallTab> {
   bool get _deskDown => !_service.registered;
 
   /// Keep the customer column even with nobody on the line.
+  /// Seeded from the person's own preference in [initState], because the
+  /// pin has to survive leaving Communication and coming back.
   bool _customerPinned = false;
 
   /// Bumped when a call ends, so the history beside the pad shows the row it
@@ -1268,8 +1277,19 @@ class _CallTabState extends State<CallTab> {
                       : Icons.push_pin_outlined,
                   size: 18,
                 ),
-                onPressed: () =>
-                    setState(() => _customerPinned = !_customerPinned),
+                onPressed: () {
+                  final pinned = !_customerPinned;
+                  setState(() => _customerPinned = pinned);
+
+                  // Not awaited, and the screen is already right. Session
+                  // updates its own copy first and refetches if the write
+                  // fails, so a pin that could not be saved comes back as
+                  // unpinned rather than as a lie on screen.
+                  widget.session.setPreference(
+                    'phone.customer_panel_pinned',
+                    pinned,
+                  );
+                },
               ),
             ],
           ),

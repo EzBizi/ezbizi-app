@@ -118,6 +118,27 @@ class PreferenceRegistry
              * Set by dragging, so neither appears in Settings — the client asks
              * for these two keys by name, the way it asks for the sidebar's.
              */
+            /*
+             * Whether the customer panel on the dial pad stays open.
+             *
+             * Registered rather than kept in the screen for the same reason as
+             * the two widths below it, and Jose reported the same symptom: the
+             * pin worked, and leaving Communication and coming back lost both
+             * the panel and the pin. A tab's State goes when the tab does, so
+             * a "keep this open" that lives there means "keep this open until
+             * you look at something else", which is the opposite of what the
+             * pin is for.
+             *
+             * Set by clicking the pin, so like the widths it is not something
+             * anybody picks from a list.
+             */
+            'phone.customer_panel_pinned' => [
+                'label' => 'Keep the customer panel open',
+                'type' => 'bool',
+                'default' => false,
+                'help' => 'Click the pin on the customer panel to change it.',
+            ],
+
             'web.widgets.list_width' => [
                 'label' => 'Website list width',
                 'type' => 'int',

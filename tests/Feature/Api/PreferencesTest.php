@@ -78,6 +78,42 @@ class PreferencesTest extends TestCase
         $this->assertSame('dark', $me['preferences']['appearance.theme']);
     }
 
+    /**
+     * The dial pad's customer panel remembers whether it was pinned.
+     *
+     * Jose pinned it, left Communication, came back, and found the panel gone
+     * and the pin with it — a "keep this open" that meant "until you look at
+     * something else". The screen's State goes when the tab does, so the
+     * answer cannot live there.
+     *
+     * Asserted on `/me` rather than only on the preferences endpoint, because
+     * `/me` is what the dial pad actually reads on the first frame. A value
+     * stored somewhere the screen never looks is the same defect wearing a
+     * passing test.
+     */
+    public function test_the_customer_panel_pin_survives_leaving_the_screen(): void
+    {
+        $before = $this->as()
+            ->getJson('/api/v1/me/preferences')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertFalse(
+            $before['phone.customer_panel_pinned'],
+            'the panel is pinned for everybody who has never asked for it',
+        );
+
+        $this->as()->patchJson('/api/v1/me/preferences', [
+            'preferences' => ['phone.customer_panel_pinned' => true],
+        ])->assertOk();
+
+        $this->app['auth']->forgetGuards();
+
+        $me = $this->as()->getJson('/api/v1/me')->assertOk()->json('data');
+
+        $this->assertTrue($me['preferences']['phone.customer_panel_pinned']);
+    }
+
     public function test_a_partial_update_leaves_the_others_alone(): void
     {
         $this->as()->patchJson('/api/v1/me/preferences', [

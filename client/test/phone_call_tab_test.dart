@@ -77,6 +77,79 @@ void main() {
     expect(find.textContaining('2026'), findsOneWidget);
   });
 
+  /// The pin survives leaving Communication and coming back.
+  ///
+  /// ── What Jose reported ───────────────────────────────────────
+  ///
+  /// "The pin to keep the right sidebar open between calls works, but as soon
+  /// as u leave the communcation tab and come back it, it's gone, and the pin
+  /// is removed."
+  ///
+  /// It lived in this screen's State, and the State is built fresh every time
+  /// Communication opens — so "keep this open between calls" meant "until you
+  /// look at something else", which is the opposite of what a pin is for.
+  ///
+  /// A fresh CallTab with the preference already set is exactly the state of
+  /// coming back to the tab, which is why the test is written this way round
+  /// rather than by tapping the pin and rebuilding.
+  testWidgets('a pinned customer panel is still pinned on the way back', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      size: const Size(1280, 900),
+      preferences: const {'phone.customer_panel_pinned': true},
+    );
+
+    expect(
+      find.byIcon(Icons.push_pin),
+      findsOneWidget,
+      reason: 'the pin came back unpinned, which is what Jose reported',
+    );
+    expect(find.text('Customer'), findsOneWidget);
+  });
+
+  /// And somebody who has never pinned it does not get it pinned.
+  ///
+  /// The control. Without it, a panel that was simply always open would pass
+  /// the test above and take a column off every desk in the company.
+  testWidgets('an unpinned panel stays out of the way', (tester) async {
+    await _pump(tester, size: const Size(1280, 900));
+
+    expect(find.byIcon(Icons.push_pin), findsNothing);
+  });
+
+  /// Clicking the pin writes it where the next visit will look.
+  ///
+  /// Asserts the PATCH, not the icon: an icon that flips and a preference that
+  /// is never saved look identical until you leave the tab, which is the whole
+  /// defect.
+  testWidgets('pinning is saved as a preference', (tester) async {
+    final seen = <http.Request>[];
+    await _pump(tester, size: const Size(1280, 900), seen: seen);
+
+    // The pin lives on the panel, and the panel only appears when there is
+    // somebody to show — so there has to be a number typed before there is a
+    // pin to click.
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Number'),
+      '305 724 2199',
+    );
+    await tester.pumpAndSettle();
+
+    await _tap(tester, find.byTooltip('Keep this open between calls'));
+
+    final saved = seen.lastWhere(
+      (r) => r.url.path.endsWith('/me/preferences'),
+      orElse: () => throw StateError('nothing was saved'),
+    );
+
+    expect(
+      jsonDecode(saved.body)['preferences'],
+      containsPair('phone.customer_panel_pinned', true),
+    );
+  });
+
   /// The reader can drag the line between two columns.
   ///
   /// Every fixed split is wrong for two of the three things somebody does at
@@ -1167,6 +1240,7 @@ Future<void> _pump(
   VoiceDevice? device,
   List<http.Request>? seen,
   bool requireCallTag = false,
+  Map<String, Object?> preferences = const {},
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -1175,6 +1249,7 @@ Future<void> _pump(
   final inner = _handler(
     numbers: numbers ?? const [_number],
     requireCallTag: requireCallTag,
+    preferences: preferences,
   );
   final api = ApiClient(
     client: MockClient((request) async {
@@ -1211,12 +1286,15 @@ Future<void> _pump(
 MockClientHandler _handler({
   required List<Map<String, Object?>> numbers,
   bool requireCallTag = false,
+  Map<String, Object?> preferences = const {},
 }) {
   return (request) async {
     final path = request.url.path;
 
     if (path.endsWith('/me')) {
-      return _json({'data': _me});
+      return _json({
+        'data': {..._me, 'preferences': {..._me['preferences']! as Map, ...preferences}},
+      });
     }
 
     // What the call could have been about, and the call itself. The desk asks

@@ -804,6 +804,14 @@ class Me {
     return value.clamp(180.0, 420.0);
   }
 
+  /// Whether the dial pad keeps its customer panel open between calls.
+  ///
+  /// A preference rather than screen state because the screen is thrown away
+  /// every time somebody leaves Communication, and a pin that forgets itself
+  /// on the way to Jobs and back is not a pin.
+  bool get phoneCustomerPanelPinned =>
+      preferences['phone.customer_panel_pinned'] == true;
+
   /// The two pane widths on Web Management → Widgets.
   ///
   /// Clamped on read for the same reason [navigationWidth] is: a value stored
