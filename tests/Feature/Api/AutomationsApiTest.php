@@ -136,8 +136,25 @@ class AutomationsApiTest extends TestCase
         $data = $this->as()->getJson('/api/v1/automations/catalogue')->assertOk()->json('data');
 
         $this->assertSame(
-            ['modules', 'operators', 'action_types', 'limits'],
+            ['modules', 'operators', 'action_types', 'timezones', 'schedule_kinds', 'limits'],
             array_keys($data)
+        );
+
+        /*
+         * The zones are the settings registry's, not a list kept here.
+         *
+         * Asserted as non-empty rather than by content: the twelve places and
+         * the whole-hour offsets belong to Settings and will change without
+         * this test being told, but a catalogue that published NO zones would
+         * leave the builder unable to offer a schedule at all while looking
+         * fine — the empty list is what it checks before drawing the editor.
+         */
+        $this->assertNotEmpty($data['timezones']);
+        $this->assertSame(['id', 'label'], array_keys($data['timezones'][0]));
+
+        $this->assertSame(
+            ['daily', 'weekly', 'monthly'],
+            array_column($data['schedule_kinds'], 'key')
         );
 
         foreach ($data['modules'] as $module) {

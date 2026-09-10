@@ -37,6 +37,22 @@ class CatalogueChoice {
 
     return CatalogueChoice(key: key, label: json['label'] as String? ?? key);
   }
+
+  /// The same pair, from a list that calls its key `id`.
+  ///
+  /// Timezones come from the settings registry, where a zone has an `id`. They
+  /// are mapped onto the same type as every other closed list rather than
+  /// getting one of their own, so a picker does not need to know where its
+  /// options were defined.
+  static CatalogueChoice? tryFromIdLabel(Object? json) {
+    if (json is! Map) return null;
+
+    final id = json['id'];
+
+    if (id is! String || id.isEmpty) return null;
+
+    return CatalogueChoice(key: id, label: json['label'] as String? ?? id);
+  }
 }
 
 class CatalogueActionParameter {
@@ -318,6 +334,8 @@ class AutomationCatalogue {
     required this.modules,
     required this.operators,
     required this.actionTypes,
+    required this.timezones,
+    required this.scheduleKinds,
     this.actionBudget,
   });
 
@@ -326,6 +344,11 @@ class AutomationCatalogue {
       modules: _list(json['modules'], CatalogueModule.tryFrom),
       operators: _list(json['operators'], CatalogueChoice.tryFrom),
       actionTypes: _list(json['action_types'], CatalogueActionType.tryFrom),
+      // `id`, not `key`, because these come from the settings registry where a
+      // timezone is an id. Mapped here so the rest of the client sees the same
+      // CatalogueChoice every other closed list uses.
+      timezones: _list(json['timezones'], CatalogueChoice.tryFromIdLabel),
+      scheduleKinds: _list(json['schedule_kinds'], CatalogueChoice.tryFrom),
       actionBudget: (json['limits'] as Map?)?['action_budget'] as int?,
     );
   }
@@ -343,6 +366,17 @@ class AutomationCatalogue {
   /// declares that does not reduce to one of these is intent, not a usable
   /// action.
   final List<CatalogueActionType> actionTypes;
+
+  /// The zones a schedule may be written in.
+  ///
+  /// From the server, and from the SETTINGS registry at that, so this picker
+  /// and the organization's own timezone selector cannot disagree about what a
+  /// zone is called. Empty on a server older than schedules, which is what the
+  /// builder checks before offering to schedule anything.
+  final List<CatalogueChoice> timezones;
+
+  /// Every day / days of the week / once a month.
+  final List<CatalogueChoice> scheduleKinds;
 
   CatalogueActionType? actionType(String? key) {
     if (key == null) return null;

@@ -828,6 +828,86 @@ void main() {
   ///
   /// Two rules in the list on purpose — one on a raised trigger, one not — so
   /// the note has to tell them apart rather than appear on every row.
+  /// ── A rule that runs on a clock ─────────────────────────────────
+  ///
+  /// The schedule sits inside "When this happens" because for this trigger the
+  /// schedule IS what happens. The assertions are the two ways it could be
+  /// wrong: offering the editor for triggers that are not the clock, and
+  /// letting a weekly rule save with no day — which the server refuses, and
+  /// which would otherwise be found only after a round trip.
+  testWidgets('the clock trigger asks when, and refuses a week with no day', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+
+    await _pump(
+      tester,
+      _handler(catalogue: _catalogueWithTheClock(), onCreate: (b) => sent = b),
+    );
+    await _tap(tester, find.text('Build'));
+
+    // Not offered for an ordinary trigger.
+    await _tap(tester, find.text('Jobs'));
+    await _tap(tester, find.text('Status changed'));
+    expect(
+      find.text('How often'),
+      findsNothing,
+      reason: 'Only the clock trigger has a schedule.',
+    );
+
+    await _type(tester, 'Name', 'Monday report');
+    await _tap(tester, find.text('Automations'));
+    await _tap(tester, find.text('A time you chose comes round'));
+
+    expect(find.text('How often'), findsOneWidget);
+
+    // The zone is asked for FIRST and is deliberately not defaulted: it is the
+    // choice that decides whether the rule survives a clock change, and
+    // defaulting it to the organization's own setting would hand everybody the
+    // fixed offset that does not.
+    expect(
+      find.text('Choose the timezone the time is written in.'),
+      findsOneWidget,
+    );
+    expect(_saveButton(tester).onPressed, isNull);
+
+    // The MENU, not its label: a DropdownMenu's label is a Text inside the
+    // decoration and is not a hit target, so tapping it lands on the field
+    // behind and opens nothing.
+    await _tap(tester, find.byType(DropdownMenu<String>));
+    await _tap(tester, find.text('Eastern — New York').last);
+
+    // Now weekly, with no day ticked — the second way this cannot come round.
+    await _tap(tester, find.text('Days of the week'));
+    expect(
+      find.text('Pick at least one day, or this rule never comes round.'),
+      findsOneWidget,
+    );
+    expect(_saveButton(tester).onPressed, isNull);
+
+    await _tap(tester, find.text('Mon'));
+
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, _inStep(find.text('Send a notification')));
+    await _type(tester, 'Message', 'The weekly report is ready.');
+
+    await _tap(tester, find.text('Create automation'));
+
+    expect(sent, isNotNull);
+    expect(sent!['trigger_key'], 'automation.schedule_reached');
+
+    final schedule = sent!['schedule'] as Map<String, dynamic>;
+    expect(schedule['kind'], 'weekly');
+    expect(schedule['days'], ['monday']);
+    expect(schedule['timezone'], 'America/New_York');
+    expect(schedule['time'], '09:00');
+
+    // A weekly rule must not carry a day-of-month: it would be stored, read
+    // back into this form, and shown to the next editor as though it meant
+    // something.
+    expect(schedule.containsKey('day_of_month'), isFalse);
+  });
+
   testWidgets('a saved rule on a trigger nothing raises says it will not run', (
     tester,
   ) async {
@@ -1510,8 +1590,43 @@ const _catalogue = {
     {'key': 'webhook', 'label': 'Call a webhook'},
     {'key': 'notify', 'label': 'Send a notification'},
   ],
+  'timezones': [
+    {'id': 'America/New_York', 'label': 'Eastern — New York'},
+    {'id': 'Etc/GMT+5', 'label': 'UTC-5'},
+  ],
+  'schedule_kinds': [
+    {'key': 'daily', 'label': 'Every day'},
+    {'key': 'weekly', 'label': 'Days of the week'},
+    {'key': 'monthly', 'label': 'Once a month'},
+  ],
   'limits': {'max_depth': 5, 'action_budget': 50},
 };
+
+/// The catalogue plus the clock trigger, on a module the picker will show.
+///
+/// A separate fixture rather than adding it to `_catalogue`, so every test
+/// written before schedules keeps the vocabulary it was written against — a
+/// trigger appearing in a picker it did not have changes what "the first row"
+/// means in half a dozen assertions.
+Map<String, dynamic> _catalogueWithTheClock() {
+  final modules = [
+    ...(_catalogue['modules'] as List),
+    {
+      'key': 'automations',
+      'label': 'Automations',
+      'triggers': [
+        {
+          'key': 'automation.schedule_reached',
+          'label': 'A time you chose comes round',
+          'description': 'Runs on a clock rather than on something happening.',
+        },
+      ],
+      'declared_actions': [],
+    },
+  ];
+
+  return {...Map<String, dynamic>.from(_catalogue), 'modules': modules};
+}
 
 const _runs = [
   {

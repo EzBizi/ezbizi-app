@@ -21,6 +21,7 @@ use App\Support\Modules\ModuleRegistry;
 use App\Support\Modules\PermissionCatalogue;
 use App\Support\Modules\TriggerDefinition;
 use App\Support\Privacy\SensitiveValues;
+use App\Support\Settings\SettingRegistry;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -297,6 +298,29 @@ class AutomationsController extends Controller
                 // The vocabulary POST /automations accepts. Anything not here is
                 // declared intent, not a usable action.
                 'action_types' => $this->actionTypes(),
+                /*
+                 * The zones a schedule may be written in, from the one list that
+                 * defines them.
+                 *
+                 * Published rather than hardcoded in the client for the reason
+                 * every closed list in this application is: a second copy is a
+                 * second thing to forget. SettingRegistry already owns this one
+                 * — twelve real places, plus every whole-hour offset — and the
+                 * settings screen draws its own selector from the same source.
+                 *
+                 * A rule's zone is NOT read from the organization's timezone
+                 * setting, which is a different question. That setting says how
+                 * to DISPLAY a time and defaults to `Etc/GMT+5`, a fixed offset
+                 * with no daylight saving; scheduling against it would run an
+                 * hour off local civil time for eight months of the year. The
+                 * real places are in this list so somebody can choose one.
+                 */
+                'timezones' => $this->timezoneChoices(),
+                'schedule_kinds' => [
+                    ['key' => AutomationSchedule::DAILY, 'label' => 'Every day'],
+                    ['key' => AutomationSchedule::WEEKLY, 'label' => 'Days of the week'],
+                    ['key' => AutomationSchedule::MONTHLY, 'label' => 'Once a month'],
+                ],
                 'limits' => [
                     'max_depth' => AutomationEvent::MAX_DEPTH,
                     'action_budget' => AutomationEvent::ACTION_BUDGET,
@@ -460,6 +484,34 @@ class AutomationsController extends Controller
                 throw ValidationException::withMessages(['schedule' => $e->getMessage()]);
             }
         }
+    }
+
+    /**
+     * The zones a schedule may be written in, read off the settings registry.
+     *
+     * Through the PUBLIC definition (`get('timezone')`) rather than the private
+     * label table behind it, because SettingRegistry belongs to the Settings
+     * module and this is a read from another module's file. Its `options` and
+     * `optionLabels` are what the settings screen's own selector draws, so the
+     * two pickers cannot disagree about what a zone is called.
+     *
+     * @return array<int, array{id: string, label: string}>
+     */
+    private function timezoneChoices(): array
+    {
+        $definition = app(SettingRegistry::class)->get('timezone');
+
+        if ($definition === null) {
+            return [];
+        }
+
+        return array_values(array_map(
+            fn (string $id) => [
+                'id' => $id,
+                'label' => $definition->optionLabels[$id] ?? $id,
+            ],
+            $definition->options,
+        ));
     }
 
     private function subjectPayload(ModuleDefinition $module): ?array

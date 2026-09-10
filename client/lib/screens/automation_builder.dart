@@ -252,6 +252,27 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   /// said out loud, here, until they dismiss it.
   String? _triggerNotice;
 
+  // ── the schedule, for the one trigger that is a clock ────────────
+  //
+  // Held as separate fields rather than a map so the form can be half-filled
+  // without meaning anything yet: somebody who picks "days of the week" and has
+  // not ticked a day has an incomplete schedule, not an invalid one, and only
+  // becomes a save error when they try to save.
+  String _scheduleKind = 'daily';
+  final TextEditingController _scheduleTime = TextEditingController(text: '09:00');
+  final Set<String> _scheduleDays = <String>{};
+  int _scheduleDayOfMonth = 1;
+  String? _scheduleZone;
+
+  /// Is the picked trigger the clock?
+  ///
+  /// Compared against the server's own key rather than a guess: the catalogue
+  /// carries it, and a client that decided for itself which trigger is a clock
+  /// would be a second definition of the same fact.
+  bool get _isScheduled => _trigger == _clockTrigger;
+
+  static const _clockTrigger = 'automation.schedule_reached';
+
   /// Why the version's contents — conditions and actions — cannot be edited.
   ///
   /// Only one thing causes it today: an action carrying a webhook signing
@@ -356,6 +377,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       _description.text = editing['description'] as String? ?? '';
       _trigger = editing['trigger_key'] as String?;
       _adoptActions(editing['actions']);
+      _adoptSchedule(editing['schedule']);
       _adoptConditions(editing['conditions']);
       _loadTriggerFields();
     }
@@ -365,6 +387,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   void dispose() {
     _name.dispose();
     _description.dispose();
+    _scheduleTime.dispose();
 
     for (final condition in _conditions) {
       condition.dispose();
@@ -902,6 +925,13 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
 
     if (_trigger == null) return 'Choose what it should react to.';
 
+    // Before the lock check below, not after: a schedule is part of WHAT THE
+    // RULE IS, like its trigger, and it stays editable on a rule whose version
+    // is locked. Putting this after the lock would let a locked scheduled rule
+    // be saved with a half-filled schedule.
+    final schedule = _scheduleProblem;
+    if (schedule != null) return schedule;
+
     // Nothing below is editable when the version is locked, so nothing below
     // can be wrong. Requiring an action there would leave the button dead
     // forever on the very rule whose name this screen still offers to change.
@@ -994,6 +1024,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       // rule, and every run already recorded would describe something it no
       // longer does. The API refuses the field outright.
       if (!_isEdit) 'trigger_key': _trigger,
+      // Sent on create AND on edit: retiming a rule is the one thing about a
+      // scheduled rule that can legitimately change without it becoming a
+      // different rule. The server recomputes the next run from it.
+      if (_isScheduled) 'schedule': _schedulePayload(),
       if (_lockedBecause == null) ...{
         // Always sent together. A PATCH carrying actions and no conditions
         // writes a version whose conditions are NULL — the new version would
@@ -1219,10 +1253,201 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
               style: Theme.of(context).textTheme.titleSmall,
             ),
           ],
+          if (_isScheduled) _scheduleEditor(context),
         ],
       ),
     );
   }
+
+  /// Read a stored schedule back into the form.
+  ///
+  /// Tolerant of every field being missing, because the alternative is an edit
+  /// screen that will not open for a rule saved by a newer build. What it will
+  /// not do is invent: a zone it does not recognise is kept as the stored id
+  /// rather than silently replaced with a default, since replacing it would
+  /// retime somebody's rule the next time they pressed Save on an unrelated
+  /// change.
+  void _adoptSchedule(Object? stored) {
+    if (stored is! Map) return;
+
+    final kind = stored['kind'];
+    if (kind is String && kind.isNotEmpty) _scheduleKind = kind;
+
+    final time = stored['time'];
+    if (time is String && time.isNotEmpty) _scheduleTime.text = time;
+
+    final zone = stored['timezone'];
+    if (zone is String && zone.isNotEmpty) _scheduleZone = zone;
+
+    final days = stored['days'];
+    if (days is List) {
+      _scheduleDays
+        ..clear()
+        ..addAll(days.whereType<String>());
+    }
+
+    final day = stored['day_of_month'];
+    if (day is int && day >= 1 && day <= 31) _scheduleDayOfMonth = day;
+  }
+
+  /// The schedule as the API takes it — only the keys this kind uses.
+  ///
+  /// `days` on a monthly rule and `day_of_month` on a weekly one are not merely
+  /// redundant, they are misleading: they would be stored, read back into this
+  /// form, and shown to whoever edits it next as though they meant something.
+  Map<String, dynamic> _schedulePayload() => {
+    'kind': _scheduleKind,
+    'time': _scheduleTime.text.trim(),
+    'timezone': _scheduleZone,
+    if (_scheduleKind == 'weekly') 'days': _scheduleDays.toList()..sort(),
+    if (_scheduleKind == 'monthly') 'day_of_month': _scheduleDayOfMonth,
+  };
+
+  /// Why this schedule cannot be saved yet, or null when it can.
+  ///
+  /// The server refuses all of these too — this is the same question asked
+  /// early, so somebody is told before the round trip rather than by a 422.
+  /// The server remains the one that decides; nothing here is the only check.
+  String? get _scheduleProblem {
+    if (!_isScheduled) return null;
+
+    if (widget.catalogue.timezones.isEmpty) {
+      return 'This build cannot offer timezones, so a schedule cannot be set here.';
+    }
+
+    if (_scheduleZone == null) {
+      return 'Choose the timezone the time is written in.';
+    }
+
+    if (!RegExp(r'^([01]\d|2[0-3]):[0-5]\d$').hasMatch(_scheduleTime.text.trim())) {
+      return 'Write the time as HH:MM, such as 09:00.';
+    }
+
+    if (_scheduleKind == 'weekly' && _scheduleDays.isEmpty) {
+      return 'Pick at least one day, or this rule never comes round.';
+    }
+
+    return null;
+  }
+
+  /// When it runs — shown only for the clock trigger.
+  ///
+  /// Inside "When this happens" rather than as a step of its own, because for
+  /// this trigger the schedule IS what happens. A fifth numbered step would
+  /// also renumber the three below it for every other rule in the product.
+  Widget _scheduleEditor(BuildContext context) {
+    final zones = widget.catalogue.timezones;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 14),
+        Text('How often', style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          children: [
+            for (final kind in widget.catalogue.scheduleKinds)
+              ChoiceChip(
+                label: Text(kind.label),
+                selected: _scheduleKind == kind.key,
+                onSelected: (_) => setState(() => _scheduleKind = kind.key),
+              ),
+          ],
+        ),
+        if (_scheduleKind == 'weekly') ...[
+          const SizedBox(height: 12),
+          Text('On these days', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              for (final day in _weekdays)
+                FilterChip(
+                  label: Text(_dayLabel(day)),
+                  selected: _scheduleDays.contains(day),
+                  onSelected: (on) => setState(() {
+                    on ? _scheduleDays.add(day) : _scheduleDays.remove(day);
+                  }),
+                ),
+            ],
+          ),
+        ],
+        if (_scheduleKind == 'monthly') ...[
+          const SizedBox(height: 12),
+          Text('Day of the month', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 6),
+          DropdownMenu<int>(
+            initialSelection: _scheduleDayOfMonth,
+            dropdownMenuEntries: [
+              for (var d = 1; d <= 31; d++)
+                DropdownMenuEntry(value: d, label: '$d'),
+            ],
+            onSelected: (d) => setState(() => _scheduleDayOfMonth = d ?? 1),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'A month without that date runs on its last day, so the 31st still '
+            'runs in February.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+        const SizedBox(height: 12),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 140,
+              child: TextField(
+                controller: _scheduleTime,
+                decoration: const InputDecoration(
+                  labelText: 'At',
+                  hintText: '09:00',
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: DropdownMenu<String>(
+                width: double.infinity,
+                initialSelection: _scheduleZone,
+                label: const Text('Timezone'),
+                dropdownMenuEntries: [
+                  for (final zone in zones)
+                    DropdownMenuEntry(value: zone.key, label: zone.label),
+                ],
+                onSelected: (z) => setState(() => _scheduleZone = z),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          // Said plainly because it is the reason the zone is asked for at all,
+          // and because somebody who picks a fixed offset should know what they
+          // have chosen rather than find out in March.
+          'The time is read in this timezone, so it stays correct when the '
+          'clocks change. A "UTC−5" style zone has no daylight saving and will '
+          'not.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        // The problem is deliberately NOT drawn here. `_scheduleProblem` is
+        // already what the save blocker reports, and this screen's rule is one
+        // sentence per refusal — a second copy beside the control is how the
+        // two come to disagree about which one is current. The blocker is the
+        // single place a person is told why Save is dead.
+      ],
+    );
+  }
+
+  static const _weekdays = [
+    'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+  ];
+
+  String _dayLabel(String day) =>
+      day.substring(0, 1).toUpperCase() + day.substring(1, 3);
 
   Widget _conditionStep(BuildContext context) {
     if (_lockedBecause != null || _hasOpaque) {
