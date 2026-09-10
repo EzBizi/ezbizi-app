@@ -25,7 +25,7 @@ class MachineCard extends StatelessWidget {
     required this.person,
     required this.online,
     required this.seenLabel,
-    required this.exempt,
+    this.reserveActivityLine = false,
     this.module,
     this.sessions,
     this.cpuPercent,
@@ -64,10 +64,10 @@ class MachineCard extends StatelessWidget {
   /// "just now" / "3m ago" — already formatted by the roster's [seenAgo].
   final String seenLabel;
 
-  /// Whether this device's owner is exempt from screen monitoring, which is
-  /// why it reports no captures. Badged, so a Protected machine never reads
-  /// as a broken one.
-  final bool exempt;
+  /// Whether to keep a line's height at the foot of the card for
+  /// [activeWindow], even on a card that has none. Set by the grid for every
+  /// card at once — see the comment at its use.
+  final bool reserveActivityLine;
 
   /// Null where the agent has not reported one — rendered as "—", never as
   /// zero. A machine that has not said how busy it is has not said it is idle.
@@ -113,8 +113,15 @@ class MachineCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // The PERSON leads, the machine sits under them.
+                        // A roster is read to find somebody: "is Toula on,
+                        // and what is she doing" is the question, and the
+                        // machine's name is how the answer is qualified, not
+                        // what is being looked up. TOULA and DESKTOP-7H4RHPQ
+                        // are the same fact wearing different names, and only
+                        // one of them is a name anybody scans for.
                         Text(
-                          title,
+                          person,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.titleSmall,
@@ -123,7 +130,7 @@ class MachineCard extends StatelessWidget {
                           children: [
                             Flexible(
                               child: Text(
-                                person,
+                                title,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.labelSmall,
@@ -157,10 +164,6 @@ class MachineCard extends StatelessWidget {
                     text: online ? 'Live' : seenLabel,
                     tone: online ? _Tone.good : _Tone.muted,
                   ),
-                  if (exempt) ...[
-                    const SizedBox(width: 4),
-                    const _Badge(text: 'Protected', tone: _Tone.muted),
-                  ],
                 ],
               ),
               const SizedBox(height: 12),
@@ -173,10 +176,26 @@ class MachineCard extends StatelessWidget {
                 percent: diskPercent,
                 trailing: diskFreeLabel,
               ),
-              if (activeWindow != null && activeWindow!.isNotEmpty) ...[
+              // Reserved rather than conditional, so every card in a run is
+              // the same height. A grid whose cards differ by one line looks
+              // broken in a way that reads as a rendering fault rather than
+              // as "this machine reported less" — and the cards that came up
+              // short were exactly the offline ones, which made being offline
+              // look like a layout bug.
+              //
+              // [reserveActivityLine] is false when NOTHING in the grid has a
+              // window to show (nobody is online, or this viewer may not see
+              // screen content at all), because then the row is not carrying
+              // a difference between cards — it is dead space on every one.
+              // Shown whenever there IS one; the flag only decides whether a
+              // card WITHOUT one still holds the space. Gating the display on
+              // it too — which is what this line said first — hid the window
+              // on any card whose grid had not asked for the reservation.
+              if (reserveActivityLine ||
+                  (activeWindow != null && activeWindow!.isNotEmpty)) ...[
                 const SizedBox(height: 10),
                 Text(
-                  activeWindow!,
+                  activeWindow ?? '',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.labelSmall?.copyWith(
