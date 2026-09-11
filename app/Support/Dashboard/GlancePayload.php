@@ -47,6 +47,28 @@ final class GlancePayload
      * there nothing here worth reading"**, and a failure a person must act on
      * is the opposite of that however few rows produced it.
      *
+     * ── A decision already taken, so the next person does not retake it ──
+     *
+     * This one boolean gates FOUR unrelated things: the chart, the money
+     * lines, the sentence styling and the fallback. Two traps in two days, in
+     * opposite directions, is not bad luck with a flag — it is what happens
+     * when four decisions read one key. Every one of the four is a legitimate
+     * reason to set it, and setting it for one hands you the other three
+     * whether you considered them or not. Email wanted "no chart" and would
+     * have accepted "muted" without noticing they had chosen it.
+     *
+     * **It is not being split today**, and that is deliberate: splitting it is
+     * a wire change across eighteen glances to fix something that has so far
+     * always been caught in review.
+     *
+     * **What should reopen it.** Not "a third trap appears" — Email's point,
+     * and they are right. The first two were found by somebody reading this
+     * table and by somebody reading a production symptom; a third could just
+     * as easily be a glance rendering wrong for a month with nobody comparing
+     * it to intent, and a trigger that waits for a trap to ANNOUNCE itself
+     * will not fire. The signal is **somebody having to ask what `empty`
+     * does**, which has now happened twice. On the third, split it.
+     *
      * ── What the client actually draws out of `$data` ──────────────────
      *
      * Everything else you put here is carried over the wire and rendered by
