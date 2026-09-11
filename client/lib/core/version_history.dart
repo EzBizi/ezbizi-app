@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0194',
+      date: '11 Sep 2026',
+      items: [
+        'Fixed: New report opened to a blank panel. The builder could not be used at all in the two releases before this one; the list of saved reports and running one were unaffected.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0193',
       date: '11 Sep 2026',
       items: [
