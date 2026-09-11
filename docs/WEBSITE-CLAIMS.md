@@ -267,6 +267,12 @@ Apple rate-limits the storefront HTML. **A 429 is not a dead link — take the
 verdict from the `itunes.apple.com/lookup` JSON, never from a `HEAD` of the
 storefront.**
 
+**Re-measured 2026-09-11 by the daily run:** Play returns `200`; the Apple
+lookup returns `resultCount` **1**, `trackId` 6805979795, `version` **0.0.0190**,
+`currentVersionReleaseDate` 2026-09-11. Both stores live, both pages already
+correct, nothing to publish — recorded only so the next run can see the version
+moving rather than re-deriving that it should.
+
 **What would put this row back the other way:** the lookup returning
 `resultCount` 0 for more than a day, which is a pulled or rejected listing rather
 than propagation. Then the card's App Store button and the JSON-LD
@@ -682,6 +688,15 @@ in a different file. Here the tagging is also what *fixed* the bug this very
 enquiry exposed — replying on a Thumbtack thread used to emit Google's refusal
 sentence, because one provider's wording was filling a gap that had no channel.
 
+**Confirmed PUBLISHED by fetch, 2026-09-11, not by the passage of a day.**
+`curl -sS https://www.ezbizi.com/ | grep -c "Connect Thumbtack and its
+enquiries arrive the same way"` -> **1**, with `Last-Modified` Fri 11 Sep 2026
+19:49:45 GMT. `0045` §2 had asked the desk to publish it and `0045` is still in
+`inbox/` rather than `done/` — so the sentence rode a release rather than an
+acknowledged request, which is exactly the route "Absence of news is not a
+publish" describes and exactly why the check is a fetch. **Do not ask for it
+again.**
+
 **Two desk answers, an hour apart, opposite verdicts — and the second one is a
 measurement, not a change of mind.** `0042` said "the second lead source is a
 TEST, not a customer" and was right when written: the row was `ThumbtackTestLead`
@@ -713,66 +728,167 @@ writes "your enquiries and their recordings stay with the customer", that senten
 is false for Google Ads the moment somebody disconnects** — and a disconnect is a
 normal thing a customer does, not an incident.
 
-## Reports — DRAFTED AND HELD 2026-09-10, on one question this run cannot answer
+## Reports — STILL HELD 2026-09-11, and the draft it was held with went stale in a day
 
-`0.0.0192` shipped a real Reports module **and it is the deployed release** —
-`/download/windows.json` reads `0.0.0192` built `8588589e`, which is the tree every
-clause below was read from. The site has no card for it, and by the Web management
-precedent ("a module can go stale by never arriving") that is a gap rather than a
-caution.
+`0.0.0192` shipped Reports on 2026-09-10, a card was drafted against it, and it
+was held on one question: had the `saved_reports` migration RUN. **That question
+is still unanswered** — `0045` is in `docs/agents/inbox/`, not `done/` — **and
+the draft it was guarding is now wrong, in the direction this file keeps
+catching.**
 
-Drafted, unpublished:
+**The draft was understated within a day.** It said *"start from jobs, customers
+or people"*, which is exactly what `ReportMap::all()` held at `8588589e`.
+Production is now `0.0.0200` at `e1a783dc` (`/download/windows.json`, fetched)
+and `ReportMap::all()` holds **ten**. Three of ten is the same understatement
+failure that left the iPhone store link off the homepage for four days — and it
+would have shipped the instant the desk answered a question about a table.
+
+**A held draft ages, and nothing in the hold says so.** The hold was on the
+*answer*, so the copy looked settled. Whoever gets a number from the desk
+publishes what is below, not what is in `0045`.
+
+Redrafted 2026-09-11, unpublished:
 
 ```html
 <h3>Reports</h3>
-<p>Build a report from your own records &mdash; start from jobs, customers or
-   people, pull in the columns from what they connect to, filter it and save it by
-   name. Running a saved report and building one are separate permissions, so you
-   can let somebody run what you built without letting them change it.</p>
+<p>Build a report from your own records &mdash; start from any of ten parts of
+   the business, from jobs and customers to fleet and inventory, pull in the
+   columns from what they connect to, filter it and save it by name. Running a
+   saved report and building one are separate permissions, so you can let
+   somebody run what you built without letting them change it.</p>
 ```
 
-    jobs, customers, people  ReportMap::all() — three resources keyed jobs /
-                             customers / users, each with a hand-listed column set
-    what they connect to     the same entries carry `relations` edges; the builder
-                             walks them and never composes an ON clause
-    save it by name          saved_reports migration: name(120), unique on
-                             (organization_id, name), definition JSON
-    separate permissions     ModuleServiceProvider.php:2665 key `reports`, actions
-                             view / build / export, with actionRequires putting
-                             build and export behind reports.view
-    reachable                client/lib/core/module_screens.dart:74 maps `reports`
-                             to ReportsScreen
+Clause by clause, read out of the deployed tree at `e1a783dc`:
 
-**The one thing this run could not check is whether the migration RAN.** Every
-clause above is a property of the deployed *tree*; `saved_reports` is a migration
-dated 2026-09-10, and this file's own Tasks row says in as many words that a
-migration in the deployed tree has not necessarily run. For Tasks the decisive
-check was the deployed client, which is satisfied here — but Tasks was proving an
-ABSENCE, and a present screen over a missing table is a card pointing at an error.
+    any of ten parts     ReportMap::all() — jobs, customers, franchises (label
+                         Branches), services, inventory_items, vehicles (Fleet
+                         Management), training_guides (Training), leads,
+                         service_areas (Scheduling), users (Human Resources)
+    start from ANY       0.0.0195 fixed a relation that was traversable in one
+                         direction only; before it, a report starting anywhere
+                         but Jobs could reach nothing
+    what they connect to the same entries carry `relations` edges; the builder
+                         walks them and never composes an ON clause
+    save it by name      saved_reports migration: name(120), unique on
+                         (organization_id, name), definition JSON
+    separate permissions ModuleServiceProvider.php:2665 key `reports`, actions
+                         view / build / export, with `build` and `export`
+                         behind `reports.view` (:2670-2671)
+    reachable            client/lib/core/module_screens.dart:74
 
-**So the question, spelled out the way the two rows that inverted on 2026-09-09
-were spelled out** — asked of the desk in `0045`:
+**"Scheduling" is a decoy, and it must not reach the card.** `0.0.0199`'s
+release note says a report can start from Scheduling, and the first row of the
+do-not-list forbids scheduling a job onto a calendar. They do not collide: the
+resource labelled `Scheduling` is **`service_areas`** — coverage and capacity,
+the built-and-unused pair that row already governs. **Re-verified at `e1a783dc`
+rather than assumed**: `service_area_slots` is still `(organization_id,
+service_area_id, weekday, start_time, end_time, max_jobs)` with no `job_id`, and
+no migration in the deployed tree creates a table carrying both a job reference
+and a slot reference. The structural test holds and the row stands. **Do not
+enumerate the ten resources on the card** — printing the word "Scheduling" on a
+marketing page makes the forbidden claim by itself, whatever table sits behind
+it. That is why the redraft says "ten parts of the business" and names four.
+
+**The card was verified against the deployed tree and the feature was broken.**
+This is the sharpest thing learned this week and it is not really about Reports.
+`0.0.0194`'s note reads: *"New report opened to a blank panel. The builder could
+not be used at all in the two releases before this one."* One of those two is
+`0.0.0192` — **the release every clause of the original draft was read out of,
+and every clause held.** `ReportMap` was right, the migration was right, the
+permissions were right, the screen was mapped, and a customer pressing New
+report got a blank panel. **Reading the deployed tree proves the code says the
+thing; it cannot see a dead button.** Publishing on 2026-09-10 would have
+pointed the public at one, and what stopped it was a hold on an unrelated
+question. That was luck, and it converts into a rule: **for a module that has
+just arrived, "every clause checks out" is not enough — somebody has to have
+used it.** A row count answers that for an old module; for a new one, the
+bug-fix releases are the evidence, which is the next paragraph.
+
+**The question is unchanged and the evidence around it moved.** `0.0.0194` says
+*"the list of saved reports and running one were unaffected"*, `0.0.0195` adds
+deleting a report, and `0.0.0197` fixes saving one from a company or a branch.
+Those are faults found by somebody listing and saving reports on a real
+installation, which is behavioural evidence the table exists. **It is not the
+measurement**, and this file's Training row says in as many words: do not
+resolve this by reasoning; resolve it by asking.
 
 ```sql
 SELECT COUNT(*) FROM saved_reports;   -- 0 is a fine answer; an ERROR is not
 ```
 
-**A zero publishes the card** under the Coverage & capacity / Newsletter precedent:
-built-and-unused is sellable as a capability, and the drafted copy is imperatives
-with no completed action in it. **An error holds it**, because the table would not
-exist. Note this is the opposite reading of a zero from every other row in this
-file, and that is deliberate: here the zero is not the measurement — the absence of
-an error is.
+A number publishes the redrafted card under the Coverage & capacity / Newsletter
+precedent. An error holds it, because the table would not exist. Asked in
+`0045`, re-asked with the new draft in `0046`.
 
-**What the card deliberately does not say.** `ReportMap` publishes `amount_minor`
-and `currency` on jobs, and the module registration says "money included". **No
-sentence about money goes on this card.** Not because it is untrue, but because
-this site's hardest-won removal was the billing family, `bill` is a
-machine-enforced forbidden term, and a Reports card is exactly where a sentence
-about what the work was worth would read as innocent and put it back. It also says
-nothing about who may reach it: administrator-only until Jose grants
-`reports.view` is a permission default, and the Newsletter row already settled that
-those change nothing here.
+**What the card deliberately does not say.** `ReportMap` publishes
+`amount_minor` and `currency` on jobs and `price_minor` on services, and the
+module registration says "money included". **No sentence about money goes on
+this card.** Not because it is untrue, but because this site's hardest-won
+removal was the billing family, `bill` is a machine-enforced forbidden term, and
+a Reports card is exactly where a sentence about what the work was worth would
+read as innocent and put it back. It also says nothing about who may reach it:
+administrator-only until Jose grants `reports.view` is a permission default, and
+the Newsletter row already settled that those change nothing here.
+
+**And the grid will then hold two cards with "reports" in the name.** `Forms
+&amp; reports` is already there — *"Capture what happened on site and turn it
+into something the customer can read"* — which is Inspections output, not this
+module. Neither is false. Place the Reports card away from it, or the pair reads
+as one feature described twice.
+
+## 0193 to 0200 shipped in a day and touched nothing the site says
+
+**2026-09-11, and the eight releases are recorded because a quiet day has to be
+provably quiet.** Production moved `0.0.0192` -> `0.0.0200` (`e1a783dc`). No
+desk was reachable — `ccd_session_mgmt send_message` refused the correct
+Deployment id with *"unavailable in unattended sessions"*, which is the error
+about the CALLER and not about the session, so the desk is not dead and the
+inbox is the only channel. The catalog below is `version_history.dart` at the
+deployed SHA, which says what was written down and carries no "live for a paying
+customer" judgement.
+
+    0193  quiet accounts polled every 15 min; a report can say who performed a
+          job and which branch it belongs to
+    0194  New report opened to a blank panel — the builder was UNUSABLE in the
+          two releases before this one (see the Reports section; it is the
+          reason that card's hold turned out to be load-bearing)
+    0195  any module can start a report; reading backwards along a relation;
+          delete a report; the field list grouped like the sidebar
+    0196  Not taking calls survives a reconnect; disconnected-inbox wording and
+          self-recovery; accounts asked longest-unread first
+    0197  sidebar drag-to-reorder saved to the account, dividers; a report can
+          be saved from a company or a branch; eight distinct chart colours
+    0198  a mailbox is not disconnected by a timeout; over-8 chart slices group
+          into one row; a screen reader names every folded category
+    0199  a report can start from TEN parts of the business, up from four;
+          Reports gains sub tabs (Reports / Builder / Experimental)
+    0200  Do Not Disturb survives a call you place yourself
+
+**Nothing there makes a published claim wrong, and three re-measurements say so
+rather than an inspection saying so.** `Publishers::for()` at `e1a783dc` still
+returns five and `default => null` — so *"Five networks send today"* holds and
+**no seventh publisher was written**. `NewsletterSenders::for()` still returns
+`Mailchimp` and `default => null`, so the Newsletter card's "your own Mailchimp
+account" has not gone narrow. And the four phrasings the Communication card
+forbids — "never miss a call", "your calls reach your team", "phone system",
+"calls reach" — return **0** across `www/`, re-run because `0196` and `0200` are
+both about call availability and a call-availability release is exactly when
+somebody reaches for "never miss a call".
+
+**The audit was clean and the number is the point.** `python www/check-site.py`
+-> `ok - 7 pages, 7 sitemap entries`; the forbidden-terms gate, parsed from this
+file and split on LINES, -> `ok - 4 terms, none present` **with a positive
+control** (`EzBizi` -> 383 matches, proving the grep was actually running — a
+first attempt put `--include` after the path and every term silently returned
+0, which reads identically to a pass); and all seven pages fetched from
+production are byte-identical to `www/` after stripping CR. No stale deploy, no
+hand edit on the box.
+
+**What is still open, and neither is mine to close.** `saved_reports` —
+unanswered, asked in `0045` and `0046`. **Monitoring** — held on a decision from
+Jose about copy describing watching employees' screens, not on a measurement,
+and `0.0.0189` widened it to open programs and browser tab titles. Do not
+re-derive either from first principles; both are waiting on somebody else.
 
 ## Two things that make this easier than it looks
 
