@@ -11,9 +11,10 @@ class VersionHistory {
       version: '0.0.0196',
       date: '11 Sep 2026',
       items: [
-        'Not taking calls now stays off until you turn it back on yourself. Opening the app, reconnecting after a dropped connection, or switching to another company all told the system a device was attached, and any one of them quietly cancelled it. Only the availability toggle changes it now, because only that is a person deciding.',
+        'Not taking calls now stays off until you turn it back on yourself. Opening the app or signing back in told the system a device was attached, and that quietly cancelled it. Only the availability toggle changes it now, because only that is a person deciding. It applies to every company you are signed in to, not just the one on screen.',
         'A disconnected inbox now says so on the home screen, instead of reporting that it could not be asked for unread mail. The old wording described a permanent disconnection in the words of a momentary one.',
         'When every inbox is disconnected, all of them are named. Only the first was shown and the rest were dropped - and a card with nothing to show now says everything it has to say rather than just its first sentence, which is the same fault one layer down.',
+        'An inbox knocked out by a fault at the mail service now recovers on its own instead of waiting for somebody to reconnect it. Marking it broken had been removing it from the only check that would have noticed it recover. Mail that arrived while it was disconnected is not backfilled.',
         'A disconnected inbox is no longer dialled at all, so it costs the home screen nothing.',
         'Accounts are asked longest-unread first, so when the daily ceiling is reached the shortfall is spread across all of them instead of always falling on the same ones.',
       ],
