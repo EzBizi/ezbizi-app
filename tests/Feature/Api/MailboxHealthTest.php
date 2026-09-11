@@ -502,6 +502,118 @@ class MailboxHealthTest extends TestCase
     }
 
     /**
+     * A host that did not answer is not a broken mailbox either.
+     *
+     * Found by applying the rule rather than by waiting for the symptom: read
+     * each sentence as a promise and ask which ones `marksBroken()` can keep.
+     * This arm promises the most -- "it usually clears on its own, try again
+     * shortly" -- and it is raised by a timeout, a refused connection or a name
+     * that does not resolve, from all three readers. So before the fix, one
+     * network blip anywhere disconnected a mailbox until a person pressed
+     * Reconnect, for a fault that had ended before they read about it.
+     *
+     * Asserted against the watcher's own query for the same reason as the
+     * ProviderFaulty case: dropping out of the sweep is the harm, and the
+     * status string alone could be argued about.
+     */
+    public function test_a_host_that_did_not_answer_leaves_the_inbox_in_the_watchers_sweep(): void
+    {
+        $this->withScriptedProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+
+        ScriptedMailboxReader::$failWith = CannotReadMailbox::hostNotAnswering($mailbox, 'cURL error 28');
+
+        $this->open($t, $mailbox)->assertStatus(503);
+
+        $after = $this->reload($t, $mailbox);
+
+        $this->assertSame(Mailbox::STATUS_CONNECTED, $after->status, 'A timeout disconnected the inbox.');
+        $this->assertNull($after->status_reason);
+        $this->assertTrue(
+            $this->inTheWatchersSweep($mailbox),
+            'A fault whose own sentence says it clears on its own must stay in the sweep that would notice.',
+        );
+
+        // THE CONTROL, same route and mailbox: a cause that IS the tenant's to
+        // fix must still mark broken and must still drop out of the sweep.
+        ScriptedMailboxReader::$failWith = CannotReadMailbox::credentialRejected($mailbox);
+
+        $this->open($t, $mailbox)->assertStatus(409);
+
+        $this->assertSame(Mailbox::STATUS_BROKEN, $this->reload($t, $mailbox)->status);
+        $this->assertFalse($this->inTheWatchersSweep($mailbox));
+    }
+
+    /**
+     * Every fault has RECORDED a decision about whether it disconnects the
+     * mailbox. Adding an arm without deciding fails here.
+     *
+     * ── What this does NOT do, and why not ───────────────────────
+     *
+     * It does not read the sentences. The deploy desk asked whether the audit
+     * that found `HostNotAnswering` could be made mechanical -- "says it clears
+     * on its own" exempt, "names a person" not. I tried it against the ten arms
+     * and it is false in both directions, so building it would have shipped a
+     * guard that lies:
+     *
+     *   NotConnected NAMES A PERSON ("somebody ... needs to finish connecting
+     *   it") and is correctly exempt -- not because nobody must act, but
+     *   because it has never worked, so "it worked and now does not" would be
+     *   untrue whoever fixes it.
+     *
+     *   ProviderRefused says BOTH -- "One more attempt is worth making" AND
+     *   "somebody ... should connect the address again". That ambiguity is real
+     *   and is the open product question, not a defect in the wording.
+     *
+     * So the rule needs a person to read it, and it lives in `marksBroken()`'s
+     * docblock where the next author will have it open. What a test CAN do is
+     * make the decision impossible to skip, which is all that was needed: three
+     * arms were written with a promise the status vetoed, and none of them was
+     * a wrong answer -- they were a question nobody was asked.
+     */
+    public function test_every_fault_has_decided_whether_it_disconnects_the_mailbox(): void
+    {
+        // Read `marksBroken()`'s docblock before changing a value here. The
+        // question is not whether the fault is serious, it is whose job it is.
+        $decided = [
+            'NotConnected'        => false, // never worked; broken would be a lie
+            'SignInNoLongerValid' => true,  // a person must reconnect
+            'PermissionNarrowed'  => true,  // a person must widen the permission
+            'TooManyRequests'     => false, // the mailbox is healthy
+            'HostNotAnswering'    => false, // says it clears on its own
+            'HostNotAllowed'      => true,  // a typed value only a person can fix
+            'ProviderFaulty'      => false, // says it clears on its own
+            'ProviderRefused'     => true,  // OPEN: says retry once THEN a person
+            'PlatformRejected'    => false, // ours, never the tenant's row
+            'NotBuiltHere'        => false, // ours, never the tenant's row
+        ];
+
+        foreach (MailboxFault::cases() as $case) {
+            $this->assertArrayHasKey(
+                $case->name,
+                $decided,
+                "MailboxFault::{$case->name} is new and nobody has decided whether it "
+                .'disconnects the mailbox. Read marksBroken() -- a sentence that names a '
+                .'person keeps broken, a sentence that says it will pass is made false by it.',
+            );
+
+            $this->assertSame(
+                $decided[$case->name],
+                $case->marksBroken(),
+                "MailboxFault::{$case->name} no longer matches the recorded decision.",
+            );
+        }
+
+        $this->assertCount(
+            count($decided),
+            MailboxFault::cases(),
+            'A fault was removed; drop its row above so this stays a list of real arms.',
+        );
+    }
+
+    /**
      * A fault at EzBizi's end is never written onto a tenant's row.
      *
      * This installation has no Google registration, so if `notBuiltHere` marked

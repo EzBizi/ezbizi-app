@@ -261,13 +261,49 @@ enum MailboxFault: string
      *   column that answers it is `last_reached_at`, and nothing reads it for
      *   escalation yet.
      *
+     *   HOST NOT ANSWERING is not broken either, and it is the same defect as
+     *   PROVIDER FAULTY found by applying the rule instead of waiting for the
+     *   symptom. Added 2026-09-11, the same afternoon, after the deploy desk
+     *   suggested reading every arm's sentence as a PROMISE and asking which
+     *   ones this method can keep. This one promises the most: "it usually
+     *   clears on its own -- try again shortly."
+     *
+     *   It cannot clear on its own while it is recorded as broken, because
+     *   `WatchMailboxes` polls CONNECTED only. And this arm is raised by a
+     *   timeout, a refused connection or a name that does not resolve, from
+     *   all three readers -- so before this change ONE network blip anywhere
+     *   permanently disconnected a mailbox until a person went and pressed
+     *   Reconnect, for a fault that was over by the time they read about it.
+     *
+     *   Its "if it is still saying this tomorrow" clause could not be true
+     *   either: nothing retried it, so it could not still be saying anything
+     *   on fresh evidence. HOST NOT ALLOWED is the case for a mail server that
+     *   is genuinely wrong, and that one does mark broken, correctly.
+     *
+     * ── THE TEST THAT FOUND IT, FOR WHOEVER ADDS THE NEXT ARM ────
+     *
+     * Read your sentence as a promise, then ask whether this method can keep
+     * it. A sentence that says wait, retry, or clears on its own is a promise
+     * that `broken` VETOES, because broken is the one state the retry does not
+     * look at. Three arms had already been written that way before anybody
+     * noticed -- the prose was right every time and the status silently
+     * overruled it.
+     *
+     * So the question for a new arm is not "is this serious". It is: WHOSE JOB
+     * IS IT. If the sentence names a person, `broken` is correct and is how
+     * they find out. If the sentence says it will pass, `broken` makes that
+     * false by recording it.
+     *
      * Everything else did work a moment ago and does not now, which is exactly
      * what Mailbox::STATUS_BROKEN was written to mean.
      */
     public function marksBroken(): bool
     {
         return match ($this) {
-            self::NotConnected, self::TooManyRequests, self::ProviderFaulty => false,
+            self::NotConnected,
+            self::TooManyRequests,
+            self::ProviderFaulty,
+            self::HostNotAnswering => false,
             default => ! $this->isOurs(),
         };
     }
