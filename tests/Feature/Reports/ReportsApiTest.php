@@ -152,6 +152,47 @@ class ReportsApiTest extends TestCase
     }
 
     /**
+     * THE SHAPE ON THE WIRE, not the shape in PHP.
+     *
+     * An empty PHP array encodes as `[]` — a JSON ARRAY — and a non-empty one
+     * as an object. Three of the four resources have no relations, so the
+     * field list shipped both shapes under the same key, and the client threw
+     * casting the array to a map. In a release build that is a blank grey
+     * panel with nothing in any log.
+     *
+     * The PHP value is identical either way, so only the ENCODED body can say
+     * which this is. That is why this reads the raw content rather than
+     * json().
+     */
+    public function test_relations_and_columns_are_objects_even_when_empty(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $body = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/reports/fields')
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString(
+            '"relations":[]',
+            $body,
+            'a resource with no relations encoded as a JSON array; the client casts '
+            .'this to a map and throws, which a release build draws as a blank panel',
+        );
+
+        $this->assertStringNotContainsString('"columns":[]', $body);
+
+        // The control: a resource with no relations really is in this payload,
+        // so the assertions above are looking at the case that can fail.
+        $decoded = json_decode($body, true)['data'];
+        $empty = array_filter($decoded, fn ($r) => $r['relations'] === []);
+        $this->assertNotEmpty(
+            $empty,
+            'no mapped resource has an empty relations map, so this test proves nothing',
+        );
+    }
+
+    /**
      * The picker must not advertise a module the person cannot open at all.
      */
     public function test_the_field_list_hides_a_module_the_person_has_no_permission_for(): void
