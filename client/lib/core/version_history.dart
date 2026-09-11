@@ -8,6 +8,18 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0197',
+      date: '11 Sep 2026',
+      items: [
+        'The sidebar can be dragged into your own order, and it is saved to your account rather than to the machine you did it on. Settings, Suggestions and Development stay where they are - they are a different list and cannot be dragged into the module one.',
+        'Dividers: put a nameless rule anywhere between two modules to group them, drag it like any other row, remove it with the x.',
+        'On a computer, Rearrange sits under the module filter and the sidebar widens into a list with handles. On a phone it is the icon beside the wordmark in the drawer. Both go back to normal when you press Done.',
+        'A module added later still appears for people who have already arranged their sidebar. It goes to the end rather than being left out.',
+        'Fixed: a report could only be created while looking at the whole group. Saving one from a company or a branch was refused. It now files on whichever place you are looking at.',
+        'Charts on the home screen draw every slice in its own colour. The palette came from the theme roles, two of which are deliberately the same colour, so on a light screen the first two slices of every pie were identical - Scheduled and In progress looked like one wedge. Eight distinct colours now, picked to stay apart for colour-blind readers, with a separate set for dark mode.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0196',
       date: '11 Sep 2026',
       items: [
