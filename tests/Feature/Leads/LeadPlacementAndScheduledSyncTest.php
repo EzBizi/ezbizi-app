@@ -426,7 +426,7 @@ class LeadPlacementAndScheduledSyncTest extends TestCase
         $isLeadRead = fn ($r, string $id) => str_contains($r->url(), "/customers/{$id}/") && str_contains((string) ($r->data()['query'] ?? ''), 'FROM local_services_lead ');
         $isConvRead = fn ($r, string $id) => str_contains($r->url(), "/customers/{$id}/") && str_contains((string) ($r->data()['query'] ?? ''), 'FROM local_services_lead_conversation');
 
-        // 12:07 - neither a half hour nor a ten-minute mark.
+        // 12:07 - neither a quarter hour nor a ten-minute mark.
         \Illuminate\Support\Carbon::setTestNow('2026-09-09 12:07:00');
         $this->artisan('ezbizi:sync-leads')->assertSuccessful();
         Http::assertSent(fn ($r) => $isLeadRead($r, '4941850746'));
@@ -439,7 +439,21 @@ class LeadPlacementAndScheduledSyncTest extends TestCase
         Http::assertSent(fn ($r) => $isConvRead($r, '4941850746'));
         Http::assertNotSent(fn ($r) => str_contains($r->url(), '/customers/3747134697/'));
 
-        // 12:30 - a half hour: the quiet account is read, once.
+        /*
+         * 12:15 - a quarter hour, and the case that discriminates.
+         *
+         * Every other clock in this test passes under the OLD half-hour rule
+         * too: 12:07 rests either way, 12:30 is a quarter hour as well as a
+         * half. Only a quarter-hour mark that is NOT a half-hour one can tell
+         * the two apart, so without this the cadence could be changed back
+         * with nothing going red.
+         */
+        \Illuminate\Support\Carbon::setTestNow('2026-09-09 12:15:00');
+        $this->artisan('ezbizi:sync-leads')->assertSuccessful();
+        Http::assertSent(fn ($r) => $isLeadRead($r, '3747134697'));
+        Http::assertNotSent(fn ($r) => $isConvRead($r, '3747134697'));
+
+        // 12:30 - also a quarter hour: the quiet account is read, once.
         \Illuminate\Support\Carbon::setTestNow('2026-09-09 12:30:00');
         $this->artisan('ezbizi:sync-leads')->assertSuccessful();
         Http::assertSent(fn ($r) => $isLeadRead($r, '3747134697'));

@@ -111,13 +111,42 @@ class SyncLeads extends Command
          * an account that has produced nothing in thirty days is read once
          * per half hour and its conversations not at all, since it has no
          * lead to hang one on. With --days everything is read, every time.
-         * Measured 2026-09-09 at 25 producing and 20 quiet accounts: about
-         * 11,800 operations a day, with the rest for Fetch new and connects.
+         * The quiet cadence became a quarter hour on 2026-09-11; see the
+         * block below it for why, and what going over costs.
          */
         $minute   = now()->minute;
         $forced   = is_numeric($this->option('days'));
-        $halfHour = $minute % 30 < 5;
-        $tenMin   = $minute % 10 < 5;
+
+        /*
+         * A QUIET ACCOUNT IS ASKED EVERY QUARTER HOUR, not every half.
+         *
+         * Measured on 2026-09-11, one full day at sixty accounts: Google's own
+         * counter read 14,889 requests, 99.3% of the 15,000 Basic Access
+         * ceiling, with no refusal. The fleet sits just UNDER the line and
+         * stays there, and Standard Access was refused on 2026-09-09 for not
+         * exceeding it — so hovering is the one outcome that earns nothing.
+         * Jose, 2026-09-10: "i dont have any more producing accounts so what
+         * we need to do then is reduce the times."
+         *
+         * This adds about 1,150 requests a day (24 quiet accounts, 48 reads
+         * each becoming 96) and takes the fleet to roughly 107% of the
+         * ceiling. Deliberately the smallest lever that crosses: the cost of
+         * going over is that the day's quota runs out early, and everything
+         * stops until it resets at an hour Google does not document. At 107%
+         * that window is short; doubling the conversation cadence instead
+         * would have been 133% and hours of it.
+         *
+         * Nothing is LOST in that window. The lead read asks for everything
+         * since the newest lead already held, not since a cursor, so the first
+         * successful run afterwards collects what arrived meanwhile. The cost
+         * is delay, not absence — which is the only reason this is an
+         * acceptable thing to do on purpose.
+         *
+         * It also buys something real: a dormant account that starts producing
+         * is noticed in fifteen minutes rather than thirty.
+         */
+        $quietTick = $minute % 15 < 5;
+        $tenMin    = $minute % 10 < 5;
 
         /*
          * TWO PASSES, AND THE ORDER IS THE POINT.
@@ -162,7 +191,7 @@ class SyncLeads extends Command
             $fresh = $connection->created_at !== null
                 && $connection->created_at->gte(now()->subMinutes(30));
 
-            if (! $forced && ! $producing && ! $halfHour && ! $fresh) {
+            if (! $forced && ! $producing && ! $quietTick && ! $fresh) {
                 $rested++;
 
                 continue;

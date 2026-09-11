@@ -265,6 +265,31 @@ the manager when set; `leads:adopt-manager-clients` does it for grants that
 predate the column. 146-421-7121 is in no manager's tree and 403s to everybody;
 it is a dead row.
 
+**Crossing the ceiling on purpose, 2026-09-11.** One full day at sixty accounts
+read **14,889** requests on Google's own counter — 99.3% of the 15,000 ceiling,
+with no refusal. The fleet hovers just UNDER the line and stays there, which is
+the one outcome that earns nothing: Standard Access was refused on 2026-09-09
+for not exceeding it. Quiet accounts moved from a half hour to a quarter
+(+~1,150/day, about 107% of the ceiling) — the smallest lever that crosses.
+
+Read the daily figure from Google rather than modelling it. Arithmetic from the
+tiering rules said 16,704/day on 2026-09-10 while the counter said 12,361: runs
+that overrun their five-minute slot are skipped and some accounts fail before
+making a call, and only the counter knows that.
+
+```bash
+gcloud auth print-access-token   # then the monitoring API:
+# metric.type="serviceruntime.googleapis.com/api/request_count"
+# resource.label."service"="googleads.googleapis.com"
+```
+
+**What going over costs, and what it does not.** When the day's quota is spent
+every request fails until it resets, at an hour Google does not document. Nothing
+is LOST in that window: the lead read asks for everything since the newest lead
+already held, not since a cursor, so the first successful run afterwards collects
+what arrived meanwhile. The cost is delay. That, plus the two-pass order below,
+is why exceeding deliberately is an acceptable thing to do.
+
 **Quota tiering, same day.** Forty-five accounts every five minutes exceeds
 Basic Access (Standard was refused for not yet exceeding it). The tick reads a
 producing account (a lead in 30 days) every 5 min and its conversations every
