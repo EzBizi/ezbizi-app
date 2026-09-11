@@ -263,10 +263,36 @@ class PresenceController extends Controller
         ?PhonePresence $current,
         string $wanted,
     ): array {
-        // FIRST, because a desk registering must not reach any rule that would
-        // hand it back "registered".
-        if ($wanted === PhonePresence::STATE_REGISTERED
-            && $current?->state === PhonePresence::STATE_DND) {
+        // FIRST, and for EVERY state rather than just `registered`.
+        //
+        // The first version of this guard only caught `registered`, and Jose
+        // reported the same bug again two days later. Measured on the call he
+        // reported — Twilio's child legs for CAef3d3d6e, which name who the
+        // dial actually rang — he was one of six people it named, so he was
+        // reachable at 19:39:33 while his rows read `dnd` fourteen seconds
+        // later.
+        //
+        // The route was `on_call`. Do Not Disturb stops calls arriving; it
+        // does not stop you PLACING one. So: set yourself away, ring a
+        // customer, and the desk writes `on_call` over the `dnd` — which
+        // destroys the evidence that a decision was ever made. When the call
+        // ends `_releasePresence()` writes `registered`, the guard looks for a
+        // stored `dnd` that is no longer there, and the decision is gone with
+        // nobody having touched the button.
+        //
+        // Fixing `registered` alone was fixing the instance rather than the
+        // class. This endpoint is only ever called by the desk — the person's
+        // own toggle goes through `setMine` and never arrives here — so the
+        // rule that actually holds is: THE DESK CANNOT CHANGE A STANDING
+        // DECISION. While somebody is away, every state the software would
+        // like to write is a no-op.
+        //
+        // Nothing is lost by refusing `on_call` here. It exists to keep a ring
+        // group from dialling somebody mid-call, and `dnd` already excludes
+        // them from exactly that (PhonePresence::scopeAvailable). The "on a
+        // call" lamp on the Dial picker reads live PhoneCall rows rather than
+        // this column, so it is unaffected.
+        if ($current?->state === PhonePresence::STATE_DND) {
             return [
                 'state' => PhonePresence::STATE_DND,
                 'wrap_up_until' => null,

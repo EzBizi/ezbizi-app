@@ -174,6 +174,106 @@ class PhoneAvailabilityTest extends TestCase
     }
 
     /**
+     * Making a call while away does not bring you back.
+     *
+     * ── The second report, and why the first fix missed it ───────
+     *
+     * Jose reported the same bug two days after it was fixed. The database
+     * could not answer it — presence keeps no audit trail, and `updated_at`
+     * says when a row was last written, not what it held a minute earlier.
+     * Twilio could: a `<Dial>` makes one CHILD call per `<Client>` noun, and
+     * the children of the call he reported named six people, him among them.
+     * So he was reachable when it rang, fourteen seconds before his rows read
+     * `dnd`.
+     *
+     * The route is this one. Do Not Disturb stops calls ARRIVING; it does not
+     * stop you placing one. The desk writes `on_call` when you dial out, which
+     * lands on top of `dnd` and erases the fact that a decision was made —
+     * and then the call ending writes `registered`, which the first guard
+     * waved through because the stored state was no longer `dnd`.
+     *
+     * This walks the whole route rather than asserting the rule, because the
+     * rule read correctly and the route still ended up available.
+     */
+    public function test_placing_a_call_while_away_does_not_bring_you_back(): void
+    {
+        $t = $this->provisionTenant();
+        [$user, $rows] = $this->deskOnTwoCompanies($t);
+
+        $this->signedInAs($user)
+            ->putJson('/api/v1/phone/presence/me', ['state' => 'dnd'])
+            ->assertOk();
+
+        // Dialling out. The desk sends this the moment the call connects.
+        $this->signedInAs($user)
+            ->putJson('/api/v1/phone/presence', [
+                'connection_id' => $rows[0]->connection_id,
+                'state' => 'on_call',
+            ])
+            ->assertOk();
+
+        // Hanging up. `_releasePresence()` sends this for any call that was
+        // connected, with `registered` hard-coded.
+        $this->signedInAs($user)
+            ->putJson('/api/v1/phone/presence', [
+                'connection_id' => $rows[0]->connection_id,
+                'state' => 'registered',
+            ])
+            ->assertOk();
+
+        $this->inTenant($t['org'], function () use ($user) {
+            $this->assertSame(
+                ['dnd', 'dnd'],
+                PhonePresence::query()->where('user_id', $user->id)->pluck('state')->all(),
+                'ringing one customer put this person back on the rota',
+            );
+        });
+    }
+
+    /**
+     * And the ring group agrees, which is the thing that actually rings.
+     *
+     * The assertions above are about a column. This one asks the code a real
+     * call asks — a green column and a dial that names you anyway is the exact
+     * pair that produced the second report.
+     */
+    public function test_somebody_away_is_not_dialled_after_a_call_of_their_own(): void
+    {
+        $t = $this->provisionTenant();
+        [$user, $rows] = $this->deskOnTwoCompanies($t);
+
+        $this->signedInAs($user)->putJson('/api/v1/phone/presence/me', ['state' => 'dnd'])->assertOk();
+
+        foreach (['on_call', 'registered'] as $state) {
+            $this->signedInAs($user)->putJson('/api/v1/phone/presence', [
+                'connection_id' => $rows[0]->connection_id,
+                'state' => $state,
+            ])->assertOk();
+        }
+
+        $this->inTenant($t['org'], function () use ($user, $rows) {
+            $connection = \App\Models\PhoneConnection::query()
+                ->whereKey($rows[0]->connection_id)->firstOrFail();
+
+            $group = \App\Models\PhoneRingGroup::query()->create([
+                'connection_id' => $connection->id,
+                'name' => 'Existing Client',
+                'mode' => 'simultaneous',
+                'timeout_seconds' => 30,
+                'member_user_ids' => [$user->id],
+                'member_role_ids' => [],
+                'overflow' => 'voicemail',
+            ]);
+
+            $this->assertSame(
+                [],
+                \App\Support\Phone\DialPlan::reachableUserIds($group, $connection),
+                'a caller would be put through to somebody who is not taking calls',
+            );
+        });
+    }
+
+    /**
      * And a desk coming up for somebody who is NOT away still registers them.
      *
      * The control. Without it, a rule that simply refused every `registered`
