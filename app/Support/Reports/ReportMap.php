@@ -7,6 +7,7 @@ use App\Models\Franchise;
 use App\Models\InventoryItem;
 use App\Models\Lead;
 use App\Models\Service;
+use App\Models\ServiceArea;
 use App\Models\TrainingGuide;
 use App\Models\Vehicle;
 use App\Models\Job;
@@ -336,6 +337,30 @@ final class ReportMap
                 ],
                 'relations' => [
                     'job' => ['to' => 'jobs', 'local' => 'job_id', 'foreign' => 'id'],
+                ],
+            ],
+
+            /*
+             * Scheduling's service areas. `franchise_id` is NOT NULL here -
+             * a service area belongs to exactly one branch - so this takes the
+             * plain `franchise` source rather than the catalogue `place` rule,
+             * and it brings an edge to Branches with it.
+             */
+            'service_areas' => [
+                'model'          => ServiceArea::class,
+                'table'          => 'service_areas',
+                'label'          => 'Scheduling',
+                'module'         => 'scheduling',
+                'permission'     => 'scheduling.view',
+                'scope'          => ['franchise_id' => 'franchise'],
+                'shared_because' => null,
+                'soft_deletes'   => false,
+                'columns'        => [
+                    'name'       => ['label' => 'Service area', 'type' => 'string'],
+                    'created_at' => ['label' => 'Created',      'type' => 'datetime'],
+                ],
+                'relations' => [
+                    'branch' => ['to' => 'franchises', 'local' => 'franchise_id', 'foreign' => 'id'],
                 ],
             ],
 
