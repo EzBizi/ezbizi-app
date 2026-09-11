@@ -302,6 +302,26 @@ if wants macos || wants ios; then
   # "H:\flutter\...\podhelper" and pod install dies before a build starts. The
   # Mac regenerates every one of them during its own pub get.
   echo "→ syncing source to the Mac"
+
+  # THE UPLOAD SCRIPT IS NOT PART OF THE SYNC, so ship it explicitly.
+  #
+  # It lives beside the API key in ~/ezbizi-signing rather than in the
+  # project, because it needs asc-key.env. The tar below sends only
+  # client/{lib,ios,macos,...}, so scripts/ has NEVER reached this machine
+  # and the copy the Mac executes was maintained by hand.
+  #
+  # Found 11 Sep 2026: the Mac was running a 10 Sep copy. Two guard fixes
+  # committed that morning -- the one that made a SILENT altool run fail
+  # instead of pass, and the line saying a delivery is not an acceptance --
+  # were in the release pin and did not run. A guard improved in a file
+  # nothing executes is worse than no guard, because it is believed.
+  #
+  # So the executed copy is overwritten from the committed copy on every
+  # Apple build. It cannot drift again without this line being deleted.
+  ssh "$MAC_REMOTE" "cat > ~/ezbizi-signing/upload-testflight.sh.new" \
+    < scripts/mac/upload-testflight.sh
+  ssh "$MAC_REMOTE" "chmod +x ~/ezbizi-signing/upload-testflight.sh.new \
+    && mv ~/ezbizi-signing/upload-testflight.sh.new ~/ezbizi-signing/upload-testflight.sh"
   ssh "$MAC_REMOTE" "rm -rf ${MAC_PROJECT} && mkdir -p ${MAC_PROJECT}"
 
   tar -cz \
