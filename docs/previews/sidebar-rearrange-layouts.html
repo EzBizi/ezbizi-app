@@ -1,0 +1,268 @@
+<!doctype html><meta charset="utf-8">
+<title>Sidebar &mdash; rearranging and dividers</title>
+<style>
+/* Palette from client/lib/core/theme.dart, light: _ink #060808, _muted #5B6672,
+   _line #060808 @ 10%, primary (_cyanDeep) #00708f, outlineVariant for rules. */
+:root{--ink:#060808;--muted:#5B6672;--line:rgba(6,8,8,.10);--primary:#00708f;
+      --paper:#fff;--ground:#f4f6f7;--soft:rgba(6,8,8,.04);--bad:#BA1A1A}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+     font:14px/1.45 -apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:20px 24px 8px}
+h1{margin:0;font-size:18px;font-weight:700;letter-spacing:-.3px}
+#nums{display:flex;flex-wrap:wrap;gap:8px;padding:12px 24px 6px}
+#nums button{font:inherit;font-weight:600;background:var(--paper);color:var(--ink);
+  border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
+#nums button[aria-current=true]{background:var(--primary);color:#fff;border-color:var(--primary)}
+#tog{padding:4px 24px 16px;font-size:13px}
+#tog label{cursor:pointer;user-select:none;font-weight:600;margin-right:20px}
+#stage{padding:0 24px 48px;display:flex;gap:26px;align-items:flex-start;flex-wrap:wrap}
+.cap{font-size:13px;color:var(--muted);margin:0 0 14px;width:100%}
+.note{font-size:12px;color:var(--muted);max-width:420px;margin-top:12px;line-height:1.55}
+.note b{color:var(--ink)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:16px}
+.desk{width:560px}
+.phone{width:330px;border:1px solid var(--line);border-radius:24px;background:var(--paper);
+       padding:12px 10px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.hd{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.hd .t{font-weight:700;flex:1;font-size:15px}
+.btn{border-radius:8px;padding:6px 12px;font-weight:700;font-size:12px;
+     background:var(--primary);color:#fff;display:inline-block}
+.btn.ghost{background:transparent;color:var(--primary);border:1px solid var(--line)}
+/* the rail as it ships */
+.rail{width:86px;border:1px solid var(--line);border-radius:12px;padding:8px 0;
+      background:var(--paper);flex:none}
+.rail .d{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;
+         font-size:10px;color:var(--muted);font-weight:600;text-align:center}
+.rail .d.on{color:var(--primary)}
+.rail .d .g{width:44px;height:26px;border-radius:13px;display:flex;align-items:center;
+            justify-content:center}
+.rail .d.on .g{background:rgba(0,112,143,.14)}
+.rail hr{border:0;border-top:1px solid var(--line);margin:8px 13px}
+.rail hr.user{border-top-style:solid;border-top-color:rgba(0,112,143,.45)}
+.ic{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8}
+/* the rearrange list */
+.rl{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.rl .r{display:flex;align-items:center;gap:10px;padding:9px 11px;
+       border-bottom:1px solid var(--line);font-size:13px;background:var(--paper)}
+.rl .r:last-child{border-bottom:0}
+.rl .r.div{background:var(--soft);color:var(--muted);font-weight:700;font-size:11px;
+           letter-spacing:.5px;text-transform:uppercase}
+.rl .r.lift{box-shadow:0 6px 16px rgba(0,0,0,.14);border-radius:8px;
+            border:1px solid var(--primary);transform:translateX(6px)}
+.rl .nm{flex:1;font-weight:600}
+.rl .h{color:var(--muted);letter-spacing:2px;font-weight:700;cursor:grab}
+.rl .x{color:var(--muted);font-weight:700}
+.fixed{margin-top:10px;border:1px dashed var(--line);border-radius:10px;padding:10px 11px;
+       font-size:12px;color:var(--muted)}
+.fixed b{color:var(--ink)}
+.drawer .r{display:flex;align-items:center;gap:12px;padding:11px 8px;font-size:14px;
+           border-bottom:1px solid var(--line)}
+.drawer .r:last-child{border-bottom:0}
+.drawer .r.div{padding:7px 8px;font-size:11px;font-weight:700;color:var(--muted);
+               letter-spacing:.5px;text-transform:uppercase;background:var(--soft)}
+.drawer .nm{flex:1;font-weight:600}
+.menu{border:1px solid var(--line);border-radius:10px;padding:6px 0;margin-top:6px;
+      box-shadow:0 4px 14px rgba(0,0,0,.10)}
+.menu div{padding:8px 12px;font-size:13px;font-weight:600}
+.menu div.sep{border-top:1px solid var(--line);margin-top:4px;padding-top:10px}
+</style>
+<header><h1>Sidebar &mdash; dragging to reorder, and dividers</h1></header>
+<div id="nums"></div>
+<div id="tog">
+  <label><input type="checkbox" id="search"> The sidebar search is filtering &mdash; the case that breaks it</label>
+  <label><input type="checkbox" id="edit" checked> Show the rearranging state</label>
+</div>
+<div id="stage"></div>
+<script>
+function searching(){ return document.getElementById('search').checked; }
+function editing(){ return document.getElementById('edit').checked; }
+
+var G = '<svg class="ic" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>';
+
+/* Order and grouping a person chose. Rail 1 only — settings, suggestions and
+   development live in rails 2 and 3 and are not in this list at all. */
+var MINE = [
+  {seg:'Every day'},
+  {n:'Dashboard'}, {n:'Jobs'}, {n:'Leads'}, {n:'Customers'},
+  {seg:'When I need it'},
+  {n:'Reports'}, {n:'Inventory'}, {n:'Fleet'}, {n:'Training'}
+];
+
+/* With the search filtering to "re", only Reports survives — and the segment
+   above it must go with it, or somebody is left reading a heading with nothing
+   underneath. The staff group already does exactly this. */
+function visible(){
+  if (!searching()) return MINE;
+  return [{seg:'When I need it'}, {n:'Reports'}];
+}
+
+function railHtml(){
+  var out = '';
+  var drawn = 0;
+  visible().forEach(function(i){
+    if (i.seg) {
+      // A divider needs something on BOTH sides. The empty-segment rule and
+      // this are the same rule: when filtering leaves a segment first, its rule
+      // is separating nothing and must not be drawn. Found by filtering my own
+      // drawing, which put a line across the top of the rail.
+      if (drawn > 0) out += '<hr class="user">';
+      return;
+    }
+    drawn++;
+    out += '<div class="d' + (i.n === 'Dashboard' ? ' on' : '') + '">' +
+      '<span class="g">' + G + '</span>' + i.n + '</div>';
+  });
+  return '<div class="rail">' + out +
+    '<hr><div class="d">' + G + 'Settings</div>' +
+    '<div class="d">' + G + 'Suggestions</div></div>';
+}
+
+function list(lift){
+  return '<div class="rl">' + MINE.map(function(i, idx){
+    if (i.seg) {
+      return '<div class="r div"><span class="h">&#8942;&#8942;</span>' +
+        '<span class="nm">' + i.seg + '</span><span class="x">&times;</span></div>';
+    }
+    return '<div class="r' + (lift && idx === 3 ? ' lift' : '') + '">' +
+      '<span class="h">&#8942;&#8942;</span><span class="nm">' + i.n + '</span></div>';
+  }).join('') + '</div>';
+}
+
+function fixedNote(){
+  return '<div class="fixed"><b>Settings, Suggestions and Development are not in this list.</b> ' +
+    'They sit in their own group below and cannot be moved &mdash; not by a rule this screen ' +
+    'enforces, but because they are a different list entirely.</div>';
+}
+
+/* 1 — a screen of its own. */
+function D1(){
+  return '<div class="card desk">' +
+    '<div class="hd"><div class="t">Rearrange sidebar</div>' +
+    '<span class="btn ghost">Add a divider</span><span class="btn">Done</span></div>' +
+    list(true) + fixedNote() + '</div>' +
+    '<div>' + railHtml() + '</div>';
+}
+
+/* 2 — drag in the rail itself. */
+function D2(){
+  return '<div>' + railHtml() + '</div>' +
+    '<div class="card desk"><div class="hd"><div class="t">Dragging in the rail</div></div>' +
+    '<div class="note" style="max-width:none;margin:0">Press and hold an icon; it lifts out of ' +
+    'the column and the others part to make room. A divider is added from the same long-press ' +
+    'menu.<br><br><b>The cost is not the drag, it is everything around it.</b> ' +
+    '<code>NavigationRail</code> lays out destinations itself, so this means either a ' +
+    'hit-testing layer over the rail or rebuilding hover, the selection pill and the icon ' +
+    'column by hand. The comment at <code>main.dart:794</code> records that hand-drawing a rail ' +
+    'row lost once already.</div></div>';
+}
+
+/* 3 — the rail becomes a list while you edit it. */
+function D3(){
+  return '<div class="card desk">' +
+    '<div class="hd"><div class="t">Sidebar &middot; rearranging</div>' +
+    '<span class="btn ghost">Add a divider</span><span class="btn">Done</span></div>' +
+    list(true) + fixedNote() +
+    '</div><div class="note">The sidebar already has an expanded width with labels. ' +
+    'Rearranging borrows it: the rail widens in place, becomes an ordinary list with handles, ' +
+    'and narrows again when you are done. <b>The drag happens in a list, never in the rail</b> ' +
+    '&mdash; so nothing about <code>NavigationRail</code> is rebuilt, and the thing you drag ' +
+    'sits exactly where the thing you are arranging lives.</div>';
+}
+
+/* 4 — the phone drawer is already a list. */
+function M4(){
+  return '<div class="phone"><div class="hd"><div class="t">Everdoors</div>' +
+    (editing() ? '<span class="btn">Done</span>' : '') + '</div>' +
+    '<div class="drawer">' + MINE.map(function(i, idx){
+      if (i.seg) {
+        return '<div class="r div">' + (editing() ? '<span class="h">&#8942;&#8942;</span> ' : '') +
+          i.seg + (editing() ? ' <span class="x" style="float:right">&times;</span>' : '') + '</div>';
+      }
+      return '<div class="r' + (editing() && idx === 3 ? ' lift' : '') + '">' + G +
+        '<span class="nm">' + i.n + '</span>' +
+        (editing() ? '<span class="h">&#8942;&#8942;</span>' : '') + '</div>';
+    }).join('') + '</div>' + fixedNote() + '</div>' +
+    '<div class="note">The drawer is <b>already a <code>ListView</code> of <code>ListTile</code>s</b>, ' +
+    'so reordering here is the stock control rather than anything invented. Long-press a row and ' +
+    'it lifts. This is the one surface where the hard part of the desktop problem does not exist.</div>';
+}
+
+/* 5 — the same screen as the desktop. */
+function M5(){
+  return '<div class="phone">' +
+    '<div class="hd"><div class="t">Rearrange sidebar</div><span class="btn">Done</span></div>' +
+    list(true) + fixedNote() + '</div>' +
+    '<div class="note">Whatever the desktop does, the phone does. One screen, one set of words, ' +
+    'reached the same way from Your account on both. <b>Costs the phone its natural advantage</b> ' +
+    '&mdash; the drawer could have been dragged where it stands &mdash; and buys never having to ' +
+    'explain two mechanisms to the same person.</div>';
+}
+
+/* 6 — no dragging at all. */
+function M6(){
+  return '<div class="phone"><div class="hd"><div class="t">Everdoors</div></div>' +
+    '<div class="drawer">' +
+      '<div class="r div">Every day</div>' +
+      '<div class="r">' + G + '<span class="nm">Dashboard</span></div>' +
+      '<div class="r">' + G + '<span class="nm">Jobs</span><span class="h">&#8942;</span></div>' +
+    '</div>' +
+    '<div class="menu"><div>Move up</div><div>Move down</div>' +
+    '<div class="sep">Add a divider above</div><div>Rearrange all&hellip;</div></div>' +
+    '</div>' +
+    '<div class="note">Every row carries a menu; no dragging anywhere. <b>Precise, reachable ' +
+    'one-handed, and reachable by somebody who cannot drag at all</b> &mdash; which is the case ' +
+    'the other two do not serve. Slow if you are moving something a long way, which is what ' +
+    '&ldquo;Rearrange all&rdquo; is for.</div>';
+}
+
+var OPT = {
+  1:['1 &middot; Desktop &mdash; a Rearrange screen, the rail untouched', D1,
+     'The 21 modules in a stock <code>ReorderableListView</code>, dividers added as rows and '
+     +'dragged like anything else. <b>The rail never changes behaviour</b> — it renders whatever '
+     +'order was saved. Cheapest, safest, and the furthest from where the sidebar actually is.'],
+  2:['2 &middot; Desktop &mdash; drag the rail itself', D2,
+     'What Jose literally described, and the only option where you arrange the thing by touching '
+     +'the thing. Also the only one that has to re-implement what <code>NavigationRail</code> '
+     +'gives us for free, on a surface where that was tried and lost once.'],
+  3:['3 &middot; Desktop &mdash; the rail widens into a list while you edit', D3,
+     'Borrows the expanded sidebar that already exists. You drag where the sidebar lives, but '
+     +'you drag a <b>list</b>, so nothing about the rail is rebuilt. The middle path, and the '
+     +'one I would build.'],
+  4:['4 &middot; Mobile &mdash; drag the drawer where it stands', M4,
+     'The phone inverts the problem: its sidebar is already a list, so the stock reorder control '
+     +'drops straight in.'],
+  5:['5 &middot; Mobile &mdash; the same Rearrange screen as the desktop', M5,
+     'One mechanism, one set of words, both places.'],
+  6:['6 &middot; Mobile &mdash; a menu per row, no dragging', M6,
+     'The only option that works for somebody who cannot drag.']
+};
+
+var nums = document.getElementById('nums'), stage = document.getElementById('stage'),
+    s = document.getElementById('search'), e = document.getElementById('edit'), cur = 1;
+function show(k){
+  cur = k;
+  var o = OPT[k];
+  stage.innerHTML = '<p class="cap">' + o[0] + '</p>' + o[1]() +
+                    '<div class="note">' + o[2] +
+    (searching()
+      ? '<br><br><b>Filtering, shown here:</b> only Reports survives the search, and the divider '
+      + 'above the segment that emptied goes with it. A heading with nothing under it is the '
+      + 'defect the staff group already avoids. This is also where the index translation has to '
+      + 'be right — the rail addresses destinations by POSITION, so a reordered and filtered list '
+      + 'without a map opens the wrong module with no error at all.'
+      : '') + '</div>';
+  Array.prototype.forEach.call(nums.children, function(b){
+    if (b.dataset) b.setAttribute('aria-current', b.dataset.k === String(k));
+  });
+}
+Object.keys(OPT).forEach(function(k){
+  var b = document.createElement('button');
+  b.textContent = (k < 4 ? 'Desktop ' : 'Mobile ') + k;
+  b.dataset.k = k; b.onclick = function(){ show(k); };
+  nums.appendChild(b);
+});
+s.onchange = function(){ show(cur); };
+e.onchange = function(){ show(cur); };
+show(1);
+</script>
