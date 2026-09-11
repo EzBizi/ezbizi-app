@@ -82,10 +82,16 @@ class SyncLeads extends Command
          * From 2026-09-11 the fleet sits at Google's ceiling on purpose, and a
          * capped budget makes the ORDER of this list the thing that decides
          * who gets served. Unordered, it came back in insertion order every
-         * tick, so the same accounts spent the surviving quota and the ones at
-         * the end were refused every time — not slower, never. Measured that
-         * afternoon: 0 of 59 accounts reached in the last tick, 16 in the last
-         * half hour, and they were the same sixteen.
+         * tick, so whoever came back first spent the surviving quota and
+         * nothing made a loser eventually a winner.
+         *
+         * State the evidence honestly, because the first version of this
+         * comment did not. Measured 2026-09-11 at 13:24, thirty minutes into
+         * a stall: 0 of 59 accounts reached in the last tick, 16 in the last
+         * half hour — and I wrote "the same sixteen", which I never checked.
+         * A wider window contradicted it: 56 of 59 had been reached within the
+         * hour. So this fixes a hazard the ordering CREATES, not a starvation
+         * anybody observed.
          *
          * Ordering by last_reached_at, nulls first, makes the refusals rotate.
          * Every account is eventually the oldest, so a day at the ceiling

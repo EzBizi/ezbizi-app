@@ -297,6 +297,16 @@ and ticks fail intermittently rather than everything stopping until some hour.
 That is what makes running over sustainable — and it is why the ORDER of the
 fleet matters (see the tick's longest-unread-first ordering, same day).
 
+**A correction on that ordering's evidence.** It was first justified with "0 of
+59 reached in the last tick, 16 in the last half hour, and the same sixteen".
+The counts were measured; **"the same sixteen" was not** — identities were never
+compared, and a wider window contradicts it: 56 of 59 accounts had been reached
+within the hour, the three exceptions being the demo row and two the grant
+cannot see. What was really happening at 13:24 was a total stall affecting all
+59 equally. Longest-unread-first still belongs there, as a fix for a hazard the
+ordering creates by construction — nothing makes a loser eventually a winner —
+rather than for observed starvation.
+
 **What going over costs, and what it does not.** When the day's quota is spent
 every request fails until it resets, at an hour Google does not document. Nothing
 is LOST in that window: the lead read asks for everything since the newest lead
