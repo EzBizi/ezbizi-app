@@ -385,6 +385,50 @@ void main() {
     expect(find.text('These are configured, not booked.'), findsOneWidget);
   });
 
+  /// What `empty: true` actually suppresses, pinned because it is now written
+  /// in `GlancePayload`'s docblock as the rule for glance authors.
+  ///
+  /// It is a STATEMENT rather than a READING: no chart and no money lines,
+  /// whatever the payload carries, and every sentence in the muted note
+  /// style. The trap used to be that it dropped all but the first sentence;
+  /// that is gone, and the consequence to watch is the opposite one — a box
+  /// with something to plot must not set it, or the chart silently will not
+  /// appear.
+  ///
+  /// Asserted with a payload that carries BOTH a drawable slice and a money
+  /// list, so the suppression is the thing under test rather than an absence
+  /// that would have happened anyway.
+  testWidgets('empty suppresses the chart and the money, not the words', (
+    tester,
+  ) async {
+    await _pumpDashboard(tester, [
+      {
+        'key': 'jobs',
+        'label': 'Jobs',
+        'presentation': 'bar',
+        'allowed_presentations': ['bar', 'text'],
+        'snapshot': true,
+        'coming_soon': false,
+        'options': <String, dynamic>{},
+        'data': {
+          'empty': true,
+          'slices': [
+            {'label': 'Done', 'total': 7},
+          ],
+          'revenue': [
+            {'currency': 'CAD', 'amount_minor': 9900},
+          ],
+          'sentences': ['Two inboxes could not be asked.', 'One is ours.'],
+        },
+      },
+    ]);
+
+    expect(find.byType(DashboardChart), findsNothing);
+    expect(find.textContaining('CAD'), findsNothing);
+    expect(find.text('Two inboxes could not be asked.'), findsOneWidget);
+    expect(find.text('One is ours.'), findsOneWidget);
+  });
+
   testWidgets('coming soon has no how-to-draw menu', (tester) async {
     await _pumpDashboard(tester, _comingSoon());
 

@@ -12,6 +12,27 @@ namespace App\Support\Dashboard;
 final class GlancePayload
 {
     /**
+     * ── What `$data['empty']` means, since it is the one people get wrong ──
+     *
+     * It asks whether this box is a STATEMENT or a READING. It is not a
+     * sentence count and it is not a hint.
+     *
+     *   true   the client draws NO chart and NO money lines, whatever the
+     *          payload carries, and sets every sentence in the muted note
+     *          style. With no sentence at all it writes "Nothing to show."
+     *   false  a chart when there is something to plot, every sentence as
+     *          ordinary text, and a line for every money list.
+     *
+     * **Both render every sentence.** They did not until 2026-09-11: the
+     * `true` branch drew the FIRST one and silently discarded the rest. That
+     * cost three weeks of a customer seeing one of two dead inboxes named on
+     * their home screen, and it is why the rule is written here rather than
+     * in a note somebody has to have read. If you are setting `empty` to
+     * dodge a renderer behaviour, the renderer is the thing to fix.
+     *
+     * The consequence to watch is the opposite one now: `true` SUPPRESSES a
+     * chart and any figures. A box with slices to plot must not set it.
+     *
      * @param  string[]  $allowedPresentations
      * @param  array<string, mixed>  $options
      * @param  array<string, mixed>  $data
