@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0200',
+      date: '11 Sep 2026',
+      items: [
+        'Do Not Disturb now survives a call you place yourself. Setting yourself to Not taking calls and then ringing somebody put you back on the rota the moment you hung up, with nothing touched. The fix in 0.0.0196 said only the availability toggle could change it - that was true of the app reconnecting and not true of placing a call, and this is the other half of it.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0199',
       date: '11 Sep 2026',
       items: [
