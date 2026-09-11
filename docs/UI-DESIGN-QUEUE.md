@@ -1936,3 +1936,58 @@ shape of process. Reopening either is his call, not design's.
   unconnected and below once connected. Shipped in 0.0.0118. The last two generalise
   and are worth stealing: a value whose only purpose is to be pasted gets a copy
   button, and position can carry "is this what you should be doing right now".
+
+### 10 · Dashboard charts · where the colours come from — **DRAWN, awaiting Jose**
+
+`docs/previews/dashboard-chart-palette-layouts.html` @ `b4bfb612`. Three desktop, three
+mobile, with a **slice-count slider and a light/dark toggle** — the toggle because the worst
+defect exists only on light, and an option looked at in one theme hides half the problem.
+
+Dashboard (`local_0417a3f0`) reported the cycling: `_palette` returns six swatches,
+`dashboard_chart.dart` indexes them `colors[i % 6]` in the wedge painter (`:309`, `:345`),
+the series painter (`:395`) and the legend (`:124`), and nothing caps slice count.
+`jobs.statuses` is a `TYPE_LIST` setting with **no maximum**, so a seventh status repeats the
+first status's colour. All true. They deliberately did not fix it, because fixing it means
+choosing colours — correct, and the colour-literal ratchet is exactly why.
+
+**Measured the six before drawing anything, and the report understates it by five slices.**
+
+| | light | dark |
+|---|---|---|
+| primary | `#00708F` | `#00AEEF` |
+| secondary | **`#00708F`** | `#0093CA` |
+| tertiary | `#41627A` | `#6E8CA0` |
+| primaryContainer | `#C6E7FF` | `#004C6B` |
+| secondaryContainer | `#D2E5F4` | `#374955` |
+| tertiaryContainer | **`#E8DDFF`** | `#4A4263` |
+
+**On light, swatch 1 and swatch 2 are the same colour.** `theme.dart` pins `secondary` to
+`_cyanDeep` on purpose, so a widget reaching for it gets something in the brand's range —
+which is right for every widget in the product except this one. The chart is the only place
+that reads the six roles as six *different* colours. The default `jobs.statuses` is four, so
+**every light-theme jobs pie on every dashboard today draws Scheduled and In progress
+identically.** Not an edge case at seven; the shipped state at two.
+
+**And swatch six is the violet.** `#E8DDFF` is the hue `theme.dart`'s own docblock says was
+banished after the owner called it *"the mark of AI did this"*. The `copyWith` there pins
+`secondary` and `tertiary` but not their **containers**, so the generated hue survives in the
+container. `leads_screen.dart:1293` refuses it by name — *"tertiaryContainer is off limits: it
+would be the first purple in the app"* — and the chart palette reaches for it at six slices.
+Measured: those are the **only two** references to `tertiaryContainer` in `client/lib`, so the
+rule was known, written down, and leaked in exactly one place.
+
+> **The ratchet was pointed at hex literals in widget files. This one arrived through a scheme
+> role**, which passes every check a hex literal fails. A colour the app never chose can enter
+> through a name the app did choose.
+
+**Every option must answer what RUNNING OUT looks like** — Dashboard's framing and the better
+half of the report. *"A seventh slice drawn in a repeat colour looks exactly like a correct
+chart"*: the cycling is not the defect, the **silence** is. Same shape as the empty box that
+showed one sentence of three for three weeks.
+
+That is also the trap inside the most obvious answer. **Option 1, a wider brand ramp, is the
+one that looks finished and is not** — it raises the ceiling to ten and says nothing at eleven.
+The gallery says so underneath it rather than letting it read as the safe pick. Options 2, 3, 4
+and 6 each make running out into something on the screen: a named and counted wedge, one
+neutral for the tail, or a chart type that needs no palette at all.
+
