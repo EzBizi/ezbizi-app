@@ -132,9 +132,15 @@ class PhoneAvailabilityTest extends TestCase
      *
      * `setMine` had done its job — both rows went to `dnd` at 19:39. What
      * undid it was `PhoneCallService::start()`, which ends by PUTting
-     * `registered` for the connection it has just brought up, and which runs
-     * on every app launch, every reconnect, and every switch between
-     * companies. None of those is a person saying they are ready.
+     * `registered` for the connection it has just brought up.
+     *
+     * It runs once per app process — `if (_started || _starting) return;` on a
+     * singleton — so the trigger is an app launch, a sign-in, or the "Try
+     * again" button, and NOT a company switch or a recovered socket. That
+     * distinction is here because the first version of this docblock claimed
+     * all three and the deploy desk was about to print it for users.
+     *
+     * None of those is a person saying they are ready.
      *
      * The call then arrived on the line whose row had been quietly put back.
      */

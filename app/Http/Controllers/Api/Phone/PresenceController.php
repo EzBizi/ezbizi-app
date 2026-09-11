@@ -226,10 +226,19 @@ class PresenceController extends Controller
      * ── Why a desk registering cannot clear Do Not Disturb ───────
      *
      * PhoneCallService::start() ends by PUTting `registered` for the
-     * connection it just brought up, and it runs on every app launch, every
-     * reconnect after a dropped socket, and every switch between companies.
-     * None of those is somebody saying they are ready to take calls; they are
-     * the software saying a device is attached.
+     * connection it just brought up. MEASURED rather than assumed, because the
+     * first version of this comment named three triggers and two of them were
+     * wrong: `start()` opens with `if (_started || _starting) return;` and the
+     * service is a singleton, so it runs ONCE per app process. It is reached by
+     *
+     *   - the shell mounting, which is an app launch or a sign-in;
+     *   - `restart()`, the "Try again" button on the desk-down banner;
+     *   - `stop()` then a new shell, which is signing out and back in.
+     *
+     * NOT by switching companies, and NOT by a socket dropping and recovering
+     * — nothing calls `restart()` on its own. Whichever of these it is, none is
+     * somebody saying they are ready to take calls; they are the software
+     * saying a device is attached.
      *
      * Jose set himself to Not taking calls at 19:39 and took a call at 19:44.
      * Measured on production rather than guessed: his EzBizi row said `dnd`
