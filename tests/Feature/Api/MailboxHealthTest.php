@@ -547,6 +547,73 @@ class MailboxHealthTest extends TestCase
     }
 
     /**
+     * Every fault has RECORDED a decision about whether it disconnects the
+     * mailbox. Adding an arm without deciding fails here.
+     *
+     * ── What this does NOT do, and why not ───────────────────────
+     *
+     * It does not read the sentences. The deploy desk asked whether the audit
+     * that found `HostNotAnswering` could be made mechanical -- "says it clears
+     * on its own" exempt, "names a person" not. I tried it against the ten arms
+     * and it is false in both directions, so building it would have shipped a
+     * guard that lies:
+     *
+     *   NotConnected NAMES A PERSON ("somebody ... needs to finish connecting
+     *   it") and is correctly exempt -- not because nobody must act, but
+     *   because it has never worked, so "it worked and now does not" would be
+     *   untrue whoever fixes it.
+     *
+     *   ProviderRefused says BOTH -- "One more attempt is worth making" AND
+     *   "somebody ... should connect the address again". That ambiguity is real
+     *   and is the open product question, not a defect in the wording.
+     *
+     * So the rule needs a person to read it, and it lives in `marksBroken()`'s
+     * docblock where the next author will have it open. What a test CAN do is
+     * make the decision impossible to skip, which is all that was needed: three
+     * arms were written with a promise the status vetoed, and none of them was
+     * a wrong answer -- they were a question nobody was asked.
+     */
+    public function test_every_fault_has_decided_whether_it_disconnects_the_mailbox(): void
+    {
+        // Read `marksBroken()`'s docblock before changing a value here. The
+        // question is not whether the fault is serious, it is whose job it is.
+        $decided = [
+            'NotConnected'        => false, // never worked; broken would be a lie
+            'SignInNoLongerValid' => true,  // a person must reconnect
+            'PermissionNarrowed'  => true,  // a person must widen the permission
+            'TooManyRequests'     => false, // the mailbox is healthy
+            'HostNotAnswering'    => false, // says it clears on its own
+            'HostNotAllowed'      => true,  // a typed value only a person can fix
+            'ProviderFaulty'      => false, // says it clears on its own
+            'ProviderRefused'     => true,  // OPEN: says retry once THEN a person
+            'PlatformRejected'    => false, // ours, never the tenant's row
+            'NotBuiltHere'        => false, // ours, never the tenant's row
+        ];
+
+        foreach (MailboxFault::cases() as $case) {
+            $this->assertArrayHasKey(
+                $case->name,
+                $decided,
+                "MailboxFault::{$case->name} is new and nobody has decided whether it "
+                .'disconnects the mailbox. Read marksBroken() -- a sentence that names a '
+                .'person keeps broken, a sentence that says it will pass is made false by it.',
+            );
+
+            $this->assertSame(
+                $decided[$case->name],
+                $case->marksBroken(),
+                "MailboxFault::{$case->name} no longer matches the recorded decision.",
+            );
+        }
+
+        $this->assertCount(
+            count($decided),
+            MailboxFault::cases(),
+            'A fault was removed; drop its row above so this stays a list of real arms.',
+        );
+    }
+
+    /**
      * A fault at EzBizi's end is never written onto a tenant's row.
      *
      * This installation has no Google registration, so if `notBuiltHere` marked
