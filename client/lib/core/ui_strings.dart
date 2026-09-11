@@ -22,6 +22,10 @@ class UiStrings {
     'shell.language': 'Language',
     'shell.find_module': 'Find a module',
     'shell.clear_filter': 'Clear',
+    'shell.rearrange': 'Rearrange',
+    'shell.add_divider': 'Add a divider',
+    'shell.remove_divider': 'Remove this divider',
+    'shell.done': 'Done',
 
     // One line per module, under its name in the page header. The TITLE is
     // the server's `label` and is never written here -- an organization may

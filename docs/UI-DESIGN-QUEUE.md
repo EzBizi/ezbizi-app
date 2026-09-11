@@ -1388,7 +1388,7 @@ finished and cannot. That was wrong — it keys off `connected_at != null`, whet
 plugin has ever read the site, which the module answers exactly. The tier decision
 rests on the opposite-facts argument alone, which is sufficient on its own.*
 
-### 9 · Sidebar · rearranging and dividers — **DRAWN, with Jose**
+### 9 · Sidebar · rearranging and dividers — **BUILT** (desktop 3 + mobile 4)
 
 `docs/previews/sidebar-rearrange-layouts.html`. Three desktop, three mobile, with the sidebar
 search filter on a toggle because that is the case that breaks it silently.
@@ -1405,6 +1405,27 @@ a rail and natural exactly where it is a list.**
 **Dividers carry NO name** (Jose, 2026-09-11: *"just be dividers basically"*). That makes a user
 divider literally the `Divider` already shipping between the rails — no new visual, no copy,
 nothing to localise, and no question about how a label truncates at 86px.
+
+**Jose picked desktop 3 and mobile 4, 2026-09-11.** Built the same day.
+
+The two rules below are enforced in ONE place — `client/lib/core/sidebar_order.dart`, which
+turns a saved order plus the modules somebody actually has into rows and rule positions, and
+back again. Everything downstream indexes the ordered list, so the shell, the rail, the drawer
+and the arranger never learn that an order exists.
+
+**The divider is what makes the rail dangerous again.** A `NavigationRail` cannot draw a rule
+between its own items, so a divider cuts the module rail into more than one rail — the shape
+the pinned and staff groups already had. A rail reports the index of the row tapped *within
+itself*, so every group below the first hands back a number meaning something else. That is the
+module-filter defect a second time, and it is pinned by
+`client/test/sidebar_arrange_test.dart::tapping a row below a divider opens THAT row`, which was
+measured red on a deliberate `onSelected(i)`.
+
+*The rule test was aimed one case beside its mechanism and passed a sabotage.* Filtering away
+what is **above** a rule never builds a trailing group, so the drop-empty-groups line was never
+exercised; the case that fails is filtering away what is **below** it. Both directions are now
+asserted. A green test proves nothing about the line it was written for until that line has been
+broken under it.
 
 > **Two rules follow, and they are not the same rule.** A divider needs something on **both
 > sides**, and **two dividers cannot touch**. Filtering produces both: the first when a filter

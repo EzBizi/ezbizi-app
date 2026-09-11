@@ -804,6 +804,17 @@ class Me {
     return value.clamp(180.0, 420.0);
   }
 
+  /// The order this person dragged their sidebar into, with their dividers.
+  ///
+  /// Empty is the ordinary state — it means nobody has touched it, and the
+  /// sidebar renders in the order the server sends the modules. Read leniently
+  /// because it is arrangement rather than access: a stale entry costs a
+  /// position, never a module.
+  List<String> get navigationOrder =>
+      (preferences['navigation.order'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .toList();
+
   /// Whether the dial pad keeps its customer panel open between calls.
   ///
   /// A preference rather than screen state because the screen is thrown away

@@ -15,6 +15,7 @@ import 'core/permissions.dart';
 import 'core/remote_control_service.dart';
 import 'core/screenshot_service.dart';
 import 'core/session.dart';
+import 'core/sidebar_order.dart';
 import 'core/staff_session.dart';
 import 'core/theme.dart';
 import 'core/ui_strings.dart';
@@ -393,6 +394,13 @@ class _HomeShellState extends State<HomeShell> {
   VoidCallback? _stopClockListening;
 
   _Rail _rail = _Rail.modules;
+
+  /// Whether the drawer is showing its rows with drag handles on.
+  ///
+  /// Held here rather than in the drawer because a Drawer is rebuilt from
+  /// scratch every time it opens; state inside it would be lost on the first
+  /// scroll that closed and reopened it.
+  bool _arrangingDrawer = false;
   void Function()? _stopListening;
 
   /// Reports this device's presence and which module is on screen
@@ -705,7 +713,7 @@ class _HomeShellState extends State<HomeShell> {
     //     skipped rather than drawn as a tab that opens nothing.
     //
     // See core/module_screens.dart.
-    final destinations = <Destination>[
+    var destinations = <Destination>[
       // Their own paperwork, first, while it is unfinished.
       //
       // The one destination here that is not a module, and it earns the
@@ -754,6 +762,21 @@ class _HomeShellState extends State<HomeShell> {
               id: module.key,
             ),
     ];
+
+    // Their own order, applied ONCE and here.
+    //
+    // Everything downstream — the fallback selection, the rail's index
+    // translation, the drawer — indexes this list, so rearranging it at the
+    // source means none of them has to know the order exists. `divideAfter`
+    // holds positions in it, and is empty for everybody who has never dragged
+    // anything.
+    final arranged = arrangeSidebar(
+      destinations,
+      me.navigationOrder,
+      (d) => d.id,
+    );
+    destinations = arranged.rows;
+    final divideAfter = arranged.divideAfter;
 
     // Pinned to the bottom, under a rule and the empty space.
     //
@@ -1308,6 +1331,7 @@ class _HomeShellState extends State<HomeShell> {
                         expanded: expanded,
                         width: me.navigationWidth,
                         destinations: destinations,
+                        divideAfter: divideAfter,
                         pinned: pinned,
                         staffOnly: staffOnly,
                         selectedIndex: railIndex,
@@ -1324,6 +1348,10 @@ class _HomeShellState extends State<HomeShell> {
                         onResized: (w) => widget.session.setPreference(
                           'navigation.width',
                           w.round(),
+                        ),
+                        onArranged: (order) => widget.session.setPreference(
+                          'navigation.order',
+                          order,
                         ),
                       ),
                     ),
@@ -1383,7 +1411,16 @@ class _HomeShellState extends State<HomeShell> {
        * No `leading` is set on this layout, so Scaffold supplies the button
        * that opens it.
        */
-      drawer: wide ? null : _navigationDrawer(destinations, pinned, staffOnly),
+      drawer: wide
+          ? null
+          : _navigationDrawer(
+              destinations,
+              divideAfter,
+              pinned,
+              staffOnly,
+              (order) =>
+                  widget.session.setPreference('navigation.order', order),
+            ),
     );
   }
 
@@ -1425,8 +1462,10 @@ class _HomeShellState extends State<HomeShell> {
 
   Widget _navigationDrawer(
     List<Destination> destinations,
+    Set<int> divideAfter,
     List<Destination> pinned,
     List<Destination> staffOnly,
+    ValueChanged<List<String>> onArranged,
   ) {
     return Drawer(
       child: Builder(
@@ -1441,22 +1480,62 @@ class _HomeShellState extends State<HomeShell> {
             },
           );
 
+          // SafeArea rather than a bare list: from Android 15 an app targeting
+          // SDK 35+ draws edge to edge by default, so without this the first
+          // row sits under the status bar and the last under the gesture bar.
+          final header = SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
+              child: Row(
+                children: [
+                  Expanded(child: EzBiziTheme.wordmark(context, size: 20)),
+                  if (!_arrangingDrawer)
+                    IconButton(
+                      icon: const Icon(Icons.swap_vert, size: 20),
+                      tooltip: UiStrings.t('shell.rearrange'),
+                      onPressed: () =>
+                          setState(() => _arrangingDrawer = true),
+                    ),
+                ],
+              ),
+            ),
+          );
+
+          // The phone has the easy half of this problem: its sidebar is
+          // already a list of rows, so arranging it is the same list with
+          // handles on. Nothing here is rebuilt to make dragging possible.
+          if (_arrangingDrawer) {
+            return Column(
+              children: [
+                header,
+                const Divider(height: 1),
+                Expanded(
+                  child: _SidebarArranger(
+                    destinations: destinations,
+                    divideAfter: divideAfter,
+                    onDone: (order) {
+                      setState(() => _arrangingDrawer = false);
+                      if (order != null) onArranged(order);
+                    },
+                  ),
+                ),
+              ],
+            );
+          }
+
           return ListView(
-            // SafeArea rather than a bare ListView: from Android 15 an app
-            // targeting SDK 35+ draws edge to edge by default, so without this
-            // the first tile sits under the status bar and the last under the
-            // gesture bar.
             padding: EdgeInsets.zero,
             children: [
-              SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                  child: EzBiziTheme.wordmark(context, size: 20),
-                ),
-              ),
+              header,
               const Divider(height: 1),
-              for (final d in destinations) tile(d, _Rail.modules),
+              for (var i = 0; i < destinations.length; i++) ...[
+                tile(destinations[i], _Rail.modules),
+                // Their own rule, nameless, exactly where they put it. The
+                // last position can never be in the set, so this cannot draw
+                // a second line immediately above the pinned group's one.
+                if (divideAfter.contains(i)) const Divider(),
+              ],
               if (pinned.isNotEmpty) const Divider(),
               for (final d in pinned) tile(d, _Rail.pinned),
               if (staffOnly.isNotEmpty) const Divider(),
@@ -1786,6 +1865,8 @@ class NavigationSidebar extends StatefulWidget {
     required this.onPinnedSelected,
     required this.onStaffSelected,
     this.onResized,
+    this.onArranged,
+    this.divideAfter = const {},
   });
 
   final bool expanded;
@@ -1795,6 +1876,12 @@ class NavigationSidebar extends StatefulWidget {
   final double width;
 
   final List<Destination> destinations;
+
+  /// Positions in [destinations] with a rule under them. Empty for everybody
+  /// who has never rearranged anything, which is the state this sidebar was
+  /// built in and still renders identically.
+  final Set<int> divideAfter;
+
   final List<Destination> pinned;
 
   /// Development, when this person is also EzBizi staff (§4.2). Its own group
@@ -1815,6 +1902,10 @@ class NavigationSidebar extends StatefulWidget {
   /// per pixel of travel.
   final ValueChanged<double>? onResized;
 
+  /// The new order, on Done. Same reasoning as [onResized]: one write when the
+  /// arrangement is finished, not one per row moved.
+  final ValueChanged<List<String>>? onArranged;
+
   static const double collapsedWidth = 80;
   static const double minWidth = 180;
   static const double maxWidth = 420;
@@ -1826,6 +1917,12 @@ class NavigationSidebar extends StatefulWidget {
 class _NavigationSidebarState extends State<NavigationSidebar> {
   /// The width during a drag, before it is committed. Null when not dragging.
   double? _dragWidth;
+
+  /// Whether the rail has widened into a list of rows you can drag.
+  ///
+  /// Local rather than a preference: it is a mode you are in for thirty
+  /// seconds, not a way you like your sidebar. Leaving the screen leaves it.
+  bool _arranging = false;
 
   final TextEditingController _search = TextEditingController();
 
@@ -1879,11 +1976,19 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    final width = widget.expanded
-        ? (_dragWidth ?? widget.width)
+    // Arranging forces the rail open and gives it room for a handle beside the
+    // longest label. Dragging rows in an 80px icon column is dragging things
+    // you cannot tell apart.
+    final arranging = _arranging && widget.onArranged != null;
+    final expanded = widget.expanded || arranging;
+    final width = expanded
+        ? math.max(_dragWidth ?? widget.width, arranging ? 260.0 : 0.0)
         : NavigationSidebar.collapsedWidth;
 
-    final query = widget.expanded ? _query.trim().toLowerCase() : '';
+    // No filter while arranging. A list you are reordering has to be the whole
+    // list: dropping a row between two that happen to be adjacent on screen
+    // and not adjacent in the order would put it somewhere nobody chose.
+    final query = expanded && !arranging ? _query.trim().toLowerCase() : '';
     final filtering = query.isNotEmpty;
 
     // Filtering a rail means filtering its INDICES too, and this list is the
@@ -1903,12 +2008,38 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
           i,
     ];
 
-    // Null when the selected module is filtered out. Not zero -- zero would
-    // paint the highlight on whatever happens to be first.
-    final selectedAt = widget.selectedIndex == null
-        ? -1
-        : shown.indexOf(widget.selectedIndex!);
-    final railSelected = selectedAt < 0 ? null : selectedAt;
+    // The module rail, cut into groups at this person's dividers.
+    //
+    // A NavigationRail cannot put a rule between its own items, so a divider is
+    // a break BETWEEN rails -- the same shape the pinned and staff groups have
+    // always had, for the same reason. Empty groups are dropped rather than
+    // drawn, which is what enforces both rules a rule has to obey: it needs
+    // something on each side, and two of them cannot touch. The filter is why
+    // that is not merely tidiness -- it can empty a group that was perfectly
+    // good when it was saved.
+    final segments = <List<int>>[[]];
+    for (final i in shown) {
+      segments.last.add(i);
+      if (widget.divideAfter.contains(i)) segments.add([]);
+    }
+    segments.removeWhere((group) => group.isEmpty);
+
+    // The ORIGINAL index of the selected row, or null when the filter hid it.
+    // Not zero -- zero would paint the highlight on whatever happens to be
+    // first.
+    final railSelected = shown.contains(widget.selectedIndex)
+        ? widget.selectedIndex
+        : null;
+
+    /// Where the selection sits inside one group, or null when it is in
+    /// another. Exactly one group may claim it, which is what NavigationRail's
+    /// own assert is about.
+    int? within(List<int> group) {
+      if (railSelected == null) return null;
+      final at = group.indexOf(railSelected);
+
+      return at < 0 ? null : at;
+    }
 
     final sidebar = SizedBox(
       // Explicit, not intrinsic. A Row gives its non-flex children
@@ -1948,7 +2079,7 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
             // and wants their screen back; search is for FINDING, which implies
             // wanting labels. An icon at 80px would be a control that only
             // makes sense by first undoing the state you deliberately chose.
-            if (widget.expanded)
+            if (expanded && !arranging)
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
                 child: TextField(
@@ -1978,6 +2109,27 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
                     suffixIconConstraints: const BoxConstraints(
                       minWidth: 34,
                       minHeight: 34,
+                    ),
+                  ),
+                ),
+              ),
+
+            // The way in, beside the filter rather than buried in Settings:
+            // rearranging the sidebar is something you decide while looking at
+            // the sidebar.
+            if (expanded && !arranging && widget.onArranged != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 2, 8, 0),
+                  child: TextButton.icon(
+                    onPressed: () => setState(() => _arranging = true),
+                    icon: const Icon(Icons.swap_vert, size: 16),
+                    label: Text(UiStrings.t('shell.rearrange')),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      foregroundColor: scheme.onSurfaceVariant,
+                      textStyle: Theme.of(context).textTheme.labelMedium,
                     ),
                   ),
                 ),
@@ -2030,7 +2182,16 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
               // indistinguishable from a broken one. So it names what was
               // typed, says the list is filtered rather than empty, and points
               // at the way back.
-              child: filtering && shown.isEmpty
+              child: arranging
+                  ? _SidebarArranger(
+                      destinations: widget.destinations,
+                      divideAfter: widget.divideAfter,
+                      onDone: (order) {
+                        setState(() => _arranging = false);
+                        if (order != null) widget.onArranged!(order);
+                      },
+                    )
+                  : filtering && shown.isEmpty
                   ? _noMatch(context, _query.trim())
                   : LayoutBuilder(
                       builder: (context, constraints) => SingleChildScrollView(
@@ -2038,18 +2199,35 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
                           constraints: BoxConstraints(
                             minHeight: constraints.maxHeight,
                           ),
-                          child: IntrinsicHeight(
-                            child: _rail(
-                              context,
-                              expanded: widget.expanded,
-                              width: width,
-                              destinations: [
-                                for (final i in shown) widget.destinations[i],
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              for (var g = 0; g < segments.length; g++) ...[
+                                if (g > 0)
+                                  Divider(
+                                    height: 17,
+                                    thickness: 1,
+                                    indent: width * 0.15,
+                                    endIndent: width * 0.15,
+                                    color: scheme.outlineVariant,
+                                  ),
+                                IntrinsicHeight(
+                                  child: _rail(
+                                    context,
+                                    expanded: expanded,
+                                    width: width,
+                                    destinations: [
+                                      for (final i in segments[g])
+                                        widget.destinations[i],
+                                    ],
+                                    selectedIndex: within(segments[g]),
+                                    onSelected: (i) =>
+                                        widget.onSelected(segments[g][i]),
+                                    query: query,
+                                  ),
+                                ),
                               ],
-                              selectedIndex: railSelected,
-                              onSelected: (i) => widget.onSelected(shown[i]),
-                              query: query,
-                            ),
+                            ],
                           ),
                         ),
                       ),
@@ -2078,7 +2256,7 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
             IntrinsicHeight(
               child: _rail(
                 context,
-                expanded: widget.expanded,
+                expanded: expanded,
                 width: width,
                 destinations: widget.pinned,
                 selectedIndex: widget.pinnedIndex,
@@ -2108,7 +2286,7 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
               IntrinsicHeight(
                 child: _rail(
                   context,
-                  expanded: widget.expanded,
+                  expanded: expanded,
                   width: width,
                   destinations: widget.staffOnly,
                   selectedIndex: widget.staffIndex,
@@ -2123,7 +2301,7 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
             // Only when expanded: at 80px it would truncate, and half a build
             // id is worse than none — it invites people to compare the wrong
             // characters and conclude they are up to date when they are not.
-            if (widget.expanded)
+            if (expanded)
               const Padding(
                 padding: EdgeInsets.fromLTRB(20, 10, 12, 0),
                 child: BuildStamp(),
@@ -2136,7 +2314,7 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
 
     // Collapsed has one right width and dragging it would be a fight with the
     // toggle. The handle only exists when there is a width to change.
-    if (!widget.expanded || widget.onResized == null) return sidebar;
+    if (!expanded || widget.onResized == null) return sidebar;
 
     return Stack(
       children: [
@@ -2175,6 +2353,196 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// The sidebar as a list you can drag, on both the rail and the phone drawer.
+///
+/// One widget for both because the mechanism is the whole feature: the words
+/// on the buttons, what a divider looks like, whether a drop lands above or
+/// below, and what is saved all have to be the same thing in both places, and
+/// the only way to be sure of that is for it to BE the same thing.
+///
+/// It never touches [NavigationRail]. The rail is what the sidebar is when you
+/// are using it; this is what it becomes while you are arranging it.
+class _SidebarArranger extends StatefulWidget {
+  const _SidebarArranger({
+    required this.destinations,
+    required this.divideAfter,
+    required this.onDone,
+  });
+
+  final List<Destination> destinations;
+  final Set<int> divideAfter;
+
+  /// The order to save, or null when nothing moved — leaving without changing
+  /// anything must not write a preference.
+  final ValueChanged<List<String>?> onDone;
+
+  @override
+  State<_SidebarArranger> createState() => _SidebarArrangerState();
+}
+
+/// One row being dragged: a module, or a divider with an identity of its own.
+///
+/// Dividers are identical to look at and must NOT be identical to the reorder
+/// animation — every child of a ReorderableListView needs a key that is unique
+/// among its siblings, and two rows sharing one is a list that drops rows while
+/// you drag.
+class _ArrangeRow {
+  _ArrangeRow(this.id, this.key);
+
+  _ArrangeRow.divider() : id = sidebarDivider, key = UniqueKey();
+
+  final String id;
+  final Key key;
+}
+
+class _SidebarArrangerState extends State<_SidebarArranger> {
+  late final List<String> _was;
+  late final List<_ArrangeRow> _rows;
+
+  @override
+  void initState() {
+    super.initState();
+    _was = sidebarOrderOf(
+      widget.destinations,
+      widget.divideAfter,
+      (d) => d.id,
+    );
+    _rows = [
+      for (final entry in _was)
+        if (entry == sidebarDivider)
+          _ArrangeRow.divider()
+        else
+          _ArrangeRow(entry, ValueKey(entry)),
+    ];
+  }
+
+  List<String> get _order => [for (final row in _rows) row.id];
+
+  void _done() {
+    final order = _order;
+    final changed =
+        order.length != _was.length ||
+        [for (var i = 0; i < order.length; i++) order[i] == _was[i]].contains(
+          false,
+        );
+    widget.onDone(changed ? order : null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final labels = {for (final d in widget.destinations) d.id: d};
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 8, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextButton.icon(
+                  // After the first row, not at the end.
+                  //
+                  // A rule needs something on both sides to draw at all, so a
+                  // new one appended to the bottom is one you add, see in the
+                  // list, press Done on, and never see again. Here it is legal
+                  // the moment it exists, and on screen without scrolling.
+                  onPressed: () => setState(
+                    () => _rows.insert(
+                      math.min(1, _rows.length),
+                      _ArrangeRow.divider(),
+                    ),
+                  ),
+                  icon: const Icon(Icons.horizontal_rule, size: 16),
+                  label: Text(UiStrings.t('shell.add_divider')),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    alignment: Alignment.centerLeft,
+                    textStyle: theme.textTheme.labelMedium,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: _done,
+                child: Text(UiStrings.t('shell.done')),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ReorderableListView.builder(
+            padding: const EdgeInsets.only(bottom: 12),
+            itemCount: _rows.length,
+            onReorder: (from, to) => setState(() {
+              // The index a drop reports is a GAP, so moving a row downwards
+              // counts the gap it vacated. Without this every downward drag
+              // lands one row short of where it was dropped.
+              if (to > from) to -= 1;
+              _rows.insert(to, _rows.removeAt(from));
+            }),
+            itemBuilder: (context, i) {
+              final row = _rows[i];
+              if (row.id == sidebarDivider) {
+                return _dividerRow(context, i, key: row.key);
+              }
+              final destination = labels[row.id];
+
+              return ListTile(
+                key: row.key,
+                dense: true,
+                leading: Icon(destination?.icon ?? Icons.circle_outlined),
+                title: Text(
+                  destination?.label ?? row.id,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: ReorderableDragStartListener(
+                  index: i,
+                  child: const Icon(Icons.drag_handle),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// A divider, as something you can pick up and throw away.
+  ///
+  /// It carries no name. Jose: "the dividers should not have names, just be
+  /// dividers basically" — so there is nothing here to read, and the row is
+  /// entirely its two controls and the rule between them.
+  Widget _dividerRow(BuildContext context, int i, {required Key key}) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      key: key,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.close, size: 16),
+            visualDensity: VisualDensity.compact,
+            tooltip: UiStrings.t('shell.remove_divider'),
+            onPressed: () => setState(() => _rows.removeAt(i)),
+          ),
+          Expanded(
+            child: Divider(thickness: 1, color: scheme.outlineVariant),
+          ),
+          ReorderableDragStartListener(
+            index: i,
+            child: const Padding(
+              padding: EdgeInsets.all(8),
+              child: Icon(Icons.drag_handle),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
