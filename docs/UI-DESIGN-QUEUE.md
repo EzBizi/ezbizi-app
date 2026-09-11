@@ -1937,7 +1937,7 @@ shape of process. Reopening either is his call, not design's.
   and are worth stealing: a value whose only purpose is to be pasted gets a copy
   button, and position can carry "is this what you should be doing right now".
 
-### 10 · Dashboard charts · where the colours come from — **DRAWN, awaiting Jose**
+### 10 · Dashboard charts · where the colours come from — **SETTLED, shipped `d212d2dd`**
 
 `docs/previews/dashboard-chart-palette-layouts.html` @ `b4bfb612`. Three desktop, three
 mobile, with a **slice-count slider and a light/dark toggle** — the toggle because the worst
@@ -2009,4 +2009,34 @@ one that looks finished and is not** — it raises the ceiling to ten and says n
 The gallery says so underneath it rather than letting it read as the safe pick. Options 2, 3, 4
 and 6 each make running out into something on the screen: a named and counted wedge, one
 neutral for the tail, or a chart type that needs no palette at all.
+
+**Jose answered in a DIRECTION, not a number (2026-09-11):** *"a more diverse palette with
+colors that dont blend into one another like, red blue green yellow, high contrast types."*
+Dashboard shipped it the same minute — eight categorical hues per mode (blue, orange, aqua,
+yellow, magenta, green, violet, red), **validated rather than picked**: lightness, chroma, CVD
+separation, normal-vision floor and contrast against this app's real surfaces, on the adjacent
+pairlist. Worst adjacent CVD ΔE 9.1 light / 8.4 dark under protanopia and deuteranopia at
+severity 1.0 — red beside green is the classic failure and these clear it, which matters because
+his four named colours are exactly the pairing that usually breaks.
+
+**My three desktop options are history and he was right to overrule the shape of them.** All
+three kept series identity inside *brand* identity — a ramp of cyans and slates. Those are two
+different jobs, and conflating them is what produced the bug in the first place. The record is
+kept in the gallery rather than deleted, because what was chosen over what is the useful part.
+
+**Two things that outlived the decision.**
+
+> **The legend is now load-bearing for accessibility, not decoration.** Three light steps sit
+> below 3:1 on white, which the standard permits only with *relief*: identity must not be colour
+> alone. The relief is a labelled dot per slice plus a semantics label naming every slice with
+> its total. **Mobile 6 is therefore withdrawn as drawn** — it hid rows to save space. Any future
+> chart layout may collapse the COLOUR of a tail and never its naming.
+
+> **Running out has a standard now, not a taste call: a ninth series is never a generated hue.**
+> Past the eighth slot the tail is a neutral derived from the scheme. I have raised one finding
+> against it — at ten slices that produces *two* grey wedges and two identically-coloured legend
+> dots against two different labels, which is verbatim the defect that opened this item. A grey
+> wedge honestly says "not an identity"; a legend ROW still promises a mapping it cannot keep.
+> My call: one wedge and one row labelled with its count, or keep the wedges and collapse the
+> legend to a single row. Both separate is the one option that is not available. With Dashboard.
 

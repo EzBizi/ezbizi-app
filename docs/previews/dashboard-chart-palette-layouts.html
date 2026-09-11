@@ -64,8 +64,14 @@ code{font:12px ui-monospace,Consolas,monospace;background:var(--ground);
 </style>
 <header>
   <h1>Dashboard charts &rsaquo; where the colours come from &mdash; pick one desktop and one mobile</h1>
-  <p class="sub">Push the slice count past six. On <b>light</b>, also look at just
-  <b>two</b> &mdash; that is the state every dashboard is in today.</p>
+  <p class="sub"><b>The palette question is CLOSED.</b> Jose answered it in a
+  direction rather than a number on 2026-09-11 &mdash; <i>&ldquo;a more diverse
+  palette with colors that dont blend into one another like, red blue green
+  yellow, high contrast types&rdquo;</i> &mdash; and Dashboard shipped eight
+  validated hues per mode in <code>d212d2dd</code>. <b>Desktop 1, 2 and 3 are
+  history now; the swatches below are the OLD ones.</b> Kept because the mobile
+  layouts still ask a question that is open: whether a phone&rsquo;s chart
+  choice follows him to the desktop.</p>
 </header>
 <div id="nums"></div>
 <div id="ctl">
@@ -83,10 +89,16 @@ var TODAY = {
   dark :['#00AEEF','#0093CA','#6E8CA0','#004C6B','#374955','#4A4263']
 };
 
-/* ── Proposed: one brand ramp, ordered so neighbours differ most ──
-   Every step is inside the brand's own range -- cyan through slate. No hue
-   the app did not choose, which is the rule theme.dart already states in
-   prose and the chart palette is currently the exception to.             */
+/* ── SUPERSEDED. What I proposed, kept so the record shows what was
+   actually chosen over what. A brand ramp: every step inside the brand's own
+   range, cyan through slate.
+
+   Jose asked for the opposite and he was right. A ramp keeps series identity
+   inside brand identity, and those are different jobs -- which is exactly the
+   confusion that produced the bug. What SHIPPED is eight categorical hues
+   (blue, orange, aqua, yellow, magenta, green, violet, red), validated for
+   CVD separation and contrast against this app's real surfaces rather than
+   chosen by eye. See dashboard_chart.dart `_palette`.                    */
 var RAMP = {
   light:['#00708F','#B7D9E4','#41627A','#8ACBE0','#00344A','#9AAEBD',
          '#5FA8BF','#0F5566','#D4E6EC','#2C7C93'],
@@ -310,7 +322,15 @@ function M6(){
     'gathered row opens the full list.<br><br><b>The tap is the part worth ' +
     'arguing about.</b> It is one more place data lives, and if nobody opens ' +
     'it the small categories are effectively gone &mdash; which is the honest ' +
-    'reading of every roll-up, including 2.</div>';
+    'reading of every roll-up, including 2.<br><br>' +
+    '<b>WITHDRAWN as drawn.</b> The shipped palette has three light steps ' +
+    'below 3:1 on white, which the standard permits only with ' +
+    '&ldquo;relief&rdquo; &mdash; identity must not be colour alone. The relief ' +
+    'is the legend: a labelled dot per slice, plus a semantics label naming ' +
+    'every slice with its total. <b>So the legend is load-bearing now, not ' +
+    'decoration</b>, and a layout that hides rows to save space is not ' +
+    'available. If you want this shape it has to keep a row per category and ' +
+    'collapse only the COLOUR, never the naming.</div>';
 }
 
 var OPT = {
