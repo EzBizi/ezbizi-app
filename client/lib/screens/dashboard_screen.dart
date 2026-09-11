@@ -517,11 +517,25 @@ class _GlanceBody extends StatelessWidget {
     return [for (final item in raw) '$item'];
   }
 
-  /// Jobs sends `revenue`; Inventory sends `stock_value` only with financials.
-  /// A missing or empty key draws nothing.
+  /// Every money list the payload carries, whatever the glance called it.
+  ///
+  /// This read exactly two keys — `revenue` and `stock_value` — which are the
+  /// two that existed when it was written, Jobs' and Inventory's. Nothing
+  /// documented the allowlist and nothing complained about a key outside it:
+  /// a glance sending money under any third name would have rendered NOTHING,
+  /// with no error and no gap on screen.
+  ///
+  /// That is the shape the deploy desk asked me to hunt for after the empty
+  /// box lost two of its three sentences for three weeks — producer sends,
+  /// consumer silently does not draw. It was not live (only Jobs and
+  /// Inventory send `amount_minor` today, and both names were listed) but it
+  /// was waiting for the next glance that wanted to show a figure.
+  ///
+  /// So the shape decides, not the name: any list whose entries carry an
+  /// `amount_minor` and a currency is money and gets drawn, in payload order.
+  /// A glance cannot now hand over a figure this fails to notice.
   static List<Widget> _money(Map<String, dynamic> data) => [
-        ..._moneyOf(data['revenue']),
-        ..._moneyOf(data['stock_value']),
+        for (final entry in data.entries) ..._moneyOf(entry.value),
       ];
 
   static List<Widget> _moneyOf(dynamic raw) {
