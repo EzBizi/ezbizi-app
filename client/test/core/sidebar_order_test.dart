@@ -52,6 +52,33 @@ void main() {
     expect(arrange(['a', 'b', 'c'], ['a', '--', 'b', 'c']).divideAfter, {0});
   });
 
+  /// What somebody sees the first time they open the sidebar after a module
+  /// was removed (the deploy desk asked, 2026-09-11).
+  ///
+  /// A rule is a boundary BETWEEN two neighbours, so it stays between the same
+  /// two survivors and the gap closes. Nothing is revealed only in the
+  /// arranger: the rail renders through here on every build, so the group
+  /// closed up the moment the module went.
+  group('a removed module moves the rule rather than misplacing it', () {
+    test('the rule stays under the row that still precedes it', () {
+      // The discriminating case. `divideAfter` counts positions in the RESULT,
+      // so a rule after a removed module lands on the survivor above it. An
+      // implementation counting positions in the saved ORDER instead gets 1
+      // here and draws the rule one row too low — and would agree with the
+      // correct answer in every test above, because none of them drops a
+      // module before a rule.
+      expect(arrange(['a', 'b'], ['gone', 'a', '--', 'b']).divideAfter, {0});
+    });
+
+    test('the gap closes and the boundary holds', () {
+      final result = arrange(['a', 'b', 'c'], ['a', 'gone', '--', 'b', 'c']);
+
+      expect(result.rows, ['a', 'b', 'c']);
+      expect(result.divideAfter, {0}, reason: 'Still above b, which is still '
+          'the first row of the group under it.');
+    });
+  });
+
   group('a rule with nothing on one side of it is not drawn', () {
     test('leading', () {
       expect(arrange(['a', 'b'], ['--', 'a', 'b']).divideAfter, isEmpty);

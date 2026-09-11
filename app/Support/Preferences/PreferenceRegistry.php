@@ -242,6 +242,23 @@ class PreferenceRegistry
      * Refusing loudly rather than storing nonsense: a preference the client
      * cannot render is worse than one that was never saved, because the second
      * tells somebody immediately.
+     *
+     * Two branches below CORRECT instead, and they are not exceptions to that
+     * rule so much as the other half of it. The question is not how wrong the
+     * value is, it is **who is responsible for it**:
+     *
+     *   - A value a PERSON picked is refused. An `enum` outside its options
+     *     means somebody sent a theme this build has no name for, and the only
+     *     honest answer is to say so.
+     *   - A value the SYSTEM outgrew is corrected. `clampInt` clamps a width
+     *     whose bounds we have since tightened; `cleanOrder` drops a module
+     *     key that named a real module until we removed it. Nobody typed
+     *     either one, and refusing would leave somebody looking at an error
+     *     about a decision that was ours -- permanently unable to save their
+     *     own sidebar, over a module they never chose to lose.
+     *
+     * Recorded here because the rule above, read alone, says to tighten both
+     * of them. (Raised by the deploy desk, 2026-09-11.)
      */
     public function cast(string $key, mixed $value): mixed
     {
