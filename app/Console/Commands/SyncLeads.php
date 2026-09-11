@@ -76,10 +76,29 @@ class SyncLeads extends Command
          * legitimately reaches every connected account; borrowing the request
          * filter here would sync nothing at all.
          */
+        /*
+         * LONGEST UNREAD FIRST, because the quota now runs out.
+         *
+         * From 2026-09-11 the fleet sits at Google's ceiling on purpose, and a
+         * capped budget makes the ORDER of this list the thing that decides
+         * who gets served. Unordered, it came back in insertion order every
+         * tick, so the same accounts spent the surviving quota and the ones at
+         * the end were refused every time — not slower, never. Measured that
+         * afternoon: 0 of 59 accounts reached in the last tick, 16 in the last
+         * half hour, and they were the same sixteen.
+         *
+         * Ordering by last_reached_at, nulls first, makes the refusals rotate.
+         * Every account is eventually the oldest, so a day at the ceiling
+         * delays each of them a little instead of starving some of them
+         * completely — which is the difference between an enquiry arriving
+         * late and an enquiry nobody ever sees.
+         */
         $connections = SocialConnection::query()
             ->withoutGlobalScopes()
             ->where('provider', SocialProvider::GoogleAds->value)
             ->where('status', SocialConnection::STATUS_CONNECTED)
+            ->orderByRaw('last_reached_at IS NULL DESC')
+            ->orderBy('last_reached_at')
             ->get();
 
         if ($connections->isEmpty()) {

@@ -513,4 +513,68 @@ class LeadPlacementAndScheduledSyncTest extends TestCase
             'Discovery for the whole fleet must come before detail for any of it.',
         );
     }
+
+    /**
+     * At the ceiling, the ORDER of the fleet decides who is served at all.
+     *
+     * From 2026-09-11 the quota runs out on purpose, so some of each tick's
+     * requests are refused. Unordered, the list came back the same way every
+     * time and the same accounts spent the surviving budget — the ones at the
+     * end were not read slower, they were not read. Longest unread first makes
+     * the refusals rotate, which turns "never" into "late".
+     */
+    public function test_the_longest_unread_account_is_asked_first(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+
+        // Created in this order; reached in the opposite one. Insertion order
+        // and fairness order therefore disagree, which is what makes this
+        // able to fail.
+        $first  = $this->connection($t, '4941850746');
+        $second = $this->connection($t, '3747134697');
+        $third  = $this->connection($t, '1726694743');
+
+        $this->inTenant($t['org'], function () use ($first, $second, $third) {
+            $first->forceFill(['last_reached_at' => now()->subMinutes(1)])->save();
+            $second->forceFill(['last_reached_at' => now()->subHours(3)])->save();
+            $third->forceFill(['last_reached_at' => null])->save();
+
+            foreach ([$first, $second, $third] as $i => $connection) {
+                Lead::create([
+                    'organization_id' => $this->tenantOrgId($connection),
+                    'connection_id' => $connection->getKey(),
+                    'source' => Lead::SOURCE_LOCAL_SERVICES,
+                    'remote_id' => 'L-fair-'.$i, 'status' => Lead::STATUS_NEW,
+                    'received_at' => now()->subDay(),
+                ]);
+            }
+        });
+
+        $this->fakeGoogle();
+
+        \Illuminate\Support\Carbon::setTestNow('2026-09-11 12:07:00');
+        $this->artisan('ezbizi:sync-leads')->assertSuccessful();
+
+        $order = [];
+
+        foreach (Http::recorded() as [$request]) {
+            if (! str_contains((string) ($request->data()['query'] ?? ''), 'FROM local_services_lead ')) {
+                continue;
+            }
+
+            foreach (['1726694743', '3747134697', '4941850746'] as $id) {
+                if (str_contains($request->url(), "/customers/{$id}/")) {
+                    $order[] = $id;
+                }
+            }
+        }
+
+        // Never reached, then three hours ago, then a minute ago.
+        $this->assertSame(['1726694743', '3747134697', '4941850746'], $order);
+    }
+
+    private function tenantOrgId(\App\Models\SocialConnection $connection): string
+    {
+        return (string) $connection->organization_id;
+    }
 }

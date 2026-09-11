@@ -283,6 +283,20 @@ gcloud auth print-access-token   # then the monitoring API:
 # resource.label."service"="googleads.googleapis.com"
 ```
 
+**The quota does not reset — it ROLLS, measured 2026-09-11.** Google does not
+document this and it changes what exceeding means. Refusals began at 12:20 UTC
+when no calendar day could have held 15,000 (from midnight UTC we had spent
+~8,000; from midnight Pacific ~3,300), while the ROLLING 24-hour total crossed
+15,000 that morning and read 16,103 at the first refusal. The same clock hour
+carried 530 successes and 576 refusals, which a fixed daily reset cannot
+produce.
+
+So sitting over the line is **partial service, not a blackout**: capacity frees
+up continuously as old requests age out, throughput is capped near 15,000/day,
+and ticks fail intermittently rather than everything stopping until some hour.
+That is what makes running over sustainable — and it is why the ORDER of the
+fleet matters (see the tick's longest-unread-first ordering, same day).
+
 **What going over costs, and what it does not.** When the day's quota is spent
 every request fails until it resets, at an hour Google does not document. Nothing
 is LOST in that window: the lead read asks for everything since the newest lead
