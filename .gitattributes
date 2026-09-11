@@ -13,4 +13,16 @@
 # happened to have been noticed. The rest of the directory had the same hazard
 # and no rule, so the scope is now the whole directory rather than a list that
 # grows one incident at a time.
+# Every .sh in this repo is run by bash on macOS or Linux -- the release
+# scripts on the relay Mac, the deploy scripts on the box. A CRLF shell
+# script does not misbehave subtly, it dies at the shebang with
+# "bad interpreter: /bin/bash^M". Added 11 Sep 2026 on staging a new
+# scripts/mac/ file and watching git announce it was about to do exactly
+# that: deploy/ had just been covered and scripts/ had the same hazard and
+# no rule, which is the per-directory list this is meant to stop being.
+#
+# .ps1 is deliberately NOT here. PowerShell is Windows-side and CRLF is
+# correct for it.
+*.sh text eol=lf
+
 deploy/** text eol=lf
