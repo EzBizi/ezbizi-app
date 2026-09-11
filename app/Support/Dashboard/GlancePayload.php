@@ -33,6 +33,35 @@ final class GlancePayload
      * The consequence to watch is the opposite one now: `true` SUPPRESSES a
      * chart and any figures. A box with slices to plot must not set it.
      *
+     * ── What the client actually draws out of `$data` ──────────────────
+     *
+     * Everything else you put here is carried over the wire and rendered by
+     * nothing. `$data` is free-form and nothing validates it, so a key the
+     * client has never heard of costs a query and a payload and produces no
+     * pixels — silently, which is the mirror of the renderer dropping what it
+     * was handed.
+     *
+     *   empty            the statement/reading switch above
+     *   sentence         one line, or
+     *   sentences        a list of them; both render in full
+     *   slices           pie and bar, drawn when one total is above zero
+     *   series           line and timeline, each with `points`
+     *   status_choices   the Jobs earned-status chips
+     *   any list of {amount_minor, currency}   drawn as money, under ANY key
+     *
+     * Measured 2026-09-11: `organization_total` is sent by FIVE glances —
+     * BusinessProfile, Customers, Leads, Reviews, Web Management — and read
+     * by nothing in `client/lib`. A pattern copied four times, not a slip.
+     * Each is an extra count on every dashboard load for a figure nobody
+     * sees. Their modules' to keep or drop; it is listed here so the next
+     * author does not copy it a sixth time.
+     *
+     * And a key nothing draws is still SHIPPED. An organization-wide total
+     * reaches a viewer whose reach is one franchise — invisible on screen,
+     * readable in the response. Customers argues that one deliberately in its
+     * own docblock (§5.2 shares the book); the others carry no such argument.
+     * Scoping what a box DRAWS constrains nothing about what it SENDS.
+     *
      * @param  string[]  $allowedPresentations
      * @param  array<string, mixed>  $options
      * @param  array<string, mixed>  $data
