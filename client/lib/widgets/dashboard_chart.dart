@@ -94,6 +94,22 @@ class DashboardChart extends StatelessWidget {
               width: double.infinity,
               child: CustomPaint(painter: painter),
             ),
+            // ── DO NOT DROP THIS TO SAVE VERTICAL SPACE ──────────────
+            //
+            // The legend is load-bearing for accessibility, not decoration.
+            // Three of the eight light steps sit below 3:1 against white, and
+            // the standard permits that ONLY with "relief" — identity must not
+            // be carried by colour alone. The labelled dot per slice is that
+            // relief, together with `semanticsLabel` above.
+            //
+            // So removing it on a narrow window is not a layout tidy-up, it is
+            // taking the palette out of compliance. If space is the problem,
+            // the answers are a shorter chart, a scrollable legend, or fewer
+            // slices ([_foldTail] already caps them) — not no legend.
+            //
+            // Written HERE and not only beside the palette, which is where I
+            // first put it: somebody deleting a legend has this file open at
+            // this line, not at `_palette` four hundred lines down.
             if (named) ...[
               const SizedBox(height: 8),
               _ChartLegend(labels: legendLabels, colors: colors),
