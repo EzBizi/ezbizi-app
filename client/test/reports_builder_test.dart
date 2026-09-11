@@ -43,6 +43,22 @@ void main() {
     expect(find.textContaining('customer'), findsWidgets);
   });
 
+  testWidgets('a resource whose relations arrive as an empty JSON array draws', (
+    tester,
+  ) async {
+    // The regression that shipped in 0.0.0192: three of four resources had no
+    // edges, PHP encoded those as `[]`, and the cast to Map threw inside
+    // build() — which a release build renders as a blank grey panel.
+    await _pumpBuilder(tester);
+
+    expect(find.text('Customers'), findsOneWidget);
+
+    await tester.tap(find.text('Customers'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Name'), findsWidgets);
+  });
+
   testWidgets('choosing a column and saving posts the definition', (
     tester,
   ) async {
@@ -240,13 +256,18 @@ const _fields = {
       'name': {'label': 'Name', 'type': 'string'},
       'city': {'label': 'City', 'type': 'string'},
     },
-    'relations': <String, dynamic>{},
+    // THE WIRE SHAPE, not a Dart map. PHP serializes an empty array as `[]`,
+    // so a resource with no relations arrived as a JSON ARRAY and the client
+    // threw casting it — a blank grey panel in release with nothing logged.
+    // The fixture that hid this used `<String, dynamic>{}`, which agreed with
+    // the client instead of with the server.
+    'relations': <dynamic>[],
   },
   'users': {
     'label': 'People',
     'columns': {
       'name': {'label': 'Name', 'type': 'string'},
     },
-    'relations': <String, dynamic>{},
+    'relations': <dynamic>[],
   },
 };

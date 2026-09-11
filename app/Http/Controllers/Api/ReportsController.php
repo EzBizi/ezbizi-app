@@ -56,9 +56,24 @@ class ReportsController extends Controller
             }
 
             $out[$key] = [
-                'label'     => $resource['label'],
-                'columns'   => $resource['columns'],
-                'relations' => array_map(
+                'label' => $resource['label'],
+                /*
+                 * CAST TO OBJECT, and it is not cosmetic.
+                 *
+                 * PHP serializes an empty array as `[]`, so a resource with no
+                 * relations shipped `"relations": []` — a JSON ARRAY — while a
+                 * resource with one shipped an object. The client cast it to a
+                 * map and threw on the array, which in a release build is a
+                 * blank grey panel with no error anywhere. Three of the four
+                 * resources have no edges, so the builder was unusable.
+                 *
+                 * The map is a map at both ends now, whether or not it happens
+                 * to be empty. ReportsApiTest pins the encoded shape, because
+                 * the PHP value is identical either way and only the JSON says
+                 * which this is.
+                 */
+                'columns'   => (object) $resource['columns'],
+                'relations' => (object) array_map(
                     fn (array $edge) => ['to' => $edge['to']],
                     $resource['relations'],
                 ),

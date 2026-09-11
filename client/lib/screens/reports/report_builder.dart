@@ -199,8 +199,8 @@ class _ReportBuilderState extends State<ReportBuilder> {
 
     final nodeId = '$path/$key';
     final open = _expanded.contains(nodeId);
-    final columns = (resource['columns'] as Map).cast<String, dynamic>();
-    final relations = (resource['relations'] as Map?)?.cast<String, dynamic>() ?? {};
+    final columns = _asMap(resource['columns']);
+    final relations = _asMap(resource['relations']);
 
     return [
       Padding(
@@ -261,6 +261,19 @@ class _ReportBuilderState extends State<ReportBuilder> {
         ],
       ],
     ];
+  }
+
+  /// A JSON object, tolerating the empty-array form.
+  ///
+  /// The server casts both maps to objects now, so this should always receive
+  /// one. It stays because the failure it guards against is silent: PHP
+  /// serializes an empty array as `[]`, a cast to Map throws on a List, and a
+  /// throw inside build() is a blank grey panel in a release build with
+  /// nothing in any log. A shipped client cannot be fixed by a server deploy,
+  /// so the client tolerates the shape it may already have been given.
+  Map<String, dynamic> _asMap(Object? value) {
+    if (value is Map) return value.cast<String, dynamic>();
+    return <String, dynamic>{};
   }
 
   void _toggle(String resource, String column) {
