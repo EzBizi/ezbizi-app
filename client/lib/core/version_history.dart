@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0193',
+      date: '11 Sep 2026',
+      items: [
+        'Accounts that have been quiet are checked every fifteen minutes instead of every thirty, so an enquiry to a branch that has not heard from anyone in a while arrives sooner.',
+        'A report can say who performed a job, and which branch it belongs to. Neither was answerable before - the information was there and nothing could reach it.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0192',
       date: '10 Sep 2026',
       items: [
