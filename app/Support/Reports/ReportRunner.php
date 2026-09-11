@@ -3,6 +3,7 @@
 namespace App\Support\Reports;
 
 use App\Models\User;
+use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Query\JoinClause;
@@ -113,9 +114,11 @@ final class ReportRunner
             fn (string $column, string $operator, mixed $value) => $query->where($column, $operator, $value),
             fn (string $column, array $values) => $query->whereIn($column, $values),
             fn (string $column) => $query->whereNull($column),
+            fn (string $sql, array $bindings) => $query->whereRaw($sql, $bindings),
             $rootResource,
             $organizationId,
             $view,
+            $user,
         );
 
         $joined = [$root => true];
@@ -139,7 +142,7 @@ final class ReportRunner
                 $to   = ReportMap::get($hop['to']);
 
                 $query->leftJoin($to['table'], function (JoinClause $join) use (
-                    $from, $to, $hop, $organizationId, $view
+                    $from, $to, $hop, $organizationId, $view, $user
                 ) {
                     // A column per side rather than local/foreign, because an
                     // edge is walked in both directions: the predicate is the
@@ -154,9 +157,11 @@ final class ReportRunner
                         fn (string $c, string $o, mixed $v) => $join->where($c, $o, $v),
                         fn (string $c, array $v) => $join->whereIn($c, $v),
                         fn (string $c) => $join->whereNull($c),
+                        fn (string $sql, array $b) => $join->whereRaw($sql, $b),
                         $to,
                         $organizationId,
                         $view,
+                        $user,
                     );
                 });
 
@@ -229,9 +234,11 @@ final class ReportRunner
         callable $where,
         callable $whereIn,
         callable $whereNull,
+        callable $whereRaw,
         array $resource,
         string $organizationId,
         ViewScope $view,
+        User $user,
     ): void {
         $table = $resource['table'];
 
@@ -245,6 +252,16 @@ final class ReportRunner
         // from the column, because `jobs.franchise_id` and `franchises.id` are
         // both answered by the same list of franchise ids.
         foreach ($resource['scope'] as $column => $source) {
+            if ($source === 'place') {
+                // The CATALOGUE shape: nullable company and franchise, so a row
+                // can be filed at the organization, at a company, or at one
+                // franchise. Delegated to the reviewed engine rather than
+                // re-derived — see placeScope().
+                $this->placeScope($whereRaw, $resource, $user);
+
+                continue;
+            }
+
             $ids = match ($source) {
                 'franchise' => $view->franchiseIds(),
                 default => throw new LogicException(
@@ -259,6 +276,50 @@ final class ReportRunner
             // legitimate answer of "no rows" rather than "no filter".
             $whereIn($table.'.'.$column, $ids);
         }
+    }
+
+    /**
+     * The catalogue place rule, borrowed rather than rebuilt.
+     *
+     * `InventoryVisibility::constrain` is the reviewed answer for rows with a
+     * nullable company and franchise — organization rows to anyone with reach,
+     * company General rows to anyone who can see that company, franchise rows
+     * only when the franchise is in view. Its own docblock records that the
+     * organization arm must answer with REACH and not with
+     * `ViewScope::companyIds()`, because anybody who has never touched the
+     * switcher arrives claiming an organization view: "Phone shipped exactly
+     * that to production."
+     *
+     * That is too subtle to re-derive here, so this builds the same query
+     * through that class and reuses its WHERE as a subquery predicate. It
+     * costs one extra clause and buys the guarantee that a report and the
+     * module's own list agree — which `ReportRunnerTest` asserts directly, so
+     * the two cannot drift apart silently.
+     */
+    private function placeScope(callable $whereRaw, array $resource, User $user): void
+    {
+        $model = $resource['model'];
+        $scoped = InventoryVisibility::constrain(
+            $model::query(),
+            $user,
+            ViewScope::forUser($user),
+        );
+
+        $sql = $scoped->toBase()->toSql();
+        $wheres = strstr($sql, ' where ');
+
+        if ($wheres === false) {
+            // The engine refused everything (no reach at all). Say no rows
+            // rather than no filter.
+            $whereRaw('0 = 1', []);
+
+            return;
+        }
+
+        $whereRaw(
+            '('.substr($wheres, 7).')',
+            $scoped->toBase()->getBindings(),
+        );
     }
 
     /** @return list<string> */

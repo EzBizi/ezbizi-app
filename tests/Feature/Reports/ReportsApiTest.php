@@ -260,6 +260,89 @@ class ReportsApiTest extends TestCase
             ->assertForbidden();
     }
 
+    /**
+     * THE BUG JOSE HIT: standing in a company, every save came back "File this
+     * on the company you are looking at, not on the group."
+     *
+     * The builder sends no place at all, which used to mean the organization,
+     * which PlaceInView refuses from anywhere but the group view. So a report
+     * could only be created from the organization view — the one place most
+     * people are not standing.
+     */
+    public function test_a_report_saved_from_a_company_view_files_on_that_company(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $created = $this->signedInAs($tenant['admin'])
+            ->withHeader('X-EzBizi-View', 'company:'.$tenant['company']->id)
+            ->postJson('/api/v1/reports', [
+                'name'       => 'From the company',
+                'definition' => $this->titlesDefinition(),
+            ])
+            ->assertCreated()
+            ->json('data');
+
+        $this->assertSame($tenant['company']->id, $created['company_id']);
+        $this->assertNull($created['franchise_id']);
+    }
+
+    public function test_a_report_saved_from_a_franchise_view_files_on_that_franchise(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $created = $this->signedInAs($tenant['admin'])
+            ->withHeader('X-EzBizi-View', 'franchise:'.$tenant['franchise']->id)
+            ->postJson('/api/v1/reports', [
+                'name'       => 'From the branch',
+                'definition' => $this->titlesDefinition(),
+            ])
+            ->assertCreated()
+            ->json('data');
+
+        $this->assertSame($tenant['franchise']->id, $created['franchise_id']);
+        // A place belongs to a company, and PlaceInView refuses a franchise
+        // without one, so the company is carried too.
+        $this->assertSame($tenant['company']->id, $created['company_id']);
+    }
+
+    /** The organization view still files on the group, as it always did. */
+    public function test_a_report_saved_from_the_organization_view_files_on_the_group(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $created = $this->signedInAs($tenant['admin'])
+            ->withHeader('X-EzBizi-View', 'organization')
+            ->postJson('/api/v1/reports', [
+                'name'       => 'From the group',
+                'definition' => $this->titlesDefinition(),
+            ])
+            ->assertCreated()
+            ->json('data');
+
+        $this->assertNull($created['company_id']);
+        $this->assertNull($created['franchise_id']);
+    }
+
+    /**
+     * The default must not become an override: an explicit place is still
+     * honoured, and still checked against the view.
+     */
+    public function test_an_explicit_place_outside_the_view_is_still_refused(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $other = $this->extraFranchise($tenant, 'Alpha F2');
+
+        $this->signedInAs($tenant['admin'])
+            ->withHeader('X-EzBizi-View', 'franchise:'.$tenant['franchise']->id)
+            ->postJson('/api/v1/reports', [
+                'company_id'   => $tenant['company']->id,
+                'franchise_id' => $other->id,
+                'name'         => 'Somewhere else',
+                'definition'   => $this->titlesDefinition(),
+            ])
+            ->assertStatus(422);
+    }
+
     public function test_a_definition_naming_an_unmapped_table_is_refused_at_save(): void
     {
         $tenant = $this->provisionTenant('Alpha');
