@@ -515,16 +515,64 @@ void main() {
     expect(find.text('S8'), findsNothing, reason: 'S8 is inside the tail.');
     expect(find.text('S7'), findsOneWidget, reason: 'S7 is the eighth identity.');
 
-    // 9+10+11+12 = 42, the four folded totals, preserved on the one row.
-    final semantics = tester.widget<Semantics>(
-      find
-          .descendant(
-            of: find.byType(DashboardChart),
-            matching: find.byType(Semantics),
-          )
-          .first,
+    expect(_chartSemantics(tester), contains('S11 12'));
+  });
+
+  /// THE PICTURE FOLDS; THE READING DOES NOT.
+  ///
+  /// The fold exists because two wedges cannot share a colour and two legend
+  /// rows cannot share a swatch. A screen reader has neither problem — it
+  /// reads a list, and a list has no adjacency and no colour. So folding what
+  /// it hears would solve a drawing problem by deleting data from the one
+  /// channel that was never broken.
+  ///
+  /// The first version of the fold did exactly that: `_foldTail` ran before
+  /// the painter was built and `semanticsLabel` iterated the painter's
+  /// slices, so at twelve categories a screen reader heard "… Quoted 6, 4 more
+  /// 42" where it used to hear all twelve names. UI/UX found it on the third
+  /// pass, and the docblock still claimed semantics "names every slice with
+  /// its total" — false, in the same file that carries the sentence about a
+  /// control describing what you are looking at.
+  ///
+  /// This is the assertion that would have caught it, and nothing else here
+  /// would: **a category the legend has folded away is still spoken by name.**
+  testWidgets('the screen reader hears every category the picture folds', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: DashboardChart(
+            presentation: 'pie',
+            slices: [
+              for (var i = 0; i < 12; i++) {'label': 'S$i', 'total': i + 1},
+            ],
+          ),
+        ),
+      ),
     );
-    expect(semantics.properties.label, contains('4 more 42'));
+    await tester.pumpAndSettle();
+
+    final spoken = _chartSemantics(tester);
+
+    // Folded out of the picture entirely — no wedge, no legend row.
+    expect(find.text('S8'), findsNothing);
+    expect(find.text('S11'), findsNothing);
+    expect(find.text('4 more'), findsOneWidget);
+
+    // And every one of them still named, with its own total, to a reader.
+    for (var i = 0; i < 12; i++) {
+      expect(
+        spoken,
+        contains('S$i ${i + 1}'),
+        reason: 'S$i vanished from the non-visual channel.',
+      );
+    }
+
+    // The tail label is a DRAWING device and has no business being spoken as
+    // though it were a category: the reader got the twelve real ones instead.
+    expect(spoken, isNot(contains('4 more')));
   });
 
   /// Dark is its own set of steps, not an automatic flip of the light one.
@@ -818,4 +866,21 @@ Future<List<Color>> _legendColors(
   expect(dots, isNotEmpty, reason: 'No legend swatches were found at all.');
 
   return dots;
+}
+
+/// What a screen reader is handed for the chart.
+String _chartSemantics(WidgetTester tester) {
+  final node = tester.widget<Semantics>(
+    find
+        .descendant(
+          of: find.byType(DashboardChart),
+          matching: find.byType(Semantics),
+        )
+        .first,
+  );
+
+  final label = node.properties.label ?? '';
+  expect(label, isNotEmpty, reason: 'The chart exposed no semantics at all.');
+
+  return label;
 }

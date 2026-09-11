@@ -60,7 +60,10 @@ class DashboardChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final parsedSlices = _foldTail(_readSlices(slices));
+    // Two lists on purpose: the picture folds, the reading does not.
+    // `_foldTail`'s docblock has the argument.
+    final allSlices = _readSlices(slices);
+    final parsedSlices = _foldTail(allSlices);
     final parsedSeries = _readSeries(series);
     final colors = _colorsFor(
       scheme,
@@ -69,6 +72,7 @@ class DashboardChart extends StatelessWidget {
     final painter = _DashboardChartPainter(
       presentation: presentation,
       slices: parsedSlices,
+      spokenSlices: allSlices,
       series: parsedSeries,
       colors: colors,
       track: scheme.outlineVariant,
@@ -397,6 +401,7 @@ class _DashboardChartPainter extends CustomPainter {
   _DashboardChartPainter({
     required this.presentation,
     required this.slices,
+    required this.spokenSlices,
     required this.series,
     required this.colors,
     required this.track,
@@ -404,7 +409,26 @@ class _DashboardChartPainter extends CustomPainter {
   });
 
   final String presentation;
+  /// What is DRAWN — folded to eight identities and a tail.
   final List<_Slice> slices;
+
+  /// What is READ ALOUD — every category, unfolded.
+  ///
+  /// The fold exists because two wedges cannot share a colour and two legend
+  /// rows cannot share a swatch. **A screen reader has neither problem**: it
+  /// reads a list, and a list has no adjacency and no colour. Folding what it
+  /// hears would solve a drawing problem by deleting data from the one channel
+  /// that was never broken.
+  ///
+  /// So the non-visual channel is deliberately MORE complete than the visual
+  /// one, rather than a copy of it. Found by UI/UX on the third pass of this
+  /// change, after I folded before the painter was built and never asked what
+  /// else read those slices — the same move as reading a guard and not the
+  /// widget, and as reasoning about a drawing without asking what the header
+  /// reads. **The thing that describes a change reads from a different source
+  /// than the thing that is the change.**
+  final List<_Slice> spokenSlices;
+
   final List<_Series> series;
   final List<Color> colors;
   final Color track;
@@ -415,7 +439,8 @@ class _DashboardChartPainter extends CustomPainter {
   String get semanticsLabel {
     if (presentation == 'pie' || presentation == 'bar') {
       return [
-        for (final slice in slices) '${slice.label} ${slice.total.round()}',
+        for (final slice in spokenSlices)
+          '${slice.label} ${slice.total.round()}',
       ].join(', ');
     }
 
