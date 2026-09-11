@@ -414,14 +414,33 @@ class _GlanceBody extends StatelessWidget {
     final earned = _earnedControl(data);
 
     if (comingSoon || data['empty'] == true) {
+      final notes = _sentencesOf(data);
+
       return [
-        // "Nothing to show." and not "…yet": the last-resort words a box falls
-        // back to when its glance sent no sentence at all. UI/UX ruled on
-        // 2026-09-09 that an empty sentence describes the BOX, not the world —
-        // "yet" promises a customer that something is coming, and this line is
-        // reached precisely when we do not know what the box holds. It is the
-        // one sentence on the surface with no module behind it to be right.
-        DashboardNote(_sentenceOf(data) ?? 'Nothing to show.'),
+        // EVERY sentence, not the first one.
+        //
+        // This drew `_sentenceOf(data)` alone until 2026-09-11, so an empty
+        // box with three sentences showed one and threw two away — no error,
+        // no gap on screen, nothing to notice. I documented that as a trap in
+        // 0d200ed3 and told two sessions to avoid `empty: true`; Email then
+        // found it live. Two production mailboxes had been broken since
+        // 2026-08-20. Broken means no slice, both broken means no slices at
+        // all, so `empty` went true and the home screen named one dead inbox
+        // and silently dropped the other. Three weeks.
+        //
+        // Documenting a trap makes it somebody's job to remember. The box has
+        // no reason to ration sentences here — an empty box is exactly where
+        // the words ARE the content, which is the case where losing them
+        // costs most.
+        //
+        // "Nothing to show." and not "…yet" when a glance sent nothing at
+        // all: UI/UX ruled 2026-09-09 that an empty sentence describes the
+        // BOX, not the world, and this line is reached precisely when we do
+        // not know what the box holds.
+        if (notes.isEmpty)
+          const DashboardNote('Nothing to show.')
+        else
+          for (final note in notes) DashboardNote(note),
         ?earned,
       ];
     }
@@ -545,6 +564,25 @@ class _GlanceBody extends StatelessWidget {
 
     // Same fallback, same reason as the one above.
     return [const DashboardNote('Nothing to show.')];
+  }
+
+  /// Every sentence a payload carries, in order, whichever key it used.
+  ///
+  /// `sentences` is the plural form and `sentence` the singular; a glance
+  /// sends one or the other. Empty list when it sent neither.
+  static List<String> _sentencesOf(Map<String, dynamic> data) {
+    final sentences = data['sentences'];
+
+    if (sentences is List && sentences.isNotEmpty) {
+      return [
+        for (final sentence in sentences)
+          if ('$sentence'.isNotEmpty) '$sentence',
+      ];
+    }
+
+    final sentence = data['sentence'];
+
+    return sentence is String && sentence.isNotEmpty ? [sentence] : const [];
   }
 
   static String? _sentenceOf(Map<String, dynamic> data) {

@@ -342,15 +342,24 @@ void main() {
     expect(find.text('Two areas have no hours set.'), findsOneWidget);
   });
 
-  /// The other half of the same advice, and the more consequential half.
+  /// This test used to assert the bug, and was named for it.
   ///
-  /// `empty: true` is the tempting way to say "configured but nothing in it",
-  /// and it draws exactly ONE sentence: `_body` short-circuits to a single
-  /// `DashboardNote(_sentenceOf(data))`, which takes `sentence`, or
-  /// `sentences.first`. A glance that ordered its sentences so the actionable
-  /// one comes first would lose every one after it, silently, with no chart
-  /// either. All-zero slices with `empty: false` is the shape that keeps them.
-  testWidgets('empty draws the first sentence and drops the rest', (
+  /// It read "empty draws the first sentence and drops the rest", and it was
+  /// true: `_body` short-circuited to a single `DashboardNote`, so an empty
+  /// box with three sentences showed one and threw two away. I wrote it as
+  /// documentation of a trap and told two sessions to avoid `empty: true`.
+  ///
+  /// Email then found it in production. Two mailboxes had been broken since
+  /// 2026-08-20; broken means no slice, both broken means no slices at all,
+  /// so `empty` went true and the home screen named one dead inbox and
+  /// silently dropped the other, for three weeks.
+  ///
+  /// **A documented trap is still a trap, and a test that pins one defends
+  /// it.** Anybody removing the short-circuit would have found this red and
+  /// read it as "the behaviour is deliberate, somebody tested it". Fixed at
+  /// the root instead; this now asserts what a reader would have assumed all
+  /// along.
+  testWidgets('empty draws every sentence, not just the first', (
     tester,
   ) async {
     await _pumpDashboard(tester, [
@@ -373,7 +382,7 @@ void main() {
     ]);
 
     expect(find.text('Two areas have no hours set.'), findsOneWidget);
-    expect(find.text('These are configured, not booked.'), findsNothing);
+    expect(find.text('These are configured, not booked.'), findsOneWidget);
   });
 
   testWidgets('coming soon has no how-to-draw menu', (tester) async {
