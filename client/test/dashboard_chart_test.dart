@@ -465,6 +465,68 @@ void main() {
     expect(dots[8], isNot(dots[0]));
   });
 
+  /// NO TWO LEGEND ROWS EVER SHARE A COLOUR — including at the tail.
+  ///
+  /// The first version of the fix gave every slot past the eighth the SAME
+  /// neutral, so ten slices drew two identically-coloured dots against two
+  /// different labels: the original defect reproduced at the far end of its
+  /// own fix. UI/UX found it by reading the code, not the summary.
+  ///
+  /// A grey wedge can honestly say "not an identity". A legend ROW cannot —
+  /// it puts a swatch beside a name, which promises you can find that name in
+  /// the picture, and three grey rows cannot keep that promise. So the tail is
+  /// one row now, named for its count.
+  testWidgets('twelve slices still draw no two rows alike', (tester) async {
+    final dots = await _legendColors(tester, [
+      for (var i = 0; i < 12; i++) {'label': 'S$i', 'total': i + 1},
+    ]);
+
+    expect(dots, hasLength(9), reason: 'Eight identities and one tail.');
+    expect(
+      dots.toSet(),
+      hasLength(9),
+      reason: 'Two rows share a colour — the defect this change removes.',
+    );
+  });
+
+  /// The tail says what it is, and the numbers still add up.
+  ///
+  /// Folding is only honest if nothing goes missing: twelve slices totalling
+  /// 78 must still total 78 once four of them are one row. The label carries
+  /// the count so "running out" is something the chart SAYS rather than
+  /// something a reader has to notice.
+  testWidgets('the folded tail is named for its count', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: DashboardChart(
+            presentation: 'pie',
+            slices: [
+              for (var i = 0; i < 12; i++) {'label': 'S$i', 'total': i + 1},
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('4 more'), findsOneWidget);
+    expect(find.text('S8'), findsNothing, reason: 'S8 is inside the tail.');
+    expect(find.text('S7'), findsOneWidget, reason: 'S7 is the eighth identity.');
+
+    // 9+10+11+12 = 42, the four folded totals, preserved on the one row.
+    final semantics = tester.widget<Semantics>(
+      find
+          .descendant(
+            of: find.byType(DashboardChart),
+            matching: find.byType(Semantics),
+          )
+          .first,
+    );
+    expect(semantics.properties.label, contains('4 more 42'));
+  });
+
   /// Dark is its own set of steps, not an automatic flip of the light one.
   testWidgets('dark mode draws its own palette', (tester) async {
     final light = await _legendColors(

@@ -60,7 +60,7 @@ class DashboardChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final parsedSlices = _readSlices(slices);
+    final parsedSlices = _foldTail(_readSlices(slices));
     final parsedSeries = _readSeries(series);
     final colors = _colorsFor(
       scheme,
@@ -148,6 +148,49 @@ class _ChartLegend extends StatelessWidget {
   }
 }
 
+/// Everything past the eighth slice becomes ONE tail, named for its count.
+///
+/// ── Why the first version of this was the same bug ───────────────
+///
+/// `_colorsFor` gave every slot past the eighth the same neutral, and the
+/// legend draws a dot per slice off that list — so ten slices put **two
+/// identically-coloured dots against two different labels**. That is the exact
+/// defect this whole change removes, reproduced at the far end of it, and
+/// UI/UX caught it by reading the code rather than the summary.
+///
+/// My reasoning had been that grey says "this one is not an identity". That is
+/// true of the WEDGE and false of the LEGEND: a legend row is a promise that
+/// you can find that name in the picture. Three grey rows cannot keep it, and
+/// nothing on screen says the mapping stopped — no ellipsis, again.
+///
+/// So the tail is one wedge and one row: **"3 more"**. Running out is now
+/// something the chart SAYS rather than something it does. The total is
+/// preserved, so a pie still sums to the whole.
+///
+/// Reachable rather than theoretical: `jobs.statuses` is a per-organization
+/// setting with no cap, and Email bars one per mailbox, where ten is an
+/// ordinary business.
+///
+/// **Series are deliberately NOT folded, and that is a known gap.** Summing
+/// two time series is not summing two wedges — it would invent a line nobody
+/// measured — so the honest fold there is a different design. No glance sends
+/// more than a handful today (revenue is one series per currency), so it is
+/// not reachable now. If one ever does, the legend will start making the same
+/// unkeepable promise, and the fix is a design question rather than this
+/// function.
+List<_Slice> _foldTail(List<_Slice> slices) {
+  const identities = 8;
+  if (slices.length <= identities) return slices;
+
+  final tail = slices.skip(identities);
+  final total = tail.fold<double>(0, (sum, s) => sum + s.total);
+
+  return [
+    ...slices.take(identities),
+    _Slice('${tail.length} more', total),
+  ];
+}
+
 /// One colour per slot, and **never the same colour twice**.
 ///
 /// The palette had six swatches and every call site indexed it with
@@ -165,7 +208,11 @@ class _ChartLegend extends StatelessWidget {
 /// Nine slices is uncommon but reachable — `jobs.statuses` is a per-
 /// organization setting with no cap, and Inspection bars by definition name
 /// while Email bars per mailbox. The old code drew that case as two identical
-/// wedges; this draws it as seven named ones and a grey tail.
+/// wedges; this draws it as **eight** named ones and a single grey tail
+/// ([_foldTail] does the folding, so only one slot here is ever neutral).
+///
+/// *Said "seven named ones" when written — wrong: `palette.take` hands back
+/// all eight before the neutral starts. Caught by UI/UX reading the code.*
 List<Color> _colorsFor(ColorScheme scheme, {required int slots}) {
   final palette = _palette(scheme);
   if (slots <= palette.length) return palette.take(slots).toList();
@@ -222,6 +269,11 @@ List<Color> _colorsFor(ColorScheme scheme, {required int slots}) {
 /// **If you change a single value here, re-run the validator for BOTH modes.**
 /// A palette is a set, not eight independent choices: one substituted hue can
 /// fail a pair it sits next to.
+///
+/// *Sixteen entries, fifteen values: `#008300` is byte-identical in both rows.
+/// That is not an oversight and not a contradiction of "dark is its own
+/// steps" — the green was validated in both modes and needed no separate step.
+/// Noted because "eight per mode" reads as sixteen distinct colours.*
 List<Color> _palette(ColorScheme scheme) =>
     scheme.brightness == Brightness.dark
         ? const [
