@@ -12,6 +12,35 @@
 # The gates are OFF by default (Jose, 1 Sep). See the note at the top of
 # deploy.sh for what decided it. Nothing verifies a release unless --gates.
 #
+# ── KILLING A RUN DOES NOT STOP IT ─────────────────────────────
+#
+# Stopping the shell that launched this script kills the PARENT. The
+# children keep going, and they are the half that publishes.
+#
+# 11 Sep 2026: a cut was stopped mid-gate. windows.json and the box marker
+# were read within the minute and both still showed the PREVIOUS release,
+# so the version number was treated as unused and re-pinned onto a new
+# commit. The orphans then deployed the web app, published windows.json and
+# the installer, and uploaded the iOS build to App Store Connect. That
+# version shipped from an abandoned pin, carrying a release note amended for
+# a cut that was already dead, and it spent the Apple build number so the
+# replacement would have been refused as a duplicate.
+#
+# The readings were correct. They were evidence about the second they were
+# taken and not a property of the release, because the thing writing them
+# had not stopped. So before reusing a version number, the question is not
+# what is live -- it is whether the publisher has actually stopped:
+#
+#   taskkill //F //IM flutter_tester.exe    # and dart.exe
+#   ssh app "pgrep -fa 'vendor/bin/phpunit'"          # the remote gate
+#   ssh app "flock -n /opt/ezbizi-test/.deploy-gate.lock -c true"
+#         ^ a dead run holds this for an hour and the next gate waits on it
+#
+# Then re-read the marker. And the cheaper lesson: killing a cut is not free.
+# Three were killed that afternoon over release-note wording. Pin later, let
+# cuts finish, and amend the entry in place afterwards -- a person who read
+# the wrong sentence never sees the corrected one either way.
+#
 # The version is bumped and committed automatically on every run. Two releases
 # shipped twice under one number before this existed; the updater compares
 # versions, so the second was never offered.
