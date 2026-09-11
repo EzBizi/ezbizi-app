@@ -66,6 +66,30 @@ class ReportMapTest extends TestCase
     }
 
     /**
+     * The tree is meant to read like the sidebar, so a module key that matches
+     * no registered module would produce a heading pointing at a tab that does
+     * not exist.
+     */
+    public function test_every_resource_names_a_registered_module(): void
+    {
+        $modules = array_map(
+            fn ($m) => $m->key,
+            app(\App\Support\Modules\ModuleRegistry::class)->all(),
+        );
+
+        foreach (ReportMap::all() as $key => $resource) {
+            $this->assertNotEmpty($resource['module'], "{$key} names no module");
+            $this->assertContains(
+                $resource['module'],
+                $modules,
+                "{$key} says it belongs to module '{$resource['module']}', which is not "
+                .'registered. The field tree is meant to read like the sidebar, so a key '
+                .'matching no tab points somewhere nobody can go.',
+            );
+        }
+    }
+
+    /**
      * The map names a SOURCE per scope column, and the runner must know every
      * one of them. An unknown source throws at run time; this fails at test
      * time instead, which is the difference between a report nobody can run

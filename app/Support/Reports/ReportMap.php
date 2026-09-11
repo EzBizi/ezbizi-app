@@ -52,6 +52,20 @@ use App\Models\User;
  * removed, showing up in a report. The test compares this flag against the
  * real schema in both directions.
  *
+ * ── A resource is NAMED AFTER ITS MODULE ────────────────────────
+ *
+ * `label` is the sidebar's word for the tab this data lives in, and `module`
+ * is that tab's key. Jose's rule: the field tree should match the sidebar "so
+ * it is easier to understand where things come from". So the People resource
+ * is labelled Human Resources, because that is the tab somebody would open to
+ * see the same rows.
+ *
+ * `franchises` is the one that does not match a sidebar tab — branches are
+ * configured under Settings rather than having a tab of their own — so it
+ * keeps the plain word Branches. ReportMapTest asserts every other module key
+ * is one the registry actually declares, so a typo here cannot quietly produce
+ * a heading that matches no tab.
+ *
  * ── Relations are edges, not permission to invent a join ─────────
  *
  * The builder walks these; it never composes an ON clause. Adding an edge is
@@ -65,6 +79,7 @@ final class ReportMap
      *     model: class-string,
      *     table: string,
      *     label: string,
+     *     module: string,
      *     permission: string,
      *     scope: array<string, string>,
      *     shared_because: ?string,
@@ -80,6 +95,7 @@ final class ReportMap
                 'model'          => Job::class,
                 'table'          => 'jobs',
                 'label'          => 'Jobs',
+                'module'         => 'jobs',
                 'permission'     => 'jobs.view',
                 'scope'          => ['franchise_id' => 'franchise'],
                 'shared_because' => null,
@@ -115,6 +131,7 @@ final class ReportMap
                 'model'      => Customer::class,
                 'table'      => 'customers',
                 'label'      => 'Customers',
+                'module'     => 'customers',
                 'permission' => 'customers.view',
                 'scope'      => [],
                 'shared_because' => 'Customers are shared across the whole organization by '
@@ -150,6 +167,7 @@ final class ReportMap
                 'model'          => Franchise::class,
                 'table'          => 'franchises',
                 'label'          => 'Branches',
+                'module'         => 'franchises',
                 'permission'     => 'franchises.view',
                 'scope'          => ['id' => 'franchise'],
                 'shared_because' => null,
@@ -167,7 +185,8 @@ final class ReportMap
             'users' => [
                 'model'      => User::class,
                 'table'      => 'users',
-                'label'      => 'People',
+                'label'      => 'Human Resources',
+                'module'     => 'hr',
                 'permission' => 'hr.view',
                 'scope'      => [],
                 'shared_because' => 'A person belongs to the organization and is assigned to '

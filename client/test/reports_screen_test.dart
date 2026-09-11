@@ -93,6 +93,76 @@ void main() {
     expect(find.textContaining('No rows matched'), findsNothing);
   });
 
+  testWidgets('a report can be deleted, confirmed in place and never a dialog', (
+    tester,
+  ) async {
+    var deleted = false;
+
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) {
+        if (request.method == 'DELETE') {
+          deleted = true;
+          return _json({}, 204);
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.byTooltip('Delete report'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Dialog), findsNothing);
+    expect(find.textContaining('Delete this report?'), findsOneWidget);
+    // Says what it does NOT destroy: a report is a question, not the records.
+    expect(find.textContaining('records it reads on are untouched'), findsOneWidget);
+
+    await tester.tap(find.text('Delete report'));
+    await tester.pumpAndSettle();
+
+    expect(deleted, isTrue);
+  });
+
+  testWidgets('a delete can be backed out of without sending anything', (
+    tester,
+  ) async {
+    var deleted = false;
+
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) {
+        if (request.method == 'DELETE') {
+          deleted = true;
+          return _json({}, 204);
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.byTooltip('Delete report'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Keep it'));
+    await tester.pumpAndSettle();
+
+    expect(deleted, isFalse);
+    expect(find.text('Open jobs'), findsOneWidget);
+  });
+
+  testWidgets('without reports.build there is no delete control', (
+    tester,
+  ) async {
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      permissions: const ['reports.view'],
+    );
+
+    // Same rule as New report: absent, not disabled.
+    expect(find.byTooltip('Delete report'), findsNothing);
+  });
+
   testWidgets('tapping a report opens its run in place, never a dialog', (
     tester,
   ) async {

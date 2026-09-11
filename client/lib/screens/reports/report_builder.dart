@@ -177,7 +177,9 @@ class _ReportBuilderState extends State<ReportBuilder> {
 
     return ListView(
       children: [
-        Text('FIELDS', style: theme.textTheme.labelSmall),
+        // MODULES, not "fields". Jose's rule: the tree should match the
+        // sidebar so it is obvious which tab a column comes from.
+        Text('MODULES', style: theme.textTheme.labelSmall),
         const SizedBox(height: 12),
         for (final entry in fields.entries)
           ..._resourceNode(context, entry.key, '', 0),
