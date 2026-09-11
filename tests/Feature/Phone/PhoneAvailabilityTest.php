@@ -174,6 +174,47 @@ class PhoneAvailabilityTest extends TestCase
     }
 
     /**
+     * NO state the desk can send changes a standing decision.
+     *
+     * The two tests below walk the routes that were actually reported. This
+     * one walks the whole set the endpoint accepts, because both of the
+     * narrow guards that came before were correct about the route somebody
+     * had hit and silent about the next one. `wrap_up` is in this list and no
+     * reported bug has ever gone through it; that is the point.
+     *
+     * If a fifth state is ever added to the validator, this fails until
+     * somebody decides what it means for a person who is away — which is the
+     * conversation the last two fixes each skipped.
+     */
+    public function test_no_state_the_desk_sends_can_clear_do_not_disturb(): void
+    {
+        foreach (['registered', 'on_call', 'wrap_up', 'dnd'] as $state) {
+            $t = $this->provisionTenant();
+            [$user, $rows] = $this->deskOnTwoCompanies($t);
+
+            $this->signedInAs($user)
+                ->putJson('/api/v1/phone/presence/me', ['state' => 'dnd'])
+                ->assertOk();
+
+            $this->signedInAs($user)
+                ->putJson('/api/v1/phone/presence', [
+                    'connection_id' => $rows[0]->connection_id,
+                    'state' => $state,
+                ])
+                ->assertOk()
+                ->assertJsonPath('data.state', 'dnd');
+
+            $this->inTenant($t['org'], function () use ($user, $state) {
+                $this->assertSame(
+                    ['dnd', 'dnd'],
+                    PhonePresence::query()->where('user_id', $user->id)->pluck('state')->all(),
+                    "the desk sending '{$state}' took somebody off Do Not Disturb",
+                );
+            });
+        }
+    }
+
+    /**
      * Making a call while away does not bring you back.
      *
      * ── The second report, and why the first fix missed it ───────
