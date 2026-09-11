@@ -51,6 +51,22 @@ final class EmailGlance extends DescribedGlance
             $sentences = [];
 
             foreach ($mailboxes as $mailbox) {
+                // A broken mailbox is not asked. `WatchMailboxes` already skips
+                // it on purpose, so nothing is arriving and nothing will until
+                // somebody reconnects it -- asking anyway would spend the home
+                // screen's load on a connection we know has failed, and would
+                // then describe a permanent state in the words of a temporary
+                // one. Two production mailboxes sat broken for three weeks
+                // saying "could not be asked", which reads like a bad minute.
+                if ($mailbox->status === Mailbox::STATUS_BROKEN) {
+                    $sentences[] = sprintf(
+                        '%s is disconnected. No mail is arriving from it until it is reconnected in Email, Settings.',
+                        $mailbox->address,
+                    );
+
+                    continue;
+                }
+
                 try {
                     $slices[] = [
                         'label' => $this->sliceLabel($mailbox),
@@ -58,13 +74,19 @@ final class EmailGlance extends DescribedGlance
                     ];
                 } catch (CannotReadMailbox|CannotReachHost) {
                     $sentences[] = sprintf(
-                        '%s could not be asked for unread mail.',
+                        '%s could not be asked for unread mail just now.',
                         $mailbox->address,
                     );
                 }
             }
 
-            $data = ['empty' => $slices === []];
+            // Never `empty: true` here. The dashboard renders ONE sentence for
+            // an empty glance and silently drops the rest, and the case where
+            // that bites is the worst one: every mailbox broken, so there are
+            // no slices, several things to say, and only the first is shown.
+            // Every mailbox above contributes either a slice or a sentence, so
+            // there is always something to draw.
+            $data = ['empty' => false];
 
             if ($slices !== []) {
                 $data['slices'] = $slices;
