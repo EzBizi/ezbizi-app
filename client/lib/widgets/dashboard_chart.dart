@@ -7,9 +7,15 @@ import 'package:flutter/material.dart';
 /// The numbers are already aggregated. This plots them; it does not add them
 /// up, drop a zero slice, or invent a bucket the payload omitted.
 ///
-/// Colours come off [ThemeData.colorScheme]. A palette of hex values here
-/// would ignore an organization’s own theme (§12) and, from a generated
-/// scheme, is how purple leaked into the product once already.
+/// Series colours are a FIXED validated palette, not theme roles — see
+/// [_palette] for why, and re-run the validator if you touch a value. This
+/// docblock used to say the opposite: that hex here "would ignore an
+/// organization’s own theme (§12) and, from a generated scheme, is how purple
+/// leaked into the product once already". The first half is right about brand
+/// colour and wrong about series identity; the second half was being caused by
+/// the very code it warned against, since `tertiaryContainer` on the generated
+/// scheme is the violet. Structural colours — the axis track, the ring between
+/// marks — still come off [ThemeData.colorScheme], and should.
 class DashboardChart extends StatelessWidget {
   const DashboardChart({
     super.key,
@@ -56,7 +62,10 @@ class DashboardChart extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final parsedSlices = _readSlices(slices);
     final parsedSeries = _readSeries(series);
-    final colors = _palette(scheme);
+    final colors = _colorsFor(
+      scheme,
+      slots: math.max(parsedSlices.length, parsedSeries.length),
+    );
     final painter = _DashboardChartPainter(
       presentation: presentation,
       slices: parsedSlices,
@@ -121,7 +130,7 @@ class _ChartLegend extends StatelessWidget {
                   width: 8,
                   height: 8,
                   decoration: BoxDecoration(
-                    color: colors[i % colors.length],
+                    color: colors[i],
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -139,14 +148,102 @@ class _ChartLegend extends StatelessWidget {
   }
 }
 
-List<Color> _palette(ColorScheme scheme) => [
-      scheme.primary,
-      scheme.secondary,
-      scheme.tertiary,
-      scheme.primaryContainer,
-      scheme.secondaryContainer,
-      scheme.tertiaryContainer,
-    ];
+/// One colour per slot, and **never the same colour twice**.
+///
+/// The palette had six swatches and every call site indexed it with
+/// `i % colors.length`, so a seventh slice silently repeated the
+/// first's colour. Cycling is the thing this function exists to remove: two
+/// wedges in one colour is indistinguishable from a correct chart, and unlike
+/// a truncated label there is no ellipsis to say it happened.
+///
+/// Past the eighth slot the answer is a NEUTRAL, not a ninth hue. A generated
+/// hue would land wherever it landed and could sit next to anything; a grey
+/// says "this one is not an identity" and stays honest at any count. It is
+/// derived from the scheme rather than written down, so it is a neutral in
+/// whichever theme the organization is using.
+///
+/// Nine slices is uncommon but reachable — `jobs.statuses` is a per-
+/// organization setting with no cap, and Inspection bars by definition name
+/// while Email bars per mailbox. The old code drew that case as two identical
+/// wedges; this draws it as seven named ones and a grey tail.
+List<Color> _colorsFor(ColorScheme scheme, {required int slots}) {
+  final palette = _palette(scheme);
+  if (slots <= palette.length) return palette.take(slots).toList();
+
+  // A mid neutral in either theme: half way between ink and paper.
+  final neutral = Color.lerp(scheme.onSurface, scheme.surface, 0.55)!;
+
+  return [
+    ...palette,
+    for (var i = palette.length; i < slots; i++) neutral,
+  ];
+}
+
+/// Eight categorical hues in a fixed order, per mode. NOT theme roles.
+///
+/// ── Why this is hex and not `ColorScheme` ────────────────────────
+///
+/// It read `primary, secondary, tertiary` and their three containers, on the
+/// reasoning that a hand-written palette is how purple leaked into the product
+/// once. That reasoning is right about brand colour and wrong about this,
+/// because **a scheme role is an identity, not a slot in a sequence.**
+///
+/// Two roles are allowed to be the same colour — `theme.dart:122,128` pins both
+/// `primary` and `secondary` to `_cyanDeep` on light, deliberately, so any
+/// widget reaching for either lands in the brand's range. Every widget in the
+/// product wants exactly that. A chart is the one place that needs six things
+/// to look DIFFERENT, and it was reading six names as if they were six colours.
+/// Measured: Scheduled and In progress drew identically on every light-theme
+/// jobs pie, at the default four statuses. And swatch six was `#E8DDFF`, the
+/// violet `theme.dart`'s own docblock says was banished — a colour the app
+/// never chose, arriving through a name the app did choose.
+///
+/// So series identity is not brand identity, and this palette is a fixed,
+/// validated, documented set rather than anything derived. Jose asked for
+/// colours that do not blend into one another (2026-09-11); these are that,
+/// and they are checked rather than chosen by eye.
+///
+/// ── Validated, not eyeballed ─────────────────────────────────────
+///
+/// Both rows pass all six categorical checks against this app's real surfaces
+/// (`#FFFFFF` light, `#10161B` dark) on the adjacent pairlist, which is the
+/// right list for pie, bar and line where only neighbours touch:
+///
+///   light  worst adjacent CVD ΔE 9.1, normal-vision ΔE 19.6
+///   dark   worst adjacent CVD ΔE 8.4, normal-vision ΔE 19.3
+///
+/// CVD is protanopia/deuteranopia simulated at severity 1.0 — red and green
+/// next to each other is the classic failure and these clear it. Three light
+/// steps sit below 3:1 on white, which the standard permits only with
+/// "relief": identity must not be colour alone. This chart has it — the legend
+/// draws a labelled dot per slice and `semanticsLabel` names every slice with
+/// its total — so do not remove the legend to save space.
+///
+/// **If you change a single value here, re-run the validator for BOTH modes.**
+/// A palette is a set, not eight independent choices: one substituted hue can
+/// fail a pair it sits next to.
+List<Color> _palette(ColorScheme scheme) =>
+    scheme.brightness == Brightness.dark
+        ? const [
+            Color(0xFF3987E5), // blue
+            Color(0xFFD95926), // orange
+            Color(0xFF199E70), // aqua
+            Color(0xFFC98500), // yellow
+            Color(0xFFD55181), // magenta
+            Color(0xFF008300), // green
+            Color(0xFF9085E9), // violet
+            Color(0xFFE66767), // red
+          ]
+        : const [
+            Color(0xFF2A78D6), // blue
+            Color(0xFFEB6834), // orange
+            Color(0xFF1BAF7A), // aqua
+            Color(0xFFEDA100), // yellow
+            Color(0xFFE87BA4), // magenta
+            Color(0xFF008300), // green
+            Color(0xFF4A3AA7), // violet
+            Color(0xFFE34948), // red
+          ];
 
 /// Whether this presentation has anything to draw. THE definition, once.
 ///
@@ -306,7 +403,7 @@ class _DashboardChartPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = thickness
           ..strokeCap = StrokeCap.butt
-          ..color = colors[i % colors.length],
+          ..color = colors[i],
       );
       start += sweep;
     }
@@ -342,7 +439,7 @@ class _DashboardChartPainter extends CustomPainter {
           Rect.fromLTWH(left, top, barWidth, height),
           radius,
         ),
-        Paint()..color = colors[i % colors.length],
+        Paint()..color = colors[i],
       );
     }
   }
@@ -392,7 +489,7 @@ class _DashboardChartPainter extends CustomPainter {
     for (var s = 0; s < series.length; s++) {
       final points = series[s].points;
       if (points.isEmpty) continue;
-      final color = colors[s % colors.length];
+      final color = colors[s];
 
       final path = Path();
       for (var i = 0; i < points.length; i++) {

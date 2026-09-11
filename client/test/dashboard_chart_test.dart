@@ -429,6 +429,61 @@ void main() {
     expect(find.text('One is ours.'), findsOneWidget);
   });
 
+  /// THE DEFECT JOSE NAMED, and it took two slices to show.
+  ///
+  /// The palette was six `ColorScheme` roles indexed `i % 6`. `theme.dart`
+  /// pins `primary` and `secondary` to the same deep cyan on light, on
+  /// purpose — so slices one and two drew IDENTICALLY on every light-theme
+  /// pie, at the default four job statuses. Not an edge case at seven; a
+  /// live defect at two.
+  testWidgets('two slices are two different colours', (tester) async {
+    final dots = await _legendColors(tester, const [
+      {'label': 'Scheduled', 'total': 3},
+      {'label': 'In progress', 'total': 2},
+    ]);
+
+    expect(dots, hasLength(2));
+    expect(dots[0], isNot(dots[1]));
+  });
+
+  /// Fixed order, never cycled — and the tail is a neutral, not a ninth hue.
+  ///
+  /// `jobs.statuses` is a per-organization setting with no cap, so nine is
+  /// reachable. The old code drew slice nine in slice one's colour, which
+  /// reads as a correct chart: there is no ellipsis for a repeated colour.
+  testWidgets('nine slices never repeat a hue', (tester) async {
+    final dots = await _legendColors(tester, [
+      for (var i = 0; i < 9; i++) {'label': 'S$i', 'total': i + 1},
+    ]);
+
+    expect(dots, hasLength(9));
+
+    // The eight identities are eight distinct colours.
+    expect(dots.take(8).toSet(), hasLength(8));
+
+    // The ninth is the neutral tail, and emphatically not slot one's blue.
+    expect(dots[8], isNot(dots[0]));
+  });
+
+  /// Dark is its own set of steps, not an automatic flip of the light one.
+  testWidgets('dark mode draws its own palette', (tester) async {
+    final light = await _legendColors(
+      tester,
+      const [
+        {'label': 'A', 'total': 1},
+      ],
+    );
+    final dark = await _legendColors(
+      tester,
+      const [
+        {'label': 'A', 'total': 1},
+      ],
+      dark: true,
+    );
+
+    expect(light.single, isNot(dark.single));
+  });
+
   testWidgets('coming soon has no how-to-draw menu', (tester) async {
     await _pumpDashboard(tester, _comingSoon());
 
@@ -666,3 +721,39 @@ const _me = {
   'companies': <Map<String, Object?>>[],
   'franchises': <Map<String, Object?>>[],
 };
+
+/// The legend's colour dots, in slice order.
+///
+/// The legend is the readable surface for "which colour is this series" — it
+/// is the same `colors` list the painter uses, and unlike the canvas it can be
+/// asserted without pixel-reading. Scoped to the chart so no other Container
+/// in the tree can be mistaken for a swatch.
+Future<List<Color>> _legendColors(
+  WidgetTester tester,
+  List<Map<String, dynamic>> slices, {
+  bool dark = false,
+}) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: dark ? EzBiziTheme.dark() : EzBiziTheme.light(),
+      home: Scaffold(
+        body: DashboardChart(presentation: 'pie', slices: slices),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+
+  final dots = tester
+      .widgetList<Container>(
+        find.descendant(
+          of: find.byType(DashboardChart),
+          matching: find.byType(Container),
+        ),
+      )
+      .map((c) => (c.decoration! as BoxDecoration).color!)
+      .toList();
+
+  expect(dots, isNotEmpty, reason: 'No legend swatches were found at all.');
+
+  return dots;
+}
