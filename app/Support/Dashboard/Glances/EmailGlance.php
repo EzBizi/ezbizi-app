@@ -90,10 +90,23 @@ final class EmailGlance extends DescribedGlance
             // session fixed the renderer itself in `e37502f4`, so the dropping
             // is gone and this line is no longer load-bearing against it.
             //
-            // It stays `false` on its own merits: a box with something to say
-            // is not empty, whatever the renderer does with it. Every mailbox
-            // above contributes either a slice or a sentence, so there is
-            // always something to draw.
+            // It stays `false`, and under the replacement rule (`7d76c762`)
+            // the reason is sharper than "a box with something to say is not
+            // empty". `empty` now asks whether this box is a STATEMENT or a
+            // READING: `true` suppresses the chart and every figure, and draws
+            // the sentences in the MUTED note style.
+            //
+            // So the trap has inverted, and it points straight at this glance.
+            // With every mailbox disconnected there are no slices and nothing
+            // to plot, which makes `true` look like the tidier choice -- and it
+            // would render "no mail is arriving from this address" as a muted
+            // aside. That is the SAME mistake this whole file was fixed for:
+            // a dead inbox stated quietly enough that nobody acts on it.
+            //
+            // A disconnected inbox is not a "nothing to show" state. It is the
+            // loudest thing this box can have to say, so it is said in ordinary
+            // text. Every mailbox above contributes either a slice or a
+            // sentence, so there is always something here.
             $data = ['empty' => false];
 
             if ($slices !== []) {
