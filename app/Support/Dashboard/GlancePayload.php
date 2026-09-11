@@ -33,6 +33,20 @@ final class GlancePayload
      * The consequence to watch is the opposite one now: `true` SUPPRESSES a
      * chart and any figures. A box with slices to plot must not set it.
      *
+     * **And the trap that replaced the old one, which is worse because the
+     * table above invites it.** "No slices, nothing to plot, mark it empty"
+     * is the obvious reading, and it is wrong exactly when the sentences are
+     * the loudest thing the box has to say. Email reached this honestly the
+     * morning after their glance was fixed for the opposite failure: every
+     * mailbox disconnected means no slices, so `true` looked tidier — and it
+     * would have rendered *"no mail is arriving from this address"* as a grey
+     * aside. The old bug made a dead inbox appear nowhere; this one makes it
+     * appear in muted text.
+     *
+     * So `empty` is not "did my query come back with nothing". It is **"is
+     * there nothing here worth reading"**, and a failure a person must act on
+     * is the opposite of that however few rows produced it.
+     *
      * ── What the client actually draws out of `$data` ──────────────────
      *
      * Everything else you put here is carried over the wire and rendered by
