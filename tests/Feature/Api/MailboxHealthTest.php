@@ -434,6 +434,74 @@ class MailboxHealthTest extends TestCase
     }
 
     /**
+     * A fault at the MAIL SERVICE is not a broken mailbox, and marking it one
+     * made its own reason true.
+     *
+     * Two production mailboxes sat broken for three weeks carrying this case's
+     * own sentence -- "there is nothing to reconnect, try again shortly". The
+     * trap is that `WatchMailboxes` polls CONNECTED mailboxes only, on purpose,
+     * so writing "broken" for a self-clearing fault deletes the mailbox from
+     * the one mechanism that would ever notice it had cleared.
+     *
+     * The second assertion is the one that matters. Status alone could be
+     * argued about; being absent from the watcher's own query is the harm, and
+     * it is asserted against that query rather than against a copy of it.
+     */
+    public function test_a_fault_at_the_mail_service_leaves_the_inbox_in_the_watchers_sweep(): void
+    {
+        $this->withScriptedProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+
+        ScriptedMailboxReader::$failWith = CannotReadMailbox::providerFaulty($mailbox, 'Backend Error');
+
+        $this->open($t, $mailbox)->assertStatus(503);
+
+        $after = $this->reload($t, $mailbox);
+
+        $this->assertSame(
+            Mailbox::STATUS_CONNECTED,
+            $after->status,
+            'A fault at the mail service was written onto a tenant inbox as broken.',
+        );
+        $this->assertNull($after->status_reason);
+
+        $this->assertTrue(
+            $this->inTheWatchersSweep($mailbox),
+            'Broken removes the mailbox from WatchMailboxes, so a fault that clears on its own never would.',
+        );
+
+        // THE CONTROL. A cause that IS the tenant's to fix, on the same route
+        // and the same mailbox, so this cannot pass by nothing marking anything
+        // -- and it must also DROP OUT of the sweep, which is the behaviour the
+        // broken status exists for.
+        ScriptedMailboxReader::$failWith = CannotReadMailbox::permissionNarrowed($mailbox);
+
+        $this->open($t, $mailbox)->assertStatus(409);
+
+        $this->assertSame(Mailbox::STATUS_BROKEN, $this->reload($t, $mailbox)->status);
+        $this->assertFalse($this->inTheWatchersSweep($mailbox));
+    }
+
+    /**
+     * Would the watcher pick this mailbox up on its next sweep?
+     *
+     * The same two clauses `WatchMailboxes::organizationsWithDueMailboxes` opens
+     * with. Written out rather than called, because that method is private and
+     * returns organizations rather than mailboxes -- but if it ever stops
+     * filtering on status, this helper is a lie and the guard above goes quiet.
+     */
+    private function inTheWatchersSweep(Mailbox $mailbox): bool
+    {
+        return Mailbox::withoutGlobalScopes()
+            ->whereKey($mailbox->getKey())
+            ->where('status', Mailbox::STATUS_CONNECTED)
+            ->where(fn ($q) => $q->whereNull('watch_next_poll_at')->orWhere('watch_next_poll_at', '<=', now()))
+            ->exists();
+    }
+
+    /**
      * A fault at EzBizi's end is never written onto a tenant's row.
      *
      * This installation has no Google registration, so if `notBuiltHere` marked

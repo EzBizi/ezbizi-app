@@ -238,13 +238,36 @@ enum MailboxFault: string
      *   anybody opened the tab, and the screen would be a wall of red describing
      *   a single fault at EzBizi's end.
      *
+     *   PROVIDER FAULTY is not broken either, and leaving it here cost three
+     *   weeks of production mail. Added 2026-09-11 after two mailboxes sat
+     *   broken since the day they were made, carrying this case's own sentence:
+     *   "there is nothing to reconnect -- try again shortly."
+     *
+     *   The argument is the TOO MANY REQUESTS argument, and it is stronger here,
+     *   because marking this one broken MAKES ITS OWN REASON TRUE.
+     *   `WatchMailboxes` polls `STATUS_CONNECTED` only -- deliberately, so a
+     *   dead inbox is not dialled every five minutes forever. So writing
+     *   "broken" for a fault that clears on its own removes the mailbox from
+     *   the one mechanism that would ever notice it had cleared. The fault
+     *   becomes permanent by being recorded, and the row then tells an
+     *   administrator to reconnect an inbox whose own status_reason says there
+     *   is nothing to reconnect. Both mailboxes still answered intermittently
+     *   the whole time -- `last_reached_at` was hours old, not weeks -- because
+     *   a page load still dials, and a page load that SUCCEEDS heals the row
+     *   until the next one fails.
+     *
+     *   What this does NOT solve is a provider faulty for a month: the mailbox
+     *   now reads connected and fails per load, which is honest but quiet. The
+     *   column that answers it is `last_reached_at`, and nothing reads it for
+     *   escalation yet.
+     *
      * Everything else did work a moment ago and does not now, which is exactly
      * what Mailbox::STATUS_BROKEN was written to mean.
      */
     public function marksBroken(): bool
     {
         return match ($this) {
-            self::NotConnected, self::TooManyRequests => false,
+            self::NotConnected, self::TooManyRequests, self::ProviderFaulty => false,
             default => ! $this->isOurs(),
         };
     }
