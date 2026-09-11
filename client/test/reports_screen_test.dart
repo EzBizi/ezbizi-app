@@ -228,7 +228,106 @@ void main() {
 
     expect(find.widgetWithText(TextField, 'Name this report'), findsOneWidget);
     expect(find.byType(Dialog), findsNothing);
-    expect(find.byTooltip('All reports'), findsOneWidget);
+
+    // The back arrow used to exist to LEAVE the builder; the Reports chip does
+    // that now, so it appears only when a report is open. Changed deliberately
+    // with the sub tabs rather than keeping two ways out of the same place.
+    expect(find.byTooltip('All reports'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'Reports'), findsOneWidget);
+  });
+
+  testWidgets('the three sub tabs are Reports, Builder and Experimental', (
+    tester,
+  ) async {
+    await _pumpReports(tester, reports: [_report]);
+
+    expect(find.widgetWithText(ChoiceChip, 'Reports'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Builder'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Experimental'), findsOneWidget);
+  });
+
+  testWidgets('the Builder tab opens the builder', (tester) async {
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) {
+        if (request.url.path.endsWith('/reports/fields')) {
+          return _json({'data': _fieldsStub});
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Builder'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextField, 'Name this report'), findsOneWidget);
+  });
+
+  testWidgets('the Experimental tab says it is empty on purpose', (
+    tester,
+  ) async {
+    await _pumpReports(tester, reports: [_report]);
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nothing here yet.'), findsOneWidget);
+    // An empty pane with no sentence is indistinguishable from one that failed
+    // to load, which is the confusion the list's two empty states exist to
+    // avoid.
+    expect(find.textContaining('nothing has gone wrong'), findsOneWidget);
+  });
+
+  testWidgets('without reports.build there is no Builder tab at all', (
+    tester,
+  ) async {
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      permissions: const ['reports.view'],
+    );
+
+    expect(find.widgetWithText(ChoiceChip, 'Reports'), findsOneWidget);
+    // Absent, not disabled - a chip leading to a refusal tells somebody the
+    // app is for other people.
+    expect(find.widgetWithText(ChoiceChip, 'Builder'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'Experimental'), findsOneWidget);
+  });
+
+  testWidgets('Experimental is still reachable when Builder is absent', (
+    tester,
+  ) async {
+    // The chips SHIFT when Builder is missing, so an index remembered from the
+    // three-chip layout would land on the wrong destination. Resolved by name.
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      permissions: const ['reports.view'],
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nothing here yet.'), findsOneWidget);
+  });
+
+  testWidgets('New report jumps to the Builder tab', (tester) async {
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) {
+        if (request.url.path.endsWith('/reports/fields')) {
+          return _json({'data': _fieldsStub});
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('New report'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextField, 'Name this report'), findsOneWidget);
   });
 
   testWidgets('a narrow screen says reports are built on a computer', (
@@ -297,6 +396,16 @@ http.Response _json(Object body, [int status = 200]) => http.Response(
   status,
   headers: const {'content-type': 'application/json'},
 );
+
+const _fieldsStub = {
+  'jobs': {
+    'label': 'Jobs',
+    'columns': {
+      'title': {'label': 'Title', 'type': 'string'},
+    },
+    'relations': <dynamic>[],
+  },
+};
 
 const _report = {
   'id': 'rep-1',

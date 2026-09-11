@@ -5,6 +5,9 @@ namespace Tests\Feature\Reports;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
+use App\Models\Service;
+use App\Support\Scoping\ViewScope;
+use App\Support\Services\ServiceVisibility;
 use App\Support\Reports\ReportRunner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -332,6 +335,111 @@ class ReportRunnerTest extends TestCase
         $this->assertCount(2, $result->rows, 'one row per job, not one per customer');
         $this->assertContains('First', $titles);
         $this->assertContains('Second', $titles);
+    }
+
+    /**
+     * THE CATALOGUE PLACE RULE MUST AGREE WITH THE MODULE'S OWN LIST.
+     *
+     * Services, Inventory, Fleet, Training and Leads have a nullable company
+     * AND a nullable franchise, so a row can sit on the organization, on a
+     * company as General, or on one branch. The runner delegates that to
+     * InventoryVisibility rather than re-deriving it — and this asserts the two
+     * actually return the same set, so a report and the Services tab cannot
+     * drift apart silently. Delegation without this test is just a longer way
+     * of writing a second copy.
+     */
+    public function test_a_catalogue_report_returns_what_the_modules_own_list_returns(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $other = $this->extraFranchise($tenant, 'Alpha F2');
+
+        $this->inTenant($tenant['org'], function () use ($tenant, $other) {
+            Service::factory()->create(['name' => 'Group wide']);
+            Service::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'name' => 'Company general',
+            ]);
+            Service::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'name' => 'Mine',
+            ]);
+            Service::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $other->id,
+                'name' => 'Not mine',
+            ]);
+        });
+
+        $limited = $this->userWithRole(
+            $tenant,
+            'One Franchise',
+            ['reports.view', 'services.view'],
+            onlyAt: $tenant['franchise'],
+        );
+
+        $reported = array_column(
+            $this->runReport([
+                'root' => 'services',
+                'columns' => [['resource' => 'services', 'column' => 'name']],
+                'filters' => [],
+            ], $limited)->rows,
+            'services.name',
+        );
+
+        $fromTheTab = $this->inTenant($tenant['org'], fn () => ServiceVisibility::constrain(
+            Service::query(),
+            $limited,
+            ViewScope::forUser($limited),
+        )->pluck('name')->all());
+
+        sort($reported);
+        sort($fromTheTab);
+
+        // The control: without it, two empty lists would satisfy both
+        // assertions below and the test would prove nothing at all.
+        $this->assertContains('Mine', $reported, 'the report returned nothing, so this test is vacuous');
+
+        $this->assertSame($fromTheTab, $reported, 'a report disagrees with the Services tab');
+        $this->assertNotContains('Not mine', $reported, "another branch's service was reported");
+    }
+
+    /**
+     * The half a plain `franchise_id IN (...)` would have got wrong, quietly.
+     * The column is nullable, so rows filed above a branch have NULL and a
+     * whereIn drops them — a report that is too SMALL, which nobody reports
+     * because they cannot see what is missing.
+     */
+    public function test_rows_filed_above_a_branch_are_still_reported(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            Service::factory()->create(['name' => 'Group wide']);
+            Service::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'name' => 'Company general',
+            ]);
+        });
+
+        $limited = $this->userWithRole(
+            $tenant,
+            'One Franchise',
+            ['reports.view', 'services.view'],
+            onlyAt: $tenant['franchise'],
+        );
+
+        $reported = array_column(
+            $this->runReport([
+                'root' => 'services',
+                'columns' => [['resource' => 'services', 'column' => 'name']],
+                'filters' => [],
+            ], $limited)->rows,
+            'services.name',
+        );
+
+        $this->assertContains('Group wide', $reported);
+        $this->assertContains('Company general', $reported);
     }
 
     public function test_it_refuses_a_resource_that_is_not_in_the_map(): void

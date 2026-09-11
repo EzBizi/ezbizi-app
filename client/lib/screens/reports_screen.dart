@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/error_note.dart';
+import '../widgets/tab_bar_like.dart';
 import 'reports/report_builder.dart';
 import 'reports/report_run_view.dart';
 
@@ -49,10 +50,15 @@ class ReportsScreen extends StatefulWidget {
 }
 
 class _ReportsScreenState extends State<ReportsScreen> {
+  /// Reports · Builder · Experimental. The builder is a DESTINATION now
+  /// rather than a mode the list drops into, which is what Jose asked for and
+  /// is also the honest shape: building and running are different jobs, and
+  /// the chips say so before anybody clicks.
+  int _chip = 0;
+
   SavedReportSummary? _open;
   String? _confirming;
   String? _deleteError;
-  bool _building = false;
   List<SavedReportSummary>? _reports;
   String? _error;
   bool _loading = true;
@@ -109,6 +115,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
             children: [
               _header(context, canBuildHere: canBuildHere),
               const SizedBox(height: 12),
+              TabBarLike(
+                labels: _chipLabels(canBuildHere: canBuildHere),
+                selected: _chip,
+                onSelected: (i) => setState(() {
+                  _chip = i;
+                  _open = null;
+                  _confirming = null;
+                }),
+              ),
+              const SizedBox(height: 12),
               Expanded(child: _body(context, constraints)),
             ],
           ),
@@ -117,27 +133,47 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
+  /// Builder is absent rather than disabled where it cannot be used - without
+  /// `reports.build`, and below the split where a phone runs what a desk
+  /// built. The same rule as the New report control: a chip leading to a
+  /// refusal tells somebody the app is for other people.
+  List<(String, IconData)> _chipLabels({required bool canBuildHere}) {
+    return [
+      ('Reports', Icons.list_alt_outlined),
+      if (canBuildHere) ('Builder', Icons.build_outlined),
+      ('Experimental', Icons.science_outlined),
+    ];
+  }
+
+  /// The chips shift when Builder is absent, so a stored index would point at
+  /// the wrong destination. Resolved by NAME rather than by number.
+  String _chipName({required bool canBuildHere}) {
+    final labels = _chipLabels(canBuildHere: canBuildHere);
+
+    return _chip < labels.length ? labels[_chip].$1 : 'Reports';
+  }
+
   Widget _header(BuildContext context, {required bool canBuildHere}) {
     return Row(
       children: [
-        if (_open != null || _building)
+        if (_open != null)
           IconButton(
-            onPressed: () => setState(() {
-              _open = null;
-              _building = false;
-            }),
+            onPressed: () => setState(() => _open = null),
             icon: const Icon(Icons.arrow_back),
             tooltip: 'All reports',
           ),
         Expanded(
           child: Text(
-            _building ? 'New report' : (_open?.name ?? 'Reports'),
+            _open?.name ?? 'Reports',
             style: Theme.of(context).textTheme.headlineSmall,
           ),
         ),
-        if (canBuildHere && _open == null && !_building)
+        if (canBuildHere && _open == null && _chip == 0)
           FilledButton.icon(
-            onPressed: () => setState(() => _building = true),
+            onPressed: () => setState(() {
+              _chip = 1;
+              _open = null;
+            }),
             icon: const Icon(Icons.add),
             label: const Text('New report'),
           ),
@@ -148,14 +184,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget _body(BuildContext context, BoxConstraints constraints) {
     // In place rather than a dialog: the development rules allow screens and
     // side panels only, and a table inside a modal is unreadable on a phone.
-    if (_building) {
-      return ReportBuilder(
-        api: widget.api,
-        onSaved: (_) {
-          setState(() => _building = false);
-          _load();
-        },
-      );
+    final canBuildHere =
+        (widget.session.me?.can('reports.build') ?? false) &&
+        constraints.maxWidth >= ReportsScreen.buildAbove;
+
+    switch (_chipName(canBuildHere: canBuildHere)) {
+      case 'Builder':
+        return ReportBuilder(
+          api: widget.api,
+          onSaved: (_) {
+            // Back to the list, where the report now is.
+            setState(() => _chip = 0);
+            _load();
+          },
+        );
+
+      case 'Experimental':
+        return _experimental(context);
     }
 
     final open = _open;
@@ -330,6 +375,34 @@ class _ReportsScreenState extends State<ReportsScreen> {
             textAlign: TextAlign.center,
           ),
         ],
+      ),
+    );
+  }
+
+  /// Deliberately empty, and it says so rather than looking broken.
+  ///
+  /// Jose asked for the destination now and the contents later. An empty pane
+  /// with no sentence is indistinguishable from one that failed to load, which
+  /// is the same confusion the two empty states on the list exist to avoid.
+  Widget _experimental(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Nothing here yet.', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 12),
+            Text(
+              'This is where report features still being tried out will appear. '
+              'Nothing is missing and nothing has gone wrong.',
+              style: theme.textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }
