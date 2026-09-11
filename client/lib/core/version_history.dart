@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0195',
+      date: '11 Sep 2026',
+      items: [
+        'Fixed: a report could only be built if it started at Jobs. Reaching across modules was announced in 0.0.0192 and only half worked - a connection between two modules was usable in one direction only, so a report starting at Customers or at People could reach nothing at all. Any module can now be the starting point.',
+        'Reading backwards along a connection can return more rows than you started with. A customer with two jobs is two rows in a report of customers and their jobs. That is the answer to the question rather than duplication - each row is one job.',
+        'A report can be deleted. The confirmation says what it does not remove: a report is a question about your records, so deleting it leaves every job, customer and person exactly where they were.',
+        'The field list is grouped by the module each column comes from and reads like the sidebar, so it is clear which tab a column belongs to. People appears under Human Resources. Branches is the one heading with no tab of its own, because branches are set up in Settings.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0194',
       date: '11 Sep 2026',
       items: [
