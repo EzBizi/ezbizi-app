@@ -594,6 +594,42 @@ void main() {
     expect(light.single, isNot(dark.single));
   });
 
+  /// The tail cannot switch the legend on by itself.
+  ///
+  /// Whether there IS a legend is a question about the data; what it SAYS is a
+  /// question about the drawing. `"12 more"` is a label this widget
+  /// manufactures, so asking the folded list "is anything named here" lets a
+  /// chart with no real names grow a legend whose only row maps nothing to
+  /// nothing — where before the fold it drew none.
+  ///
+  /// Raised by UI/UX as a shape, explicitly without establishing whether a
+  /// glance can send unlabelled slices. Measured afterwards: it cannot — every
+  /// glance builds labels from a status slug, a definition name or a date
+  /// bucket. Pinned anyway, because the coupling is one line and the same
+  /// family as everything else this file has been wrong about.
+  testWidgets('unlabelled slices draw no legend, tail or not', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: DashboardChart(
+            presentation: 'pie',
+            slices: [
+              for (var i = 0; i < 12; i++) {'label': '', 'total': i + 1},
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The chart itself still draws — there are totals to plot.
+    expect(find.byType(DashboardChart), findsOneWidget);
+
+    // But nothing is named, so there is nothing to legend.
+    expect(find.text('4 more'), findsNothing);
+  });
+
   testWidgets('coming soon has no how-to-draw menu', (tester) async {
     await _pumpDashboard(tester, _comingSoon());
 

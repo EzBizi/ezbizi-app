@@ -84,7 +84,28 @@ class DashboardChart extends StatelessWidget {
     final legendLabels = presentation == 'pie' || presentation == 'bar'
         ? [for (final slice in parsedSlices) slice.label]
         : [for (final row in parsedSeries) row.label];
-    final named = legendLabels.any((label) => label.isNotEmpty);
+
+    // WHETHER there is a legend is a question about the DATA; what the legend
+    // SAYS is a question about the drawing. Those are different lists.
+    //
+    // `legendLabels` holds the folded list, which contains "4 more" — a label
+    // this widget manufactures. Asking it whether anything is named lets the
+    // tail switch the legend on by itself: a chart whose real categories were
+    // all unlabelled would grow a legend whose only row is "12 more", which
+    // maps nothing to nothing. Before the fold, that chart drew no legend.
+    //
+    // Not reachable today and I measured rather than assumed: every glance
+    // builds slice labels from a status slug, a definition name or a date
+    // bucket, so all-empty across nine-plus slices cannot happen. Raised by
+    // UI/UX as a shape rather than a defect, with the honest note that they
+    // had not established reachability — which is the right way to hand one
+    // over. Fixed anyway, because it is one line and the coupling is the same
+    // family as everything else this file has been wrong about: a value I
+    // invented for the drawing leaking into a decision about the data.
+    final named = (presentation == 'pie' || presentation == 'bar'
+            ? allSlices.map((slice) => slice.label)
+            : parsedSeries.map((row) => row.label))
+        .any((label) => label.isNotEmpty);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
