@@ -251,3 +251,48 @@ it printed the path, and the commit went ahead anyway.
 Restore the lines in a NEW commit; do not rewrite history — the bad commit may
 already have been pulled by the desk or another session. Reports did this
 correctly at `3d8e0654`.
+
+## An empty PHP array is a JSON array, and `as Map` breaks on it (Reports, 2026-09-11)
+
+**This shipped.** The Reports builder rendered a grey rectangle — Flutter's
+release-mode `ErrorWidget` — in 0.0.0192 and 0.0.0193, unusable for everybody,
+with nothing in any log.
+
+`GET /reports/fields` returned `"relations": {...}` for one resource and
+`"relations": []` for the three with none, because **PHP serializes an empty
+array as `[]` and a non-empty keyed one as `{}`**. The client cast it to a map
+and threw.
+
+### Why the tests did not catch it
+
+The Dart fixture used `'relations': <String, dynamic>{}` — **a shape the API
+has never produced for that case.** Nine builder tests were green against an
+invented payload. Reports proved it rather than assuming: with the old cast
+restored and the fixture corrected, **all nine fail.**
+
+### The check that works
+
+**Assert on the ENCODED body, not the decoded one.** The PHP value is identical
+either way; only the JSON string says which it is:
+
+    $raw = $response->getContent();           // not ->json()
+    // assert the substring "relations":{} appears, or decode and check the type
+
+And include a **control asserting that some resource really does have empty
+relations**, or the assertion is looking at a case that cannot fail.
+
+### Fix at BOTH ends
+
+Reports cast to an object server-side AND left the client tolerant of the array
+form. **A shipped desktop client cannot be repaired by a server deploy**, and
+this failure is silent, so the tolerance stays even though the server is now
+correct.
+
+### Where else this can bite
+
+Not audited, and this is a count of CANDIDATES rather than defects: **140
+`as Map<String` cast sites across 58 client files**, and 19 API controllers
+building keyed collections with `array_map`. The vulnerable ones are those
+reading a keyed collection that **can legitimately be empty**. If you own one,
+the question is whether your fixture carries the wire shape or a hand-written
+Dart map.
