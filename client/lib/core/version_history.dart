@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0199',
+      date: '11 Sep 2026',
+      items: [
+        'A report can start from ten parts of the business now, up from four: Jobs, Customers, Human Resources, Branches, Services, Inventory, Fleet Management, Training, Leads and Scheduling.',
+        'Reports has its own sub tabs: your saved reports, the builder, and a space for things still being tried out.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0198',
       date: '11 Sep 2026',
       items: [
