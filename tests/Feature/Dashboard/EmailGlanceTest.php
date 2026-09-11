@@ -202,4 +202,79 @@ class EmailGlanceTest extends TestCase
         $year = app(EmailGlance::class)->resolve($user, DashboardPeriod::for($user, 'year'), [])->toArray();
         $this->assertSame($week['data']['slices'], $year['data']['slices']);
     }
+    /**
+     * A disconnected inbox is named, and the provider is not dialled.
+     *
+     * `WatchMailboxes` deliberately skips a broken mailbox, so it will never
+     * heal on its own: the sentence has to send somebody to the one screen
+     * that can fix it. Asserting the reader was NOT asked is the half that
+     * distinguishes this from the ordinary failure path -- a glance that tried
+     * the connection and caught the exception would produce a sentence too.
+     */
+    public function test_a_broken_mailbox_is_named_as_disconnected_and_is_not_dialled(): void
+    {
+        $user = $this->userWithPermissions(['email.view']);
+        $ok = $this->grantedInbox($user, 'ok@alpha.test');
+        $broken = $this->grantedInbox($user, 'broken@alpha.test');
+        // `markBroken` plus `save`, not `update`: `status` is deliberately not
+        // fillable, so a mass update silently leaves the row connected -- and
+        // `markBroken` only `forceFill`s, so on its own it never reaches the
+        // database either. Either slip alone gives a test that asserts against
+        // a mailbox which was never broken at all.
+        $this->inTenant(function () use ($broken) {
+            $broken->markBroken('token revoked');
+            $broken->save();
+        });
+        $this->withScriptedProvider();
+        ScriptedMailboxReader::$unread[(string) $ok->getKey()] = 3;
+
+        $payload = app(EmailGlance::class)->resolve($user, DashboardPeriod::for($user), [])->toArray();
+
+        $this->assertCount(1, $payload['data']['slices']);
+        $this->assertSame(1, ScriptedMailboxReader::$unreadAsked, 'Only the healthy inbox may be dialled.');
+
+        $sentence = collect($payload['data']['sentences'] ?? [])
+            ->first(fn (string $s) => str_contains($s, 'broken@alpha.test'));
+
+        $this->assertNotNull($sentence, 'The disconnected inbox must be named.');
+        $this->assertStringContainsString('disconnected', $sentence);
+        $this->assertStringContainsString('Settings', $sentence, 'The sentence must say where to fix it.');
+    }
+
+    /**
+     * Every inbox broken: no slices, and STILL every address named.
+     *
+     * This is the case that went unnoticed in production for three weeks. With
+     * no slices the payload used to say `empty: true`, and the dashboard draws
+     * exactly ONE sentence for an empty glance and silently drops the rest --
+     * so the second dead inbox was never mentioned anywhere. Two mailboxes,
+     * both named, is the assertion that fails if `empty` goes back to being
+     * derived from the slices.
+     */
+    public function test_every_mailbox_broken_still_names_all_of_them(): void
+    {
+        $user = $this->userWithPermissions(['email.view']);
+        $first = $this->grantedInbox($user, 'first@alpha.test');
+        $second = $this->grantedInbox($user, 'second@alpha.test');
+        $this->inTenant(function () use ($first, $second) {
+            $first->markBroken('token revoked');
+            $first->save();
+            $second->markBroken('token revoked');
+            $second->save();
+        });
+        $this->withScriptedProvider();
+
+        $payload = app(EmailGlance::class)->resolve($user, DashboardPeriod::for($user), [])->toArray();
+
+        $this->assertFalse(
+            $payload['data']['empty'],
+            'empty:true would render one sentence and drop the other inbox.',
+        );
+        $this->assertSame([], $payload['data']['slices'] ?? []);
+        $this->assertSame(0, ScriptedMailboxReader::$unreadAsked);
+
+        $sentences = implode(' ', $payload['data']['sentences'] ?? []);
+        $this->assertStringContainsString('first@alpha.test', $sentences);
+        $this->assertStringContainsString('second@alpha.test', $sentences);
+    }
 }
