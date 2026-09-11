@@ -46,8 +46,8 @@ h1{margin:0;font-size:18px;font-weight:700;letter-spacing:-.3px}
 .rl .r{display:flex;align-items:center;gap:10px;padding:9px 11px;
        border-bottom:1px solid var(--line);font-size:13px;background:var(--paper)}
 .rl .r:last-child{border-bottom:0}
-.rl .r.div{background:var(--soft);color:var(--muted);font-weight:700;font-size:11px;
-           letter-spacing:.5px;text-transform:uppercase}
+.rl .r.div{background:var(--soft);padding:11px}
+.rl .rule{flex:1;height:1px;background:rgba(0,112,143,.45);display:block}
 .rl .r.lift{box-shadow:0 6px 16px rgba(0,0,0,.14);border-radius:8px;
             border:1px solid var(--primary);transform:translateX(6px)}
 .rl .nm{flex:1;font-weight:600}
@@ -82,33 +82,47 @@ var G = '<svg class="ic" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height=
 
 /* Order and grouping a person chose. Rail 1 only — settings, suggestions and
    development live in rails 2 and 3 and are not in this list at all. */
+/* Dividers carry NO name (Jose, 2026-09-11: "just be dividers basically").
+   That makes a user divider literally the Divider already shipping between the
+   rails -- no new visual, no copy, nothing to localise, and no question about
+   how a label truncates in an 86px rail. */
 var MINE = [
-  {seg:'Every day'},
   {n:'Dashboard'}, {n:'Jobs'}, {n:'Leads'}, {n:'Customers'},
-  {seg:'When I need it'},
-  {n:'Reports'}, {n:'Inventory'}, {n:'Fleet'}, {n:'Training'}
+  {seg:true},
+  {n:'Reports'}, {n:'Inventory'},
+  {seg:true},
+  {n:'Fleet'}, {n:'Training'}
 ];
 
 /* With the search filtering to "re", only Reports survives — and the segment
    above it must go with it, or somebody is left reading a heading with nothing
    underneath. The staff group already does exactly this. */
+/* Filtering to "re": Reports survives, and so does Fleet — which leaves the
+   divider between them with items on both sides, and the FIRST divider with
+   nothing above it. Two rules now matter and they are not the same rule:
+   a divider needs something on both sides, AND two dividers cannot touch. */
 function visible(){
   if (!searching()) return MINE;
-  return [{seg:'When I need it'}, {n:'Reports'}];
+  return [{seg:true}, {n:'Reports'}, {seg:true}, {seg:true}, {n:'Fleet'}];
 }
 
 function railHtml(){
   var out = '';
   var drawn = 0;
+  var pending = false;
   visible().forEach(function(i){
     if (i.seg) {
       // A divider needs something on BOTH sides. The empty-segment rule and
       // this are the same rule: when filtering leaves a segment first, its rule
       // is separating nothing and must not be drawn. Found by filtering my own
       // drawing, which put a line across the top of the rail.
-      if (drawn > 0) out += '<hr class="user">';
+      // Nothing above it, or a rule already sitting there: either way it
+      // separates nothing. Filtering produces both, and the second only appears
+      // once every item between two dividers has gone.
+      if (drawn > 0 && !pending) { pending = true; }
       return;
     }
+    if (pending) { out += '<hr class="user">'; pending = false; }
     drawn++;
     out += '<div class="d' + (i.n === 'Dashboard' ? ' on' : '') + '">' +
       '<span class="g">' + G + '</span>' + i.n + '</div>';
@@ -121,8 +135,11 @@ function railHtml(){
 function list(lift){
   return '<div class="rl">' + MINE.map(function(i, idx){
     if (i.seg) {
+      // A full row that CONTAINS a rule, not a bare 1px line. Nameless does not
+      // mean nothing to grab: a hairline is hard to hit and easy to miss, and
+      // this is the one row whose only job is to be dragged.
       return '<div class="r div"><span class="h">&#8942;&#8942;</span>' +
-        '<span class="nm">' + i.seg + '</span><span class="x">&times;</span></div>';
+        '<span class="rule"></span><span class="x">&times;</span></div>';
     }
     return '<div class="r' + (lift && idx === 3 ? ' lift' : '') + '">' +
       '<span class="h">&#8942;&#8942;</span><span class="nm">' + i.n + '</span></div>';
@@ -176,8 +193,10 @@ function M4(){
     (editing() ? '<span class="btn">Done</span>' : '') + '</div>' +
     '<div class="drawer">' + MINE.map(function(i, idx){
       if (i.seg) {
-        return '<div class="r div">' + (editing() ? '<span class="h">&#8942;&#8942;</span> ' : '') +
-          i.seg + (editing() ? ' <span class="x" style="float:right">&times;</span>' : '') + '</div>';
+        return '<div class="r div" style="display:flex;align-items:center;gap:12px">' +
+          (editing() ? '<span class="h">&#8942;&#8942;</span>' : '') +
+          '<span class="rule"></span>' +
+          (editing() ? '<span class="x">&times;</span>' : '') + '</div>';
       }
       return '<div class="r' + (editing() && idx === 3 ? ' lift' : '') + '">' + G +
         '<span class="nm">' + i.n + '</span>' +

@@ -1388,6 +1388,38 @@ finished and cannot. That was wrong — it keys off `connected_at != null`, whet
 plugin has ever read the site, which the module answers exactly. The tier decision
 rests on the opposite-facts argument alone, which is sufficient on its own.*
 
+### 9 · Sidebar · rearranging and dividers — **DRAWN, with Jose**
+
+`docs/previews/sidebar-rearrange-layouts.html`. Three desktop, three mobile, with the sidebar
+search filter on a toggle because that is the case that breaks it silently.
+
+**Jose's fixed-items constraint is already true and needs nothing built.** `_rail()` is called
+three times (`main.dart:2042`, `:2079`, `:2109`), so Settings, Suggestions and Development are
+not in the module list at all. They cannot be dragged into it because they are a different list.
+
+**The asymmetry that shaped every option:** desktop is a `NavigationRail`, which lays out its own
+destinations and cannot host a `ReorderableListView`; the phone drawer is already a `ListView` of
+`ListTile`s where the stock control drops in. **Dragging is unnatural exactly where the sidebar is
+a rail and natural exactly where it is a list.**
+
+**Dividers carry NO name** (Jose, 2026-09-11: *"just be dividers basically"*). That makes a user
+divider literally the `Divider` already shipping between the rails — no new visual, no copy,
+nothing to localise, and no question about how a label truncates at 86px.
+
+> **Two rules follow, and they are not the same rule.** A divider needs something on **both
+> sides**, and **two dividers cannot touch**. Filtering produces both: the first when a filter
+> empties everything above a rule, the second only once every item *between* two rules has gone.
+> Nameless dividers remove the orphaned-heading problem and leave these two.
+>
+> **And a nameless divider still needs a row to grab.** In the rearranging list it is a
+> full-height row *containing* a rule, not a bare hairline — it is the one row whose only job is
+> to be dragged, and a 1px target is both hard to hit and easy to miss.
+
+**The silent failure to test for:** the rail addresses destinations by POSITION, so a reordered
+*and* filtered list without a translation map opens the wrong module with **no error at all**.
+The existing `shown` map solves this for filtering alone, on one rail. A green suite proves very
+little here; the test has to go red on an off-by-one.
+
 ### 8 · Reports · the builder and the run view — **DRAWN, with Jose**
 
 `docs/previews/reports-builder-layouts.html`. Three desktop, three mobile, with two toggles:
