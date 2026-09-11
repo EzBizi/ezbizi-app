@@ -80,12 +80,20 @@ final class EmailGlance extends DescribedGlance
                 }
             }
 
-            // Never `empty: true` here. The dashboard renders ONE sentence for
-            // an empty glance and silently drops the rest, and the case where
-            // that bites is the worst one: every mailbox broken, so there are
-            // no slices, several things to say, and only the first is shown.
-            // Every mailbox above contributes either a slice or a sentence, so
-            // there is always something to draw.
+            // Never `empty: true` here, and the reason is no longer the one
+            // this comment used to give.
+            //
+            // It was: the dashboard rendered ONE sentence for an empty glance
+            // and silently dropped the rest, so every mailbox broken meant no
+            // slices, several things to say, and only the first shown. That is
+            // what hid a second dead inbox for three weeks. The Dashboard
+            // session fixed the renderer itself in `e37502f4`, so the dropping
+            // is gone and this line is no longer load-bearing against it.
+            //
+            // It stays `false` on its own merits: a box with something to say
+            // is not empty, whatever the renderer does with it. Every mailbox
+            // above contributes either a slice or a sentence, so there is
+            // always something to draw.
             $data = ['empty' => false];
 
             if ($slices !== []) {
