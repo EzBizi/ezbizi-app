@@ -39,6 +39,11 @@ h1{margin:0;font-size:18px;font-weight:700;letter-spacing:-.3px}
 .rows .rw:last-child{border-bottom:0}
 .rows .nm{flex:1}
 .rows .vl{color:var(--muted);font-variant-numeric:tabular-nums}
+.kind{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:12px;
+       color:var(--muted)}
+.kind .pick{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);
+       border-radius:999px;padding:3px 10px;font-weight:600;color:var(--ink)}
+.kind .tick{color:var(--primary);font-weight:700}
 .bars{margin-top:6px}
 .bars .b{display:flex;align-items:center;gap:10px;padding:5px 0;font-size:13px}
 .bars .b .nm{width:96px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
@@ -164,7 +169,13 @@ function T0(){
     'so the generated hue survives in the container and the chart reaches for ' +
     'it at six slices.<br><br>' +
     'Past six the palette repeats from the top, which is the defect Dashboard ' +
-    'reported. It is the third of the three, not the first.</div>';
+    'reported.<br><br><b>Three findings, three different reaches &mdash; worth ' +
+    'keeping apart.</b> The duplicate cyan is <b>live now</b>, at two slices, ' +
+    'on the four-status default. The violet is swatch index five, so it needs ' +
+    'a <b>sixth</b> slice to be drawn at all &mdash; latent on Jobs, ordinary ' +
+    'on Inspection (a bar per definition name) and Email (one per mailbox). ' +
+    'The cycling needs a <b>seventh</b>. Flattening them into one alarm is how ' +
+    'the first one stayed invisible for as long as it has.</div>';
 }
 
 /* ── 1 — one brand ramp, as many steps as there are slices ───── */
@@ -226,12 +237,14 @@ function D3(){
     'the answer &mdash; on a cancellations chart the small wedge is the point.</div>';
 }
 
-/* ── 4 — mobile: bars, where length is the variable ─────────── */
+/* ── 4 — mobile: bars, chosen and SAID, never substituted ───── */
 function M4(){
   var col = ramp()[0], p = [], i;
   for (i = 0; i < N(); i++) p.push([col, VALUES[i], LABELS[i]]);
   return '<div class="phone">' +
     head('Jobs by status', 'One colour. Length is what you read.') +
+    '<div class="kind">&#9776; Showing <span class="pick">' +
+      '<span class="tick">&#10003;</span> Bar</span> &middot; tap to change</div>' +
     '<div class="bars">' + p.map(function(x){
       return '<div class="b"><span class="nm">' + x[2] + '</span>' +
         '<span class="tr"><span class="fl" style="width:' +
@@ -241,10 +254,22 @@ function M4(){
     '<div class="note">The palette problem does not exist here, on the surface ' +
     'where it is worst: <b>a bar chart needs one colour</b>, because length ' +
     'already carries the comparison and the label is on the row. Ten ' +
-    'categories read as well as three, and nothing has to cycle, roll up or ' +
-    'be cut.<br><br>Costs the share-of-whole a pie gives you at a glance. ' +
-    'Note the chart TYPE is the glance author&rsquo;s choice today, so this is ' +
-    'a rule about what a phone does with a pie, not a new setting.</div>';
+    'categories read as well as three, and nothing cycles, rolls up or is ' +
+    'cut. Costs the share-of-whole a pie gives at a glance.<br><br>' +
+    '<b>The strip at the top is the whole of what makes this legal, and I drew ' +
+    'this option without it first.</b> The chart kind is the glance&rsquo;s ' +
+    'contract and the reader&rsquo;s choice within it &mdash; stored, validated ' +
+    'on read and on write, and the header icon is drawn from the STORED value. ' +
+    'A phone that quietly draws a pie as bars therefore gives you a pie icon, ' +
+    '&ldquo;Pie&rdquo; ticked in the menu, and bars in the body. Dashboard ' +
+    'removed exactly that defect in <code>c4254b03</code>, where the menu ' +
+    'offered a kind the server refused. So bars here are a real <i>selection</i>: ' +
+    'the menu says Bar, the icon says Bar, and the body agrees with both.<br><br>' +
+    '<b>Which leaves one question that is yours, not mine.</b> Does that ' +
+    'selection <i>persist</i> &mdash; so opening the dashboard on a phone changes ' +
+    'what you see on the desktop tomorrow &mdash; or does the phone hold its own ' +
+    'choice for this glance? Saying &ldquo;4&rdquo; is enough; I will ask you ' +
+    'this one before building it.</div>';
 }
 
 /* ── 5 — mobile: the ramp, legend as rows with values ───────── */

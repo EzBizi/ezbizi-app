@@ -1985,6 +1985,25 @@ half of the report. *"A seventh slice drawn in a repeat colour looks exactly lik
 chart"*: the cycling is not the defect, the **silence** is. Same shape as the empty box that
 showed one sentence of three for three weeks.
 
+**Three findings, three reaches — Dashboard asked that they not be flattened, and they are
+right.** The duplicate cyan is **live now** at two slices on the four-status default. The violet
+is swatch index 5, so it needs a **sixth** slice to draw at all — latent on Jobs, ordinary on
+Inspection (a bar per definition name) and Email (one per mailbox). The cycling needs a
+**seventh**. One alarm covering all three is how the live one stayed invisible.
+
+> **A constraint any option must respect, measured by Dashboard and recorded here because a
+> future gallery will want to break it.** `presentation` is the glance's contract *and the
+> reader's choice within it*: the glance declares `PRESENTATIONS` and `DEFAULT_PRESENTATION`,
+> the menu offers exactly `allowed_presentations`, the server validates on read
+> (`DashboardController:64`) and on write (`:286`), and the header icon is drawn from the
+> **stored** value. **So the client may not substitute a chart kind.** A phone quietly drawing a
+> pie as bars yields a pie icon, "Pie" ticked in the menu, and bars in the body — the defect
+> Dashboard removed in `c4254b03`, where the menu offered a kind the server refused. Option 4
+> was drawn that way first and now shows the selection instead. Two honest routes if Jose picks
+> it: the glance declares `bar` in its allowed set, or the client changes the *selection* on a
+> narrow viewport and saves it. **Whether a saved choice should follow the window is a product
+> question and goes to Jose, not into a gallery note.**
+
 That is also the trap inside the most obvious answer. **Option 1, a wider brand ramp, is the
 one that looks finished and is not** — it raises the ceiling to ten and says nothing at eleven.
 The gallery says so underneath it rather than letting it read as the safe pick. Options 2, 3, 4
