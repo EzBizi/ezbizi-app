@@ -277,6 +277,63 @@ class ReportRunnerTest extends TestCase
         $this->assertContains($other->name, $names);
     }
 
+    /**
+     * The case Jose hit: a report rooted at People, reaching Branches. It goes
+     * backwards out of users into jobs, then forwards into franchises.
+     */
+    public function test_a_report_starting_at_people_can_reach_branches(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $this->makeJob($tenant, [
+            'title'                => 'Sweep',
+            'performed_by_user_id' => $tenant['admin']->id,
+        ]);
+
+        $result = $this->runReport([
+            'root'    => 'users',
+            'columns' => [
+                ['resource' => 'users', 'column' => 'name'],
+                ['resource' => 'franchises', 'column' => 'name'],
+            ],
+            'filters' => [],
+        ], $tenant['admin']);
+
+        $branches = array_column($result->rows, 'franchises.name');
+
+        $this->assertContains($tenant['franchise']->name, $branches);
+    }
+
+    /**
+     * A REVERSE HOP MULTIPLIES ROWS, and that is the right answer rather than a
+     * bug. One customer with two jobs is two rows in "customers and their
+     * jobs". Pinned because somebody will read it as duplication and try to
+     * distinct it away, which would silently drop the second job.
+     */
+    public function test_a_backwards_hop_returns_a_row_per_match(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $customer = $this->makeCustomer($tenant, ['name' => 'Ada Lovelace']);
+        $this->makeJob($tenant, ['title' => 'First', 'customer' => $customer]);
+        $this->makeJob($tenant, ['title' => 'Second', 'customer' => $customer]);
+
+        $result = $this->runReport([
+            'root'    => 'customers',
+            'columns' => [
+                ['resource' => 'customers', 'column' => 'name'],
+                ['resource' => 'jobs', 'column' => 'title'],
+            ],
+            'filters' => [],
+        ], $tenant['admin']);
+
+        $titles = array_column($result->rows, 'jobs.title');
+
+        $this->assertCount(2, $result->rows, 'one row per job, not one per customer');
+        $this->assertContains('First', $titles);
+        $this->assertContains('Second', $titles);
+    }
+
     public function test_it_refuses_a_resource_that_is_not_in_the_map(): void
     {
         $tenant = $this->provisionTenant('Alpha');
@@ -317,10 +374,10 @@ class ReportRunnerTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
 
         $this->runReport([
-            'root'    => 'customers',
+            'root'    => 'jobs',
             'columns' => [
-                ['resource' => 'customers', 'column' => 'name'],
                 ['resource' => 'jobs', 'column' => 'title'],
+                ['resource' => 'password_reset_tokens', 'column' => 'email'],
             ],
             'filters' => [],
         ], $tenant['admin']);

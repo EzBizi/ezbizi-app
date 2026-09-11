@@ -50,6 +50,8 @@ class ReportsScreen extends StatefulWidget {
 
 class _ReportsScreenState extends State<ReportsScreen> {
   SavedReportSummary? _open;
+  String? _confirming;
+  String? _deleteError;
   bool _building = false;
   List<SavedReportSummary>? _reports;
   String? _error;
@@ -206,8 +208,80 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
+  /// Confirming in place rather than in a dialog: the development rules allow
+  /// screens and side panels only, and a confirm dialog on a phone covers the
+  /// thing it is asking about.
+  Widget _confirmDelete(BuildContext context, SavedReportSummary report) {
+    final theme = Theme.of(context);
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(report.name, style: theme.textTheme.titleMedium),
+            const SizedBox(height: 12),
+            Text(
+              'Delete this report? It stops being available to everybody who '
+              'can run it. The records it reads on are untouched.',
+              style: theme.textTheme.bodyMedium,
+            ),
+            if (_deleteError != null) ...[
+              const SizedBox(height: 12),
+              ErrorNote(_deleteError!),
+            ],
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => setState(() {
+                    _confirming = null;
+                    _deleteError = null;
+                  }),
+                  child: const Text('Keep it'),
+                ),
+                const SizedBox(width: 12),
+                FilledButton(
+                  onPressed: () => _delete(report),
+                  child: const Text('Delete report'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _delete(SavedReportSummary report) async {
+    final response = await widget.api.delete('/reports/${report.id}');
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      // The server's own sentence: a refusal here says the grant lives on a
+      // role, which no client wording knows.
+      setState(() => _deleteError = response.message);
+      return;
+    }
+
+    setState(() {
+      _confirming = null;
+      _deleteError = null;
+    });
+
+    await _load();
+  }
+
   Widget _reportCard(BuildContext context, SavedReportSummary report) {
     final theme = Theme.of(context);
+
+    if (_confirming == report.id) {
+      return _confirmDelete(context, report);
+    }
 
     return Card(
       margin: EdgeInsets.zero,
@@ -217,7 +291,18 @@ class _ReportsScreenState extends State<ReportsScreen> {
         subtitle: report.description == null
             ? null
             : Text(report.description!, style: theme.textTheme.bodySmall),
-        trailing: const Icon(Icons.chevron_right),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.session.me?.can('reports.build') ?? false)
+              IconButton(
+                icon: const Icon(Icons.delete_outline),
+                tooltip: 'Delete report',
+                onPressed: () => setState(() => _confirming = report.id),
+              ),
+            const Icon(Icons.chevron_right),
+          ],
+        ),
         onTap: () => setState(() => _open = report),
       ),
     );

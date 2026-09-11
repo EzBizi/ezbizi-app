@@ -39,6 +39,14 @@ use LogicException;
  * permission gate passed and the reach gate was simply absent — and this is
  * the same shape of query.
  *
+ * ── A reverse hop multiplies rows, and that is correct ──────────
+ *
+ * Edges are walked in both directions (see RelationGraph). Forwards an edge is
+ * many-to-one — every job has one customer. Backwards it is one-to-many, so a
+ * customer with five jobs produces five rows. That is the right answer to
+ * "customers and their jobs" and it surprises people; the row cap is what
+ * stops it being unbounded.
+ *
  * ── Joined tables are scoped in the ON clause, not the WHERE ────
  *
  * A LEFT JOIN with the joined table's conditions in WHERE is an INNER JOIN
@@ -133,10 +141,13 @@ final class ReportRunner
                 $query->leftJoin($to['table'], function (JoinClause $join) use (
                     $from, $to, $hop, $organizationId, $view
                 ) {
+                    // A column per side rather than local/foreign, because an
+                    // edge is walked in both directions: the predicate is the
+                    // same, only which table is being added changes.
                     $join->on(
-                        $from['table'].'.'.$hop['local'],
+                        $from['table'].'.'.$hop['from_column'],
                         '=',
-                        $to['table'].'.'.$hop['foreign'],
+                        $to['table'].'.'.$hop['to_column'],
                     );
 
                     $this->applyScope(
