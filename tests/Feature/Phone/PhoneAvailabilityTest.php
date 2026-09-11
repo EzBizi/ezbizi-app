@@ -120,6 +120,109 @@ class PhoneAvailabilityTest extends TestCase
     }
 
     /**
+     * A desk coming up does not cancel Do Not Disturb.
+     *
+     * ── The report ───────────────────────────────────────────────
+     *
+     * Jose set himself to Not taking calls and took a call five minutes
+     * later. Measured on production before changing anything:
+     *
+     *     EzBizi        dnd          19:39:28
+     *     A-1 Chimney   registered   19:44:35
+     *
+     * `setMine` had done its job — both rows went to `dnd` at 19:39. What
+     * undid it was `PhoneCallService::start()`, which ends by PUTting
+     * `registered` for the connection it has just brought up, and which runs
+     * on every app launch, every reconnect, and every switch between
+     * companies. None of those is a person saying they are ready.
+     *
+     * The call then arrived on the line whose row had been quietly put back.
+     */
+    public function test_a_desk_registering_does_not_cancel_do_not_disturb(): void
+    {
+        $t = $this->provisionTenant();
+        [$user, $rows] = $this->deskOnTwoCompanies($t);
+
+        // The person says it once, for everything, the way the app bar does.
+        $this->signedInAs($user)
+            ->putJson('/api/v1/phone/presence/me', ['state' => 'dnd'])
+            ->assertOk();
+
+        // Then a desk comes up on ONE of the companies — an app launch, a
+        // reconnect, a scope switch. This is the exact call start() makes.
+        $this->signedInAs($user)
+            ->putJson('/api/v1/phone/presence', [
+                'connection_id' => $rows[0]->connection_id,
+                'state' => 'registered',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.state', 'dnd');
+
+        $this->inTenant($t['org'], function () use ($user) {
+            $this->assertSame(
+                ['dnd', 'dnd'],
+                PhonePresence::query()->where('user_id', $user->id)->pluck('state')->all(),
+                'a line went back to taking calls without anybody asking it to',
+            );
+        });
+    }
+
+    /**
+     * And a desk coming up for somebody who is NOT away still registers them.
+     *
+     * The control. Without it, a rule that simply refused every `registered`
+     * would pass the test above and leave every desk unable to report itself
+     * present — the whole ring group unreachable, silently, which is worse
+     * than the bug being fixed.
+     */
+    public function test_a_desk_registering_normally_still_registers(): void
+    {
+        $t = $this->provisionTenant();
+        [$user, $rows] = $this->deskOnTwoCompanies($t);
+
+        $this->inTenant($t['org'], fn () => $rows[0]
+            ->forceFill(['state' => PhonePresence::STATE_ON_CALL])->save());
+
+        $this->signedInAs($user)
+            ->putJson('/api/v1/phone/presence', [
+                'connection_id' => $rows[0]->connection_id,
+                'state' => 'registered',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.state', 'registered');
+    }
+
+    /**
+     * The toggle is still the way back, and it is the only way back.
+     *
+     * The rule above is about WHO is speaking rather than what was sent, so
+     * the half that matters is that a person choosing still wins. Without
+     * this, "a desk cannot clear dnd" and "nothing can clear dnd" are the
+     * same green, and somebody is stuck away until they reinstall.
+     */
+    public function test_the_person_can_still_come_back(): void
+    {
+        $t = $this->provisionTenant();
+        [$user] = $this->deskOnTwoCompanies($t);
+
+        $this->signedInAs($user)
+            ->putJson('/api/v1/phone/presence/me', ['state' => 'dnd'])
+            ->assertOk();
+
+        $this->signedInAs($user)
+            ->putJson('/api/v1/phone/presence/me', ['state' => 'registered'])
+            ->assertOk()
+            ->assertJsonPath('data.lines', 2);
+
+        $this->inTenant($t['org'], function () use ($user) {
+            $this->assertSame(
+                ['registered', 'registered'],
+                PhonePresence::query()->where('user_id', $user->id)->pluck('state')->all(),
+            );
+        });
+    }
+
+    /**
      * A live call is not something a toggle overwrites.
      *
      * `on_call` is set by the desk when audio is actually flowing. Letting

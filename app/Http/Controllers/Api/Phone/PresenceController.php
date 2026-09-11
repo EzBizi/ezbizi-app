@@ -191,7 +191,7 @@ class PresenceController extends Controller
             ],
             [
                 'organization_id' => $this->tenant->idOrFail(),
-                ...$this->wrapUp($connection, $current, (string) $input['state']),
+                ...$this->storedState($connection, $current, (string) $input['state']),
             ],
         );
 
@@ -208,10 +208,10 @@ class PresenceController extends Controller
     }
 
     /**
-     * The state to actually store, once wrap-up has had its say.
+     * The state to actually store, whatever the desk asked for.
      *
-     * Two transitions matter and they look identical on the wire, because the
-     * desk sends "registered" for both:
+     * Three transitions matter and they look identical on the wire, because
+     * the desk sends "registered" for all of them:
      *
      *   on_call  → registered   the call just ended. If the company has asked
      *                           for wrap-up time, this becomes a wrap-up with
@@ -220,6 +220,28 @@ class PresenceController extends Controller
      *   wrap_up  → registered   somebody pressed "I'm ready". That is a person
      *                           saying they are done, and it must win, or the
      *                           button does nothing.
+     *   dnd      → registered   a DESK COMING UP, which is not a person saying
+     *                           anything. It is ignored: see below.
+     *
+     * ── Why a desk registering cannot clear Do Not Disturb ───────
+     *
+     * PhoneCallService::start() ends by PUTting `registered` for the
+     * connection it just brought up, and it runs on every app launch, every
+     * reconnect after a dropped socket, and every switch between companies.
+     * None of those is somebody saying they are ready to take calls; they are
+     * the software saying a device is attached.
+     *
+     * Jose set himself to Not taking calls at 19:39 and took a call at 19:44.
+     * Measured on production rather than guessed: his EzBizi row said `dnd`
+     * and his A-1 Chimney row said `registered`, written five minutes later —
+     * the desk coming up on the other company, silently cancelling the
+     * decision. `setMine` had done its job and set every line to `dnd`; this
+     * endpoint undid one of them.
+     *
+     * So the rule is about WHO is speaking rather than what was sent. Only the
+     * availability toggle takes somebody out of Do Not Disturb, because only
+     * that is a person choosing. It goes through `setMine`, which never
+     * reaches here.
      *
      * Told apart by the state ALREADY STORED rather than by anything the
      * client sends. A flag on the request would be a flag a stale client omits,
@@ -227,11 +249,21 @@ class PresenceController extends Controller
      *
      * @return array<string, mixed>
      */
-    private function wrapUp(
+    private function storedState(
         PhoneConnection $connection,
         ?PhonePresence $current,
         string $wanted,
     ): array {
+        // FIRST, because a desk registering must not reach any rule that would
+        // hand it back "registered".
+        if ($wanted === PhonePresence::STATE_REGISTERED
+            && $current?->state === PhonePresence::STATE_DND) {
+            return [
+                'state' => PhonePresence::STATE_DND,
+                'wrap_up_until' => null,
+            ];
+        }
+
         $seconds = (int) $connection->wrap_up_seconds;
 
         $justFinished = $wanted === PhonePresence::STATE_REGISTERED
