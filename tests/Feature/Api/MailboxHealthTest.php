@@ -502,6 +502,51 @@ class MailboxHealthTest extends TestCase
     }
 
     /**
+     * A host that did not answer is not a broken mailbox either.
+     *
+     * Found by applying the rule rather than by waiting for the symptom: read
+     * each sentence as a promise and ask which ones `marksBroken()` can keep.
+     * This arm promises the most -- "it usually clears on its own, try again
+     * shortly" -- and it is raised by a timeout, a refused connection or a name
+     * that does not resolve, from all three readers. So before the fix, one
+     * network blip anywhere disconnected a mailbox until a person pressed
+     * Reconnect, for a fault that had ended before they read about it.
+     *
+     * Asserted against the watcher's own query for the same reason as the
+     * ProviderFaulty case: dropping out of the sweep is the harm, and the
+     * status string alone could be argued about.
+     */
+    public function test_a_host_that_did_not_answer_leaves_the_inbox_in_the_watchers_sweep(): void
+    {
+        $this->withScriptedProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+
+        ScriptedMailboxReader::$failWith = CannotReadMailbox::hostNotAnswering($mailbox, 'cURL error 28');
+
+        $this->open($t, $mailbox)->assertStatus(503);
+
+        $after = $this->reload($t, $mailbox);
+
+        $this->assertSame(Mailbox::STATUS_CONNECTED, $after->status, 'A timeout disconnected the inbox.');
+        $this->assertNull($after->status_reason);
+        $this->assertTrue(
+            $this->inTheWatchersSweep($mailbox),
+            'A fault whose own sentence says it clears on its own must stay in the sweep that would notice.',
+        );
+
+        // THE CONTROL, same route and mailbox: a cause that IS the tenant's to
+        // fix must still mark broken and must still drop out of the sweep.
+        ScriptedMailboxReader::$failWith = CannotReadMailbox::credentialRejected($mailbox);
+
+        $this->open($t, $mailbox)->assertStatus(409);
+
+        $this->assertSame(Mailbox::STATUS_BROKEN, $this->reload($t, $mailbox)->status);
+        $this->assertFalse($this->inTheWatchersSweep($mailbox));
+    }
+
+    /**
      * A fault at EzBizi's end is never written onto a tenant's row.
      *
      * This installation has no Google registration, so if `notBuiltHere` marked
