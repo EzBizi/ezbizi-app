@@ -88,6 +88,16 @@ run_altool() {
     upload)
       if printf "%s" "$out" | grep -q "UPLOAD SUCCEEDED" &&
          printf "%s" "$out" | grep -q "Delivery UUID:"; then
+        # DELIVERED IS NOT ACCEPTED, and this is the last place anybody
+        # reads before calling the leg shipped. A Delivery UUID means
+        # Apple took the bytes. Processing runs afterwards, can still
+        # fail, and tells nobody but Jose by email. Build 190 sat
+        # unresolved on his list for a day because a green upload was
+        # read as a shipped build and nothing here said otherwise.
+        echo "  delivered (Delivery UUID present). NOT yet accepted -- App" >&2
+        echo "  Store Connect processes it afterwards and processing can" >&2
+        echo "  still fail. Only TestFlight > Build Uploads can say. Do not" >&2
+        echo "  call this leg shipped until somebody has read it there." >&2
         return 0
       fi
       echo "x altool upload never said UPLOAD SUCCEEDED with a Delivery UUID." >&2
