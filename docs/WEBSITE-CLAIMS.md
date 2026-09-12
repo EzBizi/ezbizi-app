@@ -890,6 +890,54 @@ Jose about copy describing watching employees' screens, not on a measurement,
 and `0.0.0189` widened it to open programs and browser tab titles. Do not
 re-derive either from first principles; both are waiting on somebody else.
 
+## 2026-09-12: nothing shipped, and the gate's own control was the finding
+
+**Production did not move.** `/download/windows.json` answers `0.0.0200` built
+`e1a783dc` — the same release yesterday's run recorded. `main` is two commits
+past it (`2965475e`, `2fccdbd1`), touching only this file, `0046`, and a phone
+test. So there was no catalog to ask for, and the quiet is measured rather than
+assumed.
+
+**No desk was running to ask.** `list_sessions` returned every EzBizi session
+with `isRunning: false`; Deployment (`local_072bee23…`) last active 2026-09-11
+20:21 UTC. **That is a third state this file has not named before** — not a dead
+id, not the caller-side refusal, just nobody home. `0045` and `0046` are
+therefore *unread*, not declined, and **no `0047` was written**: a third file
+restating the same question adds a file, not a reader.
+
+**The audit was clean.** `python www/check-site.py` -> `ok - 7 pages, 7 sitemap
+entries`; all seven pages fetched from production are byte-identical to `www/`
+after stripping CR, every one `Last-Modified` Fri 11 Sep 2026 19:49:45 GMT — no
+stale deploy, no hand edit. Play returns `200`; the Apple lookup returns
+`resultCount` **1**, `version` 0.0.0190. Three published claims re-measured at
+`e1a783dc`: `Publishers::for()` still five and `default => null`, so *"Five
+networks send today"* holds and no sixth publisher exists;
+`NewsletterSenders::for()` still Mailchimp and `default => null`; the four
+phrasings the Communication card forbids return 0 across `www/`.
+
+**And the forbidden-terms gate reported `0` for all four terms while doing
+nothing at all.** `--include` written *after* the path makes grep treat it as a
+filename: it errors to stderr, the term returns 0, and the loop prints a clean
+pass. This file already warned about exactly that. **The warning did not save
+this run, and the reason is the part worth adding: the positive control was
+written with the same misplacement.** `EzBizi` still answered **168**, because a
+misplaced `--include` does not stop the recursive grep — so the control looked
+healthy beside four silent zeros and confirmed a false pass.
+
+**A control only discriminates if it is the same command shape as the thing it
+is controlling.** Re-run with the flags before the path, the gate is
+`ok - 4 terms, none present`, positive control 168, negative control
+(`zzzznotpresent`) 0. Run all three through one loop; a control assembled by
+hand beside the loop is testing a different command.
+
+**Still open, both unchanged and neither mine to close.** `saved_reports` — the
+count that publishes the redrafted Reports card, asked in `0045` and `0046`.
+Reaching for it directly was tried and failed cleanly: the EzBizi production box
+is not among this session's configured SSH servers (only A1 Tools' SiteGround),
+so the read is the desk's and stays there. **Monitoring** — held on a decision
+from Jose about copy describing watching employees' screens, not on a
+measurement.
+
 ## Two things that make this easier than it looks
 
 **Nothing is behind a feature flag.** `platform_module_flags` is empty and
