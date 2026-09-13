@@ -951,3 +951,53 @@ the FAQ answer in *both* the JSON-LD and the visible `<details>`, the hero, the
 section intro, the card — **and the app mock**, which depicts the product and is
 read as a screenshot. Grep the whole of `www/` for the word before believing it
 is gone.
+
+## 2026-09-13: a second quiet day, and the two tests this file names had no paths
+
+**Production has not moved in two days.** `/download/windows.json` answers
+`0.0.0200` built `e1a783dc` — the release recorded on 2026-09-11 and again on
+2026-09-12. `main` is three commits past it (`2965475e`, `2fccdbd1`,
+`a4af173f`) and the whole diff is this file, `0046`, and one phone test:
+`git diff --name-only e1a783dc..HEAD` → three paths, **zero under `www/`**,
+**zero under `database/migrations/`**. So no do-not-list row can have moved,
+and that is measured from the diff rather than inferred from the quiet.
+
+**Still nobody home.** `list_sessions` returns every EzBizi session with
+`isRunning: false`; Deployment (`local_072bee23…`) last active 2026-09-11
+20:21 UTC — the same timestamp yesterday's run read. `0045` and `0046` are
+unread, not declined. **No `0047`**, for the reason yesterday gave: a third
+file restating the same question adds a file, not a reader.
+
+**The audit is clean.** `python www/check-site.py` → `ok - 7 pages, 7 sitemap
+entries`. All seven pages fetched from production are byte-identical to `www/`
+after stripping CR, every one `Last-Modified` Fri 11 Sep 2026 19:49:45 GMT —
+no stale deploy, no hand edit. Play returns `200`; the Apple lookup returns
+`resultCount` **1**, `version` 0.0.0190. The forbidden-terms gate, parsed from
+this file and split on LINES, flags before the path, all six strings through
+one loop → `ok - 4 terms, none present`, positive control `EzBizi` **256**,
+negative control `zzzznotpresent` **0**. The four phrasings the Communication
+card forbids return **0** across `www/`.
+
+**The two `for()` tests this file has named a dozen times do not live where you
+would guess, and the wrong guess fails in the shape of a real finding.**
+`git show e1a783dc:app/Services/Social/Publishers.php` answers *"path does not
+exist"* — which is exactly what a deleted publisher registry would answer, on
+the one claim this file keeps catching in the understated direction. The
+deployed paths are:
+
+    Publishers::for()          app/Support/Social/Publishing/Publishers.php
+    NewsletterSenders::for()   app/Support/Newsletter/NewsletterSenders.php
+
+Read at `e1a783dc`: five publishers — `FacebookPage`, `Threads`,
+`InstagramProfessional`, `Pinterest`, `TikTok(toDrafts: …)` — and
+`default => null`, so *"Five networks send today"* holds and **no sixth or
+seventh publisher was written**. `NewsletterSenders::for()` is still
+`Mailchimp` and `default => null`, so the Newsletter card's "your own Mailchimp
+account" has not gone narrow. **Write the path down beside the test**: a
+`git show` of a wrong path and a `git show` of a deleted file are the same
+sentence, and one of them is a publish-blocking finding.
+
+**Still open, both unchanged and neither mine to close.** `saved_reports` — the
+count that publishes the redrafted Reports card, asked in `0045` and `0046`.
+**Monitoring** — held on a decision from Jose about copy describing watching
+employees' screens, not on a measurement.
