@@ -89,9 +89,20 @@ use RuntimeException;
  *    silently stops receiving the report.
  *
  * The answer is the tenant's own SMTP, which carries attachments, reaches any
- * address, and is transactional by nature. The seam is
- * `MailDispatcher::throughTenantProvider()`, same signature as `asTenant`, and
- * the transport is the SES session's to build.
+ * address, and is transactional by nature. It is wired: this class now calls
+ * `MailDispatcher::throughTenantProvider()`, and it refuses for every business
+ * until one connects a mail server — the settings screen for that is the SES
+ * session's and is not built yet.
+ *
+ * ── DO NOT TEST THIS WITH `Mail::fake()` ────────────────────────
+ *
+ * `MailFake` has no `build()` override, so `__call` forwards `Mail::build()` to
+ * the REAL manager. A test that fakes mail and reaches the dispatch would open
+ * an ACTUAL SOCKET to whatever host its fixture named, silently, looking
+ * exactly like a faked send. `smtpConfigFor()` is public and throws every
+ * refusal without touching the network, so assert against that. Found by the
+ * SES session before it could bite anybody, which is the only reason this
+ * comment is a warning rather than an incident.
  *
  * I also deleted my own guard here, which used to refuse a tenant with no
  * sending identity before the loop. It was redundant once `asTenant` refused
@@ -173,14 +184,14 @@ final class SendSavedReport
             }
 
             try {
-                $this->mail->asTenant($scope, new SavedReportMail($report, $result), $address);
+                $this->mail->throughTenantProvider($scope, new SavedReportMail($report, $result), $address);
                 $sent[] = $address;
             } catch (CannotSendMail $e) {
-                // NOT a per-address problem: the tenant has no verified sending
-                // identity, so no address would work. Let it out, so the run
-                // fails and the engine's consecutive-failure count does its job
-                // — that is a persistent configuration fault, which is exactly
-                // what auto-disable is for.
+                // NOT a per-address problem: the business has no mail server of
+                // its own connected, so no address would work. Let it out, so
+                // the run fails and the engine's consecutive-failure count does
+                // its job — that is a persistent configuration fault, which is
+                // exactly what auto-disable is for.
                 throw $e;
             } catch (\Throwable $e) {
                 $refused[$address] = $e->getMessage();
