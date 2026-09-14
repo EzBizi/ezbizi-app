@@ -346,7 +346,8 @@ class _CallTabState extends State<CallTab> {
   /// once when this screen registered the device itself, which is how the
   /// banner came to sit across the top of a call that was connected
   /// underneath it.
-  bool get _deskDown => !_service.registered;
+  /// Not while it is still coming up — see [PhoneCallService.starting].
+  bool get _deskDown => !_service.registered && !_service.starting;
 
   /// Keep the customer column even with nobody on the line.
   /// Seeded from the person's own preference in [initState], because the
@@ -657,7 +658,22 @@ class _CallTabState extends State<CallTab> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                _service.supported
+                // ── ASK "IS THERE A LINE" BEFORE "CAN THIS PLATFORM" ──
+                //
+                // `supported` is read through the device, and the device does
+                // not exist until start() finds a line — so a desk that never
+                // started answered false to a question about the PLATFORM.
+                // Jose saw the browser sentence in a browser: the shell starts
+                // the desk once, at sign-in, and anybody whose view had no
+                // phone line then was told for the rest of the session that
+                // their browser was not a browser.
+                //
+                // No line here means nothing registered and nothing to
+                // register to, which is a different fact and a fixable one.
+                !_service.hasLine
+                    ? 'This desk has not picked up a line yet. Press Try '
+                          'again; if it keeps happening, sign out and back in.'
+                    : _service.supported
                     // Say WHAT WENT WRONG when the platform told us, and only
                     // guess when it did not. The old sentence named the
                     // network every time, so an expired token, a rejected
@@ -705,7 +721,10 @@ class _CallTabState extends State<CallTab> {
 
             // No Retry where retrying cannot succeed. A control that can
             // only ever fail is worse than none: it reads as "not yet".
-            if (_service.supported)
+            //
+            // With no line, restart() is the one thing that CAN fix it: it
+            // re-reads /phone/numbers, which is the call that came back empty.
+            if (!_service.hasLine || _service.supported)
               TextButton(
                 onPressed: () => _service.restart(widget.api),
                 child: const Text('Try again'),

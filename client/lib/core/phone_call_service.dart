@@ -172,6 +172,14 @@ class PhoneCallService extends ChangeNotifier {
   /// register and no phone to draw anywhere.
   bool get hasLine => _connectionId != null;
 
+  /// The desk is coming up right now.
+  ///
+  /// It is torn down and rebuilt whenever the view changes company, and for
+  /// that second everything below is false. Without this the desk-down banner
+  /// flashes red across the top of the screen on every scope switch, which
+  /// teaches people to ignore the one banner that matters.
+  bool get starting => _starting;
+
   /// The line calls go out on, for a screen that wants to name it.
   String? get callerId => _callerId;
 
