@@ -30,6 +30,7 @@ class MachineCard extends StatelessWidget {
     this.sessions,
     this.cpuPercent,
     this.ramPercent,
+    this.gpuPercent,
     this.diskPercent,
     this.diskFreeLabel,
     this.activeWindow,
@@ -73,6 +74,11 @@ class MachineCard extends StatelessWidget {
   /// zero. A machine that has not said how busy it is has not said it is idle.
   final int? cpuPercent;
   final int? ramPercent;
+
+  /// Graphics load. Absent on a machine whose counters name no 3D engine, and
+  /// on the agent's first read after launch — rendered "—" either way, for the
+  /// same reason as [cpuPercent].
+  final int? gpuPercent;
   final int? diskPercent;
 
   /// "858 GB free", shown beside the disk meter where it is known.
@@ -170,6 +176,8 @@ class MachineCard extends StatelessWidget {
               MeterBar(label: 'CPU', percent: cpuPercent),
               const SizedBox(height: 6),
               MeterBar(label: 'RAM', percent: ramPercent),
+              const SizedBox(height: 6),
+              MeterBar(label: 'GPU', percent: gpuPercent),
               const SizedBox(height: 6),
               MeterBar(
                 label: 'Disk',

@@ -77,10 +77,12 @@ class MonitoredDevice extends Model implements HoldsPersonalData
                 Erasure::erase()),
             new PersonalDataEntry('specs', PersonalDataEntry::TECHNICAL,
                 'What a desktop agent reports about the machine: processor, memory, '
-                .'graphics, drives, uptime, its wifi network and local address, how '
-                .'much it has sent and received, how long since someone touched it, '
-                .'whether the screen is locked, which programs are open, what it '
-                .'has installed and which addresses those programs are talking to.',
+                .'graphics, drives, uptime, how hard the processor and graphics are '
+                .'working, its wifi network and local address, how much it has sent '
+                .'and received, how long since someone touched it, whether the screen '
+                .'is locked, whether Windows reports its antivirus, firewall and '
+                .'updates as healthy, which programs are open, what it has installed '
+                .'and which addresses those programs are talking to.',
                 Erasure::erase()),
 
             // Its own column, and its own CATEGORY, for the reason the

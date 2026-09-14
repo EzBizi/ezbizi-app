@@ -51,6 +51,11 @@ target_link_libraries(${BINARY_NAME} PRIVATE "ws2_32.lib")
 # Browser tab titles come from the accessibility tree; there is no Win32
 # call for a tab, because a tab is not a window.
 target_link_libraries(${BINARY_NAME} PRIVATE "uiautomationcore.lib")
+
+# GPU load comes from performance counters (pdh) and the security posture from
+# Windows' own Security Center (wscapi) — neither has a plain Win32 call.
+target_link_libraries(${BINARY_NAME} PRIVATE "pdh.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "wscapi.lib")
 # Screen capture (BitBlt/GetDIBits), JPEG encoding (WIC), and the COM APIs
 # WIC needs, for the primary-monitor screenshot channel. See
 # monitoring_screenshot.cpp.
