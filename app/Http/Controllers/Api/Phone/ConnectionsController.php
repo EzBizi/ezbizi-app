@@ -486,6 +486,7 @@ class ConnectionsController extends Controller
             'default_recording_notice' => ['sometimes', 'nullable', 'string', 'max:500'],
             'default_record' => ['sometimes', 'boolean'],
             'default_transcribe' => ['sometimes', 'boolean'],
+            'default_voicemail_transcribe' => ['sometimes', 'boolean'],
             'default_after_hours' => ['sometimes', 'nullable', 'in:voicemail,forward,closed'],
             'default_after_hours_number' => ['sometimes', 'nullable', 'string', 'max:32'],
         ]);
@@ -529,6 +530,7 @@ class ConnectionsController extends Controller
             'default_recording_notice' => $connection->default_recording_notice,
             'default_record' => (bool) $connection->default_record,
             'default_transcribe' => (bool) $connection->default_transcribe,
+            'default_voicemail_transcribe' => (bool) $connection->default_voicemail_transcribe,
             'default_after_hours' => $connection->default_after_hours ?? 'voicemail',
             'default_after_hours_number' => $connection->default_after_hours_number,
         ];

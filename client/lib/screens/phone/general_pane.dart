@@ -57,6 +57,7 @@ class _GeneralPaneState extends State<GeneralPane> {
   String _afterHours = 'voicemail';
   bool _record = false;
   bool _transcribe = false;
+  bool _voicemailTranscribe = false;
   final _forwardTo = TextEditingController();
   final _fallback = TextEditingController();
   final _notice = TextEditingController();
@@ -131,6 +132,7 @@ class _GeneralPaneState extends State<GeneralPane> {
       _afterHours = company.afterHours;
       _record = company.record;
       _transcribe = company.transcribe;
+      _voicemailTranscribe = company.voicemailTranscribe;
       _forwardTo.text = company.afterHoursNumber ?? '';
       _fallback.text = company.fallbackNumber ?? '';
       _notice.text = company.recordingNotice ?? '';
@@ -161,6 +163,7 @@ class _GeneralPaneState extends State<GeneralPane> {
       'default_record': _record,
       'default_recording_notice': _notice.text.trim(),
       'default_transcribe': _transcribe,
+      'default_voicemail_transcribe': _voicemailTranscribe,
     });
 
     if (!mounted) return;
@@ -402,6 +405,34 @@ class _GeneralPaneState extends State<GeneralPane> {
           ),
         ),
 
+        // ── ONE SWITCH FOR EVERY LINE, which is the whole point ──
+        //
+        // Voicemail transcription existed already and only per line. Measured
+        // 2026-09-14: thirteen numbers, every one of them off, 0 of 92
+        // voicemails ever transcribed — because turning it on meant thirteen
+        // visits to thirteen line settings, so nobody ever did it once.
+        //
+        // Jose: "we should be able to turn them all on or all off at the same
+        // time, not per line."
+        //
+        // A company default set here beats a line's own value rather than
+        // losing to it, which is deliberate and is what "all on or all off"
+        // means — a line cannot hold itself off against the company. That is
+        // how `record` and live transcription have always behaved, so this is
+        // the existing rule applied to the one flag that had been left out of
+        // it rather than a new rule.
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: _voicemailTranscribe,
+          onChanged: (v) => setState(() => _voicemailTranscribe = v),
+          title: const Text('Write down voicemail messages'),
+          subtitle: Text(
+            'Every line on this account. Twilio bills per message '
+            'transcribed, so it stays off until you turn it on.',
+            style: theme.textTheme.bodySmall,
+          ),
+        ),
+
         if (_error != null) ...[
           const SizedBox(height: 16),
           ErrorNote(_error!),
@@ -496,6 +527,7 @@ class _Company {
     required this.afterHours,
     required this.record,
     required this.transcribe,
+    required this.voicemailTranscribe,
     this.ringGroupId,
     this.hoursScheduleId,
     this.flowId,
@@ -510,6 +542,7 @@ class _Company {
   final String afterHours;
   final bool record;
   final bool transcribe;
+  final bool voicemailTranscribe;
   final String? ringGroupId;
   final String? hoursScheduleId;
   final String? flowId;
@@ -534,6 +567,7 @@ class _Company {
           afterHours: (row['default_after_hours'] ?? 'voicemail').toString(),
           record: row['default_record'] == true,
           transcribe: row['default_transcribe'] == true,
+          voicemailTranscribe: row['default_voicemail_transcribe'] == true,
           ringGroupId: row['default_ring_group_id'] as String?,
           hoursScheduleId: row['default_hours_schedule_id'] as String?,
           flowId: row['default_flow_id'] as String?,
