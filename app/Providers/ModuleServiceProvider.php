@@ -1033,10 +1033,12 @@ class ModuleServiceProvider extends ServiceProvider
                     new ActionDefinition(
                         key: 'inspection.report.email',
                         label: 'Email the report to the customer',
-                        description: 'Send the finished inspection to the customer it was '
-                            .'carried out for, with the PDF attached. Sends from the '
-                            .'its own verified sending address, and does nothing if that '
-                            .'address has not been set up or the customer has no email.',
+                        description: 'SWITCHED OFF at the moment, and a rule using it will '
+                            .'record why on every run. It would send the finished inspection '
+                            .'to the customer it was carried out for with the PDF attached, '
+                            .'but mail leaves over the EzBizi mail service whatever sending '
+                            .'address a branch has configured, and that service carries '
+                            .'EzBizi messages only.',
                         /*
                          * `inspection_report.email`, NOT the `report.email` this
                          * key would derive to. Reports declares `report.send`
