@@ -682,8 +682,17 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_TIME_RANGE,
                 default: ['start' => null, 'end' => null],
                 help: 'Suppress non-urgent notifications. Null disables.',
+                // Sharpened on 2026-09-14, the day notifications started going
+                // out by email. The old sentence -- "every one is raised the
+                // moment it happens today" -- was true and stayed true, and
+                // what changed underneath it was the COST of that being true.
+                // A notification raised at 3am was a silent row nobody saw
+                // until morning; the same notification now rings a phone.
+                // Nothing here is read by anything yet, so the claim is honest;
+                // it just has to say what it is now failing to hold back.
                 notYetInEffect: 'Takes effect when a notification can be held back and delivered '
-                    .'later. Every one is raised the moment it happens today.',
+                    .'later. Nothing is held today: a notification raised at 3am is written at '
+                    .'3am, and emailed at 3am if this organization sends them by email.',
             ),
             new SettingDefinition(
                 key: 'notifications.reply_to_email', label: 'Reply-to address',
