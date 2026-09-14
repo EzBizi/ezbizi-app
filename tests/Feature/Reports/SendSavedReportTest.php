@@ -8,6 +8,10 @@ use App\Models\Automation;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Models\SavedReport;
+use App\Models\SendingIdentity;
+use App\Support\Mail\CannotSendMail;
+use App\Support\Mail\MailTransport;
+use App\Support\Mail\SendingState;
 use App\Support\Reports\ReportCsv;
 use App\Support\Reports\ReportResult;
 use App\Support\Reports\SendSavedReport;
@@ -73,6 +77,7 @@ class SendSavedReportTest extends TestCase
         Mail::fake();
 
         $tenant = $this->provisionTenant('Alpha');
+        $this->ownSendingAddress($tenant);
         $this->makeJob($tenant, 'Sweep');
 
         $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
@@ -101,6 +106,7 @@ class SendSavedReportTest extends TestCase
         Mail::fake();
 
         $tenant = $this->provisionTenant('Alpha');
+        $this->ownSendingAddress($tenant);
 
         $this->expectException(RuntimeException::class);
 
@@ -123,6 +129,7 @@ class SendSavedReportTest extends TestCase
         Mail::fake();
 
         $tenant = $this->provisionTenant('Alpha');
+        $this->ownSendingAddress($tenant);
 
         $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
             $this->report($tenant, [
@@ -142,6 +149,7 @@ class SendSavedReportTest extends TestCase
         Mail::fake();
 
         $tenant = $this->provisionTenant('Alpha');
+        $this->ownSendingAddress($tenant);
 
         $this->expectException(RuntimeException::class);
 
@@ -158,6 +166,7 @@ class SendSavedReportTest extends TestCase
         Mail::fake();
 
         $tenant = $this->provisionTenant('Alpha');
+        $this->ownSendingAddress($tenant);
         $this->makeJob($tenant, 'Sweep');
 
         $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
@@ -185,6 +194,55 @@ class SendSavedReportTest extends TestCase
         $this->assertSame(1, $row->metadata['row_count'] ?? null);
     }
 
+    // ── the tenant's own address, or nothing ─────────────────────
+
+    /**
+     * A TENANT WITH NO SENDING ADDRESS MUST BE REFUSED, NOT SENT AS EZBIZI.
+     *
+     * This test is the one that should have existed first. Every other test in
+     * this file creates no `SendingIdentity` row, so every one of them has been
+     * passing by sending through the PLATFORM identity — from EzBizi's own
+     * address — and asserting that it worked. The suite did not merely miss the
+     * defect; it was a demonstration of it, in green.
+     *
+     * The path: `SendingIdentityResolver::for()` walks organization, company
+     * and franchise, finds no row at any link, and returns
+     * `$this->platform->identity()`. That identity's transport is
+     * `MailTransport::Platform`, whose `requiresDomainProof()` is false, so
+     * `canSend()` is true and `asTenant` hands the message over happily.
+     * `asTenant` never refuses — which is the opposite of what this class's own
+     * docblock promised.
+     *
+     * Wrong twice, in ActionRunner's words: a recipient who has no relationship
+     * with EzBizi hears from EzBizi, and it discloses which software the
+     * business runs to somebody who only asked for a report.
+     */
+    public function test_a_tenant_with_no_sending_address_is_refused(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+        $this->makeJob($tenant, 'Sweep');
+
+        // Deliberately no SendingIdentity row anywhere in the cascade — which
+        // is the state every other test in this file is also in.
+        try {
+            $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+                $this->report($tenant),
+                ['owner@example.test'],
+                $this->rule($tenant),
+                $tenant['admin'],
+            ));
+
+            $this->fail('a tenant with no sending address sent the report anyway');
+        } catch (CannotSendMail $e) {
+            // The sentence is for the person who has to fix it.
+            $this->assertStringContainsString('sending address', $e->getMessage());
+        }
+
+        Mail::assertNothingSent();
+    }
+
     // ── partial failure, which is the ruling that matters ────────
 
     /**
@@ -202,6 +260,7 @@ class SendSavedReportTest extends TestCase
         Mail::fake();
 
         $tenant = $this->provisionTenant('Alpha');
+        $this->ownSendingAddress($tenant);
         $this->makeJob($tenant, 'Sweep');
 
         $outcome = $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
@@ -226,6 +285,7 @@ class SendSavedReportTest extends TestCase
         Mail::fake();
 
         $tenant = $this->provisionTenant('Alpha');
+        $this->ownSendingAddress($tenant);
 
         $this->expectException(RuntimeException::class);
 
@@ -243,6 +303,7 @@ class SendSavedReportTest extends TestCase
         Mail::fake();
 
         $tenant = $this->provisionTenant('Alpha');
+        $this->ownSendingAddress($tenant);
         $this->makeJob($tenant, 'Sweep');
 
         $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
@@ -272,6 +333,7 @@ class SendSavedReportTest extends TestCase
         Mail::fake();
 
         $tenant = $this->provisionTenant('Alpha');
+        $this->ownSendingAddress($tenant);
 
         $outcome = $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
             $this->report($tenant),
@@ -333,5 +395,30 @@ class SendSavedReportTest extends TestCase
         ));
 
         $this->assertStringContainsString('"Smith, John"', $csv);
+    }
+
+    /**
+     * Give the tenant its own verified sending address.
+     *
+     * Needed by every test that expects a send to SUCCEED, and its absence is
+     * what let six of them pass while sending from EzBizi's address. `state` is
+     * deliberately not fillable — the model says why — so a fixture has to
+     * force it, which is the correct amount of friction.
+     */
+    private function ownSendingAddress(array $tenant): void
+    {
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            (new SendingIdentity([
+                'organization_id' => $tenant['org']->id,
+                'scope_type' => SendingIdentity::SCOPE_ORGANIZATION,
+                'scope_id' => $tenant['org']->id,
+                'from_address' => 'reports@alpha.test',
+                'from_name' => 'Alpha Chimney',
+                'transport' => MailTransport::VerifiedDomain->value,
+            ]))->forceFill([
+                'state' => SendingState::Verified->value,
+                'verified_at' => now(),
+            ])->save();
+        });
     }
 }
