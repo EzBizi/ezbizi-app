@@ -62,9 +62,12 @@ class MobileVoiceDevice implements VoiceDevice {
     //
     // The tests for giving up are the honest kind: a plugin call that never
     // completes, waited on for real. That made each of them cost twenty
-    // seconds of wall clock, and a test whose result depends on the machine
-    // keeping up is a test that goes red on a loaded run and green alone —
-    // which is what happened, in somebody else's suite rather than mine.
+    // seconds of wall clock, which is reason enough on its own — a full run
+    // pays it every time, and a test that waits on real time is a test whose
+    // result can depend on the machine keeping up.
+    //
+    // It had NOT been seen to fail; an earlier version of this note said it
+    // had, on a peer's report that turned out to name the wrong test.
     //
     // Shortening it here costs the test nothing it was measuring: what is
     // under test is that the wait ENDS and says why, not how long it is.

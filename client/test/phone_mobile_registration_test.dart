@@ -264,10 +264,15 @@ void main() {
       // The real one is twenty seconds, and this test used to spend them.
       //
       // What is under test is that the wait ENDS and says why — not how long
-      // it is. Spending the real duration made the result depend on the
-      // machine keeping up: it passed alone and went red in a loaded run of
-      // the whole suite, in somebody else's session rather than mine, which is
-      // the worst place for a flake to surface.
+      // it is, so spending the real duration bought nothing and cost twenty
+      // seconds of every full run.
+      //
+      // The comment here used to say this test had been SEEN red under load.
+      // It had not. A peer misread which test a failure belonged to and told
+      // me it was this one, I shortened it, and I wrote their premise down as
+      // fact — so the file asserted an observation nobody had made. The reason
+      // above is the one that holds on its own: a test that waits on real
+      // wall-clock time is slow, and slow is enough.
       registrationTimeout: const Duration(milliseconds: 20),
     );
 
