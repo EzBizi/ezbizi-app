@@ -27,6 +27,7 @@ class MonitoredDevice extends Model implements HoldsPersonalData
         'organization_id', 'user_id', 'device_key', 'label', 'platform',
         'capabilities', 'user_agent', 'ip_address', 'last_seen_at',
         'current_module', 'specs', 'screen_context', 'offline_alerted_at',
+        'security_alerted_at',
         'capture_last_attempt_at', 'capture_last_error',
     ];
 
@@ -34,6 +35,7 @@ class MonitoredDevice extends Model implements HoldsPersonalData
         'capabilities'       => 'array',
         'specs'              => 'array',
         'screen_context'     => 'array',
+        'security_alerted_at' => 'datetime',
         'last_seen_at'       => 'datetime',
         'offline_alerted_at' => 'datetime',
         'capture_last_attempt_at' => 'datetime',
