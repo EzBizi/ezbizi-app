@@ -2357,7 +2357,7 @@ foot beside the version. He complained about the sidebar, but the drawer's was e
 top", and after mobile 1 there is a version at the foot of both to sit next to. Applied to both
 surfaces deliberately; if he meant desktop only, that is one line back.
 
-### 15 · Mail health for an administrator — **DRAWN, awaiting Jose**
+### 15 · Mail health for an administrator — **DESKTOP 2 + MOBILE 5, one state still blocked**
 
 `docs/previews/mail-health-for-an-administrator-layouts.html`. Jose said yes to the question
 raised in entry 11: *"1 - yes add a health status"*. HR brought states rather than a layout, which
@@ -2407,6 +2407,32 @@ it; it is the constraint that rules out "the staff panel behind a different perm
 the obvious design and the fastest to scan — and its badge has to say one word about two facts
 with two owners and two remedies. "Not sending" covers both and names neither. That is the merge
 this entry exists to avoid, arriving through the badge rather than through the sentence.
+
+> **DECIDED 2026-09-14: desktop 2, mobile 5** — Jose, against a numbered list: *"1 - as you
+> recommend"*. A rides above the screen, where somebody wondering why a password reset never
+> arrived will meet it; B is a state of the sending-identity card, which already owns who your
+> mail comes from. Build is SES's (`MODULE-OWNERS:151` gives them Mail), not HR's.
+>
+> **Desktop 3 was drawn in order to be rejected and he rejected it.** Worth recording that the
+> tactic worked: the obvious design got looked at and turned down deliberately, rather than
+> arriving in six months as somebody's simplification.
+
+> **AND ONE STATE IS NOT YET WRITEABLE. The layout is approved; B's SENTENCE is not.**
+> SES put a question to Jose that he has not answered — whether his ruling is about the FROM
+> LINE or about what EzBizi's mail service may be used for at all. It decides which sentence B
+> carries:
+>
+> - **From line:** their authored mail goes out through EzBizi's service showing EzBizi as the
+>   sender until a domain is verified. B's remedy is *"verify a domain"*, and the card is exactly
+>   where it belongs.
+> - **Use at all:** a tenant may not send authored mail through EzBizi's service, verified or
+>   not. Then B is not a setting with a remedy — it is *"this cannot send yet, and it is not
+>   something you can turn on"*, and a **"Verify a domain ›" link on that card would be a remedy
+>   that does not remedy**, which is the exact defect this entry already corrected once.
+>
+> **Not a gap in the gallery, and not something to guess.** The drawing holds either way; only
+> the words inside state B change. Whoever builds this should carry A first, which is unblocked,
+> rather than hold both for one sentence.
 
 **Day one is state B for everybody.** The desk measured production at 2 organizations and 0
 sending identities (relayed through HR, not measured by me). If that holds, the day the refusal
