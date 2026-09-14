@@ -218,13 +218,50 @@ was never in that population. No change was made and none is needed.**
   reputation". It never depended on SES.
 - The only SES mention on the site is the subprocessor line, true before and after.
 
-**What WILL need a line here, and is not on the site yet.** Email verification is
-in flight uncommitted (`EmailVerificationController`, `RequireVerifiedEmail`,
-`EmailVerificationLink`, `create_email_verifications_table`) — TODO #22, which the
-sandbox blocked. When it ships, `/privacy/` should say EzBizi emails a
-verification link to the address you sign in with. **Do not write it before it is
-on production**; the test is whether the middleware is registered in a deployed
-release, not whether the files exist in this tree.
+**That line was owed, and it was paid on 2026-09-14 — the test this paragraph named
+passed.** Email verification is no longer in flight: `RequireVerifiedEmail` is aliased
+`verified` at `bootstrap/app.php:27` **and applied to the main API group** at
+`routes/api.php:582` in the deployed release `f3c5f45d` (`0.0.0211`), with
+`verify` / `verify/resend` at `:227-228`. **Both halves were checked, not just the
+alias** — an alias registered and never put on a group is a gate without its
+affordance, and it reads identically to a shipped one in a grep.
+
+`/privacy/` gained an **Email we send you** section the same day, after *Text messages
+we send you*, and the `Last updated` stamp moved to 14 September 2026. Every clause read
+out of the deployed tree at `f3c5f45d`:
+
+    confirmation link to the    EmailVerificationLink + App\Services\Auth\
+    address you sign in with    EmailVerifications; the `verified` middleware above
+    a password reset            PasswordResetLink
+    the invitation that         InvitationLink
+    brings you into an org
+    a copy of a notification    NotificationNotice ("One in-app notification, sent
+    unless your org turns       again as an email"), gated on
+    it off                      `notifications.email_enabled`, whose SettingRegistry
+                                default is `true` — hence "unless", not "where"
+    and they are all of them    app/Notifications + app/Mail hold SIX classes at
+                                f3c5f45d. The other two — InspectionReportMail,
+                                SavedReportMail — cannot leave over EzBizi's
+                                transport: MailDispatcher::smtpConfigFor throws
+                                CannotSendMail unless the identity's transport is
+                                MailTransport::Smtp.
+
+**One clause was written, measured, and then WEAKENED before it shipped, and that is the
+part worth keeping.** The first draft said business mail "goes through the mail provider
+your business connects". `MailTransport::Smtp` exists (added 2026-09-14) and
+`MailDispatcher` branches on it — **and there is no route to reach it**: `git show
+f3c5f45d:routes/api.php` has zero sending-identity endpoints, because `0.0.0211` removed
+the Sending Address screen from Settings. A tenant cannot connect a mail server today.
+The shipped sentence therefore states only the negative that is true — *mail your
+business writes to its own customers does not go out over ours* — plus Mailchimp, which
+the Newsletter card already sells. **A capability with an enum, a dispatcher branch and
+no affordance is not a capability, and a privacy page is the worst place to discover
+that.**
+
+**Left for somebody else, and it is not a website problem:** that same refusal at
+`MailDispatcher.php:215` tells the customer to *"Open Settings, Sending Address"* — a
+screen `0.0.0211` deleted. Latent today (nothing can reach the second branch while the
+first always throws), real tomorrow. Written to the Email module as `0049`.
 
 ## Live, and safe to sell
 
@@ -759,7 +796,48 @@ writes "your enquiries and their recordings stay with the customer", that senten
 is false for Google Ads the moment somebody disconnects** — and a disconnect is a
 normal thing a customer does, not an incident.
 
-## Reports — STILL HELD 2026-09-11, and the draft it was held with went stale in a day
+## Reports — PUBLISHED 2026-09-14, and the hold aged the draft twice
+
+**The desk answered in `0048`: `Schema::hasTable('saved_reports')` YES, `COUNT(*)` 0,
+on deployed release `0.0.0201` at `d8d64550`, with 0 pending migrations. A number, not
+an error — which is exactly what the hold below was guarding against.** Published the
+same day under the Coverage & capacity / Newsletter precedent: built and unused is
+sellable as a capability and never as usage. The card sits at the END of the module
+grid, away from `Forms &amp; reports` at `www/index.html:497`, so the pair does not read
+as one feature described twice.
+
+**And the number in the draft was wrong again by the time it shipped — for the THIRD
+time on this one card.** Three → ten → **eleven**: `monitored_devices` (label
+`Monitoring`) joined on `3c41584d` in `0.0.0202`, with no migration, because a device
+scopes through its owner. **Re-measured by this run at the deployed SHA `f3c5f45d`
+(`0.0.0211`) rather than taken from the desk's `0.0.0201`** — the desk's own number was
+a release old when it was written, which is the pattern this file has been burned by
+every time. `ReportMap::all()` holds **eleven** keys: jobs, customers, franchises
+(Branches), services, inventory_items, vehicles (Fleet Management), training_guides
+(Training), leads, service_areas (Scheduling), monitored_devices (Monitoring), users
+(Human Resources). **A held draft ages, and a COUNT on a card is the clause that ages
+fastest.** Whoever edits this card re-counts at the deployed SHA before touching the
+sentence.
+
+**`Monitoring` is now a SECOND decoy on this card, beside `Scheduling`, and the rule
+that already covered one covers both.** Do not enumerate the eleven resources: printing
+"Scheduling" makes the forbidden calendar claim whatever table sits behind it, and
+printing "Monitoring" publishes a module this file holds on a decision from Jose about
+copy describing watching employees' screens. The shipped card names four — jobs,
+customers, fleet, inventory — and says "eleven parts of the business" for the rest.
+Checked after publishing: `Monitoring` → **0** across `www/`; `Scheduling` → **1**,
+which is an HTML comment in the app mock at `www/index.html:418` and not a visible
+claim.
+
+**What would put this row back:** `saved_reports` erroring rather than counting, which
+is a dropped table. A zero does not — the card claims capability, not usage, and says
+nothing about money (`ReportMap` publishes `amount_minor`, `currency` and `price_minor`;
+`bill` is a machine-enforced forbidden term and a Reports card is exactly where a
+sentence about what the work was worth would read as innocent).
+
+**The history below is what the hold was, and why it turned out to be load-bearing.**
+
+### The original hold, 2026-09-11
 
 `0.0.0192` shipped Reports on 2026-09-10, a card was drafted against it, and it
 was held on one question: had the `saved_reports` migration RUN. **That question
@@ -782,7 +860,7 @@ Redrafted 2026-09-11, unpublished:
 
 ```html
 <h3>Reports</h3>
-<p>Build a report from your own records &mdash; start from any of ten parts of
+<p>Build a report from your own records &mdash; start from any of eleven parts of
    the business, from jobs and customers to fleet and inventory, pull in the
    columns from what they connect to, filter it and save it by name. Running a
    saved report and building one are separate permissions, so you can let
@@ -791,7 +869,7 @@ Redrafted 2026-09-11, unpublished:
 
 Clause by clause, read out of the deployed tree at `e1a783dc`:
 
-    any of ten parts     ReportMap::all() — jobs, customers, franchises (label
+    any of eleven parts  ReportMap::all() — jobs, customers, franchises (label
                          Branches), services, inventory_items, vehicles (Fleet
                          Management), training_guides (Training), leads,
                          service_areas (Scheduling), users (Human Resources)
@@ -1032,3 +1110,74 @@ sentence, and one of them is a publish-blocking finding.
 count that publishes the redrafted Reports card, asked in `0045` and `0046`.
 **Monitoring** — held on a decision from Jose about copy describing watching
 employees' screens, not on a measurement.
+
+
+## 2026-09-14: eleven releases, two cards published, and the desk read its inbox
+
+**Production moved `0.0.0200` → `0.0.0211`** (`e1a783dc` → `f3c5f45d`,
+`/download/windows.json`, fetched). `git diff --name-only e1a783dc f3c5f45d` is 212
+paths and **zero under `www/`** — so nothing edited the site in the repo, and the two
+changes below are this run's.
+
+**Nobody was running, and the inbox answered anyway.** `list_sessions` returns every
+EzBizi session `isRunning: false`; Deployment (`local_072bee23…`) last active 21:13 UTC.
+But `docs/agents/inbox/0048-deploy-desk-to-website-saved-reports-count.md` was waiting —
+the desk found `0045` and `0046` *by accident*, four days late, while running a landmine
+check, and says so plainly: **"a message saying 'I cannot reach you' only works if it
+reaches you."** It has added the directory to what it checks when it picks up the desk.
+**The channel is proven again and its latency is now measured at four days.** Do not
+read silence on an inbox file as a refusal; `0034` took a day and `0046` took four.
+
+**Published today, both against a measurement and neither against a release note:**
+
+1. **Reports** — the desk's `saved_reports` count (table YES, `COUNT(*)` 0). See the
+   Reports section; the resource count had moved ten → eleven and was re-measured at
+   `f3c5f45d` rather than taken from the desk's `0.0.0201`.
+2. **`/privacy/` — Email we send you** — email verification reached production, which is
+   the debt the SES section above recorded. See that section; one clause was measured,
+   found to have no affordance, and weakened before it shipped.
+
+**The audit is clean.** `python www/check-site.py` → `ok - 7 pages, 7 sitemap entries`.
+All seven pages fetched from production were byte-identical to `www/` after stripping CR
+**before** this run's edits, every one `Last-Modified` Mon 14 Sep 2026 20:43:27 GMT — so
+the site republished today and matches the tree; no stale deploy, no hand edit. The
+forbidden-terms gate, parsed from this file and split on LINES, flags before the path,
+all six strings through one loop → `ok - 4 terms, none present`, positive control
+`EzBizi` **250**, negative control `zzzznotpresent` **0** — re-run after both edits. The
+four phrasings the Communication card forbids return **0** across `www/`.
+
+**Three published claims re-measured at `f3c5f45d`, at the paths this file learned the
+hard way on 2026-09-13:** `app/Support/Social/Publishing/Publishers.php` still returns
+five — FacebookPage, Threads, InstagramProfessional, Pinterest, TikTok — and
+`default => null`, so *"Five networks send today"* holds and **no sixth or seventh
+publisher was written**. `app/Support/Newsletter/NewsletterSenders.php` is still
+`Mailchimp` and `default => null`. Stores: Play `200`; Apple lookup `resultCount` **1**,
+`version` 0.0.0190, `currentVersionReleaseDate` 2026-09-11.
+
+**Six migrations landed in the eleven releases and none touches a do-not-list row.**
+`email_verifications`, `verify_every_account_that_predates_the_gate`,
+`add_call_queue_to_phone_ring_groups`, `add_security_alerted_at_to_monitored_devices`,
+`add_remote_customer_id_to_leads`, `add_default_voicemail_transcribe_to_phone_connections`.
+**No table carrying both a job reference and a date-or-slot reference**, so the
+structural scheduling test holds.
+
+**Two things the release notes moved that the site must NOT follow, both in the
+understated direction this file keeps catching — and both correctly left alone:**
+
+- **Android calling.** `0.0.0203` registered the calling account, `0.0.0204` says *"An
+  incoming call now rings on Android"* and in the same bullet *"Placing a call and its
+  audio have not been confirmed yet"*. That row's test is **an observation, not a release
+  note** — somebody has to watch a handset ring, and a note asserting it is the app
+  session's claim about its own work. The site says nothing about mobile calling and
+  still must not.
+- **Ring groups.** `0.0.0209` added a caller queue and `0.0.0210` least-recently-busy
+  ordering; `0.0.0210` also says **thirteen** numbers, up from twelve. The fraction with
+  a `ring_group_id` was not re-measurable from here and the four forbidden phrasings
+  return 0, so nothing moved. **A queue is not a person answering** — if anything, a
+  queue is what a caller waits in *because* nobody has.
+
+**Still open, and neither mine to close.** **Monitoring** — held on a decision from Jose
+about copy describing watching employees' screens, not on a measurement, and `0.0.0201`,
+`0.0.0202`, `0.0.0207` and `0.0.0208` all widened it further (antivirus/firewall state,
+an in-app screen-control notice, a Monitoring report resource). **Training** — still the
+tense rule only; nothing this week touched it.
