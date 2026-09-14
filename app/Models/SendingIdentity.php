@@ -125,6 +125,34 @@ class SendingIdentity extends Model implements HoldsSensitiveValues, StatesReten
              * fields that must travel together — host, port, username, password,
              * encryption — and a delimited string is how one of them ends up
              * parsed differently in two places.
+             *
+             * ── ITS OWN CREDENTIAL, NEVER A MAILBOX'S ────────────
+             *
+             * A Mailbox already holds exactly these five for replying as a
+             * shared inbox, and reusing them here is the obvious saving. It is
+             * refused, decided by the Email module on 2026-09-14 and recorded
+             * HERE because this is where somebody stands when the idea occurs.
+             *
+             * The reason that survives every technical fix: the administrator
+             * handed that password over on a screen about REPLYING AS that
+             * inbox. A scheduled report is a different purpose and nobody
+             * consented to it. Solving "which of info@, accounts@ and somebody's
+             * personal address" with a picker would not touch that.
+             *
+             * And the one that is a defect rather than a preference, measured:
+             * the details live in `mailboxes.mail_server` and the password in
+             * `mailboxes.credentials`, both on a row carrying cascadeOnDelete in
+             * FIVE tables. Deleting an inbox would silently take the report
+             * sender's transport with it, and nothing anywhere would connect
+             * those two facts for whoever deleted it.
+             *
+             * The convenience is an explicit "use the same server as info@…"
+             * that COPIES these values at setup and says on screen that it
+             * copied them — never an implicit fallback, because with a fallback
+             * nobody can tell by LOOKING which credential is in use. A copy also
+             * does not follow its source: change that mailbox's password later
+             * and this row still holds the old one, which the screen has to
+             * admit rather than implying a live link.
              */
             'credentials'     => 'encrypted:array',
             'verified_at'     => 'datetime',
