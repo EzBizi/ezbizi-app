@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Http\Controllers\Api\HrInvitationsController;
 use App\Models\AuditEvent;
 use App\Models\Assignment;
 use App\Models\Automation;
@@ -158,6 +159,166 @@ class HrInvitationsTest extends TestCase
             ->assertJsonPath('data.emailed', true);
 
         Notification::assertSentOnDemand(InvitationLink::class);
+    }
+
+    /**
+     * The wire carries a STATE, not a yes/no, and `emailed` stays beside it.
+     *
+     * The screen draws a strip whose sentence and action differ per state
+     * (Jose picked desktop 2 / mobile 5 on 2026-09-14), so a bool cannot say
+     * enough: "we did not even try, this box sends nothing" and "we tried and
+     * were refused" are two different sentences with two different remedies.
+     * `emailed` is kept rather than replaced because an installed client older
+     * than this release still reads it, and a field going absent is the one
+     * response change that breaks somebody who asked for none of this.
+     */
+    public function test_the_send_state_is_on_the_wire_and_the_old_flag_still_agrees_with_it(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $role  = $this->roleIn($alpha, 'Dispatcher', ['customers.view']);
+
+        $body = [
+            'role_id'    => $role->id,
+            'scope_type' => 'franchise',
+            'scope_id'   => $alpha['franchise']->id,
+        ];
+
+        // Same ordering rule as the test above: the faked delivering case last,
+        // because Notification::fake cannot be lifted and would stop the
+        // refused case from ever throwing.
+        $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/hr/invitations', ['email' => 'nowhere@example.test'] + $body)
+            ->assertCreated()
+            ->assertJsonPath('data.sent_state', HrInvitationsController::NOT_SENT_NO_TRANSPORT)
+            ->assertJsonPath('data.emailed', false);
+
+        config(['mail.default' => 'a-mailer-that-does-not-exist']);
+
+        $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/hr/invitations', ['email' => 'refused@example.test'] + $body)
+            ->assertCreated()
+            ->assertJsonPath('data.sent_state', HrInvitationsController::NOT_SENT_REFUSED)
+            ->assertJsonPath('data.emailed', false);
+
+        config([
+            'mail.default'               => 'smtp',
+            'mail.mailers.smtp.username' => 'ezbizi',
+            'mail.from.address'          => 'noreply@ezbizi.test',
+        ]);
+        Notification::fake();
+
+        $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/hr/invitations', ['email' => 'went@example.test'] + $body)
+            ->assertCreated()
+            ->assertJsonPath('data.sent_state', HrInvitationsController::SENT)
+            ->assertJsonPath('data.emailed', true);
+    }
+
+    /**
+     * Correcting a mistyped address is a REISSUE, and the old link dies with it.
+     *
+     * The whole reason it is not a PATCH. The row and the credential are
+     * different things: repointing the row changes where the next message goes
+     * and cannot recall the one already sent, so if the typo'd address belongs
+     * to a real person, that person keeps a live invitation into somebody
+     * else's organization while the screen says it is fixed.
+     *
+     * Asserted on the TOKEN rather than on the response wording, because the
+     * wording is what would be written to match a broken implementation.
+     */
+    public function test_re_inviting_at_a_different_address_moves_it_and_kills_the_old_link(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $role  = $this->roleIn($alpha, 'Dispatcher', ['customers.view']);
+
+        $created = $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/hr/invitations', [
+                'email'      => 'bea@exampel.test',
+                'role_id'    => $role->id,
+                'scope_type' => 'franchise',
+                'scope_id'   => $alpha['franchise']->id,
+            ])->assertCreated();
+
+        $id       = $created->json('data.id');
+        $deadLink = $created->json('data.accept_url');
+
+        $again = $this->signedInAs($alpha['admin'])
+            ->postJson("/api/v1/hr/invitations/{$id}/resend", ['email' => 'bea@example.test'])
+            ->assertOk()
+            ->assertJsonPath('data.email', 'bea@example.test');
+
+        $this->assertNotSame($deadLink, $again->json('data.accept_url'));
+
+        // The stranger's link is dead, and this is the assertion the whole
+        // design rests on: the token, not the sentence about the token.
+        $this->inTenant($alpha['org'], function () use ($deadLink, $id) {
+            $this->assertNull(
+                app(Invitations::class)->open($this->tokenFrom($deadLink)),
+                'The link sent to the mistyped address still works.',
+            );
+
+            $this->assertSame('bea@example.test', Invitation::findOrFail($id)->email);
+        });
+
+        // One row, moved — not a second invitation left behind for the typo.
+        $this->inTenant($alpha['org'], fn () => $this->assertSame(
+            1,
+            Invitation::query()->count(),
+            'Re-inviting created a second invitation instead of moving the one.',
+        ));
+
+        $this->inTenant($alpha['org'], fn () => $this->assertDatabaseHas('audit_events', [
+            'action' => 'invitation.readdressed',
+        ]));
+    }
+
+    /** Resending to the SAME address is not a re-address, and says so. */
+    public function test_resending_unchanged_is_still_a_resend(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $role  = $this->roleIn($alpha, 'Dispatcher', ['customers.view']);
+
+        $id = $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/hr/invitations', [
+                'email'      => 'same@example.test',
+                'role_id'    => $role->id,
+                'scope_type' => 'franchise',
+                'scope_id'   => $alpha['franchise']->id,
+            ])->assertCreated()->json('data.id');
+
+        $this->signedInAs($alpha['admin'])
+            ->postJson("/api/v1/hr/invitations/{$id}/resend", ['email' => 'same@example.test'])
+            ->assertOk();
+
+        $this->inTenant($alpha['org'], fn () => $this->assertDatabaseMissing('audit_events', [
+            'action' => 'invitation.readdressed',
+        ]));
+    }
+
+    /** And it refuses the same address a fresh invitation would refuse. */
+    public function test_re_inviting_at_an_address_that_already_has_one_is_refused(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $role  = $this->roleIn($alpha, 'Dispatcher', ['customers.view']);
+
+        $body = [
+            'role_id'    => $role->id,
+            'scope_type' => 'franchise',
+            'scope_id'   => $alpha['franchise']->id,
+        ];
+
+        $first = $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/hr/invitations', ['email' => 'taken@example.test'] + $body)
+            ->assertCreated()->json('data.id');
+
+        $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/hr/invitations', ['email' => 'other@example.test'] + $body)
+            ->assertCreated();
+
+        $this->signedInAs($alpha['admin'])
+            ->postJson("/api/v1/hr/invitations/{$first}/resend", ['email' => 'other@example.test'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('email');
     }
 
     public function test_lookup_carries_the_organization_date_format(): void
