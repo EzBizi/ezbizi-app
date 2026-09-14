@@ -45,7 +45,7 @@ final class GoogleToken
     public static function forConnection(SocialConnection $connection, string $service): string
     {
         $refresh = (string) (($connection->credentials['refresh_token'] ?? '') ?: '');
-        $label   = self::label($service);
+        $label = self::label($service);
 
         if ($refresh === '') {
             throw new RuntimeException(
@@ -83,10 +83,10 @@ final class GoogleToken
             $response = Http::asForm()->timeout(self::TIMEOUT)->post(
                 'https://oauth2.googleapis.com/token',
                 [
-                    'client_id'     => (string) config("services.{$service}.client_id"),
+                    'client_id' => (string) config("services.{$service}.client_id"),
                     'client_secret' => (string) config("services.{$service}.client_secret"),
                     'refresh_token' => $refresh,
-                    'grant_type'    => 'refresh_token',
+                    'grant_type' => 'refresh_token',
                 ],
             );
         } catch (ConnectionException) {
@@ -99,11 +99,40 @@ final class GoogleToken
         $access = $response->json('access_token');
 
         if ($response->failed() || ! is_string($access) || $access === '') {
-            // Google reports a revoked grant and an expired one the same way,
-            // so the row says the one true thing — it will not renew — and the
-            // screen offers to connect it again rather than guessing which.
+            /*
+             * Only `invalid_grant` means the grant itself is gone — revoked,
+             * expired, or the password changed. Google reports those three the
+             * same way, which is why the sentence below does not guess between
+             * them.
+             *
+             * Every other failure is about this MOMENT, not the grant: a 429
+             * when the token endpoint is rate-limiting us, a 5xx from Google, a
+             * 400 from a malformed request of ours. Marking broken for those is
+             * worse than useless, because `broken` takes the row out of the
+             * sweep that polls connected rows — so a connection killed by a
+             * ten-second rate limit can never heal itself, and nobody finds out
+             * until a customer asks where their leads went.
+             *
+             * That is not hypothetical either. Three live A-1 Chimney and
+             * AngiSweep accounts were marked broken on 10-11 September during
+             * the deliberate quota-exhaustion run for the Standard Access
+             * application; the log shows HTTP 429 immediately before each one.
+             * All three refresh tokens still renew and all three accounts still
+             * read, and between them they lost three days of leads.
+             *
+             * ConnectionException a few lines above already takes this view.
+             * A 503 is the same event as a dropped connection; only the layer
+             * that reports it differs.
+             */
+            if ($response->json('error') !== 'invalid_grant') {
+                throw new RuntimeException(
+                    'Google would not renew this connection just now (HTTP '.$response->status().'). '
+                    .'The connection has been left alone and the next sweep will try again.'
+                );
+            }
+
             $connection->forceFill([
-                'status'        => SocialConnection::STATUS_BROKEN,
+                'status' => SocialConnection::STATUS_BROKEN,
                 'status_reason' => 'Google would not renew this connection. It needs connecting again.',
             ])->save();
 
