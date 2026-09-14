@@ -65,20 +65,26 @@ class SendingIdentitiesController extends Controller
     private const PERMISSION = 'organizations.edit';
 
     /**
-     * The sentence every response carries, until something sends tenant mail.
+     * The sentence an address that CANNOT SEND carries, and only that one.
      *
      * Written for the administrator, in the shape SettingDefinition demands of
      * a setting that is not yet in effect: it says what it is waiting for
-     * rather than only that it is waiting. It is also careful about WHICH mail,
-     * because "EzBizi cannot send email" would be false — password resets and
-     * invitations go out today.
+     * rather than only that it is waiting. It is careful about WHICH mail,
+     * because "EzBizi cannot send email" would be false -- password resets and
+     * invitations go out today, from EzBizi, and always will.
+     *
+     * It names inspection reports because that is what actually reaches
+     * asTenant today (ActionRunner:452). If a second module starts sending as
+     * the tenant, this sentence is the thing that goes stale, and it goes
+     * stale quietly -- the same way its predecessor did.
      */
-    private const NOTHING_SENDS_YET =
-        'nothing in EzBizi sends mail from your own address yet. The Newsletter that '
-        .'will is not built. Signing-in, password resets and joining messages come from '
-        .'EzBizi and always will, so this changes nothing about those. Setting an '
-        .'address now is still worth doing: publishing DNS records and having them '
-        .'spread takes days, and the form takes a minute.';
+    private const CANNOT_SEND_YET =
+        'this address cannot send yet. Mail EzBizi sends on your behalf -- an inspection '
+        .'report today -- goes out from it only once its DNS records are published and '
+        .'verified, and is refused until then rather than sent from somewhere else. '
+        .'Signing-in, password resets and joining messages come from EzBizi and always '
+        .'will, so this changes nothing about those. Publishing the records and having '
+        .'them spread takes days; the form takes a minute.';
 
     /**
      * The events this feature would raise if anything could declare them.
@@ -382,7 +388,7 @@ class SendingIdentitiesController extends Controller
                 ],
 
                 /*
-                 * Nothing sends from this address yet, and the screen says so.
+                 * Whether this address is inert, ASKED rather than asserted.
                  *
                  * The same admission SettingDefinition::notYetInEffect makes,
                  * in the same words the settings rows use, because it is the
@@ -390,15 +396,29 @@ class SendingIdentitiesController extends Controller
                  * inherits and changes nothing is worse than one that is
                  * missing, since the screen presents it as working.
                  *
-                 * True today, and precisely scoped. Platform mail DOES send —
-                 * password resets and invitations go out through
-                 * MailDispatcher::platform right now. What has no caller is
-                 * MailDispatcher::asTenant, because the module that will call
-                 * it is Marketing's Newsletter and that is a declared
-                 * placeholder. Setting an address now is still worth doing: it
-                 * is the DNS records that take days, not the form.
+                 * IT USED TO BE A CONSTANT, and the reasoning under it was
+                 * "what has no caller is MailDispatcher::asTenant, because the
+                 * module that will call it is Marketing's Newsletter and that
+                 * is a declared placeholder". Inspection landed 5efe1c55 --
+                 * an `inspection.report.email` action whose ActionRunner:452
+                 * calls asTenant, the first real caller -- and that premise
+                 * stopped being true, which turned this line into the
+                 * INVERSION of the standard the paragraph above sets: a
+                 * control that works, presented as inert. Routed here by the
+                 * deploy desk, verified against the callers rather than
+                 * relayed.
+                 *
+                 * So it is asked per identity now. `canSend()` is the single
+                 * question the transport already answers -- verified domain,
+                 * or a transport with nothing to prove -- and it is the same
+                 * question `asTenant` throws on, so this line and the send
+                 * cannot come to disagree.
+                 *
+                 * Null for the platform fallback as well, and deliberately:
+                 * nothing of theirs is inert when they have set nothing. The
+                 * panel already says "Nothing set".
                  */
-                'not_yet_in_effect' => self::NOTHING_SENDS_YET,
+                'not_yet_in_effect' => $effective->canSend() ? null : self::CANNOT_SEND_YET,
 
                 'automation' => $this->automationSurface(),
 
