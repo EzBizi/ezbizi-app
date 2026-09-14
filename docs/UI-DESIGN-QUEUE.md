@@ -2109,3 +2109,52 @@ cause is worse than a vague one**, because it sends somebody hunting. Email's fi
 which of three reasons applies rather than assuming one, and that is the shape every failure
 state here should take.
 
+### 12 · HR · the invitation panel, and the two failures that read the same — **DRAWN, awaiting Jose**
+
+`docs/previews/invitation-sent-states-layouts.html`. Three desktop, three mobile, with a **state
+switcher** — the two failures are the whole reason it is drawn, and an option looked at only in
+its success state hides the problem.
+
+HR brought states rather than a layout, which is the ask working. The panel is
+`client/lib/screens/hr/invitations_tab.dart:495`, shown the one moment the raw token exists,
+switching on a server `emailed` bool.
+
+**The gap is not that the failure is unnamed. It is that the REMEDY differs and the sentence does
+not.** Today a failure reads *"The email could not be sent, so nothing has reached them. Copy the
+link and get it to them yourself."*
+
+- **Transport down** — copy the link, hand it over, and the invitation is perfectly good.
+- **Address refused** — handing the link over still works, *and* the invitation now carries a
+  typo nobody has corrected, so the same person is invited to the same wrong address next week.
+
+Same sentence today, two different actions. The server knows which (`deliver()` catches and logs
+the exception) but the response carries only a bool, so this is a server change of HR's as well
+as a screen.
+
+> **In every failing case the address IS the problem, and today it is the panel SUBTITLE** — the
+> one thing on screen that cannot be acted on. That observation is what separates the three
+> desktop options: fold the reason into the sentence (1), put it in a status strip (2), or
+> promote the address to the subject of the panel (3).
+
+**Designed knowing a state is coming.** HR measured that SES event ingestion is being built —
+the SNS subscription is currently EMAIL protocol to a human mailbox, so events reach a person and
+not the app, and HTTPS ingestion into a table keyed by recipient and message id is in progress.
+So **delivered and bounced become knowable soon**, and per entry 11's own rule that must arrive
+as a screen gaining a state rather than a word quietly becoming true. Every option is drawn with
+a place to put `bounced`; option 2's is the cleanest seam, because the strip changes and the body
+does not.
+
+**One asymmetry worth knowing before reading the options.** The account suppression list means
+the FIRST send to a typo bounces silently and a SECOND send to the same address is refused at
+handoff. So a resend already produces "Couldn't send" correctly today — **only the first send is
+blind**, which is exactly the send where somebody is standing in front of this panel.
+
+**Two judgements HR asked for, given here so they are not re-litigated:**
+
+- **The `null` state survives the rule.** *"Copy the link and get it to them yourself if you are
+  not certain the email reached them."* It is a server older than the field, it claims neither
+  outcome, and it says what to do. That is the rule obeyed, not bent — and it is deliberately not
+  drawn in red.
+- **"Has been emailed to them" should become "Sent to them."** HR flagged it themselves. It is a
+  handoff claim wearing arrival's clothes, and it is the sentence entry 11 exists to prevent.
+
