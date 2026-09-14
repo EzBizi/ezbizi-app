@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Phone;
 
+use App\Models\PhoneCall;
 use App\Models\PhoneConnection;
 use App\Models\PhonePresence;
 use App\Models\PhoneRingGroup;
@@ -209,6 +210,103 @@ class DialPlanTest extends TestCase
         }
     }
 
+    /**
+     * Longest idle rings whoever has gone longest without answering.
+     *
+     * ── Why this mode exists ─────────────────────────────────────
+     *
+     * Asked for by Jose from RingCentral, where A1 Chimney's own queues are
+     * already set to it. A fixed order means the first person in the list
+     * answers most of the calls and the last answers almost none — a rota
+     * nobody agreed to, and one that only shows up months later in somebody's
+     * numbers rather than as a complaint anybody can make on the day.
+     *
+     * ── What makes this test able to fail ────────────────────────
+     *
+     * The three members are created in an order, given calls in a DIFFERENT
+     * order, and the expected result is neither the creation order nor its
+     * reverse. A fixture where "most idle" happened to coincide with "first in
+     * the group" would pass against a mode that does nothing at all.
+     */
+    public function test_longest_idle_rings_the_least_recently_answered_first(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$batches, $expected] = $this->inTenant($t['org'], function () use ($t) {
+            $connection = $this->connection($t);
+
+            $first = $this->member($t, 'Ada');
+            $second = $this->member($t, 'Bruno');
+            $third = $this->member($t, 'Chen');
+
+            foreach ([$first, $second, $third] as $user) {
+                $this->presence($connection, $user, PhonePresence::STATE_REGISTERED);
+            }
+
+            // Bruno answered longest ago, Ada most recently, and Chen has
+            // never answered at all — so the order is Chen, Bruno, Ada, which
+            // is neither the group's order nor its reverse.
+            $this->answered($connection, $first, '2026-09-14 16:00:00');
+            $this->answered($connection, $second, '2026-09-14 09:00:00');
+
+            $group = $this->group($connection, [$first->id, $second->id, $third->id]);
+            $group->forceFill(['mode' => PhoneRingGroup::MODE_LONGEST_IDLE])->save();
+
+            return [
+                DialPlan::batches($group->fresh(), $connection),
+                [
+                    ClientIdentity::of($third),
+                    ClientIdentity::of($second),
+                    ClientIdentity::of($first),
+                ],
+            ];
+        });
+
+        // One per batch: ten at a time would ring the three most idle people
+        // together, which is the same as ringing everybody and calling it fair.
+        $this->assertCount(3, $batches);
+        $this->assertSame(
+            $expected,
+            [$batches[0][0], $batches[1][0], $batches[2][0]],
+            'the group rang in its own order rather than by who is least busy',
+        );
+    }
+
+    /**
+     * And the ordering applies to nobody else, which is what makes it a mode.
+     *
+     * The same three people, the same call history, the default mode: the
+     * group's own order survives. Without this, a bug that sorted every group
+     * by idleness would pass the test above.
+     */
+    public function test_other_modes_keep_the_order_somebody_arranged(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$batch, $expected] = $this->inTenant($t['org'], function () use ($t) {
+            $connection = $this->connection($t);
+
+            $first = $this->member($t, 'Ada');
+            $second = $this->member($t, 'Bruno');
+
+            foreach ([$first, $second] as $user) {
+                $this->presence($connection, $user, PhonePresence::STATE_REGISTERED);
+            }
+
+            $this->answered($connection, $first, '2026-09-14 16:00:00');
+            $this->answered($connection, $second, '2026-09-14 09:00:00');
+
+            $group = $this->group($connection, [$first->id, $second->id]);
+
+            return [
+                DialPlan::batches($group, $connection)[0],
+                [ClientIdentity::of($first), ClientIdentity::of($second)],
+            ];
+        });
+
+        $this->assertSame($expected, $batch);
+    }
+
     public function test_zero_available_members_yields_no_batches(): void
     {
         $t = $this->provisionTenant();
@@ -239,6 +337,32 @@ class DialPlanTest extends TestCase
     /**
      * @param  array{org: \App\Models\Organization, franchise: \App\Models\Franchise}  $tenant
      */
+    /**
+     * A call this person answered, at a given moment.
+     *
+     * Written straight into the table rather than driven through the webhook:
+     * what longest-idle reads is `answered_by` and `created_at`, and the point
+     * of the fixture is to control those two exactly.
+     */
+    private function answered(PhoneConnection $connection, User $user, string $at): PhoneCall
+    {
+        $call = PhoneCall::query()->create([
+            'connection_id' => $connection->id,
+            'twilio_sid' => 'CA'.str_replace('-', '', (string) \Illuminate\Support\Str::uuid()),
+            'direction' => 'inbound',
+            'from_e164' => '+13055550100',
+            'to_e164' => '+12035550142',
+            'status' => 'completed',
+            'answered_by' => $user->id,
+        ]);
+
+        // Not fillable, and deliberately so — this is a timestamp, and a
+        // timestamp a caller could set would be a different kind of bug.
+        $call->forceFill(['created_at' => $at])->save();
+
+        return $call;
+    }
+
     private function member(array $tenant, string $name, ?string $email = null): User
     {
         $email ??= strtolower(preg_replace('/[^a-z0-9]/i', '', $name)).'@'.$tenant['org']->slug.'.test';

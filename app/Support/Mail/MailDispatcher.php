@@ -56,22 +56,54 @@ class MailDispatcher
     }
 
     /**
-     * Send as the tenant — refused unless the identity has proved its domain.
+     * Send as the tenant — RETIRED. Always refuses (Jose, 2026-09-14).
+     *
+     * His words, after being asked in three different costumes and saying so he
+     * had "answered this a thousand times already":
+     *
+     *   "Email should not be sent as EzBizi, EZBIZI EMAIL IS ONLY FOR EZBIZI
+     *    ACTIONS LIKE ACCOUNT RECOVERY, PASSWORD, RESET, VERIFICATIONS, ETC."
+     *
+     * Not the from-address — the SERVICE. So there is no configuration that
+     * turns this back on, which is why it refuses unconditionally instead of
+     * testing the identity.
+     *
+     * WHY THE IDENTITY CANNOT BE THE TEST, measured rather than reasoned:
+     * handOver() ends at Mail::mailer($this->platform->mailerName()). EVERY
+     * message leaves on the platform mailer. A tenant identity changes from()
+     * and replyTo() and nothing else — sending "as" a tenant has never meant
+     * sending "through" one, so the reputation and the quota are EzBizi's
+     * whether a domain is verified or not. A guard keyed on the identity would
+     * refuse the unconfigured tenant and wave through the configured one, and
+     * the configured one is exactly what the ruling is about.
+     *
+     * THE LINE. Content the tenant AUTHORS — an inspection report, a saved
+     * report, an automation that emails somebody — needs their own provider,
+     * the way a newsletter already leaves through Mailchimp on the tenant's own
+     * API key. Mail that IS the mechanism — invitation link, password reset,
+     * address confirmation — is EzBizi's own and is correct as EzBizi. Those
+     * three never reach this method: they go through Notification::route, and
+     * platform() above is their path.
+     *
+     * KEPT RATHER THAN DELETED, and the method still takes its arguments. A
+     * missing method is a fatal at the call site; a refusal is a sentence the
+     * caller can show somebody. The resolver call below survives only to give
+     * the exception the identity it would have used, which is what the settings
+     * screen still reads through identityFor().
      *
      * @param  \App\Models\Organization|\App\Models\Company|\App\Models\Franchise  $scope
      * @param  string|array  $to
      *
-     * @throws CannotSendMail with a sentence saying what to do about it
+     * @throws CannotSendMail always
      */
     public function asTenant(Model $scope, Mailable $message, string|array $to): void
     {
-        $identity = $this->resolver->for($scope);
-
-        if (! $identity->canSend()) {
-            throw new CannotSendMail((string) $identity->refusal(), $identity);
-        }
-
-        $this->handOver($identity, $message, $to);
+        throw new CannotSendMail(
+            'Reports, inspection reports and automations that email somebody need this business '
+            ."to have its own email provider connected. EzBizi's own mail carries signing in, "
+            .'password resets and joining messages, and only those.',
+            $this->resolver->for($scope),
+        );
     }
 
     /** What this scope would send as, verified or not — for a screen to show. */

@@ -33,7 +33,21 @@ class PhoneRingGroup extends Model implements StatesRetention
 
     public const MODE_SEQUENTIAL = 'sequential';
 
-    public const MODES = [self::MODE_SIMULTANEOUS, self::MODE_SEQUENTIAL];
+    /**
+     * One at a time, whoever has gone longest without answering a call.
+     *
+     * RingCentral calls this "longest idle" and A1 Chimney's own queues are
+     * set to it. What it buys over plain sequential is fairness: a fixed order
+     * means the first person in the list answers most of the calls and the
+     * last answers almost none, which is a rota nobody agreed to.
+     */
+    public const MODE_LONGEST_IDLE = 'longest_idle';
+
+    public const MODES = [
+        self::MODE_SIMULTANEOUS,
+        self::MODE_SEQUENTIAL,
+        self::MODE_LONGEST_IDLE,
+    ];
 
     public const OVERFLOW_VOICEMAIL = 'voicemail';
 
