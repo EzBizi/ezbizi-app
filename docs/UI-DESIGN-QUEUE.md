@@ -2369,6 +2369,23 @@ verified sending identity — their own authored mail refuses while EzBizi's inv
 keep working, and the remedy **is theirs**. One sentence covering both sends somebody to fix the
 wrong thing, which is entry 11's own finding.
 
+> **⚠ THE BLOCK BELOW IS A DATED RECORD, NOT A DESCRIPTION OF THE PRESENT (marked 2026-09-14).**
+> Every measurement in it was true when taken and **none of it is true now.** Jose: *"I HAVE
+> ANSWERED 4 TIMES ALREADY, SO PLEASE TALK TO EACH OTHER, GET RID OF IT."* The card, the panel and
+> its 21 tests went in `b32fc797`; the four routes, the controller, `DomainVerification`,
+> `DnsVerifier` and the `mail.verification` config block went in `474fd1e6`. Re-measured here
+> rather than taken from the relay: the panel file is gone, `mail/sending-identity` matches zero
+> lines in `routes/api.php`, and `MailStatus::summary()` no longer returns `tenant_domains` — with
+> a control on `delivers` to prove the grep fires.
+>
+> **Kept rather than rewritten.** A block recording what was measured and when is worth more than
+> one silently updated, and SES deliberately did not edit it. What it now records is that a design
+> brief can be correct, cited, agreed by two sessions, and describe nothing, within six hours.
+>
+> **What survives is the FINDING, which was never about the card:** two facts that must not become
+> one sentence. What is gone is the surface B was going to hang on. See the note after this entry
+> for where that leaves it.
+
 > **MEASURED BEFORE DRAWING, AND IT CHANGED THE BRIEF: B already has a home.**
 > `client/lib/widgets/sending_identity_panel.dart` is a card in the Settings screen today, with
 > the whole verification flow behind it and four routes live under `mail/sending-identity`. Its
@@ -2450,6 +2467,29 @@ this entry exists to avoid, arriving through the badge rather than through the s
 > `MODULE-OWNERS:151`'s to settle, not something to redesign around quietly. See
 > `ezbizi-never-sends-newsletters-itself`, now the whole-category rule rather than a newsletter
 > one.
+
+> **WHERE B STANDS NOW, 2026-09-14 evening.** The remedy sentence is no longer "verify a domain"
+> — that flow is retired — and is not "connect a provider" either. `79b5e142` replaced it with
+> **the tenant's own SMTP**, so it is *"this business needs its own mail server connected"*.
+>
+> **And I have not established what that sentence points AT, so the gallery does not claim one.**
+> `79b5e142` is server-only — `MailDispatcher`, `MailTransport`, `TenantSmtpHost` and two test
+> files, no client. `TenantSmtpHost` is an SSRF guard whose own docblock says it exists to stop
+> somebody mapping the private network *"from a settings form"*, so a form is intended; the Email
+> module already has one for mailbox SMTP (`screens/email/mailbox_panels.dart`). **Whether B
+> points at that or at a form not yet built is SES's to answer**, and inferring it from a class
+> name is the exact mistake recorded in `a-docblock-is-a-describer` — a method name is a describer
+> too.
+>
+> **A is unaffected by any of this** and is still desktop 2 / mobile 5. Build A; B waits on one
+> sentence from the mail owner, not on a drawing.
+>
+> **One thing spotted while re-measuring, and handed over rather than fixed:**
+> `client/lib/screens/settings_screen.dart:90` still points at the deleted file — *"These three
+> lived in sending_identity_panel.dart, whose own docblock called…"* — citing a docblock nobody
+> can now read. Past tense, so arguably a deliberate history note; but it sends a reader to a file
+> that does not exist, which is [[the-stale-comment-sits-above-the-rewrite]] in its clearest form.
+> Not my file.
 
 **Day one is state B for everybody.** The desk measured production at 2 organizations and 0
 sending identities (relayed through HR, not measured by me). If that holds, the day the refusal

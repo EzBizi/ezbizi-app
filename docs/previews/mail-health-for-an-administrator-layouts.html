@@ -63,10 +63,25 @@ code{font:12px ui-monospace,Consolas,monospace;background:var(--ground);
   two facts that must not become one sentence: <b>(A)</b> the platform transport is
   not sending, which an administrator <i>cannot</i> fix, and <b>(B)</b> this
   organization has no verified sending identity, which they can.
-  <b>B already has a home.</b> <code>widgets/sending_identity_panel.dart</code> is a
-  card in Settings today, with the whole flow behind it and four routes under
-  <code>mail/sending-identity</code>. Its own copy already draws HR&rsquo;s line &mdash; in its
-  <i>second</i> sentence.</p>
+  <b>B had a home when this was drawn, and no longer does.</b>
+  <code>sending_identity_panel.dart</code>, its card, its 21 tests, four routes and
+  the DNS machinery behind them were <b>deleted the same evening</b> &mdash; Jose:
+  <i>&ldquo;I HAVE ANSWERED 4 TIMES ALREADY, SO PLEASE TALK TO EACH OTHER, GET RID
+  OF IT.&rdquo;</i> Re-measured rather than taken on the relay: the file is gone,
+  <code>mail/sending-identity</code> matches nothing in the routes, and
+  <code>tenant_domains</code> is out of <code>MailStatus::summary()</code>.</p>
+  <p class="sub" style="margin-top:10px"><b>The paragraphs below are kept as the
+  record of a brief that was correct, cited, agreed by two sessions, and describing
+  nothing, within six hours.</b> The FINDING survives intact and was never about the
+  card &mdash; two facts that must not become one sentence. <b>A is unaffected and
+  still buildable: desktop 2, mobile 5.</b> <b>B's remedy is now &ldquo;this
+  business needs its own mail server connected&rdquo;</b> (<code>79b5e142</code>,
+  the tenant's own SMTP) &mdash; and <b>which screen that points at is not drawn
+  here, because I have not established it and the mail owner has.</b> That commit is
+  server-only; <code>TenantSmtpHost</code> is an SSRF guard whose docblock says a
+  settings form is intended, and the Email module already has an SMTP form for
+  mailboxes. Inferring which from a class name is the mistake this gallery already
+  made once today.</p>
   <p class="sub" style="margin-top:10px"><b>And its first sentence is false, which
   HR found by measuring the quote I had cited as evidence.</b> The card says
   <i>&ldquo;Newsletters and anything else your own people write go out from this
