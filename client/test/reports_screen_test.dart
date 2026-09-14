@@ -371,7 +371,12 @@ void main() {
     // Absent, not disabled - a chip leading to a refusal tells somebody the
     // app is for other people.
     expect(find.widgetWithText(ChoiceChip, 'Builder'), findsNothing);
-    expect(find.widgetWithText(ChoiceChip, 'Experimental'), findsOneWidget);
+    // Experimental goes too, and for the same reason: its endpoint is gated on
+    // `reports.build` because the report names every member of staff and how
+    // many calls they took. It used to be shown to everyone, which was right
+    // while the pane was an empty placeholder and became wrong the moment it
+    // had contents.
+    expect(find.widgetWithText(ChoiceChip, 'Experimental'), findsNothing);
   });
 
   testWidgets('Experimental is still reachable when Builder is absent', (
@@ -379,10 +384,14 @@ void main() {
   ) async {
     // The chips SHIFT when Builder is missing, so an index remembered from the
     // three-chip layout would land on the wrong destination. Resolved by name.
+    //
+    // Builder is dropped by WIDTH here rather than by permission, because
+    // Experimental needs `reports.build` too - dropping the permission would
+    // drop both chips and leave this test with nothing to shift.
     await _pumpReports(
       tester,
       reports: [_report],
-      permissions: const ['reports.view'],
+      width: 375,
     );
 
     await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
