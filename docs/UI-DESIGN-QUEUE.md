@@ -2158,3 +2158,48 @@ blind**, which is exactly the send where somebody is standing in front of this p
 - **"Has been emailed to them" should become "Sent to them."** HR flagged it themselves. It is a
   handoff claim wearing arrival's clothes, and it is the sentence entry 11 exists to prevent.
 
+### 13 · Developer · switch between desktop and mobile view — **DRAWN, awaiting Jose**
+
+`docs/previews/mobile-view-switch-layouts.html`. Jose, 2026-09-14: *"can we add a developer only
+icon on the top bar next to the phone icon, that let's u switch between desktop view and mobile
+view?"*
+
+Three desktop (how you get in) and three mobile (how you know you are in it and get back out).
+Placement is settled by the ask — after `AvailabilityButton` in the bar's `actions:`
+(`main.dart:1019`), which is the phone icon he means. Gate is `me.development != null`, the same
+one the Development rail uses (§4.2).
+
+> **The work is not the icon. It is that the app decides its shape in nine places.**
+> `main.dart:692` is `width >= 900` and is read a dozen times — but **nine reads of the viewport
+> width live across five files at three breakpoints**: 900 in the shell, the staff shell and Web
+> widgets; 600 in `lead_thread`; 480 in `auth_shell`; and `side_panel` clamping itself to the
+> window. A switch that flips the shell's own boolean produces **a narrow shell with desktop
+> screens inside it** — wrong in exactly the places somebody would be using it to check.
+> **Override the VIEWPORT, not the flag**, and all nine follow for free with no screen knowing
+> this control exists.
+
+**The design problem is not "how do I get to mobile view", it is "how do I know I am in it".** A
+developer who forgets reports a layout defect that is not one. So every option is judged on how
+unmistakable the state is, and each one borrows something different to say it:
+
+- **Desktop 1** borrows nothing and says the least — mobile view is indistinguishable from a
+  narrow window, with a filled icon as the only tell.
+- **Desktop 2** is unmistakable, and is the only option where the viewport is a *known* size, so
+  "it breaks at 390" reproduces between two people.
+- **Desktop 3** shows both layouts live, which is what checking a change actually wants — at the
+  price of two live copies of the app, two sets of screen state, two `initState` fetches, and any
+  timer or socket a screen holds running twice. **Cheap to look at, expensive to be correct.**
+- **Mobile 4** spends bar room that was bought deliberately: that bar overflowed by **266px**
+  (measured 2026-09-10) with both conditional chips showing, which is why the brand is dropped,
+  the punch control is icon-only and the theme cycle is gone on a phone. And it costs it *only
+  for staff* — the hardest overflow to notice, because the people who see it are not the people
+  who report it.
+- **Mobile 5** reuses the bar's existing `bottom:` strip (`_BarStates`, `main.dart:1578`) where
+  states that are not controls already live — at the price of shortening the viewport somebody is
+  using to check whether content fits.
+- **Mobile 6** borrows nothing from the app and renders the product at its true size, which is
+  the argument for it; it covers content, which is the argument against.
+
+**Session state, not a preference.** It is a mode you are in for a minute, and saving it to an
+account would mean signing in on a desktop to a mobile layout with no memory of asking for one.
+
