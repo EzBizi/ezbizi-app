@@ -264,19 +264,98 @@ void main() {
     expect(find.widgetWithText(TextField, 'Name this report'), findsOneWidget);
   });
 
-  testWidgets('the Experimental tab says it is empty on purpose', (
+  testWidgets('the Experimental tab shows the day per person', (
     tester,
   ) async {
-    await _pumpReports(tester, reports: [_report]);
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) => request.url.path.contains('experimental/calls')
+          ? _json(_callDay())
+          : null,
+    );
 
     await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Nothing here yet.'), findsOneWidget);
-    // An empty pane with no sentence is indistinguishable from one that failed
-    // to load, which is the confusion the list's two empty states exist to
-    // avoid.
-    expect(find.textContaining('nothing has gone wrong'), findsOneWidget);
+    expect(find.text('Trey Brannan'), findsOneWidget);
+    expect(find.text('183'), findsOneWidget);
+  });
+
+  testWidgets('a person only one system knows is marked, never merged', (
+    tester,
+  ) async {
+    // RingCentral's "Adeline Pierre Louis-Aghaji" is Workiz's "Adeline
+    // Pierrelouis" and nothing joins them. A near-match rule would credit one
+    // person's work to another, so the screen SAYS which side knows them.
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) => request.url.path.contains('experimental/calls')
+          ? _json(_callDay())
+          : null,
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('calls only'), findsOneWidget);
+  });
+
+  testWidgets('the Workiz accounts the jobs column covers are named', (
+    tester,
+  ) async {
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) => request.url.path.contains('experimental/calls')
+          ? _json(_callDay())
+          : null,
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+
+    // The accounts are disjoint and the same people book into all of them, so
+    // a count that silently covers fewer is wrong rather than partial.
+    expect(find.textContaining('Nationwide, NJ'), findsOneWidget);
+  });
+
+  testWidgets('a refused Workiz account is named, not folded away', (
+    tester,
+  ) async {
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) => request.url.path.contains('experimental/calls')
+          ? _json(_callDay(failed: const ['NJ']))
+          : null,
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Did not answer: NJ'), findsOneWidget);
+  });
+
+  testWidgets('a missing vendor reads as not connected, not as no calls', (
+    tester,
+  ) async {
+    // An empty report and a missing connection look identical and mean
+    // opposite things.
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) => request.url.path.contains('experimental/calls')
+          ? _json(_callDay(connected: false))
+          : null,
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('RingCentral is not connected.'), findsOneWidget);
+    expect(find.text('Trey Brannan'), findsNothing);
   });
 
   testWidgets('without reports.build there is no Builder tab at all', (
@@ -309,7 +388,11 @@ void main() {
     await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Nothing here yet.'), findsOneWidget);
+    // Reached the Experimental pane, not the Builder that used to sit at this
+    // index when all three chips were present. The day bar is the pane's own
+    // furniture and renders whether or not the request succeeds.
+    expect(find.byIcon(Icons.chevron_left), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Name this report'), findsNothing);
   });
 
   testWidgets('New report jumps to the Builder tab', (tester) async {
@@ -442,3 +525,52 @@ const _me = {
     'path': ['Everdoors'],
   },
 };
+
+/// The Experimental endpoint's payload, shaped from the live one.
+Map<String, dynamic> _callDay({
+  bool connected = true,
+  List<String> failed = const [],
+}) => connected
+    ? {
+        'connected': true,
+        'timezone': 'America/New_York',
+        'day': '2026-09-14',
+        'workiz_accounts': ['Nationwide', 'NJ'],
+        'workiz_failed': {for (final a in failed) a: 'refused'},
+        'totals': {
+          'calls': 280,
+          'answered': 183,
+          'reached_nobody': 81,
+          'new_client': 135,
+          'existing_client': 66,
+          'jobs': 66,
+        },
+        'people': [
+          {
+            'person': 'Trey Brannan',
+            'rang': 55,
+            'answered': 51,
+            'new_client': 35,
+            'existing_client': 14,
+            'jobs': 16,
+            'in_calls': true,
+            'in_jobs': true,
+          },
+          {
+            'person': 'Ranya Lara',
+            'rang': 3,
+            'answered': 2,
+            'new_client': 0,
+            'existing_client': 1,
+            'jobs': 0,
+            'in_calls': true,
+            'in_jobs': false,
+          },
+        ],
+      }
+    : {
+        'connected': false,
+        'missing': 'RingCentral',
+        'day': '2026-09-14',
+        'timezone': 'America/New_York',
+      };
