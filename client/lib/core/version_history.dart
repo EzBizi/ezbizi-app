@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0209',
+      date: '14 Sep 2026',
+      items: [
+        'Callers can now wait in a queue instead of going straight to voicemail, and are told their place in the line.',
+        'Ring groups gained a Hold the caller in a queue option, with a hold time, the announcements, and hold music.',
+        'Emailing an inspection report to a customer is switched off, and an automation that uses it now records why on every run rather than failing quietly. EzBizi mail carries EzBizi messages only - sign-ins, password resets and account notices - and a report to a customer would go out over it whatever sending address a branch has set up.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0208',
       date: '14 Sep 2026',
       items: [
