@@ -38,8 +38,14 @@ use App\Support\Social\SocialProvider;
  * enforcement are what the tenant's provider is doing for them today and what
  * EzBizi would have to build to replace it.
  *
- * So the decision is now OPEN rather than blocked, and it is Jose's. If it is
- * taken, it becomes another arm of this match — still not a rewrite.
+ * **Asked and answered: no.** Jose, 2026-09-14, on the recommendation above —
+ * EzBizi does not send newsletters itself, and SES being out of the sandbox
+ * does not change that. A tenant sends through their own provider.
+ *
+ * So this is a settled decision and not a pending one. If it is ever reopened
+ * it becomes another arm of this match — still not a rewrite — but do not
+ * reopen it on the strength of SES capacity alone, because capacity was never
+ * the argument.
  */
 final class NewsletterSenders
 {
