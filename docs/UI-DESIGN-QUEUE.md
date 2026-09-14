@@ -2182,6 +2182,21 @@ as well as a screen; it just carries *which of the provable states*, never a par
 > desktop options: fold the reason into the sentence (1), put it in a status strip (2), or
 > promote the address to the subject of the panel (3).
 
+> **And the fix is a REISSUE, not a field edit — which changes the label, not the layout.**
+> HR measured the surface: four routes (`routes/api.php:927-933` — index, store, resend, destroy)
+> and **no PATCH**, so correcting an address is new server work whichever option wins. The shape
+> matters more than the cost. **If the typo'd address belongs to a real person, that person is
+> holding a working invitation to somebody else's organization.** Repointing the row at the
+> corrected address leaves their link alive while the screen says the problem is fixed — and that
+> is worst in the SUCCESS state, which is exactly where an always-available correction is most
+> useful. The semantics already exist and are tested: `resend` mints a new token and kills the
+> old one (`hr_screen_test`: *"resending mints a new link, and says the old one is dead"*).
+>
+> So the control is labelled **"Re-invite at a different address"** with *"The current link stops
+> working"* under it, in all six options, from one definition. **"Fix the address" was a label
+> describing a field edit attached to an act that revokes and reissues** — a describer
+> contradicting the described, which is the rule I spent this week giving other people.
+
 **Designed knowing a state is coming.** HR measured that SES event ingestion is being built —
 the SNS subscription is currently EMAIL protocol to a human mailbox, so events reach a person and
 not the app, and HTTPS ingestion into a table keyed by recipient and message id is in progress.

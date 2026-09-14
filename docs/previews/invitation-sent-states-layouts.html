@@ -88,6 +88,16 @@ code{font:12px ui-monospace,Consolas,monospace;background:var(--ground);
   address on record whatever happened, so the next invite goes to the same typo.
   &ldquo;This address is wrong&rdquo; gets said once there is a typed bounce event to
   say it with.</p>
+  <p class="sub" style="margin-top:10px"><b>And correcting an address is a REISSUE,
+  not a field edit &mdash; HR measured that too, and it changes the label rather than
+  the layout.</b> If the typo&rsquo;d address belongs to a real person, <b>that person
+  is holding a working invitation to somebody else&rsquo;s organization.</b> Quietly
+  repointing the row at the corrected address leaves their link alive while the screen
+  says the problem is fixed &mdash; and that is worst in the SUCCESS state, which is
+  exactly where this control is most useful. The semantics already exist and are
+  tested: <code>resend</code> mints a new token and kills the old one. So the control
+  reads as re-inviting, and says the current link stops working, because that is what
+  happens.</p>
 </header>
 <div id="nums"></div>
 <div id="ctl"><b>State:</b></div>
@@ -157,13 +167,29 @@ function urlBox(){ return '<div class="url">' + URL + '</div>'; }
 function copyBtn(wide){
   return '<div class="btn' + (wide ? ' wide' : '') + '">⧉ Copy link</div>';
 }
+
+/* Correcting an address is a REISSUE, not a field edit, and the label has to
+   say so. There is no endpoint to change an invitation's address (four routes:
+   index, store, resend, destroy) so this is new server work either way -- but
+   the shape is `resend`, which already mints a new token and kills the old one.
+   It has to: if the typo'd address belongs to a real person, they are holding a
+   working invitation to somebody else's organization, and quietly repointing
+   the row at the corrected address leaves that link alive while the screen says
+   the problem is fixed. Worst in the SUCCESS state, which is exactly where this
+   control is most useful. */
+function fixBtn(opts){
+  opts = opts || {};
+  return '<div class="btn' + (opts.wide ? ' wide' : '') +
+    (opts.pri ? ' pri' : '') + '">✎ Re-invite at a different address</div>' +
+    '<div class="why" style="margin-top:6px">The current link stops working.</div>';
+}
 function foot(){ return '<div class="ft"><div class="btn pri" style="margin:0">Done</div></div>'; }
 
 /* ── 1 — today's shape, the reason folded into the sentence ───── */
 function D1(){
   return '<div class="panel">' + head('Invitation ready') +
     '<div class="bd"><div class="say">' + say() + '</div>' +
-    (fixable() ? '<div class="btn">✎ Fix the address</div> ' : '') +
+    (fixable() ? fixBtn() : '') +
     urlBox() + copyBtn() + '</div>' + foot() + '</div>' +
     '<div class="note"><b>Nothing new on the screen.</b> The one sentence names ' +
     'which failure it is, and the failing case grows one button. A bounced ' +
@@ -183,7 +209,7 @@ function D2(){
     '<div class="strip s-' + tone() + '"><span class="ic">' + ic + '</span>' +
     '<span class="tx"><b>' + heading() + '</b>' +
     (why() ? '<span>' + why() + '</span>' : '') + '</span>' +
-    (fixable() ? '<span class="act">Fix address</span>' : '') + '</div>' +
+    (fixable() ? '<span class="act">Re-invite&hellip;</span>' : '') + '</div>' +
     '<div class="say">' + say() + '</div>' +
     urlBox() + copyBtn() + '</div>' + foot() + '</div>' +
     '<div class="note"><b>The state is legible before the sentence is read</b>, ' +
@@ -208,7 +234,7 @@ function D3(){
       '<span class="em">' + addr() + '</span>' +
       '<span class="tag ' + tg[0] + '">' + tg[1] + '</span>' +
       (fixable() ? '<span class="act" style="color:var(--primary);font-weight:700;' +
-        'cursor:pointer">Fix</span>' : '') + '</div>' +
+        'cursor:pointer">Re-invite&hellip;</span>' : '') + '</div>' +
     (why() ? '<div class="why' + (blamed() ? ' bad' : '') + '">' + why() + '</div>' : '') +
     '<div class="say" style="margin-top:14px">' + say() + '</div>' +
     urlBox() + copyBtn() + '</div>' + foot() + '</div>' +
@@ -227,10 +253,9 @@ function M4(){
   return '<div class="phone">' + head('Invitation ready') +
     '<div class="bd">' +
     (blamed()
-      ? '<div class="btn pri wide" style="margin-top:0">✎ Fix the address</div>' +
-        copyBtn(true)
+      ? fixBtn({wide:true, pri:true}) + copyBtn(true)
       : '<div class="btn pri wide" style="margin-top:0">⧉ Copy link</div>' +
-        '<div class="btn wide">✎ Fix the address</div>') +
+        fixBtn({wide:true})) +
     '<div class="say" style="margin-top:14px">' + say() + '</div>' +
     urlBox() + '</div>' + foot() + '</div>' +
     '<div class="note">The thing to DO is the first thing on the screen and a ' +
@@ -251,7 +276,7 @@ function M5(){
     '<span class="tx"><b>' + heading() + '</b>' +
     (why() ? '<span>' + why() + '</span>' : '') + '</span></div>' +
     '<div class="say">' + say() + '</div>' + urlBox() +
-    (fixable() ? '<div class="btn wide">✎ Fix the address</div>' : '') +
+    (fixable() ? fixBtn({wide:true}) : '') +
     copyBtn(true) + '</div>' + foot() + '</div>' +
     '<div class="note">Desktop 2 on a phone, with the buttons at the <b>bottom ' +
     'where the thumb is</b> rather than at the top where the eye is. The state ' +
@@ -270,8 +295,8 @@ function M6(){
         bounced:'bad'}[cur] + '">' + heading() + '</span></div>' +
     '<div class="say" style="margin-top:12px">' + say() + '</div>' +
     (blamed()
-      ? '<div class="btn pri wide">✎ Fix the address</div>' + copyBtn(true)
-      : copyBtn(true) + '<div class="btn wide">✎ Fix the address</div>') +
+      ? fixBtn({wide:true, pri:true}) + copyBtn(true)
+      : copyBtn(true) + fixBtn({wide:true})) +
     '<div class="hide">Show the link</div>' +
     '</div>' + foot() + '</div>' +
     '<div class="note"><b>A 68-character URL on a 352px screen is four lines of ' +
