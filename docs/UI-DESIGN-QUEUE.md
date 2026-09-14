@@ -2484,6 +2484,22 @@ this entry exists to avoid, arriving through the badge rather than through the s
 > **A is unaffected by any of this** and is still desktop 2 / mobile 5. Build A; B waits on one
 > sentence from the mail owner, not on a drawing.
 >
+> **Correction to a measurement offered while answering that question, recorded because acting on
+> it could break something.** SES reported that the mailbox form's SMTP fields are never used —
+> *"NOTHING SENDS THROUGH IT... no outbound path in that module at all."* Measured: there is one.
+> `app/Support/Email/ImapReplySender.php` speaks SMTP with a host, user name and password
+> (`EHLO`, `AUTH`), its own docblock names the SMTP host as *"a second field the tenant types"*,
+> and it is reached from `ImapMailboxReader`, which `MailboxesController` uses. The Email module
+> also draws `compose_panel.dart`, `reply_panel.dart` and *"Reply as {address}"*. `smtp_host`
+> appears in **three** files — the controller and two client files — and **not** in the `Mailbox`
+> model, with a control confirming the grep fires.
+>
+> **Their CONCLUSION still stands and the gallery does not change**: B points at no screen. But
+> *"nothing sends through it"* would justify treating those credentials as dead, and deleting or
+> ignoring them breaks replying from an IMAP mailbox. The fork they named is if anything sharper —
+> the credentials are per-mailbox and already spoken for, so *"which mailbox sends the report"* is
+> a real question rather than a naming one.
+>
 > **One thing spotted while re-measuring, and handed over rather than fixed:**
 > `client/lib/screens/settings_screen.dart:90` still points at the deleted file — *"These three
 > lived in sending_identity_panel.dart, whose own docblock called…"* — citing a docblock nobody
