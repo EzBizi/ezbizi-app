@@ -1006,7 +1006,40 @@ class ModuleServiceProvider extends ServiceProvider
                         isRaised: true,
                     ),
                 ],
-                automationActions: [],
+                automationActions: [
+                    /*
+                     * Emailing a finished report to the customer, decided by a
+                     * RULE rather than by a button.
+                     *
+                     * Jose's call, 2026-09-14: "something to be decided in
+                     * automations, not hardcoded". It is the better shape for
+                     * the reason his standing rule gives — every new thing has
+                     * to work with the automations system — but also because
+                     * the three questions a send button would force somebody to
+                     * answer in code (who may send, when, and to whom) are
+                     * exactly the three a rule already answers, per tenant,
+                     * without a deploy.
+                     *
+                     * The execution type is SPELLED OUT rather than derived.
+                     * ActionDefinition's own docblock asks for that whenever an
+                     * action is one implementation of a specific thing rather
+                     * than a generic verb applied to many subjects — this
+                     * renders an inspection report and attaches it, and nothing
+                     * else will ever share it.
+                     *
+                     * Subject-bound: it acts on the report the event is about,
+                     * so it is only meaningful on `inspection.submitted`.
+                     */
+                    new ActionDefinition(
+                        key: 'inspection.report.email',
+                        label: 'Email the report to the customer',
+                        description: 'Send the finished inspection to the customer it was '
+                            .'carried out for, with the PDF attached. Sends from the '
+                            .'its own verified sending address, and does nothing if that '
+                            .'address has not been set up or the customer has no email.',
+                        executionType: 'report.email',
+                    ),
+                ],
             ),
 
             /*
