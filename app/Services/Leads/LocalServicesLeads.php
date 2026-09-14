@@ -83,6 +83,14 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
     public function sync(SocialConnection $connection, ?int $days = null, bool $withConversations = true): array
     {
         $token = GoogleToken::forConnection($connection, 'google_ads');
+
+        // Before deciding what to ask Google for, take back what is already
+        // here. This has to run first: `since()` reads its watermark from the
+        // leads this connection owns, and a reconnected account owns none until
+        // the reclaim runs - so without it every reconnect re-reads from
+        // FIRST_RUN_DAYS and pays for leads it already holds.
+        $reclaimed = $this->reclaim($connection);
+
         $since = $days !== null ? now()->subDays($days) : $this->since($connection);
 
         $fetched = 0;
@@ -117,8 +125,53 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
             'fetched' => $fetched,
             'created' => $created,
             'updated' => $updated,
+            'reclaimed' => $reclaimed,
             'conversations' => $conversations,
         ];
+    }
+
+    /**
+     * Re-attach enquiries this account already produced.
+     *
+     * Disconnecting sets `leads.connection_id` to NULL through the foreign key
+     * rather than deleting the enquiry - correct, because these are the
+     * business's own customers and some are already jobs. Reconnecting then
+     * creates a NEW connection row, and nothing carried the leads across.
+     *
+     * Until `remote_customer_id` existed the only way back was to make Google
+     * send each lead again, which costs quota, is bounded by a date window, and
+     * leaves everything outside that window detached permanently. On
+     * 2026-09-14 that played out three times in one afternoon: a disconnect
+     * orphaned 41,006 leads, two forced re-reads reclaimed 5,430, and a second
+     * reconnect eight minutes later dropped them to 2,547 because the
+     * connection rows had been replaced underneath.
+     *
+     * Google's customer id is the fact that survives all of it. Matching on it
+     * is exact rather than inferred - which matters, because the obvious
+     * alternative was matching by company, and A-1 Chimney has 37 accounts
+     * under one company. A wrong match sends somebody's reply through a
+     * stranger's account.
+     *
+     * Scoped to the organization as well as the customer id. The id is Google's
+     * and is unique to them, but a query that trusts one tenant's column to be
+     * unique across all tenants is a scope hole waiting for the day it is not.
+     *
+     * @return int how many were taken back
+     */
+    private function reclaim(SocialConnection $connection): int
+    {
+        $customerId = (string) ($connection->remote_id ?? '');
+
+        if ($customerId === '') {
+            return 0;
+        }
+
+        return Lead::query()
+            ->where('organization_id', $connection->organization_id)
+            ->where('source', Lead::SOURCE_LOCAL_SERVICES)
+            ->where('remote_customer_id', $customerId)
+            ->whereNull('connection_id')
+            ->update(['connection_id' => $connection->getKey()]);
     }
 
     /**
@@ -827,6 +880,10 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
                             ? $connection->scope_id
                             : null),
                     'connection_id' => $connection->getKey(),
+                    // Google's own id for the account. It survives a disconnect,
+                    // which connection_id does not, and is what lets a reconnect
+                    // re-link this row without asking Google for it again.
+                    'remote_customer_id' => $connection->remote_id,
                     'source' => Lead::SOURCE_LOCAL_SERVICES,
                     'remote_id' => $remoteId,
                     'status' => Lead::STATUS_NEW,
@@ -860,6 +917,10 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
                  * somebody made in the app, and re-seeing the lead is not a
                  * reason to overrule it.
                  */
+                // Stamped whether or not it is an orphan: rows written before
+                // this column existed have it null and are re-seen here.
+                $lead->remote_customer_id ??= $connection->remote_id;
+
                 if ($lead->connection_id === null) {
                     $lead->connection_id = $connection->getKey();
                     $lead->company_id ??= $connection->scope_type === SocialConnection::SCOPE_COMPANY

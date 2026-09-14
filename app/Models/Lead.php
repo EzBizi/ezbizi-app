@@ -162,7 +162,7 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
     protected $dateFormat = 'Y-m-d H:i:s.u';
 
     protected $fillable = [
-        'organization_id', 'company_id', 'franchise_id', 'connection_id', 'job_id',
+        'organization_id', 'company_id', 'franchise_id', 'connection_id', 'remote_customer_id', 'job_id',
         'source', 'is_test', 'remote_id', 'contact_name', 'phone', 'email', 'phone_digits',
         'lead_type', 'category', 'service', 'locale', 'summary', 'note', 'note_by_user_id', 'note_updated_at',
         'status', 'classification', 'classified_at', 'starred_at', 'source_status', 'charge_status', 'received_at', 'synced_at',

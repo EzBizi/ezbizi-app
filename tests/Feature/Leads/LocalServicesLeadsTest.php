@@ -346,6 +346,139 @@ class LocalServicesLeadsTest extends TestCase
         $this->assertSame(1, $this->inTenant($t['org'], fn () => Lead::query()->count()), 'and not by creating a second row');
     }
 
+    /**
+     * A reconnect must take its enquiries back WITHOUT asking Google.
+     *
+     * Adoption-on-re-read was the first fix and it is not enough: it only
+     * reaches leads Google still returns, so anything outside the window stays
+     * detached for good, and each reclaim costs quota. `remote_customer_id` is
+     * the fact that survives a disconnect, so the re-link is local and exact.
+     *
+     * The window is what makes this test different from the adoption one. Here
+     * the lead is OLD - outside anything a sync would fetch - and Google is
+     * faked returning nothing at all. If the reclaim needed Google, this fails.
+     */
+    public function test_a_reconnect_reclaims_old_leads_without_google_returning_them(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $this->viewingCompany($t);
+
+        $first = $this->connected($t);
+
+        // ONE fake, sequenced. Http::fake() stacks rather than replaces, so a
+        // second call later in this test would be ignored and Google would
+        // still be feeding the sync the lead - which is exactly what the
+        // reclaim is supposed to work without.
+        config([
+            'services.google_ads.client_id' => 'client.apps.googleusercontent.com',
+            'services.google_ads.client_secret' => 'client-secret',
+            'services.google_ads.developer_token' => 'dev-token',
+            'services.google_ads.version' => 'v24',
+        ]);
+
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'at-fresh', 'expires_in' => 3600], 200),
+            'googleads.googleapis.com/*' => Http::sequence()
+                ->push(['results' => [[
+                    'localServicesLead' => [
+                        'id' => 'lead-ancient',
+                        'leadType' => 'MESSAGE',
+                        'leadStatus' => 'NEW',
+                        'creationDateTime' => '2024-08-11 09:00:00',
+                        'contactDetails' => ['consumerName' => 'Dana Whitfield'],
+                    ],
+                ]]], 200)
+                ->pushStatus(200)
+                ->whenEmpty(Http::response(['results' => []], 200)),
+        ]);
+
+        $this->signedInAs($t['admin']->fresh())->postJson('/api/v1/leads/sync')->assertOk();
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->firstOrFail());
+        $this->assertSame(
+            $first->remote_id,
+            $lead->remote_customer_id,
+            'the account id must be written down while we still know it',
+        );
+
+        // Disconnect. The enquiry survives; its connection does not.
+        $this->inTenant($t['org'], fn () => $first->delete());
+        $this->assertNull($this->inTenant($t['org'], fn () => Lead::query()->firstOrFail())->connection_id);
+
+        // Reconnect, and Google returns NOTHING. A reclaim that needed the API
+        // would have nothing to work with.
+        $second = $this->connected($t);
+
+        $this->signedInAs($t['admin']->fresh())
+            ->postJson('/api/v1/leads/sync')
+            ->assertOk()
+            ->assertJsonPath('data.fetched', 0);
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->firstOrFail());
+
+        $this->assertSame(
+            $second->getKey(),
+            $lead->connection_id,
+            'the reclaim must re-link from the stored customer id, with no help from Google',
+        );
+    }
+
+    /**
+     * And it must not reclaim somebody else's.
+     *
+     * The positive case above passes just as well for a reclaim that takes
+     * every orphan it can see. A-1 Chimney runs 37 Google Ads accounts under
+     * one company, so "every orphan in this company" would attach a customer's
+     * enquiry to the wrong account - worse than leaving it orphaned, and
+     * invisible until a reply goes out through a stranger's account.
+     */
+    public function test_the_reclaim_leaves_another_accounts_orphan_alone(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $this->viewingCompany($t);
+
+        $mine = $this->connected($t, '4051729356');
+
+        $orphan = $this->inTenant($t['org'], fn () => Lead::query()->create([
+            'organization_id' => $t['org']->id,
+            'company_id' => $t['company']->id,
+            'source' => Lead::SOURCE_LOCAL_SERVICES,
+            'remote_id' => 'lead-belongs-elsewhere',
+            'remote_customer_id' => '9999999999',   // a different account entirely
+            'lead_type' => 'MESSAGE',
+            'status' => Lead::STATUS_NEW,
+            'received_at' => now()->subYear(),
+        ]));
+
+        $this->fakeGoogle(['results' => []]);
+        $this->signedInAs($t['admin']->fresh())->postJson('/api/v1/leads/sync')->assertOk();
+
+        $this->assertNull(
+            $this->inTenant($t['org'], fn () => $orphan->fresh())->connection_id,
+            'an orphan from another account must stay orphaned, whatever company it sits in',
+        );
+
+        // Positive control in the same test: the reclaim is running at all.
+        $own = $this->inTenant($t['org'], fn () => Lead::query()->create([
+            'organization_id' => $t['org']->id,
+            'company_id' => $t['company']->id,
+            'source' => Lead::SOURCE_LOCAL_SERVICES,
+            'remote_id' => 'lead-is-mine',
+            'remote_customer_id' => $mine->remote_id,
+            'lead_type' => 'MESSAGE',
+            'status' => Lead::STATUS_NEW,
+            'received_at' => now()->subYear(),
+        ]));
+
+        $this->signedInAs($t['admin']->fresh())->postJson('/api/v1/leads/sync')->assertOk();
+
+        $this->assertSame(
+            $mine->getKey(),
+            $this->inTenant($t['org'], fn () => $own->fresh())->connection_id,
+            'and one that does match must be taken back, or the test above proves nothing',
+        );
+    }
+
     public function test_a_refused_fetch_puts_googles_reason_on_message_so_the_client_can_show_it(): void
     {
         $t = $this->provisionTenant('A1-Chimney');
