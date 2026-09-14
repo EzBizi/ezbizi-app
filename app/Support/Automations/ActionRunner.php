@@ -361,9 +361,30 @@ class ActionRunner
      *
      * ── Every refusal is a run-log line, not an exception ───────
      *
-     * `asTenant` THROWS when the identity has not proved its domain, which is
-     * right for a controller and wrong here: an automation that raises kills
-     * the rule and tells the tenant nothing they can act on. Caught and
+     * `asTenant` throws only when the resolved identity's TRANSPORT REQUIRES
+     * domain proof and the domain is unproven — NOT whenever a domain is
+     * unproven, which is what this paragraph used to say and what three
+     * sessions separately believed on 2026-09-14.
+     *
+     * The gap is the resolver, not the check. `SendingIdentityResolver::for()`
+     * walks the cascade and, finding no row at any link, ends
+     * `return $this->platform->identity();`. `MailTransport::Platform`'s
+     * `requiresDomainProof()` is false, so `canSend()` returns true on the
+     * first branch and the refusal never fires at all. A tenant who has
+     * configured nothing does not get a throw; they get a send, as EzBizi.
+     *
+     * THAT IS WHY THE EXPLICIT `MailTransport::Platform` CHECK EXISTS BELOW
+     * rather than leaning on this throw. Anybody deleting it as redundant
+     * should read the return path rather than the method name: all three wrong
+     * beliefs — that asTenant binds a tenant to their own domain, that
+     * `isTenantChoosable()` prevents it, that `canSend()` checks verification —
+     * were reasoned from a name or from a neighbouring guard, and none of them
+     * covered the resolver landing on Platform with nobody having chosen it.
+     *
+     * The throw is still real and still caught, because an identity that DOES
+     * require proof and lacks it raises — right for a controller and wrong
+     * here: an automation that raises kills the rule and tells the tenant
+     * nothing they can act on. Caught and
      * returned as `ok: false` carrying the dispatcher's own sentence, which
      * already says what to do about it.
      *
