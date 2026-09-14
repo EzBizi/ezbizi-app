@@ -2357,3 +2357,48 @@ foot beside the version. He complained about the sidebar, but the drawer's was e
 top", and after mobile 1 there is a version at the foot of both to sit next to. Applied to both
 surfaces deliberately; if he meant desktop only, that is one line back.
 
+### 15 · Mail health for an administrator — **DRAWN, awaiting Jose**
+
+`docs/previews/mail-health-for-an-administrator-layouts.html`. Jose said yes to the question
+raised in entry 11: *"1 - yes add a health status"*. HR brought states rather than a layout, which
+is the ask working, and named the thing the design turns on.
+
+**Two facts that must not become one sentence.** (A) the platform transport is not sending —
+nothing reaches anybody, and the administrator **cannot** fix it. (B) this organization has no
+verified sending identity — their own authored mail refuses while EzBizi's invitations and resets
+keep working, and the remedy **is theirs**. One sentence covering both sends somebody to fix the
+wrong thing, which is entry 11's own finding.
+
+> **MEASURED BEFORE DRAWING, AND IT CHANGED THE BRIEF: B already has a home.**
+> `client/lib/widgets/sending_identity_panel.dart` is a card in the Settings screen today, with
+> the whole verification flow behind it and four routes live under `mail/sending-identity`. Its
+> own copy already draws HR's line: *"Newsletters and anything else your own people write go out
+> from this address. Signing in, password resets and joining messages always come from EzBizi,
+> whatever is set here."*
+>
+> So this is **not a new four-state panel**. B is a STATE that card gains; anywhere else gives
+> one fact two voices that can disagree. **A is the gap**, and the options differ on where it
+> goes — because "EzBizi is not delivering anything" is not a setting, and does not belong in a
+> settings card about your own address.
+
+**I nearly reported the opposite, twice.** My first grep used `sending-identities` (plural) and
+found no routes; my second searched the client for the class name and found no screen. Both were
+my search term, not the codebase — the route is `mail/sending-identity`, singular. **Both were
+caught by running a positive control** on a term I knew was present. Had either gone out, HR and
+SES would have been told to build a screen and an API that already exist.
+
+**Nothing in any option shows `missing`.** `MailStatus::summary()` carries it and it is a list of
+environment variable names — `AWS_ACCESS_KEY_ID`. Right for staff, wrong for a customer: EzBizi's
+infrastructure, a wire name on screen, and useless to somebody who cannot act on it. HR flagged
+it; it is the constraint that rules out "the staff panel behind a different permission".
+
+**Option 3 is drawn to be rejected, deliberately rather than never.** One card with one badge is
+the obvious design and the fastest to scan — and its badge has to say one word about two facts
+with two owners and two remedies. "Not sending" covers both and names neither. That is the merge
+this entry exists to avoid, arriving through the badge rather than through the sentence.
+
+**Day one is state B for everybody.** The desk measured production at 2 organizations and 0
+sending identities (relayed through HR, not measured by me). If that holds, the day the refusal
+ships every organization is in B with a perfectly healthy platform — so a design treating B as the
+unusual case is wrong for everyone at once.
+
