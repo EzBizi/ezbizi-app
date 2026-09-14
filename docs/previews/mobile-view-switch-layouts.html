@@ -1,0 +1,250 @@
+<!doctype html><meta charset="utf-8">
+<title>Developer &rsaquo; switch to mobile view &mdash; layouts</title>
+<style>
+/* Palette from client/lib/core/theme.dart light: ink #060808, muted #5B6672,
+   line #060808 @10%, primary #00708F. The developer control is deliberately
+   NOT primary-coloured in its resting state -- it is not a product control. */
+:root{--ink:#060808;--muted:#5B6672;--line:rgba(6,8,8,.10);--primary:#00708F;
+      --dev:#6B4FA8;--paper:#fff;--ground:#f4f6f7;--fill:rgba(6,8,8,.04)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+     font:14px/1.45 -apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:20px 24px 6px}
+h1{margin:0;font-size:18px;font-weight:700;letter-spacing:-.3px}
+.sub{color:var(--muted);font-size:13px;margin:6px 0 0;max-width:800px}
+#nums{display:flex;flex-wrap:wrap;gap:8px;padding:14px 24px 6px}
+#nums button{font:inherit;font-weight:600;background:var(--paper);color:var(--ink);
+  border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
+#nums button[aria-current=true]{background:var(--primary);color:#fff;border-color:var(--primary)}
+#stage{padding:6px 24px 56px}
+.cap{font-size:13px;color:var(--muted);margin:0 0 14px}
+
+/* a fake desktop window */
+.win{width:760px;border:1px solid var(--line);border-radius:12px;overflow:hidden;
+     background:var(--paper);box-shadow:0 1px 4px rgba(0,0,0,.07)}
+.bar{display:flex;align-items:center;gap:10px;padding:0 12px;height:52px;
+     border-bottom:1px solid var(--line);background:var(--paper)}
+.brand{font-weight:800;letter-spacing:-.4px;font-size:15px;color:var(--primary)}
+.grow{flex:1}
+.ico{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;
+     justify-content:center;font-size:15px;color:var(--muted);cursor:pointer}
+.ico.on{background:var(--dev);color:#fff}
+.ico.dev{color:var(--dev)}
+.av{width:28px;height:28px;border-radius:50%;background:var(--fill);
+    display:flex;align-items:center;justify-content:center;font-size:11px;
+    font-weight:700;color:var(--muted)}
+.body{display:flex;height:300px}
+.rail{width:150px;border-right:1px solid var(--line);background:var(--fill);
+      padding:10px 8px;font-size:12.5px;color:var(--muted)}
+.rail div{padding:6px 8px;border-radius:7px}
+.rail div.sel{background:var(--paper);color:var(--ink);font-weight:600}
+.page{flex:1;padding:16px}
+.h2{font-weight:700;margin-bottom:4px}
+.ln{height:9px;background:var(--fill);border-radius:4px;margin:7px 0}
+.ln.s{width:55%}.ln.m{width:80%}
+
+/* phone frame */
+.dev{width:300px;border:9px solid #1b2126;border-radius:26px;overflow:hidden;
+     background:var(--paper);box-shadow:0 6px 22px rgba(0,0,0,.22)}
+.dev .bar{height:46px;padding:0 8px}
+.pbody{height:250px;padding:12px}
+.strip{display:flex;align-items:center;gap:8px;padding:7px 12px;font-size:12px;
+       font-weight:700;background:rgba(107,79,168,.09);color:var(--dev);
+       border-bottom:1px solid rgba(107,79,168,.25)}
+.strip .x{margin-left:auto;cursor:pointer}
+.dim{background:#2a3138;padding:22px;display:flex;justify-content:center;
+     align-items:flex-start;gap:18px}
+.pill{position:relative;margin:-34px auto 0;width:fit-content;background:var(--dev);
+      color:#fff;border-radius:999px;padding:8px 16px;font-size:12.5px;font-weight:700;
+      box-shadow:0 3px 10px rgba(0,0,0,.25);display:flex;gap:10px;align-items:center}
+.pill .x{opacity:.8;cursor:pointer}
+.tip{position:relative;display:inline-block}
+.tipbox{position:absolute;top:38px;right:-6px;background:#1b2126;color:#fff;
+        font-size:11.5px;border-radius:7px;padding:6px 9px;white-space:nowrap}
+.note{margin:16px 0 0;padding:13px 15px;border:1px solid var(--line);border-radius:10px;
+      font-size:13px;background:var(--paper);max-width:700px;line-height:1.55}
+.note b{font-weight:700}
+code{font:12px ui-monospace,Consolas,monospace;background:var(--ground);
+     border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.warn{margin:14px 0 0;padding:13px 15px;border:1px solid rgba(107,79,168,.4);
+      border-radius:10px;background:rgba(107,79,168,.05);font-size:13px;
+      max-width:700px;line-height:1.55}
+</style>
+<header>
+  <h1>Developer &rsaquo; switch to mobile view &mdash; pick one desktop and one mobile</h1>
+  <p class="sub">A staff-only control beside the availability (phone) icon. <b>Desktop
+  1&ndash;3 are how you get INTO mobile view; mobile 4&ndash;6 are how you know you are
+  in it and get back out</b> &mdash; on a bar I measured at 266px of overflow earlier
+  this week, so the way back cannot simply be "another icon".</p>
+</header>
+<div id="nums"></div>
+<div id="stage"></div>
+<script>
+function bar(opts){
+  opts = opts || {};
+  return '<div class="bar"><span class="brand">EzBizi</span>' +
+    '<span style="color:var(--muted);font-size:13px">Everdoors</span>' +
+    '<span class="grow"></span>' +
+    '<span class="ico">⏱</span>' +
+    '<span class="ico">☎</span>' +
+    (opts.dev === undefined ? '<span class="ico dev">▭</span>' :
+     opts.dev === 'on' ? '<span class="ico on">▭</span>' :
+     opts.dev === 'tip' ?
+       '<span class="tip"><span class="ico dev">▭</span>' +
+       '<span class="tipbox">Mobile view &middot; staff only</span></span>' : '') +
+    (opts.theme === false ? '' : '<span class="ico">◐</span>') +
+    '<span class="ico">🔔</span><span class="av">JS</span></div>';
+}
+function page(){
+  return '<div class="page"><div class="h2">Customers</div>' +
+    '<div class="ln m"></div><div class="ln"></div><div class="ln s"></div>' +
+    '<div class="ln m"></div><div class="ln"></div></div>';
+}
+function rail(){
+  return '<div class="rail"><div class="sel">Dashboard</div><div>Customers</div>' +
+    '<div>Jobs</div><div>Scheduling</div><div>Reports</div></div>';
+}
+function phonePage(){
+  return '<div class="pbody"><div class="h2">Customers</div>' +
+    '<div class="ln m"></div><div class="ln"></div><div class="ln s"></div>' +
+    '<div class="ln m"></div></div>';
+}
+
+/* ── 1 — the window itself goes narrow ───────────────────────── */
+function D1(){
+  return '<div class="win">' + bar({dev:'tip'}) +
+    '<div class="body">' + rail() + page() + '</div></div>' +
+    '<div style="height:14px"></div>' +
+    '<div class="win" style="width:380px">' + bar({dev:'on', theme:false}) +
+    '<div class="body">' + page() + '</div></div>' +
+    '<div class="note"><b>One icon, one state, nothing else on screen.</b> The ' +
+    'app renders at phone width in the window you already have; the icon fills ' +
+    'in to say it is on, and pressing it again puts the window back.' +
+    '<br><br>Cheapest to build and the least to explain. <b>The cost is that ' +
+    'mobile view looks exactly like a narrow window</b>, which is the one thing ' +
+    'this control can be mistaken for — and a developer who forgets they are in ' +
+    'it reports a layout bug that is not one. The filled icon is the only tell.' +
+    '</div>';
+}
+
+/* ── 2 — a phone frame on a dimmed backdrop ──────────────────── */
+function D2(){
+  return '<div class="win">' + bar({dev:'on'}) +
+    '<div class="dim"><div class="dev">' + bar({dev:'on', theme:false}) +
+      phonePage() + '</div></div></div>' +
+    '<div class="note"><b>Unmistakable, which is the whole argument.</b> The app ' +
+    'renders inside a device frame on a dimmed backdrop, so there is no moment ' +
+    'where somebody wonders which layout they are looking at. The surrounding ' +
+    'chrome is obviously not the product.<br><br>It is also the only option ' +
+    'where the viewport is a KNOWN size rather than whatever the window ' +
+    'happens to be — so "it breaks at 390" is reproducible between two people.' +
+    '<br><br><b>The cost:</b> the most to build, and the frame is chrome that ' +
+    'exists in no real product. Worth it only if this is used for checking ' +
+    'layouts rather than for glancing at them.</div>';
+}
+
+/* ── 3 — both at once ────────────────────────────────────────── */
+function D3(){
+  return '<div class="win" style="width:820px">' + bar({dev:'on'}) +
+    '<div class="body" style="height:320px">' + rail() + page() +
+    '<div style="width:310px;border-left:1px solid var(--line);background:var(--fill);' +
+    'padding:14px;display:flex;justify-content:center">' +
+    '<div class="dev" style="border-width:7px;width:260px">' +
+    bar({theme:false}) + '<div class="pbody" style="height:200px">' +
+    '<div class="h2">Customers</div><div class="ln m"></div><div class="ln"></div>' +
+    '<div class="ln s"></div></div></div></div>' +
+    '</div></div>' +
+    '<div class="note"><b>Both layouts live, side by side, off one app.</b> This ' +
+    'is what somebody checking a change actually wants — you change a widget ' +
+    'and watch both shapes move, instead of toggling and remembering what the ' +
+    'other one looked like.<br><br><b>The cost is real and I would not hide ' +
+    'it:</b> two live copies of the app means two of everything behind it — ' +
+    'two sets of screen state, two initState fetches, two of any timer or ' +
+    'socket a screen holds. That is a heavier thing than a view switch, and it ' +
+    'can make a screen behave differently purely because it is being watched. ' +
+    '<b>Cheap to look at, expensive to be correct.</b></div>';
+}
+
+/* ── 4 — the icon stays in the bar ───────────────────────────── */
+function M4(){
+  return '<div class="dev">' + bar({dev:'on', theme:false}) + phonePage() + '</div>' +
+    '<div class="note">The same control, filled in, still in the bar. One place ' +
+    'to look, in and out, and nothing new to learn.<br><br><b>The cost is ' +
+    'measured, not theoretical.</b> That bar overflowed by 266px earlier this ' +
+    'week with both conditional chips showing, which is why the brand is ' +
+    'dropped, the punch control is icon-only and the theme cycle is gone on a ' +
+    'phone. <b>Adding a permanent icon spends room that was bought deliberately</b> ' +
+    '— and it only costs it for staff, which makes it the hardest kind of ' +
+    'overflow to notice, since the people who see it are not the people who ' +
+    'report it.</div>';
+}
+
+/* ── 5 — a strip under the bar ───────────────────────────────── */
+function M5(){
+  return '<div class="dev">' + bar({theme:false}) +
+    '<div class="strip">▭ Mobile view<span class="x">Exit ✕</span></div>' +
+    phonePage() + '</div>' +
+    '<div class="note"><b>Out of the bar entirely, into a strip that already ' +
+    'exists.</b> The app bar has a <code>bottom:</code> holding the two ' +
+    'conditional chips — set up two-factor, read only — which is where states ' +
+    'that are not controls already live. This is one more of those, and it ' +
+    'costs the bar nothing.<br><br>It says what it is in words rather than in ' +
+    'an icon state, and the way out is a target rather than a second press of ' +
+    'the thing that got you here.<br><br><b>The cost:</b> it takes vertical ' +
+    'room from the page on the surface with the least of it — and a developer ' +
+    'checking whether content fits is then checking it against a viewport ' +
+    'this control has shortened.</div>';
+}
+
+/* ── 6 — a floating pill ─────────────────────────────────────── */
+function M6(){
+  return '<div class="dev">' + bar({theme:false}) + phonePage() + '</div>' +
+    '<div class="pill">▭ Mobile view <span class="x">Exit</span></div>' +
+    '<div class="note" style="margin-top:26px"><b>Nothing in the chrome at all.</b> ' +
+    'The pill floats over the app near the bottom, where a thumb is, and the ' +
+    'app underneath is exactly the app — same bar, same height, same viewport ' +
+    'as a real phone.<br><br><b>That is the argument:</b> this is the only ' +
+    'option where mobile view renders the product at its true size with nothing ' +
+    'borrowed from it. A strip shortens the page; an icon spends bar room; this ' +
+    'spends neither, and is impossible to mistake for product chrome.' +
+    '<br><br><b>The cost:</b> it covers content, which is the one thing you are ' +
+    'there to look at. It would have to be draggable or dismissable-to-an-edge, ' +
+    'and that is more to build than either of the others.</div>';
+}
+
+var OPT = {
+  1:['1 &middot; Desktop &mdash; the window itself goes narrow', D1],
+  2:['2 &middot; Desktop &mdash; a phone frame on a dimmed backdrop', D2],
+  3:['3 &middot; Desktop &mdash; both layouts at once, live', D3],
+  4:['4 &middot; Mobile &mdash; the icon stays in the bar, filled in', M4],
+  5:['5 &middot; Mobile &mdash; a strip under the bar, where states already live', M5],
+  6:['6 &middot; Mobile &mdash; a floating pill, nothing borrowed from the app', M6]
+};
+var WARN = '<div class="warn"><b>One thing that is true of every option, and it ' +
+  'is the whole of the work.</b> The shell decides its shape from one line — ' +
+  '<code>main.dart:692</code>, <code>width >= 900</code> — but <b>nine places ' +
+  'across five files read the viewport width directly</b>, at three different ' +
+  'breakpoints: 900 in the shell and the staff shell and Web widgets, 600 in ' +
+  '<code>lead_thread</code>, 480 in <code>auth_shell</code>, and ' +
+  '<code>side_panel</code> clamping itself to the window.<br><br>' +
+  'So a switch that flips the shell&rsquo;s own boolean gives you a <b>narrow ' +
+  'shell with desktop screens inside it</b> &mdash; a mobile view that is ' +
+  'wrong in exactly the places somebody would be using it to check. The switch ' +
+  'has to override the VIEWPORT rather than the flag, and then all nine follow ' +
+  'for free and no screen needs to know this control exists.</div>';
+
+var nums = document.getElementById('nums'), stage = document.getElementById('stage');
+function show(k){
+  stage.innerHTML = '<p class="cap">' + OPT[k][0] + '</p>' + OPT[k][1]() + WARN;
+  Array.prototype.forEach.call(nums.children, function(b){
+    b.setAttribute('aria-current', b.dataset.k === String(k));
+  });
+}
+Object.keys(OPT).forEach(function(k){
+  var b = document.createElement('button');
+  b.textContent = (k < 4 ? 'Desktop ' : 'Mobile ') + k;
+  b.dataset.k = k; b.onclick = function(){ show(+k); };
+  nums.appendChild(b);
+});
+show(1);
+</script>

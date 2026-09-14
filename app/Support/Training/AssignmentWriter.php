@@ -257,6 +257,26 @@ final class AssignmentWriter
             // an outbox payload is an exfiltration surface (`webhook` ships
             // it verbatim to a URL the tenant chose), and task 8's own retreat
             // from shipping more than a trigger's words promised.
+            // IF YOU ARE HERE TO MAKE THIS EMAIL THE LEARNER: DO NOT.
+            //
+            // Jose's ruling, 2026-09-14, in his words: "it should be an option
+            // to be enabled on automations, never hardcoded." A training email
+            // is a rule a COMPANY builds and enables on this very event -
+            // `training.assigned` - not a send wired in here, and not a step
+            // hardcoded into HR's onboarding sequence either. Each organization
+            // decides whether its people get mail, the same way it decides
+            // every other training setting.
+            //
+            // This emit is already the whole of Training's half: the payload
+            // below carries who was assigned what and by when, so an email
+            // action can resolve a recipient without reaching into these
+            // tables. What is missing is the ACTION, which is the Email
+            // module's (MailDispatcher::asTenant is the transport; no
+            // automation action calls it yet). Asked for on 2026-09-14.
+            //
+            // Note for whoever builds it: a ROLE target names a role, not a
+            // person - Training never expands one into per-user rows - so
+            // "email the assignee" has no single address there.
             $this->events->emit('training.assigned', $assignment, [
                 'after' => [
                     'guide_id' => $assignment->guide_id,

@@ -218,6 +218,23 @@ class MailboxesController extends Controller
      * before it has been ruled out: an organization with no inbox at all cannot
      * have one out of view, and an inbox cannot be ungranted if it is not in
      * view to begin with.
+     *
+     * ── `none_granted` also absorbs a REACH problem, and that is a
+     *    known imprecision rather than an oversight ───────────────
+     *
+     * `readable()` is grant AND reach (§4 authority over the level the inbox
+     * hangs off), so a list can be empty because the role holds no grant OR
+     * because the person's assignment does not cover the company the inbox
+     * hangs off. Both report `none_granted`, which would send the second person
+     * to an administrator who can see they HAVE a grant.
+     *
+     * A fourth arm was written for it and then removed, because I could not
+     * construct the state: a test user with no assignment reaches everything,
+     * and adding a franchise assignment did not narrow `canActOnCompany` for
+     * another company either. An arm nothing can exercise is the thing this
+     * whole method exists to stop -- a plausible-looking answer nobody has
+     * seen happen. If somebody does reproduce it, the split is two lines and
+     * `MailboxAccess::reaches()` is already public for it.
      */
     private function emptyBecause(User $user, bool $isEmpty): ?string
     {

@@ -2612,6 +2612,13 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Device went offline',
                         description: 'A device stopped reporting for longer than the allowed gap.',
                     ),
+                    new TriggerDefinition(
+                        key: 'monitoring.security_needs_attention',
+                        label: 'Device security needs attention',
+                        description: 'Windows reported the antivirus, firewall or '
+                            .'updates on a device as off or paused. Raised once when it '
+                            .'happens, not again until it is fixed and happens again.',
+                    ),
                 ],
                 subject: new AutomationSubject(MonitoredDevice::class, 'Device', key: 'monitoring'),
                 sidebar: true,

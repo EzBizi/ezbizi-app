@@ -148,6 +148,17 @@ use Illuminate\Support\Facades\DB;
  * one run — however large — with memory bounded by the chunk size rather
  * than by a `--limit` a forgotten backlog could silently strand behind (see
  * the option's removal, task-10 review round 2).
+ * -- No email from here, by the owner's ruling ----------------------
+ *
+ * Jose, 2026-09-14: "it should be an option to be enabled on automations,
+ * never hardcoded." So this sweep raises `training.expired` and stops. A
+ * company that wants its people emailed when a pass lapses builds a rule on
+ * that event and enables it; one that does not, does not. Adding a send here
+ * would take that decision away from every organization at once.
+ *
+ * Nothing was ever stubbed here waiting for mail to work: measured 2026-09-14
+ * when SES production access was granted, Training sends no email by any path
+ * and never has. There is no switch here to turn on.
  */
 final class ExpireTrainingPasses extends Command
 {
