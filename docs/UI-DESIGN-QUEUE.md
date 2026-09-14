@@ -2040,3 +2040,42 @@ kept in the gallery rather than deleted, because what was chosen over what is th
 > My call: one wedge and one row labelled with its count, or keep the wedges and collapse the
 > legend to a single row. Both separate is the one option that is not available. With Dashboard.
 
+### 11 · Email states · one vocabulary for two modules — **RULE SET, no screens yet**
+
+SES production access granted 2026-09-14, so Automations and HR are both about to wire sending.
+Two modules building email screens at the same time is how a product ends up with two words for
+one idea, so the vocabulary is decided before either draws anything. Sent to both sessions
+verbatim; **no screens are queued and none are drawn.**
+
+**Measured 2026-09-14, not assumed: EzBizi cannot observe email delivery.** No SNS route in
+`routes/api.php`, no bounce or complaint handler, and the `delivered_at` columns a grep turns up
+are the audit outbox (`create_audit_events_table`) and the workflow event bus
+(`create_workflow_tables:133`) — neither is email. The two observable facts are **handed to SES**
+and **SES refused it at handoff**.
+
+> **Never print a claim the app cannot observe.** "Delivered" is a sentence nothing in the
+> codebase can support. If SES event destinations are ever wired this changes — and it must
+> change *visibly*, by a screen gaining a state, not by a word quietly becoming true.
+
+The words:
+
+- **"Sent"** — the handoff. True, plain, and never paired with a promise of arrival.
+- **"Couldn't send"** — refused at handoff, and it must say WHICH: not an address, unverified
+  sending identity, rate limit. That is the half somebody can act on.
+- **Nothing** between them. A "Pending" for a handoff that already completed is a spinner that
+  never resolves.
+
+**Automations has one extra state and HR does not.** An automation action can be *queued* long
+before it is attempted, and that IS observable — its own event bus carries `available_at`,
+`attempts` and `failed_at`. Worth drawing, and it must be named for what it is: **waiting to
+run, not waiting to arrive.** The two look identical on screen and mean opposite things to
+somebody working out why a customer never heard from them.
+
+**The precedent, from Email the same day.** An empty state read *"an inbox added on another
+company stays there, switch to that company"* — a correct sentence about the wrong problem. The
+eight people who saw it had a permission problem, the inboxes were already in their view, and
+the only person who could fix it never sees that screen. **A confident sentence naming the wrong
+cause is worse than a vague one**, because it sends somebody hunting. Email's fix was to publish
+which of three reasons applies rather than assuming one, and that is the shape every failure
+state here should take.
+
