@@ -35,7 +35,8 @@ class AvailabilityButton extends StatefulWidget {
   State<AvailabilityButton> createState() => _AvailabilityButtonState();
 }
 
-class _AvailabilityButtonState extends State<AvailabilityButton> {
+class _AvailabilityButtonState extends State<AvailabilityButton>
+    with WidgetsBindingObserver {
   bool _hasLine = false;
   bool _busy = false;
   String _state = 'registered';
@@ -55,14 +56,42 @@ class _AvailabilityButtonState extends State<AvailabilityButton> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _service.addListener(_deskChanged);
     _load();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _service.removeListener(_deskChanged);
     super.dispose();
+  }
+
+  /// Somebody came back to this app, so ask the server what they are now.
+  ///
+  /// ── Why this exists ──────────────────────────────────────────────
+  ///
+  /// Availability belongs to the PERSON and this button belongs to one app.
+  /// It read the server once, at startup, and after that only heard about
+  /// changes its own app made — so setting Do Not Disturb on the web left the
+  /// desktop showing a green dot indefinitely. Jose reported exactly that:
+  /// web away, desktop available, and a call arriving while the two disagreed.
+  ///
+  /// ── Why the app coming forward and not a timer ───────────────────
+  ///
+  /// The moment the answer matters is the moment somebody looks, and that is
+  /// what this is. A periodic refresh would also work and costs more than it
+  /// buys: it polls every desk in the company all day to catch a change that
+  /// only matters when a person is reading the icon, and `Timer.periodic`
+  /// makes `pumpAndSettle` wait for ever, so it would have to be defused in
+  /// every test that renders the app bar — which is most of them.
+  ///
+  /// Switching windows counts. That is the case in the report: two apps side
+  /// by side, and clicking between them is what brings this one forward.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _load();
   }
 
   /// A call started or ended.

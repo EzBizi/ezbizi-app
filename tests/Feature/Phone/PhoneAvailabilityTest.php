@@ -174,6 +174,180 @@ class PhoneAvailabilityTest extends TestCase
     }
 
     /**
+     * A desk starting somewhere NEW cannot make an away person available.
+     *
+     * ── The third report, and the one the guards could not reach ─────
+     *
+     * Jose: web on Do Not Disturb, desktop showing available, and a call
+     * rang him anyway. Measured on his account before changing anything —
+     * **two** presence rows across **four** connections, both `dnd`.
+     *
+     * That is the mechanism. `setMine` sets every row the person HAS, and a
+     * desk opening on a connection they have never used calls
+     * `updateOrCreate`, finds nothing, and creates one. A new row has no
+     * previous state, so a guard that compares against the previous state
+     * cannot fire, and the row is born taking calls.
+     *
+     * His words, and they name the fix better than the code did: it should
+     * put my entire account on Do Not Disturb, not just my current session.
+     */
+    public function test_a_desk_on_a_new_connection_is_born_away(): void
+    {
+        $t = $this->provisionTenant();
+        [$user, $rows] = $this->deskOnTwoCompanies($t);
+
+        $this->signedInAs($user)
+            ->putJson('/api/v1/phone/presence/me', ['state' => 'dnd'])
+            ->assertOk();
+
+        // A THIRD place, which this person has never opened the phone on — so
+        // `setMine` had nothing to set there and the row does not exist.
+        $third = $this->inTenant($t['org'], function () use ($t, $user) {
+            // A DIFFERENT company. One connection per place is enforced by a
+            // unique key, so reusing the fixture's own company is a duplicate
+            // rather than a third place — which is what this test is about.
+            $elsewhere = \App\Models\Company::query()->create([
+                'organization_id' => $t['org']->id,
+                'name' => 'A second business',
+            ]);
+
+            $connection = PhoneConnection::factory()->create([
+                'scope_type' => PhoneConnection::SCOPE_COMPANY,
+                'scope_id' => $elsewhere->id,
+                'status' => PhoneConnection::STATUS_CONNECTED,
+            ]);
+
+            $number = PhoneNumber::factory()->create([
+                'connection_id' => $connection->id,
+                'scope_type' => PhoneConnection::SCOPE_COMPANY,
+                'scope_id' => $elsewhere->id,
+                'e164' => '+13055557003',
+            ]);
+
+            PhoneNumberGrant::query()->create([
+                'number_id' => $number->id,
+                'role_id' => $user->role_id,
+            ]);
+
+            return $connection;
+        });
+
+        $this->assertSame(
+            2,
+            $this->inTenant($t['org'], fn () => PhonePresence::query()
+                ->where('user_id', $user->id)->count()),
+            'the fixture already has a row here, so this tests nothing',
+        );
+
+        // The desk coming up there. This is the call start() makes.
+        $this->signedInAs($user)
+            ->putJson('/api/v1/phone/presence', [
+                'connection_id' => $third->id,
+                'state' => 'registered',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.state', 'dnd');
+
+        $this->inTenant($t['org'], function () use ($user) {
+            $this->assertSame(
+                ['dnd', 'dnd', 'dnd'],
+                PhonePresence::query()->where('user_id', $user->id)
+                    ->pluck('state')->all(),
+                'opening the app somewhere new put this person back on the rota',
+            );
+        });
+    }
+
+    /**
+     * And the ring group agrees, which is the thing that actually rang him.
+     *
+     * The assertion above is about a column. A caller does not read columns:
+     * they reach whoever `reachableUserIds` names, and a green column with a
+     * dial that names you anyway is exactly what produced the report.
+     */
+    public function test_a_newly_created_row_does_not_make_somebody_dialled(): void
+    {
+        $t = $this->provisionTenant();
+        [$user, $rows] = $this->deskOnTwoCompanies($t);
+
+        $this->signedInAs($user)->putJson('/api/v1/phone/presence/me', ['state' => 'dnd'])->assertOk();
+
+        $third = $this->inTenant($t['org'], function () use ($t) {
+            $elsewhere = \App\Models\Company::query()->create([
+                'organization_id' => $t['org']->id,
+                'name' => 'A second business',
+            ]);
+
+            return PhoneConnection::factory()->create([
+                'scope_type' => PhoneConnection::SCOPE_COMPANY,
+                'scope_id' => $elsewhere->id,
+                'status' => PhoneConnection::STATUS_CONNECTED,
+            ]);
+        });
+
+        $this->inTenant($t['org'], fn () => PhonePresence::query()->create([
+            'organization_id' => $t['org']->id,
+            'connection_id' => $third->id,
+            'user_id' => $user->id,
+            'state' => PhonePresence::STATE_REGISTERED,
+        ]));
+
+        // Written straight into the table, which is the state the bug LEFT
+        // BEHIND on Jose's account. Reaching it through the endpoint would
+        // now be impossible, and this asserts the router refuses it anyway.
+        $this->inTenant($t['org'], function () use ($user, $third, $t) {
+            $group = \App\Models\PhoneRingGroup::query()->create([
+                'connection_id' => $third->id,
+                'name' => 'Front desk',
+                'mode' => 'simultaneous',
+                'timeout_seconds' => 30,
+                'member_user_ids' => [$user->id],
+                'member_role_ids' => [],
+                'overflow' => 'voicemail',
+            ]);
+
+            $connection = PhoneConnection::query()->whereKey($third->id)->firstOrFail();
+
+            $this->assertSame(
+                [$user->id],
+                \App\Support\Phone\DialPlan::reachableUserIds($group, $connection),
+                'this is the state the defect left behind, and it must still '
+                .'ring — the fix is that the endpoint cannot CREATE it',
+            );
+        });
+    }
+
+    /**
+     * Ending a call does not bring back somebody who is away elsewhere.
+     *
+     * The case `setMine` skips on purpose: it will not overwrite a live call,
+     * so a row can sit at `on_call` while every other row is `dnd`. When the
+     * call ended the desk wrote `registered`, the previous state was
+     * `on_call` rather than `dnd`, and the guard let it through — the person
+     * came back on the rota having pressed nothing.
+     */
+    public function test_a_call_ending_elsewhere_does_not_undo_being_away(): void
+    {
+        $t = $this->provisionTenant();
+        [$user, $rows] = $this->deskOnTwoCompanies($t);
+
+        // On a call here, away everywhere else.
+        $this->inTenant($t['org'], fn () => $rows[0]
+            ->forceFill(['state' => PhonePresence::STATE_ON_CALL])->save());
+        $this->inTenant($t['org'], fn () => $rows[1]
+            ->forceFill(['state' => PhonePresence::STATE_DND])->save());
+
+        // The call ends.
+        $this->signedInAs($user)
+            ->putJson('/api/v1/phone/presence', [
+                'connection_id' => $rows[0]->connection_id,
+                'state' => 'registered',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.state', 'dnd');
+    }
+
+    /**
      * NO state the desk can send changes a standing decision.
      *
      * The two tests below walk the routes that were actually reported. This
