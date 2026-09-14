@@ -381,7 +381,30 @@ final class ReportMap
              * column exists to drift.
              *
              * Columns are the ones that answer "is this person's machine
-             * working": what it is, when it was last seen, what it is running.
+             * working": what it is and when it was last seen.
+             *
+             * `current_module` WAS here and Monitoring ruled it off, for two
+             * reasons better than the privacy one I would have reached for.
+             *
+             * It answers "right now" — every heartbeat overwrites it — so in a
+             * report it is a value that was true at the instant the query ran,
+             * printed into a document somebody reads on Thursday about Tuesday.
+             * "Jonathan · Scheduling" reads as a fact about Tuesday and is a
+             * fact about the export. Nothing goes red and the reader forms a
+             * belief the data never supported.
+             *
+             * And it stores a KEY, not a label: the column holds `jobs`, and the
+             * roster renders it through a per-organization catalogue lookup
+             * (`pc_specs_tab.dart:563`), because a module's label is
+             * configurable per tenant. A report reading the column prints `jobs`
+             * where the app says "Scheduling" — a support question with a wrong
+             * answer built into it.
+             *
+             * The question people actually want — how much time was spent where
+             * — lives in `monitoring_activity` (`module_key`, `dwell_seconds`,
+             * `occurred_at`), which is genuinely historical and survives being
+             * exported. Not mapped, and whoever maps it inherits the same
+             * key-is-not-a-label problem.
              * `ip_address`, `screen_context`, `specs`, `capture_last_error` and
              * `capabilities` are deliberately NOT reportable — a report is the
              * wrong surface for where somebody is sitting and what is on their
@@ -400,7 +423,6 @@ final class ReportMap
                     'label'          => ['label' => 'Device',       'type' => 'string'],
                     'platform'       => ['label' => 'Platform',     'type' => 'string'],
                     'last_seen_at'   => ['label' => 'Last seen',    'type' => 'datetime'],
-                    'current_module' => ['label' => 'Current tab',  'type' => 'string'],
                     'created_at'     => ['label' => 'First seen',   'type' => 'datetime'],
                 ],
                 'relations' => [

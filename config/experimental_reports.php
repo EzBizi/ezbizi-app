@@ -16,19 +16,75 @@
 return [
 
     'ringcentral' => [
-        // The JWT flow for a server-side app. A Super Admin creates the app in
-        // the RingCentral Developer Console with ReadCallLog and ReadAccounts.
-        'server'        => env('RINGCENTRAL_SERVER', 'https://platform.ringcentral.com'),
-        'client_id'     => env('RINGCENTRAL_CLIENT_ID'),
+        // JWT flow, server-side app. Created 2026-09-14 on the A-1 Chimney
+        // account as "EzBizi Reports": private, production, scope Read Call Log
+        // ONLY. Values in H:/Development/Credentials/, never in git.
+        'server' => env('RINGCENTRAL_SERVER', 'https://platform.ringcentral.com'),
+        'client_id' => env('RINGCENTRAL_CLIENT_ID'),
         'client_secret' => env('RINGCENTRAL_CLIENT_SECRET'),
-        'jwt'           => env('RINGCENTRAL_JWT'),
+        'jwt' => env('RINGCENTRAL_JWT'),
     ],
 
+    /*
+     * ── WORKIZ IS ONE TOKEN PER ACCOUNT, NOT ONE TOKEN ──────────────
+     *
+     * Jose raised it and Workiz says so on its own Developer page: "Each key is
+     * specific to a Workiz account, not an individual user." A-1 Chimney runs a
+     * main account, "A1 Chimney - Nationwide", plus nine sub-accounts — CT, DMV,
+     * GA, IL, MA, NJ, OH, TX, WA — which read as one per state and line up with
+     * EzBizi's franchises.
+     *
+     * So a single token answers for at most one of them, and a report built on
+     * one would be silently partial: it returns rows, they are all real, and
+     * eight states are missing with nothing saying so. That is the "too small
+     * to notice" failure this module keeps meeting.
+     *
+     * MEASURED 2026-09-14, and the answer is the bad one: THE ACCOUNTS ARE
+     * DISJOINT. Asked with the NJ sub-account's own v1 token against the
+     * Nationwide one, both directions, `job/get/{uuid}` answers 204 No Content
+     * for the other account's job — while NJ answering 200 for its OWN job is
+     * the control that makes those 204s readable as "not in this account"
+     * rather than "this token reads nothing". The two books share zero UUIDs.
+     *
+     * So Nationwide is not a parent view; it is a tenth book. One entry here
+     * covers one account and NINE ARE MISSING, which is exactly the partial
+     * answer that looks complete. Hence `accounts()` returning names.
+     *
+     * Shape: `WORKIZ_API_TOKENS="Nationwide=abc|CT=def|NJ=ghi"`. One entry is
+     * valid. An env var cannot hold an array, and a map keyed by the account's
+     * own name means a partial answer can at least SAY which accounts it covers.
+     *
+     * ── A WORKIZ KEY *CAN* BE SCOPED, DESPITE WHAT THE PAGE SAYS ────
+     *
+     * CORRECTION, and I had it wrong here for an hour. The Developer page says
+     * these credentials give "full access to create, view, update, and delete
+     * most data in this account", and I wrote that down as "there is no
+     * read-only option". That blurb describes the DEFAULT, not the ceiling: the
+     * key-creation wizard has a Permissions step — "Choose full access or set
+     * permissions per resource" — with a row per resource (Search, Jobs, Leads,
+     * Clients, …) each defaulting to **No access**.
+     *
+     * So the key this report uses should grant **Jobs, read only**, and nothing
+     * else. That is all `WorkizJobs` touches: `job/all`, a GET. New-versus-
+     * existing comes off the RingCentral queue the caller chose, so Clients is
+     * unnecessary too.
+     *
+     * The lesson is the one this module keeps relearning: a page's own summary
+     * of what it does is a claim, not a reading. I quoted it as a measurement.
+     *
+     * The CREDENTIAL is what an attacker gets, not the code that used it — so
+     * scoping the key matters even though nothing here writes.
+     */
     'workiz' => [
-        // Workiz puts the token IN THE PATH rather than in a header, which is
-        // why it must never be logged: a URL ends up in far more places than a
-        // header does.
-        'token' => env('WORKIZ_API_TOKEN'),
+        'accounts' => collect(explode('|', (string) env('WORKIZ_API_TOKENS', '')))
+            ->filter()
+            ->mapWithKeys(function (string $pair) {
+                [$label, $token] = array_pad(explode('=', $pair, 2), 2, null);
+
+                return [trim((string) $label) => trim((string) $token)];
+            })
+            ->filter()
+            ->all(),
     ],
 
 ];
