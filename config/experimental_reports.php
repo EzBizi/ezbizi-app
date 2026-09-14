@@ -48,17 +48,26 @@ return [
      * valid. An env var cannot hold an array, and a map keyed by the account's
      * own name means a partial answer can at least SAY which accounts it covers.
      *
-     * ── AND THE TOKEN IS NOT READ-ONLY. THERE IS NO READ-ONLY OPTION. ──
+     * ── A WORKIZ KEY *CAN* BE SCOPED, DESPITE WHAT THE PAGE SAYS ────
      *
-     * Workiz, same page: these credentials give "full access to create, view,
-     * update, and delete most data in this account". So a token on the box for a
-     * temporary report is a credential that can delete A-1's jobs. The
-     * RingCentral side was scoped to Read Call Log precisely because it could
-     * be; Workiz offers no equivalent, and that asymmetry is worth knowing
-     * rather than discovering.
+     * CORRECTION, and I had it wrong here for an hour. The Developer page says
+     * these credentials give "full access to create, view, update, and delete
+     * most data in this account", and I wrote that down as "there is no
+     * read-only option". That blurb describes the DEFAULT, not the ceiling: the
+     * key-creation wizard has a Permissions step — "Choose full access or set
+     * permissions per resource" — with a row per resource (Search, Jobs, Leads,
+     * Clients, …) each defaulting to **No access**.
      *
-     * Nothing here writes — `WorkizJobs` issues GETs only — but the CREDENTIAL
-     * is what an attacker gets, not the code that used it.
+     * So the key this report uses should grant **Jobs, read only**, and nothing
+     * else. That is all `WorkizJobs` touches: `job/all`, a GET. "Existing
+     * client" is derived from job history rather than from a client lookup, so
+     * even Clients is unnecessary.
+     *
+     * The lesson is the one this module keeps relearning: a page's own summary
+     * of what it does is a claim, not a reading. I quoted it as a measurement.
+     *
+     * The CREDENTIAL is what an attacker gets, not the code that used it — so
+     * scoping the key matters even though nothing here writes.
      */
     'workiz' => [
         'accounts' => collect(explode('|', (string) env('WORKIZ_API_TOKENS', '')))
