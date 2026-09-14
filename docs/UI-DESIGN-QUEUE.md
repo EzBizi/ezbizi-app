@@ -2581,6 +2581,31 @@ not hold for the one case that needs it.
 > **Still not drawn: where a failing scheduled report gets NOTICED.** This screen tells somebody
 > already looking, and nobody looks at it. That is a separate surface and it is not being stacked
 > on top of an unpicked gallery.
+>
+> **AND IT PARTLY SHIPPED ALREADY, AS A PRECEDENT TO AVOID.** SES measured it rather than
+> accepting my "not yet built", and they were right to — verified here end to end:
+> `AutomationEngine:177` passes `$e->getMessage()` into `Automation::noteFailure()`, which
+> counts consecutive failures and at the limit writes `disabled_at` + `disabled_reason`; the
+> controller returns that field; `automations_screen.dart:243` reads it and **`:370` draws it in
+> an `ErrorNote` on a customer's card**.
+>
+> **So a raw PHP exception message is shipped, today, to a customer** — the thing `MailboxFault`'s
+> docblock forbids by name: *"the provider's own text is not a cause and must never be what
+> somebody reads."* Automations owns the file and has been told by SES; the replacement shape is
+> mine and is in their inbox: **our sentence for what happened, when, and what to do — with the
+> exception kept where staff can read it.**
+>
+> **And `noteFailure()` notifies nobody.** It sets a flag, saves, and the card is the only place
+> it surfaces. So *"this screen tells somebody already looking at it, and nobody looks at it"* is
+> not a hypothesis about an unbuilt surface — **it is the shipped behaviour of a built one**, and
+> the automation is already stopped by the time the card says so.
+
+> **ONE RULE FOR WHOEVER DRAWS A STATUS SURFACE NEXT, because both of us got it wrong in the same
+> direction.** *"Never tried"* is a timestamp, not a health state. I would have drawn it red; SES
+> would have shipped it as a state the server computes. **Treating an absence as a finding** is
+> the same move as a `null` cascade source rendered as a value somebody chose — and
+> `settings_screen.dart` already warns about that one: *"the third is not a rounding of the
+> second."* Nothing has happened yet is not a verdict.
 
 **Recommendation: 2 and 5.** The common state is one server typed once and never touched again,
 and it costs a row saying "Typed here"; the rare state is the one that goes wrong silently.
