@@ -175,6 +175,32 @@ final class RemoteHostGuard
      * address whose presence in a host field is never a mistake, and a refusal
      * that says "the cloud metadata service" is the one an administrator reading
      * the audit log needs to see.
+     *
+     * ── THAT SENTENCE ARGUES FOR ONE AUDIENCE AND REACHES TWO ────
+     *
+     * Corrected 2026-09-14, after the Mail/SES session asked whether naming the
+     * metadata service turns a weak oracle into a strong one -- paste a
+     * hostname, read back where it points.
+     *
+     * The paragraph above says "the audit log", and that is the audience it was
+     * written for. But {@see assertReachable} throws
+     * `CannotReachHost($this->refusal(...))`, and that message surfaces to the
+     * CALLER -- so the same string also goes to whoever typed the host. The
+     * justification covers one of the two and only one was ever argued.
+     *
+     * KEPT, on the merits rather than by default. For the literals in
+     * {@see METADATA_ADDRESSES} the oracle is worth almost nothing: nobody types
+     * 169.254.169.254 by accident, so the person reading the refusal already
+     * knew what they aimed at -- which is the same fact the paragraph above
+     * relies on. The other ranges answer "a private network", which classifies
+     * nothing. The one line doing real work for an attacker is the /16
+     * description, and it confirms only that this is cloud-hosted.
+     *
+     * If it is ever worth closing, the fix is NOT to soften this sentence. It is
+     * to give the audit log the specific cause and the caller the generic one,
+     * which is what the paragraph above already assumed was happening. That is
+     * the actual defect here: a rationale that described a split which does not
+     * exist.
      */
     private const METADATA_ADDRESSES = [
         '169.254.169.254',      // EC2 / GCE / Azure IMDS
