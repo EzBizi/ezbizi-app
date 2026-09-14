@@ -92,6 +92,24 @@ code{font:12px ui-monospace,Consolas,monospace;background:var(--ground);
   SURFACES is a drawing I will make when there is a signal to draw against &mdash;
   the same way entry 12&rsquo;s states waited for what the server could prove
   rather than being invented first.</p>
+  <p class="sub" style="margin-top:10px"><b>UPDATE: there is now a signal, and
+  the four failure states below are SES&rsquo;s measurement rather than my
+  invention.</b> I asked what the server can PROVE before drawing anything, and
+  the answer had a condition that settled their transport choice: on
+  <code>Mail::build</code> you get one exception with the SMTP code buried in its
+  message &mdash; <b>classifying that is parsing an error string</b>, which is the
+  thing I drew once this week and will not draw again. On the Email module&rsquo;s
+  own socket the numeric reply codes are read and already sorted. So they are
+  building on that one.<br><br><b>Four, not three, and the split that matters is
+  4xx against 5xx.</b> A <b>5xx</b> will not change and sends somebody to the
+  account; a <b>4xx</b> is &ldquo;not now&rdquo; and must <i>not</i> &mdash; a
+  temporary refusal that tells you to check your password is the confident wrong
+  cause this whole queue keeps circling. And <b>&ldquo;never tried&rdquo; is a
+  timestamp with no inference in it</b>, which is the state every row is in the
+  moment it is saved.<br><br><b>What is still NOT drawn: where a failing
+  scheduled report gets NOTICED.</b> This screen is where somebody already
+  looking will find out. Nobody checks it. That surface is a separate drawing and
+  I am not stacking it on top of an unpicked one.</p>
 </header>
 <div id="nums"></div>
 <div id="ctl"><b style="font-weight:700">State:</b></div>
@@ -104,12 +122,35 @@ var STATES = {
   copied: {l:'Set here, copied from info@'},
   stale:  {l:'Copied, then that mailbox changed'},
   inh:    {l:'Inherited from A-1 Chimney'},
-  inhcop: {l:'Inherited, and that one was copied'}
+  inhcop: {l:'Inherited, and that one was copied'},
+  never:  {l:'Saved, never tried'},
+  refused:{l:'Refused the password (5xx)'},
+  unreach:{l:'Host unreachable'},
+  notnow: {l:'Not ready — try later (4xx)'}
 };
+/* The four below are SES's measurement, not my invention: the Email module's
+   SMTP socket reads numeric reply codes and already sorts them. A 5xx will not
+   change and sends you to the account; a 4xx is "not now" and must NOT. Each
+   comes from a code the server sent, never from parsing its prose. "Never
+   tried" is a timestamp with no inference in it at all, and it is the state
+   every row is in the moment it is saved. */
+function health(){
+  return {never:  ['Saved. Nothing has been sent through it yet.', false],
+          refused:['<b>The server refused the user name or password.</b> ' +
+                   'This will not fix itself — check the account with whoever ' +
+                   'runs that mail server.', true],
+          unreach:['<b>The server could not be reached.</b> Nothing has gone ' +
+                   'out since 2 October.', true],
+          notnow: ['The server said it was not ready and asked us to try ' +
+                   'later. Nothing to do; if it is still saying this ' +
+                   'tomorrow, tell us.', false]}[S];
+}
 function none(){ return S === 'none'; }
-function ownScope(){ return S === 'typed' || S === 'copied' || S === 'stale'; }
+function ownScope(){ return S === 'typed' || S === 'copied' || S === 'stale'
+  || S === 'never' || S === 'refused' || S === 'unreach' || S === 'notnow'; }
 function wasCopied(){ return S === 'copied' || S === 'stale' || S === 'inhcop'; }
 function stale(){ return S === 'stale'; }
+function ownScopeAll(){ return ownScope() || !!health(); }
 
 /* The cascade's own words, taken from settings_screen.dart rather than
    reinvented: a card saying "inherited" differently from the rows beside it is
@@ -126,6 +167,14 @@ function copyLine(long){
     'that mailbox does not change this. Deleting the inbox does not stop this ' +
     'sending; changing its password DOES stop it, because the copy keeps the '
     + 'old one.';
+}
+/* A health sentence, or the stale-copy one, or nothing. Never both invented:
+   each is a different fact with a different source. */
+function healthLine(){
+  var h = health();
+  if (!h) return '';
+  return '<div class="' + (h[1] ? 'warnline' : 'n') +
+    '" style="margin-top:10px">' + h[0] + '</div>';
 }
 function staleLine(){
   return stale()
@@ -167,7 +216,7 @@ function D1(){
     '<div class="prov' + (ownScope() ? ' own' : '') + '">' + provenance() +
     '</div>' + (none() ? empty() : fields() +
       (wasCopied() ? '<div class="copy">' + copyLine(false) + '</div>' : '') +
-      staleLine()) +
+      staleLine() + healthLine()) +
     '</div></div></div>' +
     '<div class="note"><b>The smallest change, and it reuses the cascade line ' +
     'the rows beside it already use</b> — same words, same place, nothing new ' +
@@ -191,7 +240,7 @@ function D2(){
       (wasCopied() ? copyLine(true) : 'Typed here.') + '</span></div>' +
       '<div class="fact"><span class="k">Server</span><span class="v">' +
       'smtp.a-1chimney.com : 587<small>' + (wasCopied() ? 'info@a-1chimney.com' : 'reports@a-1chimney.com') + '</small>' +
-      '</span></div></div>' + staleLine()) +
+      '</span></div></div>' + staleLine() + healthLine()) +
     '</div></div></div>' +
     '<div class="note"><b>The two facts get two rows and two labels</b>, so ' +
     'neither can be read as a qualifier on the other. <i>Used here</i> answers ' +
@@ -218,7 +267,7 @@ function D3(){
         ? ' &middot; copied' : '') + '</label>' +
       '<div class="in">' + (wasCopied() ? 'info@a-1chimney.com' : 'reports@a-1chimney.com') + '</div></div>' +
       (wasCopied() ? '<div class="copy">' + copyLine(false) + '</div>' : '') +
-      staleLine()) +
+      staleLine() + healthLine()) +
     '</div></div></div>' +
     '<div class="note"><b>The copy note sits on the fields it is about</b>, ' +
     'which is where somebody is looking at the moment it matters — about to ' +
@@ -236,7 +285,7 @@ function M4(){
     '<div class="prov' + (ownScope() ? ' own' : '') + '">' + provenance() +
     '</div>' + (none() ? empty() : fields() +
       (wasCopied() ? '<div class="copy">' + copyLine(false) + '</div>' : '') +
-      staleLine()) +
+      staleLine() + healthLine()) +
     '</div></div></div>' +
     '<div class="note">Desktop 1 on a phone. One column, in the order the ' +
     'questions arrive: what is this for, whose is it, what is it.<br><br>' +
@@ -257,7 +306,7 @@ function M5(){
       (wasCopied() ? 'Copied from info@a-1chimney.com<small>A copy, not a ' +
         'link.</small>' : 'Typed here') + '</span></div>' +
       '<div class="fact"><span class="k">Server</span><span class="v">' +
-      'smtp.a-1chimney.com : 587</span></div></div>' + staleLine()) +
+      'smtp.a-1chimney.com : 587</span></div></div>' + staleLine() + healthLine()) +
     '</div></div></div>' +
     '<div class="note">Desktop 2 on a phone, and the rows survive the narrow ' +
     'width better than the paragraph does — a label and a short value per ' +
@@ -277,7 +326,7 @@ function M6(){
       ? 'Saved reports, inspection reports and automation emails have nowhere ' +
         'to go until a server is connected.'
       : 'smtp.a-1chimney.com &middot; reports@a-1chimney.com') + '</div>' +
-    (stale() ? staleLine() : '') +
+    (stale() ? staleLine() + healthLine() : '') +
     (none() ? '<div class="btn pri">Connect a server</div>'
             : '<div class="btn">Where these came from &rsaquo;</div>') +
     '</div></div></div>' +

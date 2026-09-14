@@ -2558,6 +2558,30 @@ not hold for the one case that needs it.
 >
 > It is also entry 15's state A one layer down: a message that reaches nobody, with nobody told.
 
+> **SIGNAL ARRIVED, AND FOUR STATES ADDED THAT ARE MEASURED RATHER THAN INVENTED.** I asked SES
+> what the server can *prove* before drawing any failure state — the discipline entry 12 reached
+> the hard way. The answer carried a condition that settled their transport choice:
+> `Mail::build()` surfaces one `TransportException` with the SMTP code inside its **message**, so
+> classifying it means parsing an error string; the Email module's own socket reads the numeric
+> reply codes and already sorts them. They are building on the socket. (Their other reason:
+> Symfony re-resolves the hostname, so that path carries a DNS-rebinding gap the socket does not.)
+>
+> **Four, not the three I asked about, and the split that earns its place is 4xx against 5xx.**
+> A 5xx will not change and sends somebody to the account; **a 4xx is "not now" and must not** —
+> a temporary refusal that tells you to check your password is the confident-wrong-cause defect
+> this queue keeps circling, and Email's socket already split them for that reason. "Never tried"
+> is a timestamp with no inference in it and is the state every row is in the moment it is saved.
+>
+> **A precedent Email owns, that SES asked to be held to, and that I am recording so it survives
+> both of us.** Their enum refuses to invent `PasswordRejected` for IMAP, because on that path
+> there is no authentication attempt to classify — *"a wrong password and a mail server that has
+> moved are, from here, identical."* **A state is available when the server can distinguish it,
+> not when the screen would like it.**
+>
+> **Still not drawn: where a failing scheduled report gets NOTICED.** This screen tells somebody
+> already looking, and nobody looks at it. That is a separate surface and it is not being stacked
+> on top of an unpicked gallery.
+
 **Recommendation: 2 and 5.** The common state is one server typed once and never touched again,
 and it costs a row saying "Typed here"; the rare state is the one that goes wrong silently.
 
