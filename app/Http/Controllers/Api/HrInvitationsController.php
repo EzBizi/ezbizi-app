@@ -43,12 +43,46 @@ use Throwable;
  * ── The link, not the email ──────────────────────────────────────
  *
  * The response carries the one-time link, and that is the only moment the raw
- * token exists anywhere. An email goes out too (see deliver() below) and today
- * it goes to the log, because nothing on this platform can send mail — so an
- * email-only invitation would be an invitation nobody receives.
+ * token exists anywhere. An email goes out too (see deliver() below), and since
+ * SES production access was granted on 2026-09-14 it genuinely arrives.
+ *
+ * The link stays in the response anyway, and the reason changed rather than
+ * expired: it used to be there because nothing could send at all, and it is
+ * there now because a send can still go nowhere — a box on `log` or `array`, a
+ * blank credential, a refused transport — and because the inviter is the only
+ * person who can hand it over when it does.
+ *
+ * This paragraph previously read "nothing on this platform can send mail". That
+ * was true when it was written and false the hour SES was approved, and my own
+ * sweep for sandbox-era copy missed it because I grepped for "emailed" rather
+ * than for the claim. A describer goes stale silently; it is worth suspecting
+ * every sentence that says what the platform CANNOT do.
  */
 class HrInvitationsController extends Controller
 {
+    /**
+     * What became of the send, as a state rather than a yes/no.
+     *
+     * Three, and every one of them is something the server can PROVE. The
+     * screen turns each into a sentence and offers one action; it never names
+     * a cause we guessed. In particular there is no "the address was refused"
+     * here, though it is the single most useful thing a reader could be told:
+     * this is a platform send over Notification::route, so a rejected
+     * recipient and a dead connection arrive as the same transport exception,
+     * and telling them apart means string-matching a vendor's error prose. The
+     * failure mode of getting that wrong is telling somebody to correct a
+     * perfectly good address, so it is not offered. A wrong address becomes
+     * knowable when SES's bounce events land as typed data, and that is a
+     * FOURTH state arriving later rather than a cause parsed out of this one.
+     */
+    public const SENT = 'sent';
+
+    /** The box delivers nowhere — `log`, `array`, `null`, or a blank credential. */
+    public const NOT_SENT_NO_TRANSPORT = 'not_sent_no_transport';
+
+    /** The transport was asked and refused. True that it failed, silent about why. */
+    public const NOT_SENT_REFUSED = 'not_sent_refused';
+
     public function __construct(
         private readonly Invitations $invitations,
         private readonly ScopeReach $reach,
@@ -212,10 +246,10 @@ class HrInvitationsController extends Controller
             return [$invitation, $issued['token']];
         });
 
-        $emailed = $this->deliver($invitation, $token);
+        $state = $this->deliver($invitation, $token);
 
         return response()->json([
-            'data' => $this->present($invitation, $token, $emailed),
+            'data' => $this->present($invitation, $token, $state),
         ], Response::HTTP_CREATED);
     }
 
@@ -235,6 +269,32 @@ class HrInvitationsController extends Controller
     public function resend(Request $request, Invitation $invitation): JsonResponse
     {
         $this->authorize('resend', $invitation);
+
+        /*
+         * RE-INVITING AT A DIFFERENT ADDRESS IS THIS ACT, not a PATCH.
+         *
+         * Approved by Jose on 2026-09-14 (desktop 2, mobile 5), and it is a
+         * reissue rather than a field edit for a reason that is a security one
+         * rather than a modelling preference. The row and the credential are
+         * different things: editing the address changes where the NEXT message
+         * goes and cannot recall the one already delivered. So if somebody
+         * mistyped an address that happens to belong to a real person, quietly
+         * repointing the row leaves that stranger holding a live invitation
+         * into this organization while the screen says the problem is fixed.
+         *
+         * It is worst in the case the control most exists for — noticing the
+         * typo just after a successful send — and it is only safe because
+         * resend() already mints a new token and kills the old one. Which is
+         * also why the address is optional HERE rather than an endpoint of its
+         * own: one act, one dead link, one new send, and nothing to keep in
+         * step.
+         */
+        $input = $request->validate([
+            'email' => ['sometimes', 'required', 'email', 'max:255'],
+        ]);
+
+        $readdressed = isset($input['email'])
+            && strtolower(trim($input['email'])) !== $invitation->email;
 
         /*
          * The SAME role check `store()` makes, because resend mints a new
@@ -269,20 +329,43 @@ class HrInvitationsController extends Controller
             ]);
         }
 
-        $token = DB::transaction(function () use ($invitation) {
+        // The same two refusals store() makes, and for the same reasons — an
+        // address already holding an account, or already holding an open
+        // invitation. This invitation is excluded from the second, or the act
+        // would be refused on the grounds of the very row it is reissuing.
+        if ($readdressed) {
+            $this->assertNotAlreadyHere($input['email'], except: $invitation);
+        }
+
+        $token = DB::transaction(function () use ($invitation, $input, $readdressed) {
+            $was = $invitation->email;
+
+            if ($readdressed) {
+                $invitation->forceFill(['email' => strtolower(trim($input['email']))])->save();
+            }
+
             $token = $this->invitations->resend($invitation);
 
-            $this->audit->log('invitation.resent', $invitation, metadata: [
-                'email'      => $invitation->email,
-                'expires_at' => $invitation->expires_at->toIso8601String(),
-            ]);
+            // A distinct action, because it is a distinct fact: somebody's
+            // invitation went to the wrong place and was corrected. Both
+            // addresses, because "which address did we get wrong" is the
+            // question this row will be read to answer. Never the token.
+            $this->audit->log(
+                $readdressed ? 'invitation.readdressed' : 'invitation.resent',
+                $invitation,
+                metadata: array_filter([
+                    'email'      => $invitation->email,
+                    'was'        => $readdressed ? $was : null,
+                    'expires_at' => $invitation->expires_at->toIso8601String(),
+                ], fn ($v) => $v !== null),
+            );
 
             return $token;
         });
 
-        $emailed = $this->deliver($invitation, $token);
+        $state = $this->deliver($invitation, $token);
 
-        return response()->json(['data' => $this->present($invitation->fresh(), $token, $emailed)]);
+        return response()->json(['data' => $this->present($invitation->fresh(), $token, $state)]);
     }
 
     /**
@@ -356,7 +439,7 @@ class HrInvitationsController extends Controller
      * A single "cannot invite" would send an administrator hunting through the
      * wrong list.
      */
-    private function assertNotAlreadyHere(string $email): void
+    private function assertNotAlreadyHere(string $email, ?Invitation $except = null): void
     {
         $email = strtolower(trim($email));
 
@@ -370,6 +453,7 @@ class HrInvitationsController extends Controller
 
         $open = Invitation::query()
             ->where('email', $email)
+            ->when($except !== null, fn ($q) => $q->whereKeyNot($except->getKey()))
             ->whereNull('accepted_at')
             ->whereNull('revoked_at')
             ->where('expires_at', '>', now())
@@ -438,7 +522,7 @@ class HrInvitationsController extends Controller
      * declared and raised, so a company builds that rule itself the day an
      * email action exists.
      */
-    private function deliver(Invitation $invitation, string $token): bool
+    private function deliver(Invitation $invitation, string $token): string
     {
         // A handoff can SUCCEED while nothing leaves the building. `log`,
         // `array` and `null` deliver nowhere and throw nothing, so the catch
@@ -467,7 +551,9 @@ class HrInvitationsController extends Controller
             Notification::route('mail', $invitation->email)
                 ->notify(new InvitationLink($invitation, $this->invitations->acceptUrl($token)));
 
-            return app(MailStatus::class)->delivers();
+            return app(MailStatus::class)->delivers()
+                ? self::SENT
+                : self::NOT_SENT_NO_TRANSPORT;
         } catch (Throwable $e) {
             // The invitation id, never the address and never the link. This line
             // exists to say the transport is broken, and a log is not a place to
@@ -477,7 +563,7 @@ class HrInvitationsController extends Controller
                 'reason'        => $e->getMessage(),
             ]);
 
-            return false;
+            return self::NOT_SENT_REFUSED;
         }
     }
 
@@ -487,7 +573,7 @@ class HrInvitationsController extends Controller
      *                              token does not exist any more — it was never
      *                              stored — so there is nothing to leave out.
      */
-    private function present(Invitation $invitation, ?string $token = null, ?bool $emailed = null): array
+    private function present(Invitation $invitation, ?string $token = null, ?string $state = null): array
     {
         $body = [
             'id'         => $invitation->id,
@@ -526,7 +612,13 @@ class HrInvitationsController extends Controller
         // chasing a colleague who has had the message all along.
         if ($token !== null) {
             $body['accept_url'] = $this->invitations->acceptUrl($token);
-            $body['emailed']    = $emailed;
+
+            // `emailed` is kept alongside `sent_state` rather than replaced.
+            // An installed client older than this release reads it, and a
+            // field that goes absent is the one response change that breaks
+            // somebody who never asked for any of this. It costs a line.
+            $body['emailed']    = $state === null ? null : $state === self::SENT;
+            $body['sent_state'] = $state;
         }
 
         return $body;
