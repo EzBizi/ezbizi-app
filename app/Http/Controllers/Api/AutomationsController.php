@@ -86,6 +86,24 @@ class AutomationsController extends Controller
         // execute as a bare `clock_in` in a namespace every module shares.
         'time_clock.clock_in',
         'time_clock.clock_out',
+
+        /*
+         * Inspection's, added by Inspection with its arm already in place.
+         *
+         * `ActionRunner::emailInspectionReport` renders the frozen report and
+         * sends it to the customer through MailDispatcher::asTenant. Without
+         * this line the arm existed and the builder drew the action "Not built
+         * yet" and refused to select it — declared, executable, tested, and
+         * unreachable, which is the QUIET direction of this const going wrong.
+         * `training.assign` once had the opposite shape, const without arm, and
+         * that announced itself: every run recorded FAILED. Caught by the
+         * Training session reading main, not by any test.
+         *
+         * Spelled `inspection_report.email` rather than the `report.email` the
+         * key derives to, because Reports declares `report.send` labelled
+         * "Email a report" and the two would be one rename apart.
+         */
+        'inspection_report.email',
         /*
          * `ActionRunner::assignTraining` (task 9) is the real arm — the same
          * `App\Support\Training\AssignmentWriter` a person's own POST

@@ -233,7 +233,7 @@ class ActionRunner
             'time_clock.clock_out' => $this->punch($event, $subject, in: false),
 
             'training.assign' => $this->assignTraining($action, $event, $subject, $automation),
-            'report.email' => $this->emailInspectionReport($action, $subject),
+            'inspection_report.email' => $this->emailInspectionReport($action, $subject),
 
             default => throw new InvalidArgumentException(
                 "Unknown automation action '{$type}'. Actions are declared by modules "
@@ -381,7 +381,7 @@ class ActionRunner
      */
     private function emailInspectionReport(array $action, ?Model $subject): array
     {
-        $type = 'report.email';
+        $type = 'inspection_report.email';
 
         if (! $subject instanceof InspectionReport) {
             return [

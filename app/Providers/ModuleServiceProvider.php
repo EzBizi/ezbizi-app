@@ -1037,7 +1037,19 @@ class ModuleServiceProvider extends ServiceProvider
                             .'carried out for, with the PDF attached. Sends from the '
                             .'its own verified sending address, and does nothing if that '
                             .'address has not been set up or the customer has no email.',
-                        executionType: 'report.email',
+                        /*
+                         * `inspection_report.email`, NOT the `report.email` this
+                         * key would derive to. Reports declares `report.send`
+                         * and labels it "Email a report" — so a derived
+                         * `report.email` sits one rename away from being the
+                         * same string as somebody else's action, in the
+                         * namespace every module shares, and the collision
+                         * would be a silent mis-route in ActionRunner's match
+                         * rather than an error. Changed before anything could
+                         * select it, which is the only free moment: no tenant
+                         * rule references it yet.
+                         */
+                        executionType: 'inspection_report.email',
                     ),
                 ],
             ),
