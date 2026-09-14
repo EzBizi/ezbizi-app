@@ -129,13 +129,19 @@ class CompanyActionsMenu extends StatelessWidget {
         //
         // NOT "Move it", which was the first wording and collided with a verb
         // this product has already spent. This menu is drawn on the canvas as
-        // well as the list, and `structure_canvas.dart` is a drag whose whole
-        // design is that repositioning a box changes the PICTURE and not the
-        // business -- "the connector never detaches ... that is the picture
-        // saying, in the only language it has, that the business did not move",
-        // and its cursor is `move` for precisely that reason. One verb for two
-        // operations on the same object, three inches apart. Raised by UI/UX,
-        // who own the decision and read the canvas before saying so.
+        // well as the list, and `structure_canvas.dart` spends THREE of its
+        // numbered points -- 4, 5 and 6 -- establishing that dragging a box
+        // changes the picture and not the business: overlap means nothing and
+        // never reads as "it went inside", the connector never detaches
+        // because it is derived from the tree, and the cursor is `move`
+        // because "`grab` is 'pick this up and carry it somewhere'; `move` is
+        // 'reposition this'". So "Move it" would have named, three inches
+        // away, the exact operation those three points exist to say a drag is
+        // NOT.
+        //
+        // Raised by UI/UX, who read that file before saying so -- and who
+        // corrected this comment's own count from two points to three, by
+        // reading it again rather than repeating mine.
         refusedMenuItem(
           context,
           value: 'move',
