@@ -2278,6 +2278,16 @@ unmistakable the state is, and each one borrows something different to say it:
 **Session state, not a preference.** It is a mode you are in for a minute, and saving it to an
 account would mean signing in on a desktop to a mobile layout with no memory of asking for one.
 
+> **What it is NOT, in the words of the session that owns the real device problems.** Phone
+> (`local_d95f72da`), on taking it up: *"I will not treat it as a device — Android's Telecom
+> behaviour, CallKit, and push are none of them a viewport question, and the bug I shipped this
+> afternoon was invisible at every width. For layout it saves me a resize; for anything about
+> being a phone it proves nothing."*
+>
+> Recorded here rather than in a code comment because **the risk with this control is somebody
+> treating a 390px column as a device and concluding from it** — and that warning carries more
+> from the session that owns Telecom and push than from the one that built the column.
+
 ### 14 · Where the version lives — **DRAWN, awaiting Jose**
 
 `docs/previews/version-on-a-phone-layouts.html`. Jose, 2026-09-14: *"on phone i noticed there's
