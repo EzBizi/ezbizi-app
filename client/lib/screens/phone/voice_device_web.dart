@@ -116,6 +116,13 @@ class TwilioVoiceDevice implements VoiceDevice {
   // error rather than a message carrying a reason.
   @override
   String? get registrationError => null;
+  // Android's Telecom framework is the only place this can be true; a browser,
+  // a WebView and a platform with no SDK all have nothing to enable.
+  @override
+  bool get needsCallingAccount => false;
+
+  @override
+  Future<void> openCallingSettings() async {}
 
   @override
   Future<void> connect({required String to, String? callerId}) async {

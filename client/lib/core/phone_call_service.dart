@@ -158,6 +158,13 @@ class PhoneCallService extends ChangeNotifier {
   /// Twilio's own reason when it did not, or null when it gave none.
   String? get registrationError => _device?.registrationError;
 
+  /// Whether the desk should offer to open the system's calling settings —
+  /// the one registration failure a retry cannot fix on its own.
+  bool get needsCallingAccount => _device?.needsCallingAccount ?? false;
+
+  Future<void> openCallingSettings() async =>
+      _device?.openCallingSettings() ?? Future<void>.value();
+
   /// False on a platform with no Voice SDK at all.
   bool get supported => _device?.supported ?? false;
 

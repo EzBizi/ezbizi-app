@@ -82,6 +82,13 @@ class WindowsVoiceDevice implements VoiceDevice {
 
   @override
   String? get registrationError => _registrationError;
+  // Android's Telecom framework is the only place this can be true; a browser,
+  // a WebView and a platform with no SDK all have nothing to enable.
+  @override
+  bool get needsCallingAccount => false;
+
+  @override
+  Future<void> openCallingSettings() async {}
 
   /// The WebView2 controller, for the Dial tab to mount. See the note above on
   /// why this cannot stay headless.
