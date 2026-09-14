@@ -628,9 +628,32 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'notifications.email_enabled', label: 'Send email notifications',
                 type: SettingDefinition::TYPE_BOOL, default: true,
+                /*
+                 * The "unless" clause is not hedging: above the ceiling
+                 * NOTHING is emailed, not a subset.
+                 *
+                 * Notifications added an email ceiling in 27a40807 that
+                 * refuses rather than truncates -- mailing an arbitrary subset
+                 * chosen by collection order makes "why did Bob get this and I
+                 * did not" a question with no answer, and the bell has already
+                 * told everybody. Correct, and it made the sentence I wrote
+                 * one commit earlier false for exactly the administrators most
+                 * likely to notice: the ones with a wide automation.
+                 *
+                 * THE NUMBER IS DELIBERATELY NOT REPEATED HERE. Their constant
+                 * is private, so a "50" typed into this string could not be
+                 * derived from it and would go stale the first time they tune
+                 * it -- the same way the sentence above this one went stale.
+                 * A phrasing with no number cannot disagree with the code. If
+                 * naming it turns out to matter to an administrator, the fix is
+                 * for that constant to become public and be interpolated, not
+                 * for a digit to be copied across a module boundary.
+                 */
                 help: 'With this on, a notification is also emailed to each person it was for, '
-                    .'in the same words the app shows. Off leaves the bell working. The two '
-                    .'channels are independent: neither one switched off silences the other.',
+                    .'in the same words the app shows -- unless it was for more people than '
+                    .'EzBizi will email at once, and then it stays in the app only. Off leaves '
+                    .'the bell working. The two channels are independent: neither one switched '
+                    .'off silences the other.',
             ),
             new SettingDefinition(
                 key: 'notifications.push_enabled', label: 'Send push notifications',

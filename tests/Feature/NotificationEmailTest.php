@@ -83,7 +83,7 @@ class NotificationEmailTest extends TestCase
         });
     }
 
-    public function test_the_people_the_bell_told_are_the_people_who_are_emailed(): void
+    public function test_the_email_audience_is_the_bell_audience_and_never_wider(): void
     {
         NotificationFacade::fake();
 
