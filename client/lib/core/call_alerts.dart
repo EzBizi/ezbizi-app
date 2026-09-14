@@ -26,10 +26,28 @@ import 'os_notifications.dart';
 ///
 /// ── Why the tone is synthesised rather than shipped ─────────────
 ///
-/// A ring is two sine waves and a cadence. Generating it costs forty lines,
-/// needs no asset, no licence and no file to go missing from a build, and it
-/// is the same on every platform. [BytesSource] hands the bytes straight to
-/// the platform, which is already how voicemail plays.
+/// A ring is a couple of sine waves and a cadence. Generating it costs forty
+/// lines, needs no asset, no licence and no file to go missing from a build,
+/// and it is the same on every platform. [BytesSource] hands the bytes
+/// straight to the platform, which is already how voicemail plays.
+///
+/// ── A RINGER, and deliberately not a ringback ───────────────────
+///
+/// These are two different sounds and the difference carries meaning. What a
+/// CALLER hears while waiting is ringback: in North America 440 Hz + 480 Hz,
+/// two seconds on and four off. What a phone does to get your attention is a
+/// ringer, and it does not sound like that.
+///
+/// This played ringback at the person being CALLED. Jose reported it plainly:
+/// an inbound call rang "as if I was the one calling". He was hearing the
+/// caller's tone from the wrong end — and the two were identical by
+/// construction, because Twilio supplies our outbound ringback with
+/// `ringTone: 'us'` on the `<Dial>`, which is the same 440 + 480.
+///
+/// So the outbound side is untouched — a person ringing out SHOULD hear
+/// standard ringback, that is what tells them the far end is ringing — and
+/// this is now a ringer: a warbling double burst, higher and faster, which no
+/// telephone network produces and nobody can mistake for a call they placed.
 ///
 /// ── Nothing here is awaited by the desk ─────────────────────────
 ///
@@ -120,45 +138,72 @@ class SystemCallAlerts implements CallAlerts {
   @visibleForTesting
   static Uint8List get ringToneBytes => _ringWav;
 
-  /// North American ring: 440 Hz + 480 Hz, two seconds on, four off.
-  ///
   /// Built once and kept, because a caller does not wait for a buffer.
-  static final Uint8List _ringWav = _wav(
-    _cadence(onSeconds: 2, offSeconds: 4, tones: [440, 480]),
-  );
+  static final Uint8List _ringWav = _wav(_ringer());
+
+  /// The shape of the ring, in milliseconds.
+  ///
+  /// Two short bursts and a rest — "ring-ring … ring-ring" — which is what a
+  /// telephone does and what ringback never does. The rest is long enough
+  /// that somebody can think between rings and short enough that a call
+  /// arriving while they are out of the room keeps announcing itself.
+  static const int _burstMs = 400;
+  static const int _gapMs = 200;
+  static const int _restMs = 2000;
+
+  /// How fast the two pitches alternate inside a burst. Around 50 ms reads as
+  /// a warble; much slower is two separate notes, much faster is a buzz.
+  static const int _warbleMs = 50;
+
+  /// Higher than ringback's 440/480 as well as faster, so the two are
+  /// distinguishable through a laptop speaker in a noisy room, not only side
+  /// by side.
+  static const double _lowHz = 660;
+  static const double _highHz = 880;
 
   /// 16-bit mono samples at 22.05 kHz — plenty for two sine waves, and a
   /// quarter the bytes of CD rate.
   static const int _rate = 22050;
 
-  static Int16List _cadence({
-    required int onSeconds,
-    required int offSeconds,
-    required List<int> tones,
-  }) {
-    final samples = Int16List(_rate * (onSeconds + offSeconds));
+  static int _samplesFor(int milliseconds) => (_rate * milliseconds) ~/ 1000;
 
-    // Halved again per tone so two summed sines cannot clip, and kept well
-    // under full scale: a ring at full volume through a headset somebody is
-    // wearing is its own kind of defect.
-    final amplitude = 9000 ~/ tones.length;
+  static Int16List _ringer() {
+    final samples = Int16List(
+      _samplesFor(_burstMs + _gapMs + _burstMs + _restMs),
+    );
 
-    for (var i = 0; i < _rate * onSeconds; i++) {
-      var value = 0.0;
-      for (final hz in tones) {
-        value += math.sin(2 * math.pi * hz * i / _rate);
+    // Well under full scale on purpose: a ring at full volume through a
+    // headset somebody is wearing is its own kind of defect.
+    const amplitude = 7000;
+    final length = _samplesFor(_burstMs);
+
+    void burst(int atMs) {
+      final start = _samplesFor(atMs);
+
+      // PHASE, not `sin(2π·f·i)`. The pitch changes every 50 ms, and computing
+      // each sample from absolute time restarts the wave wherever it happens
+      // to land — a step discontinuity, which is a click, eight times a
+      // second. Advancing a running phase makes the switch inaudible.
+      var phase = 0.0;
+
+      for (var i = 0; i < length; i++) {
+        final atWarble = (i * 1000) ~/ (_rate * _warbleMs);
+        phase += 2 * math.pi * (atWarble.isEven ? _lowHz : _highHz) / _rate;
+
+        // A 10 ms fade at each end of every burst, for the same reason: a
+        // burst that begins mid-wave clicks, and here that would be twice
+        // per ring rather than once per loop.
+        final fade = math.min(
+          1.0,
+          math.min(i, length - 1 - i) / (_rate * 0.01),
+        );
+
+        samples[start + i] = (math.sin(phase) * amplitude * fade).round();
       }
-
-      // A 10 ms fade at each end of the tone. Without it the buffer starts
-      // and ends mid-wave and the loop clicks once every six seconds, which
-      // is audible and reads as a fault in the call rather than in the tone.
-      final fade = math.min(
-        1.0,
-        math.min(i, _rate * onSeconds - 1 - i) / (_rate * 0.01),
-      );
-
-      samples[i] = (value * amplitude * fade).round();
     }
+
+    burst(0);
+    burst(_burstMs + _gapMs);
 
     return samples;
   }
