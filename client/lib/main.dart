@@ -525,13 +525,50 @@ class _HomeShellState extends State<HomeShell> {
     //
     // Safe for somebody with no phone line: start() looks, finds nothing, and
     // leaves everything false.
-    unawaited(PhoneCallService.current.start(widget.api));
+    _followScope();
+    widget.session.addListener(_followScope);
 
     _apply(widget.address?.path);
     _stopListening = widget.address?.listen((path) {
       if (!mounted) return;
       setState(() => _apply(path));
     });
+  }
+
+  /// Which view the desk was brought up for, so a change can be noticed.
+  String? _deskScope;
+
+  /// Try again for a desk that never came up, now that the view has moved.
+  ///
+  /// `start()` reads `/phone/numbers`, which answers for the scope in view,
+  /// and it ran ONCE — at sign-in. Somebody whose view had no line at that
+  /// moment kept a dead desk for the rest of the session however they
+  /// navigated afterwards, and the screen explained it by saying the phone
+  /// needed a web browser. Jose read that in a web browser. Android had hit
+  /// the same thing from the other side: "I changed scope by accident, which
+  /// silently stopped setup() running at all."
+  ///
+  /// ── Only when there is no desk to lose ───────────────────────
+  ///
+  /// The tempting version re-registers on every scope change, so the desk
+  /// always matches the company on screen. That also makes an org admin
+  /// unreachable for as long as they browse a sub company with no line of its
+  /// own — an ordinary thing to do, and a worse failure than the one being
+  /// fixed. So this only reaches for a line when there is none.
+  ///
+  /// ponytail: the desk can still be registered on a company the reader has
+  /// since navigated away from. Give it the scope's own line when somebody
+  /// asks for that, and decide then what a lineless scope should do.
+  void _followScope() {
+    final scope = widget.session.me?.scope;
+    final key = scope == null ? null : '${scope.type}:${scope.id}';
+    if (key == _deskScope) return;
+    _deskScope = key;
+
+    final phone = PhoneCallService.current;
+    if (phone.hasLine) return;
+
+    unawaited(phone.restart(widget.api));
   }
 
   @override
@@ -542,6 +579,8 @@ class _HomeShellState extends State<HomeShell> {
     _screenshots?.dispose();
     _liveView?.dispose();
     _remoteControl?.dispose();
+
+    widget.session.removeListener(_followScope);
 
     // stop(), not dispose(): the service is a singleton that outlives this
     // widget, and the next person to sign in is not this person.
