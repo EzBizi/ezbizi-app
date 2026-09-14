@@ -106,6 +106,135 @@ class MailDispatcher
         );
     }
 
+    /**
+     * Send through the TENANT'S OWN mail server. Nothing of ours carries it.
+     *
+     * The door that opens as `asTenant` closes, and it is a different door
+     * rather than the same one renamed. `asTenant` put a tenant's address on a
+     * message and handed it to EzBizi's transport; this builds a transport out
+     * of the tenant's own credentials, so our SES is not in the path at all.
+     * That is what makes it compatible with the ruling that retired the other:
+     * "EZBIZI EMAIL IS ONLY FOR EZBIZI ACTIONS" is about whose transport
+     * carries the message, and here it is theirs.
+     *
+     * Authorised by Jose on 2026-09-14 — asked as "reports can no longer be
+     * emailed, and the same is true of Automations' email action", answered
+     * "yes build it for god sake".
+     *
+     * ── No mailer class, because Laravel already has one ─────────
+     *
+     * `Mail::build()` takes an array config and returns a Mailer. A dedicated
+     * TenantMailer would be that call plus a constructor, so there is not one.
+     *
+     * ── What it refuses, and why each refusal is separate ────────
+     *
+     * A scope with no row, or a row on a different transport, has not connected
+     * anything — that sentence tells them what to do. A row whose credentials
+     * are missing is a DIFFERENT fault: something was connected and the
+     * password did not survive, which is not the tenant's mistake to fix by
+     * filling the same form in again. And {@see TenantSmtpHost} refuses a host
+     * that points back into our own network before anything dials it.
+     *
+     * @param  \App\Models\Organization|\App\Models\Company|\App\Models\Franchise  $scope
+     * @param  string|array  $to
+     *
+     * @throws CannotSendMail when this scope has no mail provider connected
+     */
+    public function throughTenantProvider(Model $scope, Mailable $message, string|array $to): void
+    {
+        $identity = $this->resolver->for($scope);
+
+        $message->from($identity->fromAddress, $identity->fromName);
+
+        if ($identity->replyTo !== null && $identity->replyTo !== '') {
+            $message->replyTo($identity->replyTo);
+        }
+
+        /*
+         * Built per send rather than registered as a named mailer. A named one
+         * lives in the manager's cache for the life of the process, and a queue
+         * worker handling two tenants in a row is exactly where that surfaces:
+         * one customer's report leaving through another customer's mail server.
+         * Same reasoning as handOver() setting From on the message rather than
+         * on config.
+         */
+        Mail::build($this->smtpConfigFor($scope))->to($to)->send($message);
+    }
+
+    /**
+     * The connection a tenant send would be made on — every refusal lives here.
+     *
+     * ── Public, and split out, because Mail::build() cannot be faked ─
+     *
+     * MailFake has no build() override, so `__call` forwards it to the REAL
+     * manager. A test that calls Mail::fake() and then sends through here would
+     * open an actual socket to whatever host the fixture named — silently, and
+     * looking for all the world like a faked send. Splitting the decision from
+     * the dispatch means everything that can be got WRONG — which scope
+     * answered, whether it is connected, which host, which port — is assertable
+     * without a network, and what is left for Mail::build() is Laravel's own
+     * code doing what it says.
+     *
+     * Anyone testing a caller of throughTenantProvider should assert against
+     * this and not reach for Mail::fake(), which will not save them.
+     *
+     * @param  \App\Models\Organization|\App\Models\Company|\App\Models\Franchise  $scope
+     * @return array<string, mixed>
+     *
+     * @throws CannotSendMail when this scope has no usable mail server
+     */
+    public function smtpConfigFor(Model $scope): array
+    {
+        $identity = $this->resolver->for($scope);
+        $source   = $this->resolver->sourceOf($scope);
+        $row      = $source === null ? null : $this->resolver->rowAt($source);
+
+        if ($row === null || $identity->transport !== MailTransport::Smtp) {
+            throw new CannotSendMail(
+                'This business has not connected its own mail server yet, and reports, '
+                .'inspection reports and automations that email somebody go out through it '
+                ."rather than through EzBizi. EzBizi's own mail carries signing in, password "
+                .'resets and joining messages, and only those.',
+                $identity,
+            );
+        }
+
+        $credentials = $row->credentials ?? [];
+
+        /*
+         * A DIFFERENT fault from "not connected", and it gets a different
+         * sentence. Something WAS connected and part of it did not survive;
+         * telling that tenant to connect a mail server describes a state they
+         * are not in, and they would fill in the same form and see the same
+         * message.
+         */
+        foreach (['host', 'username', 'password'] as $required) {
+            if (($credentials[$required] ?? '') === '') {
+                throw new CannotSendMail(
+                    "The mail server saved for this business has no {$required}, so nothing "
+                    .'can be sent through it. Open Settings, Sending Address and save the '
+                    .'connection again.',
+                    $identity,
+                );
+            }
+        }
+
+        TenantSmtpHost::guard((string) $credentials['host']);
+
+        return [
+            'transport'  => 'smtp',
+            'host'       => (string) $credentials['host'],
+            'port'       => (int) ($credentials['port'] ?? 587),
+            'username'   => (string) $credentials['username'],
+            'password'   => (string) $credentials['password'],
+            'encryption' => $credentials['encryption'] ?? 'tls',
+
+            // Bounded, because the host is a stranger's machine. Without it a
+            // queue worker blocks on a black-holed port until PHP's own limit.
+            'timeout'    => 15,
+        ];
+    }
+
     /** What this scope would send as, verified or not — for a screen to show. */
     public function identityFor(Model $scope): MailIdentity
     {

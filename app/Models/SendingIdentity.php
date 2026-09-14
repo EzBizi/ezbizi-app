@@ -116,7 +116,24 @@ class SendingIdentity extends Model implements HoldsSensitiveValues, StatesReten
              * credential is written rather than after. Same argument as
              * OnboardingAnswer::$value.
              */
-            'credentials'     => 'encrypted',
+            /*
+             * `encrypted:array` since 2026-09-14, and the window to do it was
+             * still open exactly as predicted above.
+             *
+             * The comment above is right that a cast cannot be switched on for
+             * rows that already exist. What made this safe is not the comment
+             * though — a docblock records what its author believed — it is that
+             * `credentials` is absent from $fillable and nothing in app/ or
+             * database/ assigns to it, so no row on any box can hold a value to
+             * be misread. That is a stronger check than counting rows on one
+             * server, because it holds for servers I cannot reach.
+             *
+             * An array rather than a string because an SMTP connection is five
+             * fields that must travel together — host, port, username, password,
+             * encryption — and a delimited string is how one of them ends up
+             * parsed differently in two places.
+             */
+            'credentials'     => 'encrypted:array',
             'verified_at'     => 'datetime',
             'last_checked_at' => 'datetime',
         ];

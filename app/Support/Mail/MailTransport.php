@@ -47,12 +47,37 @@ enum MailTransport: string
      */
     case VerifiedDomain = 'verified_domain';
 
+    /**
+     * The tenant's OWN mail server. EzBizi's transport is not involved at all.
+     *
+     * Added 2026-09-14 on Jose's "yes build it for god sake", and it is the
+     * second value this file was shaped around — the docblock above predicted
+     * the shape of the arrival correctly, including that the `match` arms below
+     * would be what forced somebody to say what it means.
+     *
+     * ── Why this does not reopen the ruling that retired VerifiedDomain ──
+     *
+     * His ruling was "EZBIZI EMAIL IS ONLY FOR EZBIZI ACTIONS", and it is about
+     * our TRANSPORT rather than about the From line. VerifiedDomain means the
+     * tenant proves a domain and WE send their content through our SES, on our
+     * reputation and our quota — which is the thing he retired, and it stays
+     * retired. This means their server accepts, authenticates and sends, and
+     * nothing of ours touches the message. The two are opposite on the only
+     * axis the ruling names, which is why one can arrive as the other leaves.
+     *
+     * The credential that makes this work is the reason `credentials` on
+     * sending_identities has been an encrypted column with nothing in it since
+     * August. The host it names is a trust boundary; {@see TenantSmtpHost}.
+     */
+    case Smtp = 'smtp';
+
     /** Can a tenant put this on one of their own identities? */
     public function isTenantChoosable(): bool
     {
         return match ($this) {
             self::Platform       => false,
             self::VerifiedDomain => true,
+            self::Smtp           => true,
         };
     }
 
@@ -63,6 +88,15 @@ enum MailTransport: string
             // Nothing to prove: it is our own domain, and we are the ones asking.
             self::Platform       => false,
             self::VerifiedDomain => true,
+
+            /*
+             * Nothing for US to prove, and nobody here to prove it to. The
+             * tenant's own server decides whether to accept the message, using
+             * the password they gave it — that IS the authentication, and it is
+             * stronger than a DNS record because it fails closed at the moment
+             * of sending rather than at a check we ran some hours earlier.
+             */
+            self::Smtp => false,
         };
     }
 
@@ -71,6 +105,7 @@ enum MailTransport: string
         return match ($this) {
             self::Platform       => 'EzBizi',
             self::VerifiedDomain => 'Your own domain, sent by EzBizi',
+            self::Smtp           => 'Your own mail server',
         };
     }
 

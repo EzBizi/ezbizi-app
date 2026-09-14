@@ -447,6 +447,158 @@ class PlatformMailTest extends TestCase
 
         Mail::assertSent(PlatformNotice::class, fn (PlatformNotice $m) => $m->hasFrom('noreply@ezbizi.test'));
     }
+
+    // ── the tenant's own mail server ─────────────────────────────
+    //
+    // Asserted through smtpConfigFor() rather than by sending, and that is not
+    // a convenience. Mail::build() is not faked — MailFake has no build()
+    // override, so __call forwards it to the real manager — which means a test
+    // that called throughTenantProvider() under Mail::fake() would open a real
+    // socket to whatever host the fixture named. Everything that can be got
+    // wrong lives in the config; the send is Laravel's own code.
+
+    /** A tenant with its own mail server connected. */
+    private function tenantSmtp(array $credentials = []): SendingIdentity
+    {
+        return $this->inTenant(function () use ($credentials) {
+            SendingIdentity::query()->delete();
+
+            $identity = new SendingIdentity([
+                'organization_id' => $this->org->id,
+                'scope_type'      => SendingIdentity::SCOPE_COMPANY,
+                'scope_id'        => $this->company->getKey(),
+                'from_address'    => 'info@a-1chimney.com',
+                'from_name'       => 'A-1 Chimney',
+                'transport'       => MailTransport::Smtp->value,
+            ]);
+
+            $identity->forceFill([
+                'state'       => SendingState::Verified->value,
+                'credentials' => array_merge([
+                    'host'     => 'smtp.gmail.com',
+                    'port'     => 465,
+                    'username' => 'info@a-1chimney.com',
+                    'password' => 'not-a-real-password',
+                ], $credentials),
+            ])->save();
+
+            return $identity;
+        });
+    }
+
+    public function test_a_connected_tenant_sends_through_its_own_server_and_not_ours(): void
+    {
+        /*
+         * THE test. Everything else in this block is a refusal, and a refusal
+         * test passes against a method that refuses unconditionally — which is
+         * exactly what asTenant now does one door along. This is the case that
+         * can tell the new door from the old one.
+         */
+        $this->tenantSmtp();
+
+        $config = $this->inTenant(fn () => app(MailDispatcher::class)->smtpConfigFor($this->company));
+
+        $this->assertSame('smtp.gmail.com', $config['host']);
+        $this->assertSame(465, $config['port']);
+        $this->assertSame('info@a-1chimney.com', $config['username']);
+        $this->assertSame('not-a-real-password', $config['password']);
+
+        // The point of the whole feature: this is NOT EzBizi's mailer. If the
+        // host ever came back as the platform's, the tenant's report would be
+        // leaving on our reputation and our quota again.
+        $this->assertNotSame(
+            config('mail.mailers.'.app(PlatformIdentity::class)->mailerName().'.host'),
+            $config['host'],
+            'A tenant send was configured against EzBizi\'s own transport.',
+        );
+
+        $this->assertArrayHasKey('timeout', $config, 'A stranger\'s mail server needs a bounded wait.');
+    }
+
+    public function test_a_tenant_with_no_mail_server_is_refused_rather_than_sent_as_ezbizi(): void
+    {
+        $refused = null;
+
+        try {
+            $this->inTenant(fn () => app(MailDispatcher::class)->smtpConfigFor($this->company));
+        } catch (CannotSendMail $e) {
+            $refused = $e;
+        }
+
+        $this->assertNotNull($refused, 'A tenant with nothing connected got a working mail config.');
+        $this->assertStringContainsString('has not connected its own mail server', $refused->getMessage());
+    }
+
+    public function test_an_identity_on_the_old_transport_does_not_count_as_connected(): void
+    {
+        /*
+         * The row that would slip through. A VerifiedDomain identity is a real,
+         * verified, non-null row — everything a null-check would accept — and it
+         * has no credentials at all, because that transport never had any. If
+         * the check were "is there a row" rather than "is it THIS transport",
+         * this tenant would reach Mail::build() with an empty host.
+         */
+        $this->tenantIdentity(SendingState::Verified);
+
+        $this->expectException(CannotSendMail::class);
+
+        $this->inTenant(fn () => app(MailDispatcher::class)->smtpConfigFor($this->company));
+    }
+
+    public function test_a_half_saved_connection_says_what_is_missing_rather_than_reconnect(): void
+    {
+        foreach (['host', 'username', 'password'] as $missing) {
+            $this->tenantSmtp([$missing => '']);
+
+            $refused = null;
+
+            try {
+                $this->inTenant(fn () => app(MailDispatcher::class)->smtpConfigFor($this->company));
+            } catch (CannotSendMail $e) {
+                $refused = $e;
+            }
+
+            $this->assertNotNull($refused, "A connection with no {$missing} was treated as usable.");
+
+            // Names the missing field. "Not connected" would describe a state
+            // this tenant is not in — they connected something and part of it
+            // did not survive — and they would refill the same form.
+            $this->assertStringContainsString($missing, $refused->getMessage());
+            $this->assertStringNotContainsString('has not connected', $refused->getMessage());
+        }
+    }
+
+    public function test_a_mail_server_pointing_back_into_our_network_is_refused(): void
+    {
+        /*
+         * The SSRF boundary, asserted HERE as well as in TenantSmtpHostTest,
+         * because that suite proves the guard works and this one proves the
+         * dispatcher actually calls it. A guard nothing invokes has a green
+         * suite of its own.
+         */
+        $this->tenantSmtp(['host' => '169.254.169.254']);
+
+        $refused = null;
+
+        try {
+            $this->inTenant(fn () => app(MailDispatcher::class)->smtpConfigFor($this->company));
+        } catch (CannotSendMail $e) {
+            $refused = $e;
+        }
+
+        $this->assertNotNull($refused, 'The cloud metadata endpoint was accepted as a mail server.');
+
+        /*
+         * Pinned to the HOST refusal specifically. "Some CannotSendMail was
+         * thrown" would be satisfied by the missing-field loop above it, or by
+         * the not-connected branch, so this test would keep passing with the
+         * guard call deleted — which is the whole thing it exists to catch.
+         */
+        $this->assertStringContainsString('is not a mail server EzBizi can send through', $refused->getMessage());
+
+        // And it does not tell whoever typed it what they just found.
+        $this->assertStringNotContainsString('internal', mb_strtolower($refused->getMessage()));
+    }
 }
 
 /**
