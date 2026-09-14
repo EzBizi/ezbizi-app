@@ -260,13 +260,22 @@ void main() {
       ensureCallingAccount: () async => CallingAccountState.ready,
       readDeviceToken: () async => 'fcm',
       register: (_, _) => Completer<bool?>().future,
+
+      // The real one is twenty seconds, and this test used to spend them.
+      //
+      // What is under test is that the wait ENDS and says why — not how long
+      // it is. Spending the real duration made the result depend on the
+      // machine keeping up: it passed alone and went red in a loaded run of
+      // the whole suite, in somebody else's session rather than mine, which is
+      // the worst place for a flake to surface.
+      registrationTimeout: const Duration(milliseconds: 20),
     );
 
-    await device.setup('a-token').timeout(const Duration(seconds: 40));
+    await device.setup('a-token');
 
     expect(device.registered, isFalse);
     expect(device.registrationError, contains('VoIP push token'));
-  }, timeout: const Timeout(Duration(seconds: 60)));
+  });
 
   /// `false` is an answer, and a different one from a thrown error.
   test('a plugin that declines without throwing still explains itself', () async {

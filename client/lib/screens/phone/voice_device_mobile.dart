@@ -57,9 +57,22 @@ class MobileVoiceDevice implements VoiceDevice {
     Future<bool?> Function(String token, String? deviceToken)? register,
     Future<String?> Function()? readDeviceToken,
     Future<CallingAccountState> Function()? ensureCallingAccount,
+
+    // Injectable ONLY so a test does not have to spend it.
+    //
+    // The tests for giving up are the honest kind: a plugin call that never
+    // completes, waited on for real. That made each of them cost twenty
+    // seconds of wall clock, and a test whose result depends on the machine
+    // keeping up is a test that goes red on a loaded run and green alone —
+    // which is what happened, in somebody else's suite rather than mine.
+    //
+    // Shortening it here costs the test nothing it was measuring: what is
+    // under test is that the wait ENDS and says why, not how long it is.
+    Duration? registrationTimeout,
   }) : _register = register ?? _registerWithPlugin,
        _readDeviceToken = readDeviceToken ?? _readFcmToken,
-       _ensureCallingAccount = ensureCallingAccount ?? _telecomAccountReady;
+       _ensureCallingAccount = ensureCallingAccount ?? _telecomAccountReady,
+       _registrationTimeout = registrationTimeout ?? _defaultRegistrationTimeout;
 
   final Future<bool?> Function(String token, String? deviceToken) _register;
   final Future<String?> Function() _readDeviceToken;
@@ -201,7 +214,9 @@ class MobileVoiceDevice implements VoiceDevice {
   /// phone with no VoIP push token does not fail to register — it stops,
   /// forever, holding the whole desk startup behind it. A timeout turns that
   /// into a state somebody can be shown.
-  static const _registrationTimeout = Duration(seconds: 20);
+  static const _defaultRegistrationTimeout = Duration(seconds: 20);
+
+  final Duration _registrationTimeout;
 
   StreamSubscription<CallEvent>? _events;
   bool _registered = false;
