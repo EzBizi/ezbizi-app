@@ -1564,18 +1564,7 @@ class _HomeShellState extends State<HomeShell> {
             bottom: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
-              child: Row(
-                children: [
-                  Expanded(child: EzBiziTheme.wordmark(context, size: 20)),
-                  if (!_arrangingDrawer)
-                    IconButton(
-                      icon: const Icon(Icons.swap_vert, size: 20),
-                      tooltip: UiStrings.t('shell.rearrange'),
-                      onPressed: () =>
-                          setState(() => _arrangingDrawer = true),
-                    ),
-                ],
-              ),
+              child: EzBiziTheme.wordmark(context, size: 20),
             ),
           );
 
@@ -1617,6 +1606,38 @@ class _HomeShellState extends State<HomeShell> {
               for (final d in pinned) tile(d, _Rail.pinned),
               if (staffOnly.isNotEmpty) const Divider(),
               for (final d in staffOnly) tile(d, _Rail.staff),
+
+              // The foot, and the same two things the sidebar's foot carries
+              // (Jose, 2026-09-14: mobile layout 1, and "move it next to the
+              // version number").
+              //
+              // A phone had the version NOWHERE: `BuildStamp` was used at the
+              // foot of the sidebar and on the sign-in screen, and a phone has
+              // no sidebar and is signed in. Its own docblock called those
+              // "the two places somebody already is when they wonder whether
+              // the app has updated" — true when written, false the day this
+              // drawer shipped.
+              const Divider(),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 8, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextButton.icon(
+                      onPressed: () =>
+                          setState(() => _arrangingDrawer = true),
+                      icon: const Icon(Icons.swap_vert, size: 16),
+                      label: Text(UiStrings.t('shell.rearrange')),
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        textStyle: Theme.of(context).textTheme.labelMedium,
+                      ),
+                    ),
+                    const BuildStamp(),
+                  ],
+                ),
+              ),
               SizedBox(height: MediaQuery.paddingOf(context).bottom + 8),
             ],
           );
@@ -2191,26 +2212,6 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
                 ),
               ),
 
-            // The way in, beside the filter rather than buried in Settings:
-            // rearranging the sidebar is something you decide while looking at
-            // the sidebar.
-            if (expanded && !arranging && widget.onArranged != null)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 2, 8, 0),
-                  child: TextButton.icon(
-                    onPressed: () => setState(() => _arranging = true),
-                    icon: const Icon(Icons.swap_vert, size: 16),
-                    label: Text(UiStrings.t('shell.rearrange')),
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      foregroundColor: scheme.onSurfaceVariant,
-                      textStyle: Theme.of(context).textTheme.labelMedium,
-                    ),
-                  ),
-                ),
-              ),
 
             // How many of how many.
             //
@@ -2372,17 +2373,51 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
               ),
             ],
 
-            // The version, at the very foot of the sidebar. Tapping it opens
-            // what shipped in each build — the memory for "when did we do that".
+            // The foot: what build you are on, and the way into rearranging.
             //
-            // Only when expanded: at 80px it would truncate, and half a build
-            // id is worse than none — it invites people to compare the wrong
-            // characters and conclude they are up to date when they are not.
-            if (expanded)
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 10, 12, 0),
-                child: BuildStamp(),
-              ),
+            // Rearranging used to sit under the search field. Jose, 2026-09-14:
+            // "i dont like the rearrange being on the top, perhaps move it next
+            // to the version number instead." It belongs here for the same
+            // reason Settings does — a place you go to change how the sidebar
+            // behaves rather than a place you go to work — and the top of a
+            // list of modules is the one place it competes with the modules.
+            //
+            // Collapsed shows the version alone. It used to show nothing, on
+            // the reasoning that half a build id is worse than none; the
+            // version is a whole field rather than half of one, and it fits.
+            // See [BuildStamp.compact].
+            Padding(
+              padding: EdgeInsets.fromLTRB(expanded ? 20 : 8, 10, 12, 0),
+              // Stacked, not side by side, and that was measured rather than
+              // chosen: `BuildStamp` is 160px wide on a desktop platform --
+              // the version plus the update control beside it -- and this
+              // sidebar is draggable down to 180. A Row gives its non-flex
+              // children unbounded width, so the two of them overflowed by
+              // 86px at the default 220 rather than shrinking. Stacked they
+              // fit at every width, and the control keeps its WORD, which an
+              // icon squeezed in beside the version could not have.
+              child: expanded
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (!arranging && widget.onArranged != null)
+                          TextButton.icon(
+                            onPressed: () =>
+                                setState(() => _arranging = true),
+                            icon: const Icon(Icons.swap_vert, size: 16),
+                            label: Text(UiStrings.t('shell.rearrange')),
+                            style: TextButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 6),
+                              foregroundColor: scheme.onSurfaceVariant,
+                              textStyle: Theme.of(context).textTheme.labelMedium,
+                            ),
+                          ),
+                        const BuildStamp(),
+                      ],
+                    )
+                  : const Center(child: BuildStamp(compact: true)),
+            ),
             const SizedBox(height: 12),
           ],
         ),
