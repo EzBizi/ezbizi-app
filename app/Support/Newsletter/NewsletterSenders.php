@@ -21,8 +21,25 @@ use App\Support\Social\SocialProvider;
  *
  * Because EzBizi does not send newsletters, by design rather than by omission:
  * a mailing goes out on the tenant's own reputation, to their list, through
- * their provider. See the design doc §1. When SES leaves the sandbox and that
- * decision is revisited, it becomes another arm of this match — not a rewrite.
+ * their provider. See the design doc §1.
+ *
+ * **The SES condition this paragraph used to wait on has now happened, and
+ * nothing here changed.** Production access was granted 2026-09-14 — 50,000 a
+ * day, 14 a second, sandbox gone. The sentence used to read "when SES leaves
+ * the sandbox and that decision is revisited", which by today reads as a wait
+ * that is over while the code sits exactly where it was, and that is how a
+ * reader concludes somebody forgot.
+ *
+ * Nobody forgot. The sandbox was never the reason — it was a second reason.
+ * The first one is unchanged: one tenant's list hygiene would set the sending
+ * reputation for every other tenant on the same domain, and 50,000 a day is
+ * ONE account's budget shared across all of them, which a single large list
+ * would spend by itself. Bounce handling, complaint feedback and unsubscribe
+ * enforcement are what the tenant's provider is doing for them today and what
+ * EzBizi would have to build to replace it.
+ *
+ * So the decision is now OPEN rather than blocked, and it is Jose's. If it is
+ * taken, it becomes another arm of this match — still not a rewrite.
  */
 final class NewsletterSenders
 {
