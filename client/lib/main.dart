@@ -395,6 +395,19 @@ class _HomeShellState extends State<HomeShell> {
 
   _Rail _rail = _Rail.modules;
 
+  /// Developer only: render the app at phone width without resizing the window
+  /// (Jose, 2026-09-14 — desktop layout 1, mobile layout 4).
+  ///
+  /// Session state rather than a preference. It is a mode you are in for a
+  /// minute; saving it would mean signing in on a desktop to a mobile layout
+  /// with no memory of having asked for one.
+  bool _mobileView = false;
+
+  /// A phone the app has to look right on. Narrow enough to be the real test —
+  /// under the 480 breakpoint `auth_shell` uses, and well under the 600
+  /// `lead_thread` uses and the 900 this shell uses.
+  static const double _phoneWidth = 390;
+
   /// Whether the drawer is showing its rows with drag handles on.
   ///
   /// Held here rather than in the drawer because a Drawer is rebuilt from
@@ -686,8 +699,49 @@ class _HomeShellState extends State<HomeShell> {
     });
   }
 
+  /// Phone width, or the app as it is.
+  ///
+  /// ── Why this overrides the VIEWPORT and not a flag ───────────────
+  ///
+  /// This shell decides its shape from one line — `width >= 900`, below — but
+  /// it is not the only thing that asks. Nine reads of the viewport width live
+  /// across five files at THREE breakpoints: 900 here, in `staff_shell` and in
+  /// Web widgets; 600 in `lead_thread`; 480 in `auth_shell`; and `side_panel`
+  /// clamping its own width to the window. Flipping this shell's boolean would
+  /// give a narrow shell with DESKTOP screens inside it — a mobile view that is
+  /// wrong in exactly the places somebody would be using it to check.
+  ///
+  /// Overriding `MediaQuery` makes all nine agree, and no screen has to know
+  /// this control exists.
+  ///
+  /// The SizedBox is the other half: the override changes what the app is TOLD,
+  /// and this changes what it is given. Without it the app would report 390 and
+  /// still be laid out across the whole window — a drawer instead of a rail,
+  /// stretched over 1600px, which is not what anything looks like.
   @override
   Widget build(BuildContext context) {
+    if (!_mobileView) return _shell(context);
+
+    return ColoredBox(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: SizedBox(
+          width: _phoneWidth,
+          child: LayoutBuilder(
+            builder: (context, constraints) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                size: Size(_phoneWidth, constraints.maxHeight),
+              ),
+              child: Builder(builder: _shell),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _shell(BuildContext context) {
     final me = widget.session.me!;
     final wide = MediaQuery.sizeOf(context).width >= 900;
 
@@ -1017,6 +1071,29 @@ class _HomeShellState extends State<HomeShell> {
               // the phone — two taps away at exactly the moment you want it.
               // Draws nothing for somebody who is not on a line.
               AvailabilityButton(api: widget.api),
+
+              // Desktop and phone shapes, one press apart. Staff only: the
+              // same gate the Development rail uses (§4.2), because it is a
+              // tool for building the product rather than part of it.
+              //
+              // It stays in the bar in mobile view rather than moving
+              // somewhere roomier, by Jose's pick (layout 4) — which means it
+              // is the way back as well as the way in, and the way back must
+              // not be somewhere a phone does not draw.
+              if (me.development != null)
+                IconButton(
+                  icon: Icon(
+                    _mobileView
+                        ? Icons.phone_iphone
+                        : Icons.phone_iphone_outlined,
+                  ),
+                  isSelected: _mobileView,
+                  tooltip: _mobileView
+                      ? UiStrings.t('shell.exit_mobile_view')
+                      : UiStrings.t('shell.mobile_view'),
+                  onPressed: () =>
+                      setState(() => _mobileView = !_mobileView),
+                ),
               // Light / dark, one tap, from anywhere.
               //
               // It is the same preference the account screen holds (§2.1 category
