@@ -32,6 +32,16 @@ class DashboardChart extends StatefulWidget {
 
   static const double height = 140;
 
+  /// How much thicker the hovered wedge is drawn.
+  ///
+  /// Public and named because it is the whole VISIBLE half of the hover: at
+  /// 1.0 the tooltip still appears, the state still updates, and the pointer
+  /// still resolves the right wedge — and nothing on screen answers. Sabotage
+  /// after committing found that zero tests failed when this became 1.0, while
+  /// three failed for a wrong percentage. The half people SEE was unguarded.
+  @visibleForTesting
+  static const double liftFactor = 1.22;
+
   /// Whether a glance payload is worth drawing at all — ask before building.
   ///
   /// Exists so a screen deciding "is there a chart here" and this widget
@@ -713,7 +723,8 @@ class _DashboardChartPainter extends CustomPainter {
         false,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = geometry.thickness * (lifted ? 1.22 : 1.0)
+          ..strokeWidth =
+              geometry.thickness * (lifted ? DashboardChart.liftFactor : 1.0)
           ..strokeCap = StrokeCap.butt
           ..color = colors[i],
       );

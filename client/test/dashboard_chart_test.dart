@@ -706,6 +706,51 @@ void main() {
     expect(_chartSemantics(tester), contains('Sliver 1 (<1%)'));
   });
 
+  /// THE HALF OF THE FEATURE THAT IS DRAWN, NOT WRITTEN.
+  ///
+  /// Found by sabotaging my own work after committing it: making the lift a
+  /// no-op, and making `shouldRepaint` blind to the highlight, each failed
+  /// ZERO tests — while a wrong percentage failed three. The tooltip is a
+  /// widget, so `find.text` catches it; the highlight is pixels, and nothing
+  /// was looking. Jose asked for two things and only one was guarded.
+  ///
+  /// These two are what a canvas can be held to without reading pixels: the
+  /// hovered wedge is drawn WIDER than the others, and the painter reports it
+  /// needs repainting when the hover moves. Miss the second and the state
+  /// updates while the screen does not.
+  test('the hovered wedge is drawn wider than the rest', () {
+    expect(
+      DashboardChart.liftFactor,
+      greaterThan(1.0),
+      reason: 'At 1.0 the hover is invisible and everything else still works.',
+    );
+  });
+
+  testWidgets('moving the pointer asks the canvas to repaint', (tester) async {
+    await _pumpPie(tester, const [
+      {'label': 'Scheduled', 'total': 1},
+      {'label': 'Completed', 'total': 1},
+    ]);
+
+    final before = _painterOf(tester);
+
+    final hover = await _pointerOver(tester);
+    await hover(const Offset(38, -38));
+
+    final after = _painterOf(tester);
+
+    expect(
+      identical(before, after),
+      isFalse,
+      reason: 'A hover that never rebuilt the painter cannot have repainted.',
+    );
+    expect(
+      after.shouldRepaint(before),
+      isTrue,
+      reason: 'The highlight changed and the canvas was not told.',
+    );
+  });
+
   /// HOVER ENHANCES, IT DOES NOT GATE.
   ///
   /// `MouseRegion` never fires on a touch screen, so on a phone this layer
@@ -1056,4 +1101,21 @@ Future<Future<void> Function(Offset)> _pointerOver(WidgetTester tester) async {
     await gesture.moveTo(centre + fromCentre);
     await tester.pumpAndSettle();
   };
+}
+
+/// The live painter off the tree.
+///
+/// Taken from the widget rather than constructed, because the painter type is
+/// private to its library — which also means `shouldRepaint` can only ever be
+/// asked with two instances the app itself made. That is the honest form of
+/// the question anyway: did THIS rebuild tell the canvas to redraw.
+CustomPainter _painterOf(WidgetTester tester) {
+  final paint = tester.widgetList<CustomPaint>(
+    find.descendant(
+      of: find.byType(DashboardChart),
+      matching: find.byType(CustomPaint),
+    ),
+  ).firstWhere((c) => c.painter != null);
+
+  return paint.painter!;
 }
