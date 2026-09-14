@@ -123,14 +123,16 @@ function copyLine(long){
   var who = (S === 'inhcop') ? 'A-1 Chimney' : 'this business';
   return 'Copied from <b>info@a-1chimney.com</b> on 14 September' +
     (long ? ' by ' + who : '') + '. <b>It is a copy, not a link</b> — changing ' +
-    'that mailbox does not change this, and deleting it does not stop this ' +
-    'sending.';
+    'that mailbox does not change this. Deleting the inbox does not stop this ' +
+    'sending; changing its password DOES stop it, because the copy keeps the '
+    + 'old one.';
 }
 function staleLine(){
   return stale()
-    ? '<div class="warnline">The password on <b>info@a-1chimney.com</b> was ' +
+    ? '<div class="warnline"><b>This is no longer sending.</b> The password on info@a-1chimney.com was ' +
       'changed on 2 October. This server still uses the one copied in ' +
-      'September, and is still sending.</div>'
+      'September, and that password no longer works. Reports have been failing '
+      + 'since.</div>'
     : '';
 }
 function fields(){
@@ -139,7 +141,9 @@ function fields(){
     (none() ? 'Not set' : 'smtp.a-1chimney.com : 587') + '</div></div>' +
     '<div class="f"><label>User name</label>' +
     '<div class="in' + (none() ? ' mut' : '') + '">' +
-    (none() ? 'Not set' : 'reports@a-1chimney.com') + '</div></div>';
+    (none() ? 'Not set'
+            : wasCopied() ? 'info@a-1chimney.com'
+            : 'reports@a-1chimney.com') + '</div></div>';
 }
 function head(){
   return '<div class="h">Mail server for sending</div>' +
@@ -186,7 +190,7 @@ function D2(){
       '<div class="fact"><span class="k">These details</span><span class="v">' +
       (wasCopied() ? copyLine(true) : 'Typed here.') + '</span></div>' +
       '<div class="fact"><span class="k">Server</span><span class="v">' +
-      'smtp.a-1chimney.com : 587<small>reports@a-1chimney.com</small>' +
+      'smtp.a-1chimney.com : 587<small>' + (wasCopied() ? 'info@a-1chimney.com' : 'reports@a-1chimney.com') + '</small>' +
       '</span></div></div>' + staleLine()) +
     '</div></div></div>' +
     '<div class="note"><b>The two facts get two rows and two labels</b>, so ' +
@@ -212,7 +216,7 @@ function D3(){
       '<div class="in">smtp.a-1chimney.com : 587</div></div>' +
       '<div class="f"><label>User name' + (wasCopied()
         ? ' &middot; copied' : '') + '</label>' +
-      '<div class="in">reports@a-1chimney.com</div></div>' +
+      '<div class="in">' + (wasCopied() ? 'info@a-1chimney.com' : 'reports@a-1chimney.com') + '</div></div>' +
       (wasCopied() ? '<div class="copy">' + copyLine(false) + '</div>' : '') +
       staleLine()) +
     '</div></div></div>' +
@@ -267,7 +271,7 @@ function M6(){
   return '<div class="phone"><div class="top">Mail server</div>' +
     '<div class="bd"><div class="card">' +
     '<div class="h">' + (none() ? 'Not connected'
-      : stale() ? 'Sending &mdash; worth a look'
+      : stale() ? 'Not sending'
       : ownScope() ? 'Sending' : 'Sending, set by A-1 Chimney') + '</div>' +
     '<div class="n">' + (none()
       ? 'Saved reports, inspection reports and automation emails have nowhere ' +
