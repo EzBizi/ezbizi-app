@@ -312,6 +312,37 @@ void main() {
     );
   });
 
+  /// A state this build cannot read must not borrow the reassuring sentence.
+  ///
+  /// `null` and an unrecognised string are different facts: the first is a
+  /// server that said nothing, the second is a server NEWER than this build
+  /// that said something. Collapsing them meant a future state — a bounce, a
+  /// suppression, anything added after this release — rendering as "may or may
+  /// not have been sent" in calm grey, and somebody would stop chasing on the
+  /// strength of it. Found by UI/UX reading the switch rather than my
+  /// description of it.
+  testWidgets('a send state this build does not know is not read as maybe', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(createdState: 'something_from_the_future'));
+
+    await _tap(tester, _tab('Invitations'));
+    await _tap(tester, find.text('Invite somebody'));
+
+    await _type(tester, 'Email', 'nadia@example.com');
+    await _type(tester, 'First name', 'Nadia');
+    await _choose(tester, 'Role', 'Technician');
+    await _choose(
+      tester,
+      'Where they are assigned',
+      'Serenisima › Connecticut',
+    );
+    await _tap(tester, find.text('Create the invitation'));
+
+    expect(find.textContaining('cannot read'), findsOneWidget);
+    expect(find.text('May or may not have been sent.'), findsNothing);
+  });
+
   /// Re-inviting sends the corrected address on the RESEND, one call.
   ///
   /// The call shape is the assertion, not the wording, because the whole
@@ -775,6 +806,9 @@ MockClientHandler _handler({
   // The signed-in person, so a test can hold or lack a key. Defaults to the
   // administrator every other test in this file drives.
   Map<String, Object?> me = _me,
+  // A `sent_state` this build has never heard of, for the case where the
+  // server is newer than the client reading it.
+  String? createdState,
   List<Map<String, Object?>> invitations = _invitations,
   Map<String, Object?> scopeOptions = _scopeOptions,
   int scopeOptionsStatus = 200,
@@ -922,7 +956,11 @@ MockClientHandler _handler({
     if (path.endsWith('/hr/invitations')) {
       if (request.method == 'POST') {
         onInvite?.call(jsonDecode(request.body) as Map<String, dynamic>);
-        return _json({'data': _created}, 201);
+        return _json({
+          'data': createdState == null
+              ? _created
+              : {..._created, 'sent_state': createdState},
+        }, 201);
       }
 
       return _json({
