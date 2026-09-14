@@ -585,7 +585,7 @@ class MailboxHealthTest extends TestCase
             'HostNotAnswering'    => false, // says it clears on its own
             'HostNotAllowed'      => true,  // a typed value only a person can fix
             'ProviderFaulty'      => false, // says it clears on its own
-            'ProviderRefused'     => true,  // OPEN: says retry once THEN a person
+            'ProviderRefused'     => false, // BUDGET: a person only after 10 in a row
             'PlatformRejected'    => false, // ours, never the tenant's row
             'NotBuiltHere'        => false, // ours, never the tenant's row
         ];
@@ -611,6 +611,70 @@ class MailboxHealthTest extends TestCase
             MailboxFault::cases(),
             'A fault was removed; drop its row above so this stays a list of real arms.',
         );
+
+        // The table above reads `marksBroken()` with no count, which is the
+        // answer for a mailbox that has just started failing. ProviderRefused
+        // is the one arm whose answer CHANGES with the count, so the table
+        // alone would record only half of its decision.
+        $this->assertFalse(
+            MailboxFault::ProviderRefused->marksBroken(MailboxFault::REFUSALS_BEFORE_BROKEN - 1),
+            'One short of the budget must still be a retry.',
+        );
+        $this->assertTrue(
+            MailboxFault::ProviderRefused->marksBroken(MailboxFault::REFUSALS_BEFORE_BROKEN),
+            'At the budget it must ask for a person.',
+        );
+    }
+
+    /**
+     * A refused mailbox is retried ten times before anybody is told.
+     *
+     * Jose's number, 2026-09-14, answering "how many times should EzBizi
+     * quietly retry a mailbox the provider is refusing before it bothers a
+     * person". Ten, because the arm's own sentence promises attempts before it
+     * names anybody -- the only arm in the enum that promises a quantity.
+     *
+     * Both halves are here because either alone is passable by broken code: a
+     * fault that NEVER marks broken passes the first, and one that always does
+     * passes the second.
+     */
+    public function test_a_refused_mailbox_is_retried_up_to_the_budget_then_asks_for_a_person(): void
+    {
+        $this->withScriptedProvider();
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+
+        ScriptedMailboxReader::$failWith = CannotReadMailbox::providerRefused($mailbox);
+
+        // One short of the budget. `watch_failures` is not fillable and
+        // `noteWatchFailure()` does not save, so it is set the long way round.
+        $this->inTenant($t['org'], function () use ($mailbox) {
+            $mailbox->forceFill(['watch_failures' => MailboxFault::REFUSALS_BEFORE_BROKEN - 1]);
+            $mailbox->save();
+        });
+
+        $this->open($t, $mailbox)->assertStatus(409);
+
+        $under = $this->reload($t, $mailbox);
+
+        $this->assertSame(Mailbox::STATUS_CONNECTED, $under->status, 'Given up on with budget left.');
+        $this->assertTrue($this->inTheWatchersSweep($mailbox), 'A mailbox with budget left must stay retryable.');
+
+        // THE CONTROL, and the half that makes the budget a budget rather than
+        // a way of never telling anybody: one more failure spends it.
+        $this->inTenant($t['org'], function () use ($mailbox) {
+            $mailbox->forceFill(['watch_failures' => MailboxFault::REFUSALS_BEFORE_BROKEN]);
+            $mailbox->save();
+        });
+
+        $this->open($t, $mailbox)->assertStatus(409);
+
+        $spent = $this->reload($t, $mailbox);
+
+        $this->assertSame(Mailbox::STATUS_BROKEN, $spent->status, 'The budget never runs out.');
+        $this->assertStringContainsString('connect the address again', (string) $spent->status_reason);
+        $this->assertFalse($this->inTheWatchersSweep($mailbox));
     }
 
     /**

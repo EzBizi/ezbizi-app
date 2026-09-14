@@ -288,7 +288,11 @@ final class RecordingMailboxReader implements MailboxReader
      */
     private function faulted(Mailbox $mailbox, MailboxFault $fault): void
     {
-        if (! $fault->marksBroken()) {
+        // The count is the mailbox's CONSECUTIVE failed polls, and only
+        // `ProviderRefused` reads it -- see `marksBroken()`. Passing it for
+        // every fault rather than branching here keeps the decision in the one
+        // place a new arm's author is already reading.
+        if (! $fault->marksBroken((int) $mailbox->watch_failures)) {
             return;
         }
 
