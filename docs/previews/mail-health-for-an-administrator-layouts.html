@@ -88,6 +88,22 @@ code{font:12px ui-monospace,Consolas,monospace;background:var(--ground);
   setting and does not belong in a settings card about your own address.
   <b>Nothing here shows <code>missing</code></b> &mdash; that is
   <code>AWS_ACCESS_KEY_ID</code> and belongs to staff.</p>
+  <p class="sub" style="margin-top:10px"><b>STATE B ANSWERED, 2026-09-14, and it
+  is not a from-line question.</b> Jose: <i>&ldquo;Email should not be sent as
+  EzBizi, EZBIZI EMAIL IS ONLY FOR EZBIZI ACTIONS LIKE ACCOUNT RECOVERY,
+  PASSWORD, RESET, VERIFICATIONS, ETC.&rdquo;</i> So EzBizi&rsquo;s mail service
+  carries EzBizi&rsquo;s own transactional messages and nothing else, and
+  <b>&ldquo;verify a domain&rdquo; is not the remedy</b> &mdash; verifying one
+  would not make a tenant&rsquo;s own mail EzBizi&rsquo;s to carry. A
+  <code>Verify a domain &rsaquo;</code> link on that card would be a remedy that
+  does not remedy: <b>the same defect this gallery corrected in the same
+  card&rsquo;s note three hours earlier</b>, which is how close it came to
+  shipping twice.<br><br><b>Drawn as an informational state with the
+  tenant&rsquo;s own provider as the way out</b>, and flagged rather than
+  settled: whether the sending-identity card still has a job under this ruling,
+  and what happens to the three measured <code>asTenant</code> callers, belongs
+  to the mail owner. <b>B may not be a health state at all</b> &mdash; a rule
+  about what a service is for is not a fault.</p>
 </header>
 <div id="nums"></div>
 <div id="ctl"><b style="font-weight:700">State:</b></div>
@@ -115,12 +131,13 @@ function card(){
     'Newsletters go out through your own provider and are not affected by ' +
     'this.</div>' +
     (bad
-      ? '<div class="n" style="color:var(--bad);margin-top:9px"><b>These are ' +
-        'not going out.</b> Until a domain is verified, saved reports, ' +
-        'inspection reports and automation emails are refused rather than sent. ' +
-        'EzBizi&rsquo;s own messages and your newsletters are unaffected.' +
-        '</div><div class="addr" style="color:var(--primary)">' +
-        'Verify a domain &rsaquo;</div>'
+      ? '<div class="n" style="color:var(--bad);margin-top:9px"><b>Your own ' +
+        'mail has nowhere to go from here.</b> Reports, inspection reports and ' +
+        'automation emails need your own email provider connected. ' +
+        'EzBizi&rsquo;s mail carries signing in, password resets and joining ' +
+        'messages, and only those.</div>' +
+        '<div class="addr" style="color:var(--primary)">Connect a provider ' +
+        '&rsaquo;</div>'
       : '<div class="addr">hello@everdoors.com</div>') +
     '</div>';
 }
