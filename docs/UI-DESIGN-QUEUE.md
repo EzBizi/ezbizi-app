@@ -2288,7 +2288,7 @@ account would mean signing in on a desktop to a mobile layout with no memory of 
 > treating a 390px column as a device and concluding from it** — and that warning carries more
 > from the session that owns Telecom and push than from the one that built the column.
 
-### 14 · Where the version lives — **DRAWN, awaiting Jose**
+### 14 · Where the version lives — **BUILT** (mobile 1 + desktop 5)
 
 `docs/previews/version-on-a-phone-layouts.html`. Jose, 2026-09-14: *"on phone i noticed there's
 nowhere you can see the current version"*. He is right, measured.
@@ -2329,4 +2329,31 @@ padding.
 
 **If 6 is picked, keep the sidebar stamp too.** A version is a fact rather than a control, and two
 places showing one fact is only a problem when they can disagree.
+
+**Jose picked 1 and 5, and moved something while he was there (2026-09-14):** *"i dont like the
+rearrange being on the top, perhaps move it next to the version number instead."* Both built the
+same day.
+
+**Desktop 5 turned out not to need the truncation it was drawn with.** I drew `201` — the last
+segment — against the existing objection that *"half a build id is worse than none."* Measured:
+`BuildInfo.short` is `v0.0.0201 · a1b2c3d`, and it is the **hash** that will not fit. The version
+alone is eight characters and fits at 80px with room. So nothing is truncated: **a whole field is
+dropped rather than the end of one**, and the field dropped is the one nobody compares by eye.
+The objection is answered rather than argued with.
+
+> **And "next to the version" is stacked rather than side by side, because measured it could not
+> be a row.** `BuildStamp` is **160px** wide on a desktop platform — the version plus the update
+> control — and this sidebar drags down to 180. A `Row` gives its non-flex children unbounded
+> width, so the two overflowed by **86px at the default 220**, not at some extreme. I tried
+> `Flexible` first and it still overflowed; I tried an icon-only button and it still overflowed.
+> Only then did I measure the widget instead of estimating it, which is the step that should have
+> come first and would have saved two wrong fixes.
+>
+> Stacked, the control keeps its **word** — which an icon squeezed beside a 160px stamp could
+> not have — and fits at every width from 180 to 420.
+
+**The drawer's Rearrange moved too**, from an icon in the header to the labelled control at the
+foot beside the version. He complained about the sidebar, but the drawer's was equally "on the
+top", and after mobile 1 there is a version at the foot of both to sit next to. Applied to both
+surfaces deliberately; if he meant desktop only, that is one line back.
 

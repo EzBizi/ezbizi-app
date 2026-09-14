@@ -13,10 +13,25 @@ import 'version_history_panel.dart';
 /// Tapping it opens [VersionHistoryPanel]: each version, what it did, when.
 /// That list is how we remember. The tooltip still names the exact bundle.
 class BuildStamp extends StatelessWidget {
-  const BuildStamp({super.key, this.onDark = false});
+  const BuildStamp({super.key, this.onDark = false, this.compact = false});
 
   /// On the sign-in panel's dark half the theme's own muted colour disappears.
   final bool onDark;
+
+  /// The version alone, for the 80px collapsed rail (Jose, layout 5,
+  /// 2026-09-14).
+  ///
+  /// It used to draw nothing there, and the reason was right: *"half a build id
+  /// is worse than none — it invites people to compare the wrong characters and
+  /// conclude they are up to date when they are not."*
+  ///
+  /// This does not truncate anything. `short` is `v0.0.0201 · a1b2c3d` and it
+  /// is the HASH that will not fit; the version on its own is eight characters
+  /// and fits with room to spare. So what is dropped is a whole field rather
+  /// than the end of one — and the field that is dropped is the one you cannot
+  /// compare by eye anyway. The tooltip still carries both, and tapping still
+  /// opens the history, so nothing is only available here.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +49,7 @@ class BuildStamp extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
             child: Text(
-              BuildInfo.short,
+              compact ? BuildInfo.version : BuildInfo.short,
               style: TextStyle(
                 fontSize: 11,
                 color: colour,

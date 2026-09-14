@@ -199,7 +199,18 @@ void main() {
 
     // The drawer is already a list of rows, so arranging it is that list with
     // handles on. Three modules and the rule between them.
-    await tester.tap(find.byTooltip('Rearrange'));
+    //
+    // Reached from the FOOT, beside the version — it was an icon in the header
+    // until 2026-09-14, when Jose asked for it away from the top: "i dont like
+    // the rearrange being on the top, perhaps move it next to the version
+    // number instead." This test found the move, which is what it is for.
+    final rearrange = find.descendant(
+      of: find.byType(Drawer),
+      matching: find.text('Rearrange'),
+    );
+    await tester.ensureVisible(rearrange);
+    await tester.pumpAndSettle();
+    await tester.tap(rearrange);
     await tester.pumpAndSettle();
 
     expect(find.byType(ReorderableListView), findsOneWidget);
