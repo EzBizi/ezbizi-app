@@ -1039,6 +1039,64 @@ void main() {
       },
     ]);
   });
+
+  /// A yes/no parameter is a switch, and OFF is an answer.
+  ///
+  /// Two failures in one shape, and the second is the one that would have
+  /// shipped. Without a `boolean` kind it draws as a TEXT BOX somebody types
+  /// "true" into. And because off is stored as the empty string, a "required"
+  /// check that tests for emptiness reads a deliberate no as a blank and
+  /// refuses to save — against a switch sitting there plainly answered.
+  ///
+  /// So this saves with the switch UNTOUCHED. Break it by deleting the boolean
+  /// skip in _missingParameter and it goes red on "Mark it urgent is required."
+  testWidgets('a yes/no step parameter is a switch, and leaving it off still saves', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+    await _pump(
+      tester,
+      _handler(
+        catalogue: _catalogueWithABooleanParameter(),
+        onCreate: (body) => sent = body,
+      ),
+    );
+
+    await _tap(tester, find.text('Build'));
+    await _type(tester, 'Name', 'Text me when mail lands');
+    await _tap(tester, find.text('Email'));
+    await _tap(tester, find.text('An email arrived'));
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, _inStep(find.text('Phone')));
+    await _tap(tester, _inStep(find.text('Send a message')));
+
+    await _tap(tester, find.byType(DropdownButtonFormField<String>).last);
+    await tester.pumpAndSettle();
+    await _tap(tester, find.text('Marketing · +1 (239) 456-0829').last);
+    await _type(tester, 'Send to', '+13057242199');
+    await _type(tester, 'Message', 'An email just arrived.');
+
+    // A switch, not a box to type "true" into.
+    expect(
+      find.widgetWithText(SwitchListTile, 'Mark it urgent'),
+      findsOneWidget,
+      reason: 'a boolean parameter drawn as a TextField asks for a typed "true"',
+    );
+
+    // Deliberately NOT touched. Off is the answer being given.
+    await _tap(tester, find.text('Create automation'));
+
+    expect(
+      sent,
+      isNotNull,
+      reason: 'a required boolean left off is answered, not missing — it must save',
+    );
+
+    // A REAL boolean on the wire, not the text the switch stored it in. The
+    // server must never be left casting a string: PHP turns '' into false and
+    // the string 'false' into TRUE.
+    expect((sent?['actions'] as List).first, containsPair('urgent', false));
+  });
 }
 
 // ── driving the screen ─────────────────────────────────────────────
@@ -1299,6 +1357,38 @@ Map<String, Object?> _catalogueWithSms() => {
     },
   ],
 };
+
+/// The same, plus a REQUIRED boolean — the shape that breaks two ways at once.
+///
+/// Drawn as a text box unless the builder knows the kind, and refused at save
+/// when switched off unless "required" understands that off is an answer.
+Map<String, Object?> _catalogueWithABooleanParameter() {
+  final catalogue = Map<String, Object?>.from(_catalogueWithSms());
+  final types = List<Object?>.from(catalogue['action_types'] as List);
+
+  final sms = Map<String, Object?>.from(
+    types.firstWhere(
+          (t) => (t as Map)['key'] == 'sms.send',
+        )
+        as Map,
+  );
+
+  sms['parameters'] = [
+    ...(sms['parameters'] as List),
+    {
+      'key': 'urgent',
+      'label': 'Mark it urgent',
+      'kind': 'boolean',
+      'required': true,
+      'nullable': false,
+    },
+  ];
+
+  types[types.indexWhere((t) => (t as Map)['key'] == 'sms.send')] = sms;
+  catalogue['action_types'] = types;
+
+  return catalogue;
+}
 
 MockClientHandler _handler({
   void Function(Map<String, dynamic> body)? onCreate,
