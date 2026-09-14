@@ -188,7 +188,14 @@ class ExperimentalCallReportTest extends TestCase
      * one person's work to another, and a visible duplicate row is the honest
      * failure.
      */
-    public function test_similar_names_are_not_merged(): void
+    /**
+     * THE CONFIRMED PAIR IS ONE PERSON, on Jose's word and nothing else.
+     *
+     * "Adeline Pierre Louis-Aghaji" answers the phone and "Adeline Pierrelouis"
+     * books the job. Asked whether they are the same person, Jose: "YES". So
+     * the calls and the jobs land on ONE row.
+     */
+    public function test_a_confirmed_alias_becomes_one_person(): void
     {
         $this->fakeCallLog([$this->inbound(rang: [['Adeline Pierre Louis-Aghaji', 'Call connected']])]);
 
@@ -196,8 +203,33 @@ class ExperimentalCallReportTest extends TestCase
             ['account' => 'NJ', 'created_by' => 'Adeline Pierrelouis', 'created_at' => '2026-09-14 11:00:00'],
         ]);
 
-        $rc = $this->person($day, 'Adeline Pierre Louis-Aghaji');
-        $wz = $this->person($day, 'Adeline Pierrelouis');
+        $person = $this->person($day, 'Adeline Pierrelouis');
+
+        $this->assertSame(1, $person['answered']);
+        $this->assertSame(1, $person['jobs']);
+        $this->assertTrue($person['in_calls']);
+        $this->assertTrue($person['in_jobs']);
+
+        // And there is no second row left behind under the other spelling.
+        $this->assertSame(
+            ['Adeline Pierrelouis'],
+            array_column($day['people'], 'person'),
+        );
+    }
+
+    public function test_similar_names_are_not_merged(): void
+    {
+        // An UNCONFIRMED near-pair. Nothing has said these are one person, so
+        // nothing here may decide it - a resemblance rule that merged them
+        // would also merge two real people who share a surname.
+        $this->fakeCallLog([$this->inbound(rang: [['Nelly Escobar', 'Call connected']])]);
+
+        $day = $this->reconcile([
+            ['account' => 'NJ', 'created_by' => 'Natalie Escobar', 'created_at' => '2026-09-14 11:00:00'],
+        ]);
+
+        $rc = $this->person($day, 'Nelly Escobar');
+        $wz = $this->person($day, 'Natalie Escobar');
 
         $this->assertTrue($rc['in_calls']);
         $this->assertFalse($rc['in_jobs']);
