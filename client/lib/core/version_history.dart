@@ -8,6 +8,19 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0204',
+      date: '14 Sep 2026',
+      items: [
+        'Reconnecting a Google Ads account now reclaims the enquiries it was disconnected from, instead of leaving them unattached and unanswerable. Each one is picked back up the first time it is seen after this update.',
+        'A Google Ads connection is no longer marked broken when Google is merely busy. A rate limit had silently stopped three live accounts for up to four days.',
+        'The window shown after connecting an account now names what was connected and where it goes - Google Ads and Thumbtack enquiries say Leads, Business Profile says Reviews - and draws the provider mark instead of appearing as bare text.',
+        'An incoming call now rings on Android. Two phone permissions were declared but never actually asked for, so a fresh install could not even check whether Android would let it be a phone. Placing a call and its audio have not been confirmed yet.',
+        'Not taking calls now covers your whole account, and the other apps catch up when you look at them. Setting it on the web left the desktop showing you as available - and a call rang. Opening the app somewhere it had never been opened also quietly put you back on the rota. This is the half that the two previous attempts missed.',
+        'Human Resources: an invitation now says what became of the message - sent, refused, or not attempted because this installation sends no mail - and one whose outcome your version cannot read says so rather than saying it may have arrived.',
+        'Human Resources: a mistyped invitation address can be corrected, and the link that went to the wrong address stops working.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0203',
       date: '14 Sep 2026',
       items: [
