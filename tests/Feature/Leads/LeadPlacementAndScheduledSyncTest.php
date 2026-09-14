@@ -13,11 +13,16 @@ use Tests\TestCase;
 /**
  * Placing a connected account at a franchise, and fetching without a person.
  *
- * Two facts about a connection are kept apart on purpose. `scope_type`/`scope_id`
- * says who can SEE it; `leads_franchise_id` says where its LEADS land. Merging
- * them would have hidden an account from the company that just assigned it,
- * because inView() makes a franchise-scoped connection invisible to the company
- * above.
+ * Two facts about a connection are kept apart. `scope_type`/`scope_id` says who
+ * can SEE and ACT ON it; `leads_franchise_id` says where its LEADS land.
+ *
+ * This docblock used to add "merging them would have hidden an account from the
+ * company that just assigned it". That was measured on 2026-09-14 and is false —
+ * inView()'s COMPANY branch has included franchise-scoped connections since
+ * d3f17b70 on 2026-08-21, and canActOnFranchise() lets a company-level
+ * assignment act on its franchises. The migration carries the full correction.
+ * What the tests below actually pin is the behaviour, which is unchanged and
+ * still worth pinning; only the reason given for it was wrong.
  */
 class LeadPlacementAndScheduledSyncTest extends TestCase
 {
