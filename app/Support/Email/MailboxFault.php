@@ -55,6 +55,12 @@ use Symfony\Component\HttpFoundation\Response;
 enum MailboxFault: string
 {
     /** Nobody has signed in or entered a password yet. */
+    /**
+     * How many consecutive refused polls before {@see ProviderRefused} gives up
+     * and asks for a person. Jose's number, 2026-09-14.
+     */
+    public const REFUSALS_BEFORE_BROKEN = 10;
+
     case NotConnected = 'not_connected';
 
     /**
@@ -296,14 +302,38 @@ enum MailboxFault: string
      *
      * Everything else did work a moment ago and does not now, which is exactly
      * what Mailbox::STATUS_BROKEN was written to mean.
+     *
+     * ── PROVIDER REFUSED is the one arm with a BUDGET ────────────
+     *
+     * Its sentence is the only one that promises a specific number of
+     * attempts -- "One more attempt is worth making; if it keeps happening,
+     * somebody ... should connect the address again." So it is neither of the
+     * other two shapes: not "wait, it passes" and not "a person must act", but
+     * both in order. Jose set the number on 2026-09-14: ten.
+     *
+     * `$consecutiveFailures` is `Mailbox::$watch_failures`, which already
+     * counts CONSECUTIVE failed polls and is already cleared by the first poll
+     * that succeeds ({@see Mailbox::standOn}). So a mailbox that refuses once a
+     * day and works in between never reaches ten and nobody is told -- which is
+     * correct, because a mailbox that answers most of the time is not one
+     * somebody needs to go and reconnect. What that does NOT cover is a mailbox
+     * that is quietly degraded rather than failing outright; that is a reading
+     * off `last_reached_at` and it does not exist yet.
+     *
+     * The counter is raised by `MailboxWatcher::backOff()`, so the budget is
+     * spent by the TIMER rather than by page loads. Ten of those is roughly a
+     * day, because the wait doubles each time to a six-hour cap.
      */
-    public function marksBroken(): bool
+    public function marksBroken(int $consecutiveFailures = 0): bool
     {
         return match ($this) {
             self::NotConnected,
             self::TooManyRequests,
             self::ProviderFaulty,
             self::HostNotAnswering => false,
+
+            self::ProviderRefused => $consecutiveFailures >= self::REFUSALS_BEFORE_BROKEN,
+
             default => ! $this->isOurs(),
         };
     }
