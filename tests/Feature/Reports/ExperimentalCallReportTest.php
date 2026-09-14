@@ -5,232 +5,389 @@ namespace Tests\Feature\Reports;
 use App\Support\Reports\Experimental\CallReconciliation;
 use App\Support\Reports\Experimental\RingCentralCallLog;
 use App\Support\Reports\Experimental\WorkizJobs;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use RuntimeException;
 use Tests\TestCase;
 
 /**
  * The temporary RingCentral / Workiz reconciliation.
  *
- * Every fixture here is INVENTED — no RingCentral or Workiz credential exists
- * yet — so these tests prove the counting rules and the shape handling, and
- * they prove NOTHING about whether the real payloads look like this. That
- * distinction is the whole of what an invented fixture buys, and it has
- * already cost this module one shipped defect (the empty-array/empty-object
- * grey panel). The first real response must be diffed against these fixtures
- * before any number here is believed.
+ * ── These fixtures are still invented, but no longer guessed ─────
+ *
+ * The previous version of this file invented BOTH the payload shape and the
+ * rules, and eleven green tests agreed with code that was wrong three ways.
+ * Every fixture below is now copied from a payload that was read off the live
+ * APIs on 2026-09-14 — the queue names, the `legs` layout, the `PstnToSip`
+ * result vocabulary, `CreatedDate` versus `JobDateTime`. What these tests still
+ * cannot prove is that the vendors will keep sending that shape.
+ *
+ * The reference day, for anyone re-measuring: 280 inbound calls, 183 answered,
+ * 81 that reached nobody, 135 "A1 - New Client" and 66 "A1 - Existing Client",
+ * against 66 Workiz jobs booked the same day across nine accounts.
  */
 class ExperimentalCallReportTest extends TestCase
 {
-    // ── the counting rules ───────────────────────────────────────
-
-    public function test_inbound_calls_are_counted_per_person(): void
-    {
-        $result = (new CallReconciliation)->forDay(
-            [
-                $this->aCall(person: 'Ana', from: '+15551110000'),
-                $this->aCall(person: 'Ana', from: '+15552220000'),
-                $this->aCall(person: 'Bar', from: '+15553330000'),
-            ],
-            [],
-            '2026-09-10',
-        );
-
-        $this->assertSame('Ana', $result['people'][0]['person']);
-        $this->assertSame(2, $result['people'][0]['received']);
-        $this->assertSame(1, $result['people'][1]['received']);
-        $this->assertSame(3, $result['totals']['received']);
-    }
-
-    /** "How many calls did they receive" is not a question about calls made. */
-    public function test_outbound_calls_are_not_counted(): void
-    {
-        $result = (new CallReconciliation)->forDay(
-            [
-                $this->aCall(person: 'Ana', from: '+15551110000'),
-                $this->aCall(person: 'Ana', from: '+15552220000', direction: 'Outbound'),
-            ],
-            [],
-            '2026-09-10',
-        );
-
-        $this->assertSame(1, $result['totals']['received']);
-    }
-
-    public function test_a_missed_call_still_counts_as_received_and_is_also_counted_as_missed(): void
-    {
-        $result = (new CallReconciliation)->forDay(
-            [
-                $this->aCall(person: 'Ana', from: '+15551110000', result: 'Missed'),
-                $this->aCall(person: 'Ana', from: '+15552220000'),
-            ],
-            [],
-            '2026-09-10',
-        );
-
-        $this->assertSame(2, $result['people'][0]['received']);
-        $this->assertSame(1, $result['people'][0]['missed']);
-    }
-
-    // ── new against existing ─────────────────────────────────────
+    // ── where the person is ──────────────────────────────────────
 
     /**
-     * THE ONE MOST LIKELY TO BE SILENTLY WRONG.
+     * THE REGRESSION THAT WAS LIVE: the person is on the SIP leg, and the
+     * record's own `to` block is the dialled number.
      *
-     * RingCentral says `+15551234567`; Workiz says `(555) 123-4567`. Comparing
-     * the formatted strings puts every caller in the NEW column, and the report
-     * looks entirely plausible while being entirely wrong — the numbers are all
-     * there, they are just all in one place.
+     * The first draft read `to.name` and got "Main - IVR" on 278 of 280 calls,
+     * which would have reported that nobody answered anything all day.
      */
-    public function test_a_caller_is_existing_when_their_number_is_on_a_job_however_it_is_written(): void
+    public function test_the_person_comes_from_the_sip_leg_not_the_record(): void
     {
-        $result = (new CallReconciliation)->forDay(
-            [$this->aCall(person: 'Ana', from: '+15551234567')],
-            [['phone' => '(555) 123-4567', 'created_by' => 'Ana', 'created_at' => '2026-01-01', 'status' => 'done']],
-            '2026-09-10',
-        );
+        $this->fakeCallLog([$this->inbound(rang: [['Trey Brannan', 'Call connected']])]);
 
-        $this->assertSame(1, $result['people'][0]['from_existing']);
-        $this->assertSame(0, $result['people'][0]['from_new']);
+        $calls = app(RingCentralCallLog::class)->forDate('x', 'y');
+
+        $this->assertSame(['Trey Brannan'], $calls[0]['rang']);
+        $this->assertSame('Trey Brannan', $calls[0]['answered_by']);
     }
 
-    public function test_an_unknown_caller_is_new(): void
+    /** One call rings several people; only one of them took it. */
+    public function test_ringing_and_answering_are_counted_separately(): void
     {
-        $result = (new CallReconciliation)->forDay(
-            [$this->aCall(person: 'Ana', from: '+15559999999')],
-            [['phone' => '(555) 123-4567', 'created_by' => 'Ana', 'created_at' => '2026-01-01', 'status' => 'done']],
-            '2026-09-10',
-        );
+        $this->fakeCallLog([$this->inbound(rang: [
+            ['Jovanni Martin', 'No Answer'],
+            ['Jared Prescott', 'No Answer'],
+            ['Ranya Lara', 'Call connected'],
+        ])]);
 
-        $this->assertSame(1, $result['people'][0]['from_new']);
-        $this->assertSame(0, $result['people'][0]['from_existing']);
+        $day = $this->reconcile();
+
+        $this->assertSame(1, $this->person($day, 'Jovanni Martin')['rang']);
+        $this->assertSame(0, $this->person($day, 'Jovanni Martin')['answered']);
+        $this->assertSame(1, $this->person($day, 'Ranya Lara')['answered']);
+
+        // The DAY still had exactly one answered call, not three.
+        $this->assertSame(1, $day['totals']['answered']);
     }
 
     /**
-     * A number too short to be a real caller ID is NEW rather than matched on a
-     * truncated key, which would pair unrelated callers with each other.
+     * Every person who rings also picks up a duplicate `IP Phone Offline` leg
+     * on the live payload. Counting legs would double every number.
      */
-    public function test_a_number_with_too_few_digits_is_not_matched_against_anything(): void
+    public function test_a_repeated_leg_for_the_same_person_counts_once(): void
     {
-        $result = (new CallReconciliation)->forDay(
-            [$this->aCall(person: 'Ana', from: '204')],
-            [['phone' => '204', 'created_by' => 'Ana', 'created_at' => '2026-01-01', 'status' => 'done']],
-            '2026-09-10',
-        );
+        $this->fakeCallLog([$this->inbound(rang: [
+            ['Natalie Escobar', 'Call connected'],
+            ['Natalie Escobar', 'IP Phone Offline'],
+        ])]);
 
-        $this->assertSame(1, $result['people'][0]['from_new']);
-    }
-
-    // ── the Workiz comparison ────────────────────────────────────
-
-    public function test_jobs_created_on_the_day_are_counted_against_the_calls(): void
-    {
-        $result = (new CallReconciliation)->forDay(
-            [
-                $this->aCall(person: 'Ana', from: '+15551110000'),
-                $this->aCall(person: 'Ana', from: '+15552220000'),
-                $this->aCall(person: 'Ana', from: '+15553330000'),
-            ],
-            [
-                ['phone' => '+15551110000', 'created_by' => 'Ana', 'created_at' => '2026-09-10 09:00:00', 'status' => 'x'],
-                ['phone' => '+15559990000', 'created_by' => 'Ana', 'created_at' => '2026-09-09 09:00:00', 'status' => 'x'],
-            ],
-            '2026-09-10',
-        );
-
-        // Only the job created ON the day counts; yesterday's does not.
-        $this->assertSame(1, $result['people'][0]['workiz_jobs']);
-        $this->assertSame(2, $result['people'][0]['difference']);
+        $this->assertSame(1, $this->person($this->reconcile(), 'Natalie Escobar')['rang']);
     }
 
     /**
-     * Somebody who booked jobs but took no calls is the most interesting row on
-     * the page, and leaving them off reads as "no data" rather than as a
-     * finding.
+     * 81 of 280 live calls never reached a phone. They are received calls that
+     * reached nobody, not calls that did not happen.
      */
-    public function test_a_person_with_jobs_but_no_calls_still_appears(): void
+    public function test_a_call_that_reached_nobody_is_still_a_call(): void
     {
-        $result = (new CallReconciliation)->forDay(
-            [$this->aCall(person: 'Ana', from: '+15551110000')],
-            [['phone' => '+15557770000', 'created_by' => 'Bar', 'created_at' => '2026-09-10 10:00:00', 'status' => 'x']],
-            '2026-09-10',
-        );
+        $this->fakeCallLog([$this->inbound(rang: [], queue: RingCentralCallLog::NEW_CLIENT_QUEUE)]);
 
-        $rows = array_column($result['people'], 'person');
+        $day = $this->reconcile();
 
-        $this->assertContains('Bar', $rows);
-        $this->assertSame(0, $result['people'][array_search('Bar', $rows, true)]['received']);
-        $this->assertSame(1, $result['people'][array_search('Bar', $rows, true)]['workiz_jobs']);
+        $this->assertSame(1, $day['totals']['calls']);
+        $this->assertSame(1, $day['totals']['reached_nobody']);
+        $this->assertSame(0, $day['totals']['answered']);
+
+        // And it still counted towards what the caller was asking for.
+        $this->assertSame(1, $day['totals']['new_client']);
     }
 
-    // ── the connections ──────────────────────────────────────────
+    // ── new versus existing ──────────────────────────────────────
 
+    /** The split is the queue the caller chose, not a guess from their number. */
+    public function test_new_and_existing_come_from_the_queue(): void
+    {
+        $this->fakeCallLog([
+            $this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: RingCentralCallLog::NEW_CLIENT_QUEUE),
+            $this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: RingCentralCallLog::EXISTING_CLIENT_QUEUE),
+        ]);
+
+        $trey = $this->person($this->reconcile(), 'Trey Brannan');
+
+        $this->assertSame(1, $trey['new_client']);
+        $this->assertSame(1, $trey['existing_client']);
+    }
+
+    /** "Main - IVR" is the switchboard every call passes through and says nothing. */
+    public function test_the_switchboard_is_not_a_queue(): void
+    {
+        $this->fakeCallLog([$this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: null)]);
+
+        $this->assertNull(app(RingCentralCallLog::class)->forDate('x', 'y')[0]['queue']);
+    }
+
+    /** A call answered by one person is not counted as new for the three it rang. */
+    public function test_the_split_follows_whoever_took_the_call(): void
+    {
+        $this->fakeCallLog([$this->inbound(
+            rang: [['Jared Prescott', 'No Answer'], ['Nelly Escobar', 'Call connected']],
+            queue: RingCentralCallLog::NEW_CLIENT_QUEUE,
+        )]);
+
+        $day = $this->reconcile();
+
+        $this->assertSame(0, $this->person($day, 'Jared Prescott')['new_client']);
+        $this->assertSame(1, $this->person($day, 'Nelly Escobar')['new_client']);
+    }
+
+    // ── the Workiz side ──────────────────────────────────────────
+
+    /**
+     * THE OTHER DEFECT THE FIXTURES HID: `JobDateTime` is the appointment and
+     * `CreatedDate` is the booking, and live rows put them a year apart.
+     */
+    public function test_a_job_is_counted_on_the_day_it_was_booked(): void
+    {
+        $day = app(CallReconciliation::class)->forDay(
+            [],
+            [
+                // Booked on the day, van turns up in four months.
+                ['account' => 'NJ', 'created_by' => 'Sasha Solano', 'created_at' => '2026-09-14 09:12:00'],
+                // Van turns up ON the day, but it was booked last year.
+                ['account' => 'NJ', 'created_by' => 'Sasha Solano', 'created_at' => '2025-10-29 07:07:04'],
+            ],
+            '2026-09-14',
+        );
+
+        $this->assertSame(1, $day['totals']['jobs']);
+        $this->assertSame(1, $this->person($day, 'Sasha Solano')['jobs']);
+    }
+
+    /** Null on 21 of the first 900 live rows, so it needs a bucket, not a skip. */
+    public function test_a_job_with_no_creator_is_bucketed_rather_than_dropped(): void
+    {
+        $day = app(CallReconciliation::class)->forDay(
+            [],
+            [['account' => 'CT', 'created_by' => null, 'created_at' => '2026-09-14 10:00:00']],
+            '2026-09-14',
+        );
+
+        $this->assertSame(1, $day['totals']['jobs']);
+        $this->assertSame(1, $this->person($day, 'No one recorded')['jobs']);
+    }
+
+    // ── the two systems disagree about names ─────────────────────
+
+    /**
+     * RingCentral's "Adeline Pierre Louis-Aghaji" is Workiz's "Adeline
+     * Pierrelouis". They must NOT be merged: a near-match rule would attribute
+     * one person's work to another, and a visible duplicate row is the honest
+     * failure.
+     */
+    public function test_similar_names_are_not_merged(): void
+    {
+        $this->fakeCallLog([$this->inbound(rang: [['Adeline Pierre Louis-Aghaji', 'Call connected']])]);
+
+        $day = $this->reconcile([
+            ['account' => 'NJ', 'created_by' => 'Adeline Pierrelouis', 'created_at' => '2026-09-14 11:00:00'],
+        ]);
+
+        $rc = $this->person($day, 'Adeline Pierre Louis-Aghaji');
+        $wz = $this->person($day, 'Adeline Pierrelouis');
+
+        $this->assertTrue($rc['in_calls']);
+        $this->assertFalse($rc['in_jobs']);
+        $this->assertFalse($wz['in_calls']);
+        $this->assertTrue($wz['in_jobs']);
+    }
+
+    // ── the accounts ─────────────────────────────────────────────
+
+    /**
+     * Named rather than counted. The accounts are DISJOINT — measured, each
+     * token 204s on another account's job — so a report covering eight of nine
+     * has to be able to say which eight.
+     */
+    public function test_workiz_reports_which_accounts_it_holds_keys_for(): void
+    {
+        config(['experimental_reports.workiz.accounts' => ['Nationwide' => 'a', 'NJ' => 'b']]);
+
+        $this->assertSame(['Nationwide', 'NJ'], app(WorkizJobs::class)->accounts());
+        $this->assertTrue(app(WorkizJobs::class)->configured());
+    }
+
+    /** One rotated key must not lose the other eight states. */
+    public function test_one_refused_account_does_not_lose_the_others(): void
+    {
+        config(['experimental_reports.workiz.accounts' => ['Nationwide' => 'good', 'NJ' => 'bad']]);
+
+        Http::fake([
+            'api.workiz.com/api/v1/good/*' => Http::response(['flag' => true, 'data' => [
+                ['Phone' => '2125551212', 'CreatedBy' => 'Sasha Solano', 'CreatedDate' => '2026-09-14 09:00:00'],
+            ]]),
+            'api.workiz.com/api/v1/bad/*' => Http::response([], 403),
+        ]);
+
+        $result = app(WorkizJobs::class)->all(100);
+
+        $this->assertCount(1, $result['jobs']);
+        $this->assertSame('Nationwide', $result['jobs'][0]['account']);
+        $this->assertArrayHasKey('NJ', $result['failed']);
+    }
+
+    /**
+     * THE TOKEN IS IN THE URL, and a connection failure throws before there is
+     * a response — which is how the first live run printed it into a trace.
+     */
+    public function test_an_unreachable_workiz_does_not_name_the_token(): void
+    {
+        config(['experimental_reports.workiz.accounts' => ['Nationwide' => 'sup3rs3cr3t']]);
+
+        Http::fake(fn () => throw new ConnectionException(
+            'cURL error 60 for https://api.workiz.com/api/v1/sup3rs3cr3t/job/all/'
+        ));
+
+        try {
+            app(WorkizJobs::class)->all(100);
+            $this->fail('an unreachable Workiz did not raise');
+        } catch (RuntimeException $e) {
+            $this->assertStringNotContainsString('sup3rs3cr3t', $e->getMessage());
+            $this->assertStringNotContainsString('api.workiz.com', $e->getMessage());
+        }
+    }
+
+    /** An absent credential is "not connected", which is not "no calls". */
     public function test_neither_vendor_reads_as_configured_without_credentials(): void
     {
-        config()->set('experimental_reports.ringcentral', [
-            'server' => 'https://platform.ringcentral.com',
-            'client_id' => null, 'client_secret' => null, 'jwt' => null,
+        config([
+            'experimental_reports.workiz.accounts' => [],
+            'experimental_reports.ringcentral.client_id' => null,
+            'experimental_reports.ringcentral.client_secret' => null,
+            'experimental_reports.ringcentral.jwt' => null,
         ]);
-        config()->set('experimental_reports.workiz.token', null);
 
-        // Not connected and empty are different facts, and the screen shows
-        // different sentences for each.
-        $this->assertFalse((new RingCentralCallLog)->configured());
-        $this->assertFalse((new WorkizJobs)->configured());
+        $this->assertFalse(app(WorkizJobs::class)->configured());
+        $this->assertFalse(app(RingCentralCallLog::class)->configured());
     }
 
+    // ── paging ───────────────────────────────────────────────────
+
+    /** RingCentral pages on `totalPages`; a full last page is not a short page. */
     public function test_the_call_log_reads_every_page(): void
     {
-        config()->set('experimental_reports.ringcentral', [
-            'server' => 'https://platform.test', 'client_id' => 'id',
-            'client_secret' => 'secret', 'jwt' => 'jwt',
+        $this->fakeToken();
+
+        Http::fake(['*/call-log*' => Http::sequence()
+            ->push(['records' => [$this->inbound(rang: [['Trey Brannan', 'Call connected']])], 'paging' => ['totalPages' => 2]])
+            ->push(['records' => [$this->inbound(rang: [['Nelly Escobar', 'Call connected']])], 'paging' => ['totalPages' => 2]]),
         ]);
 
-        // One fake with every pattern in it. A second Http::fake() call would
-        // STACK rather than replace, and the first registration keeps winning.
-        Http::fake([
-            'platform.test/restapi/oauth/token' => Http::response(['access_token' => 'tok']),
-            'platform.test/restapi/v1.0/account/*page=1*' => Http::response([
-                'records' => [$this->rcRecord('Ana')],
-                'paging'  => ['totalPages' => 2],
-            ]),
-            'platform.test/restapi/v1.0/account/*' => Http::response([
-                'records' => [$this->rcRecord('Bar')],
-                'paging'  => ['totalPages' => 2],
-            ]),
-        ]);
+        $calls = app(RingCentralCallLog::class)->forDate('x', 'y');
 
-        $calls = (new RingCentralCallLog)->forDate('2026-09-10T00:00:00Z', '2026-09-10T23:59:59Z');
-
-        // Two pages, so stopping when a page came back short would have
-        // returned one — and an exact multiple of the page size would make
-        // that bug invisible on most days.
-        $this->assertCount(2, $calls);
-        $this->assertSame(['Ana', 'Bar'], array_column($calls, 'person'));
+        $this->assertSame(['Trey Brannan', 'Nelly Escobar'], array_column($calls, 'answered_by'));
     }
 
-    // ── fixtures ─────────────────────────────────────────────────
-
-    private function aCall(
-        string $person,
-        string $from,
-        string $direction = 'Inbound',
-        string $result = 'Answered',
-    ): array {
-        return [
-            'extension' => '101', 'person' => $person, 'direction' => $direction,
-            'result' => $result, 'from' => $from, 'to' => '+15550000000',
-            'started_at' => '2026-09-10T09:00:00.000Z',
-        ];
-    }
-
-    private function rcRecord(string $person): array
+    /** Workiz caps a page at 100 and pages by offset; a short page is the last. */
+    public function test_workiz_stops_on_a_short_page(): void
     {
+        config(['experimental_reports.workiz.accounts' => ['NJ' => 'tok']]);
+
+        $full = array_fill(0, WorkizJobs::PAGE, [
+            'Phone' => '2125551212', 'CreatedBy' => 'Sasha Solano', 'CreatedDate' => '2026-09-14 09:00:00',
+        ]);
+
+        Http::fake(['api.workiz.com/*' => Http::sequence()
+            ->push(['flag' => true, 'data' => $full])
+            ->push(['flag' => true, 'data' => [$full[0]]]),
+        ]);
+
+        $this->assertCount(WorkizJobs::PAGE + 1, app(WorkizJobs::class)->all(1000)['jobs']);
+    }
+
+    // ── fixtures, shaped from the live payload ───────────────────
+
+    /**
+     * An inbound call as RingCentral actually sends it: the record's `to` is
+     * the dialled number, the switchboard is an `Accept` leg, and each person
+     * who rang is a `PstnToSip` leg whose `from.name` is the extension owner.
+     *
+     * @param  list<array{0: string, 1: string}>  $rang  [person, leg result]
+     */
+    private function inbound(array $rang, ?string $queue = null): array
+    {
+        $legs = [[
+            'legType' => 'Accept',
+            'result' => 'Accepted',
+            'from' => ['name' => 'WIRELESS CALLER'],
+            'to' => ['name' => 'Main - IVR'],
+        ]];
+
+        if ($queue !== null) {
+            $legs[] = [
+                'legType' => 'Accept',
+                'result' => 'Accepted',
+                'from' => ['name' => 'MKE - LS Ads'],
+                'to' => ['name' => $queue],
+            ];
+        }
+
+        foreach ($rang as [$person, $result]) {
+            $legs[] = [
+                'legType' => 'PstnToSip',
+                'result' => $result,
+                'from' => ['name' => $person],
+                'to' => ['extensionNumber' => '748'],
+            ];
+        }
+
         return [
+            'id' => '1234567890',
             'direction' => 'Inbound',
-            'result'    => 'Answered',
-            'startTime' => '2026-09-10T09:00:00.000Z',
-            'from'      => ['phoneNumber' => '+15551234567'],
-            'to'        => ['phoneNumber' => '+15550000000', 'name' => $person, 'extensionNumber' => '101'],
+            'result' => 'Accepted',
+            'startTime' => '2026-09-14T13:21:11.795Z',
+            'from' => ['phoneNumber' => '+17579553189', 'name' => 'PERRON,NICOLE'],
+            'to' => ['phoneNumber' => '+18888602433', 'name' => 'Main - IVR'],
+            'legs' => $legs,
         ];
+    }
+
+    /** @param  list<array<string, mixed>>  $records */
+    private function fakeCallLog(array $records): void
+    {
+        $this->fakeToken();
+
+        Http::fake(['*/call-log*' => Http::response(['records' => $records, 'paging' => ['totalPages' => 1]])]);
+    }
+
+    private function fakeToken(): void
+    {
+        config([
+            'experimental_reports.ringcentral.server' => 'https://platform.ringcentral.test',
+            'experimental_reports.ringcentral.client_id' => 'id',
+            'experimental_reports.ringcentral.client_secret' => 'secret',
+            'experimental_reports.ringcentral.jwt' => 'jwt',
+        ]);
+
+        // Http::fake stacks rather than replaces, so the token route is
+        // registered first and the caller's own fake is layered over it.
+        Http::fake(['*/oauth/token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600])]);
+    }
+
+    /** @param  list<array<string, mixed>>  $jobs */
+    private function reconcile(array $jobs = []): array
+    {
+        return app(CallReconciliation::class)->forDay(
+            app(RingCentralCallLog::class)->forDate('x', 'y'),
+            $jobs,
+            '2026-09-14',
+        );
+    }
+
+    /** @param  array<string, mixed>  $day */
+    private function person(array $day, string $name): array
+    {
+        foreach ($day['people'] as $row) {
+            if ($row['person'] === $name) {
+                return $row;
+            }
+        }
+
+        $this->fail($name.' is missing from the report; it has: '.implode(', ', array_column($day['people'], 'person')));
     }
 }

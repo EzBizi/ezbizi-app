@@ -3,152 +3,168 @@
 namespace App\Support\Reports\Experimental;
 
 /**
- * Calls per person for one day, split new against existing (TEMPORARY).
+ * One day, per person: calls taken, what the caller wanted, jobs booked (TEMPORARY).
  *
- * ── The two counting rules, stated because they are choices ──────
+ * ── Every number here was rewritten against live data ────────────
  *
- * RECEIVED means an INBOUND call that reached a person, answered or missed.
- * Attribution is per LEG, so a queue call that rang four people and was
- * answered by one counts as answered for that one and is not counted four
- * times. Outbound calls are excluded entirely: "how many calls did they
- * receive" is not a question about calls they made.
+ * The first version of this class was built on invented fixtures and agreed
+ * with itself perfectly. Measured against the real APIs on 2026-09-14 it was
+ * wrong in three ways at once, and each one produced a plausible number:
  *
- * NEW means the caller's number appears on no prior Workiz job. That is a
- * PROXY for "new client" rather than the thing itself — somebody in the client
- * list who has never had a job books as new — and the screen says so rather
- * than letting the number pass as more than it is.
+ * 1. It attributed calls from the top-level record, where the person is null on
+ *    278 of 280 inbound calls. Everyone would have scored zero.
+ * 2. It read Workiz's `JobDateTime` as the booking time. That is the
+ *    APPOINTMENT, up to a year later, so "jobs booked today" was really "vans
+ *    turning up today" — a different set of jobs, similar in size.
+ * 3. It derived new-vs-existing by checking whether the caller's number
+ *    appeared on an older Workiz job. A-1 already routes that distinction
+ *    through named queues, so the guess was both unnecessary and worse.
  *
- * ── Numbers are compared on their DIGITS ────────────────────────
+ * ── RANG and ANSWERED are different questions ────────────────────
  *
- * RingCentral says `+15551234567`, Workiz says `(555) 123-4567`, and the same
- * person is a different string in each. Matching on formatted text would put
- * every caller in the NEW column and the report would look plausible while
- * being entirely wrong. The last ten digits are compared, which is correct for
- * NANP numbers and is all this temporary report is asked to handle.
+ * A queue call rings three or four people in turn until somebody picks up. So
+ * "how many calls did they receive" has two honest answers and this returns
+ * both: `rang` counts every call that made their phone ring, `answered` counts
+ * the ones they took. Summing `answered` across people gives the day's answered
+ * calls; summing `rang` does not give anything, and the screen must not add it
+ * up.
+ *
+ * ── The two systems do not agree on people's names ───────────────
+ *
+ * Measured the same day: seven of nine names matched exactly, and RingCentral's
+ * "Adeline Pierre Louis-Aghaji" is Workiz's "Adeline Pierrelouis". Nothing here
+ * fuzzy-matches them — a near-match rule that merged two similar names would
+ * quietly attribute one person's work to another, which is worse than an
+ * obvious duplicate row. The union of both name sets is returned and a person
+ * who appears on only one side is visible as a row of zeroes on the other.
  */
 final class CallReconciliation
 {
     /**
-     * @param  list<array{extension: ?string, person: ?string, direction: ?string, result: ?string, from: ?string, to: ?string, started_at: ?string}>  $calls
-     * @param  list<array{phone: ?string, created_by: ?string, created_at: ?string, status: ?string}>  $jobs
+     * @param  list<array{from: ?string, queue: ?string, rang: list<string>, answered_by: ?string}>  $calls
+     * @param  list<array{account: string, created_by: ?string, created_at: ?string}>  $jobs
      * @return array{
-     *     people: list<array{person: string, received: int, from_new: int, from_existing: int, missed: int, workiz_jobs: int, difference: int}>,
-     *     totals: array{received: int, from_new: int, from_existing: int, missed: int, workiz_jobs: int}
+     *     day: string,
+     *     totals: array{calls: int, answered: int, reached_nobody: int, new_client: int, existing_client: int, jobs: int},
+     *     people: list<array{person: string, rang: int, answered: int, new_client: int, existing_client: int, jobs: int, in_calls: bool, in_jobs: bool}>
      * }
      */
     public function forDay(array $calls, array $jobs, string $day): array
     {
-        $known = $this->knownNumbers($jobs);
-        $jobsByPerson = $this->jobsCreatedOn($jobs, $day);
+        $booked = $this->jobsCreatedOn($jobs, $day);
+
+        $rang = [];
+        $answered = [];
+        $new = [];
+        $existing = [];
+
+        $reachedNobody = 0;
+        $newTotal = 0;
+        $existingTotal = 0;
+
+        foreach ($calls as $call) {
+            if ($call['rang'] === []) {
+                $reachedNobody++;
+            }
+
+            foreach ($call['rang'] as $person) {
+                $rang[$person] = ($rang[$person] ?? 0) + 1;
+            }
+
+            $queue = $call['queue'] ?? null;
+
+            if ($queue === RingCentralCallLog::NEW_CLIENT_QUEUE) {
+                $newTotal++;
+            } elseif ($queue === RingCentralCallLog::EXISTING_CLIENT_QUEUE) {
+                $existingTotal++;
+            }
+
+            $who = $call['answered_by'] ?? null;
+
+            if ($who === null) {
+                continue;
+            }
+
+            $answered[$who] = ($answered[$who] ?? 0) + 1;
+
+            // Attributed to whoever TOOK it. A call that rang four people was
+            // one caller with one question, and counting it for all four would
+            // make the day's new-client calls outnumber the day's calls.
+            if ($queue === RingCentralCallLog::NEW_CLIENT_QUEUE) {
+                $new[$who] = ($new[$who] ?? 0) + 1;
+            } elseif ($queue === RingCentralCallLog::EXISTING_CLIENT_QUEUE) {
+                $existing[$who] = ($existing[$who] ?? 0) + 1;
+            }
+        }
+
+        $made = [];
+
+        foreach ($booked as $job) {
+            $person = $job['created_by'] ?? null;
+
+            // Null on 21 of the first 900 live rows. Bucketed by name rather
+            // than skipped, so the people column still adds up to the total.
+            $person ??= 'No one recorded';
+            $made[$person] = ($made[$person] ?? 0) + 1;
+        }
+
+        $names = array_values(array_unique(array_merge(
+            array_keys($rang),
+            array_keys($answered),
+            array_keys($made),
+        )));
+
+        sort($names);
 
         $people = [];
 
-        foreach ($calls as $call) {
-            if (($call['direction'] ?? null) !== 'Inbound') {
-                continue;
-            }
+        foreach ($names as $name) {
+            $people[] = [
+                'person' => $name,
+                'rang' => $rang[$name] ?? 0,
+                'answered' => $answered[$name] ?? 0,
+                'new_client' => $new[$name] ?? 0,
+                'existing_client' => $existing[$name] ?? 0,
+                'jobs' => $made[$name] ?? 0,
 
-            $person = $call['person'] ?: ($call['extension'] ?: 'Unassigned');
-
-            $people[$person] ??= [
-                'person' => $person, 'received' => 0, 'from_new' => 0,
-                'from_existing' => 0, 'missed' => 0, 'workiz_jobs' => 0, 'difference' => 0,
-            ];
-
-            $people[$person]['received']++;
-
-            if (($call['result'] ?? null) === 'Missed') {
-                $people[$person]['missed']++;
-            }
-
-            $digits = $this->digits($call['from'] ?? null);
-
-            if ($digits !== null && isset($known[$digits])) {
-                $people[$person]['from_existing']++;
-            } else {
-                $people[$person]['from_new']++;
-            }
-        }
-
-        // Somebody who created jobs but took no calls still belongs on the
-        // report: a row missing entirely reads as "no data" when it is in fact
-        // the most interesting row on the page.
-        foreach ($jobsByPerson as $person => $count) {
-            $people[$person] ??= [
-                'person' => $person, 'received' => 0, 'from_new' => 0,
-                'from_existing' => 0, 'missed' => 0, 'workiz_jobs' => 0, 'difference' => 0,
+                // Which system knows this name. A person present on one side
+                // only is the signal that the two systems spell them
+                // differently, and the screen says so instead of guessing.
+                'in_calls' => isset($rang[$name]) || isset($answered[$name]),
+                'in_jobs' => isset($made[$name]),
             ];
         }
-
-        foreach ($people as $person => $row) {
-            $people[$person]['workiz_jobs'] = $jobsByPerson[$person] ?? 0;
-            $people[$person]['difference'] = $row['received'] - ($jobsByPerson[$person] ?? 0);
-        }
-
-        ksort($people);
-        $people = array_values($people);
 
         return [
-            'people' => $people,
+            'day' => $day,
             'totals' => [
-                'received'      => array_sum(array_column($people, 'received')),
-                'from_new'      => array_sum(array_column($people, 'from_new')),
-                'from_existing' => array_sum(array_column($people, 'from_existing')),
-                'missed'        => array_sum(array_column($people, 'missed')),
-                'workiz_jobs'   => array_sum(array_column($people, 'workiz_jobs')),
+                'calls' => count($calls),
+                'answered' => array_sum($answered),
+                'reached_nobody' => $reachedNobody,
+                'new_client' => $newTotal,
+                'existing_client' => $existingTotal,
+                'jobs' => count($booked),
             ],
+            'people' => $people,
         ];
     }
 
-    /** @return array<string, true> */
-    private function knownNumbers(array $jobs): array
-    {
-        $out = [];
-
-        foreach ($jobs as $job) {
-            $digits = $this->digits($job['phone'] ?? null);
-
-            if ($digits !== null) {
-                $out[$digits] = true;
-            }
-        }
-
-        return $out;
-    }
-
-    /** @return array<string, int> */
+    /**
+     * Jobs BOOKED on the day, from `created_at`.
+     *
+     * Filtered here because Workiz cannot be asked for it: its `start_date`
+     * parameter filters the appointment date, not the booking date. Measured
+     * 2026-09-14 — a job created 2025-10-29 came back inside a window starting
+     * 2026-09-01 because its appointment was 2026-10-22.
+     *
+     * @param  list<array{created_at: ?string}>  $jobs
+     * @return list<array{created_at: ?string}>
+     */
     private function jobsCreatedOn(array $jobs, string $day): array
     {
-        $out = [];
-
-        foreach ($jobs as $job) {
-            if (! str_starts_with((string) ($job['created_at'] ?? ''), $day)) {
-                continue;
-            }
-
-            $person = $job['created_by'] ?: 'Unassigned';
-            $out[$person] = ($out[$person] ?? 0) + 1;
-        }
-
-        return $out;
-    }
-
-    /**
-     * The last ten digits, or null when there are not ten.
-     *
-     * A number that cannot be reduced to ten digits — a short internal
-     * extension, a blocked caller — returns null and is treated as NEW rather
-     * than being matched against a truncated key, which would pair unrelated
-     * callers with each other.
-     */
-    private function digits(?string $number): ?string
-    {
-        if ($number === null) {
-            return null;
-        }
-
-        $digits = preg_replace('/\D+/', '', $number) ?? '';
-
-        return strlen($digits) >= 10 ? substr($digits, -10) : null;
+        return array_values(array_filter(
+            $jobs,
+            fn (array $job) => str_starts_with((string) ($job['created_at'] ?? ''), $day),
+        ));
     }
 }
