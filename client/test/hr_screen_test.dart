@@ -200,14 +200,19 @@ void main() {
     );
     expect(find.text('Copy link'), findsOneWidget);
 
-    // The load-bearing sentence.
+    // The load-bearing sentence, and it names WHICH failure: this box sends
+    // nothing at all, which is a different remedy from a refused message.
     expect(
-      find.textContaining('nothing has reached them'),
+      find.text('Not sent — this installation is not sending mail at all.'),
       findsOneWidget,
       reason:
           'Without this somebody invites a person and waits for an acceptance '
           'to a message that was never sent.',
     );
+
+    // Offered even here, and in every other state — see _strip.
+    expect(find.text('Re-invite at a different address'), findsOneWidget);
+    expect(find.text('The current link stops working.'), findsOneWidget);
   });
 
   /// §4, and the reason the endpoint exists at all.
@@ -298,7 +303,45 @@ void main() {
       findsOneWidget,
     );
     expect(find.textContaining('previous link has stopped working'), findsOneWidget);
-    expect(find.textContaining('nothing has reached them'), findsOneWidget);
+
+    // The other failing state, and it must not be worded as the first: this
+    // one was attempted and refused, so the box is not the thing to go and fix.
+    expect(
+      find.text('Not sent — the message was refused when we tried to send it.'),
+      findsOneWidget,
+    );
+  });
+
+  /// Re-inviting sends the corrected address on the RESEND, one call.
+  ///
+  /// The call shape is the assertion, not the wording, because the whole
+  /// design rests on it: the address rides the reissue so the old token dies
+  /// with it. A client that PATCHed the address instead would leave the
+  /// already-sent link alive for whoever received the typo.
+  testWidgets('re-inviting at a different address rides the resend', (
+    tester,
+  ) async {
+    final calls = <(String, Map<String, dynamic>)>[];
+
+    await _pump(
+      tester,
+      _handler(onResendBody: (path, body) => calls.add((path, body))),
+    );
+
+    await _tap(tester, _tab('Invitations'));
+    await _tap(tester, find.text('Resend'));
+    await _tap(tester, find.text('Re-invite at a different address'));
+
+    await _type(tester, 'Email address', 'bea@example.com');
+    await _tap(tester, find.widgetWithText(FilledButton, 'Re-invite'));
+
+    expect(calls, hasLength(2), reason: 'The resend and the re-invite.');
+    expect(calls.last.$1, endsWith('/resend'));
+    expect(
+      calls.last.$2,
+      {'email': 'bea@example.com'},
+      reason: 'A PATCH of the address would leave the sent link alive.',
+    );
   });
 
   testWidgets('revoking asks first, and a refusal is not a silent success', (
@@ -722,6 +765,10 @@ FilledButton _inviteSomebody(WidgetTester tester) => tester.widget<FilledButton>
 MockClientHandler _handler({
   void Function(Map<String, dynamic> body)? onInvite,
   void Function(String path)? onResend,
+  // The BODY as well as the path: re-inviting at a corrected address is the
+  // same call carrying an email, and asserting the path alone cannot tell the
+  // two apart.
+  void Function(String path, Map<String, dynamic> body)? onResendBody,
   void Function(String path, Map<String, dynamic> body)? onPatchPerson,
   void Function(String path)? onPostPerson,
   void Function(String? user)? onTraining,
@@ -866,6 +913,9 @@ MockClientHandler _handler({
 
     if (path.endsWith('/resend')) {
       onResend?.call(path);
+      onResendBody?.call(path, request.body.isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(request.body) as Map<String, dynamic>);
       return _json({'data': _resent});
     }
 
@@ -1065,10 +1115,12 @@ const _created = {
   'status': 'sent',
   'expires_at': '2026-08-18T09:00:00+00:00',
   'accept_url': 'https://app.ezbizi.com/invite?token=raw-token-1',
-  // The server answers whether it actually sent the mail. Without this the
-  // panel falls to its `null` branch — a server too old to say — and the
-  // tests below were asserting a sentence no branch produces any more.
+  // The server answers what became of the send, as a STATE rather than a
+  // yes/no: the strip has a different sentence and a different remedy for "we
+  // never tried" and "we tried and were refused". `emailed` rides alongside
+  // for a client older than the state, and the two must agree.
   'emailed': false,
+  'sent_state': 'not_sent_no_transport',
 };
 
 /// A resend answers the same shape with a NEW token; the old one is dead.
@@ -1079,6 +1131,7 @@ const _resent = {
   'expires_at': '2026-08-25T09:00:00+00:00',
   'accept_url': 'https://app.ezbizi.com/invite?token=raw-token-2',
   'emailed': false,
+  'sent_state': 'not_sent_refused',
 };
 
 const _beaRecord = {
