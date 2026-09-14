@@ -279,6 +279,92 @@ class AutomationsApiTest extends TestCase
     }
 
     /**
+     * Execution types several modules share, and WHY each one is shared.
+     *
+     * `ActionDefinition::type()` derives the execution type as everything after
+     * the first dot, so `customer.update_field` and `job.update_field` both
+     * reduce to `update_field` and route to one arm. That is sometimes the
+     * whole design and sometimes a collision, and the two look identical here.
+     *
+     * A bare allowlist would be worse than nothing: it would grandfather the
+     * dangerous half into invisibility. So each entry says which kind it is.
+     */
+    private const SHARED_EXECUTION_TYPES = [
+        /*
+         * GENERIC BY DESIGN. The arm exists and reads the EVENT'S SUBJECT, so
+         * several modules pointing at it is deliberate — one implementation
+         * applied to many records, which is the thing `type()` strips the
+         * prefix for in the first place.
+         */
+        'update_field' => 'generic: updateField writes to whatever subject the event carries',
+        'change_status' => 'generic: changeStatus routes on the subject, a Job or a Vehicle',
+
+        /*
+         * UNDECIDED, AND THIS IS THE HALF WORTH WATCHING.
+         *
+         * Declared by several modules with NO ARM YET, so nobody has chosen
+         * whether they are one generic implementation or several module-specific
+         * ones — and the first person to write an arm decides for all of them
+         * without being asked. If they write a Customer-shaped `deactivate`,
+         * then `company.deactivate`, `franchise.deactivate` and
+         * `user.deactivate` begin deactivating through it, with no error
+         * anywhere, because routing by a shared key cannot tell the cases apart.
+         *
+         * That is the near-miss Inspection renamed away from in one commit —
+         * `report.email` and `report.send` would have been one module's executor
+         * serving the other's action — except this one will arrive as somebody
+         * implementing their own action rather than as somebody adding a second.
+         *
+         * WHOEVER WRITES THE FIRST ARM FOR ONE OF THESE: either make it generic
+         * over the subject and say so here, or give your declaration an explicit
+         * `executionType` so it stops sharing. Do not simply add the arm.
+         *
+         * Found by the Training session, who swept all 31 declarations after
+         * Inspection's rename rather than checking only their own.
+         */
+        'deactivate' => 'undecided: four modules declare it, no arm has chosen yet',
+        'assign_to_user' => 'undecided: two modules declare it, no arm has chosen yet',
+    ];
+
+    /**
+     * A NEW shared execution type has to be argued for, not discovered later.
+     *
+     * Sharing is legitimate and common here, so this cannot refuse it — a guard
+     * that goes red on correct practice gets weakened and then watches nothing.
+     * It refuses only an UNRECORDED sharing, which costs one line and a sentence
+     * and puts the question in front of whoever created it, at the moment they
+     * can still rename for free.
+     */
+    public function test_a_shared_execution_type_is_one_somebody_argued_for(): void
+    {
+        $byType = [];
+
+        foreach (app(ModuleRegistry::class)->all() as $key => $module) {
+            foreach ($module->automationActions as $action) {
+                $byType[$action->type()][] = "{$key}/{$action->key}";
+            }
+        }
+
+        $shared = array_keys(array_filter($byType, fn (array $owners) => count($owners) > 1));
+        $unrecorded = array_values(array_diff($shared, array_keys(self::SHARED_EXECUTION_TYPES)));
+
+        $detail = implode('; ', array_map(
+            fn (string $t) => "{$t} <- ".implode(', ', $byType[$t]),
+            $unrecorded,
+        ));
+
+        $this->assertSame([], $unrecorded, implode("\n", [
+            'These execution types are claimed by more than one declaration and',
+            'nothing says whether that is deliberate: '.$detail,
+            '',
+            'They route to ONE arm. Either the arm is generic over the event subject —',
+            'record it in SHARED_EXECUTION_TYPES saying so — or give your declaration',
+            'an explicit executionType so it stops sharing. Renaming is free until',
+            'somebody can select the action.',
+        ]));
+    }
+
+    /**
      * EVERY ARM THE RUNNER HAS IS AN ACTION SOMEBODY CAN CHOOSE.
      *
      * `IMPLEMENTED_ACTIONS` and `ActionRunner`'s match are two halves of one
