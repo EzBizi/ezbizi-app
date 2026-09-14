@@ -4,15 +4,15 @@ namespace Tests\Feature\Reports;
 
 use App\Models\Franchise;
 use App\Models\SocialConnection;
-use App\Support\Social\SocialProvider;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\Concerns\BuildsTenants;
 use App\Support\Reports\Experimental\CallReconciliation;
 use App\Support\Reports\Experimental\RingCentralCallLog;
 use App\Support\Reports\Experimental\WorkizJobs;
+use App\Support\Social\SocialProvider;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
+use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
 /**
@@ -221,8 +221,16 @@ class ExperimentalCallReportTest extends TestCase
         $this->inTenant($tenant['org'], function () use ($tenant) {
             $this->assertSame(
                 ['New Jersey', 'Connecticut'],
-                app(WorkizJobs::class)->accounts($tenant['admin']),
+                array_column(app(WorkizJobs::class)->accounts($tenant['admin']), 'name'),
             );
+
+            // The id is published here because nothing else publishes it: a
+            // data-source provider is excluded from the shared connections
+            // list, so without this a credential could be connected and never
+            // removed.
+            foreach (app(WorkizJobs::class)->accounts($tenant['admin']) as $account) {
+                $this->assertNotEmpty($account['id']);
+            }
             $this->assertTrue(app(WorkizJobs::class)->configured($tenant['admin']));
         });
     }

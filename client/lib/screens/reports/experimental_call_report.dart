@@ -42,6 +42,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   bool _loading = true;
 
   final TextEditingController _token = TextEditingController();
+  String? _disconnecting;
   bool _connecting = false;
   String? _connectError;
   bool _showConnect = false;
@@ -296,14 +297,17 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     final theme = Theme.of(context);
 
     final accounts = (report['workiz_accounts'] as List? ?? const [])
-        .map((a) => a.toString())
+        .map((a) => (a as Map).cast<String, dynamic>())
         .toList();
 
     final failed = (report['workiz_failed'] as Map? ?? const {}).keys
         .map((k) => k.toString())
         .toList();
 
-    final covered = accounts.where((a) => !failed.contains(a)).toList();
+    final covered = accounts
+        .map((a) => '${a['name']}')
+        .where((name) => !failed.contains(name))
+        .toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -318,6 +322,27 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           style: theme.textTheme.bodySmall,
         ),
         const SizedBox(height: 8),
+        // Each connected branch, with the way to remove it. This is the ONLY
+        // place a Workiz account's id is published: it is a data source, and
+        // the shared connections list excludes those on purpose, so without
+        // these chips a credential could be connected and never taken back.
+        if (accounts.isNotEmpty)
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              for (final account in accounts)
+                InputChip(
+                  label: Text('${account['name']}'),
+                  onDeleted: _disconnecting == account['id']
+                      ? null
+                      : () => _disconnect('${account['id']}'),
+                  deleteIcon: const Icon(Icons.close, size: 16),
+                  tooltip: 'Disconnect ${account['name']}',
+                ),
+            ],
+          ),
+        const SizedBox(height: 8),
         _connectControl(context),
         if (failed.isNotEmpty) ...[
           const SizedBox(height: 4),
@@ -331,6 +356,28 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         ],
       ],
     );
+  }
+
+  /// Take a branch's Workiz account back.
+  ///
+  /// Straight through the shared connections endpoint, which already gates on
+  /// this provider's own connect permission and needs nothing from here beyond
+  /// the id.
+  Future<void> _disconnect(String id) async {
+    setState(() => _disconnecting = id);
+
+    final response = await widget.api.delete('/social/connections/$id');
+
+    if (!mounted) return;
+
+    setState(() => _disconnecting = null);
+
+    if (!response.ok) {
+      setState(() => _error = response.message);
+      return;
+    }
+
+    _load();
   }
 
   /// The way a branch's Workiz account gets attached.

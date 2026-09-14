@@ -321,6 +321,49 @@ void main() {
     expect(find.textContaining('Nationwide, NJ'), findsOneWidget);
   });
 
+  testWidgets('a connected branch can be taken back from this screen', (
+    tester,
+  ) async {
+    // Workiz is a data source, and the shared connections list excludes those
+    // on purpose. So this screen is the only place the id is published, and
+    // without this chip a credential that can act on A-1's jobs could be
+    // connected and never removed.
+    String? deleted;
+
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) {
+        if (request.method == 'DELETE' &&
+            request.url.path.contains('/social/connections/')) {
+          deleted = request.url.path.split('/').last;
+          return _json({
+            'data': {'id': deleted, 'problems': []},
+          });
+        }
+        if (request.url.path.contains('experimental/calls')) {
+          return _json(_callDay());
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(InputChip, 'Nationwide'), findsOneWidget);
+
+    await tester.tap(
+      find.descendant(
+        of: find.widgetWithText(InputChip, 'Nationwide'),
+        matching: find.byIcon(Icons.close),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(deleted, 'id-Nationwide');
+  });
+
   testWidgets('a refused Workiz account is named, not folded away', (
     tester,
   ) async {
@@ -613,7 +656,9 @@ Map<String, dynamic> _callDay({
         'connected': true,
         'timezone': 'America/New_York',
         'day': '2026-09-14',
-        'workiz_accounts': accounts,
+        'workiz_accounts': [
+          for (final a in accounts) {'id': 'id-$a', 'name': a},
+        ],
         'workiz_failed': {for (final a in failed) a: 'refused'},
         'totals': {
           'calls': 280,

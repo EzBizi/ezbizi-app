@@ -81,11 +81,25 @@ final class WorkizJobs
      * different fact from one covering ten, and the screen has to be able to
      * say which.
      *
-     * @return list<string>
+     * THE ID TRAVELS WITH THE NAME, and that is not decoration. Workiz is a
+     * `dataSources()` provider, and `SocialConnectionsController::index`
+     * deliberately excludes those - listing Google Ads accounts there once put
+     * twenty-two of them in the composer as if a post could go to one. So a
+     * connected Workiz account appears in NO shared list, and this payload is
+     * the only place its id is published. Without it, ten credentials that can
+     * act on A-1's jobs would be connectable and not removable, which is the
+     * entry-point failure wearing its exit as a hat.
+     *
+     * @return list<array{id: string, name: string}>
      */
     public function accounts(User $user): array
     {
-        return array_values($this->connections($user)->pluck('display_name')->all());
+        return $this->connections($user)
+            ->map(fn (SocialConnection $c) => [
+                'id' => (string) $c->getKey(),
+                'name' => (string) $c->display_name,
+            ])
+            ->all();
     }
 
     /**

@@ -150,7 +150,17 @@ class ExperimentalCallReportApiTest extends TestCase
             ->assertOk()
             ->json();
 
-        $this->assertSame(['Nationwide', 'New Jersey'], $body['workiz_accounts']);
+        $this->assertSame(
+            ['Nationwide', 'New Jersey'],
+            array_column($body['workiz_accounts'], 'name'),
+        );
+
+        // And each one carries the id that disconnects it. Nothing else
+        // publishes it - a data-source provider is excluded from the shared
+        // connections list on purpose.
+        foreach ($body['workiz_accounts'] as $account) {
+            $this->assertNotEmpty($account['id']);
+        }
     }
 
     /** One refused account must be named, not folded into a smaller number. */
