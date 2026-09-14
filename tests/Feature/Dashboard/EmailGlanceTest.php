@@ -277,4 +277,94 @@ class EmailGlanceTest extends TestCase
         $this->assertStringContainsString('first@alpha.test', $sentences);
         $this->assertStringContainsString('second@alpha.test', $sentences);
     }
+    /** Set when this inbox last actually worked. Not fillable, hence the long way. */
+    private function lastReached(Mailbox $mailbox, ?string $when): void
+    {
+        $this->inTenant(function () use ($mailbox, $when) {
+            $mailbox->forceFill(['last_reached_at' => $when]);
+            $mailbox->save();
+        });
+    }
+
+    /**
+     * An inbox silent for over a day is named, even though it says connected.
+     *
+     * The gap between the two loud states: `broken` says who must fix it, and a
+     * read failing right now says so -- but an inbox that is connected, mostly
+     * failing and occasionally succeeding is neither. Two production mailboxes
+     * lived there for three weeks.
+     */
+    public function test_an_inbox_silent_for_over_a_day_is_named_on_the_home_screen(): void
+    {
+        $user  = $this->userWithPermissions(['email.view']);
+        $quiet = $this->grantedInbox($user, 'quiet@alpha.test');
+        $this->withScriptedProvider();
+        $this->lastReached($quiet, now()->subDays(3)->toDateTimeString());
+        ScriptedMailboxReader::$failUnread[(string) $quiet->getKey()] = CannotReadMailbox::credentialRejected($quiet);
+
+        $payload = app(EmailGlance::class)->resolve($user, DashboardPeriod::for($user), [])->toArray();
+
+        $sentence = collect($payload['data']['sentences'] ?? [])
+            ->first(fn (string $s) => str_contains($s, 'quiet@alpha.test'));
+
+        $this->assertNotNull($sentence, 'A silent inbox must be named.');
+        $this->assertStringContainsString('has not been able to fetch any mail', $sentence);
+        $this->assertStringNotContainsString(
+            'just now',
+            $sentence,
+            'Three days of silence must not be reported in the words of a bad minute.',
+        );
+    }
+
+    /**
+     * THE DISCRIMINATING ONE: a read that succeeds clears the silence in the
+     * same page load.
+     *
+     * `markReached()` stamps `last_reached_at` on the instance the glance is
+     * holding, so the check has to run AFTER the read. Move it above the try
+     * and this test fails while every other one here still passes -- the inbox
+     * would be reported silent by the very load that proved it working.
+     */
+    public function test_a_read_that_succeeds_clears_the_silence_in_the_same_load(): void
+    {
+        $user    = $this->userWithPermissions(['email.view']);
+        $mailbox = $this->grantedInbox($user, 'back@alpha.test');
+        $this->withScriptedProvider();
+        $this->lastReached($mailbox, now()->subDays(3)->toDateTimeString());
+        ScriptedMailboxReader::$unread[(string) $mailbox->getKey()] = 2;
+
+        $payload = app(EmailGlance::class)->resolve($user, DashboardPeriod::for($user), [])->toArray();
+
+        $this->assertSame(2, $payload['data']['slices'][0]['total']);
+        $this->assertSame(
+            [],
+            collect($payload['data']['sentences'] ?? [])
+                ->filter(fn (string $s) => str_contains($s, 'has not been able to fetch'))
+                ->values()->all(),
+            'An inbox that just answered was reported as silent.',
+        );
+    }
+
+    /**
+     * An inbox EzBizi has never once opened is not "silent", it is unfinished.
+     *
+     * `last_reached_at` null would otherwise read as infinitely stale and shout
+     * on the day somebody adds an address. That state has its own status and
+     * its own screen.
+     */
+    public function test_an_inbox_that_has_never_been_reached_is_not_called_silent(): void
+    {
+        $user = $this->userWithPermissions(['email.view']);
+        $new  = $this->grantedInbox($user, 'new@alpha.test');
+        $this->withScriptedProvider();
+        $this->lastReached($new, null);
+        ScriptedMailboxReader::$failUnread[(string) $new->getKey()] = CannotReadMailbox::credentialRejected($new);
+
+        $payload = app(EmailGlance::class)->resolve($user, DashboardPeriod::for($user), [])->toArray();
+
+        $sentences = implode(' ', $payload['data']['sentences'] ?? []);
+
+        $this->assertStringNotContainsString('has not been able to fetch', $sentences);
+        $this->assertStringContainsString('just now', $sentences, 'It should still report the live failure.');
+    }
 }

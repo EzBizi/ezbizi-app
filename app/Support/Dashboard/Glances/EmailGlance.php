@@ -28,6 +28,9 @@ final class EmailGlance extends DescribedGlance
     protected const DEFAULT_PRESENTATION = 'bar';
     protected const SNAPSHOT = true;
 
+    /** How long an inbox may be silent before the home screen says so. Jose, 2026-09-14. */
+    private const SILENT_HOURS = 24;
+
     public function __construct(
         private readonly MailboxAccess $access,
         private readonly MailboxReaders $readers,
@@ -67,12 +70,34 @@ final class EmailGlance extends DescribedGlance
                     continue;
                 }
 
+                $failedJustNow = false;
+
                 try {
                     $slices[] = [
                         'label' => $this->sliceLabel($mailbox),
                         'total' => $this->readers->for($mailbox)->unreadCount($mailbox),
                     ];
                 } catch (CannotReadMailbox|CannotReachHost) {
+                    $failedJustNow = true;
+                }
+
+                // Checked AFTER the read, not before, and that ordering is the
+                // whole accuracy of it: a read that succeeds calls
+                // `markReached()`, which stamps `last_reached_at` on this very
+                // instance -- so a mailbox that has just worked cannot be
+                // reported stale by the same page load that proved it working.
+                if ($this->silentTooLong($mailbox)) {
+                    $sentences[] = sprintf(
+                        '%s has not been able to fetch any mail for %s. It still shows as '
+                        .'connected, so nothing is asking anybody to fix it.',
+                        $mailbox->address,
+                        $mailbox->last_reached_at->diffForHumans(null, true),
+                    );
+
+                    continue;
+                }
+
+                if ($failedJustNow) {
                     $sentences[] = sprintf(
                         '%s could not be asked for unread mail just now.',
                         $mailbox->address,
@@ -119,6 +144,47 @@ final class EmailGlance extends DescribedGlance
 
             return $this->payload($data);
         });
+    }
+
+    /**
+     * Has this inbox gone quiet while still claiming to be connected?
+     *
+     * ── The case the rest of this file does not cover ────────────
+     *
+     * `broken` is loud and says who must fix it. A read that fails right now
+     * gets a sentence saying so. Between them sits the inbox that is CONNECTED,
+     * fails most of the time, occasionally succeeds, and is therefore never
+     * broken and never conclusively failing. Two production mailboxes lived
+     * there for three weeks and the only alarm was `email.mailbox_broken`,
+     * which fires on the TRANSITION -- so a flapping mailbox fired it 81 times
+     * in eighteen days at nobody, and a rule built on it would be switched off
+     * in a week. A duration cannot flap: it only grows.
+     *
+     * ── Twenty-four hours is Jose's number, 2026-09-14 ───────────
+     *
+     * Asked how long an inbox should be silent before the home screen says so.
+     * It is well past any outage worth mentioning and well short of a working
+     * day being lost, and the sweep polls every five minutes, so reaching a day
+     * means roughly three hundred consecutive failures rather than a bad hour.
+     *
+     * ── A DURATION, never a wall clock ───────────────────────────
+     *
+     * `diffForHumans` renders an elapsed time, which is the same number in
+     * every timezone. A glance that printed "since 14:37" would have to convert
+     * to the viewer's view timezone first, and that conversion is the single
+     * most repeated bug in this dashboard's history.
+     *
+     * ── Never reached at all is deliberately NOT this ────────────
+     *
+     * `last_reached_at` null means EzBizi has never once opened it, so "has not
+     * fetched mail for 3 days" would be an odd way to say "this was never
+     * finished". That belongs to the `unconfigured` status and its own screen.
+     * A mailbox added and abandoned is a real gap and this is not its guard.
+     */
+    private function silentTooLong(Mailbox $mailbox): bool
+    {
+        return $mailbox->last_reached_at !== null
+            && $mailbox->last_reached_at->lt(now()->subHours(self::SILENT_HOURS));
     }
 
     private function sliceLabel(Mailbox $mailbox): string
