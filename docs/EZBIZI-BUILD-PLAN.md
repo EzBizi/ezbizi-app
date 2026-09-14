@@ -119,7 +119,7 @@ Organization                    "Milk United Group"        ← the paying client
 | Can a Franchise sit directly under an Organization? | **No** |
 | Can a Company exist with no Franchise? | **No** — creating a Company requires creating a Franchise |
 | Same for a Sub Company? | **Yes**, also requires a Franchise |
-| Can entities be moved between parents? | **No** |
+| Can entities be moved between parents? | **A company can be made a sub company, or a sub company made a company again** — Jose, 2026-09-14, after creating Crestline Home as a company when it should have been a sub company. Its own route (`PATCH /companies/{id}/parent`), organization-level, audited, raised as `company.updated`. Nothing else moves: not a franchise between companies, and depth stays fixed, so a company holding sub companies cannot become one. The reason the answer used to be No is unchanged and is why the act is gated where it is — every setting, assignment and roll-up below a company is expressed in terms of where it sits. |
 | Is a Sub Company otherwise identical to a Company? | **Yes** — literally "a Company with a parent" |
 | What is a Franchise? | A **geography** — may be per country or per state, the client decides |
 | Are these names final? | **Yes** — but see §8, clients can relabel "Franchise" in their UI |

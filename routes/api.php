@@ -793,6 +793,11 @@ Route::prefix('v1')
         Route::post('companies', [CompaniesController::class, 'store']);
         Route::patch('companies/{company}', [CompaniesController::class, 'update']);
 
+        // Its own route rather than a key on the PATCH above, which refuses
+        // parent_company_id outright: a field that reshapes the organization
+        // must not ride along with a phone number.
+        Route::patch('companies/{company}/parent', [CompaniesController::class, 'reparent']);
+
         /*
         | ── How the business arranged the PICTURE of that structure ──
         |
