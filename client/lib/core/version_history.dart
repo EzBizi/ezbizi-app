@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0211',
+      date: '14 Sep 2026',
+      items: [
+        'The sending address screen has been removed from Settings. It offered to verify a domain so that mail would appear to come from your own business, and that is not how EzBizi sends. EzBizi mail carries EzBizi messages only - signing in, password resets and joining messages - and anything your business writes goes out through your own mail provider.',
+        'In the Experimental call report, two spellings of one name are now counted as one person rather than two.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0210',
       date: '14 Sep 2026',
       items: [
