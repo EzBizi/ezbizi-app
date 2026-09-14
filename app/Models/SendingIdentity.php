@@ -34,8 +34,8 @@ use Illuminate\Database\Eloquent\Model;
  *
  * ── And it does not decide its own verification state ────────────
  *
- * `state` is written by {@see \App\Support\Mail\DomainVerification} and by
- * nothing else. It is not fillable, there is no API route that sets it, and the
+ * `state` was written by the domain-verification flow, which was deleted on
+ * 2026-09-14. NOTHING writes it now, and no API route sets it — the
  * whole reason this is not a registry setting is that a registry value IS
  * settable by anybody with `organizations.edit` and a PATCH.
  */
@@ -109,24 +109,17 @@ class SendingIdentity extends Model implements HoldsSensitiveValues, StatesReten
     {
         return [
             /*
-             * Encrypted on every row, empty on all of them today.
+             * `encrypted:array`, and the window to choose the cast was still
+             * open when it changed on 2026-09-14.
              *
-             * A cast is per-column and cannot be switched on for rows that
-             * already exist, so the moment to decide is before the first
-             * credential is written rather than after. Same argument as
-             * OnboardingAnswer::$value.
-             */
-            /*
-             * `encrypted:array` since 2026-09-14, and the window to do it was
-             * still open exactly as predicted above.
-             *
-             * The comment above is right that a cast cannot be switched on for
-             * rows that already exist. What made this safe is not the comment
-             * though — a docblock records what its author believed — it is that
-             * `credentials` is absent from $fillable and nothing in app/ or
-             * database/ assigns to it, so no row on any box can hold a value to
-             * be misread. That is a stronger check than counting rows on one
-             * server, because it holds for servers I cannot reach.
+             * The original note here was right that a cast is per-column and
+             * cannot be switched on for rows that already exist, so the moment
+             * to decide is before the first credential is written. What made the
+             * change safe is not that note though — a docblock records what its
+             * author believed — it is that `credentials` is absent from
+             * $fillable and nothing in app/ or database/ assigns to it, so no
+             * row on any box can hold a value to be misread. That holds for
+             * servers I cannot reach, which counting rows on one does not.
              *
              * An array rather than a string because an SMTP connection is five
              * fields that must travel together — host, port, username, password,
@@ -213,7 +206,7 @@ class SendingIdentity extends Model implements HoldsSensitiveValues, StatesReten
      *
      * When a bring-your-own-SMTP transport arrives this becomes a real check —
      * `organizations.edit` plus reach over this row's scope, the same pair
-     * SendingIdentitiesController already applies to writes.
+     * the controller used to apply to writes (deleted 2026-09-14).
      */
     public function mayReveal(User $actor): bool
     {

@@ -99,7 +99,6 @@ use App\Http\Controllers\Api\SchedulingAreasController;
 use App\Http\Controllers\Api\SchedulingAvailabilityController;
 use App\Http\Controllers\Api\SchedulingPatternController;
 use App\Http\Controllers\Api\SchedulingSuggestController;
-use App\Http\Controllers\Api\SendingIdentitiesController;
 use App\Http\Controllers\Api\ServiceGroupsController;
 use App\Http\Controllers\Api\ServiceLabelsController;
 use App\Http\Controllers\Api\ServicesController;
@@ -1741,37 +1740,6 @@ Route::prefix('v1')
         Route::get('settings', [SettingsController::class, 'index']);
         Route::patch('settings/{key}', [SettingsController::class, 'update']);
         Route::delete('settings/{key}', [SettingsController::class, 'destroy']);
-
-        /*
-        |── The address a tenant's own mail comes from (§6, §2.1) ──
-        |
-        | Beside settings because it IS one in every sense that matters — it
-        | cascades franchise → company → organization, it is refused at a scope
-        | the caller cannot reach, and it is gated on the same
-        | `organizations.edit` the rest of the settings screen uses, so the
-        | organization decides which of its roles reach it by granting that tab.
-        | It is a table rather than a registry entry for reasons the migration
-        | sets out at length, the first being that a registry value is settable
-        | by PATCH and a verification state must never be.
-        |
-        | NO {identity} SEGMENT ANYWHERE. The scope names the row — there is at
-        | most one per scope, enforced by a unique key — so there is no id for a
-        | caller to guess, and no route model binding that could resolve one
-        | belonging to a scope they cannot reach. `check` is a POST because it
-        | writes: it records what DNS said and when it was asked.
-        |
-        | SINGULAR, and PATCH rather than PUT. A scope has one sending identity,
-        | so the path names one thing. The verb is PATCH because the client's
-        | ApiClient carries a query string on `patch` and `delete` and not on
-        | `put` and `post`, and that file belongs to another piece of work — see
-        | client/lib/widgets/sending_identity_panel.dart, which says the same.
-        | It also lands these on the same two verbs `/settings` uses for the
-        | same job at the same scopes, which is the better shape regardless.
-        */
-        Route::get('mail/sending-identity', [SendingIdentitiesController::class, 'index']);
-        Route::patch('mail/sending-identity', [SendingIdentitiesController::class, 'update']);
-        Route::delete('mail/sending-identity', [SendingIdentitiesController::class, 'destroy']);
-        Route::post('mail/sending-identity/check', [SendingIdentitiesController::class, 'check']);
 
         // Who am I — what the client calls on launch to know what to render.
         // (staff routes are below, deliberately outside this group)
