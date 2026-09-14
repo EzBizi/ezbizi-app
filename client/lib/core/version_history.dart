@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0210',
+      date: '14 Sep 2026',
+      items: [
+        'Voicemail transcription is now one switch for the whole company instead of one per phone line. It was off on all thirteen numbers and not one voicemail had ever been transcribed - not because anybody decided against it, but because turning it on meant visiting thirteen separate line settings.',
+        'A ring group can now start with whoever has been free the longest, instead of always starting at the top of the list. A fixed order quietly gives the first person most of the calls and the last almost none. Somebody who has never answered a call goes first.',
+        'A Workiz account is now connected to the branch it belongs to, rather than being set up once for the whole organisation. It is checked with Workiz before it is saved, and every connected branch shows as a chip you can remove again.',
+        'Reports, inspection reports and automations that email somebody now say plainly that this needs the business to have its own email provider connected. EzBizi mail carries EzBizi messages - signing in, password resets and joining messages - and only those.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0209',
       date: '14 Sep 2026',
       items: [
