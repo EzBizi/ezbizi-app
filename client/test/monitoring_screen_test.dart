@@ -346,6 +346,43 @@ void main() {
   });
 
   testWidgets(
+    'a machine Windows is unhappy about is badged on the GRID, not only in '
+    'the panel',
+    (tester) async {
+      // The caller test. machine_card_test proves the badge renders when the
+      // flag is set, and machine_detail_test proves the predicate decides
+      // correctly — neither proves the grid ever JOINS them. Without this,
+      // both files stay green while no card in the product ever badges
+      // anything, which is the whole point of putting it on the card.
+      await _pumpScreen(tester, devices: [
+        {
+          ..._agentDevice,
+          'specs': {
+            ...(_agentDevice['specs']! as Map<String, dynamic>),
+            'security': {'antivirus': 'poor', 'firewall': 'good'},
+          },
+        },
+      ]);
+
+      expect(find.text('Needs attention'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'a machine that has reported no security block is not badged',
+    (tester) async {
+      // Control for the test above, and the distinction that matters: the
+      // stock fixture carries no `security` key at all, exactly like an agent
+      // that predates the feature. Silence must not render as a problem — and
+      // the test above proves the badge is reachable, so this absence is the
+      // rule rather than a badge that never appears.
+      await _pumpScreen(tester, devices: [_agentDevice]);
+
+      expect(find.text('Needs attention'), findsNothing);
+    },
+  );
+
+  testWidgets(
     'the grid shows a card per person and the detail panel only after one is '
     'chosen',
     (tester) async {
