@@ -227,4 +227,52 @@ void main() {
       );
     },
   );
+
+  test(
+    'the published flag follows the notice, so the app can say it too',
+    () async {
+      // The tray notice is a balloon the OS may swallow — Focus Assist, a
+      // full-screen window, a notification policy — and Shell_NotifyIcon
+      // reports success either way. So the app draws its own banner, and this
+      // is the flag it watches. It must agree with the native call exactly:
+      // a banner that appeared when the tray notice did not, or the reverse,
+      // would be two different answers to "is somebody driving this machine".
+      final it = harness(controlWanted: true, indicator: true, events: const []);
+
+      final service = build(it);
+      expect(service.controlled.value, isFalse,
+          reason: 'Nothing is claimed before the first poll answers.');
+
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+
+      expect(service.controlled.value, isTrue);
+      expect(it.indicated.contains(true), isTrue,
+          reason: 'Control: the native notice went up too, so the flag is '
+              'tracking the same fact rather than a second opinion.');
+
+      service.dispose();
+
+      // Cleared on the way out, for the same reason dispose already clears the
+      // native notice: a banner must not outlive the loop that raised it.
+      expect(service.controlled.value, isFalse);
+    },
+  );
+
+  test(
+    'a silent organization raises no banner either',
+    () async {
+      // The constraint that matters most: an org that did not opt in gets
+      // NOTHING added to its screen. The banner is a second surface for the
+      // same opt-in, never a way around it.
+      final it = harness(controlWanted: true, indicator: false, events: const []);
+
+      final service = build(it);
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+
+      expect(service.controlled.value, isFalse,
+          reason: 'indicator false means silent, on every surface.');
+
+      service.dispose();
+    },
+  );
 }

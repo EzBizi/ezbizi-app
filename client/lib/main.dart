@@ -23,6 +23,7 @@ import 'core/ui_strings.dart';
 import 'core/clock_window.dart';
 import 'core/version_gate.dart';
 import 'screens/lock_screen.dart';
+import 'widgets/controlled_banner.dart';
 import 'widgets/shift_reminder.dart';
 import 'screens/development_screen.dart';
 import 'screens/hr/onboarding_form.dart';
@@ -1404,6 +1405,31 @@ class _HomeShellState extends State<HomeShell> {
             IncomingCallBar(
               onOpenDial: () => _show(_Rail.modules, 'phone'),
             ),
+
+            /*
+             * "Somebody is driving this machine", said by the app itself.
+             *
+             * The native tray notice is a tooltip plus a one-off balloon, and
+             * a balloon is a courtesy the OS may decline: Focus Assist, a
+             * full-screen window, or a notification policy set years ago all
+             * swallow it, and Shell_NotifyIcon reports success regardless. A
+             * consent notice whose only surface can be silently switched off
+             * is a notice you cannot rely on having given.
+             *
+             * So this says it in the one place the person is certainly
+             * looking. Null for a screen-monitoring-exempt session, which is
+             * never remote-driven in the first place; and the flag it watches
+             * is already the organization's opt-in ANDed with "is actually
+             * being controlled", so an organization that wants a silent agent
+             * still has one.
+             */
+            if (_remoteControl != null)
+              ValueListenableBuilder<bool>(
+                valueListenable: _remoteControl!.controlled,
+                builder: (context, controlled, _) => controlled
+                    ? const ControlledBanner()
+                    : const SizedBox.shrink(),
+              ),
 
             /*
              * Zero-sized, and load-bearing — the same widget CallTab used to
