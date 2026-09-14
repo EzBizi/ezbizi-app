@@ -6,6 +6,7 @@ use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\InventoryItem;
 use App\Models\Lead;
+use App\Models\MonitoredDevice;
 use App\Models\Service;
 use App\Models\ServiceArea;
 use App\Models\TrainingGuide;
@@ -364,19 +365,74 @@ final class ReportMap
                 ],
             ],
 
+            /*
+             * Monitoring, and NO MIGRATION WAS NEEDED.
+             *
+             * Jose said yes to making this reportable, and the desk framed it as
+             * "it needs a scoping column somebody has to want". It does not. A
+             * device belongs to a PERSON, not to a branch, and a place column
+             * would be wrong the moment somebody transfers between branches —
+             * stale by design, and a second thing for Monitoring to maintain.
+             *
+             * `ScopeReach::constrainToVisiblePeople` is already how Monitoring's
+             * own DevicesController decides who may see a device: reach is
+             * checked against the device's OWNER. This scopes the same way, so a
+             * report and the Monitoring tab answer with the same set and no
+             * column exists to drift.
+             *
+             * Columns are the ones that answer "is this person's machine
+             * working": what it is, when it was last seen, what it is running.
+             * `ip_address`, `screen_context`, `specs`, `capture_last_error` and
+             * `capabilities` are deliberately NOT reportable — a report is the
+             * wrong surface for where somebody is sitting and what is on their
+             * screen, and that is a disclosure decision rather than an oversight.
+             */
+            'monitored_devices' => [
+                'model'          => MonitoredDevice::class,
+                'table'          => 'monitored_devices',
+                'label'          => 'Monitoring',
+                'module'         => 'monitoring',
+                'permission'     => 'monitoring.view',
+                'scope'          => ['user_id' => 'people'],
+                'shared_because' => null,
+                'soft_deletes'   => false,
+                'columns'        => [
+                    'label'          => ['label' => 'Device',       'type' => 'string'],
+                    'platform'       => ['label' => 'Platform',     'type' => 'string'],
+                    'last_seen_at'   => ['label' => 'Last seen',    'type' => 'datetime'],
+                    'current_module' => ['label' => 'Current tab',  'type' => 'string'],
+                    'created_at'     => ['label' => 'First seen',   'type' => 'datetime'],
+                ],
+                'relations' => [
+                    'person' => ['to' => 'users', 'local' => 'user_id', 'foreign' => 'id'],
+                ],
+            ],
+
             'users' => [
                 'model'      => User::class,
                 'table'      => 'users',
                 'label'      => 'Human Resources',
                 'module'     => 'hr',
                 'permission' => 'hr.view',
-                'scope'      => [],
-                'shared_because' => 'A person belongs to the organization and is assigned to '
-                    .'places rather than filed in one, so users carries no company or '
-                    .'franchise column to filter on. Narrowing people to the current view is '
-                    .'a question about assignments, which is a join this map does not yet '
-                    .'declare — so for now People is organization-wide and the permission '
-                    .'(hr.view) is what gates it.',
+                /*
+                 * CORRECTED 2026-09-14. This read `scope => []` with a
+                 * `shared_because` claiming people are organization-wide
+                 * because they carry no place column — and the second half was
+                 * true while the conclusion was wrong. HR's own list narrows
+                 * people by REACH through their assignments
+                 * (`ScopeReach::constrainToVisiblePeople`), so a report was
+                 * returning every user in the tenant while the Human Resources
+                 * tab showed fewer. A reader with one branch could read the
+                 * name, email and phone of somebody they have no authority
+                 * over. Shipped in 0.0.0192 and live until this.
+                 *
+                 * The lesson, since the justification was the dangerous part:
+                 * "this table has no place column" says nothing about whether
+                 * the module scopes it. Read the module's own list query
+                 * before writing a shared_because.
+                 */
+                'scope'          => ['id' => 'people'],
+                'shared_because' => null,
                 'soft_deletes' => false,
                 'columns'      => [
                     'name'       => ['label' => 'Name',    'type' => 'string'],

@@ -3,9 +3,11 @@
 namespace App\Support\Reports;
 
 use App\Models\User;
+use App\Support\Access\ScopeReach;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -80,6 +82,9 @@ final class ReportRunner
         'gte'      => '>=',
         'contains' => 'like',
     ];
+
+    /** @var list<string>|null memoised per run; see visiblePeopleIds() */
+    private ?array $visiblePeople = null;
 
     public function __construct(private readonly TenantContext $tenant) {}
 
@@ -264,6 +269,9 @@ final class ReportRunner
 
             $ids = match ($source) {
                 'franchise' => $view->franchiseIds(),
+                // The column says WHICH column holds the user id: `id` on the
+                // people themselves, `user_id` on a row that belongs to one.
+                'people' => $this->visiblePeopleIds($user),
                 default => throw new LogicException(
                     "ReportMap scopes '{$table}.{$column}' by '{$source}', and this runner "
                     .'does not know which view ids resolve that. Teach it here rather than '
@@ -320,6 +328,34 @@ final class ReportRunner
             '('.substr($wheres, 7).')',
             $scoped->toBase()->getBindings(),
         );
+    }
+
+    /**
+     * The people this caller may see, as ids.
+     *
+     * Delegated to `ScopeReach::constrainToVisiblePeople`, which is the shared
+     * predicate behind HR's own people list AND Monitoring's device list — its
+     * docblock says so in as many words, so that "may you see this person"
+     * cannot drift into two answers. Three arms: yourself always, anybody
+     * assigned to a place your authority covers, and the unassigned only if you
+     * reach the whole organization.
+     *
+     * THIS IS WHY `monitored_devices` NEEDS NO PLACE COLUMN. A device belongs to
+     * a person, not to a branch, and a column would be wrong the moment somebody
+     * transfers. Monitoring's own controller checks reach against the device's
+     * OWNER for exactly that reason; this does the same, one hop away.
+     *
+     * Materialised as ids rather than as a subquery because a tenant's people
+     * are tens, not millions, and the alternative is SQL-string surgery on a
+     * predicate whose correctness is the whole point. Memoised per run: a
+     * report naming both `users` and `monitored_devices` asks twice.
+     */
+    private function visiblePeopleIds(User $user): array
+    {
+        return $this->visiblePeople ??= User::query()
+            ->where(fn (Builder $q) => app(ScopeReach::class)->constrainToVisiblePeople($q, $user))
+            ->pluck('id')
+            ->all();
     }
 
     /** @return list<string> */

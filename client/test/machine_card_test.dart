@@ -19,6 +19,7 @@ void main() {
     int? cpu,
     int? ram,
     int? gpu,
+    bool needsAttention = false,
     int? disk,
     String? activeWindow,
     String? sessions,
@@ -32,6 +33,7 @@ void main() {
         cpuPercent: cpu,
         ramPercent: ram,
         gpuPercent: gpu,
+        needsAttention: needsAttention,
         diskPercent: disk,
         activeWindow: activeWindow,
         sessions: sessions,
@@ -70,6 +72,45 @@ void main() {
     expect(find.text('GPU'), findsOneWidget);
     expect(find.textContaining('63%'), findsNothing);
     expect(find.text('0%'), findsNothing);
+  });
+
+  testWidgets('a machine wanting attention says so on the card, not only inside',
+      (tester) async {
+    await tester.pumpWidget(wrap(card(needsAttention: true)));
+    expect(find.text('Needs attention'), findsOneWidget);
+
+    // Control, and the point of the whole design: the badge appears ONLY when
+    // something is wrong. A badge confirming that nothing is wrong would sit
+    // on forty-one of forty-two cards saying nothing, which is how people
+    // learn to stop reading badges.
+    await tester.pumpWidget(wrap(card(needsAttention: false)));
+    expect(find.text('Needs attention'), findsNothing);
+  });
+
+  testWidgets('both badges fit a narrow card without overflowing',
+      (tester) async {
+    // 180px, not the 300px the grid actually drops to: at 300 this passed
+    // while the real grid was overflowing by 12 pixels, so it was proving
+    // nothing. Sized to genuinely stress the header, and sabotage-checked —
+    // forcing the badge area back to an unbounded flex makes this red.
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          width: 180,
+          child: MachineCard(
+            title: 'DESKTOP-AI4K9IP',
+            person: 'Adeline Pierrelouis-Aghaji',
+            online: true,
+            seenLabel: 'just now',
+            needsAttention: true,
+          ),
+        ),
+      ),
+    ));
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Live'), findsOneWidget);
+    expect(find.text('Needs attention'), findsOneWidget);
   });
 
   testWidgets('the person leads the card and the machine sits under them',

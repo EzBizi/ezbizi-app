@@ -13,6 +13,31 @@ namespace App\Support\Modules;
  */
 final class ActionDefinition extends AutomationDeclaration
 {
+    /**
+     * Appended to the description of anything the engine cannot perform yet.
+     *
+     * The twin of `TriggerDefinition::NOT_RAISED_YET`, and it exists because
+     * the two disclosures were not twins. An unraised trigger carries its
+     * warning INSIDE its description, so the sentence travels with the text
+     * wherever it is read. An unbuilt action carried only a sibling
+     * `implemented: false` boolean — so the builder drew it correctly as "Not
+     * built yet", and anybody reading the DESCRIPTION alone read a live
+     * capability.
+     *
+     * That is not hypothetical. `report.send` says "Runs a saved report and
+     * emails the result" and has no arm in ActionRunner; the Training session
+     * flagged on 2026-09-14 that in the week SES production access was granted,
+     * whoever is asked "can a rule email me the weekly report yet?" answers
+     * from that sentence unless they check the match statement. The boolean was
+     * right and unread, because a boolean is not where a person looks.
+     *
+     * Appended by the CATALOGUE rather than here, for the reason this class's
+     * own docblock gives: a module declares what it intends to expose and does
+     * not know what the engine can run. `AutomationsController` holds that
+     * list, so it is the only place that can say the sentence truthfully.
+     */
+    public const NOT_BUILT_YET = 'This is not built yet, so a rule using it will not run.';
+
     private readonly string $executionType;
 
     public function __construct(

@@ -89,6 +89,31 @@ class AutomationEvent extends Model implements StatesRetention
         'correlation_id', 'occurred_at', 'available_at', 'scope_snapshot',
     ];
 
+    /**
+     * `delivered_at` MEANS DELIVERED TO THE ENGINE. IT IS NOT ABOUT EMAIL.
+     *
+     * It is the moment this outbox row was handed to the rules that act on it —
+     * nothing more. It says nothing about whether anything reached a person, and
+     * the application cannot know that at all: there is no SES event ingestion,
+     * no SNS route and no bounce handler, so delivered, bounced and opened are
+     * not facts EzBizi holds about any message it sends.
+     *
+     * Written here because the NAME argues for the wrong word. The first screen
+     * to show an email-sending automation step will be reading this table, one
+     * column away from a field called `delivered_at`, and "Delivered" is the
+     * single most natural label to reach for and the one thing that cannot be
+     * said. The vocabulary that CAN be said is: Sent (handed over), Couldn't
+     * send and which reason, and — for a box whose transport goes nowhere,
+     * see `MailStatus` — that this installation is not sending mail at all.
+     *
+     * `available_at`, `attempts` and `failed_at` beside it are the honest pair
+     * to that: they describe waiting to RUN, which is real and observable here.
+     * Waiting to run and waiting to arrive look identical on a screen and mean
+     * opposite things to somebody working out why a customer never heard back.
+     *
+     * Raised by the UI/UX session on 2026-09-14, after measuring that the app
+     * cannot observe delivery.
+     */
     protected function casts(): array
     {
         return [

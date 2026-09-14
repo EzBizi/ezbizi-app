@@ -262,14 +262,33 @@ class AutomationsController extends Controller
                  * publishes `subject` above and lets the builder compare the
                  * two, and the save-time check refuses the mismatch for real.
                  */
-                'declared_actions' => array_map(fn (ActionDefinition $a) => [
-                    'key' => $a->key,
-                    'label' => $a->label,
-                    'description' => $a->description,
-                    'type' => $a->type(),
-                    'subject_bound' => $a->subjectBound,
-                    'implemented' => in_array($a->type(), self::IMPLEMENTED_ACTIONS, strict: true),
-                ], $module->automationActions),
+                'declared_actions' => array_map(function (ActionDefinition $a) {
+                    $implemented = in_array($a->type(), self::IMPLEMENTED_ACTIONS, strict: true);
+
+                    return [
+                        'key' => $a->key,
+                        'label' => $a->label,
+                        /*
+                         * The warning goes IN the sentence, not only beside it.
+                         *
+                         * `implemented` below is the machine-readable half and
+                         * the builder draws it correctly — an unbuilt action is
+                         * unselectable with a "Not built yet" badge. But a
+                         * DESCRIPTION is what a person reads, and it read as a
+                         * live capability: `report.send` promises to email a
+                         * saved report and has no arm in ActionRunner.
+                         *
+                         * Same fix the triggers already had. See
+                         * ActionDefinition::NOT_BUILT_YET for the incident.
+                         */
+                        'description' => $implemented
+                            ? $a->description
+                            : rtrim($a->description).' '.ActionDefinition::NOT_BUILT_YET,
+                        'type' => $a->type(),
+                        'subject_bound' => $a->subjectBound,
+                        'implemented' => $implemented,
+                    ];
+                }, $module->automationActions),
             ];
         }
 

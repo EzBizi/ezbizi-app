@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\Job;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Automations\ActionRunner;
+use App\Support\Modules\ActionDefinition;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Modules\TriggerDefinition;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -273,6 +274,51 @@ class AutomationsApiTest extends TestCase
 
         $this->assertContains('job.update_field', $implemented);
         $this->assertContains('customer.update_field', $implemented);
+    }
+
+    /**
+     * The warning is IN the sentence, the way an unraised trigger's already is.
+     *
+     * `implemented: false` is the machine-readable half and the builder draws it
+     * — but a description is what a PERSON reads, and an unbuilt action's read
+     * as a live capability. `report.send` promises to email a saved report and
+     * has no arm in the runner; in the week SES production access was granted,
+     * that sentence is what somebody answers "can a rule email me the weekly
+     * report yet?" from.
+     *
+     * Both halves asserted, because only the pair can tell the fix from a
+     * blanket append that would put the warning on everything.
+     */
+    public function test_an_unbuilt_action_says_so_in_its_description_and_a_built_one_does_not(): void
+    {
+        $data = $this->as()->getJson('/api/v1/automations/catalogue')->assertOk()->json('data');
+
+        $actions = collect($data['modules'])->flatMap(fn (array $m) => $m['declared_actions']);
+
+        $unbuilt = $actions->reject(fn (array $a) => $a['implemented']);
+        $built = $actions->filter(fn (array $a) => $a['implemented']);
+
+        $this->assertNotEmpty($unbuilt, 'Nothing is unbuilt, so this proves nothing.');
+        $this->assertNotEmpty($built, 'Nothing is built, so the negative half proves nothing.');
+
+        foreach ($unbuilt as $action) {
+            $this->assertStringContainsString(
+                ActionDefinition::NOT_BUILT_YET,
+                $action['description'],
+                "'{$action['key']}' cannot run and its description does not say so.",
+            );
+        }
+
+        // The half that stops this becoming a blanket append. An action the
+        // engine performs must NOT carry the warning, or the sentence is noise
+        // on every row and nobody reads it on the rows that need it.
+        foreach ($built as $action) {
+            $this->assertStringNotContainsString(
+                ActionDefinition::NOT_BUILT_YET,
+                $action['description'],
+                "'{$action['key']}' runs, but is described as not built.",
+            );
+        }
     }
 
     /**

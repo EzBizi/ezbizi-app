@@ -2071,6 +2071,58 @@ before it is attempted, and that IS observable — its own event bus carries `av
 run, not waiting to arrive.** The two look identical on screen and mean opposite things to
 somebody working out why a customer never heard from them.
 
+**A FOURTH STATE, found by Automations verifying the rule rather than taking it.** `MailStatus`
+knows whether this installation delivers **at all** — `NON_DELIVERING = ['log','array','null']`,
+and `missing()` names the credential when the transport is `ses` with an empty key. Its own
+docblock is the argument: *"`MAIL_MAILER=log` accepts every message and returns success... which
+is how somebody ends up waiting for a password reset that was never going anywhere."*
+
+So a handoff can succeed while nothing leaves the building, and **"Sent" would then be a
+confident sentence naming the wrong outcome** — this rule finding its own fourth case rather than
+an exception to it. Rare in production, routine on a demo or staging box, which is exactly where
+somebody tests a rule, reads "Sent", and concludes the feature works.
+
+> **Two different things, and they do not go in the same place.** *Did this message leave* is
+> per-message and belongs on the row. *This installation is not sending mail* is ONE fact about
+> the box, and printing it per row is repeating it N times.
+
+**~~HR has already solved the per-message half~~ — I wrote that here, and it was wrong. HR caught
+it and gave the praise back.** Left visible rather than edited away, because how it was wrong is
+the useful part.
+
+`HrInvitationsController::deliver()` **only caught transports that THROW.** `log`, `array` and
+`null` throw nothing, so it returned `true` and the panel said *"The invitation has been emailed
+to them"* on exactly the demo and staging boxes where somebody tests invitations and concludes
+the flow works. `ses` with a blank credential is the same shape. Fixed on main at `8a0ef426`:
+`MailStatus::delivers()` is asked **after** the handoff, so the message still reaches whatever
+transport is configured — observable to a `log` reader and to `Notification::fake` — and only the
+CLAIM depends on whether that transport goes anywhere. No new state on screen: a non-delivering
+box lands in "Couldn't send", which was already the right wording for it.
+
+> **How I got it wrong is this entry's own rule, turned on me. I read the docblock and reported
+> it as behaviour.** That method's comment is genuinely excellent and states the right rule — it
+> simply overclaimed about the present. **A docblock is a DESCRIBER**, and entry 11 exists
+> because a describer reads from a different source than the thing it describes: the code's
+> source is the code, and a comment's source is what its author believed while writing it.
+> I spent this week telling two sessions to check the icon against the drawing, then took a
+> comment as evidence about a method.
+
+**And the belief was written down twice, which is why nothing caught it.** HR's own test asserted
+`emailed: true` under phpunit's `array` mailer, with the comment *"so this one genuinely sends"*.
+A test carrying the same wrong premise as the code cannot fail on it.
+
+**The line I praised is still worth the praise, and is still true.** *"The panel used to assert
+'nothing has been emailed' unconditionally, which was true while nothing could send and became a
+lie the day something could."* **That is this entry's rule having already gone wrong once, in the
+opposite direction.** A sentence does not have to be edited to become false; the world can edit
+it — and the method underneath that sentence had quietly become false the same way.
+
+**The gap, measured: the installation-level fact reaches EzBizi staff and nobody else.**
+`MailStatus` surfaces in exactly one client file, `screens/staff/health_screen.dart:261`. An
+administrator sending invitations on a box pointed at the log mailer is told "Sent" and has
+nowhere to learn otherwise. Whether a non-staff surface should say so is a **new element**, so it
+is a question for Jose rather than something decided here — raised, not drawn.
+
 **The precedent, from Email the same day.** An empty state read *"an inbox added on another
 company stays there, switch to that company"* — a correct sentence about the wrong problem. The
 eight people who saw it had a permission problem, the inboxes were already in their view, and
@@ -2078,4 +2130,98 @@ the only person who could fix it never sees that screen. **A confident sentence 
 cause is worse than a vague one**, because it sends somebody hunting. Email's fix was to publish
 which of three reasons applies rather than assuming one, and that is the shape every failure
 state here should take.
+
+### 12 · HR · the invitation panel, and the two failures that read the same — **DRAWN, awaiting Jose**
+
+`docs/previews/invitation-sent-states-layouts.html`. Three desktop, three mobile, with a **state
+switcher** — the two failures are the whole reason it is drawn, and an option looked at only in
+its success state hides the problem.
+
+HR brought states rather than a layout, which is the ask working. The panel is
+`client/lib/screens/hr/invitations_tab.dart:495`, shown the one moment the raw token exists,
+switching on a server `emailed` bool.
+
+**The gap is not that the failure is unnamed. It is that the REMEDY differs and the sentence does
+not.** Today a failure reads *"The email could not be sent, so nothing has reached them. Copy the
+link and get it to them yourself."*
+
+- **Transport down** — copy the link, hand it over, and the invitation is perfectly good.
+- **Address refused** — handing the link over still works, *and* the invitation now carries a
+  typo nobody has corrected, so the same person is invited to the same wrong address next week.
+
+Same sentence today, two different actions. The server knows which (`deliver()` catches and logs
+the exception) but the response carries only a bool, so this is a server change of HR's as well
+as a screen.
+
+> **In every failing case the address IS the problem, and today it is the panel SUBTITLE** — the
+> one thing on screen that cannot be acted on. That observation is what separates the three
+> desktop options: fold the reason into the sentence (1), put it in a status strip (2), or
+> promote the address to the subject of the panel (3).
+
+**Designed knowing a state is coming.** HR measured that SES event ingestion is being built —
+the SNS subscription is currently EMAIL protocol to a human mailbox, so events reach a person and
+not the app, and HTTPS ingestion into a table keyed by recipient and message id is in progress.
+So **delivered and bounced become knowable soon**, and per entry 11's own rule that must arrive
+as a screen gaining a state rather than a word quietly becoming true. Every option is drawn with
+a place to put `bounced`; option 2's is the cleanest seam, because the strip changes and the body
+does not.
+
+**One asymmetry worth knowing before reading the options.** The account suppression list means
+the FIRST send to a typo bounces silently and a SECOND send to the same address is refused at
+handoff. So a resend already produces "Couldn't send" correctly today — **only the first send is
+blind**, which is exactly the send where somebody is standing in front of this panel.
+
+**Two judgements HR asked for, given here so they are not re-litigated:**
+
+- **The `null` state survives the rule.** *"Copy the link and get it to them yourself if you are
+  not certain the email reached them."* It is a server older than the field, it claims neither
+  outcome, and it says what to do. That is the rule obeyed, not bent — and it is deliberately not
+  drawn in red.
+- **"Has been emailed to them" should become "Sent to them."** HR flagged it themselves. It is a
+  handoff claim wearing arrival's clothes, and it is the sentence entry 11 exists to prevent.
+
+### 13 · Developer · switch between desktop and mobile view — **DRAWN, awaiting Jose**
+
+`docs/previews/mobile-view-switch-layouts.html`. Jose, 2026-09-14: *"can we add a developer only
+icon on the top bar next to the phone icon, that let's u switch between desktop view and mobile
+view?"*
+
+Three desktop (how you get in) and three mobile (how you know you are in it and get back out).
+Placement is settled by the ask — after `AvailabilityButton` in the bar's `actions:`
+(`main.dart:1019`), which is the phone icon he means. Gate is `me.development != null`, the same
+one the Development rail uses (§4.2).
+
+> **The work is not the icon. It is that the app decides its shape in nine places.**
+> `main.dart:692` is `width >= 900` and is read a dozen times — but **nine reads of the viewport
+> width live across five files at three breakpoints**: 900 in the shell, the staff shell and Web
+> widgets; 600 in `lead_thread`; 480 in `auth_shell`; and `side_panel` clamping itself to the
+> window. A switch that flips the shell's own boolean produces **a narrow shell with desktop
+> screens inside it** — wrong in exactly the places somebody would be using it to check.
+> **Override the VIEWPORT, not the flag**, and all nine follow for free with no screen knowing
+> this control exists.
+
+**The design problem is not "how do I get to mobile view", it is "how do I know I am in it".** A
+developer who forgets reports a layout defect that is not one. So every option is judged on how
+unmistakable the state is, and each one borrows something different to say it:
+
+- **Desktop 1** borrows nothing and says the least — mobile view is indistinguishable from a
+  narrow window, with a filled icon as the only tell.
+- **Desktop 2** is unmistakable, and is the only option where the viewport is a *known* size, so
+  "it breaks at 390" reproduces between two people.
+- **Desktop 3** shows both layouts live, which is what checking a change actually wants — at the
+  price of two live copies of the app, two sets of screen state, two `initState` fetches, and any
+  timer or socket a screen holds running twice. **Cheap to look at, expensive to be correct.**
+- **Mobile 4** spends bar room that was bought deliberately: that bar overflowed by **266px**
+  (measured 2026-09-10) with both conditional chips showing, which is why the brand is dropped,
+  the punch control is icon-only and the theme cycle is gone on a phone. And it costs it *only
+  for staff* — the hardest overflow to notice, because the people who see it are not the people
+  who report it.
+- **Mobile 5** reuses the bar's existing `bottom:` strip (`_BarStates`, `main.dart:1578`) where
+  states that are not controls already live — at the price of shortening the viewport somebody is
+  using to check whether content fits.
+- **Mobile 6** borrows nothing from the app and renders the product at its true size, which is
+  the argument for it; it covers content, which is the argument against.
+
+**Session state, not a preference.** It is a mode you are in for a minute, and saving it to an
+account would mean signing in on a desktop to a mobile layout with no memory of asking for one.
 

@@ -101,11 +101,30 @@ class HrInvitationsTest extends TestCase
             'scope_id'   => $alpha['franchise']->id,
         ];
 
-        // MAIL_MAILER is `array` under phpunit, so this one genuinely sends.
+        // THE ORDER OF THESE THREE IS LOAD-BEARING and cost me a red build.
+        // The delivering case needs Notification::fake, and a fake cannot be
+        // lifted — with it in place the broken-transport case below never
+        // throws, so it returned "it went" and the assertion that catches a
+        // real misconfiguration could not fail. The two cases that must reach
+        // a real transport run FIRST; the faked one runs last, where it can
+        // leak into nothing.
+
+        // A transport that throws nothing and delivers nothing.
+        //
+        // phpunit runs on `array`, and this assertion used to read `true` here
+        // with the comment "so this one genuinely sends". That was simply
+        // wrong: `array` collects messages and delivers none. The assertion
+        // was green and the sentence it protects — "the invitation has been
+        // emailed to them" — was false on every box configured that way, which
+        // is every demo and staging box somebody tests invitations on. Found
+        // by UI/UX (2026-09-14) as the fourth state their email vocabulary was
+        // missing. Nothing goes wrong here, so there is no exception to catch;
+        // the inviter has to hand the link over exactly as if there had been.
         $this->signedInAs($alpha['admin'])
-            ->postJson('/api/v1/hr/invitations', ['email' => 'first@example.test'] + $body)
+            ->postJson('/api/v1/hr/invitations', ['email' => 'nowhere@example.test'] + $body)
             ->assertCreated()
-            ->assertJsonPath('data.emailed', true);
+            ->assertJsonPath('data.emailed', false)
+            ->assertJsonPath('data.status', 'sent');
 
         // A transport that cannot be constructed at all, which is the cheapest
         // honest failure: no network, no sleeping retry, and it exercises the
@@ -119,6 +138,26 @@ class HrInvitationsTest extends TestCase
             ->assertCreated()
             ->assertJsonPath('data.emailed', false)
             ->assertJsonPath('data.status', 'sent');
+
+        // And last, the only case that may claim it went: a transport that
+        // DELIVERS, with every clause of MailStatus::delivers satisfied —
+        // it asks three questions and a box failing any one of them sends
+        // nothing. Faked so nothing is actually dialled, which is why it is
+        // last. Without this the file would only prove the flag can be false,
+        // and a deliver() hardwired to false would pass everything above.
+        config([
+            'mail.default'               => 'smtp',
+            'mail.mailers.smtp.username' => 'ezbizi',
+            'mail.from.address'          => 'noreply@ezbizi.test',
+        ]);
+        Notification::fake();
+
+        $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/hr/invitations', ['email' => 'first@example.test'] + $body)
+            ->assertCreated()
+            ->assertJsonPath('data.emailed', true);
+
+        Notification::assertSentOnDemand(InvitationLink::class);
     }
 
     public function test_lookup_carries_the_organization_date_format(): void
