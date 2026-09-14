@@ -45,7 +45,7 @@ void main() {
   /// the question of whether incoming worked.
   test('a phone with no calling account is not registered, and says so', () async {
     final device = MobileVoiceDevice(
-      ensureCallingAccount: () async => false,
+      ensureCallingAccount: () async => CallingAccountState.needsEnabling,
       readDeviceToken: () async => 'fcm',
       register: (_, _) async => true,
     );
@@ -79,7 +79,8 @@ void main() {
     var accountReady = true;
 
     final device = MobileVoiceDevice(
-      ensureCallingAccount: () async => accountReady,
+      ensureCallingAccount: () async =>
+          accountReady ? CallingAccountState.ready : CallingAccountState.needsEnabling,
       readDeviceToken: () async => 'fcm',
       register: (_, _) async => true,
     );
@@ -99,6 +100,68 @@ void main() {
     expect(device.needsCallingAccount, isTrue);
   });
 
+  /// A refused phone permission is not the same failure as a refused toggle.
+  ///
+  /// ── The fifth gap, measured on the emulator ──────────────────────
+  ///
+  /// `READ_PHONE_STATE` and `READ_PHONE_NUMBERS` are DANGEROUS permissions.
+  /// The plugin declares them, so they are in the merged manifest, and that
+  /// grants nothing — Android hands them over only when somebody says yes.
+  /// Nothing had ever asked, so `hasRegisteredPhoneAccount()` could not
+  /// answer at all:
+  ///
+  ///     E No read phone state permission, call
+  ///       `requestReadPhoneStatePermission()` first
+  ///
+  /// An unanswerable check reads exactly like a negative one, which is why it
+  /// survived the phone-account fix.
+  ///
+  /// It gets its OWN sentence and deliberately NOT the Open settings button:
+  /// Calling accounts is where the toggle lives, and a refused permission is
+  /// not on that screen. Sending somebody there to fix this is sending them
+  /// to look for something that is not there.
+  test('a refused phone permission does not offer the settings button', () async {
+    final device = MobileVoiceDevice(
+      ensureCallingAccount: () async => CallingAccountState.needsPermission,
+      readDeviceToken: () async => 'fcm',
+      register: (_, _) async => true,
+    );
+
+    await device.setup('a-token');
+
+    expect(device.registered, isFalse);
+    expect(
+      device.needsCallingAccount,
+      isFalse,
+      reason: 'Open settings goes to Calling accounts, where a refused '
+          'permission cannot be granted',
+    );
+    expect(device.registrationError, contains('phone permissions'));
+    expect(
+      device.registrationError,
+      isNot(contains('Calling accounts')),
+      reason: 'the two failures were given the same sentence again',
+    );
+  });
+
+  /// And the toggle case still names the screen that fixes it.
+  ///
+  /// The control for the test above. Without it a change that simply stopped
+  /// offering the button would pass, and the one failure a person CAN resolve
+  /// would lose the control that resolves it.
+  test('a refused toggle still names Calling accounts', () async {
+    final device = MobileVoiceDevice(
+      ensureCallingAccount: () async => CallingAccountState.needsEnabling,
+      readDeviceToken: () async => 'fcm',
+      register: (_, _) async => true,
+    );
+
+    await device.setup('a-token');
+
+    expect(device.needsCallingAccount, isTrue);
+    expect(device.registrationError, contains('Calling accounts'));
+  });
+
   /// And the desk is told the fix is somewhere it can send them.
   ///
   /// This is the half a retry cannot reach: the switch is in Android's
@@ -106,7 +169,7 @@ void main() {
   /// somebody has been somewhere else first.
   test('a calling account that IS enabled leaves nothing to offer', () async {
     final device = MobileVoiceDevice(
-      ensureCallingAccount: () async => true,
+      ensureCallingAccount: () async => CallingAccountState.ready,
       readDeviceToken: () async => 'fcm',
       register: (_, _) async => true,
     );
@@ -132,7 +195,7 @@ void main() {
     var registerCalls = 0;
 
     final device = MobileVoiceDevice(
-      ensureCallingAccount: () async => false,
+      ensureCallingAccount: () async => CallingAccountState.needsEnabling,
       readDeviceToken: () async => 'fcm',
       register: (_, _) async {
         registerCalls++;
@@ -167,7 +230,7 @@ void main() {
 
   test('a refused registration keeps the platform\'s own words', () async {
     final device = MobileVoiceDevice(
-      ensureCallingAccount: () async => true,
+      ensureCallingAccount: () async => CallingAccountState.ready,
       readDeviceToken: () async => 'fcm',
       register: (_, _) async => throw Exception(
         "No 'deviceToken' provided or invalid type",
@@ -194,7 +257,7 @@ void main() {
   /// report a failure, it stops.
   test('a registration that never answers gives up and says so', () async {
     final device = MobileVoiceDevice(
-      ensureCallingAccount: () async => true,
+      ensureCallingAccount: () async => CallingAccountState.ready,
       readDeviceToken: () async => 'fcm',
       register: (_, _) => Completer<bool?>().future,
     );
@@ -208,7 +271,7 @@ void main() {
   /// `false` is an answer, and a different one from a thrown error.
   test('a plugin that declines without throwing still explains itself', () async {
     final device = MobileVoiceDevice(
-      ensureCallingAccount: () async => true,
+      ensureCallingAccount: () async => CallingAccountState.ready,
       readDeviceToken: () async => 'fcm',
       register: (_, _) async => false,
     );
@@ -223,7 +286,7 @@ void main() {
   /// can never register at all.
   test('a registration that succeeds reports no error', () async {
     final device = MobileVoiceDevice(
-      ensureCallingAccount: () async => true,
+      ensureCallingAccount: () async => CallingAccountState.ready,
       readDeviceToken: () async => 'fcm',
       register: (_, _) async => true,
     );
@@ -249,7 +312,7 @@ void main() {
       var called = false;
 
       final device = MobileVoiceDevice(
-        ensureCallingAccount: () async => true,
+        ensureCallingAccount: () async => CallingAccountState.ready,
         readDeviceToken: () async => 'fcm-token-from-the-channel',
         register: (_, deviceToken) async {
           called = true;
@@ -271,7 +334,7 @@ void main() {
       var called = false;
 
       final device = MobileVoiceDevice(
-        ensureCallingAccount: () async => true,
+        ensureCallingAccount: () async => CallingAccountState.ready,
         readDeviceToken: () async => null,
         register: (_, _) async {
           called = true;
@@ -294,7 +357,7 @@ void main() {
     /// A channel that throws is a registration failure with a reason.
     test('a channel error is kept rather than swallowed', () async {
       final device = MobileVoiceDevice(
-        ensureCallingAccount: () async => true,
+        ensureCallingAccount: () async => CallingAccountState.ready,
         readDeviceToken: () async => throw PlatformException(
           code: 'fcm_unavailable',
           message: 'Firebase never initialised',
@@ -391,7 +454,7 @@ void main() {
     Object? seen = 'untouched';
 
     final device = MobileVoiceDevice(
-      ensureCallingAccount: () async => true,
+      ensureCallingAccount: () async => CallingAccountState.ready,
       readDeviceToken: () async => null,
       register: (_, deviceToken) async {
         seen = deviceToken;
