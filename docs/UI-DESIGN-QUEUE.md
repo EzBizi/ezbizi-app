@@ -2071,6 +2071,36 @@ before it is attempted, and that IS observable — its own event bus carries `av
 run, not waiting to arrive.** The two look identical on screen and mean opposite things to
 somebody working out why a customer never heard from them.
 
+**A FOURTH STATE, found by Automations verifying the rule rather than taking it.** `MailStatus`
+knows whether this installation delivers **at all** — `NON_DELIVERING = ['log','array','null']`,
+and `missing()` names the credential when the transport is `ses` with an empty key. Its own
+docblock is the argument: *"`MAIL_MAILER=log` accepts every message and returns success... which
+is how somebody ends up waiting for a password reset that was never going anywhere."*
+
+So a handoff can succeed while nothing leaves the building, and **"Sent" would then be a
+confident sentence naming the wrong outcome** — this rule finding its own fourth case rather than
+an exception to it. Rare in production, routine on a demo or staging box, which is exactly where
+somebody tests a rule, reads "Sent", and concludes the feature works.
+
+> **Two different things, and they do not go in the same place.** *Did this message leave* is
+> per-message and belongs on the row. *This installation is not sending mail* is ONE fact about
+> the box, and printing it per row is repeating it N times.
+
+**HR has already solved the per-message half, and the comment is the best statement of this whole
+rule in the codebase.** `HrInvitationsController::deliver()` returns whether the message actually
+left, because the one person who needs to know is the inviter in front of the dialog — they
+either hand the link over themselves or they do not. Its closing line: *"The panel used to assert
+'nothing has been emailed' unconditionally, which was true while nothing could send and became a
+lie the day something could."* **That is this entry's rule having already gone wrong once, in the
+opposite direction.** A sentence does not have to be edited to become false; the world can edit
+it.
+
+**The gap, measured: the installation-level fact reaches EzBizi staff and nobody else.**
+`MailStatus` surfaces in exactly one client file, `screens/staff/health_screen.dart:261`. An
+administrator sending invitations on a box pointed at the log mailer is told "Sent" and has
+nowhere to learn otherwise. Whether a non-staff surface should say so is a **new element**, so it
+is a question for Jose rather than something decided here — raised, not drawn.
+
 **The precedent, from Email the same day.** An empty state read *"an inbox added on another
 company stays there, switch to that company"* — a correct sentence about the wrong problem. The
 eight people who saw it had a permission problem, the inboxes were already in their view, and
