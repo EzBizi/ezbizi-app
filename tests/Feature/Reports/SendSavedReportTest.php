@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Models\AuditEvent;
 use App\Models\Automation;
 use App\Models\Customer;
 use App\Models\Job;
@@ -155,6 +156,14 @@ class SendSavedReportTest extends TestCase
         }
 
         Mail::assertNothingSent();
+
+        // AND NO AUDIT ROW. The audit line sits after the loop, so a refusal at
+        // the first address never reaches it - but "never reaches it" is a
+        // claim about statement order, which is exactly the kind of claim that
+        // rots when somebody moves a line. `report.sent` naming recipients who
+        // were never written to would be a record that lies.
+        $this->assertSame(0, $this->inTenant($tenant['org'], fn () => AuditEvent::query()
+            ->where('action', 'report.sent')->count()));
     }
 
     /**
