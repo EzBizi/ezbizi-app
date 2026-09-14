@@ -34,6 +34,26 @@ The alternative, re-scoping the connection itself, was rejected because
 to the company above it. Assigning an account would have hidden it from the
 person who assigned it.
 
+> **CORRECTION, 2026-09-14 — the paragraph above is false.** `inView()`'s
+> COMPANY branch admits a franchise-scoped connection whose franchise belongs to
+> the viewer's company, and has since `d3f17b70` on 2026-08-21 — before this
+> spec was written. `canActOnFranchise()` likewise lets a company-level
+> assignment act on its franchises, so re-scoping would not have removed
+> anybody's authority either. Re-scoping would NOT have hidden the account from
+> the person who assigned it.
+>
+> **Jose's requirement is still met** — "new leads land at that franchise; the
+> account stays visible at company level" is true of the column and would have
+> been true of re-scoping. What was wrong was the reason for choosing between
+> them, not the outcome. The one real difference is narrower: a company-scoped
+> connection is visible to *every* franchise in that company, so re-scoping to
+> one hides it from its siblings.
+>
+> The column is deployed and stays. `inView`'s company branch is now pinned by
+> `FranchiseScopedConnectionInCompanyViewTest`, which nothing covered before.
+> Found when the Reports session quoted this reasoning back while choosing where
+> to put a per-franchise Workiz binding; the full correction is in the migration.
+
 **So: one nullable column, `social_connections.leads_franchise_id`.** Null means
 company level, which is today's behaviour, so the migration needs no backfill —
 and per the standing rule, it is a **new migration file**, never an edit to a
