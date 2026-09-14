@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0206',
+      date: '14 Sep 2026',
+      items: [
+        'A call answered on another device, or by a colleague in the ring group, now stops ringing everywhere else on the web. Only the customer hanging up was being noticed - the two events that mean somebody else took the call were dropped, so a browser went on ringing a call that had already ended.',
+        'Switching company now picks up that company phone line, instead of leaving the phone dead for the rest of the session.',
+        'The phone no longer tells a web browser that it needs a web browser when no line was found.',
+        'The mobile icon now narrows the window itself rather than only the app inside it, and works whether or not the window has been moved.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0205',
       date: '14 Sep 2026',
       items: [
