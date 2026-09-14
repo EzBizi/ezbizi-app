@@ -292,3 +292,29 @@ Jose may reasonably distinguish "the customer whose chimney was swept" from "an
 address a rule names". That is his call and it is in front of him. What must not
 happen is the identity work quietly arming the action while nobody is looking at
 both at once.
+
+---
+
+## 7 · `Mail::fake()` does not stop a real socket being opened
+
+**A test that fakes mail and then reaches the dispatch will DIAL whatever host its
+fixture names.** It looks exactly like a faked send, and the only symptom is an
+outbound connection from wherever the suite runs.
+
+Verified in `vendor/` on 2026-09-14, both halves:
+
+    Illuminate\Support\Testing\Fakes\MailFake   has NO build() override
+    Illuminate\Mail\MailManager::build()          exists, line 143
+
+So `Mail::build($config)` - which is how the tenant-SMTP transport makes a mailer
+from an array - forwards straight past the fake to the real manager. `Mail::fake()`
+intercepts `send`, not `build`.
+
+**What to do instead.** Assert against `MailDispatcher::smtpConfigFor()`, which is
+public precisely for this: it throws every refusal and touches no network. Do not
+write a test that gets as far as sending through a tenant provider.
+
+Found by SES while building the transport and confirmed by Reports against their
+own fixture - which, had it carried a plausible hostname rather than an obvious
+one, would have begun dialling it in CI. It is a property of the shared test
+environment, so every future caller of `throughTenantProvider` inherits it.
