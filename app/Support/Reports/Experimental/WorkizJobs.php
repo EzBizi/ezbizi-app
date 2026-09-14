@@ -91,32 +91,56 @@ final class WorkizJobs
         return ['jobs' => $jobs, 'failed' => $failed];
     }
 
+    /**
+     * Workiz caps a page at 100 and REFUSES more.
+     *
+     * Measured against the live API on 2026-09-14: `records=200` returns
+     * `400 Invalid paging parameters {"records":"invalid"}`. My first draft
+     * asked for 1000 in one call and would have failed outright on every run -
+     * a defect that no test caught, because every fixture here is invented and
+     * a stub happily returns whatever it is told to.
+     */
+    public const PAGE = 100;
+
     /** @return list<array{phone: ?string, created_by: ?string, created_at: ?string, status: ?string}> */
     private function forAccount(string $token, int $limit): array
     {
-        $response = Http::acceptJson()
-            ->get('https://api.workiz.com/api/v1/'.$token.'/job/all/', [
-                'start_date' => now()->subYear()->toDateString(),
-                'offset'     => 0,
-                'records'    => $limit,
-                'only_open'  => 'false',
-            ]);
-
-        if ($response->failed()) {
-            // Status only. The token is IN the path, so the URL must never reach
-            // a log, an exception message or a bug report.
-            throw new RuntimeException('Workiz refused the job list ('.$response->status().').');
-        }
-
         $out = [];
 
-        foreach ($response->json('data') ?? [] as $job) {
-            $out[] = [
-                'phone'      => $job['Phone'] ?? null,
-                'created_by' => $job['CreatedBy'] ?? null,
-                'created_at' => $job['JobDateTime'] ?? $job['CreatedDate'] ?? null,
-                'status'     => $job['Status'] ?? null,
-            ];
+        for ($offset = 0; $offset < $limit; $offset += self::PAGE) {
+            $response = Http::acceptJson()
+                ->get('https://api.workiz.com/api/v1/'.$token.'/job/all/', [
+                    'start_date' => now()->subYear()->toDateString(),
+                    'offset'     => $offset,
+                    'records'    => min(self::PAGE, $limit - $offset),
+                    'only_open'  => 'false',
+                ]);
+
+            if ($response->failed()) {
+                // Status only. The token is IN the path, so the URL must never
+                // reach a log, an exception message or a bug report.
+                throw new RuntimeException('Workiz refused the job list ('.$response->status().').');
+            }
+
+            $page = $response->json('data') ?? [];
+
+            foreach ($page as $job) {
+                $out[] = [
+                    // CreatedBy is a person's NAME - "Trey Brannan", "Sasha
+                    // Solano" - which is what the per-member report attributes
+                    // on, and the names match EzBizi users.
+                    'phone'      => $job['Phone'] ?? null,
+                    'created_by' => $job['CreatedBy'] ?? null,
+                    'created_at' => $job['JobDateTime'] ?? $job['CreatedDate'] ?? null,
+                    'status'     => $job['Status'] ?? null,
+                ];
+            }
+
+            // A short page is the last page. Stopping on count alone would loop
+            // forever against an API that ignored the offset.
+            if (count($page) < self::PAGE) {
+                break;
+            }
         }
 
         return $out;
