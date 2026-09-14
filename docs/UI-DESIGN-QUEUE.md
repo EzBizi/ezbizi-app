@@ -2086,14 +2086,36 @@ somebody tests a rule, reads "Sent", and concludes the feature works.
 > per-message and belongs on the row. *This installation is not sending mail* is ONE fact about
 > the box, and printing it per row is repeating it N times.
 
-**HR has already solved the per-message half, and the comment is the best statement of this whole
-rule in the codebase.** `HrInvitationsController::deliver()` returns whether the message actually
-left, because the one person who needs to know is the inviter in front of the dialog — they
-either hand the link over themselves or they do not. Its closing line: *"The panel used to assert
+**~~HR has already solved the per-message half~~ — I wrote that here, and it was wrong. HR caught
+it and gave the praise back.** Left visible rather than edited away, because how it was wrong is
+the useful part.
+
+`HrInvitationsController::deliver()` **only caught transports that THROW.** `log`, `array` and
+`null` throw nothing, so it returned `true` and the panel said *"The invitation has been emailed
+to them"* on exactly the demo and staging boxes where somebody tests invitations and concludes
+the flow works. `ses` with a blank credential is the same shape. Fixed on main at `8a0ef426`:
+`MailStatus::delivers()` is asked **after** the handoff, so the message still reaches whatever
+transport is configured — observable to a `log` reader and to `Notification::fake` — and only the
+CLAIM depends on whether that transport goes anywhere. No new state on screen: a non-delivering
+box lands in "Couldn't send", which was already the right wording for it.
+
+> **How I got it wrong is this entry's own rule, turned on me. I read the docblock and reported
+> it as behaviour.** That method's comment is genuinely excellent and states the right rule — it
+> simply overclaimed about the present. **A docblock is a DESCRIBER**, and entry 11 exists
+> because a describer reads from a different source than the thing it describes: the code's
+> source is the code, and a comment's source is what its author believed while writing it.
+> I spent this week telling two sessions to check the icon against the drawing, then took a
+> comment as evidence about a method.
+
+**And the belief was written down twice, which is why nothing caught it.** HR's own test asserted
+`emailed: true` under phpunit's `array` mailer, with the comment *"so this one genuinely sends"*.
+A test carrying the same wrong premise as the code cannot fail on it.
+
+**The line I praised is still worth the praise, and is still true.** *"The panel used to assert
 'nothing has been emailed' unconditionally, which was true while nothing could send and became a
 lie the day something could."* **That is this entry's rule having already gone wrong once, in the
 opposite direction.** A sentence does not have to be edited to become false; the world can edit
-it.
+it — and the method underneath that sentence had quietly become false the same way.
 
 **The gap, measured: the installation-level fact reaches EzBizi staff and nobody else.**
 `MailStatus` surfaces in exactly one client file, `screens/staff/health_screen.dart:261`. An
