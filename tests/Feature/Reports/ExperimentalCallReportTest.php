@@ -2,6 +2,11 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Models\Franchise;
+use App\Models\SocialConnection;
+use App\Support\Social\SocialProvider;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\BuildsTenants;
 use App\Support\Reports\Experimental\CallReconciliation;
 use App\Support\Reports\Experimental\RingCentralCallLog;
 use App\Support\Reports\Experimental\WorkizJobs;
@@ -28,6 +33,9 @@ use Tests\TestCase;
  */
 class ExperimentalCallReportTest extends TestCase
 {
+    use BuildsTenants;
+    use RefreshDatabase;
+
     // ── where the person is ──────────────────────────────────────
 
     /**
@@ -204,18 +212,73 @@ class ExperimentalCallReportTest extends TestCase
      * token 204s on another account's job — so a report covering eight of nine
      * has to be able to say which eight.
      */
-    public function test_workiz_reports_which_accounts_it_holds_keys_for(): void
+    public function test_workiz_reports_which_branches_it_holds_keys_for(): void
     {
-        config(['experimental_reports.workiz.accounts' => ['Nationwide' => 'a', 'NJ' => 'b']]);
+        $tenant = $this->provisionTenant('Alpha');
+        $this->workizBranch($tenant, 'New Jersey', 'nj-token');
+        $this->workizBranch($tenant, 'Connecticut', 'ct-token');
 
-        $this->assertSame(['Nationwide', 'NJ'], app(WorkizJobs::class)->accounts());
-        $this->assertTrue(app(WorkizJobs::class)->configured());
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            $this->assertSame(
+                ['New Jersey', 'Connecticut'],
+                app(WorkizJobs::class)->accounts($tenant['admin']),
+            );
+            $this->assertTrue(app(WorkizJobs::class)->configured($tenant['admin']));
+        });
     }
 
-    /** One rotated key must not lose the other eight states. */
+    /**
+     * A ROW WITH NO TOKEN IS NAMED, NOT SKIPPED.
+     *
+     * The same people book into every branch, so a branch quietly absent from
+     * the count makes every person's number low rather than the report visibly
+     * incomplete. That is the failure this whole class is shaped around.
+     */
+    public function test_a_branch_whose_token_went_missing_is_named(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->workizBranch($tenant, 'Connecticut', 'ct-token');
+        $this->workizBranch($tenant, 'New Jersey', null);
+
+        Http::fake(['api.workiz.com/*' => Http::response(['flag' => true, 'data' => [
+            ['Phone' => '2125551212', 'CreatedBy' => 'Sasha Solano', 'CreatedDate' => '2026-09-14 09:00:00'],
+        ]])]);
+
+        $result = $this->inTenant(
+            $tenant['org'],
+            fn () => app(WorkizJobs::class)->all($tenant['admin'], 100),
+        );
+
+        // Connecticut answered, so this is not the all-failed path - which is
+        // the case worth pinning. A branch that cannot be read must be NAMED
+        // beside the ones that could, not quietly dropped from the count.
+        $this->assertSame(['Connecticut'], array_column($result['jobs'], 'account'));
+        $this->assertArrayHasKey('New Jersey', $result['failed']);
+    }
+
+    /** And when NOTHING could be read, the failure names every branch. */
+    public function test_a_total_failure_names_the_branches(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->workizBranch($tenant, 'New Jersey', null);
+
+        try {
+            $this->inTenant(
+                $tenant['org'],
+                fn () => app(WorkizJobs::class)->all($tenant['admin'], 100),
+            );
+            $this->fail('a report that could read nothing returned as if it had');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('New Jersey', $e->getMessage());
+        }
+    }
+
+    /** One rotated key must not lose the other nine branches. */
     public function test_one_refused_account_does_not_lose_the_others(): void
     {
-        config(['experimental_reports.workiz.accounts' => ['Nationwide' => 'good', 'NJ' => 'bad']]);
+        $tenant = $this->provisionTenant('Alpha');
+        $this->workizBranch($tenant, 'Nationwide', 'good');
+        $this->workizBranch($tenant, 'New Jersey', 'bad');
 
         Http::fake([
             'api.workiz.com/api/v1/good/*' => Http::response(['flag' => true, 'data' => [
@@ -224,11 +287,14 @@ class ExperimentalCallReportTest extends TestCase
             'api.workiz.com/api/v1/bad/*' => Http::response([], 403),
         ]);
 
-        $result = app(WorkizJobs::class)->all(100);
+        $result = $this->inTenant(
+            $tenant['org'],
+            fn () => app(WorkizJobs::class)->all($tenant['admin'], 100),
+        );
 
         $this->assertCount(1, $result['jobs']);
         $this->assertSame('Nationwide', $result['jobs'][0]['account']);
-        $this->assertArrayHasKey('NJ', $result['failed']);
+        $this->assertArrayHasKey('New Jersey', $result['failed']);
     }
 
     /**
@@ -237,14 +303,18 @@ class ExperimentalCallReportTest extends TestCase
      */
     public function test_an_unreachable_workiz_does_not_name_the_token(): void
     {
-        config(['experimental_reports.workiz.accounts' => ['Nationwide' => 'sup3rs3cr3t']]);
+        $tenant = $this->provisionTenant('Alpha');
+        $this->workizBranch($tenant, 'Nationwide', 'sup3rs3cr3t');
 
         Http::fake(fn () => throw new ConnectionException(
             'cURL error 60 for https://api.workiz.com/api/v1/sup3rs3cr3t/job/all/'
         ));
 
         try {
-            app(WorkizJobs::class)->all(100);
+            $this->inTenant(
+                $tenant['org'],
+                fn () => app(WorkizJobs::class)->all($tenant['admin'], 100),
+            );
             $this->fail('an unreachable Workiz did not raise');
         } catch (RuntimeException $e) {
             $this->assertStringNotContainsString('sup3rs3cr3t', $e->getMessage());
@@ -255,14 +325,19 @@ class ExperimentalCallReportTest extends TestCase
     /** An absent credential is "not connected", which is not "no calls". */
     public function test_neither_vendor_reads_as_configured_without_credentials(): void
     {
+        $tenant = $this->provisionTenant('Alpha');
+
         config([
-            'experimental_reports.workiz.accounts' => [],
             'experimental_reports.ringcentral.client_id' => null,
             'experimental_reports.ringcentral.client_secret' => null,
             'experimental_reports.ringcentral.jwt' => null,
         ]);
 
-        $this->assertFalse(app(WorkizJobs::class)->configured());
+        // No Workiz connection on any branch.
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            $this->assertFalse(app(WorkizJobs::class)->configured($tenant['admin']));
+        });
+
         $this->assertFalse(app(RingCentralCallLog::class)->configured());
     }
 
@@ -286,7 +361,8 @@ class ExperimentalCallReportTest extends TestCase
     /** Workiz caps a page at 100 and pages by offset; a short page is the last. */
     public function test_workiz_stops_on_a_short_page(): void
     {
-        config(['experimental_reports.workiz.accounts' => ['NJ' => 'tok']]);
+        $tenant = $this->provisionTenant('Alpha');
+        $this->workizBranch($tenant, 'New Jersey', 'tok');
 
         $full = array_fill(0, WorkizJobs::PAGE, [
             'Phone' => '2125551212', 'CreatedBy' => 'Sasha Solano', 'CreatedDate' => '2026-09-14 09:00:00',
@@ -297,7 +373,12 @@ class ExperimentalCallReportTest extends TestCase
             ->push(['flag' => true, 'data' => [$full[0]]]),
         ]);
 
-        $this->assertCount(WorkizJobs::PAGE + 1, app(WorkizJobs::class)->all(1000)['jobs']);
+        $jobs = $this->inTenant(
+            $tenant['org'],
+            fn () => app(WorkizJobs::class)->all($tenant['admin'], 1000),
+        )['jobs'];
+
+        $this->assertCount(WorkizJobs::PAGE + 1, $jobs);
     }
 
     // ── fixtures, shaped from the live payload ───────────────────
@@ -389,5 +470,42 @@ class ExperimentalCallReportTest extends TestCase
         }
 
         $this->fail($name.' is missing from the report; it has: '.implode(', ', array_column($day['people'], 'person')));
+    }
+
+    /**
+     * A branch with a Workiz account attached to it.
+     *
+     * `scope_type = franchise` is the whole point: it is what says WHICH branch
+     * the account's jobs belong to. Not `leads_franchise_id`, which answers
+     * where a connection's enquiries get assigned.
+     */
+    private function workizBranch(array $tenant, string $name, ?string $token): SocialConnection
+    {
+        return $this->inTenant($tenant['org'], function () use ($tenant, $name, $token) {
+            $franchise = Franchise::create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+                'name' => $name,
+                'is_active' => true,
+            ]);
+
+            $connection = new SocialConnection;
+            $connection->forceFill([
+                'organization_id' => $tenant['org']->id,
+                'scope_type' => SocialConnection::SCOPE_FRANCHISE,
+                'scope_id' => $franchise->id,
+                'provider' => SocialProvider::Workiz->value,
+                'remote_id' => $franchise->id,
+                'display_name' => $name,
+            ]);
+
+            if ($token !== null) {
+                $connection->connect(['refresh_token' => $token, 'api_token' => $token]);
+            }
+
+            $connection->save();
+
+            return $connection;
+        });
     }
 }

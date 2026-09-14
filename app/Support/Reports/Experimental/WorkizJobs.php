@@ -2,7 +2,12 @@
 
 namespace App\Support\Reports\Experimental;
 
+use App\Models\SocialConnection;
+use App\Models\User;
+use App\Support\Social\SocialConnectionAccess;
+use App\Support\Social\SocialProvider;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -31,38 +36,70 @@ use RuntimeException;
  * that "nothing here logs a URL" was a claim about the code I had written,
  * not about the code that runs.
  *
- * ── ONE TOKEN PER ACCOUNT, SO THIS READS SEVERAL ────────────────
+ * ── ONE TOKEN PER BRANCH, SO THIS READS SEVERAL ─────────────────
  *
  * Workiz: "Each key is specific to a Workiz account, not an individual user."
- * A-1 runs Nationwide plus nine state sub-accounts, and they are DISJOINT —
- * measured 2026-09-14, each token 204s on the other's jobs and the two books
- * share no UUIDs. So a reader built on one token returns real rows and
- * silently omits nine accounts.
+ * A-1 runs ten accounts and they are DISJOINT — measured 2026-09-14, each token
+ * answers 204 for another account's job, with that account's own job as the
+ * control. So a reader built on one token returns real rows and silently omits
+ * nine books. Worse than regional: the same people book into all ten, so one
+ * token gets every person's number wrong rather than missing some places.
  *
- * `accounts()` therefore returns which accounts are configured, and `all()`
- * reads every one of them and TAGS each job with the account it came from. The
- * screen can then say which accounts a number covers — because "120 calls" that
- * silently means one state is worse than no number at all.
+ * `accounts()` therefore returns which branches are connected, BY NAME, and
+ * `all()` reads every one and tags each job with the branch it came from. A
+ * number that silently covers one branch is worse than no number.
+ *
+ * ── THE TOKENS LIVE ON BRANCHES NOW, NOT IN AN ENV VAR ──────────
+ *
+ * Jose ruled it: "connect them to each of their designated franchises." So the
+ * source is `social_connections` rows scoped with `scope_type = franchise`,
+ * exactly as Google Ads and GBP are stored — NOT `leads_franchise_id`, which
+ * answers where a connection's ENQUIRIES get assigned and is a different
+ * question. The Google API session ruled that; their migration had already
+ * separated the two.
+ *
+ * Reading is filtered through `SocialConnectionAccess::inView`, because this
+ * runs inside a REQUEST. `SyncLeads` deliberately does the opposite and says
+ * why — a scheduled sweep that borrowed the request filter would sync nothing.
+ * The consequence here is that the report covers what the reader's current view
+ * covers: ten branches from the organization, one from a branch view. Which is
+ * why the screen names them.
  */
 final class WorkizJobs
 {
-    public function configured(): bool
+    public function __construct(private readonly SocialConnectionAccess $access) {}
+
+    public function configured(User $user): bool
     {
-        return $this->accounts() !== [];
+        return $this->accounts($user) !== [];
     }
 
     /**
-     * The Workiz accounts this deployment holds a key for.
+     * The branches this reader can see a Workiz account for.
      *
-     * Named rather than counted, because a report covering Nationwide and NJ is
-     * a different fact from one covering all ten, and the screen has to be able
-     * to say which.
+     * Named rather than counted, because a report covering two branches is a
+     * different fact from one covering ten, and the screen has to be able to
+     * say which.
      *
      * @return list<string>
      */
-    public function accounts(): array
+    public function accounts(User $user): array
     {
-        return array_keys((array) config('experimental_reports.workiz.accounts', []));
+        return array_values($this->connections($user)->pluck('display_name')->all());
+    }
+
+    /**
+     * Connected Workiz accounts this person may see in their current view.
+     *
+     * @return Collection<int, SocialConnection>
+     */
+    private function connections(User $user): Collection
+    {
+        return SocialConnection::query()
+            ->where('provider', SocialProvider::Workiz->value)
+            ->get()
+            ->filter(fn (SocialConnection $c) => $this->access->inView($user, $c))
+            ->values();
     }
 
     /**
@@ -78,18 +115,31 @@ final class WorkizJobs
      *     failed: array<string, string>
      * }
      */
-    public function all(int $limit = 1000, ?string $since = null): array
+    public function all(User $user, int $limit = 1000, ?string $since = null): array
     {
         $jobs = [];
         $failed = [];
 
-        foreach ((array) config('experimental_reports.workiz.accounts', []) as $account => $token) {
+        foreach ($this->connections($user) as $connection) {
+            $account = (string) $connection->display_name;
+            $token = (string) ($connection->credentials['api_token'] ?? '');
+
+            if ($token === '') {
+                // A row with no token is a connection somebody made and
+                // something lost. Recorded by name rather than skipped, because
+                // a branch silently absent from the count is the failure this
+                // class exists to avoid.
+                $failed[$account] = 'This branch has no stored token.';
+
+                continue;
+            }
+
             try {
-                foreach ($this->forAccount((string) $token, $limit, $since) as $job) {
-                    $jobs[] = ['account' => (string) $account] + $job;
+                foreach ($this->forAccount($token, $limit, $since) as $job) {
+                    $jobs[] = ['account' => $account] + $job;
                 }
             } catch (RuntimeException $e) {
-                $failed[(string) $account] = $e->getMessage();
+                $failed[$account] = $e->getMessage();
             }
         }
 
@@ -100,6 +150,39 @@ final class WorkizJobs
         }
 
         return ['jobs' => $jobs, 'failed' => $failed];
+    }
+
+    /**
+     * Does Workiz accept this token? Asked BEFORE a row is written.
+     *
+     * A typo pasted into a connect form is a field-level refusal the person can
+     * fix, not a connection that looks made and returns nothing days later.
+     * Mailchimp's connect flow verifies for the same reason.
+     *
+     * One job requested rather than none: `records=0` is not a documented way
+     * to ask "are you there", and an empty page is a valid answer for a new
+     * account, so this proves the CREDENTIAL rather than the data.
+     *
+     * @throws RuntimeException with a status and never a URL — the token is in
+     *                          the path
+     */
+    public function verify(string $token): void
+    {
+        try {
+            $response = Http::acceptJson()
+                ->get('https://api.workiz.com/api/v1/'.$token.'/job/all/', [
+                    'start_date' => now()->subYear()->toDateString(),
+                    'offset' => 0,
+                    'records' => 1,
+                    'only_open' => 'false',
+                ]);
+        } catch (ConnectionException $e) {
+            throw new RuntimeException('Workiz could not be reached.');
+        }
+
+        if ($response->failed()) {
+            throw new RuntimeException('Workiz refused this token ('.$response->status().').');
+        }
     }
 
     /**

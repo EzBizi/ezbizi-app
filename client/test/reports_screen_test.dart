@@ -358,6 +358,74 @@ void main() {
     expect(find.text('Trey Brannan'), findsNothing);
   });
 
+  testWidgets('the Experimental tab offers a way to connect the first account', (
+    tester,
+  ) async {
+    // THE ENTRY POINT. A screen that only ever renders stubbed rows never shows
+    // that there is no way to create the first one, which is how a dead end
+    // ships looking finished.
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) => request.url.path.contains('experimental/calls')
+          ? _json(_callDay(accounts: const []))
+          : null,
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Connect a Workiz account'), findsOneWidget);
+
+    await tester.tap(find.text('Connect a Workiz account'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextField, 'Workiz API Token'), findsOneWidget);
+  });
+
+  testWidgets('the server sentence is what explains a refused connect', (
+    tester,
+  ) async {
+    // The branch-view rule lives on the server and its refusal says so. The
+    // screen does not duplicate the rule - one place deciding beats two places
+    // agreeing, and a second copy is the one that goes stale.
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) {
+        if (request.url.path.contains('experimental/workiz')) {
+          return _json({
+            'message': 'Switch to the branch this Workiz account belongs to.',
+            'errors': {
+              'api_token': ['Switch to the branch this Workiz account belongs to.'],
+            },
+          }, 422);
+        }
+        if (request.url.path.contains('experimental/calls')) {
+          return _json(_callDay(accounts: const []));
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Connect a Workiz account'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Workiz API Token'),
+      'api_whatever',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Connect'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('Switch to the branch'),
+      findsWidgets,
+    );
+  });
+
   testWidgets('without reports.build there is no Builder tab at all', (
     tester,
   ) async {
@@ -539,12 +607,13 @@ const _me = {
 Map<String, dynamic> _callDay({
   bool connected = true,
   List<String> failed = const [],
+  List<String> accounts = const ['Nationwide', 'NJ'],
 }) => connected
     ? {
         'connected': true,
         'timezone': 'America/New_York',
         'day': '2026-09-14',
-        'workiz_accounts': ['Nationwide', 'NJ'],
+        'workiz_accounts': accounts,
         'workiz_failed': {for (final a in failed) a: 'refused'},
         'totals': {
           'calls': 280,
