@@ -2117,11 +2117,25 @@ lie the day something could."* **That is this entry's rule having already gone w
 opposite direction.** A sentence does not have to be edited to become false; the world can edit
 it — and the method underneath that sentence had quietly become false the same way.
 
-**The gap, measured: the installation-level fact reaches EzBizi staff and nobody else.**
-`MailStatus` surfaces in exactly one client file, `screens/staff/health_screen.dart:261`. An
-administrator sending invitations on a box pointed at the log mailer is told "Sent" and has
-nowhere to learn otherwise. Whether a non-staff surface should say so is a **new element**, so it
-is a question for Jose rather than something decided here — raised, not drawn.
+**~~The gap, measured: the installation-level fact reaches EzBizi staff and nobody else.~~
+CLOSED by Jose, 2026-09-14, and his answer was a question: *"why would an installation not send
+mail im confused"*.**
+
+He was right to be confused, and the confusion is the answer. **It is not a customer state.**
+`MailStatus::delivers()` is false for a `log`, `array` or `null` mailer, or `ses` with a blank
+credential — every one of which is a development or staging box. EzBizi is one production
+installation with SES configured, so **no administrator will ever see this**, and an
+administrator-facing surface for it would be chrome built for a state that cannot occur.
+
+**What it was worth is entirely internal, and that half stays.** The reason it surfaced at all
+is that *we* test invitations on exactly those boxes, and were being told "Sent" when nothing
+left — the defect HR fixed at `8a0ef426`. The per-message truth matters; the banner does not.
+`screens/staff/health_screen.dart:261` remains the right and only home for the installation-level
+fact, because staff are the only people who can be on such a box.
+
+> **The generalisable half: a state reachable only in development is worth a TRUTHFUL message and
+> never a designed surface.** Drawing chrome for it spends product space on a condition no
+> customer can reach, and — worse — makes the next person believe it is a thing that happens.
 
 **The precedent, from Email the same day.** An empty state read *"an inbox added on another
 company stays there, switch to that company"* — a correct sentence about the wrong problem. The
@@ -2131,7 +2145,7 @@ cause is worse than a vague one**, because it sends somebody hunting. Email's fi
 which of three reasons applies rather than assuming one, and that is the shape every failure
 state here should take.
 
-### 12 · HR · the invitation panel, and the two failures that read the same — **DRAWN, awaiting Jose**
+### 12 · HR · the invitation panel, and the two failures that read the same — **PICKED: 2 and 5**
 
 `docs/previews/invitation-sent-states-layouts.html`. Three desktop, three mobile, with a **state
 switcher** — the two failures are the whole reason it is drawn, and an option looked at only in
@@ -2219,7 +2233,7 @@ blind**, which is exactly the send where somebody is standing in front of this p
 - **"Has been emailed to them" should become "Sent to them."** HR flagged it themselves. It is a
   handoff claim wearing arrival's clothes, and it is the sentence entry 11 exists to prevent.
 
-### 13 · Developer · switch between desktop and mobile view — **DRAWN, awaiting Jose**
+### 13 · Developer · switch between desktop and mobile view — **BUILT: 1 and 4** (`4b6ee87b`)
 
 `docs/previews/mobile-view-switch-layouts.html`. Jose, 2026-09-14: *"can we add a developer only
 icon on the top bar next to the phone icon, that let's u switch between desktop view and mobile
