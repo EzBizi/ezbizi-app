@@ -54,6 +54,32 @@ return [
      * valid. An env var cannot hold an array, and a map keyed by the account's
      * own name means a partial answer can at least SAY which accounts it covers.
      *
+     * ── AND THIS SHAPE IS ON ITS WAY OUT ────────────────────────────
+     *
+     * Jose ruled 2026-09-14: "connect them to each of their designated
+     * franchises." A label is not a franchise, so this map cannot express it and
+     * the report can only ever be organization-wide while it lives here.
+     *
+     * The mapping is one-to-one by name inside the **A-1 Chimney** company —
+     * Nationwide→Nationwide, CT→Connecticut, GA→Georgia, IL→Illinois,
+     * NJ→New Jersey, OH→Ohio, TX→Texas, WA→Washington, DMV→DMV. Company plus
+     * name is the key: across the whole organization eight companies have a
+     * Connecticut franchise, and comparing on name alone is what made this look
+     * unguessable for an afternoon.
+     *
+     * MA is the tenth account and matches no franchise. It is also the one
+     * account whose Developer page refuses this login. Nobody has read its job
+     * list, so nobody knows whether it holds work — and if it does, its jobs
+     * have no home and every person's number comes out low rather than
+     * visibly incomplete.
+     *
+     * The destination is a per-franchise connection rather than an env var,
+     * reusing `SocialProvider` + `social_connections` as Google Ads and GBP do.
+     * Whether that hangs off Leads' `leads_franchise_id` — a column whose own
+     * comment says it answers "which franchise owns the ENQUIRIES it creates",
+     * an assignment rather than a scope — is with the Google API session, whose
+     * column it is.
+     *
      * ── A WORKIZ KEY *CAN* BE SCOPED, DESPITE WHAT THE PAGE SAYS ────
      *
      * CORRECTION, and I had it wrong here for an hour. The Developer page says
