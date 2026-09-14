@@ -28,6 +28,31 @@ use RuntimeException;
  * would mail the whole business's numbers to an address of its author's
  * choosing, and nothing about that looks wrong in the builder.
  *
+ * ── RECIPIENTS ARE NOT BOUNDED, AND THAT IS A DECISION ──────────
+ *
+ * The guard above bounds WHICH report a rule may mail. Nothing bounds WHO it
+ * may be mailed to: the addresses are free text from the rule. Raised by the
+ * Training session, whose own module shipped two cross-franchise disclosures by
+ * confusing exactly this pair — content scope decides what is VISIBLE and says
+ * nothing about who may be TOLD.
+ *
+ * It is deliberate, for the same reason `phone.sms.send` takes its destination
+ * from the rule: a scheduled report is about no record, so there is nobody to
+ * derive a recipient from. And the obvious use is real — a company mailing its
+ * own figures to its own accountant, who is in nobody's user table.
+ *
+ * What that means, said plainly rather than left implied: **anybody who can
+ * write automation rules can route business data to any address.** The bound on
+ * it is not technical, it is accountability — every send writes an audit row
+ * naming the report, the row count, the rule and THE RECIPIENTS, because that
+ * is the part no other record holds. `SendSavedReportTest` asserts the
+ * recipients are actually in that row, since a control nobody can read is not a
+ * control.
+ *
+ * If that trade ever stops being acceptable, the place to change it is here,
+ * and the change is a policy about addresses rather than a change to the scope
+ * guard — they answer different questions and fixing one will not fix the other.
+ *
  * ── It is run as somebody, and that somebody matters ─────────────
  *
  * `ReportRunner` scopes every table to the CALLER's view and reach, so the rows

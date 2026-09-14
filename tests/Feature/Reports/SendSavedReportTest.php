@@ -168,10 +168,20 @@ class SendSavedReportTest extends TestCase
 
         // A mailed report leaves the building, and the question afterwards is
         // always who sent what to whom.
-        $this->assertDatabaseHas('audit_events', [
-            'organization_id' => $tenant['org']->id,
-            'action' => 'report.sent',
-        ]);
+        $row = $this->inTenant($tenant['org'], fn () => \App\Models\AuditEvent::query()
+            ->where('action', 'report.sent')->latest('occurred_at')->first());
+
+        $this->assertNotNull($row, 'a send wrote no audit row');
+
+        // THE RECIPIENTS ARE THE POINT. Nothing bounds who a rule may mail a
+        // report to - the addresses are free text, deliberately, the same way
+        // phone.sms.send takes its destination from the rule. The bound is
+        // accountability rather than a check, so asserting only that SOME row
+        // exists would leave the one control unverified: a control nobody can
+        // read is not a control.
+        $this->assertSame(['owner@example.test'], $row->metadata['recipients'] ?? null);
+        $this->assertSame('Open jobs', $row->metadata['name'] ?? null);
+        $this->assertSame(1, $row->metadata['row_count'] ?? null);
     }
 
     // ── the CSV ──────────────────────────────────────────────────
