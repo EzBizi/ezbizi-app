@@ -7,14 +7,10 @@ use App\Models\InspectionReport;
 use App\Models\Job;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
-use App\Support\Files\HardenedPdf;
 use App\Support\Inspection\LooksLikeJobNumber;
-use App\Support\Inspection\ReportDocument;
+use App\Support\Inspection\ReportPdf;
 use App\Support\Inspection\InspectionScope;
 use App\Support\Scoping\ViewScope;
-use App\Support\Settings\SettingRegistry;
-use App\Support\Settings\SettingsResolver;
-use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -32,10 +28,7 @@ class InspectionReportsController extends Controller
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly EventEmitter $events,
-        private readonly ReportDocument $document,
-        private readonly TenantContext $tenant,
-        private readonly SettingsResolver $settings,
-        private readonly SettingRegistry $registry,
+        private readonly ReportPdf $pdf,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -146,10 +139,7 @@ class InspectionReportsController extends Controller
         $this->authorize('view', $inspectionReport);
         $this->assertReach($request, $inspectionReport);
 
-        $pdf = HardenedPdf::render(
-            $this->document->html($inspectionReport),
-            $this->paper(),
-        );
+        $pdf = $this->pdf->render($inspectionReport);
 
         $this->audit->log('inspection.downloaded', $inspectionReport);
 
@@ -178,26 +168,6 @@ class InspectionReportsController extends Controller
         $date = $report->submitted_at?->format('Y-m-d') ?? 'report';
 
         return substr($stem === '' ? 'inspection' : $stem, 0, 60).'-'.$date.'.pdf';
-    }
-
-    /**
-     * What sheet this organization prints on.
-     *
-     * ponytail: reads `contract_pdf_paper`, which is named for the first module
-     * that needed it. "Which paper does this organization use" is ONE fact — a
-     * franchise in Ohio prints its contracts and its inspections on the same
-     * letter-sized sheet — so a second setting would be a second place to
-     * change it and a chance for the two to disagree. Rename the key to
-     * `pdf_paper` in a settings migration when someone is next in that file;
-     * until then the honest thing is to read the one that exists and say so.
-     */
-    private function paper(): string
-    {
-        $organization = $this->tenant->get();
-
-        return (string) ($organization === null
-            ? $this->registry->getOrFail('contract_pdf_paper')->default
-            : $this->settings->get('contract_pdf_paper', $organization));
     }
 
     public function archive(Request $request, InspectionReport $inspectionReport): JsonResponse

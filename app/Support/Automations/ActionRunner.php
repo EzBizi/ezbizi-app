@@ -2,12 +2,15 @@
 
 namespace App\Support\Automations;
 
+use App\Mail\InspectionReportMail;
 use App\Models\Automation;
 use App\Models\AutomationEvent;
 use App\Models\Customer;
 use App\Models\Franchise;
+use App\Models\InspectionReport;
 use App\Models\Job;
 use App\Models\Mailbox;
+use App\Models\Organization;
 use App\Models\PhoneCall;
 use App\Models\PhoneNumber;
 use App\Models\TrainingAssignment;
@@ -16,6 +19,10 @@ use App\Models\Vehicle;
 use App\Support\Audit\AuditLogger;
 use App\Support\Email\DealtState;
 use App\Support\Fleet\VehicleStatus;
+use App\Support\Inspection\ReportPdf;
+use App\Support\Mail\CannotSendMail;
+use App\Support\Mail\MailDispatcher;
+use App\Support\Mail\MailTransport;
 use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Scoping\ViewScope;
@@ -175,6 +182,8 @@ class ActionRunner
         private readonly TwilioGateway $twilio,
         private readonly AssignmentWriter $trainingAssignments,
         private readonly DealtState $dealt,
+        private readonly MailDispatcher $mail,
+        private readonly ReportPdf $reportPdf,
     ) {}
 
     /**
@@ -224,6 +233,7 @@ class ActionRunner
             'time_clock.clock_out' => $this->punch($event, $subject, in: false),
 
             'training.assign' => $this->assignTraining($action, $event, $subject, $automation),
+            'report.email' => $this->emailInspectionReport($action, $subject),
 
             default => throw new InvalidArgumentException(
                 "Unknown automation action '{$type}'. Actions are declared by modules "
@@ -335,6 +345,164 @@ class ActionRunner
      * a line belonging to another company, and a line not cleared for
      * messaging are three distinct answers rather than one shrug.
      */
+    /**
+     * Send a finished inspection to the customer it was carried out for.
+     *
+     * ── Why asTenant and never platform ─────────────────────────
+     *
+     * The sender is the company, writing to their own customer about work they
+     * did. `MailDispatcher::platform()` is EzBizi speaking as EzBizi, and a
+     * report arriving from our address would be addressed to somebody who has
+     * no relationship with us at all. So this is the FIRST caller of
+     * `asTenant()` — the screen at Settings > Sending Identity has been saying
+     * "nothing sends from this address yet" on the grounds that Marketing's
+     * newsletter would be first, and that sentence stops being true when this
+     * ships.
+     *
+     * ── Every refusal is a run-log line, not an exception ───────
+     *
+     * `asTenant` THROWS when the identity has not proved its domain, which is
+     * right for a controller and wrong here: an automation that raises kills
+     * the rule and tells the tenant nothing they can act on. Caught and
+     * returned as `ok: false` carrying the dispatcher's own sentence, which
+     * already says what to do about it.
+     *
+     * The same for a customer with no email address. That is not a fault — a
+     * business can hold customers it has only ever phoned — so it is reported
+     * and not raised, and the rule stays on for the customers it can reach.
+     *
+     * ── The address is the customer's, and not configurable ─────
+     *
+     * A `to` parameter would make this an arbitrary mail sender with an
+     * inspection attached, and the report contains a named person's address
+     * and photographs of their property. The recipient is the customer on the
+     * record, resolved when the rule fires, which is the only address the
+     * subject of the document has consented to be at.
+     */
+    private function emailInspectionReport(array $action, ?Model $subject): array
+    {
+        $type = 'report.email';
+
+        if (! $subject instanceof InspectionReport) {
+            return [
+                'type' => $type,
+                'ok' => false,
+                'detail' => 'This action only works on a submitted inspection, so nothing was sent.',
+            ];
+        }
+
+        // withTrashed on the customer: a report outlives a binned customer, and
+        // the address is still the one the work was done for.
+        $subject->loadMissing(['customer' => fn ($q) => $q->withTrashed()]);
+
+        $to = trim((string) ($subject->customer?->email ?? ''));
+
+        if ($to === '') {
+            return [
+                'type' => $type,
+                'ok' => false,
+                'detail' => 'That customer has no email address on file, so nothing was sent.',
+            ];
+        }
+
+        $scope = $this->sendingScopeFor($subject);
+
+        if ($scope === null) {
+            return [
+                'type' => $type,
+                'ok' => false,
+                'detail' => 'This report does not say which branch it belongs to, so there is '
+                    .'no address to send it from.',
+            ];
+        }
+
+        /*
+         * REFUSE RATHER THAN SEND AS EZBIZI, and this is not what asTenant does
+         * on its own.
+         *
+         * `MailIdentityResolver::for()` falls back to the PLATFORM identity when
+         * no row exists at any level of the cascade, and that identity is
+         * Verified with a transport whose `requiresDomainProof()` is false — so
+         * `canSend()` is true and `asTenant` hands the message over happily. A
+         * tenant who has configured nothing would have their customer receive an
+         * inspection report from EzBizi's address.
+         *
+         * That is wrong twice: the customer has no relationship with us, and it
+         * discloses which software the company runs to somebody who was only
+         * told their chimney was swept. `MailTransport::Platform`'s own label is
+         * the word "EzBizi".
+         *
+         * This is the first caller of asTenant, so nothing has needed the
+         * distinction before. Refusing here is deliberately a decision of THIS
+         * action rather than a change to the shared dispatcher — the newsletter
+         * may reasonably want a different answer, and that is Marketing's call
+         * to make when it arrives.
+         */
+        if ($this->mail->identityFor($scope)->transport === MailTransport::Platform) {
+            return [
+                'type' => $type,
+                'ok' => false,
+                'detail' => 'This branch has not set up its own sending address, and a '
+                    .'report must not reach a customer from the EzBizi address. Set one '
+                    .'up under Settings, Sending Identity.',
+            ];
+        }
+
+        try {
+            $this->mail->asTenant(
+                $scope,
+                new InspectionReportMail(
+                    report: $subject,
+                    companyName: (string) $scope->name,
+                    pdf: $this->reportPdf->render($subject),
+                    note: trim((string) ($action['note'] ?? '')),
+                ),
+                $to,
+            );
+        } catch (CannotSendMail $refusal) {
+            return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+        }
+
+        $this->audit->log('inspection.emailed', $subject, metadata: ['to' => $to]);
+
+        return [
+            'type' => $type,
+            'ok' => true,
+            'detail' => 'The report was emailed to the customer.',
+        ];
+    }
+
+    /**
+     * The scope whose sending identity this report goes out under.
+     *
+     * `automationScope()` is reused rather than re-derived, so the branch that
+     * SENDS a report is the same branch that gets notified about it and the
+     * same one that may read it. Three answers from one method is the point —
+     * a separate lookup here could disagree, and the disagreement would look
+     * like a mail bug rather than a scope one.
+     *
+     * Falls back to the organization, which is a real case rather than a
+     * defensive one: the §6 identity cascade resolves upwards, so an
+     * organization-level address is the correct answer for a report whose
+     * branch has not set one.
+     */
+    private function sendingScopeFor(InspectionReport $report): ?Model
+    {
+        [$type, $id] = $report->automationScope();
+
+        if ($type === 'franchise' && $id !== null) {
+            $franchise = Franchise::query()->find($id);
+
+            if ($franchise !== null) {
+                return $franchise;
+            }
+        }
+
+        return $report->organization_id === null
+            ? null
+            : Organization::query()->find($report->organization_id);
+    }
+
     private function sendSms(array $action, AutomationEvent $event, ?Automation $automation): array
     {
         $type = 'sms.send';
