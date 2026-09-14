@@ -7,6 +7,7 @@ use App\Models\MonitoredDevice;
 use App\Models\MonitoringActivity;
 use App\Support\Automations\EventEmitter;
 use App\Support\Monitoring\ScreenMonitoringExemption;
+use App\Support\Monitoring\SecurityPosture;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -166,6 +167,79 @@ class HeartbeatController extends Controller
             ]);
         }
 
+        $this->raiseSecurityTrigger($device);
+
         return response()->noContent();
+    }
+
+    /**
+     * Raise `monitoring.security_needs_attention` when a machine's defences
+     * go from fine to not fine — once per fault, not once per beat.
+     *
+     * ── Why this is an EDGE and not a level ──────────────────────────
+     *
+     * A device beats every 60 seconds. An automation that fired whenever the
+     * antivirus was off would send an email every minute for as long as it
+     * stayed off, which is not an alert — it is a way of teaching somebody to
+     * filter the alerts. So `security_alerted_at` marks a fault as already
+     * reported and the trigger stays quiet until the machine says it is fixed.
+     *
+     * ── Why the marker is a column, having first tried it without ────
+     *
+     * The first version compared the incoming security block against the one
+     * already in `specs`, on the reasoning that the previous beat IS the
+     * record. SecurityTriggerTest proved that wrong before it shipped: a beat
+     * carrying specs but NO security block overwrites `specs` and destroys the
+     * memory, so the next real report looked like a fresh fault and fired a
+     * second time for something nobody had touched. The migration carries the
+     * longer version of why storing the old block instead would have traded
+     * that bug for a roster showing a frozen reading.
+     *
+     * ── What counts as fixed ─────────────────────────────────────────
+     *
+     * A beat that REPORTS security and names no unhealthy area clears the
+     * marker. A beat that reports nothing at all — an older agent, a Mac, a
+     * Windows Server with no Security Center — leaves it standing, because
+     * silence is not a report of health and treating it as one is exactly the
+     * bug above.
+     */
+    private function raiseSecurityTrigger(MonitoredDevice $device): void
+    {
+        if (! SecurityPosture::reported($device->specs)) {
+            return;
+        }
+
+        $unhealthy = SecurityPosture::unhealthyAreas($device->specs);
+
+        if ($unhealthy === []) {
+            // Reported, and nothing wrong: re-arm, so a fault that comes back
+            // is news again rather than being swallowed by the first one.
+            if ($device->security_alerted_at !== null) {
+                $device->forceFill(['security_alerted_at' => null])->save();
+            }
+
+            return;
+        }
+
+        if ($device->security_alerted_at !== null) {
+            return;
+        }
+
+        $device->forceFill(['security_alerted_at' => now()])->save();
+
+        // Each area named individually as well as listed, so an automation can
+        // act on "the firewall specifically" rather than parsing a sentence —
+        // the condition field picker offers the fields an event actually
+        // carries, so a key absent here is a filter nobody can build. A
+        // healthy area says "ok" rather than being absent, because an absent
+        // key cannot be filtered on and reads as "no answer".
+        $this->events->emit('monitoring.security_needs_attention', $device, [
+            'areas'     => implode(', ', array_keys($unhealthy)),
+            'antivirus' => $unhealthy['antivirus'] ?? 'ok',
+            'firewall'  => $unhealthy['firewall'] ?? 'ok',
+            'updates'   => $unhealthy['updates'] ?? 'ok',
+            'platform'  => $device->platform,
+            'label'     => $device->label,
+        ]);
     }
 }
