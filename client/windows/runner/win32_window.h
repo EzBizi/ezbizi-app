@@ -63,8 +63,9 @@ class Win32Window {
    * A tray icon is not decoration here, it is the requirement. Hiding a window
    * with no way to bring it back leaves an app that is running, invisible, and
    * only killable through Task Manager — strictly worse than quitting. So the
-   * icon is added before the window can ever be hidden, and it carries the only
-   * two commands that matter: open it, or actually quit.
+   * icon is added as soon as the window exists - so it is up for the whole
+   * run, not just from the first hide - and it carries the only two commands
+   * that matter: open it, or actually quit.
    */
   void ShowFromTray();
 

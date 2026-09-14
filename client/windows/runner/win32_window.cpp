@@ -226,6 +226,18 @@ bool Win32Window::Create(const std::wstring& title,
 
   UpdateTheme(window);
 
+  // The icon goes up as soon as the window exists, not on the way into
+  // hiding. Two things need it there for the whole run: a person can see
+  // EzBizi is running at all, and SetControlledNotice has an icon to modify
+  // while the window is OPEN - which is precisely when somebody is sitting
+  // at the machine to be told their screen is being controlled. Added only
+  // at WM_CLOSE, that notice could never appear except while hidden.
+  //
+  // window_handle_ is already set: WM_NCCREATE assigned it inside the
+  // CreateWindow call above, so AddTrayIcon's !window_handle_ guard cannot
+  // silently skip the one call that matters.
+  AddTrayIcon();
+
   return OnCreate();
 }
 
