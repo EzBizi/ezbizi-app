@@ -130,7 +130,7 @@ class AutomationsController extends Controller
          * ── A GENERAL "EMAIL SOMEBODY" ACTION IS NOT HERE, AND IS NOT
          *    WAITING ON A DECISION ─────────────────────────────────────
          *
-         * `report.email` above is Inspection's and narrow: it emails one
+         * `inspection_report.email` above is Inspection's and narrow: it emails one
          * inspection report to the customer that report is about. §5.5 lists
          * "Send email" among the six decided actions and the general one — a
          * rule emailing a recipient it names — is still unbuilt.
