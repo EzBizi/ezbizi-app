@@ -11,6 +11,7 @@ class VersionHistory {
       version: '0.0.0211',
       date: '14 Sep 2026',
       items: [
+        'Answering a call on the desktop app connects it again, instead of sending the caller to voicemail. Changing company restarts the phone so it picks up that company line, and that restart was tearing down a call that was already ringing.',
         'The sending address screen has been removed from Settings. It offered to verify a domain so that mail would appear to come from your own business, and that is not how EzBizi sends. EzBizi mail carries EzBizi messages only - signing in, password resets and joining messages - and anything your business writes goes out through your own mail provider.',
         'In the Experimental call report, two spellings of one name are now counted as one person rather than two.',
       ],
