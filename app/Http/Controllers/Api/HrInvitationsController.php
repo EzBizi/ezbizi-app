@@ -617,6 +617,31 @@ class HrInvitationsController extends Controller
             // An installed client older than this release reads it, and a
             // field that goes absent is the one response change that breaks
             // somebody who never asked for any of this. It costs a line.
+            //
+            // ── AND `bounced` IS NOT A VALUE OF `sent_state` ──────────
+            //
+            // Decided now rather than when the bounce table lands, because
+            // UI/UX asked the right question: once a bounce can be known,
+            // does `emailed: true` become a lie an old client renders as "the
+            // invitation has been emailed to them"?
+            //
+            // It does not, and the reason is the lifetime of these two fields
+            // rather than anything about their values. BOTH EXIST ONLY INSIDE
+            // THIS BRANCH — on the two responses that have just minted a
+            // token. At that instant the message has been handed off and no
+            // bounce has happened or could have; SES answers minutes later.
+            // So neither field can ever be contradicted by a bounce: they
+            // describe the handoff, at the moment of the handoff, and then
+            // they are gone. A listing row carries neither, which is also why
+            // an old client reading the list says nothing about email at all.
+            //
+            // Therefore a bounce belongs on the ROW as its own fact, not as a
+            // fourth `sent_state`. They answer different questions with
+            // different lifetimes: what happened when we tried, versus what
+            // became of it afterwards. Folding the second into the first
+            // would put a value into a field that only exists on a response
+            // which cannot yet know it — and that, not the old client, is
+            // where the lie would actually be manufactured.
             $body['emailed']    = $state === null ? null : $state === self::SENT;
             $body['sent_state'] = $state;
         }
