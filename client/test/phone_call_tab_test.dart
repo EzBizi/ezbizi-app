@@ -426,6 +426,31 @@ void main() {
     expect(find.text('Thursday morning still good?'), findsOneWidget);
   });
 
+  /// Every message says who said it.
+  ///
+  /// The panel drew each one as the same box in a column, told apart only by
+  /// a tint at half opacity, and Jose reported it as not being able to see
+  /// who a message was sent to. Both directions have to be on screen for this
+  /// to mean anything — a test with one inbound message passes whether or not
+  /// the app can tell the two apart.
+  testWidgets('a message names who sent it', (tester) async {
+    await _pump(tester, size: const Size(900, 800));
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Number'),
+      '+12035550199',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Thursday morning still good?'), findsOneWidget);
+    expect(find.text('Yes, nine works.'), findsOneWidget);
+
+    // Ours is labelled, theirs carries their number, and the panel heading is
+    // not what is being found: that shows the raw '+12035550199'.
+    expect(find.text('You'), findsOneWidget);
+    expect(find.text('+1 (203) 555-0199'), findsOneWidget);
+  });
+
   testWidgets('pad digits load the thread as E.164', (tester) async {
     final seen = <http.Request>[];
     await _pump(tester, size: const Size(900, 800), seen: seen);
@@ -1462,6 +1487,17 @@ MockClientHandler _handler({
             'body': 'Thursday morning still good?',
             'customer_id': 'c-1',
             'created_at': '2026-08-23T16:02:00+00:00',
+          },
+          {
+            'id': 'm-2',
+            'number_id': 'n-1',
+            'connection_id': 'pc-1',
+            'direction': 'outbound',
+            'from_e164': '+12035550142',
+            'to_e164': '+12035550199',
+            'body': 'Yes, nine works.',
+            'customer_id': 'c-1',
+            'created_at': '2026-08-23T16:09:00+00:00',
           },
         ],
       });

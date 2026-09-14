@@ -8,6 +8,7 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../core/phone_call_service.dart';
+import '../../core/timestamps.dart';
 import 'staff_thread.dart';
 import 'call_history_pane.dart';
 
@@ -1344,23 +1345,69 @@ class _CallTabState extends State<CallTab> {
               : ListView(
                   padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
                   children: [
+                    // ── WHICH WAY DID THIS ONE GO ───────────────
+                    //
+                    // Every message was the same box in a column, separated
+                    // from the one above it only by a tint at half opacity.
+                    // Jose put it plainly: "I can't see who the message was
+                    // sent to." Nothing here said. The panel names the other
+                    // end at the top, so the missing fact was never WHO the
+                    // conversation is with — it was which of the two of you
+                    // said each line, and when.
+                    //
+                    // Said three ways because one is not enough in a column
+                    // this narrow: the side it sits on, the name above it,
+                    // and a full-strength colour instead of a wash. It is the
+                    // same bubble Records draws for the same rows, which is
+                    // the point — two screens showing one conversation should
+                    // not disagree about what it looks like.
                     for (final message in _messages)
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: message.outbound
-                              ? theme.colorScheme.primaryContainer.withValues(
-                                  alpha: 0.5,
-                                )
-                              : theme.colorScheme.surfaceContainerHighest
-                                    .withValues(alpha: 0.5),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: EzBiziTheme.edge(context)),
-                        ),
-                        child: Text(
-                          message.body,
-                          style: theme.textTheme.bodyMedium,
+                      Align(
+                        alignment: message.outbound
+                            ? Alignment.centerRight
+                            : Alignment.centerLeft,
+                        child: Container(
+                          constraints: const BoxConstraints(maxWidth: 320),
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: message.outbound
+                                ? theme.colorScheme.primaryContainer
+                                : theme.colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: EzBiziTheme.edge(context),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                message.outbound
+                                    ? 'You'
+                                    : formatPhoneNumber(_peer),
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                message.body,
+                                style: theme.textTheme.bodyMedium,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                formatStamp(
+                                  message.createdAt,
+                                  '',
+                                  formats: widget.session.me!.display,
+                                ),
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     if (_messages.isEmpty)
