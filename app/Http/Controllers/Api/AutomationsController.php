@@ -125,30 +125,6 @@ class AutomationsController extends Controller
          */
         'training.assign',
 
-        /*
-         * Inspection's email-a-report-to-the-customer, and it was SHIPPED AND
-         * UNREACHABLE until this line.
-         *
-         * `ActionRunner` has had the arm since afcb97b2 — `'report.email' =>
-         * $this->emailInspectionReport(...)`, a working feature with a real
-         * Mailable behind it. Without the entry here the catalogue publishes
-         * `implemented: false`, the builder draws it "Not built yet" and
-         * refuses the tap, so nobody could switch it on.
-         *
-         * ── This is the QUIET direction of the same drift ────────────
-         *
-         * The const missing an arm is loud: rules get built, every run records
-         * FAILED, somebody complains. An arm missing from the const makes no
-         * error anywhere — no exception, no failed run, no red test — because
-         * the only symptom is a picker entry that cannot be clicked. The two
-         * halves can drift apart indefinitely in this direction and nothing
-         * asks about it.
-         *
-         * So there is now a test: every arm in ActionRunner's match must
-         * appear here. See AutomationsApiTest. Found by the Training session,
-         * who measured both lists rather than trusting either.
-         */
-        'report.email',
 
         /*
          * ── A GENERAL "EMAIL SOMEBODY" ACTION IS NOT HERE, AND IS NOT
