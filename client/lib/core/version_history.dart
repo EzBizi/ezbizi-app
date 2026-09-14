@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0205',
+      date: '14 Sep 2026',
+      items: [
+        'Disconnecting and reconnecting a Google Ads account no longer detaches its enquiries. They are re-linked automatically, without re-reading anything from Google. Enquiries detached before this update are re-linked only when Google next returns them, and the oldest may never be.',
+        'A company can be made a sub company, a sub company can be made a company again, and a sub company can be moved to a different parent. It is in a company menu on the Organization screen. It needs somebody who stands at the whole organization, because moving a branch hands the work of its people to a different set of managers.',
+        'An arriving call now sounds like a phone ringing rather than like a call you placed. The alert was the tone a caller hears while waiting - the same one played when you ring out - so both ends of a call sounded identical.',
+        'Fixed: everybody who already had an account was locked out of changing anything. A new check asked whether each person had confirmed their email address, and nobody who signed up before it existed ever had the chance. Accounts that predate the check are now treated as confirmed.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0204',
       date: '14 Sep 2026',
       items: [
