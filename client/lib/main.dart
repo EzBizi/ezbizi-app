@@ -588,6 +588,28 @@ class _HomeShellState extends State<HomeShell> {
     final phone = PhoneCallService.current;
     if (phone.hasLine) return;
 
+    // NOT WHILE A CALL IS IN FLIGHT. This guard was here, I took it out, and
+    // taking it out cost Jose a call.
+    //
+    // The first draft of this method refused while `onCall`. Narrowing the
+    // method to "only when there is no line" I decided `hasLine` subsumed it —
+    // if there is no line there is no call. That is false twice over, and the
+    // second way is the one that bit: `stop()` clears `_connectionId`, so
+    // `hasLine` is false on every shell remount, and a call can be RINGING
+    // rather than connected, which `onCall` would not have caught either.
+    //
+    // What it costs to be wrong: restart() disposes the device, twilio-voice's
+    // `Device.destroy()` rejects a pending incoming call, and Twilio reports
+    // the leg BUSY. Jose pressed Answer on the desktop and his own phone said
+    // "please leave your message after the tone" — the caller was refused by
+    // the desk that was ringing.
+    //
+    // So the question is about the DEVICE, not about the line: is there a call
+    // on it, of any kind. A desk with somebody on it is never worth restarting
+    // — the reason this method exists is a banner being wrong, and no banner
+    // is worth a dropped call.
+    if (phone.busy) return;
+
     unawaited(phone.restart(widget.api));
   }
 

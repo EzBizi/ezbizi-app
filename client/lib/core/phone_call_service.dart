@@ -56,7 +56,12 @@ class PhoneCallService extends ChangeNotifier {
   factory PhoneCallService.forTest(
     VoiceDevice device, {
     String callerId = '+12035550142',
-    String connectionId = 'cx-test',
+
+    // Nullable, because "a device that is up with no line recorded" is a real
+    // state and a dangerous one: it is what a desk looks like between stop()
+    // and the start() that follows, and it is the state in which the shell
+    // reaches for a line. A seam that could not express it could not test it.
+    String? connectionId = 'cx-test',
 
     // Without an api the desk cannot RELEASE presence, so every test built on
     // this harness silently skipped the request that clears `on_call` on the
@@ -284,6 +289,15 @@ class PhoneCallService extends ChangeNotifier {
       _starting = false;
     }
   }
+
+  /// A call is in flight on this device, ringing or connected.
+  ///
+  /// The question anything about to tear the device down must ask. Tearing it
+  /// down calls `Device.destroy()`, and destroy REJECTS a pending incoming
+  /// call — so the caller does not hear it stop ringing, they hear the line
+  /// refuse them and land in voicemail while somebody is looking at an Answer
+  /// button.
+  bool get busy => _onCall || _incomingFrom != null;
 
   /// Bring the desk up again after it failed.
   ///
