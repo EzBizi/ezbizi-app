@@ -86,6 +86,8 @@ void main() {
   });
 
   /// A recording the server will not hand over is not a silent button either.
+  _transcriptTests();
+
   testWidgets('a recording that cannot be fetched says that instead', (
     tester,
   ) async {
@@ -105,6 +107,7 @@ Future<void> _pump(
   WidgetTester tester, {
   required RecordingPlayer player,
   int recordingStatus = 200,
+  List<String> permissions = const ['phone.view'],
 }) async {
   tester.view.physicalSize = const Size(1100, 900);
   tester.view.devicePixelRatio = 1.0;
@@ -114,7 +117,11 @@ Future<void> _pump(
     client: MockClient((request) async {
       final path = request.url.path;
 
-      if (path.endsWith('/me')) return _json({'data': _me});
+      if (path.endsWith('/me')) {
+        return _json({
+          'data': {..._me, 'permissions': permissions},
+        });
+      }
       if (path.endsWith('/phone/voicemail-boxes')) return _json({'data': []});
 
       if (path.contains('/recording')) {
@@ -157,6 +164,52 @@ Future<void> _pump(
     ),
   );
   await tester.pumpAndSettle();
+}
+
+/// A voicemail with no transcript says WHERE the switch is.
+///
+/// ── Why this is worth a test ─────────────────────────────────────
+///
+/// The sentence used to offer two causes and settle neither, so Jose read an
+/// unset option as a broken feature: "Voicemail tab does not show the
+/// transcripts... but voicemail tab on records does." Records shows a
+/// different field — the live transcript of the whole call — which is why one
+/// had text and the other did not.
+///
+/// The empty state is the ONLY state this list has had in production: 0 of 92
+/// voicemails carry a transcript, because transcription is off on all
+/// thirteen numbers. A test that stubs a transcript in would never see the
+/// sentence anybody has actually read.
+void _transcriptTests() {
+  testWidgets('with no transcript, an admin is told where the switch is', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      permissions: const ['phone.view', 'phone.edit'],
+    );
+
+    expect(
+      find.textContaining('Communication → Settings → Voicemail'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('somebody who cannot change it is told what to ask for', (
+    tester,
+  ) async {
+    await _pump(tester, player: FakeRecordingPlayer());
+
+    expect(
+      find.textContaining('An administrator can switch transcription on'),
+      findsOneWidget,
+    );
+
+    // And NOT sent to a screen they cannot open — the distinction is the
+    // whole point of the branch.
+    expect(find.textContaining('Settings → Voicemail'), findsNothing);
+  });
 }
 
 Future<void> _tap(WidgetTester tester, Finder finder) async {
