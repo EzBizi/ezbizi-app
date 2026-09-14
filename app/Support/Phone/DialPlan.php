@@ -2,6 +2,7 @@
 
 namespace App\Support\Phone;
 
+use App\Models\PhoneCall;
 use App\Models\PhoneConnection;
 use App\Models\PhoneDeviceRegistration;
 use App\Models\PhonePresence;
@@ -120,6 +121,10 @@ final class DialPlan
             return [];
         }
 
+        if ($group->mode === PhoneRingGroup::MODE_LONGEST_IDLE) {
+            $userIds = self::longestIdleFirst($userIds);
+        }
+
         $users = User::query()
             ->whereIn('id', $userIds)
             ->get()
@@ -163,10 +168,74 @@ final class DialPlan
             return [];
         }
 
+        // ONE PERSON PER BATCH when the order is the point.
+        //
+        // Batching exists because `<Dial>` takes at most ten nouns, and ten at
+        // a time is right for a group that rings everybody. For longest idle it
+        // would throw the ordering away: the ten most idle people would ring
+        // together, which is the same as ringing everybody and calling it
+        // fair. One per batch makes the existing batch machinery — batch=N on
+        // the action URL, the next Dial on no-answer — walk the list in order.
+        //
+        // The group's `timeout_seconds` becomes the wait PER PERSON here
+        // rather than for the whole attempt, which is worth knowing when
+        // setting it: thirty seconds each across five people is a caller
+        // holding for two and a half minutes. The screen says so.
+        $size = $group->mode === PhoneRingGroup::MODE_LONGEST_IDLE
+            ? 1
+            : self::BATCH_SIZE;
+
         /** @var list<list<string>> $batches */
-        $batches = array_chunk($identities, self::BATCH_SIZE);
+        $batches = array_chunk($identities, $size);
 
         return $batches;
+    }
+
+    /**
+     * Whoever has gone longest without answering, first.
+     *
+     * ── Why the call log rather than a counter ───────────────────
+     *
+     * "Idle" could be a column on the presence row, bumped whenever somebody
+     * takes a call. It is not, because a counter is a second copy of a fact
+     * the call log already holds, and the two go out of step the first time a
+     * call is recorded through a path that forgets to bump it — silently, and
+     * in the direction that gives one person all the work.
+     *
+     * `answered_by` is stamped by the answered webhook on the leg that
+     * actually picked up, so it is the same fact the reports are built from.
+     *
+     * Somebody who has NEVER answered a call sorts first. That is the right
+     * end: a new starter should get the next call, not wait behind everybody
+     * who has been here longer.
+     *
+     * @param  list<string>  $userIds
+     * @return list<string>
+     */
+    private static function longestIdleFirst(array $userIds): array
+    {
+        if (count($userIds) < 2) {
+            return $userIds;
+        }
+
+        $last = PhoneCall::query()
+            ->whereIn('answered_by', $userIds)
+            ->selectRaw('answered_by, MAX(created_at) as last_at')
+            ->groupBy('answered_by')
+            ->pluck('last_at', 'answered_by')
+            ->all();
+
+        // Stable since PHP 8.0, which matters: people who have never answered
+        // all compare equal, and the group's own order is the fairest
+        // tie-break available.
+        usort($userIds, static function (string $a, string $b) use ($last): int {
+            $left = $last[$a] ?? '';
+            $right = $last[$b] ?? '';
+
+            return strcmp((string) $left, (string) $right);
+        });
+
+        return array_values($userIds);
     }
 
     private static function memberUserIds(PhoneRingGroup $group): array

@@ -505,14 +505,44 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
               groupValue: draft.mode,
               // ignore: deprecated_member_use
               onChanged: _saving ? null : (v) => setState(() => draft.mode = v!),
-              title: const Text('One at a time'),
+              title: const Text('One at a time, in order'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+            ),
+
+            // ── FAIRNESS, which a fixed order does not give you ──
+            //
+            // RingCentral calls this "longest idle" and A1 Chimney's own
+            // queues are set to it. A fixed list means the first person
+            // answers most of the calls and the last answers almost none —
+            // a rota nobody agreed to, and one that only shows up months
+            // later in somebody's numbers.
+            //
+            // Read from the call log rather than a counter, so it is the same
+            // fact the reports are built from.
+            RadioListTile<String>(
+              value: 'longest_idle',
+              // ignore: deprecated_member_use
+              groupValue: draft.mode,
+              // ignore: deprecated_member_use
+              onChanged: _saving ? null : (v) => setState(() => draft.mode = v!),
+              title: const Text('One at a time, whoever is least busy'),
+              subtitle: const Text(
+                'Starts with whoever has gone longest without answering.',
+              ),
               contentPadding: EdgeInsets.zero,
               dense: true,
             ),
 
             const SizedBox(height: 8),
             Text(
-              'Ring for ${draft.timeoutSeconds} seconds',
+              // Said differently when the wait is per person, because the
+              // same number means a very different hold: thirty seconds each
+              // across five people is a caller holding for two and a half
+              // minutes, and nothing on this screen used to say so.
+              draft.mode == 'simultaneous'
+                  ? 'Ring for ${draft.timeoutSeconds} seconds'
+                  : 'Ring each person for ${draft.timeoutSeconds} seconds',
               style: theme.textTheme.labelLarge,
             ),
             Slider(
