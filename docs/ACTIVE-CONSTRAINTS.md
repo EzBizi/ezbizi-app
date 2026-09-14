@@ -137,23 +137,46 @@ exactly the reflex to suppress this week.
 Production currently has **no minimum set**. Nobody owns that controller; it is
 control plane and appears on no module map.
 
-## 3 · SES is in the sandbox — every recipient must be verified first
+## 3 · SES production access is GRANTED — this constraint is over
 
-**Delete this section when production access is granted.** Appeal case
-`178717006200996`, denied once already for zero sending history.
+**Granted 2026-09-14.** Kept as history, like §1, rather than deleted: the
+correction at the bottom outlived the constraint.
 
-SES delivers **only** to hand-verified identities and rejects everything else with
-**554**. Every rejection lands on the Rejects metric AWS reads while judging the
-pending appeal — so a careless send does not merely fail, it argues against us.
+Measured on the SES Account dashboard rather than relayed: daily quota **50,000
+per 24h** (was 200), send rate **14/second** (was 1), account Healthy, and the
+sandbox banner replaced by a "Request a limit increase" link that only renders in
+production. Both support cases closed.
 
-**Any new mail recipient — an alert address, a notification target, a test send —
-must be a verified identity first.**
+**Mail now reaches any recipient.** There is no longer a list of verified
+identities to add somebody to before you can send them anything.
 
-This has already bitten once: the backup alert pointed at a personal Gmail, which
-was harmless while nothing could send and became a live Reject the hour outbound
-mail started working. It also blocks TODO #22 signup verification, which would
-return 200 on our side and put nothing in a real customer's inbox — the failure is
-invisible from here, which is the shape everything else in this file shares.
+### What this unblocked
+
+TODO #22, signup email verification, which this section named as blocked. It is
+built: signup sends a confirmation, and `RequireVerifiedEmail` refuses WRITES
+(not reads) until the address is confirmed. Invited people arrive already
+confirmed, because redeeming an invitation link is itself proof of the mailbox.
+
+### The correction worth keeping
+
+This section claimed that a sandbox **554 lands on the Rejects metric AWS reads**,
+and therefore that a careless send "argues against us". **That was wrong, and it
+was never measured.** 554s occurred for an unverified Gmail on 26 and 27 August
+and again on 2 September, and the dashboard showed Rejects flat at **0%** across
+that entire window. A 554 is refused during the SMTP transaction, so SES counts it
+as neither a Send nor a Reject — the Rejects metric means a message SES *accepted*
+and then dropped.
+
+The habit that produced it is the one to keep an eye on: a plausible mechanism,
+written down confidently, repeated to two other sessions, and never checked
+against the dashboard that was one click away.
+
+### Still true, and not about SES
+
+**A successful send does not prove much on its own.** The first sign production
+access had landed was one message to an unverified address being accepted instead
+of refused — but verifying that single address would have looked identical. Read
+the account dashboard before telling anyone the state changed.
 
 ## 4 · Never test against the shared `ezbizi_testing` schema
 
@@ -211,3 +234,41 @@ with App Store review. Whoever eventually deletes this file will be following th
 instruction correctly, and durable knowledge must not be sitting in it.
 
 Raised by ezbizi-ea, who noticed the header contradicted the content.
+
+---
+
+## 6 · Configuring a sending identity ARMS a shipped action
+
+**Before you configure a sending identity for any organisation, settle
+`inspection_report.email` first.** They are linked, and nothing in the code says so.
+
+Jose ruled twice on 2026-09-14, carried by two sessions independently. Via
+Automations: *"no ezbizi SES is to be used only for EZBIZI Related actions like
+notificaitons, account creation, password, resets, etc at least for now."* Via HR:
+*"1 - yes, as they recommend."* Asked the sharper form afterwards - whether a
+CONFIGURED tenant sending tenant-authored content to a member of the public over
+EzBizi's SES is covered - he answered **yes**.
+
+`inspection_report.email` is shipped and selectable, and it mails a finished report
+to the customer through `asTenant()`. It is **latent, not live**, and the reason is
+a coincidence rather than a design:
+
+    the MailTransport::Platform guard sits BEFORE the asTenant call
+    production has 2 organizations and 0 rows in sending_identities
+    so every organisation resolves to Platform, and the guard refuses
+
+**The guard does not fail. Its premise changes.** "Configure a sending identity for
+A-1 Group" is an open item on Jose's list, raised by Inspection themselves. The day
+somebody does it, that action stops refusing and starts sending - silently,
+correctly by its own lights, against a ruling made after it shipped. Nothing
+announces the transition, and the first evidence would be a customer receiving a
+report.
+
+**The lever is Inspection's arm, not the Automations catalogue.** Removing the row
+from `IMPLEMENTED_ACTIONS` is one line and looks like the fix; it is not. That const
+stops NEW rules being written while the arm still runs every rule already saved.
+
+Jose may reasonably distinguish "the customer whose chimney was swept" from "an
+address a rule names". That is his call and it is in front of him. What must not
+happen is the identity work quietly arming the action while nobody is looking at
+both at once.
