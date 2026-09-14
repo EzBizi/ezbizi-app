@@ -182,18 +182,39 @@ class TwilioVoiceDevice implements VoiceDevice {
   /// Hear the three ways the SDK says a call is over.
   ///
   /// `disconnect` is the customer hanging up on a live call. `cancel` is the
-  /// caller giving up while it rings. `reject` is another device on the same
-  /// identity taking it — which is what happens when a ring group hands the
-  /// call to whoever answered first.
+  /// caller giving up while it rings, AND the one that arrives when somebody
+  /// else answered first — another of your own devices, or a colleague in the
+  /// ring group. `reject` is a decline.
   ///
   /// All three collapse to one answer here on purpose: there is no call any
   /// more. Only the pending/active reference is cleared per event, so a stale
   /// one cannot be accepted after the fact.
+  ///
+  /// ── THE HANDLER TAKES NO ARGUMENT, AND THAT IS THE FIX ───────
+  ///
+  /// It used to declare one, and two of these three events carry none:
+  /// `emit("disconnect", call)` passes the call, `emit("cancel")` and
+  /// `emit("reject")` pass nothing. A Dart closure converted with `.toJS` does
+  /// not receive null for an argument JavaScript never sent — it THROWS,
+  /// `NoSuchMethodError: method not found: 'call$0'`, before a line of this
+  /// body runs. Measured, not reasoned: a one-parameter handler called with
+  /// no arguments throws, a zero-parameter one runs whether it is called with
+  /// none or with several.
+  ///
+  /// So exactly one of the three worked, and it was the one nobody reports:
+  /// the customer hanging up. The other two are how a call ends when SOMEBODY
+  /// ELSE took it, and they were silently dead — Jose answered on the desktop
+  /// and the browser kept ringing a call that Twilio had already torn down
+  /// seven seconds earlier, and a ring group rang every member who had not
+  /// answered for as long as they let it.
+  ///
+  /// JavaScript ignores arguments a function does not declare, so taking none
+  /// is the shape that is safe for every event, present and future.
   void _watchForEnd(_JsCall call) {
     for (final event in const ['disconnect', 'cancel', 'reject']) {
       call.on(
         event.toJS,
-        (JSAny? _) {
+        () {
           if (_pending == call) _pending = null;
           if (_active == call) _active = null;
           onEnded?.call();
