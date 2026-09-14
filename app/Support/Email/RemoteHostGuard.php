@@ -62,6 +62,36 @@ namespace App\Support\Email;
  *
  * Replying goes out through a host the same tenant typed, so the reply path asks
  * this same class with its own port list. There is no second copy of the ranges.
+ *
+ * ── THIS IS THE ONE GUARD. A SECOND WAS WRITTEN AND DELETED ──────
+ *
+ * Added by the Mail/SES session, 2026-09-14, at the deploy desk's ask and about
+ * its own mistake — so that the next person does not write a third.
+ *
+ * A tenant's own SMTP became a sending transport for reports
+ * (MailDispatcher::throughTenantProvider). Not knowing this class existed, I
+ * wrote App\Support\Mail\TenantSmtpHost: the same forbidden ranges, the same
+ * metadata endpoint, re-derived from scratch and shipped with 43 tests. It was
+ * deleted the same day and that path now calls approve() here.
+ *
+ * WHAT MINE LACKED, because it is the argument for one guard rather than a
+ * preference for tidiness: no PORT allow-list at all (any port a tenant typed,
+ * which is a network scanner with a text box), no bounded timeouts, and it
+ * resolved once to check and let the caller resolve again to connect — DNS
+ * rebinding written by hand, which the note above says an early draft of THIS
+ * class also did before it was fixed. A second guard does not add defence; it
+ * adds a worse answer to the same question with nothing saying which is
+ * authoritative, and the worse one was newer.
+ *
+ * HOW IT HAPPENED, since the cause is the reusable part: I grepped `smtp_host`
+ * to find out whether anything already dialled tenant SMTP. Mailbox exposes that
+ * column as smtpHost(), so the grep returned the model and its controller, and I
+ * read that as "nothing sends". One spelling is not a search, and an absence is
+ * only evidence if the search could have found the thing.
+ *
+ * So: any new code that dials a host a CUSTOMER supplied — any protocol, any
+ * module — calls approve() here with its own port list. If this class is missing
+ * something that need, add it here.
  */
 final class RemoteHostGuard
 {
@@ -145,6 +175,32 @@ final class RemoteHostGuard
      * address whose presence in a host field is never a mistake, and a refusal
      * that says "the cloud metadata service" is the one an administrator reading
      * the audit log needs to see.
+     *
+     * ── THAT SENTENCE ARGUES FOR ONE AUDIENCE AND REACHES TWO ────
+     *
+     * Corrected 2026-09-14, after the Mail/SES session asked whether naming the
+     * metadata service turns a weak oracle into a strong one -- paste a
+     * hostname, read back where it points.
+     *
+     * The paragraph above says "the audit log", and that is the audience it was
+     * written for. But {@see assertReachable} throws
+     * `CannotReachHost($this->refusal(...))`, and that message surfaces to the
+     * CALLER -- so the same string also goes to whoever typed the host. The
+     * justification covers one of the two and only one was ever argued.
+     *
+     * KEPT, on the merits rather than by default. For the literals in
+     * {@see METADATA_ADDRESSES} the oracle is worth almost nothing: nobody types
+     * 169.254.169.254 by accident, so the person reading the refusal already
+     * knew what they aimed at -- which is the same fact the paragraph above
+     * relies on. The other ranges answer "a private network", which classifies
+     * nothing. The one line doing real work for an attacker is the /16
+     * description, and it confirms only that this is cloud-hosted.
+     *
+     * If it is ever worth closing, the fix is NOT to soften this sentence. It is
+     * to give the audit log the specific cause and the caller the generic one,
+     * which is what the paragraph above already assumed was happening. That is
+     * the actual defect here: a rationale that described a split which does not
+     * exist.
      */
     private const METADATA_ADDRESSES = [
         '169.254.169.254',      // EC2 / GCE / Azure IMDS
