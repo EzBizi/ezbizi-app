@@ -113,9 +113,9 @@ enum SocialProvider: string
     public function connectsBy(): string
     {
         return match ($this) {
-            self::Bluesky   => 'password',
+            self::Bluesky => 'password',
             self::Mailchimp => 'api_key',
-            default         => 'sign_in',
+            default => 'sign_in',
         };
     }
 
@@ -229,6 +229,88 @@ enum SocialProvider: string
             self::GoogleAds => 'connect a Google Ads account',
             self::GoogleBusinessProfile => 'connect a Business Profile',
             default => 'connect a social account',
+        };
+    }
+
+    /**
+     * What to say once the connection is made, and where to send them next.
+     *
+     * This lived in SocialAuthController as two sprintf() calls that said
+     * "Pages" and "compose from Social Media Management" for every provider.
+     * True for the nine publishing networks and wrong for everything else:
+     * connecting 37 Google Ads accounts announced 37 "Pages" and pointed at a
+     * module their enquiries never reach. Jose read that screen on 2026-09-14.
+     *
+     * It belongs on the enum for the same reason connectAct() does - a provider
+     * added later cannot be quietly described as something it is not, because
+     * there is no default that invents a noun. The nine that really are social
+     * share one arm, deliberately: they are one family, not nine.
+     *
+     * @param  int  $count  how many accounts the grant produced
+     * @param  string  $name  the first one's display name, for the singular
+     */
+    public function connectedSentence(int $count, string $name): string
+    {
+        $many = $count > 1;
+
+        return match ($this) {
+            self::GoogleAds => $many
+                ? sprintf(
+                    '%d Google Ads accounts are connected to EzBizi. You can close this window — '
+                    .'their enquiries arrive in Leads.',
+                    $count,
+                )
+                : sprintf(
+                    '%s is connected to EzBizi. You can close this window — its enquiries arrive '
+                    .'in Leads.',
+                    $name,
+                ),
+
+            self::GoogleBusinessProfile => $many
+                ? sprintf(
+                    '%d Business Profiles are connected to EzBizi. You can close this window — '
+                    .'their reviews arrive in Reviews.',
+                    $count,
+                )
+                : sprintf(
+                    '%s is connected to EzBizi. You can close this window — its reviews arrive '
+                    .'in Reviews.',
+                    $name,
+                ),
+
+            self::Thumbtack => $many
+                ? sprintf(
+                    '%d Thumbtack businesses are connected to EzBizi. You can close this window — '
+                    .'their enquiries arrive in Leads.',
+                    $count,
+                )
+                : sprintf(
+                    '%s is connected to EzBizi. You can close this window — its enquiries arrive '
+                    .'in Leads.',
+                    $name,
+                ),
+
+            self::Mailchimp => sprintf(
+                '%s is connected to EzBizi. You can close this window — its audiences are '
+                .'available in Email.',
+                $name,
+            ),
+
+            // The nine publishing networks. "Page" is their word and Social
+            // Media Management is genuinely where they are used.
+            default => $many
+                ? sprintf(
+                    '%d %s Pages are connected to EzBizi. You can close this window and compose '
+                    .'from Social Media Management.',
+                    $count,
+                    $this->label(),
+                )
+                : sprintf(
+                    '%s is connected to EzBizi as a %s account. You can close this window and '
+                    .'compose from Social Media Management.',
+                    $name,
+                    $this->label(),
+                ),
         };
     }
 
