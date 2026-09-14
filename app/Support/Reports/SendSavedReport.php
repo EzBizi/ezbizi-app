@@ -65,10 +65,33 @@ use RuntimeException;
  *
  * This class is left intact rather than gutted. The scope guard, the
  * one-address-at-a-time rule and the audit row are all correct for whatever
- * transport replaces `asTenant` — the shape the product already reached
- * independently is the TENANT's own provider, the way a newsletter leaves
- * through their Mailchimp key and never touches EzBizi's SES. Deleting the
- * machinery would throw away three rulings to save a file.
+ * transport replaces `asTenant`. Deleting the machinery would throw away three
+ * rulings to save a file.
+ *
+ * ── AND THE REPLACEMENT IS NOT MAILCHIMP, THOUGH EVERYONE SAID SO ──
+ *
+ * Three sessions, me included, repeated "both need the Mailchimp shape" — the
+ * way a newsletter leaves through the tenant's own Mailchimp key and never
+ * touches EzBizi's SES. The PRINCIPLE is right and the mechanism is wrong, and
+ * nobody checked until somebody read the client:
+ *
+ * 1. `MailchimpClient::sendCampaign` has no attachment parameter, and
+ *    `SavedReportMail::attachments()` returns the report as `text/csv`. The
+ *    report IS the attachment.
+ * 2. `recipientSegment()` builds from LIST MEMBERS — its own refusal reads
+ *    "Nobody in this audience is currently subscribed." A company's accountant
+ *    should not have to opt into marketing to receive a spreadsheet.
+ * 3. The one that survives a workaround for the other two:
+ *    `MailchimpSender` injects an unsubscribe footer into every campaign,
+ *    custom HTML included. So a report would carry "Unsubscribe from these
+ *    emails" under somebody's spreadsheet — a false compliance statement on
+ *    transactional mail, and the accountant who clicks it to stop marketing
+ *    silently stops receiving the report.
+ *
+ * The answer is the tenant's own SMTP, which carries attachments, reaches any
+ * address, and is transactional by nature. The seam is
+ * `MailDispatcher::throughTenantProvider()`, same signature as `asTenant`, and
+ * the transport is the SES session's to build.
  *
  * I also deleted my own guard here, which used to refuse a tenant with no
  * sending identity before the loop. It was redundant once `asTenant` refused
