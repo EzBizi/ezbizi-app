@@ -65,10 +65,22 @@ code{font:12px ui-monospace,Consolas,monospace;background:var(--ground);
   organization has no verified sending identity, which they can.
   <b>B already has a home.</b> <code>widgets/sending_identity_panel.dart</code> is a
   card in Settings today, with the whole flow behind it and four routes under
-  <code>mail/sending-identity</code>. Its own copy already draws HR&rsquo;s line:
+  <code>mail/sending-identity</code>. Its own copy already draws HR&rsquo;s line &mdash; in its
+  <i>second</i> sentence.</p>
+  <p class="sub" style="margin-top:10px"><b>And its first sentence is false, which
+  HR found by measuring the quote I had cited as evidence.</b> The card says
   <i>&ldquo;Newsletters and anything else your own people write go out from this
-  address. Signing in, password resets and joining messages always come from EzBizi,
-  whatever is set here.&rdquo;</i></p>
+  address&rdquo;</i>, and <b>a newsletter never touches the sending identity at
+  all</b>: <code>NewsletterSenders::for()</code> has one arm, Mailchimp, and that
+  client uses the tenant&rsquo;s own API key, so the from address is whatever their
+  Mailchimp account sends as. Measured callers of <code>asTenant</code>:
+  <code>ActionRunner:473</code>, <code>SendSavedReport:171</code> and
+  <code>InspectionReportMail</code>. <b>So the card&rsquo;s headline example is the
+  one thing verifying a domain does not change</b> &mdash; somebody does DNS work
+  to fix their newsletters and nothing about their newsletters changes. A remedy
+  that does not remedy, arriving through an <i>example</i> rather than through the
+  state sentence. The copy below is corrected; the note belongs to SES, so this is
+  a proposal rather than a change.</p>
   <p class="sub" style="margin-top:10px">So this is not a new four-state panel.
   <b>B is a STATE the card gains</b> &mdash; putting it anywhere else gives one fact
   two voices that can disagree. <b>A is the gap</b>, and the three options differ on
@@ -97,14 +109,17 @@ function card(){
   return '<div class="card"><div class="h">Email from this business' +
     (bad ? '<span class="tag bad">Not verified</span>'
          : '<span class="tag ok">Verified</span>') + '</div>' +
-    '<div class="n">Newsletters and anything else your own people write go out ' +
-    'from this address. Signing in, password resets and joining messages always ' +
-    'come from EzBizi, whatever is set here.</div>' +
+    '<div class="n">Saved reports, inspection reports and automations that ' +
+    'email somebody go out from this address. Signing in, password resets and ' +
+    'joining messages always come from EzBizi, whatever is set here. ' +
+    'Newsletters go out through your own provider and are not affected by ' +
+    'this.</div>' +
     (bad
-      ? '<div class="n" style="color:var(--bad);margin-top:9px"><b>Your own mail ' +
-        'is not going out.</b> Until a domain is verified, anything your people ' +
-        'write is refused rather than sent as EzBizi. EzBizi&rsquo;s own messages ' +
-        'are unaffected.</div><div class="addr" style="color:var(--primary)">' +
+      ? '<div class="n" style="color:var(--bad);margin-top:9px"><b>These are ' +
+        'not going out.</b> Until a domain is verified, saved reports, ' +
+        'inspection reports and automation emails are refused rather than sent. ' +
+        'EzBizi&rsquo;s own messages and your newsletters are unaffected.' +
+        '</div><div class="addr" style="color:var(--primary)">' +
         'Verify a domain &rsaquo;</div>'
       : '<div class="addr">hello@everdoors.com</div>') +
     '</div>';
@@ -172,9 +187,10 @@ function D3(){
     '<div class="card"><div class="h">Email from this business' +
       (bad ? '<span class="tag bad">Not sending</span>'
            : '<span class="tag ok">Sending</span>') + '</div>' +
-      '<div class="n">Newsletters and anything else your own people write go ' +
-      'out from this address. Signing in, password resets and joining messages ' +
-      'always come from EzBizi, whatever is set here.</div>' +
+      '<div class="n">Saved reports, inspection reports and automations that ' +
+      'email somebody go out from this address. Signing in, password resets ' +
+      'and joining messages always come from EzBizi. Newsletters go out ' +
+      'through your own provider.</div>' +
       (isA()
         ? '<div class="n" style="color:var(--bad);margin-top:9px">EzBizi is not ' +
           'sending email right now. Ours to fix.</div>' : '') +

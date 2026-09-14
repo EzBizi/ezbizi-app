@@ -2372,9 +2372,20 @@ wrong thing, which is entry 11's own finding.
 > **MEASURED BEFORE DRAWING, AND IT CHANGED THE BRIEF: B already has a home.**
 > `client/lib/widgets/sending_identity_panel.dart` is a card in the Settings screen today, with
 > the whole verification flow behind it and four routes live under `mail/sending-identity`. Its
-> own copy already draws HR's line: *"Newsletters and anything else your own people write go out
-> from this address. Signing in, password resets and joining messages always come from EzBizi,
-> whatever is set here."*
+> own copy already draws HR's line — **in its second sentence. Its first sentence is false**, and
+> HR found that by measuring the very quote I had offered as evidence.
+>
+> The card says *"Newsletters and anything else your own people write go out from this address"*,
+> and **a newsletter never touches the sending identity at all**: `NewsletterSenders::for()` has
+> one arm, Mailchimp, and that client uses the tenant's own API key, so the from address is
+> whatever their Mailchimp account sends as. Measured callers of `asTenant`: `ActionRunner:473`,
+> `SendSavedReport:171`, `InspectionReportMail`.
+>
+> **So the card's headline example is the one thing verifying a domain does not change.** Somebody
+> does DNS work to fix their newsletters and nothing about their newsletters changes — a remedy
+> that does not remedy, arriving through an EXAMPLE rather than through the state sentence. It is
+> the shape this whole entry is about, one layer below where either of us was looking, and it was
+> found because a quote used as evidence got checked rather than repeated.
 >
 > So this is **not a new four-state panel**. B is a STATE that card gains; anywhere else gives
 > one fact two voices that can disagree. **A is the gap**, and the options differ on where it
