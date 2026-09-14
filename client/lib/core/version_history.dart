@@ -8,6 +8,63 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0207',
+      date: '14 Sep 2026',
+      items: [
+        'The EzBizi icon now stays in the notification area for as long as the app is running. It was only added at the moment you closed the window to the tray, so while the app was open there was no icon at all. The same gap silenced the notice that tells you your screen is being controlled by your company: that notice is carried on the icon, so it could only ever appear while the window was hidden, and never while somebody was sitting in front of the open app.',
+        'A Confirm your email button now sits at the top of the app, beside the two-factor prompt, for an account whose address has not been confirmed. It sends a fresh link, so the account can clear the condition itself instead of meeting a refusal on every save.',
+        'Every message in the customer panel now says who sent it and when. Each one was the same box in a column, told apart only by a faint tint. The name now sits above it, and the bubble takes the side and the full colour that Records already uses for the same conversation.',
+        'The availability icon now keeps itself up to date within a minute. Do Not Disturb set on the web reached the desktop immediately, but the icon only showed the change once you switched tabs.',
+        'The voicemail list now names the one reason a transcript is missing and says who can turn it on, instead of offering two possible causes and settling neither. Voicemail transcription is off on every number today, it is switched on per number, and the phone network charges for each one. The Records tab shows a different thing: the transcription of the whole call, including the menu the caller listened to before leaving a message.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0206',
+      date: '14 Sep 2026',
+      items: [
+        'A call answered on another device, or by a colleague in the ring group, now stops ringing everywhere else on the web. Only the customer hanging up was being noticed - the two events that mean somebody else took the call were dropped, so a browser went on ringing a call that had already ended.',
+        'Switching company now picks up that company phone line, instead of leaving the phone dead for the rest of the session.',
+        'The phone no longer tells a web browser that it needs a web browser when no line was found.',
+        'The mobile icon now narrows the window itself rather than only the app inside it, and works whether or not the window has been moved.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0205',
+      date: '14 Sep 2026',
+      items: [
+        'Disconnecting and reconnecting a Google Ads account no longer detaches its enquiries. They are re-linked automatically, without re-reading anything from Google. Enquiries detached before this update are re-linked only when Google next returns them, and the oldest may never be.',
+        'A company can be made a sub company, a sub company can be made a company again, and a sub company can be moved to a different parent. It is in a company menu on the Organization screen. It needs somebody who stands at the whole organization, because moving a branch hands the work of its people to a different set of managers.',
+        'An arriving call now sounds like a phone ringing rather than like a call you placed. The alert was the tone a caller hears while waiting - the same one played when you ring out - so both ends of a call sounded identical.',
+        'Fixed: everybody who already had an account was locked out of changing anything. A new check asked whether each person had confirmed their email address, and nobody who signed up before it existed ever had the chance. Accounts that predate the check are now treated as confirmed.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0204',
+      date: '14 Sep 2026',
+      items: [
+        'Reconnecting a Google Ads account now reclaims the enquiries it was disconnected from, instead of leaving them unattached and unanswerable. Each one is picked back up the first time it is seen after this update.',
+        'A Google Ads connection is no longer marked broken when Google is merely busy. A rate limit had silently stopped three live accounts for up to four days.',
+        'The window shown after connecting an account now names what was connected and where it goes - Google Ads and Thumbtack enquiries say Leads, Business Profile says Reviews - and draws the provider mark instead of appearing as bare text.',
+        'An incoming call now rings on Android. Two phone permissions were declared but never actually asked for, so a fresh install could not even check whether Android would let it be a phone. Placing a call and its audio have not been confirmed yet.',
+        'Not taking calls now covers your whole account, and the other apps catch up when you look at them. Setting it on the web left the desktop showing you as available - and a call rang. Opening the app somewhere it had never been opened also quietly put you back on the rota. This is the half that the two previous attempts missed.',
+        'Human Resources: an invitation now says what became of the message - sent, refused, or not attempted because this installation sends no mail - and one whose outcome your version cannot read says so rather than saying it may have arrived.',
+        'Human Resources: a mistyped invitation address can be corrected, and the link that went to the wrong address stops working.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0203',
+      date: '14 Sep 2026',
+      items: [
+        'Android takes two steps towards making calls work, both of which were missing. The app now registers with the calling network, and registers the calling account Android requires before it will carry a call at all - until now it had never asked, so the system refused to place or accept anything and a call failed instantly in both directions with nothing on screen explaining why. Calls are not working yet. On a phone you will need to switch EzBizi on under Android Calling accounts, where it appears as Provides calling services for EzBizi; while it is off the phone icon shows a crossed-out handset rather than claiming to be ready.',
+        'Notifications are sent by email as well as appearing in the app. The settings screen has promised this since August and the code was not there; it is now. It goes to the same people the in-app notification does, up to fifty of them - above that the bell still works and no mail is sent at all, rather than mail going to some of them.',
+        'Turning off in-app notifications no longer silences email as well. It was described as a master switch, which was true of a system with one channel and wrong the moment there were two. Each channel is now its own choice.',
+        'Quiet hours still does nothing, and now says plainly what that costs: a notification raised at three in the morning used to be a silent line you found later, and since this release it can ring a phone.',
+        'A rule can email a finished inspection report to the customer. There is no send button - it is an automation you attach to a report being submitted, so who may send, when, and to whom are answered per company rather than in code. A company that has not set up its own sending address is refused rather than sent from ours.',
+        'Automations can run when Windows reports a computer antivirus, firewall or updates as off or paused, so you can be told about it rather than having to notice. It is raised once when it happens, not again until it is fixed and happens a second time.',
+        'Human Resources: an invitation is only reported as emailed when the installation can actually send. On a setup that quietly delivers nowhere it used to say the invitation had been emailed, which is exactly where somebody tests the flow and concludes it works.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0202',
       date: '14 Sep 2026',
       items: [

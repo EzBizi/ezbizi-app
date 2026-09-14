@@ -153,3 +153,43 @@ Access*. Signed in as an account with a linked profile.
 - If rejected on profile age, re-file after **24 October 2026**.
 - Settle the storage question in [Reviews §5](REVIEWS.md) before approval —
   the form's *General API Question* option costs nothing.
+
+## 9 · Measured 14 September 2026 — filed, inside the window, nothing back
+
+Filed **3 September** (517ef1bf). Google's confirmation screen quoted *"7-10
+business days"*. Counting from 4 September and treating Monday 7 September as
+the Labor Day holiday, **14 September is business day 6** — the window closes
+somewhere around **17–22 September**. Nothing is overdue yet.
+
+**Google has sent nothing.** Searched both mailboxes over the Workspace
+delegation with `in:anywhere`, which reaches Spam and Trash — an absence that
+skipped those would not be an absence:
+
+    info@ezbizi.com          "2027000041783"                 0 messages
+                             Business Profile API / api_default / Basic API Access
+                                                             0 messages
+    development@ezbizi.com   same two searches               0 messages
+
+The instrument works: the same search shape finds the **Ads** case in
+development@ (three messages, `9-3038000041842`). So zero here is Google's
+silence, not a broken query. Note there was no acknowledgement email for this
+case at all — only the confirmation screen the case number was read off.
+
+**State of the plumbing, same date.** Enabled on `ezbizi-506117`: account
+management, business information, performance, verifications. `mybusiness
+.googleapis.com/v4` is *not* enabled and should not be — it rides on the
+`business.manage` grant, as `BusinessProfileReviews` already documents.
+Service Usage reports no per-minute limit for these APIs, and **that number
+cannot be read as 0** — the same endpoint returns an empty bucket for Google
+Ads' *Basic Access Granted*, which we know is granted. Quota state is only
+readable from the Console.
+
+There is **no real Business Profile connection anywhere**. The single
+`google_business_profile` row is the seeder's `DEMO-accounts/demo` in the EzBizi
+Demo organization, `credentials` NULL, `last_reached_at` never; the 5 reviews
+and 2 replies all carry its id and one identical timestamp. So nothing in the
+product is waiting on a token — it is waiting on the application.
+
+**One thing not measured:** whether the OAuth consent screen is verified for the
+sensitive `business.manage` scope. The Console page behind it demands Jose's
+passkey, so only he can read it.

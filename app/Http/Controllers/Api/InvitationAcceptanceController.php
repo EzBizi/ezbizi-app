@@ -379,6 +379,31 @@ class InvitationAcceptanceController extends Controller
             'date_of_birth' => $input['date_of_birth'] ?? null,
         ]);
 
+        /*
+         * Verified on arrival, and not as a shortcut (TODO #22).
+         *
+         * The invitation was SENT to this address, and the link inside it is
+         * single use. Redeeming it IS proof of control of that mailbox - the
+         * same proof a confirmation email asks for, already furnished. Asking
+         * again would be asking somebody to prove twice, by email, that they can
+         * read the email we just sent them.
+         *
+         * Leaving it null would be worse than pointless: RequireVerifiedEmail
+         * refuses writes to an unverified account, so every invited employee
+         * would sign in successfully and then be unable to enter anything, told
+         * to check a confirmation message nobody ever sent them. Signup is the
+         * only route with something left to prove, because nothing was sent to
+         * that address first.
+         *
+         * forceFill rather than a key in the create() above: `email_verified_at`
+         * is deliberately absent from the model's #[Fillable] list, because a
+         * verification state must never be settable by mass assignment - see the
+         * note in routes/api.php beside the profile PATCH. Passing it to create()
+         * is silently discarded, which is exactly how this would have shipped
+         * looking correct and doing nothing.
+         */
+        $user->forceFill(['email_verified_at' => now()])->save();
+
         \App\Models\EmploymentEvent::create([
             'organization_id' => $user->organization_id,
             'user_id'         => $user->getKey(),

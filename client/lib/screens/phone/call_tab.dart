@@ -8,6 +8,7 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../core/phone_call_service.dart';
+import '../../core/timestamps.dart';
 import 'staff_thread.dart';
 import 'call_history_pane.dart';
 
@@ -346,7 +347,8 @@ class _CallTabState extends State<CallTab> {
   /// once when this screen registered the device itself, which is how the
   /// banner came to sit across the top of a call that was connected
   /// underneath it.
-  bool get _deskDown => !_service.registered;
+  /// Not while it is still coming up — see [PhoneCallService.starting].
+  bool get _deskDown => !_service.registered && !_service.starting;
 
   /// Keep the customer column even with nobody on the line.
   /// Seeded from the person's own preference in [initState], because the
@@ -657,7 +659,22 @@ class _CallTabState extends State<CallTab> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                _service.supported
+                // ── ASK "IS THERE A LINE" BEFORE "CAN THIS PLATFORM" ──
+                //
+                // `supported` is read through the device, and the device does
+                // not exist until start() finds a line — so a desk that never
+                // started answered false to a question about the PLATFORM.
+                // Jose saw the browser sentence in a browser: the shell starts
+                // the desk once, at sign-in, and anybody whose view had no
+                // phone line then was told for the rest of the session that
+                // their browser was not a browser.
+                //
+                // No line here means nothing registered and nothing to
+                // register to, which is a different fact and a fixable one.
+                !_service.hasLine
+                    ? 'This desk has not picked up a line yet. Press Try '
+                          'again; if it keeps happening, sign out and back in.'
+                    : _service.supported
                     // Say WHAT WENT WRONG when the platform told us, and only
                     // guess when it did not. The old sentence named the
                     // network every time, so an expired token, a rejected
@@ -690,9 +707,25 @@ class _CallTabState extends State<CallTab> {
                 ),
               ),
             ),
+            // The way out, where the way out is not a retry.
+            //
+            // Android will not let the app carry a call until the user has
+            // enabled it under Calling accounts, and no amount of pressing
+            // Try again reaches that screen. Same rule as the one below,
+            // applied to the opposite case: offer the control that CAN
+            // succeed, and only where it can.
+            if (_service.needsCallingAccount)
+              TextButton(
+                onPressed: () => _service.openCallingSettings(),
+                child: const Text('Open settings'),
+              ),
+
             // No Retry where retrying cannot succeed. A control that can
             // only ever fail is worse than none: it reads as "not yet".
-            if (_service.supported)
+            //
+            // With no line, restart() is the one thing that CAN fix it: it
+            // re-reads /phone/numbers, which is the call that came back empty.
+            if (!_service.hasLine || _service.supported)
               TextButton(
                 onPressed: () => _service.restart(widget.api),
                 child: const Text('Try again'),
@@ -1312,23 +1345,69 @@ class _CallTabState extends State<CallTab> {
               : ListView(
                   padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
                   children: [
+                    // ── WHICH WAY DID THIS ONE GO ───────────────
+                    //
+                    // Every message was the same box in a column, separated
+                    // from the one above it only by a tint at half opacity.
+                    // Jose put it plainly: "I can't see who the message was
+                    // sent to." Nothing here said. The panel names the other
+                    // end at the top, so the missing fact was never WHO the
+                    // conversation is with — it was which of the two of you
+                    // said each line, and when.
+                    //
+                    // Said three ways because one is not enough in a column
+                    // this narrow: the side it sits on, the name above it,
+                    // and a full-strength colour instead of a wash. It is the
+                    // same bubble Records draws for the same rows, which is
+                    // the point — two screens showing one conversation should
+                    // not disagree about what it looks like.
                     for (final message in _messages)
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: message.outbound
-                              ? theme.colorScheme.primaryContainer.withValues(
-                                  alpha: 0.5,
-                                )
-                              : theme.colorScheme.surfaceContainerHighest
-                                    .withValues(alpha: 0.5),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: EzBiziTheme.edge(context)),
-                        ),
-                        child: Text(
-                          message.body,
-                          style: theme.textTheme.bodyMedium,
+                      Align(
+                        alignment: message.outbound
+                            ? Alignment.centerRight
+                            : Alignment.centerLeft,
+                        child: Container(
+                          constraints: const BoxConstraints(maxWidth: 320),
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: message.outbound
+                                ? theme.colorScheme.primaryContainer
+                                : theme.colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: EzBiziTheme.edge(context),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                message.outbound
+                                    ? 'You'
+                                    : formatPhoneNumber(_peer),
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                message.body,
+                                style: theme.textTheme.bodyMedium,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                formatStamp(
+                                  message.createdAt,
+                                  '',
+                                  formats: widget.session.me!.display,
+                                ),
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     if (_messages.isEmpty)

@@ -426,6 +426,31 @@ void main() {
     expect(find.text('Thursday morning still good?'), findsOneWidget);
   });
 
+  /// Every message says who said it.
+  ///
+  /// The panel drew each one as the same box in a column, told apart only by
+  /// a tint at half opacity, and Jose reported it as not being able to see
+  /// who a message was sent to. Both directions have to be on screen for this
+  /// to mean anything — a test with one inbound message passes whether or not
+  /// the app can tell the two apart.
+  testWidgets('a message names who sent it', (tester) async {
+    await _pump(tester, size: const Size(900, 800));
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Number'),
+      '+12035550199',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Thursday morning still good?'), findsOneWidget);
+    expect(find.text('Yes, nine works.'), findsOneWidget);
+
+    // Ours is labelled, theirs carries their number, and the panel heading is
+    // not what is being found: that shows the raw '+12035550199'.
+    expect(find.text('You'), findsOneWidget);
+    expect(find.text('+1 (203) 555-0199'), findsOneWidget);
+  });
+
   testWidgets('pad digits load the thread as E.164', (tester) async {
     final seen = <http.Request>[];
     await _pump(tester, size: const Size(900, 800), seen: seen);
@@ -648,6 +673,62 @@ void main() {
 
     expect(find.textContaining('the network is blocking'), findsOneWidget);
     expect(find.text('Try again'), findsOneWidget);
+  });
+
+  /// Android's calling account is the one failure a retry cannot fix.
+  ///
+  /// ── Why the banner needed a second control ───────────────────────
+  ///
+  /// Telecom will not let the app place or accept a call until the user has
+  /// switched EzBizi on under Android's Calling accounts. Pressing Try again
+  /// cannot reach that screen, so on its own it is a control that can only
+  /// fail — the same rule the desktop branch already follows, applied to the
+  /// opposite case: offer the control that CAN succeed.
+  testWidgets('a phone with no calling account is offered the way out', (
+    tester,
+  ) async {
+    final device = _FakeDevice()
+      ..supported = true
+      ..registered = false
+      ..needsCallingAccount = true
+      ..registrationError =
+          'Android has not been given permission for this app to make and '
+          'take calls. Open Calling accounts and switch EzBizi on.';
+
+    await _pump(tester, device: device);
+
+    expect(find.text('Open settings'), findsOneWidget);
+    expect(
+      find.textContaining('Calling accounts'),
+      findsOneWidget,
+      reason: 'the banner does not say what is wrong, only that something is',
+    );
+
+    // The BUTTON, not the flag. A control that appears and is wired to
+    // nothing looks exactly like one that works, and is how a fix ships
+    // having never been exercised.
+    await tester.tap(find.text('Open settings'));
+    await tester.pump();
+
+    expect(device.openedCallingSettings, 1);
+  });
+
+  /// And it is not offered to anybody else.
+  ///
+  /// The control. Without it, a banner that always drew the button would pass
+  /// the test above — and would send a Windows user, or a phone that is
+  /// working, to a settings screen that has nothing to do with them.
+  testWidgets('an ordinary failure is not sent to the settings screen', (
+    tester,
+  ) async {
+    final device = _FakeDevice()
+      ..supported = true
+      ..registered = false;
+
+    await _pump(tester, device: device);
+
+    expect(find.text('Try again'), findsOneWidget);
+    expect(find.text('Open settings'), findsNothing);
   });
 
   /// The bug that made outbound calling fail for weeks.
@@ -1137,6 +1218,16 @@ void main() {
 }
 
 class _FakeDevice implements VoiceDevice {
+  // Android's Telecom account. Settable so a test can put the desk into the
+  // one state a retry cannot fix, rather than only the happy one.
+  @override
+  bool needsCallingAccount = false;
+
+  var openedCallingSettings = 0;
+
+  @override
+  Future<void> openCallingSettings() async => openedCallingSettings++;
+
   @override
   void Function()? onAnswered;
 
@@ -1396,6 +1487,17 @@ MockClientHandler _handler({
             'body': 'Thursday morning still good?',
             'customer_id': 'c-1',
             'created_at': '2026-08-23T16:02:00+00:00',
+          },
+          {
+            'id': 'm-2',
+            'number_id': 'n-1',
+            'connection_id': 'pc-1',
+            'direction': 'outbound',
+            'from_e164': '+12035550142',
+            'to_e164': '+12035550199',
+            'body': 'Yes, nine works.',
+            'customer_id': 'c-1',
+            'created_at': '2026-08-23T16:09:00+00:00',
           },
         ],
       });

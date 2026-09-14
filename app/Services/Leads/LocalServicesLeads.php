@@ -83,6 +83,14 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
     public function sync(SocialConnection $connection, ?int $days = null, bool $withConversations = true): array
     {
         $token = GoogleToken::forConnection($connection, 'google_ads');
+
+        // Before deciding what to ask Google for, take back what is already
+        // here. This has to run first: `since()` reads its watermark from the
+        // leads this connection owns, and a reconnected account owns none until
+        // the reclaim runs - so without it every reconnect re-reads from
+        // FIRST_RUN_DAYS and pays for leads it already holds.
+        $reclaimed = $this->reclaim($connection);
+
         $since = $days !== null ? now()->subDays($days) : $this->since($connection);
 
         $fetched = 0;
@@ -114,11 +122,56 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
         $connection->forceFill(['last_reached_at' => now()])->save();
 
         return [
-            'fetched'       => $fetched,
-            'created'       => $created,
-            'updated'       => $updated,
+            'fetched' => $fetched,
+            'created' => $created,
+            'updated' => $updated,
+            'reclaimed' => $reclaimed,
             'conversations' => $conversations,
         ];
+    }
+
+    /**
+     * Re-attach enquiries this account already produced.
+     *
+     * Disconnecting sets `leads.connection_id` to NULL through the foreign key
+     * rather than deleting the enquiry - correct, because these are the
+     * business's own customers and some are already jobs. Reconnecting then
+     * creates a NEW connection row, and nothing carried the leads across.
+     *
+     * Until `remote_customer_id` existed the only way back was to make Google
+     * send each lead again, which costs quota, is bounded by a date window, and
+     * leaves everything outside that window detached permanently. On
+     * 2026-09-14 that played out three times in one afternoon: a disconnect
+     * orphaned 41,006 leads, two forced re-reads reclaimed 5,430, and a second
+     * reconnect eight minutes later dropped them to 2,547 because the
+     * connection rows had been replaced underneath.
+     *
+     * Google's customer id is the fact that survives all of it. Matching on it
+     * is exact rather than inferred - which matters, because the obvious
+     * alternative was matching by company, and A-1 Chimney has 37 accounts
+     * under one company. A wrong match sends somebody's reply through a
+     * stranger's account.
+     *
+     * Scoped to the organization as well as the customer id. The id is Google's
+     * and is unique to them, but a query that trusts one tenant's column to be
+     * unique across all tenants is a scope hole waiting for the day it is not.
+     *
+     * @return int how many were taken back
+     */
+    private function reclaim(SocialConnection $connection): int
+    {
+        $customerId = (string) ($connection->remote_id ?? '');
+
+        if ($customerId === '') {
+            return 0;
+        }
+
+        return Lead::query()
+            ->where('organization_id', $connection->organization_id)
+            ->where('source', Lead::SOURCE_LOCAL_SERVICES)
+            ->where('remote_customer_id', $customerId)
+            ->whereNull('connection_id')
+            ->update(['connection_id' => $connection->getKey()]);
     }
 
     /**
@@ -203,7 +256,7 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
             return $none;
         }
 
-        $since   = $days !== null ? now()->subDays($days) : $this->conversationsSince($connection);
+        $since = $days !== null ? now()->subDays($days) : $this->conversationsSince($connection);
         $fetched = 0;
         $created = 0;
         $pending = [];   // remote lead id => conversations whose lead we do not hold yet
@@ -373,13 +426,13 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
             );
         }
 
-        $token      = GoogleToken::forConnection($connection, 'google_ads');
+        $token = GoogleToken::forConnection($connection, 'google_ads');
         $customerId = preg_replace('/\D/', '', (string) $connection->remote_id) ?? '';
 
         try {
             $response = Http::withToken($token)
                 ->withHeaders([
-                    'developer-token'   => (string) config('services.google_ads.developer_token'),
+                    'developer-token' => (string) config('services.google_ads.developer_token'),
                     'login-customer-id' => $connection->login_customer_id ?: $customerId,
                 ])
                 ->timeout(self::TIMEOUT)
@@ -387,7 +440,7 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
                     GoogleAdsOAuth::endpoint()."/customers/{$customerId}/localServices:appendLeadConversation",
                     ['conversations' => [[
                         'localServicesLead' => "customers/{$customerId}/localServicesLeads/{$lead->remote_id}",
-                        'text'              => $text,
+                        'text' => $text,
                     ]]],
                 );
         } catch (ConnectionException) {
@@ -395,13 +448,13 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
         }
 
         if ($response->failed()) {
-            $error  = (array) $response->json('error', []);
+            $error = (array) $response->json('error', []);
             $detail = is_string($error['message'] ?? null) ? (string) $error['message'] : '';
 
             Log::warning('Google refused a Local Services reply.', [
-                'http_status'   => $response->status(),
+                'http_status' => $response->status(),
                 'google_status' => is_string($error['status'] ?? null) ? $error['status'] : null,
-                'detail'        => mb_substr($detail, 0, 300),
+                'detail' => mb_substr($detail, 0, 300),
             ]);
 
             throw new RuntimeException(sprintf(
@@ -413,17 +466,17 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
         // "customers/123/localServicesLeadConversations/456": the id is the
         // last segment, and it is the same id the next sync will bring back,
         // which is what stops the sync storing this message a second time.
-        $name     = (string) ($response->json('responses.0.localServicesLeadConversation') ?? '');
+        $name = (string) ($response->json('responses.0.localServicesLeadConversation') ?? '');
         $remoteId = trim((string) substr(strrchr($name, '/') ?: '', 1)) ?: ('sent-'.now()->format('YmdHisv'));
 
         $row = LeadConversation::create([
             'organization_id' => $lead->organization_id,
-            'lead_id'         => $lead->getKey(),
-            'remote_id'       => $remoteId,
-            'channel'         => LeadConversation::CHANNEL_MESSAGE,
-            'participant'     => LeadConversation::FROM_ADVERTISER,
-            'occurred_at'     => now(),
-            'text'            => $text,
+            'lead_id' => $lead->getKey(),
+            'remote_id' => $remoteId,
+            'channel' => LeadConversation::CHANNEL_MESSAGE,
+            'participant' => LeadConversation::FROM_ADVERTISER,
+            'occurred_at' => now(),
+            'text' => $text,
         ]);
 
         $this->refreshLastContact($lead);
@@ -456,7 +509,7 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
      */
     private function conversationFromRow(array $row): ?array
     {
-        $c  = (array) ($row['localServicesLeadConversation'] ?? []);
+        $c = (array) ($row['localServicesLeadConversation'] ?? []);
         $id = trim((string) ($c['id'] ?? ''));
 
         if ($id === '') {
@@ -474,21 +527,21 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
         }
 
         $call = (array) ($c['phoneCallDetails'] ?? []);
-        $msg  = (array) ($c['messageDetails'] ?? []);
+        $msg = (array) ($c['messageDetails'] ?? []);
 
         return [
-            'id'           => $id,
-            'leadId'       => $leadId,
-            'timeZone'     => ((array) ($row['customer'] ?? []))['timeZone'] ?? null,
-            'channel'      => trim((string) ($c['conversationChannel'] ?? '')) ?: 'UNKNOWN',
-            'participant'  => trim((string) ($c['participantType'] ?? '')) ?: 'UNKNOWN',
-            'occurredAt'   => $c['eventDateTime'] ?? null,
-            'durationMs'   => isset($call['callDurationMillis']) && is_numeric($call['callDurationMillis'])
+            'id' => $id,
+            'leadId' => $leadId,
+            'timeZone' => ((array) ($row['customer'] ?? []))['timeZone'] ?? null,
+            'channel' => trim((string) ($c['conversationChannel'] ?? '')) ?: 'UNKNOWN',
+            'participant' => trim((string) ($c['participantType'] ?? '')) ?: 'UNKNOWN',
+            'occurredAt' => $c['eventDateTime'] ?? null,
+            'durationMs' => isset($call['callDurationMillis']) && is_numeric($call['callDurationMillis'])
                 ? (int) $call['callDurationMillis']
                 : null,
             'recordingUrl' => trim((string) ($call['callRecordingUrl'] ?? '')) ?: null,
-            'text'         => trim((string) ($msg['text'] ?? '')) ?: null,
-            'attachments'  => isset($msg['attachmentUrls']) && is_array($msg['attachmentUrls']) && $msg['attachmentUrls'] !== []
+            'text' => trim((string) ($msg['text'] ?? '')) ?: null,
+            'attachments' => isset($msg['attachmentUrls']) && is_array($msg['attachmentUrls']) && $msg['attachmentUrls'] !== []
                 ? array_values(array_map('strval', $msg['attachmentUrls']))
                 : null,
         ];
@@ -502,15 +555,15 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
     private function storeConversation(Lead $lead, array $raw): bool
     {
         return $this->threads->store($lead, $raw['id'], [
-            'channel'       => $raw['channel'],
-            'participant'   => $raw['participant'],
-            'occurred_at'   => $raw['occurredAt'] !== null
+            'channel' => $raw['channel'],
+            'participant' => $raw['participant'],
+            'occurred_at' => $raw['occurredAt'] !== null
                 ? self::whenGoogleSaid((string) $raw['occurredAt'], $raw['timeZone'] ?? null)
                 : now(),
-            'duration_ms'   => $raw['durationMs'],
+            'duration_ms' => $raw['durationMs'],
             'recording_url' => $raw['recordingUrl'],
-            'text'          => $raw['text'],
-            'attachments'   => $raw['attachments'],
+            'text' => $raw['text'],
+            'attachments' => $raw['attachments'],
         ]);
     }
 
@@ -571,7 +624,6 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
     ): array {
         $customerId = preg_replace('/\D/', '', (string) $connection->remote_id) ?? '';
 
-
         /*
          * GAQL against local_services_lead, not the invented REST method
          * `localServices:searchDetailedLeadReports`.
@@ -612,7 +664,7 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
                 fn ($row) => $this->fromSearchRow(is_array($row) ? $row : []),
                 $found['results'],
             ))),
-            'next'  => $found['next'],
+            'next' => $found['next'],
         ];
     }
 
@@ -650,7 +702,7 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
 
         $body = array_filter([
             'pageToken' => $pageToken,
-            'query'     => $query,
+            'query' => $query,
         ], fn ($v) => $v !== null);
 
         try {
@@ -690,13 +742,13 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
         }
 
         if ($response->failed()) {
-            $error  = (array) $response->json('error', []);
+            $error = (array) $response->json('error', []);
             $detail = is_string($error['message'] ?? null) ? (string) $error['message'] : '';
 
             Log::warning("Google refused a Local Services {$what} fetch.", [
-                'http_status'   => $response->status(),
+                'http_status' => $response->status(),
                 'google_status' => is_string($error['status'] ?? null) ? $error['status'] : null,
-                'detail'        => mb_substr($detail, 0, 300),
+                'detail' => mb_substr($detail, 0, 300),
             ]);
 
             throw new RuntimeException(sprintf(
@@ -710,7 +762,7 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
 
         return [
             'results' => (array) $response->json('results', []),
-            'next'    => is_string($next) && $next !== '' ? $next : null,
+            'next' => is_string($next) && $next !== '' ? $next : null,
         ];
     }
 
@@ -725,21 +777,21 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
     private function fromSearchRow(array $row): ?array
     {
         $lead = (array) ($row['localServicesLead'] ?? []);
-        $id   = trim((string) ($lead['id'] ?? ''));
+        $id = trim((string) ($lead['id'] ?? ''));
 
         if ($id === '') {
             return null;
         }
 
         $contact = (array) ($lead['contactDetails'] ?? []);
-        $credit  = (array) ($lead['creditDetails'] ?? []);
+        $credit = (array) ($lead['creditDetails'] ?? []);
 
         return [
-            'leadId'          => $id,
-            'timeZone'        => ((array) ($row['customer'] ?? []))['timeZone'] ?? null,
-            'leadType'        => $lead['leadType'] ?? null,
-            'leadCategory'    => $lead['categoryId'] ?? null,
-            'leadStatus'      => $lead['leadStatus'] ?? null,
+            'leadId' => $id,
+            'timeZone' => ((array) ($row['customer'] ?? []))['timeZone'] ?? null,
+            'leadType' => $lead['leadType'] ?? null,
+            'leadCategory' => $lead['categoryId'] ?? null,
+            'leadStatus' => $lead['leadStatus'] ?? null,
             /*
              * CHARGED and CREDITED are opposite facts, not two names for one.
              *
@@ -753,15 +805,15 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
              * The credit state wins when Google sends one, because a lead can
              * be charged and later credited and the later fact is the answer.
              */
-            'chargeStatus'    => $credit['creditState']
+            'chargeStatus' => $credit['creditState']
                 ?? ((isset($lead['leadCharged']) && $lead['leadCharged']) ? 'CHARGED' : null),
-            'creationDateTime'=> $lead['creationDateTime'] ?? null,
-            'service'         => $lead['serviceId'] ?? null,
-            'locale'          => $lead['locale'] ?? null,
-            'contactDetails'  => [
-                'phoneNumber'  => $contact['phoneNumber'] ?? null,
+            'creationDateTime' => $lead['creationDateTime'] ?? null,
+            'service' => $lead['serviceId'] ?? null,
+            'locale' => $lead['locale'] ?? null,
+            'contactDetails' => [
+                'phoneNumber' => $contact['phoneNumber'] ?? null,
                 'consumerName' => $contact['consumerName'] ?? null,
-                'email'        => $contact['email'] ?? null,
+                'email' => $contact['email'] ?? null,
             ],
         ];
     }
@@ -779,7 +831,7 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
         }
 
         $contact = (array) ($raw['contactDetails'] ?? []);
-        $phone   = trim((string) ($contact['phoneNumber'] ?? '')) ?: null;
+        $phone = trim((string) ($contact['phoneNumber'] ?? '')) ?: null;
 
         return DB::transaction(function () use ($connection, $raw, $remoteId, $contact, $phone) {
             $lead = Lead::query()
@@ -791,26 +843,26 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
             $created = $lead === null;
 
             $fromSource = [
-                'contact_name'  => trim((string) ($contact['consumerName'] ?? '')) ?: null,
-                'phone'         => $phone,
-                'phone_digits'  => Lead::digits($phone),
-                'email'         => trim((string) ($contact['email'] ?? '')) ?: null,
-                'lead_type'     => trim((string) ($raw['leadType'] ?? '')) ?: null,
-                'category'      => trim((string) ($raw['leadCategory'] ?? '')) ?: null,
-                'service'       => trim((string) ($raw['service'] ?? '')) ?: null,
-                'locale'        => trim((string) ($raw['locale'] ?? '')) ?: null,
+                'contact_name' => trim((string) ($contact['consumerName'] ?? '')) ?: null,
+                'phone' => $phone,
+                'phone_digits' => Lead::digits($phone),
+                'email' => trim((string) ($contact['email'] ?? '')) ?: null,
+                'lead_type' => trim((string) ($raw['leadType'] ?? '')) ?: null,
+                'category' => trim((string) ($raw['leadCategory'] ?? '')) ?: null,
+                'service' => trim((string) ($raw['service'] ?? '')) ?: null,
+                'locale' => trim((string) ($raw['locale'] ?? '')) ?: null,
                 'source_status' => trim((string) ($raw['leadStatus'] ?? '')) ?: null,
                 'charge_status' => trim((string) ($raw['chargeStatus'] ?? '')) ?: null,
-                'received_at'   => isset($raw['creationDateTime'])
+                'received_at' => isset($raw['creationDateTime'])
                     ? self::whenGoogleSaid((string) $raw['creationDateTime'], $raw['timeZone'] ?? null)
                     : now(),
-                'synced_at'     => now(),
+                'synced_at' => now(),
             ];
 
             if ($created) {
                 $lead = new Lead([
                     'organization_id' => $connection->organization_id,
-                    'company_id'      => $connection->scope_type === SocialConnection::SCOPE_COMPANY
+                    'company_id' => $connection->scope_type === SocialConnection::SCOPE_COMPANY
                         ? $connection->scope_id
                         : null,
                     /*
@@ -823,17 +875,63 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
                      * seeing it either way, which is the whole point of the two
                      * columns being separate.
                      */
-                    'franchise_id'    => $connection->leads_franchise_id
+                    'franchise_id' => $connection->leads_franchise_id
                         ?? ($connection->scope_type === SocialConnection::SCOPE_FRANCHISE
                             ? $connection->scope_id
                             : null),
-                    'connection_id'   => $connection->getKey(),
-                    'source'          => Lead::SOURCE_LOCAL_SERVICES,
-                    'remote_id'       => $remoteId,
-                    'status'          => Lead::STATUS_NEW,
+                    'connection_id' => $connection->getKey(),
+                    // Google's own id for the account. It survives a disconnect,
+                    // which connection_id does not, and is what lets a reconnect
+                    // re-link this row without asking Google for it again.
+                    'remote_customer_id' => $connection->remote_id,
+                    'source' => Lead::SOURCE_LOCAL_SERVICES,
+                    'remote_id' => $remoteId,
+                    'status' => Lead::STATUS_NEW,
                     ...$fromSource,
                 ]);
             } else {
+                /*
+                 * Adopt a lead that lost its connection.
+                 *
+                 * Disconnecting deletes the social_connections row and the
+                 * foreign key sets `leads.connection_id` to NULL, so the
+                 * enquiries survive but stop belonging to anything. Until now
+                 * only the CREATE branch set the column, so a reconnected
+                 * account re-read its own leads, updated them, and left every
+                 * one of them orphaned for good.
+                 *
+                 * That is not cosmetic. `canReply()` requires a connection, so
+                 * an orphaned MESSAGE enquiry cannot be answered even once the
+                 * account is back, and `since()` reads its watermark from leads
+                 * carrying the connection id — with none, every reconnect starts
+                 * from FIRST_RUN_DAYS instead of from where it left off.
+                 *
+                 * Jose's "Disconnect all" on 2026-09-14 orphaned 41,006 of
+                 * 41,015 leads this way. ThumbtackLeads::store() has carried the
+                 * same adoption since the Thumbtack incident on 2026-09-10; this
+                 * is the identical hole in the other source, which that fix did
+                 * not reach.
+                 *
+                 * `??=` on the placement columns deliberately: Google says where
+                 * the lead came from, but where its work is FILED is a choice
+                 * somebody made in the app, and re-seeing the lead is not a
+                 * reason to overrule it.
+                 */
+                // Stamped whether or not it is an orphan: rows written before
+                // this column existed have it null and are re-seen here.
+                $lead->remote_customer_id ??= $connection->remote_id;
+
+                if ($lead->connection_id === null) {
+                    $lead->connection_id = $connection->getKey();
+                    $lead->company_id ??= $connection->scope_type === SocialConnection::SCOPE_COMPANY
+                        ? $connection->scope_id
+                        : null;
+                    $lead->franchise_id ??= $connection->leads_franchise_id
+                        ?? ($connection->scope_type === SocialConnection::SCOPE_FRANCHISE
+                            ? $connection->scope_id
+                            : null);
+                }
+
                 // `status` is absent from $fromSource, which is the point.
                 $lead->fill($fromSource);
             }
@@ -843,6 +941,4 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
             return ['lead' => $lead, 'created' => $created];
         });
     }
-
-
 }

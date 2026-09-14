@@ -98,6 +98,84 @@ void main() {
       );
     },
   );
+
+  /// And the beat is what gives the availability icon a minute hand.
+  ///
+  /// ── The report ───────────────────────────────────────────────────
+  ///
+  /// Jose: "the status now syncs across devices, which is good, but only
+  /// displays the change once you change tabs." Do Not Disturb set on the web
+  /// reached the desktop's server state immediately; the desktop's ICON found
+  /// out only when something else made it look.
+  ///
+  /// The hook that was supposed to cover it watches
+  /// `AppLifecycleState.resumed`, which tracks whether the app is VISIBLE —
+  /// and two windows side by side are both visible the whole time, so it never
+  /// fired in the arrangement the report was about.
+  ///
+  /// ── Why this test lives here ─────────────────────────────────────
+  ///
+  /// The fix adds no timer: the shell hands the availability icon the beat
+  /// this file already exists to prove happens. That makes the wiring the
+  /// fragile part — one assignment in `_HomeShellState.initState` — and a test
+  /// of either piece alone would pass with that line deleted.
+  testWidgets('a beat makes the availability icon re-read the server', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    var presenceReads = 0;
+
+    final api = ApiClient(
+      client: MockClient((request) async {
+        if (request.url.path.endsWith('/phone/presence/me')) {
+          presenceReads++;
+          return _json({
+            'data': {'state': 'registered', 'has_line': false},
+          });
+        }
+        if (request.url.path.endsWith('/me')) return _json({'data': _me});
+        if (request.url.path.endsWith('/monitoring/heartbeat')) {
+          return http.Response('', 204);
+        }
+
+        return _json({'message': 'Nothing stubbed for this screen.'}, 500);
+      }),
+    );
+
+    final session = Session(api);
+    await tester.runAsync(() => session.adopt('tok'));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: HomeShell(api: api, session: session, address: null),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final beforeTheBeat = presenceReads;
+    expect(
+      beforeTheBeat,
+      greaterThan(0),
+      reason: 'the icon never read presence at all, so this test cannot tell '
+          'a second read from a first',
+    );
+
+    // Nothing touched. Only a minute passing.
+    await tester.pump(const Duration(seconds: 60));
+    await tester.pumpAndSettle();
+
+    expect(
+      presenceReads,
+      greaterThan(beforeTheBeat),
+      reason: 'a minute passed and nothing asked the server what this person '
+          "is — so a colleague's change to their availability would sit "
+          'unshown until they happened to change tabs',
+    );
+  });
 }
 
 http.Response _json(Object body, [int status = 200]) => http.Response(

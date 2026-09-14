@@ -128,22 +128,90 @@ class SendingIdentitiesApiTest extends TestCase
         $this->assertStringContainsString('verification', $automation['note']);
     }
 
-    public function test_the_screen_is_told_that_nothing_sends_from_this_address_yet(): void
+    /**
+     * Rewritten on 2026-09-14, because the sentence it pinned had become false.
+     *
+     * It asserted the response always carries "nothing sends from your own
+     * address yet ... the Newsletter that will is not built". Inspection landed
+     * 5efe1c55 -- an `inspection.report.email` action whose ActionRunner:452
+     * calls MailDispatcher::asTenant, the first real caller -- so a tenant who
+     * had set and verified an address was being told on screen that nothing
+     * used it, while an inspection rule used exactly that. The controller
+     * asks `canSend()` now instead of asserting a constant.
+     *
+     * Three tests rather than one, because the field has three answers and the
+     * old single assertion could not tell them apart.
+     */
+    public function test_an_address_that_cannot_send_yet_says_so_and_names_what_would_use_it(): void
     {
         $t = $this->provisionTenant('A1-Group');
 
+        // Set, and therefore unverified: the API cannot declare a domain
+        // proved, which is the point of two tests further down this file.
         $sentence = $this->signedInAs($t['admin'])
-            ->getJson($this->at('company', $t['company']->id))
+            ->patchJson($this->at('company', $t['company']->id), $this->body())
             ->assertOk()
             ->json('data.not_yet_in_effect');
 
-        // A control that saves, audits, inherits and changes nothing is worse
-        // than a missing one, because the screen presents it as working. The
-        // sentence has to be careful about WHICH mail, though — password resets
-        // and invitations do send, from EzBizi, and always will.
         $this->assertNotNull($sentence);
-        $this->assertStringContainsString('Newsletter', $sentence);
+
+        // What would use it, so the sentence says what it is waiting FOR
+        // rather than only that it is waiting.
+        $this->assertStringContainsString('inspection', $sentence);
+
+        // And which mail is unaffected, because "EzBizi cannot send email"
+        // would be false.
         $this->assertStringContainsString('password resets', $sentence);
+
+        // The dead premise, pinned so it cannot come back: the Newsletter does
+        // not go through asTenant and the sentence must not say it does.
+        $this->assertStringNotContainsString('Newsletter', $sentence);
+    }
+
+    public function test_a_verified_address_is_not_labelled_as_doing_nothing(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+
+        $this->signedInAs($t['admin'])
+            ->patchJson($this->at('company', $t['company']->id), $this->body())
+            ->assertOk();
+
+        // Written the only way it can be. No route marks an address verified --
+        // that is DomainVerification's job and two tests below prove the API
+        // cannot do it -- so the fixture goes round the outside.
+        $this->inTenant($t['org'], function () {
+            SendingIdentity::first()->forceFill([
+                'state'       => SendingState::Verified->value,
+                'verified_at' => now(),
+            ])->save();
+        });
+
+        $data = $this->signedInAs($t['admin'])
+            ->getJson($this->at('company', $t['company']->id))
+            ->assertOk()
+            ->json('data');
+
+        // CONTROL: the fixture really did verify it, so the null below is the
+        // answer to "can it send" and not the answer to "did anything load".
+        $this->assertSame(SendingState::Verified->value, $data['verification']['state']);
+
+        $this->assertNull(
+            $data['not_yet_in_effect'],
+            'An address that inspection reports now go out from must not be drawn as inert.',
+        );
+    }
+
+    public function test_a_tenant_who_has_set_nothing_has_no_inert_control(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+
+        // The platform fallback. Nothing of theirs is waiting on anything,
+        // because they have set nothing -- the panel says "Nothing set" and a
+        // sentence about an address they do not have would be noise.
+        $this->signedInAs($t['admin'])
+            ->getJson($this->at('company', $t['company']->id))
+            ->assertOk()
+            ->assertJsonPath('data.not_yet_in_effect', null);
     }
 
     // ── reading ──────────────────────────────────────────────────

@@ -55,6 +55,25 @@ abstract class VoiceDevice {
   /// that were not the network.
   String? get registrationError => null;
 
+  /// Whether the fix for [registrationError] is in the SYSTEM's settings.
+  ///
+  /// Android only, and it exists because that failure is the one kind the desk
+  /// cannot resolve by retrying. Telecom will not place or accept a call until
+  /// the user has ENABLED this app under Calling accounts, which is a screen
+  /// only Android can show — so "Try again" on its own is a button that can
+  /// only fail until somebody has been somewhere else first.
+  ///
+  /// A typed flag rather than the desk reading [registrationError] for a
+  /// phrase. A message is copy, it gets reworded, and a button that appears
+  /// because of a substring disappears the day somebody improves the sentence.
+  bool get needsCallingAccount => false;
+
+  /// Take the user to the system screen where they can enable it.
+  ///
+  /// A no-op everywhere [needsCallingAccount] is false, so the desk may call
+  /// it without knowing which platform it is holding.
+  Future<void> openCallingSettings() async {}
+
   /// A platform object the screen must MOUNT for this device to work, or null.
   ///
   /// Only Windows returns one, and it is not a display surface: WebView2

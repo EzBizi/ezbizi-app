@@ -261,6 +261,20 @@ class ReviewSeedOrganization extends Command
     {
         $role = $administrator->role;
 
+        /*
+         * The reviewers below are made with User::create, which cannot carry
+         * `email_verified_at` (not in #[Fillable] - a verification state must
+         * never be mass assignable), so each is confirmed explicitly as it is
+         * made. The administrator needs nothing here: ProvisionOrganization
+         * confirms it by default, and only self-serve signup opts out.
+         *
+         * It matters because a reviewer signs in and immediately tries to create
+         * something. An unconfirmed account reads everything and writes nothing,
+         * so they would meet a 403 telling them to check a confirmation email
+         * sent to an address nobody owns - a Guideline 2.1 rejection written in
+         * our own code, and invisible from here.
+         */
+
         foreach (self::REVIEWERS as $email => $name) {
             if ($email === $administrator->email) {
                 continue;
@@ -274,6 +288,8 @@ class ReviewSeedOrganization extends Command
                 'password'        => $password,
                 'is_active'       => true,
             ]);
+
+            $user->forceFill(['email_verified_at' => now()])->save();
 
             Assignment::create([
                 'organization_id'          => $org->id,

@@ -75,8 +75,9 @@ final class RetentionPolicy
      * silently matched nothing in exactly the table that grows fastest, which is
      * indistinguishable from a table that was already clean.
      *
-     * The nine tables this governs today are `automation_events` (occurred_at),
-     * `invitations` (created_at), `monitoring_activity` (occurred_at),
+     * The 10 tables this governs today are `automation_events` (occurred_at),
+     * `email_verifications` (created_at), `invitations` (created_at),
+     * `monitoring_activity` (occurred_at),
      * `notifications` (created_at), `password_resets` (created_at),
      * `phone_calls` (created_at), `phone_device_registrations` (last_seen_at),
      * `phone_messages` (created_at) and `staff_messages` (created_at). It said

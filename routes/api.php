@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AccountDeletionController;
 use App\Http\Controllers\Api\AddressLookupController;
 use App\Http\Controllers\Api\AttachmentsController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\EmailVerificationController;
 use App\Http\Controllers\Api\AutomationsController;
 use App\Http\Controllers\Api\BlueskyConnectController;
 use App\Http\Controllers\Api\BrandingController;
@@ -207,6 +208,22 @@ Route::prefix('v1/auth')->group(function () {
     // can be used to discover which addresses are registered.
     Route::post('forgot', [PasswordController::class, 'forgot']);
     Route::post('reset', [PasswordController::class, 'reset']);
+
+    /*
+     * Confirming a signup address (TODO #22). Public by necessity: the link is
+     * opened from a mailbox, possibly on another device, by somebody with no
+     * session.
+     *
+     * POST rather than GET, with the token in the BODY. nginx logs the request
+     * line, which is how invitation credentials once ended up in an access log
+     * kept for weeks. The email links the CLIENT at /verify?token=..., and the
+     * client posts it here.
+     *
+     * `verify/resend` is throttled inside the controller, per address AND per
+     * IP, the same shape `forgot` uses.
+     */
+    Route::post('verify', [EmailVerificationController::class, 'verify']);
+    Route::post('verify/resend', [EmailVerificationController::class, 'resend']);
 });
 
 /*
@@ -544,7 +561,7 @@ Route::get('v1/ui-strings', [UiStringsController::class, 'show'])
 
 // ── Authenticated ────────────────────────────────────────────────
 Route::prefix('v1')
-    ->middleware(['auth:sanctum', 'tenant', 'subscription', 'two-factor', 'idle'])
+    ->middleware(['auth:sanctum', 'tenant', 'subscription', 'verified', 'two-factor', 'idle'])
     ->group(function () {
 
         Route::post('auth/logout', [AuthController::class, 'logout']);
@@ -775,6 +792,11 @@ Route::prefix('v1')
         Route::get('companies', [CompaniesController::class, 'index']);
         Route::post('companies', [CompaniesController::class, 'store']);
         Route::patch('companies/{company}', [CompaniesController::class, 'update']);
+
+        // Its own route rather than a key on the PATCH above, which refuses
+        // parent_company_id outright: a field that reshapes the organization
+        // must not ride along with a phone number.
+        Route::patch('companies/{company}/parent', [CompaniesController::class, 'reparent']);
 
         /*
         | ── How the business arranged the PICTURE of that structure ──
@@ -1816,6 +1838,22 @@ Route::prefix('v1')
                     // would come back with every screen quietly answering 403
                     // and nothing on screen saying why.
                     'two_factor_enrolment_required' => app(TwoFactorPolicy::class)->mustEnrol($user),
+
+                    // This address has not been confirmed, so RequireVerifiedEmail
+                    // refuses every write (TODO #22). Carried here for exactly the
+                    // reason two_factor_enrolment_required above is: a refresh
+                    // restores the session from a stored token and never sees a
+                    // login body, so without it the app returns with every save
+                    // answering 403 and nothing on screen saying why.
+                    //
+                    // A boolean rather than the timestamp, following has_avatar:
+                    // the client's question is whether to show the banner, and a
+                    // date would make it derive that itself in a second place.
+                    //
+                    // Staff are never gated - the middleware exempts anything that
+                    // is not a User - so this is false for them and the banner
+                    // cannot appear on a staff session that could not act on it.
+                    'email_confirmation_required' => $user->email_verified_at === null,
 
                     // SECURITY exemption (Monitoring): the Lead Developer's own
                     // device is never screen-captured, live-viewed or

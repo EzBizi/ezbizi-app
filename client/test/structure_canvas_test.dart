@@ -3194,6 +3194,7 @@ class _HarnessState extends State<_Harness> {
           onToggleActive: () {},
           onAddFranchise: () {},
           onAddSubCompany: node.isSub ? null : () {},
+          onMove: () {},
         ),
         structureFranchise => FranchiseActionsMenu(
           franchise: node.raw,

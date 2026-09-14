@@ -184,6 +184,31 @@ class PresenceController extends Controller
             ->where('user_id', $user->id)
             ->first();
 
+        // AWAY ANYWHERE IS AWAY, and this row may not exist yet.
+        //
+        // Availability is stored per connection, but it is a decision a PERSON
+        // makes, and the two kept coming apart. Measured on Jose's account:
+        // two presence rows across four connections, both `dnd` — so a desk
+        // starting on either of the other two called `updateOrCreate`, found
+        // no row, and created one. A new row has no previous state, so the
+        // guard below could not fire, and it was born taking calls while its
+        // owner had said they were not.
+        //
+        // He reported it as the third variant of one bug: web on Do Not
+        // Disturb, desktop showing available, and a call ringing him anyway.
+        // His words: it should put my entire account on Do Not Disturb, not
+        // just my current session.
+        //
+        // Asked of every connection rather than this one, so it covers the
+        // creation as well as the change — and covers the third case too, a
+        // row still marked `on_call` while the others are away, which
+        // `setMine` skips deliberately and which used to come back available
+        // the moment the call ended.
+        $awayElsewhere = PhonePresence::query()
+            ->where('user_id', $user->id)
+            ->where('state', PhonePresence::STATE_DND)
+            ->exists();
+
         $presence = PhonePresence::query()->updateOrCreate(
             [
                 'connection_id' => $connection->id,
@@ -191,7 +216,12 @@ class PresenceController extends Controller
             ],
             [
                 'organization_id' => $this->tenant->idOrFail(),
-                ...$this->storedState($connection, $current, (string) $input['state']),
+                ...$this->storedState(
+                    $connection,
+                    $current,
+                    (string) $input['state'],
+                    $awayElsewhere,
+                ),
             ],
         );
 
@@ -262,6 +292,7 @@ class PresenceController extends Controller
         PhoneConnection $connection,
         ?PhonePresence $current,
         string $wanted,
+        bool $awayElsewhere = false,
     ): array {
         // FIRST, and for EVERY state rather than just `registered`.
         //
@@ -292,7 +323,16 @@ class PresenceController extends Controller
         // them from exactly that (PhonePresence::scopeAvailable). The "on a
         // call" lamp on the Dial picker reads live PhoneCall rows rather than
         // this column, so it is unaffected.
-        if ($current?->state === PhonePresence::STATE_DND) {
+        // The rule, stated once, for this row and for every other.
+        //
+        // Twice now I have written a guard naming the states a desk may not
+        // write, and twice the next report came through a state the guard did
+        // not name — first `on_call`, then a row that did not exist yet. Both
+        // times the mistake was the same: describing the transition instead of
+        // the person. So this asks the only question that decides it — is this
+        // person away, anywhere — and the desk cannot answer yes to a call
+        // while they are.
+        if ($current?->state === PhonePresence::STATE_DND || $awayElsewhere) {
             return [
                 'state' => PhonePresence::STATE_DND,
                 'wrap_up_until' => null,

@@ -217,6 +217,43 @@ class MonitoringHeartbeat {
     };
 
     await _api.post('/monitoring/heartbeat', body);
+
+    // Somebody else wanted a minute to have passed.
+    //
+    // This object already owns the only periodic timer the shell runs, and a
+    // second one costs more than the tick it produces: every `Timer.periodic`
+    // alive in a widget test makes `pumpAndSettle` wait for ever, so a new one
+    // has to be defused in every test that renders the app bar. Handing out
+    // the beat that already happens costs nothing and adds no timer.
+    //
+    // Deliberately carries NOTHING about what beat or why. This is a clock,
+    // not a channel — the listener is expected to go and ask its own question.
+    _tick();
+  }
+
+  /// Called after each keep-alive beat. See [_post].
+  void Function()? onBeat;
+
+  /// Rings [onBeat] without letting it become the heartbeat's problem.
+  ///
+  /// The try/catch is not defensive habit, it is the difference between a
+  /// listener's bug and a broken app. `_post` is awaited by [enter], so an
+  /// exception thrown by somebody else's callback propagates out of "the
+  /// person switched module" — a failed presence fetch would have taken the
+  /// nav rail with it. From the timer it is milder but still wrong: an
+  /// unhandled async error every 60 seconds, for ever.
+  ///
+  /// Same reasoning, same shape, as ScreenshotService._report, which guards
+  /// its own outcome callback for exactly this reason. The rule for this class
+  /// is that nothing a caller hands it can stop it beating.
+  void _tick() {
+    try {
+      onBeat?.call();
+    } catch (_) {
+      // Deliberately swallowed: see above. A listener that throws is a bug in
+      // the listener, and it is the listener's job to notice it — silently
+      // ending the keep-alive would take presence down for everybody instead.
+    }
   }
 
   /// Stops the keep-alive timer. Call this when whatever owns this instance

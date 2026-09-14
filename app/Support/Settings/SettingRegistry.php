@@ -628,8 +628,32 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'notifications.email_enabled', label: 'Send email notifications',
                 type: SettingDefinition::TYPE_BOOL, default: true,
-                notYetInEffect: 'Takes effect when notifications can be sent by email. They are '
-                    .'only shown inside the app today, so switching this off changes nothing.',
+                /*
+                 * The "unless" clause is not hedging: above the ceiling
+                 * NOTHING is emailed, not a subset.
+                 *
+                 * Notifications added an email ceiling in 27a40807 that
+                 * refuses rather than truncates -- mailing an arbitrary subset
+                 * chosen by collection order makes "why did Bob get this and I
+                 * did not" a question with no answer, and the bell has already
+                 * told everybody. Correct, and it made the sentence I wrote
+                 * one commit earlier false for exactly the administrators most
+                 * likely to notice: the ones with a wide automation.
+                 *
+                 * THE NUMBER IS DELIBERATELY NOT REPEATED HERE. Their constant
+                 * is private, so a "50" typed into this string could not be
+                 * derived from it and would go stale the first time they tune
+                 * it -- the same way the sentence above this one went stale.
+                 * A phrasing with no number cannot disagree with the code. If
+                 * naming it turns out to matter to an administrator, the fix is
+                 * for that constant to become public and be interpolated, not
+                 * for a digit to be copied across a module boundary.
+                 */
+                help: 'With this on, a notification is also emailed to each person it was for, '
+                    .'in the same words the app shows -- unless it was for more people than '
+                    .'EzBizi will email at once, and then it stays in the app only. Off leaves '
+                    .'the bell working. The two channels are independent: neither one switched '
+                    .'off silences the other.',
             ),
             new SettingDefinition(
                 key: 'notifications.push_enabled', label: 'Send push notifications',
@@ -640,8 +664,37 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'notifications.in_app_enabled', label: 'Show in-app notifications',
                 type: SettingDefinition::TYPE_BOOL, default: true,
-                help: 'The master switch. Off silences every notification below, including '
-                    .'the ones a company cannot otherwise turn off.',
+                /*
+                 * It called itself "the master switch. Off silences every
+                 * notification below, including the ones a company cannot
+                 * otherwise turn off." That was true and complete about a
+                 * system with ONE channel, and it stopped being true at
+                 * 94ab82a2, when the notifications module split the three
+                 * keys apart: the source toggles decide whether a
+                 * notification happens at all, this one writes the row, and
+                 * `notifications.email_enabled` sends the mail.
+                 *
+                 * Retracted by the session that wrote it, on the argument
+                 * that settles it: the key is NAMED `in_app_enabled`, and
+                 * somebody who unticks "Show in-app notifications" and
+                 * silently stops receiving MAIL has been lied to by the name.
+                 *
+                 * Nothing was lost by the split, including the case the old
+                 * sentence was protecting. `system` has no source toggle
+                 * deliberately -- it carries "your trial ends tomorrow" -- and
+                 * this was its only off switch; now its row is silenced here
+                 * and its mail by the email key, independently. The
+                 * cross-channel master that actually does the job is the
+                 * source map, which is channel-agnostic by construction.
+                 *
+                 * Nothing mechanical catches a help sentence going false --
+                 * the gate in a34bf5f4 watches `notYetInEffect`, not `help`.
+                 * This one was caught by the module that owns the behaviour
+                 * reading its own retraction back against my file.
+                 */
+                help: 'The bell inside the app. Off leaves email working, if this organization '
+                    .'sends notifications by email. To stop a kind of notification reaching '
+                    .'anybody at all, use the switches below.',
             ),
 
             /*
@@ -682,15 +735,29 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_TIME_RANGE,
                 default: ['start' => null, 'end' => null],
                 help: 'Suppress non-urgent notifications. Null disables.',
+                // Sharpened on 2026-09-14, the day notifications started going
+                // out by email. The old sentence -- "every one is raised the
+                // moment it happens today" -- was true and stayed true, and
+                // what changed underneath it was the COST of that being true.
+                // A notification raised at 3am was a silent row nobody saw
+                // until morning; the same notification now rings a phone.
+                // Nothing here is read by anything yet, so the claim is honest;
+                // it just has to say what it is now failing to hold back.
                 notYetInEffect: 'Takes effect when a notification can be held back and delivered '
-                    .'later. Every one is raised the moment it happens today.',
+                    .'later. Nothing is held today: a notification raised at 3am is written at '
+                    .'3am, and emailed at 3am if this organization sends them by email.',
             ),
             new SettingDefinition(
                 key: 'notifications.reply_to_email', label: 'Reply-to address',
                 type: SettingDefinition::TYPE_STRING, default: '',
-                help: 'Blank uses the franchise contact address.',
-                notYetInEffect: 'Takes effect when notifications can be sent by email. There is '
-                    .'no message yet for a reply to come back to.',
+                // It said "Blank uses the franchise contact address", and a
+                // franchise has no contact address -- name, timezone, currency
+                // and the two ids, and nothing else. The sentence described a
+                // column that has never existed, which nobody could find out
+                // while nothing sent mail. Blank now says what actually
+                // happens.
+                help: 'Where replies to a notification email should go. Blank sends them back to '
+                    .'the address EzBizi sends from.',
             ),
         ];
     }

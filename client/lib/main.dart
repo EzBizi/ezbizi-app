@@ -9,6 +9,7 @@ import 'core/deployment.dart';
 import 'core/desktop_updater.dart';
 import 'core/files.dart';
 import 'core/live_view_service.dart';
+import 'core/mobile_view_window.dart';
 import 'core/module_screens.dart';
 import 'core/monitoring_heartbeat.dart';
 import 'core/permissions.dart';
@@ -395,6 +396,19 @@ class _HomeShellState extends State<HomeShell> {
 
   _Rail _rail = _Rail.modules;
 
+  /// Developer only: render the app at phone width without resizing the window
+  /// (Jose, 2026-09-14 — desktop layout 1, mobile layout 4).
+  ///
+  /// Session state rather than a preference. It is a mode you are in for a
+  /// minute; saving it would mean signing in on a desktop to a mobile layout
+  /// with no memory of having asked for one.
+  bool _mobileView = false;
+
+  /// A phone the app has to look right on. Narrow enough to be the real test —
+  /// under the 480 breakpoint `auth_shell` uses, and well under the 600
+  /// `lead_thread` uses and the 900 this shell uses.
+  static const double _phoneWidth = 390;
+
   /// Whether the drawer is showing its rows with drag handles on.
   ///
   /// Held here rather than in the drawer because a Drawer is rebuilt from
@@ -464,6 +478,25 @@ class _HomeShellState extends State<HomeShell> {
       widget.api,
       screenMonitoringExempt: exempt,
     );
+
+    // The availability icon, given a minute hand.
+    //
+    // Do Not Disturb set on the web now reaches the desktop's SERVER state
+    // immediately, and the desktop's ICON found out only when something else
+    // made it look — which in practice meant changing tabs. Jose: "the status
+    // now syncs across devices, which is good, but only displays the change
+    // once you change tabs."
+    //
+    // I had claimed the app coming forward would cover it. It does not, and
+    // his report is what showed that: two windows side by side never leave
+    // the screen, so `AppLifecycleState.resumed` never fires and the hook
+    // watching for it can only wait. That claim is corrected where I made it.
+    //
+    // A minute is the wrong answer for a phone ringing and the right one for
+    // an icon: what it prevents is somebody reading a stale dot for the rest
+    // of the afternoon. Anything that must be immediate — a call starting or
+    // ending — already notifies in the same frame.
+    _heartbeat.onBeat = PhoneCallService.current.presenceMayHaveChanged;
     if (!exempt) {
       // The capture service tells the heartbeat how each attempt went, and
       // the beat carries it to the server — otherwise a device that cannot
@@ -511,13 +544,50 @@ class _HomeShellState extends State<HomeShell> {
     //
     // Safe for somebody with no phone line: start() looks, finds nothing, and
     // leaves everything false.
-    unawaited(PhoneCallService.current.start(widget.api));
+    _followScope();
+    widget.session.addListener(_followScope);
 
     _apply(widget.address?.path);
     _stopListening = widget.address?.listen((path) {
       if (!mounted) return;
       setState(() => _apply(path));
     });
+  }
+
+  /// Which view the desk was brought up for, so a change can be noticed.
+  String? _deskScope;
+
+  /// Try again for a desk that never came up, now that the view has moved.
+  ///
+  /// `start()` reads `/phone/numbers`, which answers for the scope in view,
+  /// and it ran ONCE — at sign-in. Somebody whose view had no line at that
+  /// moment kept a dead desk for the rest of the session however they
+  /// navigated afterwards, and the screen explained it by saying the phone
+  /// needed a web browser. Jose read that in a web browser. Android had hit
+  /// the same thing from the other side: "I changed scope by accident, which
+  /// silently stopped setup() running at all."
+  ///
+  /// ── Only when there is no desk to lose ───────────────────────
+  ///
+  /// The tempting version re-registers on every scope change, so the desk
+  /// always matches the company on screen. That also makes an org admin
+  /// unreachable for as long as they browse a sub company with no line of its
+  /// own — an ordinary thing to do, and a worse failure than the one being
+  /// fixed. So this only reaches for a line when there is none.
+  ///
+  /// ponytail: the desk can still be registered on a company the reader has
+  /// since navigated away from. Give it the scope's own line when somebody
+  /// asks for that, and decide then what a lineless scope should do.
+  void _followScope() {
+    final scope = widget.session.me?.scope;
+    final key = scope == null ? null : '${scope.type}:${scope.id}';
+    if (key == _deskScope) return;
+    _deskScope = key;
+
+    final phone = PhoneCallService.current;
+    if (phone.hasLine) return;
+
+    unawaited(phone.restart(widget.api));
   }
 
   @override
@@ -528,6 +598,8 @@ class _HomeShellState extends State<HomeShell> {
     _screenshots?.dispose();
     _liveView?.dispose();
     _remoteControl?.dispose();
+
+    widget.session.removeListener(_followScope);
 
     // stop(), not dispose(): the service is a singleton that outlives this
     // widget, and the next person to sign in is not this person.
@@ -628,6 +700,17 @@ class _HomeShellState extends State<HomeShell> {
   /// as a one-line strip under the AppBar, same family as the two-factor chip.
   String? _timeClockNotice;
 
+  /// In-flight resend of the confirmation link, so a second tap cannot fire
+  /// another POST while the first is unanswered. The endpoint is throttled
+  /// server-side per address AND per IP; this stops a person burning that
+  /// allowance on their own double-click.
+  bool _resendingConfirmation = false;
+
+  /// Outcome of that resend. Its own strip rather than [_timeClockNotice]:
+  /// that one is named for the time clock and tinted as an error, and the
+  /// usual outcome here is success.
+  String? _confirmationNotice;
+
   void _show(_Rail rail, String id) => setState(() {
     _rail = rail;
     _selected = id;
@@ -646,6 +729,40 @@ class _HomeShellState extends State<HomeShell> {
   Future<void> _signOut() async {
     await widget.api.post('/auth/logout', {});
     widget.session.signOut();
+  }
+
+  /// Ask for another confirmation link.
+  ///
+  /// This exists because the server's refusal used to say "ask for another
+  /// link if it did not arrive" while nothing in this client called the
+  /// endpoint -- a sentence naming a control that was on no screen, which is
+  /// worse than a shorter one because the reader believes there is a way out
+  /// and goes looking for it.
+  ///
+  /// POST /auth/verify/resend answers identically whether or not the address
+  /// matched, so there is no success to read out of it -- only that it was
+  /// accepted. The sentence below says what we DID, never that it arrived.
+  Future<void> _resendConfirmation() async {
+    final me = widget.session.me;
+    if (me == null || _resendingConfirmation) return;
+
+    setState(() {
+      _resendingConfirmation = true;
+      _confirmationNotice = null;
+    });
+
+    final response = await widget.api.post('/auth/verify/resend', {
+      'email': me.email,
+    });
+
+    if (!mounted) return;
+
+    setState(() {
+      _resendingConfirmation = false;
+      _confirmationNotice = response.ok
+          ? 'We have sent another confirmation link to ${me.email}.'
+          : response.reason;
+    });
   }
 
   Future<void> _punch() async {
@@ -686,8 +803,49 @@ class _HomeShellState extends State<HomeShell> {
     });
   }
 
+  /// Phone width, or the app as it is.
+  ///
+  /// ── Why this overrides the VIEWPORT and not a flag ───────────────
+  ///
+  /// This shell decides its shape from one line — `width >= 900`, below — but
+  /// it is not the only thing that asks. Nine reads of the viewport width live
+  /// across five files at THREE breakpoints: 900 here, in `staff_shell` and in
+  /// Web widgets; 600 in `lead_thread`; 480 in `auth_shell`; and `side_panel`
+  /// clamping its own width to the window. Flipping this shell's boolean would
+  /// give a narrow shell with DESKTOP screens inside it — a mobile view that is
+  /// wrong in exactly the places somebody would be using it to check.
+  ///
+  /// Overriding `MediaQuery` makes all nine agree, and no screen has to know
+  /// this control exists.
+  ///
+  /// The SizedBox is the other half: the override changes what the app is TOLD,
+  /// and this changes what it is given. Without it the app would report 390 and
+  /// still be laid out across the whole window — a drawer instead of a rail,
+  /// stretched over 1600px, which is not what anything looks like.
   @override
   Widget build(BuildContext context) {
+    if (!_mobileView) return _shell(context);
+
+    return ColoredBox(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: SizedBox(
+          width: _phoneWidth,
+          child: LayoutBuilder(
+            builder: (context, constraints) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                size: Size(_phoneWidth, constraints.maxHeight),
+              ),
+              child: Builder(builder: _shell),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _shell(BuildContext context) {
     final me = widget.session.me!;
     final wide = MediaQuery.sizeOf(context).width >= 900;
 
@@ -903,7 +1061,12 @@ class _HomeShellState extends State<HomeShell> {
               // of a healthy account.
               twoFactor: !wide && me.twoFactorEnrolmentRequired,
               readOnly: !wide && me.organization.isReadOnly,
+              // The third state this strip's own comment anticipated. It
+              // scrolls rather than wraps, so it does not push every screen
+              // down a row on a phone.
+              emailConfirmation: !wide && me.emailConfirmationRequired,
               onTwoFactor: _showProfile,
+              onEmailConfirmation: _resendConfirmation,
             ),
             leading: wide
                 ? IconButton(
@@ -1017,6 +1180,41 @@ class _HomeShellState extends State<HomeShell> {
               // the phone — two taps away at exactly the moment you want it.
               // Draws nothing for somebody who is not on a line.
               AvailabilityButton(api: widget.api),
+
+              // Desktop and phone shapes, one press apart. Staff only: the
+              // same gate the Development rail uses (§4.2), because it is a
+              // tool for building the product rather than part of it.
+              //
+              // It stays in the bar in mobile view rather than moving
+              // somewhere roomier, by Jose's pick (layout 4) — which means it
+              // is the way back as well as the way in, and the way back must
+              // not be somewhere a phone does not draw.
+              if (me.development != null)
+                IconButton(
+                  icon: Icon(
+                    _mobileView
+                        ? Icons.phone_iphone
+                        : Icons.phone_iphone_outlined,
+                  ),
+                  isSelected: _mobileView,
+                  tooltip: _mobileView
+                      ? UiStrings.t('shell.exit_mobile_view')
+                      : UiStrings.t('shell.mobile_view'),
+                  onPressed: () {
+                    final on = !_mobileView;
+                    setState(() => _mobileView = on);
+                    // Not awaited, and that is the point rather than
+                    // laziness: the layout has already changed by the line
+                    // above, and the window catching up is a separate,
+                    // fallible thing. Awaiting it would also hang a widget
+                    // test, where a plugin call never completes.
+                    unawaited(
+                      on
+                          ? MobileViewWindow.shrink(_phoneWidth)
+                          : MobileViewWindow.restore(),
+                    );
+                  },
+                ),
               // Light / dark, one tap, from anywhere.
               //
               // It is the same preference the account screen holds (§2.1 category
@@ -1082,6 +1280,29 @@ class _HomeShellState extends State<HomeShell> {
                       context,
                     ).colorScheme.errorContainer.withValues(alpha: 0.4),
                     onPressed: _showProfile,
+                  ),
+                ),
+              // Same family as the two-factor chip above and for the same
+              // reason: every SAVE is answering 403 until this is done, so
+              // the chrome has to say why and offer the one action that
+              // helps. Reads still work, which is exactly why the app looks
+              // healthy until somebody tries to keep something.
+              if (wide && me.emailConfirmationRequired)
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: ActionChip(
+                    avatar: const Icon(Icons.mark_email_unread_outlined, size: 16),
+                    label: Text(
+                      _resendingConfirmation ? 'Sending...' : 'Confirm your email',
+                    ),
+                    tooltip:
+                        'We sent a confirmation link when you signed up. '
+                        'Saving anything is on hold until you open it. '
+                        'Press to send another.',
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.errorContainer.withValues(alpha: 0.4),
+                    onPressed: _resendingConfirmation ? null : _resendConfirmation,
                   ),
                 ),
               if (wide && me.organization.isReadOnly)
@@ -1285,6 +1506,26 @@ class _HomeShellState extends State<HomeShell> {
                 );
               },
             ),
+            if (_confirmationNotice != null)
+              Material(
+                color: Theme.of(
+                  context,
+                ).colorScheme.secondaryContainer.withValues(alpha: 0.5),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: Text(
+                      _confirmationNotice!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ),
             if (_timeClockNotice != null)
               Material(
                 color: Theme.of(
@@ -1487,18 +1728,7 @@ class _HomeShellState extends State<HomeShell> {
             bottom: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
-              child: Row(
-                children: [
-                  Expanded(child: EzBiziTheme.wordmark(context, size: 20)),
-                  if (!_arrangingDrawer)
-                    IconButton(
-                      icon: const Icon(Icons.swap_vert, size: 20),
-                      tooltip: UiStrings.t('shell.rearrange'),
-                      onPressed: () =>
-                          setState(() => _arrangingDrawer = true),
-                    ),
-                ],
-              ),
+              child: EzBiziTheme.wordmark(context, size: 20),
             ),
           );
 
@@ -1540,6 +1770,38 @@ class _HomeShellState extends State<HomeShell> {
               for (final d in pinned) tile(d, _Rail.pinned),
               if (staffOnly.isNotEmpty) const Divider(),
               for (final d in staffOnly) tile(d, _Rail.staff),
+
+              // The foot, and the same two things the sidebar's foot carries
+              // (Jose, 2026-09-14: mobile layout 1, and "move it next to the
+              // version number").
+              //
+              // A phone had the version NOWHERE: `BuildStamp` was used at the
+              // foot of the sidebar and on the sign-in screen, and a phone has
+              // no sidebar and is signed in. Its own docblock called those
+              // "the two places somebody already is when they wonder whether
+              // the app has updated" — true when written, false the day this
+              // drawer shipped.
+              const Divider(),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 8, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextButton.icon(
+                      onPressed: () =>
+                          setState(() => _arrangingDrawer = true),
+                      icon: const Icon(Icons.swap_vert, size: 16),
+                      label: Text(UiStrings.t('shell.rearrange')),
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        textStyle: Theme.of(context).textTheme.labelMedium,
+                      ),
+                    ),
+                    const BuildStamp(),
+                  ],
+                ),
+              ),
               SizedBox(height: MediaQuery.paddingOf(context).bottom + 8),
             ],
           );
@@ -1579,14 +1841,18 @@ class _BarStates extends StatelessWidget implements PreferredSizeWidget {
   const _BarStates({
     required this.twoFactor,
     required this.readOnly,
+    required this.emailConfirmation,
     required this.onTwoFactor,
+    required this.onEmailConfirmation,
   });
 
   final bool twoFactor;
   final bool readOnly;
+  final bool emailConfirmation;
   final VoidCallback onTwoFactor;
+  final VoidCallback onEmailConfirmation;
 
-  bool get _any => twoFactor || readOnly;
+  bool get _any => twoFactor || readOnly || emailConfirmation;
 
   @override
   Size get preferredSize => Size.fromHeight(_any ? 49 : 1);
@@ -1619,6 +1885,19 @@ class _BarStates extends StatelessWidget implements PreferredSizeWidget {
                     label: const Text('Set up two-factor'),
                     backgroundColor: tint,
                     onPressed: onTwoFactor,
+                  ),
+                ),
+              if (emailConfirmation)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ActionChip(
+                    avatar: const Icon(
+                      Icons.mark_email_unread_outlined,
+                      size: 16,
+                    ),
+                    label: const Text('Confirm your email'),
+                    backgroundColor: tint,
+                    onPressed: onEmailConfirmation,
                   ),
                 ),
               if (readOnly)
@@ -2114,26 +2393,6 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
                 ),
               ),
 
-            // The way in, beside the filter rather than buried in Settings:
-            // rearranging the sidebar is something you decide while looking at
-            // the sidebar.
-            if (expanded && !arranging && widget.onArranged != null)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 2, 8, 0),
-                  child: TextButton.icon(
-                    onPressed: () => setState(() => _arranging = true),
-                    icon: const Icon(Icons.swap_vert, size: 16),
-                    label: Text(UiStrings.t('shell.rearrange')),
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      foregroundColor: scheme.onSurfaceVariant,
-                      textStyle: Theme.of(context).textTheme.labelMedium,
-                    ),
-                  ),
-                ),
-              ),
 
             // How many of how many.
             //
@@ -2295,17 +2554,51 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
               ),
             ],
 
-            // The version, at the very foot of the sidebar. Tapping it opens
-            // what shipped in each build — the memory for "when did we do that".
+            // The foot: what build you are on, and the way into rearranging.
             //
-            // Only when expanded: at 80px it would truncate, and half a build
-            // id is worse than none — it invites people to compare the wrong
-            // characters and conclude they are up to date when they are not.
-            if (expanded)
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 10, 12, 0),
-                child: BuildStamp(),
-              ),
+            // Rearranging used to sit under the search field. Jose, 2026-09-14:
+            // "i dont like the rearrange being on the top, perhaps move it next
+            // to the version number instead." It belongs here for the same
+            // reason Settings does — a place you go to change how the sidebar
+            // behaves rather than a place you go to work — and the top of a
+            // list of modules is the one place it competes with the modules.
+            //
+            // Collapsed shows the version alone. It used to show nothing, on
+            // the reasoning that half a build id is worse than none; the
+            // version is a whole field rather than half of one, and it fits.
+            // See [BuildStamp.compact].
+            Padding(
+              padding: EdgeInsets.fromLTRB(expanded ? 20 : 8, 10, 12, 0),
+              // Stacked, not side by side, and that was measured rather than
+              // chosen: `BuildStamp` is 160px wide on a desktop platform --
+              // the version plus the update control beside it -- and this
+              // sidebar is draggable down to 180. A Row gives its non-flex
+              // children unbounded width, so the two of them overflowed by
+              // 86px at the default 220 rather than shrinking. Stacked they
+              // fit at every width, and the control keeps its WORD, which an
+              // icon squeezed in beside the version could not have.
+              child: expanded
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (!arranging && widget.onArranged != null)
+                          TextButton.icon(
+                            onPressed: () =>
+                                setState(() => _arranging = true),
+                            icon: const Icon(Icons.swap_vert, size: 16),
+                            label: Text(UiStrings.t('shell.rearrange')),
+                            style: TextButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 6),
+                              foregroundColor: scheme.onSurfaceVariant,
+                              textStyle: Theme.of(context).textTheme.labelMedium,
+                            ),
+                          ),
+                        const BuildStamp(),
+                      ],
+                    )
+                  : const Center(child: BuildStamp(compact: true)),
+            ),
             const SizedBox(height: 12),
           ],
         ),

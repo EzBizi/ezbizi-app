@@ -6,6 +6,28 @@ import 'package:twilio_voice/twilio_voice.dart';
 
 import 'voice_device.dart';
 
+/// Why Android will or will not let this app carry a call.
+///
+/// Three answers rather than a bool, because two of the failures need
+/// different sentences AND different actions from the person reading them.
+/// Collapsing them sent somebody to the Calling accounts screen to fix a
+/// permission that is not on it.
+enum CallingAccountState {
+  /// Registered with Telecom and switched on. Calls can be carried.
+  ready,
+
+  /// `READ_PHONE_STATE` / `READ_PHONE_NUMBERS` were refused. These are runtime
+  /// permissions, so declaring them in the manifest grants nothing, and
+  /// without them `hasRegisteredPhoneAccount()` cannot even answer — the whole
+  /// check below is blind rather than false. Asking again is what fixes it,
+  /// which is the button the desk already has.
+  needsPermission,
+
+  /// Registered, and the user has not switched it on under Calling accounts.
+  /// Only they can, and only on that screen.
+  needsEnabling,
+}
+
 /// The softphone on Android, iOS and macOS, through the native Twilio SDKs.
 ///
 /// ── Why a plugin here and a WebView on Windows ───────────────────
@@ -34,11 +56,94 @@ class MobileVoiceDevice implements VoiceDevice {
   MobileVoiceDevice({
     Future<bool?> Function(String token, String? deviceToken)? register,
     Future<String?> Function()? readDeviceToken,
+    Future<CallingAccountState> Function()? ensureCallingAccount,
   }) : _register = register ?? _registerWithPlugin,
-       _readDeviceToken = readDeviceToken ?? _readFcmToken;
+       _readDeviceToken = readDeviceToken ?? _readFcmToken,
+       _ensureCallingAccount = ensureCallingAccount ?? _telecomAccountReady;
 
   final Future<bool?> Function(String token, String? deviceToken) _register;
   final Future<String?> Function() _readDeviceToken;
+  final Future<CallingAccountState> Function() _ensureCallingAccount;
+
+  /// Can this phone place and accept calls at all, as far as Android is
+  /// concerned?
+  ///
+  /// ── The gap this closes, and why nothing showed it ───────────────
+  ///
+  /// Android routes app calls through Telecom, and Telecom will not touch one
+  /// until the app has a `PhoneAccount` registered with `TelecomManager`.
+  /// Nothing in this repo had ever called `registerPhoneAccount()` — not this
+  /// file, and not the plugin's own example, so the example was not the spec
+  /// this time. Measured by the Android session on a signed-in emulator at
+  /// 0.0.0201, with FCM registration finally working:
+  ///
+  ///     TwilioVoicePlugin: calling +17864086862 -> +13057242199
+  ///     TwilioVoicePlugin: No registered phone account, call
+  ///                        `registerPhoneAccount()` first
+  ///
+  /// It gates BOTH directions, which is why placing a call did not sidestep
+  /// it. And it is a separate subsystem from the FCM registration above: that
+  /// one is how Twilio WAKES the phone, this one is whether the phone is
+  /// allowed to be a phone.
+  ///
+  /// ── Registered is not enabled ────────────────────────────────────
+  ///
+  /// Registering the account is ours to do; ENABLING it is the user's, under
+  /// Android's Calling accounts screen. Both have to be true, which is why the
+  /// plugin exposes four calls and why this asks all three questions in order
+  /// rather than registering and assuming. Returning true off Android is the
+  /// plugin's own behaviour and is repeated here so the intent is readable
+  /// without going to look.
+  static Future<CallingAccountState> _telecomAccountReady() async {
+    if (defaultTargetPlatform != TargetPlatform.android) {
+      return CallingAccountState.ready;
+    }
+
+    final instance = TwilioVoicePlatform.instance;
+
+    // FIRST, and this is the half the first version missed.
+    //
+    // `READ_PHONE_STATE` and `READ_PHONE_NUMBERS` are DANGEROUS permissions.
+    // They are in the merged manifest — the plugin declares them — and that
+    // grants nothing on its own; Android hands them over only when the user
+    // says yes to a dialog. Nothing had ever asked. Measured on the emulator
+    // at 0.0.0203, with the phone-account fix already in:
+    //
+    //     LOG|hasRegisteredPhoneAccount
+    //     E No read phone state permission, call
+    //       `requestReadPhoneStatePermission()` first
+    //     E hasRegisteredPhoneAccount: No read phone numbers permission…
+    //
+    // So the check below was not returning false, it was unable to answer —
+    // and an unanswerable check reads exactly like a negative one. The
+    // emulator only got past it because Android granted both by hand with
+    // `adb shell pm grant`, which is a test shim and not something a person
+    // installing the app can do.
+    if (!await instance.hasReadPhoneStatePermission()) {
+      await instance.requestReadPhoneStatePermission();
+    }
+
+    if (!await instance.hasReadPhoneNumbersPermission()) {
+      await instance.requestReadPhoneNumbersPermission();
+    }
+
+    // ASKED AGAIN rather than trusting what the request returned. A person can
+    // decline, and can have declined permanently on a previous launch — in
+    // which case the dialog never appears and the request answers without
+    // anything having changed.
+    if (!await instance.hasReadPhoneStatePermission() ||
+        !await instance.hasReadPhoneNumbersPermission()) {
+      return CallingAccountState.needsPermission;
+    }
+
+    if (!await instance.hasRegisteredPhoneAccount()) {
+      await instance.registerPhoneAccount();
+    }
+
+    return await instance.isPhoneAccountEnabled()
+        ? CallingAccountState.ready
+        : CallingAccountState.needsEnabling;
+  }
 
   static Future<bool?> _registerWithPlugin(String token, String? deviceToken) =>
       TwilioVoicePlatform.instance
@@ -100,6 +205,7 @@ class MobileVoiceDevice implements VoiceDevice {
 
   StreamSubscription<CallEvent>? _events;
   bool _registered = false;
+  bool _needsCallingAccount = false;
   String? _registrationError;
 
   @override
@@ -144,6 +250,16 @@ class MobileVoiceDevice implements VoiceDevice {
   @override
   String? get registrationError => _registrationError;
 
+  @override
+  bool get needsCallingAccount => _needsCallingAccount;
+
+  @override
+  Future<void> openCallingSettings() async {
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+
+    await TwilioVoicePlatform.instance.openPhoneAccountSettings();
+  }
+
   // The native SDK owns its own audio session; no widget is involved.
   @override
   Future<void> prepare() async {}
@@ -166,6 +282,53 @@ class MobileVoiceDevice implements VoiceDevice {
       }
     } catch (_) {
       // Nothing to say here that registration will not say better.
+    }
+
+    // BEFORE the token and before Twilio, because neither can help.
+    //
+    // Twilio registration succeeding while Telecom refuses the call is the
+    // worst available state: the desk would draw a ready dial pad, presence
+    // would say this person is taking calls, the ring group would dial them,
+    // and every one of those calls would die inside Android with the caller
+    // hearing ringing. So this decides `registered` rather than sitting
+    // beside it, and it is not a warning — it is the phone not being usable.
+    //
+    // Its own try for the same reason the microphone has one: a platform
+    // channel that is missing or throws is a different fault from a token
+    // Twilio refused, and sharing a catch would report it in the other one's
+    // words.
+    try {
+      final account = await _ensureCallingAccount().timeout(
+        _registrationTimeout,
+      );
+
+      if (account != CallingAccountState.ready) {
+        _registered = false;
+
+        // The BUTTON only for the case the button can fix. Opening Calling
+        // accounts does not grant a refused permission, so offering it there
+        // sends somebody to a screen where the thing they need is not.
+        _needsCallingAccount = account == CallingAccountState.needsEnabling;
+
+        _registrationError = switch (account) {
+          CallingAccountState.needsEnabling =>
+            'Android has not been given permission for this app to make and '
+                'take calls. Open Calling accounts and switch EzBizi on.',
+          CallingAccountState.needsPermission =>
+            'This app needs the phone permissions Android asked about before '
+                'it can place or take calls. Try again to be asked once more.',
+          CallingAccountState.ready => null,
+        };
+
+        return;
+      }
+
+      _needsCallingAccount = false;
+    } catch (error) {
+      _registered = false;
+      _registrationError = 'Android refused this app a calling account: $error';
+
+      return;
     }
 
     try {

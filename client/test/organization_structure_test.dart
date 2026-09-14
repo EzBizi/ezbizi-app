@@ -219,6 +219,105 @@ void main() {
     });
   });
 
+  group('moving a company', () {
+    /// Jose, 2026-09-14: "the ability to convert a company into a sub company
+    /// or viceversa", after creating Crestline Home as a company when it should
+    /// have been a sub company.
+    testWidgets('a company can be made a sub company of another', (
+      tester,
+    ) async {
+      final moves = <Map<String, dynamic>>[];
+
+      await _pump(tester, _server(moves: moves));
+
+      // Sunward Overhead Doors is top-level in the fixture, so the only
+      // destination offered is the other top-level company. Its own place is
+      // deliberately not in the list: choosing where it already is would be the
+      // one option that does nothing.
+      await tester.tap(
+        find.descendant(
+          of: find.ancestor(
+            of: find.text('Sunward Overhead Doors'),
+            matching: find.byType(Card),
+          ),
+          matching: find.byIcon(Icons.more_horiz),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Change what it sits under'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Top level, under Everdoors Group'),
+        findsNothing,
+        reason:
+            'It is already at the top level. Offering that is a choice that '
+            'moves nothing and reports "Moved".',
+      );
+      expect(find.text('Currently at the top level.'), findsOneWidget);
+
+      await tester.tap(find.text('Under Everdoors'));
+      await tester.pumpAndSettle();
+
+      expect(moves, hasLength(1));
+      expect(moves.single['path'], endsWith('/companies/$_sun/parent'));
+      expect(
+        (moves.single['body'] as Map<String, dynamic>)['parent_company_id'],
+        _ever,
+        reason:
+            'Its own route, not a key on the ordinary PATCH — the server '
+            'refuses parent_company_id there outright.',
+      );
+    });
+
+    /// Jose's second case, 2026-09-14: "chimney star which is a sub company of
+    /// a1 chimney, to be reassigned as a sub company of everdoors". It is the
+    /// same route and needs nothing new — which is exactly why it is worth a
+    /// test, because nothing would notice if the picker quietly stopped
+    /// offering the sideways move.
+    testWidgets('a sub company is offered the top AND another parent', (
+      tester,
+    ) async {
+      final moves = <Map<String, dynamic>>[];
+
+      await _pump(tester, _server(moves: moves));
+
+      await tester.tap(
+        find.descendant(
+          of: find.ancestor(
+            of: find.text('Sunward Commercial'),
+            matching: find.byType(Card),
+          ),
+          matching: find.byIcon(Icons.more_horiz),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Change what it sits under'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Top level, under Everdoors Group'), findsOneWidget);
+
+      // Not its current parent, which is where it already is -- and the one
+      // line that says so, because an absence is not a label.
+      expect(find.text('Under Everdoors'), findsNothing);
+      expect(find.text('Currently under Everdoors.'), findsOneWidget);
+
+      // Sideways: from Everdoors to the other top-level company, without
+      // passing through the top level first.
+      await tester.tap(find.text('Under Sunward Overhead Doors'));
+      await tester.pumpAndSettle();
+
+      expect(moves, hasLength(1));
+      expect(moves.single['path'], endsWith('/companies/$_commercial/parent'));
+      expect(
+        (moves.single['body'] as Map<String, dynamic>)['parent_company_id'],
+        _sun,
+      );
+    });
+  });
+
   group('the shared arrangement', () {
     testWidgets('is where the boxes are when the tab opens', (tester) async {
       // The control, first and in the same test. Without it this passes
@@ -1694,6 +1793,8 @@ Map<String, dynamic> _company(
   String? parent,
   List<Map<String, dynamic>> franchises = const [],
   List<Map<String, dynamic>> subs = const [],
+  bool mayReparent = true,
+  String? reparentRefusal,
 }) => {
   'id': id,
   'name': name,
@@ -1704,6 +1805,8 @@ Map<String, dynamic> _company(
   'may_add_franchise_reason': null,
   'may_add_sub_company': parent == null,
   'may_add_sub_company_reason': null,
+  'may_reparent': mayReparent,
+  'may_reparent_reason': reparentRefusal,
   'has_logo': false,
   'franchises': franchises,
   'sub_companies': subs,
@@ -1732,6 +1835,7 @@ MockClientHandler _server({
   bool mayArrange = true,
   String? arrangeRefusal,
   List<Map<String, dynamic>>? saves,
+  List<Map<String, dynamic>>? moves,
   List<String>? calls,
   int saveStatus = 200,
   String saveError = 'No.',
@@ -1806,6 +1910,15 @@ MockClientHandler _server({
         'orientation': body['orientation'] ?? orientation,
         'boxes': body['boxes'],
       });
+    }
+
+    if (request.url.path.endsWith('/parent')) {
+      moves?.add({
+        'path': request.url.path,
+        'body': jsonDecode(request.body) as Map<String, dynamic>,
+      });
+
+      return _json({'id': _sun, 'parent_company_id': null, 'is_sub_company': false});
     }
 
     if (request.url.path.endsWith('/companies')) {

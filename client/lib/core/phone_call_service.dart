@@ -152,11 +152,29 @@ class PhoneCallService extends ChangeNotifier {
   int get presenceToken => _presenceToken;
   int _presenceToken = 0;
 
+  /// Somebody else may have changed this person's availability.
+  ///
+  /// Availability belongs to the PERSON, and they can be signed in on a
+  /// laptop, a desktop and a phone at once. Every one of those writes the
+  /// server; none of them hears about the others. Whoever is holding a clock
+  /// calls this and anything reading presence goes and asks again.
+  void presenceMayHaveChanged() {
+    _presenceToken++;
+    notifyListeners();
+  }
+
   /// The desk answered Twilio and can take a call.
   bool get registered => _device?.registered ?? false;
 
   /// Twilio's own reason when it did not, or null when it gave none.
   String? get registrationError => _device?.registrationError;
+
+  /// Whether the desk should offer to open the system's calling settings —
+  /// the one registration failure a retry cannot fix on its own.
+  bool get needsCallingAccount => _device?.needsCallingAccount ?? false;
+
+  Future<void> openCallingSettings() async =>
+      _device?.openCallingSettings() ?? Future<void>.value();
 
   /// False on a platform with no Voice SDK at all.
   bool get supported => _device?.supported ?? false;
@@ -164,6 +182,14 @@ class PhoneCallService extends ChangeNotifier {
   /// Whether a line was found for this person. False means there is nothing to
   /// register and no phone to draw anywhere.
   bool get hasLine => _connectionId != null;
+
+  /// The desk is coming up right now.
+  ///
+  /// It is torn down and rebuilt whenever the view changes company, and for
+  /// that second everything below is false. Without this the desk-down banner
+  /// flashes red across the top of the screen on every scope switch, which
+  /// teaches people to ignore the one banner that matters.
+  bool get starting => _starting;
 
   /// The line calls go out on, for a screen that wants to name it.
   String? get callerId => _callerId;

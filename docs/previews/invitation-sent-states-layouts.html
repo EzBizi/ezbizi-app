@@ -72,9 +72,32 @@ code{font:12px ui-monospace,Consolas,monospace;background:var(--ground);
 <header>
   <h1>HR &rsaquo; the invitation panel &mdash; pick one desktop and one mobile</h1>
   <p class="sub">The panel shown the one moment the raw token exists. <b>Switch the
-  state</b> &mdash; the two failures read the same today and need different actions,
-  which is the whole reason this is being drawn. <b>Bounced</b> is not knowable yet;
-  SES event ingestion is being built, so every option has to have a place to put it.</p>
+  state.</b> <b>Bounced</b> is not knowable yet &mdash; SES event ingestion is being
+  built &mdash; so every option needs somewhere to put it.</p>
+  <p class="sub" style="margin-top:10px"><b>Revised 2026-09-14: &ldquo;address
+  refused&rdquo; is no longer drawn as a send state, and HR is right that it should
+  not be.</b> The invitation is a PLATFORM send &mdash; <code>Notification::route</code>
+  rather than <code>MailDispatcher::asTenant</code> &mdash; so it never produces
+  <code>CannotSendMail</code>, the class that carries a human sentence. What it gets
+  is a raw transport exception, and telling a rejected recipient from a dead
+  connection would mean <b>string-matching a vendor&rsquo;s error text</b>. The
+  failure mode of guessing wrong is telling somebody to fix a perfectly good address
+  &mdash; a confident sentence naming the wrong cause, which is the defect this whole
+  entry exists to avoid. So the handoff failure says what it knows and no more, and
+  <b>the address is correctable in every state instead</b>: the invitation keeps that
+  address on record whatever happened, so the next invite goes to the same typo.
+  &ldquo;This address is wrong&rdquo; gets said once there is a typed bounce event to
+  say it with.</p>
+  <p class="sub" style="margin-top:10px"><b>And correcting an address is a REISSUE,
+  not a field edit &mdash; HR measured that too, and it changes the label rather than
+  the layout.</b> If the typo&rsquo;d address belongs to a real person, <b>that person
+  is holding a working invitation to somebody else&rsquo;s organization.</b> Quietly
+  repointing the row at the corrected address leaves their link alive while the screen
+  says the problem is fixed &mdash; and that is worst in the SUCCESS state, which is
+  exactly where this control is most useful. The semantics already exist and are
+  tested: <code>resend</code> mints a new token and kills the old one. So the control
+  reads as re-inviting, and says the current link stops working, because that is what
+  happens.</p>
 </header>
 <div id="nums"></div>
 <div id="ctl"><b>State:</b></div>
@@ -86,47 +109,55 @@ var URL = 'https://app.ezbizi.com/invite/9f3c1e77-4a2b-4d51-bb08-2e6a91c4d3f0';
 /* The states. `unknown` is a server older than the `emailed` field -- it claims
    NEITHER outcome and only says what to do. `bounced` does not exist yet. */
 var STATES = {
-  sent:    {label:'Sent',            addr:GOOD},
-  noxport: {label:'No transport',    addr:GOOD},
-  refused: {label:'Address refused', addr:EMAIL},
+  sent:    {label:'Sent',                 addr:GOOD},
+  noxport: {label:'This box does not send', addr:GOOD},
+  failed:  {label:'Couldn’t send',        addr:GOOD},
   unknown: {label:'Unknown (old server)', addr:GOOD},
-  bounced: {label:'Bounced (coming)',addr:EMAIL}
+  bounced: {label:'Bounced (coming)',     addr:EMAIL}
 };
 var cur = 'sent', opt = 1;
 function S(){ return cur; }
 function addr(){ return STATES[cur].addr; }
 
-/* One sentence per state. The false state SPLITS, because the remedy differs:
-   a dead transport leaves a perfectly good invitation, a refused address leaves
-   one that will fail again next week at the same typo. */
+/* One sentence per state, and NONE of them names a cause the server cannot
+   prove. `noxport` is reliable -- MailStatus answers before anything is tried.
+   `failed` is reliable that it failed and nothing more. The split I drew first
+   -- "address refused" versus "transport down" -- rested on parsing an SMTP
+   code out of an exception message, so it is gone. */
 function say(){
   return {
     sent: 'Sent to them. The link below is the same one — you only need it ' +
           'if the message goes astray.',
     noxport: 'Not sent: this installation is not sending mail at all. The ' +
           'invitation is fine — copy the link and get it to them yourself.',
-    refused: 'Not sent: <b>' + EMAIL + '</b> was refused as an address. Handing ' +
-          'the link over still works, but this invitation keeps the wrong ' +
-          'address and every resend will fail the same way.',
+    /* Deliberately does NOT name a cause. The handoff threw; what it threw is
+       a raw transport exception, and telling a rejected address from a dead
+       connection would mean string-matching a vendor's error text. */
+    failed: 'Not sent: the message was refused when we tried to send it. ' +
+          'Copy the link and get it to them yourself — and check the address ' +
+          'above while you are here.',
     unknown: 'Copy the link and get it to them yourself if you are not certain ' +
           'the email reached them.',
     bounced: 'Sent, then bounced: <b>' + EMAIL + '</b> did not accept it. Nothing ' +
-          'reached them, and this invitation keeps the wrong address.'
+          'reached them, and this invitation keeps that address.'
   }[cur];
 }
 function tone(){
-  return {sent:'ok', noxport:'bad', refused:'bad', unknown:'unk', bounced:'bad'}[cur];
+  return {sent:'ok', noxport:'bad', failed:'bad', unknown:'unk', bounced:'bad'}[cur];
 }
 function heading(){
-  return {sent:'Sent', noxport:'Not sent', refused:'Not sent',
+  return {sent:'Sent', noxport:'Not sent', failed:'Not sent',
           unknown:'May or may not have been sent', bounced:'Bounced'}[cur];
 }
 function why(){
   return {sent:'', noxport:'This installation is not sending mail at all.',
-          refused:'The address was refused.', unknown:'',
+          failed:'The message was refused when we tried to send it.', unknown:'',
           bounced:'The address did not accept it.'}[cur];
 }
-function fixable(){ return cur === 'refused' || cur === 'bounced'; }
+/* The address can ALWAYS be corrected -- see the banner. Only `bounced` is
+   evidence that it is the address that is wrong. */
+function fixable(){ return true; }
+function blamed(){ return cur === 'bounced'; }
 
 function head(t){
   return '<div class="hd"><div class="t">' + t + '</div>' +
@@ -136,13 +167,29 @@ function urlBox(){ return '<div class="url">' + URL + '</div>'; }
 function copyBtn(wide){
   return '<div class="btn' + (wide ? ' wide' : '') + '">⧉ Copy link</div>';
 }
+
+/* Correcting an address is a REISSUE, not a field edit, and the label has to
+   say so. There is no endpoint to change an invitation's address (four routes:
+   index, store, resend, destroy) so this is new server work either way -- but
+   the shape is `resend`, which already mints a new token and kills the old one.
+   It has to: if the typo'd address belongs to a real person, they are holding a
+   working invitation to somebody else's organization, and quietly repointing
+   the row at the corrected address leaves that link alive while the screen says
+   the problem is fixed. Worst in the SUCCESS state, which is exactly where this
+   control is most useful. */
+function fixBtn(opts){
+  opts = opts || {};
+  return '<div class="btn' + (opts.wide ? ' wide' : '') +
+    (opts.pri ? ' pri' : '') + '">✎ Re-invite at a different address</div>' +
+    '<div class="why" style="margin-top:6px">The current link stops working.</div>';
+}
 function foot(){ return '<div class="ft"><div class="btn pri" style="margin:0">Done</div></div>'; }
 
 /* ── 1 — today's shape, the reason folded into the sentence ───── */
 function D1(){
   return '<div class="panel">' + head('Invitation ready') +
     '<div class="bd"><div class="say">' + say() + '</div>' +
-    (fixable() ? '<div class="btn">✎ Fix the address</div> ' : '') +
+    (fixable() ? fixBtn() : '') +
     urlBox() + copyBtn() + '</div>' + foot() + '</div>' +
     '<div class="note"><b>Nothing new on the screen.</b> The one sentence names ' +
     'which failure it is, and the failing case grows one button. A bounced ' +
@@ -162,7 +209,7 @@ function D2(){
     '<div class="strip s-' + tone() + '"><span class="ic">' + ic + '</span>' +
     '<span class="tx"><b>' + heading() + '</b>' +
     (why() ? '<span>' + why() + '</span>' : '') + '</span>' +
-    (fixable() ? '<span class="act">Fix address</span>' : '') + '</div>' +
+    (fixable() ? '<span class="act">Re-invite&hellip;</span>' : '') + '</div>' +
     '<div class="say">' + say() + '</div>' +
     urlBox() + copyBtn() + '</div>' + foot() + '</div>' +
     '<div class="note"><b>The state is legible before the sentence is read</b>, ' +
@@ -183,12 +230,12 @@ function D3(){
   return '<div class="panel">' +
     '<div class="hd"><div class="t">Invitation ready</div></div>' +
     '<div class="bd">' +
-    '<div class="addr' + (fixable() ? ' bad' : '') + '">' +
+    '<div class="addr' + (blamed() ? ' bad' : '') + '">' +
       '<span class="em">' + addr() + '</span>' +
       '<span class="tag ' + tg[0] + '">' + tg[1] + '</span>' +
       (fixable() ? '<span class="act" style="color:var(--primary);font-weight:700;' +
-        'cursor:pointer">Fix</span>' : '') + '</div>' +
-    (why() ? '<div class="why' + (fixable() ? ' bad' : '') + '">' + why() + '</div>' : '') +
+        'cursor:pointer">Re-invite&hellip;</span>' : '') + '</div>' +
+    (why() ? '<div class="why' + (blamed() ? ' bad' : '') + '">' + why() + '</div>' : '') +
     '<div class="say" style="margin-top:14px">' + say() + '</div>' +
     urlBox() + copyBtn() + '</div>' + foot() + '</div>' +
     '<div class="note"><b>In every failing case the address IS the problem</b>, ' +
@@ -205,10 +252,10 @@ function D3(){
 function M4(){
   return '<div class="phone">' + head('Invitation ready') +
     '<div class="bd">' +
-    (fixable()
-      ? '<div class="btn pri wide" style="margin-top:0">✎ Fix the address</div>' +
-        copyBtn(true)
-      : '<div class="btn pri wide" style="margin-top:0">⧉ Copy link</div>') +
+    (blamed()
+      ? fixBtn({wide:true, pri:true}) + copyBtn(true)
+      : '<div class="btn pri wide" style="margin-top:0">⧉ Copy link</div>' +
+        fixBtn({wide:true})) +
     '<div class="say" style="margin-top:14px">' + say() + '</div>' +
     urlBox() + '</div>' + foot() + '</div>' +
     '<div class="note">The thing to DO is the first thing on the screen and a ' +
@@ -229,7 +276,7 @@ function M5(){
     '<span class="tx"><b>' + heading() + '</b>' +
     (why() ? '<span>' + why() + '</span>' : '') + '</span></div>' +
     '<div class="say">' + say() + '</div>' + urlBox() +
-    (fixable() ? '<div class="btn wide">✎ Fix the address</div>' : '') +
+    (fixable() ? fixBtn({wide:true}) : '') +
     copyBtn(true) + '</div>' + foot() + '</div>' +
     '<div class="note">Desktop 2 on a phone, with the buttons at the <b>bottom ' +
     'where the thumb is</b> rather than at the top where the eye is. The state ' +
@@ -242,13 +289,14 @@ function M5(){
 function M6(){
   return '<div class="phone">' + head('Invitation ready') +
     '<div class="bd">' +
-    '<div class="addr' + (fixable() ? ' bad' : '') + '">' +
+    '<div class="addr' + (blamed() ? ' bad' : '') + '">' +
       '<span class="em">' + addr() + '</span>' +
       '<span class="tag ' + {sent:'ok',noxport:'unk',refused:'bad',unknown:'unk',
         bounced:'bad'}[cur] + '">' + heading() + '</span></div>' +
     '<div class="say" style="margin-top:12px">' + say() + '</div>' +
-    (fixable() ? '<div class="btn pri wide">✎ Fix the address</div>' : '') +
-    copyBtn(true) +
+    (blamed()
+      ? fixBtn({wide:true, pri:true}) + copyBtn(true)
+      : copyBtn(true) + fixBtn({wide:true})) +
     '<div class="hide">Show the link</div>' +
     '</div>' + foot() + '</div>' +
     '<div class="note"><b>A 68-character URL on a 352px screen is four lines of ' +

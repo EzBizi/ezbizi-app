@@ -13,8 +13,11 @@ use Tests\TestCase;
 /**
  * The shape of the business (plan §3).
  *
- * §3's rules are absolutes — fixed depth, no company without a franchise, no
- * moving between parents — and until now they lived only in a document. The
+ * §3's rules are absolutes — fixed depth, no company without a franchise —
+ * and until now they lived only in a document. "No moving between parents" was
+ * one of them until 2026-09-14, when Jose asked for a company to be convertible
+ * to a sub company and back; that act is `CompanyReparentTest`'s, and the depth
+ * rule it still obeys is below. The
  * model could express all three violations and nothing stopped it, because the
  * only code that ever created a company was the provisioning service.
  *
@@ -148,16 +151,33 @@ class StructureTest extends TestCase
 
     // ── never moved ──────────────────────────────────────────────
 
-    public function test_a_company_cannot_be_moved_to_another_parent(): void
+    /**
+     * Renamed on 2026-09-14: it used to be called
+     * `test_a_company_cannot_be_moved_to_another_parent`, and that stopped
+     * being true.
+     *
+     * Jose asked for the move — a company can be made a sub company and back —
+     * and it exists as its own route, `PATCH /companies/{id}/parent`, covered
+     * by `CompanyReparentTest`. What this test still guards is the part that
+     * did NOT change: `update()` refuses `parent_company_id` outright, so a
+     * field that reshapes the organization cannot ride along in the same
+     * request as a phone number.
+     *
+     * The name says the invariant rather than the old rule, because a test
+     * name is not executable and nothing would have caught it still asserting
+     * "cannot be moved" while the app moved companies all day.
+     */
+    public function test_a_company_cannot_be_moved_by_the_ordinary_update(): void
     {
         $other = $this->inTenant(fn () => Company::create([
             'organization_id' => $this->alpha['org']->id,
             'name' => 'Other', 'is_active' => true,
         ]));
 
-        // §3: entities are never moved between parents. Every setting,
-        // assignment and roll-up below a company is expressed in terms of where
-        // it sits, so a move silently rewrites history.
+        // Not "companies are never moved" any more. This route still refuses
+        // it, and the reason the rule existed at all is why the real one is
+        // organization-level and audited: every setting, assignment and roll-up
+        // below a company is expressed in terms of where it sits.
         $this->as()->patchJson('/api/v1/companies/'.$other->id, [
             'parent_company_id' => $this->alpha['company']->id,
         ])->assertStatus(422);

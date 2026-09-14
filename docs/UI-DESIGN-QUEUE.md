@@ -2086,20 +2086,56 @@ somebody tests a rule, reads "Sent", and concludes the feature works.
 > per-message and belongs on the row. *This installation is not sending mail* is ONE fact about
 > the box, and printing it per row is repeating it N times.
 
-**HR has already solved the per-message half, and the comment is the best statement of this whole
-rule in the codebase.** `HrInvitationsController::deliver()` returns whether the message actually
-left, because the one person who needs to know is the inviter in front of the dialog — they
-either hand the link over themselves or they do not. Its closing line: *"The panel used to assert
+**~~HR has already solved the per-message half~~ — I wrote that here, and it was wrong. HR caught
+it and gave the praise back.** Left visible rather than edited away, because how it was wrong is
+the useful part.
+
+`HrInvitationsController::deliver()` **only caught transports that THROW.** `log`, `array` and
+`null` throw nothing, so it returned `true` and the panel said *"The invitation has been emailed
+to them"* on exactly the demo and staging boxes where somebody tests invitations and concludes
+the flow works. `ses` with a blank credential is the same shape. Fixed on main at `8a0ef426`:
+`MailStatus::delivers()` is asked **after** the handoff, so the message still reaches whatever
+transport is configured — observable to a `log` reader and to `Notification::fake` — and only the
+CLAIM depends on whether that transport goes anywhere. No new state on screen: a non-delivering
+box lands in "Couldn't send", which was already the right wording for it.
+
+> **How I got it wrong is this entry's own rule, turned on me. I read the docblock and reported
+> it as behaviour.** That method's comment is genuinely excellent and states the right rule — it
+> simply overclaimed about the present. **A docblock is a DESCRIBER**, and entry 11 exists
+> because a describer reads from a different source than the thing it describes: the code's
+> source is the code, and a comment's source is what its author believed while writing it.
+> I spent this week telling two sessions to check the icon against the drawing, then took a
+> comment as evidence about a method.
+
+**And the belief was written down twice, which is why nothing caught it.** HR's own test asserted
+`emailed: true` under phpunit's `array` mailer, with the comment *"so this one genuinely sends"*.
+A test carrying the same wrong premise as the code cannot fail on it.
+
+**The line I praised is still worth the praise, and is still true.** *"The panel used to assert
 'nothing has been emailed' unconditionally, which was true while nothing could send and became a
 lie the day something could."* **That is this entry's rule having already gone wrong once, in the
 opposite direction.** A sentence does not have to be edited to become false; the world can edit
-it.
+it — and the method underneath that sentence had quietly become false the same way.
 
-**The gap, measured: the installation-level fact reaches EzBizi staff and nobody else.**
-`MailStatus` surfaces in exactly one client file, `screens/staff/health_screen.dart:261`. An
-administrator sending invitations on a box pointed at the log mailer is told "Sent" and has
-nowhere to learn otherwise. Whether a non-staff surface should say so is a **new element**, so it
-is a question for Jose rather than something decided here — raised, not drawn.
+**~~The gap, measured: the installation-level fact reaches EzBizi staff and nobody else.~~
+CLOSED by Jose, 2026-09-14, and his answer was a question: *"why would an installation not send
+mail im confused"*.**
+
+He was right to be confused, and the confusion is the answer. **It is not a customer state.**
+`MailStatus::delivers()` is false for a `log`, `array` or `null` mailer, or `ses` with a blank
+credential — every one of which is a development or staging box. EzBizi is one production
+installation with SES configured, so **no administrator will ever see this**, and an
+administrator-facing surface for it would be chrome built for a state that cannot occur.
+
+**What it was worth is entirely internal, and that half stays.** The reason it surfaced at all
+is that *we* test invitations on exactly those boxes, and were being told "Sent" when nothing
+left — the defect HR fixed at `8a0ef426`. The per-message truth matters; the banner does not.
+`screens/staff/health_screen.dart:261` remains the right and only home for the installation-level
+fact, because staff are the only people who can be on such a box.
+
+> **The generalisable half: a state reachable only in development is worth a TRUTHFUL message and
+> never a designed surface.** Drawing chrome for it spends product space on a condition no
+> customer can reach, and — worse — makes the next person believe it is a thing that happens.
 
 **The precedent, from Email the same day.** An empty state read *"an inbox added on another
 company stays there, switch to that company"* — a correct sentence about the wrong problem. The
@@ -2109,7 +2145,7 @@ cause is worse than a vague one**, because it sends somebody hunting. Email's fi
 which of three reasons applies rather than assuming one, and that is the shape every failure
 state here should take.
 
-### 12 · HR · the invitation panel, and the two failures that read the same — **DRAWN, awaiting Jose**
+### 12 · HR · the invitation panel, and the two failures that read the same — **PICKED: 2 and 5**
 
 `docs/previews/invitation-sent-states-layouts.html`. Three desktop, three mobile, with a **state
 switcher** — the two failures are the whole reason it is drawn, and an option looked at only in
@@ -2119,22 +2155,61 @@ HR brought states rather than a layout, which is the ask working. The panel is
 `client/lib/screens/hr/invitations_tab.dart:495`, shown the one moment the raw token exists,
 switching on a server `emailed` bool.
 
-**The gap is not that the failure is unnamed. It is that the REMEDY differs and the sentence does
-not.** Today a failure reads *"The email could not be sent, so nothing has reached them. Copy the
+> **REVISED 2026-09-14, and the revision removes a state I drew.** HR measured what the server
+> can actually prove and answered the question I asked them — are there more than two remedies?
+> **Two are knowable, and the third is not knowable at handoff at all.**
+> `MailStatus::delivers()` is reliable: it answers before anything is attempted and `missing()`
+> names the credential. A thrown handoff is reliable *that it failed* and that is where
+> reliability stops. **The invitation is a PLATFORM send** — `Notification::route`
+> (`HrInvitationsController:446`) rather than `MailDispatcher::asTenant` — so it never produces
+> `CannotSendMail`, the class carrying a human sentence, which is referenced only by
+> `MailDispatcher`. What it gets is a raw Symfony transport exception, and splitting "address
+> refused" from "transport down" means **string-matching a vendor's error text**.
+>
+> **So "address refused" is no longer drawn as a send state.** The failure mode of guessing wrong
+> is telling somebody to fix a perfectly good address — a confident sentence naming the wrong
+> cause, which is the defect this entry exists to avoid. I drew it anyway, and HR caught it.
+>
+> **The design answer is better than the state was.** The address is now correctable in EVERY
+> state, including success, because HR's other correction stands regardless of diagnosis: the
+> invitation keeps that address on record, so the next invite goes to the same typo. An
+> always-available fix does not depend on knowing why anything failed. *"This address is wrong"*
+> gets said once there is a typed bounce event to say it with — which is what makes option 2
+> stronger rather than weaker: the strip carries three states today and gains `bounced` later,
+> and the one state whose evidence was fragile is never drawn at all.
+
+**The gap as I first stated it — that the REMEDY differs and the sentence does not — was right
+about the problem and wrong about the split:** Today a failure reads *"The email could not be sent, so nothing has reached them. Copy the
 link and get it to them yourself."*
 
 - **Transport down** — copy the link, hand it over, and the invitation is perfectly good.
 - **Address refused** — handing the link over still works, *and* the invitation now carries a
   typo nobody has corrected, so the same person is invited to the same wrong address next week.
 
-Same sentence today, two different actions. The server knows which (`deliver()` catches and logs
-the exception) but the response carries only a bool, so this is a server change of HR's as well
-as a screen.
+Same sentence today, two different actions — **but only one of the two causes is provable.** The
+first is, and gets its own state. The second is not, and gets an always-available fix instead of
+a diagnosis. The response still needs more than a bool, so this remains a server change of HR's
+as well as a screen; it just carries *which of the provable states*, never a parsed cause.
 
 > **In every failing case the address IS the problem, and today it is the panel SUBTITLE** — the
 > one thing on screen that cannot be acted on. That observation is what separates the three
 > desktop options: fold the reason into the sentence (1), put it in a status strip (2), or
 > promote the address to the subject of the panel (3).
+
+> **And the fix is a REISSUE, not a field edit — which changes the label, not the layout.**
+> HR measured the surface: four routes (`routes/api.php:927-933` — index, store, resend, destroy)
+> and **no PATCH**, so correcting an address is new server work whichever option wins. The shape
+> matters more than the cost. **If the typo'd address belongs to a real person, that person is
+> holding a working invitation to somebody else's organization.** Repointing the row at the
+> corrected address leaves their link alive while the screen says the problem is fixed — and that
+> is worst in the SUCCESS state, which is exactly where an always-available correction is most
+> useful. The semantics already exist and are tested: `resend` mints a new token and kills the
+> old one (`hr_screen_test`: *"resending mints a new link, and says the old one is dead"*).
+>
+> So the control is labelled **"Re-invite at a different address"** with *"The current link stops
+> working"* under it, in all six options, from one definition. **"Fix the address" was a label
+> describing a field edit attached to an act that revokes and reissues** — a describer
+> contradicting the described, which is the rule I spent this week giving other people.
 
 **Designed knowing a state is coming.** HR measured that SES event ingestion is being built —
 the SNS subscription is currently EMAIL protocol to a human mailbox, so events reach a person and
@@ -2157,4 +2232,128 @@ blind**, which is exactly the send where somebody is standing in front of this p
   drawn in red.
 - **"Has been emailed to them" should become "Sent to them."** HR flagged it themselves. It is a
   handoff claim wearing arrival's clothes, and it is the sentence entry 11 exists to prevent.
+
+### 13 · Developer · switch between desktop and mobile view — **BUILT: 1 and 4** (`4b6ee87b`)
+
+`docs/previews/mobile-view-switch-layouts.html`. Jose, 2026-09-14: *"can we add a developer only
+icon on the top bar next to the phone icon, that let's u switch between desktop view and mobile
+view?"*
+
+Three desktop (how you get in) and three mobile (how you know you are in it and get back out).
+Placement is settled by the ask — after `AvailabilityButton` in the bar's `actions:`
+(`main.dart:1019`), which is the phone icon he means. Gate is `me.development != null`, the same
+one the Development rail uses (§4.2).
+
+> **The work is not the icon. It is that the app decides its shape in nine places.**
+> `main.dart:692` is `width >= 900` and is read a dozen times — but **nine reads of the viewport
+> width live across five files at three breakpoints**: 900 in the shell, the staff shell and Web
+> widgets; 600 in `lead_thread`; 480 in `auth_shell`; and `side_panel` clamping itself to the
+> window. A switch that flips the shell's own boolean produces **a narrow shell with desktop
+> screens inside it** — wrong in exactly the places somebody would be using it to check.
+> **Override the VIEWPORT, not the flag**, and all nine follow for free with no screen knowing
+> this control exists.
+
+**The design problem is not "how do I get to mobile view", it is "how do I know I am in it".** A
+developer who forgets reports a layout defect that is not one. So every option is judged on how
+unmistakable the state is, and each one borrows something different to say it:
+
+- **Desktop 1** borrows nothing and says the least — mobile view is indistinguishable from a
+  narrow window, with a filled icon as the only tell.
+- **Desktop 2** is unmistakable, and is the only option where the viewport is a *known* size, so
+  "it breaks at 390" reproduces between two people.
+- **Desktop 3** shows both layouts live, which is what checking a change actually wants — at the
+  price of two live copies of the app, two sets of screen state, two `initState` fetches, and any
+  timer or socket a screen holds running twice. **Cheap to look at, expensive to be correct.**
+- **Mobile 4** spends bar room that was bought deliberately: that bar overflowed by **266px**
+  (measured 2026-09-10) with both conditional chips showing, which is why the brand is dropped,
+  the punch control is icon-only and the theme cycle is gone on a phone. And it costs it *only
+  for staff* — the hardest overflow to notice, because the people who see it are not the people
+  who report it.
+- **Mobile 5** reuses the bar's existing `bottom:` strip (`_BarStates`, `main.dart:1578`) where
+  states that are not controls already live — at the price of shortening the viewport somebody is
+  using to check whether content fits.
+- **Mobile 6** borrows nothing from the app and renders the product at its true size, which is
+  the argument for it; it covers content, which is the argument against.
+
+**Session state, not a preference.** It is a mode you are in for a minute, and saving it to an
+account would mean signing in on a desktop to a mobile layout with no memory of asking for one.
+
+> **What it is NOT, in the words of the session that owns the real device problems.** Phone
+> (`local_d95f72da`), on taking it up: *"I will not treat it as a device — Android's Telecom
+> behaviour, CallKit, and push are none of them a viewport question, and the bug I shipped this
+> afternoon was invisible at every width. For layout it saves me a resize; for anything about
+> being a phone it proves nothing."*
+>
+> Recorded here rather than in a code comment because **the risk with this control is somebody
+> treating a 390px column as a device and concluding from it** — and that warning carries more
+> from the session that owns Telecom and push than from the one that built the column.
+
+### 14 · Where the version lives — **BUILT** (mobile 1 + desktop 5)
+
+`docs/previews/version-on-a-phone-layouts.html`. Jose, 2026-09-14: *"on phone i noticed there's
+nowhere you can see the current version"*. He is right, measured.
+
+`BuildStamp` has **two** call sites: `main.dart:2384`, the foot of the sidebar, and
+`auth_shell.dart` (271, 332), the sign-in screen. A phone has no sidebar and you are signed in,
+so neither is reachable. **Its own docblock says it sits in *"the two places somebody already is
+when they wonder whether the app has updated"*** — true when written, false the day the phone
+layout shipped. The fourth true-when-written sentence this week, and the first one Jose found
+before any of us did.
+
+**A second gap, found looking for the first.** The stamp is drawn `if (expanded)`, so a
+**collapsed desktop sidebar** has nowhere either. That is why 4, 5 and 6 exist; without it this
+would be a phone-only question and the "three desktop options" half of the standing rule would be
+padding.
+
+> **The existing comment is the strongest argument in the file and options 4 and 5 disagree about
+> it.** *"At 80px it would truncate, and half a build id is worse than none — it invites people to
+> compare the wrong characters and conclude they are up to date when they are not."* 4 respects
+> it and does nothing. 5 argues that `201` is not *half* of `0.0.0201` — it is the only part that
+> ever changes and the only part anybody compares. That is the whole judgement, and it is his.
+
+**What separates the three mobile options is where the cost falls, not where the number goes.**
+
+- **1** puts it at the foot of the drawer — the same widget in the same conceptual place, one
+  line — and the drawer is a scrolling list of up to twenty-one modules plus two groups, so the
+  foot is *below all of them*. On desktop the sidebar is as tall as the window and the stamp is
+  free; in a drawer it is a place you only arrive at deliberately.
+- **2** puts it under the wordmark, visible the instant the drawer opens. On a phone the brand is
+  dropped from the top bar (Jose, 2026-09-10), so the drawer header is the only place the product
+  names itself — and a version belongs with the name. It is also in the way of the thing the
+  drawer was opened for, every time, for a fact wanted twice a month.
+- **3** puts it in Your account, following **his own precedent**: the theme cycle was removed from
+  the phone bar and left to Your account, so *"things about the app rather than about the work
+  live in Your account on a phone"* is an established rule rather than one I invented. It is the
+  only option with room for the long form and for *"What's been built"* as a named row rather
+  than a tap-target nobody knows is tappable — **a stamp in a drawer looks like a label.**
+
+**If 6 is picked, keep the sidebar stamp too.** A version is a fact rather than a control, and two
+places showing one fact is only a problem when they can disagree.
+
+**Jose picked 1 and 5, and moved something while he was there (2026-09-14):** *"i dont like the
+rearrange being on the top, perhaps move it next to the version number instead."* Both built the
+same day.
+
+**Desktop 5 turned out not to need the truncation it was drawn with.** I drew `201` — the last
+segment — against the existing objection that *"half a build id is worse than none."* Measured:
+`BuildInfo.short` is `v0.0.0201 · a1b2c3d`, and it is the **hash** that will not fit. The version
+alone is eight characters and fits at 80px with room. So nothing is truncated: **a whole field is
+dropped rather than the end of one**, and the field dropped is the one nobody compares by eye.
+The objection is answered rather than argued with.
+
+> **And "next to the version" is stacked rather than side by side, because measured it could not
+> be a row.** `BuildStamp` is **160px** wide on a desktop platform — the version plus the update
+> control — and this sidebar drags down to 180. A `Row` gives its non-flex children unbounded
+> width, so the two overflowed by **86px at the default 220**, not at some extreme. I tried
+> `Flexible` first and it still overflowed; I tried an icon-only button and it still overflowed.
+> Only then did I measure the widget instead of estimating it, which is the step that should have
+> come first and would have saved two wrong fixes.
+>
+> Stacked, the control keeps its **word** — which an icon squeezed beside a 160px stamp could
+> not have — and fits at every width from 180 to 420.
+
+**The drawer's Rearrange moved too**, from an icon in the header to the labelled control at the
+foot beside the version. He complained about the sidebar, but the drawer's was equally "on the
+top", and after mobile 1 there is a version at the foot of both to sit next to. Applied to both
+surfaces deliberately; if he meant desktop only, that is one line back.
 

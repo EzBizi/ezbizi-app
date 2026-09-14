@@ -93,6 +93,52 @@ class CompanyPolicy
     }
 
     /**
+     * Moving a company under another, or back out to the top (plan §3, §4).
+     *
+     * ── Why this is organization-level, and not the two ends checked ──
+     *
+     * The obvious reading is "authority over the company being moved, plus
+     * authority over its new parent", the way `create` asks about the parent a
+     * sub company would hang from. That reading is wrong here, and the reason is
+     * what a move DOES rather than what it looks like.
+     *
+     * Putting Crestline under A-1 Chimney hands everybody assigned to A-1
+     * Chimney authority over Crestline's franchises, customers, jobs and
+     * settings -- §4's "assignment does not cascade, authority does", applied to
+     * a subtree that was not theirs a moment ago. Nobody is granted anything,
+     * no assignment changes, and the audit trail of the grant is one row saying
+     * a parent id changed. It also moves the settings cascade underneath the
+     * company, so values it inherited from the organization now come from its
+     * new parent, and an automation scoped to that parent starts covering it.
+     *
+     * An act with those consequences belongs to somebody standing over the
+     * whole business, which is the same test `create` makes for a top-level
+     * company and the same one TODO #12 settled: authority never flows upward.
+     * Checking the two ends would let somebody assigned to one branch absorb a
+     * branch they had authority over into one they also had authority over --
+     * defensible in isolation, and a way to reshape an organization nobody
+     * standing over it agreed to.
+     *
+     * `companies.edit` is the permission because this changes a company rather
+     * than adding one. Somebody who may not rename Crestline must not be able
+     * to move it instead.
+     */
+    public function reparent(User $user, Company $company): Response
+    {
+        if (! $user->hasPermission('companies.edit')) {
+            return Refusal::permission('move a company');
+        }
+
+        $standsAtTheTop = $user->assignments->contains(
+            fn ($a) => $a->assigned_organization_id === $user->organization_id
+        );
+
+        return $standsAtTheTop
+            ? Response::allow()
+            : Refusal::abovePosition('move '.$company->name.' to a different place in the organization');
+    }
+
+    /**
      * Deactivation, not deletion — see CompaniesController for why there is no
      * delete at all. Kept separate from `update` because switching a whole
      * branch of the business off is a different decision from renaming it, and

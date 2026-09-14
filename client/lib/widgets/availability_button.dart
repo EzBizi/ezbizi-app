@@ -35,7 +35,8 @@ class AvailabilityButton extends StatefulWidget {
   State<AvailabilityButton> createState() => _AvailabilityButtonState();
 }
 
-class _AvailabilityButtonState extends State<AvailabilityButton> {
+class _AvailabilityButtonState extends State<AvailabilityButton>
+    with WidgetsBindingObserver {
   bool _hasLine = false;
   bool _busy = false;
   String _state = 'registered';
@@ -55,14 +56,50 @@ class _AvailabilityButtonState extends State<AvailabilityButton> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _service.addListener(_deskChanged);
     _load();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _service.removeListener(_deskChanged);
     super.dispose();
+  }
+
+  /// Somebody came back to this app, so ask the server what they are now.
+  ///
+  /// ── Why this exists ──────────────────────────────────────────────
+  ///
+  /// Availability belongs to the PERSON and this button belongs to one app.
+  /// It read the server once, at startup, and after that only heard about
+  /// changes its own app made — so setting Do Not Disturb on the web left the
+  /// desktop showing a green dot indefinitely. Jose reported exactly that:
+  /// web away, desktop available, and a call arriving while the two disagreed.
+  ///
+  /// ── This is not enough on its own, and I said it was ────────────
+  ///
+  /// I wrote here that switching windows counts — "two apps side by side, and
+  /// clicking between them is what brings this one forward". It does not.
+  /// `AppLifecycleState.resumed` tracks whether the app is VISIBLE, not
+  /// whether it has focus, and two windows side by side are both visible the
+  /// whole time. So this fires when an app is minimised and restored, or a
+  /// browser tab is left and returned to, and never in the arrangement the
+  /// report was actually about.
+  ///
+  /// Jose read the consequence straight off the screen: "the status now syncs
+  /// across devices, which is good, but only displays the change once you
+  /// change tabs." Changing tabs rebuilt the widget. Nothing else asked.
+  ///
+  /// What covers it is a clock, and the shell hands this one the beat it
+  /// already has rather than starting a second — see
+  /// `MonitoringHeartbeat.onBeat` and [PhoneCallService.presenceMayHaveChanged].
+  /// This hook stays because it is still the fastest path for the cases it
+  /// does catch, and it costs one request.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _load();
   }
 
   /// A call started or ended.
