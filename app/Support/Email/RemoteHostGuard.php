@@ -62,6 +62,36 @@ namespace App\Support\Email;
  *
  * Replying goes out through a host the same tenant typed, so the reply path asks
  * this same class with its own port list. There is no second copy of the ranges.
+ *
+ * ── THIS IS THE ONE GUARD. A SECOND WAS WRITTEN AND DELETED ──────
+ *
+ * Added by the Mail/SES session, 2026-09-14, at the deploy desk's ask and about
+ * its own mistake — so that the next person does not write a third.
+ *
+ * A tenant's own SMTP became a sending transport for reports
+ * (MailDispatcher::throughTenantProvider). Not knowing this class existed, I
+ * wrote App\Support\Mail\TenantSmtpHost: the same forbidden ranges, the same
+ * metadata endpoint, re-derived from scratch and shipped with 43 tests. It was
+ * deleted the same day and that path now calls approve() here.
+ *
+ * WHAT MINE LACKED, because it is the argument for one guard rather than a
+ * preference for tidiness: no PORT allow-list at all (any port a tenant typed,
+ * which is a network scanner with a text box), no bounded timeouts, and it
+ * resolved once to check and let the caller resolve again to connect — DNS
+ * rebinding written by hand, which the note above says an early draft of THIS
+ * class also did before it was fixed. A second guard does not add defence; it
+ * adds a worse answer to the same question with nothing saying which is
+ * authoritative, and the worse one was newer.
+ *
+ * HOW IT HAPPENED, since the cause is the reusable part: I grepped `smtp_host`
+ * to find out whether anything already dialled tenant SMTP. Mailbox exposes that
+ * column as smtpHost(), so the grep returned the model and its controller, and I
+ * read that as "nothing sends". One spelling is not a search, and an absence is
+ * only evidence if the search could have found the thing.
+ *
+ * So: any new code that dials a host a CUSTOMER supplied — any protocol, any
+ * module — calls approve() here with its own port list. If this class is missing
+ * something that need, add it here.
  */
 final class RemoteHostGuard
 {
