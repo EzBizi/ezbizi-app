@@ -78,14 +78,14 @@ final class WorkizJobs
      *     failed: array<string, string>
      * }
      */
-    public function all(int $limit = 1000): array
+    public function all(int $limit = 1000, ?string $since = null): array
     {
         $jobs = [];
         $failed = [];
 
         foreach ((array) config('experimental_reports.workiz.accounts', []) as $account => $token) {
             try {
-                foreach ($this->forAccount((string) $token, $limit) as $job) {
+                foreach ($this->forAccount((string) $token, $limit, $since) as $job) {
                     $jobs[] = ['account' => (string) $account] + $job;
                 }
             } catch (RuntimeException $e) {
@@ -128,7 +128,7 @@ final class WorkizJobs
      *
      * @return list<array{phone: ?string, created_by: ?string, created_at: ?string, scheduled_for: ?string, status: ?string}>
      */
-    private function forAccount(string $token, int $limit): array
+    private function forAccount(string $token, int $limit, ?string $since = null): array
     {
         $out = [];
 
@@ -136,7 +136,7 @@ final class WorkizJobs
             try {
                 $response = Http::acceptJson()
                     ->get('https://api.workiz.com/api/v1/'.$token.'/job/all/', [
-                        'start_date' => now()->subYear()->toDateString(),
+                        'start_date' => $since ?? now()->subYear()->toDateString(),
                         'offset' => $offset,
                         'records' => min(self::PAGE, $limit - $offset),
                         'only_open' => 'false',

@@ -4,6 +4,7 @@ import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/error_note.dart';
 import '../widgets/tab_bar_like.dart';
+import 'reports/experimental_call_report.dart';
 import 'reports/report_builder.dart';
 import 'reports/report_run_view.dart';
 
@@ -200,7 +201,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         );
 
       case 'Experimental':
-        return _experimental(context);
+        return ExperimentalCallReport(api: widget.api);
     }
 
     final open = _open;
@@ -375,34 +376,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
             textAlign: TextAlign.center,
           ),
         ],
-      ),
-    );
-  }
-
-  /// Deliberately empty, and it says so rather than looking broken.
-  ///
-  /// Jose asked for the destination now and the contents later. An empty pane
-  /// with no sentence is indistinguishable from one that failed to load, which
-  /// is the same confusion the two empty states on the list exist to avoid.
-  Widget _experimental(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Nothing here yet.', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 12),
-            Text(
-              'This is where report features still being tried out will appear. '
-              'Nothing is missing and nothing has gone wrong.',
-              style: theme.textTheme.bodyMedium,
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
       ),
     );
   }

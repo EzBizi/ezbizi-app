@@ -4,7 +4,6 @@ use App\Http\Controllers\Api\AccountDeletionController;
 use App\Http\Controllers\Api\AddressLookupController;
 use App\Http\Controllers\Api\AttachmentsController;
 use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\EmailVerificationController;
 use App\Http\Controllers\Api\AutomationsController;
 use App\Http\Controllers\Api\BlueskyConnectController;
 use App\Http\Controllers\Api\BrandingController;
@@ -14,7 +13,9 @@ use App\Http\Controllers\Api\CustomersController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DataController;
 use App\Http\Controllers\Api\DevelopmentUnlockController;
+use App\Http\Controllers\Api\EmailVerificationController;
 use App\Http\Controllers\Api\EnrolmentController;
+use App\Http\Controllers\Api\ExperimentalCallReportController;
 use App\Http\Controllers\Api\FranchisesController;
 use App\Http\Controllers\Api\GoogleMailAuthController;
 use App\Http\Controllers\Api\GoogleWorkspaceAuthController;
@@ -63,6 +64,8 @@ use App\Http\Controllers\Api\OrganizationCanvasController;
 use App\Http\Controllers\Api\OrganizationProfileController;
 use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\Phone\AddressesController as PhoneAddressesController;
+use App\Http\Controllers\Api\Phone\AnsweredWebhookController as PhoneAnsweredWebhookController;
+use App\Http\Controllers\Api\Phone\BlockedNumbersController as PhoneBlockedNumbersController;
 use App\Http\Controllers\Api\Phone\CallsController as PhoneCallsController;
 use App\Http\Controllers\Api\Phone\CallTagsController as PhoneCallTagsController;
 use App\Http\Controllers\Api\Phone\ConnectionsController as PhoneConnectionsController;
@@ -83,15 +86,13 @@ use App\Http\Controllers\Api\Phone\StatusWebhookController as PhoneStatusWebhook
 use App\Http\Controllers\Api\Phone\TokensController as PhoneTokensController;
 use App\Http\Controllers\Api\Phone\TranscriptionWebhookController as PhoneTranscriptionWebhookController;
 use App\Http\Controllers\Api\Phone\TrustController as PhoneTrustController;
-use App\Http\Controllers\Api\Phone\BlockedNumbersController as PhoneBlockedNumbersController;
 use App\Http\Controllers\Api\Phone\VoicemailBoxesController as PhoneVoicemailBoxesController;
 use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookController;
-use App\Http\Controllers\Api\Phone\AnsweredWebhookController as PhoneAnsweredWebhookController;
 use App\Http\Controllers\Api\Phone\WhisperWebhookController as PhoneWhisperWebhookController;
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
-use App\Http\Controllers\Api\ReviewsController;
 use App\Http\Controllers\Api\ReportsController;
+use App\Http\Controllers\Api\ReviewsController;
 use App\Http\Controllers\Api\RolesController;
 use App\Http\Controllers\Api\SchedulingAreasController;
 use App\Http\Controllers\Api\SchedulingAvailabilityController;
@@ -709,6 +710,13 @@ Route::prefix('v1')
          * after it, `reports/fields` would be swallowed by `reports/{id}` and
          * arrive as a show() for a report called "fields".
          */
+        /*
+         * TEMPORARY, and before `reports/{id}` for the same reason `fields` is:
+         * a literal segment declared after the wildcard is swallowed by it.
+         * Goes when the Experimental report does.
+         */
+        Route::get('reports/experimental/calls', [ExperimentalCallReportController::class, 'show']);
+
         Route::get('reports/fields', [ReportsController::class, 'fields']);
         Route::post('reports/{id}/run', [ReportsController::class, 'run']);
         Route::apiResource('reports', ReportsController::class)->parameters(['reports' => 'id']);
