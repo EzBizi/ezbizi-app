@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Notification;
 use App\Models\User;
 use App\Notifications\NotificationNotice;
 use App\Support\Notifications\NotificationDispatcher;
@@ -163,14 +164,25 @@ class NotificationEmailTest extends TestCase
         NotificationFacade::assertNothingSent();
     }
 
-    public function test_the_in_app_master_switch_silences_the_mail_too(): void
+    /**
+     * Inverted from `test_the_in_app_master_switch_silences_the_mail_too`,
+     * which pinned the opposite and was handed over to be changed.
+     *
+     * That test read a promise about email out of in_app_enabled's help, which
+     * called itself "the master switch". The sentence was written in August by
+     * the notifications module, about a system that had one channel, and it
+     * never contemplated a second one. The key is NAMED `in_app_enabled`:
+     * somebody who unticks "Show in-app notifications" and silently stops
+     * receiving MAIL has been lied to by the name, and silent loss of mail is
+     * the worse of the two surprises.
+     *
+     * The cross-channel master is the SOURCE map — see the test above, which
+     * still passes unchanged and is what actually silences everything.
+     */
+    public function test_switching_the_bell_off_leaves_the_mail_working(): void
     {
         NotificationFacade::fake();
 
-        // Its help calls itself the master — "Off silences every notification
-        // below, including the ones a company cannot otherwise turn off" — so
-        // it has to hold for a channel added after it was written, or the
-        // sentence on screen becomes false the day email ships.
         $tenant = $this->provisionTenant('Zeta');
         $this->set($tenant, 'notifications.in_app_enabled', false);
 
@@ -180,7 +192,39 @@ class NotificationEmailTest extends TestCase
             source: 'automation',
         ));
 
+        // No row.
+        $this->assertSame(0, $this->inTenant($tenant['org'], fn () => Notification::query()->count()));
+
+        // But the people were still told, and the count says so. Returning the
+        // row count here would report "Told 0 people" to a rule author whose
+        // colleagues had just been emailed.
+        $this->assertGreaterThan(0, $told);
+        NotificationFacade::assertSentTo($tenant['admin'], NotificationNotice::class);
+    }
+
+    public function test_both_channels_off_tells_nobody_and_says_so(): void
+    {
+        NotificationFacade::fake();
+
+        // The case the split created. ActionRunner asks allows() to choose
+        // between "nobody has reach over that record" and "switched off for
+        // this company"; without both channels counting there, this would have
+        // sent somebody to audit permissions over a settings screen.
+        $tenant = $this->provisionTenant('Eta');
+        $this->set($tenant, 'notifications.in_app_enabled', false);
+        $this->set($tenant, 'notifications.email_enabled', false);
+
+        $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
+            title: 'A setting changed',
+            subject: $tenant['org'],
+            source: 'automation',
+        ));
+
         $this->assertSame(0, $told);
+        $this->assertFalse($this->inTenant(
+            $tenant['org'],
+            fn () => $this->dispatcher()->allows('automation', $tenant['org']),
+        ));
         NotificationFacade::assertNothingSent();
     }
 }

@@ -29,8 +29,145 @@ void main() {
   // than on anything they assert.
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  /// Android will not let the app be a phone until it has a calling account.
+  ///
+  /// ── The gap, measured on an emulator ─────────────────────────────
+  ///
+  /// Telecom refuses to place or accept a call until the app has a
+  /// `PhoneAccount` registered AND the user has switched it on under Calling
+  /// accounts. Nothing in this repo had ever called `registerPhoneAccount()`,
+  /// and the plugin's own example does not either, so there was no example to
+  /// copy from. The Android session caught it on a signed-in emulator at
+  /// 0.0.0201 — FCM registration finally working, and the call still dying
+  /// with "No registered phone account, call `registerPhoneAccount()` first".
+  ///
+  /// It gates BOTH directions, which is why placing a call did not get round
+  /// the question of whether incoming worked.
+  test('a phone with no calling account is not registered, and says so', () async {
+    final device = MobileVoiceDevice(
+      ensureCallingAccount: () async => false,
+      readDeviceToken: () async => 'fcm',
+      register: (_, _) async => true,
+    );
+
+    await device.setup('a-token');
+
+    expect(
+      device.registered,
+      isFalse,
+      reason: 'the desk would draw a ready dial pad, presence would say this '
+          'person is taking calls, and every call would die inside Android',
+    );
+    expect(device.needsCallingAccount, isTrue);
+    expect(device.registrationError, contains('Calling accounts'));
+  });
+
+  /// A device that WAS registered stops being registered when the account goes.
+  ///
+  /// ── Why this exists and the test above does not cover it ─────────
+  ///
+  /// `_registered` starts false, so a test that only ever calls setup() once
+  /// cannot tell "explicitly set to false" from "never set to true". Deleting
+  /// the assignment left every assertion green — found by sabotage, not by
+  /// reading.
+  ///
+  /// It matters on the retry, which is the path a person actually walks:
+  /// register fine, lose the calling account, press Try again. Without the
+  /// assignment the desk keeps the previous answer and reports a phone that
+  /// can take calls while Android refuses them.
+  test('losing the calling account un-registers a phone that had one', () async {
+    var accountReady = true;
+
+    final device = MobileVoiceDevice(
+      ensureCallingAccount: () async => accountReady,
+      readDeviceToken: () async => 'fcm',
+      register: (_, _) async => true,
+    );
+
+    await device.setup('a-token');
+    expect(device.registered, isTrue, reason: 'the fixture never registered');
+
+    accountReady = false;
+    await device.setup('a-token');
+
+    expect(
+      device.registered,
+      isFalse,
+      reason: 'the desk still believes this phone can take calls, and the '
+          'ring group will keep dialling it',
+    );
+    expect(device.needsCallingAccount, isTrue);
+  });
+
+  /// And the desk is told the fix is somewhere it can send them.
+  ///
+  /// This is the half a retry cannot reach: the switch is in Android's
+  /// settings, so "Try again" alone is a control that can only fail until
+  /// somebody has been somewhere else first.
+  test('a calling account that IS enabled leaves nothing to offer', () async {
+    final device = MobileVoiceDevice(
+      ensureCallingAccount: () async => true,
+      readDeviceToken: () async => 'fcm',
+      register: (_, _) async => true,
+    );
+
+    await device.setup('a-token');
+
+    expect(device.registered, isTrue);
+    expect(
+      device.needsCallingAccount,
+      isFalse,
+      reason: 'the banner would offer Open settings to somebody whose phone '
+          'is already working',
+    );
+  });
+
+  /// Twilio is never asked when Android has already refused.
+  ///
+  /// The ORDER is the point, not an optimisation. Registering with Twilio
+  /// while Telecom will not carry a call produces the worst available state —
+  /// a device Twilio believes is reachable, in a ring group, for calls that
+  /// die on arrival with the caller hearing ringing.
+  test('a phone with no calling account never reaches Twilio', () async {
+    var registerCalls = 0;
+
+    final device = MobileVoiceDevice(
+      ensureCallingAccount: () async => false,
+      readDeviceToken: () async => 'fcm',
+      register: (_, _) async {
+        registerCalls++;
+
+        return true;
+      },
+    );
+
+    await device.setup('a-token');
+
+    expect(registerCalls, 0);
+  });
+
+  /// A missing channel is reported as itself, not as the token fault below it.
+  ///
+  /// The same rule the microphone step already follows: two subsystems, two
+  /// sentences. Sharing a catch is what made a refused device token read as a
+  /// network problem for as long as it did.
+  test('a calling-account channel that throws keeps its own words', () async {
+    final device = MobileVoiceDevice(
+      ensureCallingAccount: () async => throw Exception('MissingPluginException'),
+      readDeviceToken: () async => 'fcm',
+      register: (_, _) async => true,
+    );
+
+    await device.setup('a-token');
+
+    expect(device.registered, isFalse);
+    expect(device.registrationError, contains('calling account'));
+    expect(device.registrationError, contains('MissingPluginException'));
+  });
+
   test('a refused registration keeps the platform\'s own words', () async {
     final device = MobileVoiceDevice(
+      ensureCallingAccount: () async => true,
       readDeviceToken: () async => 'fcm',
       register: (_, _) async => throw Exception(
         "No 'deviceToken' provided or invalid type",
@@ -57,6 +194,7 @@ void main() {
   /// report a failure, it stops.
   test('a registration that never answers gives up and says so', () async {
     final device = MobileVoiceDevice(
+      ensureCallingAccount: () async => true,
       readDeviceToken: () async => 'fcm',
       register: (_, _) => Completer<bool?>().future,
     );
@@ -70,6 +208,7 @@ void main() {
   /// `false` is an answer, and a different one from a thrown error.
   test('a plugin that declines without throwing still explains itself', () async {
     final device = MobileVoiceDevice(
+      ensureCallingAccount: () async => true,
       readDeviceToken: () async => 'fcm',
       register: (_, _) async => false,
     );
@@ -84,6 +223,7 @@ void main() {
   /// can never register at all.
   test('a registration that succeeds reports no error', () async {
     final device = MobileVoiceDevice(
+      ensureCallingAccount: () async => true,
       readDeviceToken: () async => 'fcm',
       register: (_, _) async => true,
     );
@@ -109,6 +249,7 @@ void main() {
       var called = false;
 
       final device = MobileVoiceDevice(
+        ensureCallingAccount: () async => true,
         readDeviceToken: () async => 'fcm-token-from-the-channel',
         register: (_, deviceToken) async {
           called = true;
@@ -130,6 +271,7 @@ void main() {
       var called = false;
 
       final device = MobileVoiceDevice(
+        ensureCallingAccount: () async => true,
         readDeviceToken: () async => null,
         register: (_, _) async {
           called = true;
@@ -152,6 +294,7 @@ void main() {
     /// A channel that throws is a registration failure with a reason.
     test('a channel error is kept rather than swallowed', () async {
       final device = MobileVoiceDevice(
+        ensureCallingAccount: () async => true,
         readDeviceToken: () async => throw PlatformException(
           code: 'fcm_unavailable',
           message: 'Firebase never initialised',
@@ -248,6 +391,7 @@ void main() {
     Object? seen = 'untouched';
 
     final device = MobileVoiceDevice(
+      ensureCallingAccount: () async => true,
       readDeviceToken: () async => null,
       register: (_, deviceToken) async {
         seen = deviceToken;

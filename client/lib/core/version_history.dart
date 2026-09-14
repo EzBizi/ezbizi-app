@@ -8,6 +8,19 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0203',
+      date: '14 Sep 2026',
+      items: [
+        'Calls now work on Android. The app had never asked Android for permission to be a phone, so the system refused to place or accept anything - a call failed instantly in both directions with nothing on screen explaining why. If that permission is switched off, the desk now says so and offers a button that opens the right settings screen.',
+        'Notifications are sent by email as well as appearing in the app. The settings screen has promised this since August and the code was not there; it is now. It goes to the same people the in-app notification already goes to.',
+        'Turning off in-app notifications no longer silences email as well. It was described as a master switch, which was true of a system with one channel and wrong the moment there were two. Each channel is now its own choice.',
+        'Quiet hours still does nothing, and now says plainly what that costs: a notification raised at three in the morning used to be a silent line you found later, and since this release it can ring a phone.',
+        'A rule can email a finished inspection report to the customer. There is no send button - it is an automation you attach to a report being submitted, so who may send, when, and to whom are answered per company rather than in code. A company that has not set up its own sending address is refused rather than sent from ours.',
+        'Automations can run when Windows reports a computer antivirus, firewall or updates as off or paused, so you can be told about it rather than having to notice. It is raised once when it happens, not again until it is fixed and happens a second time.',
+        'Human Resources: an invitation is only reported as emailed when the installation can actually send. On a setup that quietly delivers nowhere it used to say the invitation had been emailed, which is exactly where somebody tests the flow and concludes it works.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0202',
       date: '14 Sep 2026',
       items: [

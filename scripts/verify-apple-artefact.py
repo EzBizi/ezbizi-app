@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
-"""What an Apple artefact says about itself, versus what its filename claims.
+"""What an iOS .ipa says about itself, versus what its filename claims.
 
     python scripts/verify-apple-artefact.py Distribution/Apple/EzBizi-0.0.0195-110c6917.ipa
     python scripts/verify-apple-artefact.py Distribution/Apple/*.ipa
+
+.ipa ONLY, despite the name. A macOS .pkg is a xar archive, not a zip, and
+expanding one needs pkgutil, which exists on the relay and not on this box. Run
+it on a .pkg and it refuses by name rather than erroring obscurely - "File is
+not a zip file" reads like a corrupt artefact when it only means wrong format.
+The equivalent macOS check is on the relay:
+
+    pkgutil --expand-full EzBizi-<ver>-<sha>-macos.pkg exp
+    security cms -D -i exp/*.pkg/Payload/EzBizi.app/Contents/embedded.provisionprofile
 
 -- Why this is not just reading the filename --------------------
 
@@ -44,7 +53,16 @@ def check(path):
     """-> (ok, [lines]). ok is False for a real disagreement OR an unreadable one."""
     out = []
     name = Path(path).name
-    stem = name[:-4] if name.endswith('.ipa') else name
+
+    # Refuse by NAME, before trying to open it. zipfile on a .pkg says "File is
+    # not a zip file", which reads as a damaged artefact and sends somebody
+    # looking at the build; the truth is only that this script reads one format.
+    if not name.endswith('.ipa'):
+        return False, ['%s: ERROR this reads .ipa only. A macOS .pkg is a xar '
+                       'archive and needs pkgutil on the relay - see the module '
+                       'docstring for the equivalent check.' % name]
+
+    stem = name[:-4]
 
     # EzBizi-0.0.0195-110c6917.ipa -> ('0.0.0195', '110c6917')
     parts = stem.split('-')

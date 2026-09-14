@@ -1,0 +1,250 @@
+<!doctype html><meta charset="utf-8">
+<title>Where the version lives &mdash; layouts</title>
+<style>
+/* Palette from client/lib/core/theme.dart light: ink #060808, muted #5B6672,
+   line #060808 @10%, primary #00708F. */
+:root{--ink:#060808;--muted:#5B6672;--line:rgba(6,8,8,.10);--primary:#00708F;
+      --paper:#fff;--ground:#f4f6f7;--fill:rgba(6,8,8,.04)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+     font:14px/1.45 -apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:20px 24px 6px}
+h1{margin:0;font-size:18px;font-weight:700;letter-spacing:-.3px}
+.sub{color:var(--muted);font-size:13px;margin:6px 0 0;max-width:790px}
+#nums{display:flex;flex-wrap:wrap;gap:8px;padding:14px 24px 18px}
+#nums button{font:inherit;font-weight:600;background:var(--paper);color:var(--ink);
+  border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
+#nums button[aria-current=true]{background:var(--primary);color:#fff;border-color:var(--primary)}
+#stage{padding:0 24px 56px}
+.cap{font-size:13px;color:var(--muted);margin:0 0 14px}
+.phone{width:330px;border:1px solid var(--line);border-radius:24px;background:var(--paper);
+       overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.07)}
+.win{width:660px;border:1px solid var(--line);border-radius:12px;background:var(--paper);
+     overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.07)}
+.hd{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;
+    align-items:center;gap:10px}
+.brand{font-weight:800;letter-spacing:-.4px;color:var(--primary)}
+.grow{flex:1}
+.ico{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;
+     justify-content:center;color:var(--muted);font-size:14px}
+.rows{padding:6px 0;max-height:280px;overflow:hidden;position:relative}
+.r{display:flex;align-items:center;gap:12px;padding:10px 16px;font-size:13.5px}
+.r .ic{color:var(--muted);width:18px;text-align:center}
+.r.sel{background:var(--fill);font-weight:600}
+.rule{height:1px;background:var(--line);margin:6px 16px}
+.stamp{font:11px ui-monospace,Consolas,monospace;color:var(--muted);
+       padding:10px 16px 14px;cursor:pointer}
+.stamp.hd2{padding:2px 16px 12px}
+.fade{position:absolute;left:0;right:0;bottom:0;height:54px;
+      background:linear-gradient(rgba(255,255,255,0),#fff)}
+.more{font-size:11.5px;color:var(--muted);padding:0 16px 10px;font-style:italic}
+.body{display:flex;height:280px}
+.rail{width:64px;border-right:1px solid var(--line);background:var(--fill);
+      padding:8px 0;display:flex;flex-direction:column;align-items:center;gap:12px}
+.rail .ic{width:34px;height:34px;border-radius:9px;background:var(--paper);
+          display:flex;align-items:center;justify-content:center;font-size:13px;
+          color:var(--muted)}
+.rail .vv{margin-top:auto;font:10px ui-monospace,Consolas,monospace;color:var(--muted);
+          cursor:pointer}
+.page{flex:1;padding:16px}
+.h2{font-weight:700;margin-bottom:8px}
+.ln{height:9px;background:var(--fill);border-radius:4px;margin:7px 0}
+.ln.s{width:52%}.ln.m{width:78%}
+.card{margin:12px 16px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.card .t{padding:11px 14px;font-weight:700;font-size:13px;border-bottom:1px solid var(--line)}
+.card .r{padding:11px 14px}
+.menu{position:absolute;right:14px;top:52px;width:210px;background:var(--paper);
+      border:1px solid var(--line);border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.14);
+      padding:6px 0;font-size:13px}
+.menu .m{padding:9px 14px;display:flex;align-items:center;gap:10px}
+.menu .m.v{color:var(--muted);font:11px ui-monospace,Consolas,monospace}
+.wrap{position:relative}
+.note{margin:16px 0 0;padding:13px 15px;border:1px solid var(--line);border-radius:10px;
+      font-size:13px;background:var(--paper);max-width:680px;line-height:1.55}
+.note b{font-weight:700}
+code{font:12px ui-monospace,Consolas,monospace;background:var(--ground);
+     border:1px solid var(--line);border-radius:4px;padding:0 4px}
+</style>
+<header>
+  <h1>Where the version lives &mdash; pick one mobile and one desktop</h1>
+  <p class="sub"><b>Measured:</b> <code>BuildStamp</code> is used in exactly two places
+  &mdash; the foot of the sidebar and the sign-in screen. A phone has no sidebar and
+  you are signed in, so <b>there is nowhere</b>. Its own docblock says it sits in
+  &ldquo;the two places somebody already is when they wonder whether the app has
+  updated&rdquo;, which stopped being true when the phone layout arrived.
+  <b>And a second gap while I was in there:</b> the stamp is drawn
+  <code>if (expanded)</code>, so a <i>collapsed</i> desktop sidebar has nowhere
+  either &mdash; 4, 5 and 6 are that.</p>
+</header>
+<div id="nums"></div>
+<div id="stage"></div>
+<script>
+var V = '0.0.0201', LONG = '0.0.0201 · de491c1b';
+function drawerRows(n){
+  var names = ['Dashboard','Customers','Jobs','Scheduling','Reports','Inspection',
+               'HR','Marketing','Web','Communication','Fleet','Inventory'];
+  var out = '';
+  for (var i = 0; i < n; i++)
+    out += '<div class="r' + (i === 0 ? ' sel' : '') + '"><span class="ic">▢</span>' +
+           names[i] + '</div>';
+  return out;
+}
+function drawerHead(stamp){
+  return '<div class="hd"><span class="brand">EzBizi</span>' +
+    '<span class="grow"></span><span class="ico">⇅</span></div>' +
+    (stamp ? '<div class="stamp hd2">' + V + '</div>' : '');
+}
+
+/* ── 1 — the drawer's foot, exactly as the sidebar does it ───── */
+function M1(){
+  return '<div class="phone">' + drawerHead(false) +
+    '<div class="rows">' + drawerRows(8) +
+    '<div class="fade"></div></div>' +
+    '<div class="more">&hellip; 13 more, then Settings and Suggestions</div>' +
+    '<div class="rule"></div>' +
+    '<div class="stamp">' + V + '</div></div>' +
+    '<div class="note"><b>The same widget in the same conceptual place</b> &mdash; ' +
+    'the foot of the list of places you can go. Somebody who uses the desktop ' +
+    'already knows where to look, and it is one line of code.<br><br>' +
+    '<b>The cost, and it is the whole argument against:</b> the drawer is a ' +
+    'scrolling list of up to twenty-one modules plus the pinned group plus ' +
+    'Development. The foot is <i>below all of them</i>. On the desktop the ' +
+    'stamp is visible without scrolling because the sidebar is as tall as the ' +
+    'window; in a drawer it is a place you arrive at only if you were already ' +
+    'going there.</div>';
+}
+
+/* ── 2 — under the wordmark, where the drawer opens ──────────── */
+function M2(){
+  return '<div class="phone">' + drawerHead(true) +
+    '<div class="rule"></div>' +
+    '<div class="rows">' + drawerRows(8) + '<div class="fade"></div></div>' +
+    '</div>' +
+    '<div class="note"><b>Visible the moment the drawer opens</b>, with nothing ' +
+    'to scroll past, and directly under the EzBizi wordmark &mdash; which is ' +
+    'the thing it is a fact about. On a phone the brand is dropped from the top ' +
+    'bar (your call, 2026-09-10), so the drawer header is the only place the ' +
+    'product names itself; the version belongs with the name.<br><br>' +
+    '<b>The cost:</b> it is at the top of a list you opened in order to go ' +
+    'somewhere, so it is in the way of the thing you actually came for &mdash; ' +
+    'every time, for a fact you want twice a month.</div>';
+}
+
+/* ── 3 — Your account, where the phone's app-level things went ─ */
+function M3(){
+  return '<div class="phone">' +
+    '<div class="hd"><span style="font-weight:700">Your account</span></div>' +
+    '<div class="card"><div class="t">Appearance</div>' +
+    '<div class="r"><span class="ic">◐</span>Theme<span class="grow"></span>' +
+    '<span style="color:var(--muted);font-size:12px">System</span></div></div>' +
+    '<div class="card"><div class="t">About</div>' +
+    '<div class="r"><span class="ic">▤</span>Version<span class="grow"></span>' +
+    '<span style="color:var(--muted);font:11px ui-monospace,Consolas,monospace">' +
+    V + '</span></div>' +
+    '<div class="r" style="border-top:1px solid var(--line)">' +
+    '<span class="ic">≡</span>What&rsquo;s been built<span class="grow"></span>' +
+    '<span style="color:var(--muted)">›</span></div></div></div>' +
+    '<div class="note"><b>Follows a precedent you already set.</b> The theme ' +
+    'cycle was removed from the phone top bar and left to Your account &mdash; ' +
+    'your words, 2026-09-10 &mdash; so &ldquo;things about the app rather than ' +
+    'about the work live in Your account on a phone&rdquo; is an established ' +
+    'rule here rather than one I am inventing.<br><br>It is also the only ' +
+    'option with <b>room for the long form</b>: version and build id, and ' +
+    '&ldquo;what&rsquo;s been built&rdquo; as its own row rather than a ' +
+    'tap-target nobody knows is tappable. A stamp in a drawer looks like a ' +
+    'label.<br><br><b>The cost:</b> two taps and a screen away, and somebody ' +
+    'who learned the desktop habit will look at the drawer first and not find ' +
+    'it there.</div>';
+}
+
+/* ── 4 — collapsed desktop: leave it, expanding is one click ─── */
+function D4(){
+  return '<div class="win"><div class="hd"><span class="brand">EzBizi</span>' +
+    '<span class="grow"></span><span class="ico">◐</span>' +
+    '<span class="ico">🔔</span></div>' +
+    '<div class="body"><div class="rail">' +
+    '<span class="ic">▢</span><span class="ic">▢</span><span class="ic">▢</span>' +
+    '<span class="ic">▢</span><span class="ic">⚙</span></div>' +
+    '<div class="page"><div class="h2">Customers</div><div class="ln m"></div>' +
+    '<div class="ln"></div><div class="ln s"></div></div></div></div>' +
+    '<div class="note"><b>Do nothing.</b> The collapsed rail is for somebody who ' +
+    'has deliberately asked for their screen back, the stamp is one click away, ' +
+    'and the existing comment gives the reason it was left out: at 80px it ' +
+    'truncates, and <i>half a build id is worse than none &mdash; it invites ' +
+    'people to compare the wrong characters and conclude they are up to date ' +
+    'when they are not</i>.<br><br>That argument is still correct, and this is ' +
+    'the option that respects it. <b>The cost is that it is the same gap you ' +
+    'just reported on the phone</b>, on a surface where somebody may sit ' +
+    'collapsed for months.</div>';
+}
+
+/* ── 5 — collapsed desktop: the number alone ─────────────────── */
+function D5(){
+  return '<div class="win"><div class="hd"><span class="brand">EzBizi</span>' +
+    '<span class="grow"></span><span class="ico">◐</span>' +
+    '<span class="ico">🔔</span></div>' +
+    '<div class="body"><div class="rail">' +
+    '<span class="ic">▢</span><span class="ic">▢</span><span class="ic">▢</span>' +
+    '<span class="ic">▢</span><span class="ic">⚙</span>' +
+    '<span class="vv">201</span></div>' +
+    '<div class="page"><div class="h2">Customers</div><div class="ln m"></div>' +
+    '<div class="ln"></div><div class="ln s"></div></div></div></div>' +
+    '<div class="note">The last segment only &mdash; <code>201</code> &mdash; ' +
+    'with the full string in the tooltip and the history one tap away, so the ' +
+    'rail keeps a version without truncating one.<br><br><b>This is the option ' +
+    'that argues with the existing comment rather than respecting it</b>, and ' +
+    'the argument is that <code>201</code> is not half of ' +
+    '<code>0.0.0201</code> &mdash; it is the only part that ever changes, and ' +
+    'the part somebody actually compares. <b>Judge it on whether you would ' +
+    'ever read &ldquo;201&rdquo; and think it meant something else.</b></div>';
+}
+
+/* ── 6 — desktop: into the account menu, one home either way ─── */
+function D6(){
+  return '<div class="win wrap"><div class="hd"><span class="brand">EzBizi</span>' +
+    '<span class="grow"></span><span class="ico">◐</span>' +
+    '<span class="ico">🔔</span><span class="ico" style="background:var(--fill);' +
+    'border-radius:50%">JS</span></div>' +
+    '<div class="body"><div class="rail">' +
+    '<span class="ic">▢</span><span class="ic">▢</span><span class="ic">▢</span>' +
+    '<span class="ic">▢</span><span class="ic">⚙</span></div>' +
+    '<div class="page"><div class="h2">Customers</div><div class="ln m"></div>' +
+    '<div class="ln"></div></div></div>' +
+    '<div class="menu"><div class="m">Your account</div>' +
+    '<div class="m">Sign out</div>' +
+    '<div class="m v" style="border-top:1px solid var(--line);margin-top:4px;' +
+    'padding-top:9px">' + LONG + '</div></div></div>' +
+    '<div class="note"><b>One home, reachable in every state</b> &mdash; ' +
+    'expanded, collapsed, and on a phone, because the avatar menu is the one ' +
+    'control that survives every layout this app has. It pairs naturally with ' +
+    'mobile 3: Your account is behind this menu, so the version sits beside the ' +
+    'door to it.<br><br><b>The cost:</b> the sidebar stamp either stays and ' +
+    'there are two of them, or goes and desktop users lose a glance they ' +
+    'already have. <b>I would keep both</b> &mdash; a version is a fact, not a ' +
+    'control, and two places showing the same fact is only a problem when they ' +
+    'can disagree.</div>';
+}
+
+var OPT = {
+  1:['1 &middot; Mobile &mdash; the drawer&rsquo;s foot, exactly as the sidebar does it', M1],
+  2:['2 &middot; Mobile &mdash; under the wordmark, where the drawer opens', M2],
+  3:['3 &middot; Mobile &mdash; Your account, where the phone&rsquo;s app-level things went', M3],
+  4:['4 &middot; Desktop (collapsed) &mdash; leave it; expanding is one click', D4],
+  5:['5 &middot; Desktop (collapsed) &mdash; the last segment alone, full string on hover', D5],
+  6:['6 &middot; Desktop &mdash; into the account menu, one home in every state', D6]
+};
+var nums = document.getElementById('nums'), stage = document.getElementById('stage');
+function show(k){
+  stage.innerHTML = '<p class="cap">' + OPT[k][0] + '</p>' + OPT[k][1]();
+  Array.prototype.forEach.call(nums.children, function(b){
+    b.setAttribute('aria-current', b.dataset.k === String(k));
+  });
+}
+Object.keys(OPT).forEach(function(k){
+  var b = document.createElement('button');
+  b.textContent = (k < 4 ? 'Mobile ' : 'Desktop ') + k;
+  b.dataset.k = k; b.onclick = function(){ show(+k); };
+  nums.appendChild(b);
+});
+show(1);
+</script>

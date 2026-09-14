@@ -650,6 +650,62 @@ void main() {
     expect(find.text('Try again'), findsOneWidget);
   });
 
+  /// Android's calling account is the one failure a retry cannot fix.
+  ///
+  /// ── Why the banner needed a second control ───────────────────────
+  ///
+  /// Telecom will not let the app place or accept a call until the user has
+  /// switched EzBizi on under Android's Calling accounts. Pressing Try again
+  /// cannot reach that screen, so on its own it is a control that can only
+  /// fail — the same rule the desktop branch already follows, applied to the
+  /// opposite case: offer the control that CAN succeed.
+  testWidgets('a phone with no calling account is offered the way out', (
+    tester,
+  ) async {
+    final device = _FakeDevice()
+      ..supported = true
+      ..registered = false
+      ..needsCallingAccount = true
+      ..registrationError =
+          'Android has not been given permission for this app to make and '
+          'take calls. Open Calling accounts and switch EzBizi on.';
+
+    await _pump(tester, device: device);
+
+    expect(find.text('Open settings'), findsOneWidget);
+    expect(
+      find.textContaining('Calling accounts'),
+      findsOneWidget,
+      reason: 'the banner does not say what is wrong, only that something is',
+    );
+
+    // The BUTTON, not the flag. A control that appears and is wired to
+    // nothing looks exactly like one that works, and is how a fix ships
+    // having never been exercised.
+    await tester.tap(find.text('Open settings'));
+    await tester.pump();
+
+    expect(device.openedCallingSettings, 1);
+  });
+
+  /// And it is not offered to anybody else.
+  ///
+  /// The control. Without it, a banner that always drew the button would pass
+  /// the test above — and would send a Windows user, or a phone that is
+  /// working, to a settings screen that has nothing to do with them.
+  testWidgets('an ordinary failure is not sent to the settings screen', (
+    tester,
+  ) async {
+    final device = _FakeDevice()
+      ..supported = true
+      ..registered = false;
+
+    await _pump(tester, device: device);
+
+    expect(find.text('Try again'), findsOneWidget);
+    expect(find.text('Open settings'), findsNothing);
+  });
+
   /// The bug that made outbound calling fail for weeks.
   ///
   /// "305 724 2199" is how a phone number is written here. Stripping the
@@ -1137,6 +1193,16 @@ void main() {
 }
 
 class _FakeDevice implements VoiceDevice {
+  // Android's Telecom account. Settable so a test can put the desk into the
+  // one state a retry cannot fix, rather than only the happy one.
+  @override
+  bool needsCallingAccount = false;
+
+  var openedCallingSettings = 0;
+
+  @override
+  Future<void> openCallingSettings() async => openedCallingSettings++;
+
   @override
   void Function()? onAnswered;
 

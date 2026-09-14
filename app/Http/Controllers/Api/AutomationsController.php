@@ -124,6 +124,60 @@ class AutomationsController extends Controller
          * default to.
          */
         'training.assign',
+
+        /*
+         * Inspection's email-a-report-to-the-customer, and it was SHIPPED AND
+         * UNREACHABLE until this line.
+         *
+         * `ActionRunner` has had the arm since afcb97b2 — `'report.email' =>
+         * $this->emailInspectionReport(...)`, a working feature with a real
+         * Mailable behind it. Without the entry here the catalogue publishes
+         * `implemented: false`, the builder draws it "Not built yet" and
+         * refuses the tap, so nobody could switch it on.
+         *
+         * ── This is the QUIET direction of the same drift ────────────
+         *
+         * The const missing an arm is loud: rules get built, every run records
+         * FAILED, somebody complains. An arm missing from the const makes no
+         * error anywhere — no exception, no failed run, no red test — because
+         * the only symptom is a picker entry that cannot be clicked. The two
+         * halves can drift apart indefinitely in this direction and nothing
+         * asks about it.
+         *
+         * So there is now a test: every arm in ActionRunner's match must
+         * appear here. See AutomationsApiTest. Found by the Training session,
+         * who measured both lists rather than trusting either.
+         */
+        'report.email',
+
+        /*
+         * ── A GENERAL "EMAIL SOMEBODY" ACTION IS NOT HERE, AND IS NOT
+         *    WAITING ON A DECISION ─────────────────────────────────────
+         *
+         * `report.email` above is Inspection's and narrow: it emails one
+         * inspection report to the customer that report is about. §5.5 lists
+         * "Send email" among the six decided actions and the general one — a
+         * rule emailing a recipient it names — is still unbuilt.
+         *
+         * IT IS OWNED, NOT BLOCKED. Jose ruled on 2026-09-14, asked whether a
+         * training assignment should email the employee: "it should be an
+         * option to be enabled on automations, never hardcoded." So the shape
+         * is settled — a rule a company builds and switches on, rather than a
+         * send path wired into Training, HR or anywhere else. The Email module
+         * took the work the same day, by the `sms.send` precedent that the
+         * module owning the capability writes its own block here.
+         *
+         * Written down because the ownership lives ONLY in messages between
+         * sessions — it is in no file, no MODULE-OWNERS row and no agent mail,
+         * checked. Sessions here turn over in minutes, and a decision that
+         * exists only in a conversation is one restart from being re-asked.
+         *
+         * This session put that question to Jose six times across three days
+         * while holding the work, because the hold outlived its reason and
+         * nothing announces when a reason goes. If you are about to ask him
+         * whether automations may email: he has answered, the answer is yes,
+         * and it is not yours to build.
+         */
     ];
 
     public function __construct(

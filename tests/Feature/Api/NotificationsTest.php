@@ -238,7 +238,21 @@ class NotificationsTest extends TestCase
         return $this->inTenant(fn () => Notification::query()->count());
     }
 
-    public function test_the_master_switch_stops_an_automation_notification(): void
+    /**
+     * Renamed from `test_the_master_switch_stops_an_automation_notification`.
+     *
+     * It kept passing when email shipped, and that was the problem: it counts
+     * ROWS, and the row is still suppressed. What changed is that the sentence
+     * in its own name went false underneath it — `notifications.in_app_enabled`
+     * is no longer a master over everything, and this organization is now being
+     * EMAILED while this test reports the notification stopped. A green test
+     * asserting a retracted claim is worse than a red one, because nobody
+     * re-reads it.
+     *
+     * The cross-channel silence this test was believed to prove is proved by
+     * the source toggle below. The email half is in NotificationEmailTest.
+     */
+    public function test_switching_the_bell_off_stops_the_row(): void
     {
         $this->set('notifications.in_app_enabled', false);
 
@@ -246,7 +260,7 @@ class NotificationsTest extends TestCase
         $this->makeJob();
         $this->drain();
 
-        $this->assertSame(0, $this->notificationCount());
+        $this->assertSame(0, $this->notificationCount(), 'no row is written');
     }
 
     public function test_silencing_automations_does_not_silence_the_system(): void

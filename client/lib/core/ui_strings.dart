@@ -26,6 +26,8 @@ class UiStrings {
     'shell.add_divider': 'Add a divider',
     'shell.remove_divider': 'Remove this divider',
     'shell.done': 'Done',
+    'shell.mobile_view': 'Mobile view',
+    'shell.exit_mobile_view': 'Back to desktop view',
 
     // One line per module, under its name in the page header. The TITLE is
     // the server's `label` and is never written here -- an organization may
