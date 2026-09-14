@@ -22,13 +22,26 @@ import '../../widgets/tag.dart';
 /// inviter chooses the role and the place when inviting, the link is complete,
 /// and whoever follows it lands somewhere real instead of in limbo.
 ///
-/// ── Why the link is the delivery, and says so ────────────────────
+/// ── Why the link is shown even when the mail goes ────────────────
 ///
-/// Nothing here can send mail — AWS blocks port 25 outbound and SES has no
-/// credential — so an email-only invitation is one nobody receives. The link is
-/// shown with a copy button and a sentence saying no message was sent. That
-/// sentence is load-bearing: without it somebody invites a person, closes the
-/// panel, and waits for an acceptance that was never going to come.
+/// The panel shows the link with a copy button and a strip saying what became
+/// of the message. The strip is load-bearing: without it somebody invites a
+/// person, closes the panel, and waits for an acceptance that was never going
+/// to come.
+///
+/// This paragraph used to say "nothing here can send mail — AWS blocks port 25
+/// outbound and SES has no credential". Mail has sent since SES production
+/// access on 2026-09-14, so the reason changed rather than expired: the link is
+/// here because a send can still go NOWHERE — a box on `log` or `array`, a
+/// blank credential, a refused transport — and the inviter is the only person
+/// who can hand it over when that happens.
+///
+/// It is the third sandbox-era sentence found in HR, and it survived a sweep I
+/// had already run over this very file. Not because the pattern missed it —
+/// "send.*mail" matches it — but because I piped the results through a filter
+/// requiring a quote character, which kept the string literals and dropped
+/// every comment. The stale sentences live in the comments. A filter that
+/// narrows to "user-facing copy" is exactly the wrong instinct here.
 ///
 /// The raw token exists for exactly one response — creating and resending both
 /// answer with it and it is never readable again — so the panel showing it
@@ -493,10 +506,9 @@ class _InvitationsTabState extends State<InvitationsTab> {
             // nothing to make it fail loudly — the server now answers the
             // question instead of the client assuming it.
             //
-            // Three states, not two. `null` is a server older than the
-            // `emailed` field, and the honest thing there is to claim
-            // neither outcome: say what to do, promise nothing about what
-            // happened.
+            // What became of the send, in the server's own answer rather than
+            // this end's inference. See _strip for the states and for why an
+            // unreadable answer is not the same as an absent one.
             _strip(context, invitation),
             const SizedBox(height: 16),
             if (url == null || url.isEmpty)
@@ -575,7 +587,28 @@ class _InvitationsTabState extends State<InvitationsTab> {
         'Not sent — the message was refused when we tried to send it.',
         true,
       ),
-      _ => ('May or may not have been sent.', false),
+
+      // ABSENT and UNREADABLE are two different facts, and collapsing them
+      // into one fallback is how a bad outcome gets a reassuring sentence.
+      //
+      // `null` is a server OLDER than this field. It said nothing, so this
+      // claims nothing, and it is not drawn as a failure because not knowing
+      // is not bad news.
+      null => ('May or may not have been sent.', false),
+
+      // Any other string is a server NEWER than this build — it answered, and
+      // this version cannot read the answer. That must not borrow the
+      // sentence above: an unrecognised state rendering as "may or may not
+      // have been sent" is a plausible, reassuring answer to a question the
+      // server may well have answered badly, and somebody would stop chasing
+      // on the strength of it. Found by UI/UX reading the switch rather than
+      // my description of it, after I told them a state was handled here that
+      // was not.
+      _ => (
+        'This build cannot read what the server said about this message. '
+            'Hand the link over if you need to be sure it arrived.',
+        true,
+      ),
     };
 
     final scheme = theme.colorScheme;
