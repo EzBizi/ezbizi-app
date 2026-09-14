@@ -11,7 +11,7 @@ class VersionHistory {
       version: '0.0.0202',
       date: '14 Sep 2026',
       items: [
-        'Fixed: a report on Human Resources listed everyone in the organization, including people outside the branch the reader works in. It now shows the same people the Human Resources tab does. Anybody who ran that report since 10 September saw names, email addresses and phone numbers they were not meant to reach.',
+        'Fixed: a report on Human Resources listed everyone in the organization, including people outside the branch the reader works in. It now shows the same people the Human Resources tab does. Anybody who ran that report since 10 September could have seen names, email addresses and phone numbers they were not meant to reach. Nobody did: no report of that kind had been saved, and permission to build or run one has not been given to anybody yet.',
         'A computer whose antivirus, firewall or updates Windows is unhappy about now says so on its card in the machines list, so you can spot it without opening every machine in turn.',
         'Email now says why there is nothing to read - no inbox connected, none in this part of the business, or none given to your role - instead of always suggesting you look in another company.',
         'A mailbox the mail service refuses is now retried for about a day before EzBizi asks somebody to reconnect it, instead of being disconnected on the first refusal.',
