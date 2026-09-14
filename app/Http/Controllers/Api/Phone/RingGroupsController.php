@@ -126,6 +126,10 @@ class RingGroupsController extends Controller
             'overflow' => $input['overflow'] ?? PhoneRingGroup::OVERFLOW_VOICEMAIL,
             'overflow_group_id' => $input['overflow_group_id'] ?? null,
             'overflow_number' => $input['overflow_number'] ?? null,
+            'queue_max_seconds' => $input['queue_max_seconds'] ?? 300,
+            'queue_announce_position' => $input['queue_announce_position'] ?? true,
+            'queue_announce_wait' => $input['queue_announce_wait'] ?? false,
+            'queue_hold_music_url' => $input['queue_hold_music_url'] ?? null,
         ]);
 
         return response()->json(['data' => $this->row($group->fresh())], Response::HTTP_CREATED);
@@ -151,6 +155,8 @@ class RingGroupsController extends Controller
             'name', 'mode', 'timeout_seconds',
             'member_user_ids', 'member_role_ids',
             'overflow', 'overflow_group_id', 'overflow_number',
+            'queue_max_seconds', 'queue_announce_position', 'queue_announce_wait',
+            'queue_hold_music_url',
         ] as $field) {
             if (array_key_exists($field, $input)) {
                 $group->{$field} = is_string($input[$field]) && $field === 'name'
@@ -227,6 +233,14 @@ class RingGroupsController extends Controller
             'overflow' => ['sometimes', Rule::in(PhoneRingGroup::OVERFLOWS)],
             'overflow_group_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('phone_ring_groups')],
             'overflow_number' => ['sometimes', 'nullable', 'string', 'max:16'],
+
+            // Five minutes by default, and capped at thirty. A caller held
+            // longer than that has not been queued, they have been abandoned
+            // with music on.
+            'queue_max_seconds' => ['sometimes', 'integer', 'min:30', 'max:1800'],
+            'queue_announce_position' => ['sometimes', 'boolean'],
+            'queue_announce_wait' => ['sometimes', 'boolean'],
+            'queue_hold_music_url' => ['sometimes', 'nullable', 'url', 'max:512'],
         ];
     }
 
@@ -299,6 +313,10 @@ class RingGroupsController extends Controller
             'overflow' => $group->overflow,
             'overflow_group_id' => $group->overflow_group_id,
             'overflow_number' => $group->overflow_number,
+            'queue_max_seconds' => (int) $group->queue_max_seconds,
+            'queue_announce_position' => (bool) $group->queue_announce_position,
+            'queue_announce_wait' => (bool) $group->queue_announce_wait,
+            'queue_hold_music_url' => $group->queue_hold_music_url,
 
             // WHO THIS GROUP ACTUALLY REACHES, not who is listed in it.
             //

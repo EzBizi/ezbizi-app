@@ -64,13 +64,33 @@ return [
      * permissions per resource" — with a row per resource (Search, Jobs, Leads,
      * Clients, …) each defaulting to **No access**.
      *
-     * So the key this report uses should grant **Jobs, read only**, and nothing
-     * else. That is all `WorkizJobs` touches: `job/all`, a GET. New-versus-
-     * existing comes off the RingCentral queue the caller chose, so Clients is
-     * unnecessary too.
+     * ...AND THAT CORRECTION WAS ITSELF HALF WRONG. Measured 2026-09-14:
      *
-     * The lesson is the one this module keeps relearning: a page's own summary
-     * of what it does is a claim, not a reading. I quoted it as a measurement.
+     *     v2 key  -> api/v1/{key}/job/all/   403
+     *     v1 token-> api/v1/{tok}/job/all/   200
+     *
+     * The Permissions step belongs to the **v2** wizard. The tokens this report
+     * actually runs on are **v1** — a pre-existing Token/Secret pair per
+     * account, on a tab that offers no permissions control at all, only
+     * "Request New Credentials". So "grant Jobs, read only" is not something
+     * that can be done to the credentials in use; it describes a different
+     * credential system that returns 403 against the endpoint here.
+     *
+     * A v2 jobs endpoint does exist — `api/v2/job/all/` answers with JSON
+     * (`{"flag":false,"msg":"Invalid Auth"}`) rather than the HTML sign-in page
+     * that every other guessed v2 path returns — but the v2 key was refused
+     * there in all four auth shapes tried (in the path, Bearer, x-api-key,
+     * apikey). So whether a scoped key can drive this report is UNKNOWN, not
+     * no; finding out means finding v2's auth scheme, and v2 is alpha.
+     *
+     * Until then the honest statement is: these tokens are unscoped account
+     * credentials, and that is a property of Workiz's v1 system rather than a
+     * choice anybody made.
+     *
+     * The lesson is the one this module keeps relearning, and it survived being
+     * learned once: a page's own summary is a claim, not a reading. I quoted
+     * the blurb as a measurement, corrected it with a reading of the wizard,
+     * and the correction was still about the wrong credential system.
      *
      * The CREDENTIAL is what an attacker gets, not the code that used it — so
      * scoping the key matters even though nothing here writes.

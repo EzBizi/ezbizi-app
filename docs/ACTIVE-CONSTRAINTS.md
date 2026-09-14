@@ -237,17 +237,37 @@ Raised by ezbizi-ea, who noticed the header contradicted the content.
 
 ---
 
-## 6 · Configuring a sending identity ARMS a shipped action
+## 6 · Configuring a sending identity ARMED a shipped action — CLOSED
 
-**Before you configure a sending identity for any organisation, settle
-`inspection_report.email` first.** They are linked, and nothing in the code says so.
+**Closed 2026-09-14 by `6e0d7e98`, hours after this section was written.**
+Inspection now refuses `inspection_report.email` unconditionally, and the refusal
+returns ABOVE the Platform check rather than relying on it, so it no longer depends
+on what is in `sending_identities`. Configuring a sending identity is safe again.
+The catalogue entry stays and says SWITCHED OFF, so a rule somebody already saved
+records why on every run - which is the case removing the row would have missed.
+
+**Kept, not deleted, and re-read before you lift that refusal.** The mechanism below
+is what made a correct guard unsafe, and it comes back the moment the refusal goes.
+It is also the general shape: a check that passes because a table is empty is a fact
+about the DATA wearing the clothes of a fact about the CODE.
 
 Jose ruled twice on 2026-09-14, carried by two sessions independently. Via
 Automations: *"no ezbizi SES is to be used only for EZBIZI Related actions like
-notificaitons, account creation, password, resets, etc at least for now."* Via HR:
-*"1 - yes, as they recommend."* Asked the sharper form afterwards - whether a
-CONFIGURED tenant sending tenant-authored content to a member of the public over
-EzBizi's SES is covered - he answered **yes**.
+notificaitons, account creation, password, resets, etc at least for now."* Via HR, asked a
+third time through a different door and answered in his own capitals:
+
+> *"No - Email should not be sent as EzBizi, EZBIZI EMAIL IS ONLY FOR EZBIZI
+> ACTIONS LIKE ACCOUNT RECOVERY, PASSWORD, RESERT, VERIFICAIONS, ETC"*
+
+That is the SERVICE reading, not the from-line reading: verifying a domain does
+not buy the right to send customer content through us. A customer's own mail goes
+through the customer's own provider, as newsletters already do via Mailchimp.
+
+**Citation corrected 2026-09-14.** This section first supported that with a bare
+relayed *"yes"*. Two other sessions then reported that the *"yes"* answered item 1
+of a different numbered list - the mail-health layout - so the ruling was right and
+my evidence for it was not. A one-word answer relayed without its question is not a
+quotation. The block above is his sentence, carried verbatim.
 
 `inspection_report.email` is shipped and selectable, and it mails a finished report
 to the customer through `asTenant()`. It is **latent, not live**, and the reason is

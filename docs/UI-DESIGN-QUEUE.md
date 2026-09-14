@@ -2430,9 +2430,26 @@ this entry exists to avoid, arriving through the badge rather than through the s
 >   something you can turn on"*, and a **"Verify a domain ›" link on that card would be a remedy
 >   that does not remedy**, which is the exact defect this entry already corrected once.
 >
-> **Not a gap in the gallery, and not something to guess.** The drawing holds either way; only
-> the words inside state B change. Whoever builds this should carry A first, which is unblocked,
-> rather than hold both for one sentence.
+> **ANSWERED the same day, and it is the second option: use at all.** Jose, plainly and with
+> visible impatience at being asked again: *"Email should not be sent as EzBizi, EZBIZI EMAIL IS
+> ONLY FOR EZBIZI ACTIONS LIKE ACCOUNT RECOVERY, PASSWORD, RESET, VERIFICATIONS, ETC."*
+>
+> So **"verify a domain" is not B's remedy** — verifying one does not make a tenant's own mail
+> EzBizi's to carry. A `Verify a domain ›` link on that card would be **a remedy that does not
+> remedy: the same defect this entry corrected in the same card's note three hours earlier.** It
+> came that close to shipping twice in one afternoon, through two different doors.
+>
+> B is now drawn as informational, with the tenant's own provider as the way out. **And B may not
+> be a health state at all** — a rule about what a service is *for* is not a fault, and a status
+> panel is the wrong shape for it. Left drawn rather than deleted because Jose approved a layout
+> containing it; whether it survives is the mail owner's call.
+>
+> **The consequence that outlives this entry, measured and handed over:** `asTenant` is called by
+> `ActionRunner:473`, `SendSavedReport:171` and `InspectionReportMail` — three paths sending
+> tenant-authored mail through EzBizi's transport, on the wrong side of the ruling. That is
+> `MODULE-OWNERS:151`'s to settle, not something to redesign around quietly. See
+> `ezbizi-never-sends-newsletters-itself`, now the whole-category rule rather than a newsletter
+> one.
 
 **Day one is state B for everybody.** The desk measured production at 2 organizations and 0
 sending identities (relayed through HR, not measured by me). If that holds, the day the refusal

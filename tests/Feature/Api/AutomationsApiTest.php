@@ -402,6 +402,20 @@ class AutomationsApiTest extends TestCase
 
         $this->assertNotEmpty($arms, 'no arms were found, so this proves nothing about drift');
 
+        // The regex above only sees an arm whose body is `$this->something`. An arm
+        // written any other way vanishes from $arms and this test stays GREEN while the
+        // drift it exists to catch goes unseen. So count every key in the block too and
+        // require the two to agree: a shape this guard cannot read must be loud.
+        preg_match_all("/^\s+'([a-z0-9_.]+)'[^\n]*=>/m", $m[1], $everyKey);
+        $unreadable = array_values(array_diff($everyKey[1], $arms));
+
+        $this->assertSame([], $unreadable, implode("\n", [
+            'These arms exist but do not match the `=> $this->` shape this guard scans',
+            'for, so it cannot check them against IMPLEMENTED_ACTIONS and would pass while',
+            'they drift: '.implode(', ', $unreadable),
+            'Widen the regex above - do not delete this assertion.',
+        ]));
+
         $implemented = (new ReflectionClass(AutomationsController::class))
             ->getConstant('IMPLEMENTED_ACTIONS');
 
