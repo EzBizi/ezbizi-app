@@ -128,13 +128,62 @@ class InspectionReportEmailActionTest extends TestCase
         $tenant = $this->provisionTenant('Alpha');
 
         $result = $this->inTenant($tenant['org'], fn () => app(ActionRunner::class)->run(
-            ['type' => 'report.email'],
+            ['type' => 'inspection_report.email'],
             $this->event($tenant),
             subject: $tenant['admin'],
         ));
 
         Mail::assertNothingQueued();
         $this->assertFalse($result['ok']);
+    }
+
+    /**
+     * THE BUILDER MUST LET SOMEBODY SELECT IT.
+     *
+     * Everything else in this file proved the action WORKS. None of it could
+     * see that no customer could reach it. `AutomationsController` publishes
+     * each action as `implemented => in_array($a->type(), IMPLEMENTED_ACTIONS)`,
+     * and that const is a hand-maintained list in another module's file — so an
+     * action can be declared, executed, and covered by five green tests while
+     * the picker draws it "Not built yet" and refuses the click.
+     *
+     * That is the QUIET direction of the same const going wrong. The loud one
+     * is a const entry with no arm: rules get built and every run records
+     * FAILED, which somebody notices within a day. `training.assign` had that
+     * shape once. Mine had the silent one, and it SHIPPED — found by the
+     * Training session reading main, not by anything here.
+     *
+     * So this asserts the API response a builder actually receives, rather than
+     * the declaration it is derived from. A test on `ModuleRegistry` would have
+     * passed throughout, because the module's half was never the broken half.
+     */
+    public function test_the_action_is_offered_to_the_builder_as_implemented(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $user = $this->userWithRole($tenant, 'Manager', ['automations.view', 'inspection.view']);
+
+        $data = $this->signedInAs($user)
+            ->getJson('/api/v1/automations/catalogue')
+            ->assertOk()
+            ->json('data');
+
+        $actions = [];
+        foreach ($data['modules'] as $module) {
+            foreach ($module['declared_actions'] ?? [] as $action) {
+                $actions[$action['key']] = $action;
+            }
+        }
+
+        $this->assertArrayHasKey(
+            'inspection.report.email',
+            $actions,
+            'the action must appear in the catalogue at all',
+        );
+        $this->assertTrue(
+            $actions['inspection.report.email']['implemented'],
+            'declared and executable is not enough — the builder refuses to select '
+            .'an action published as implemented:false',
+        );
     }
 
     // ── fixtures ─────────────────────────────────────────────────
@@ -145,7 +194,7 @@ class InspectionReportEmailActionTest extends TestCase
     private function runAction(array $tenant, InspectionReport $report): array
     {
         return $this->inTenant($tenant['org'], fn () => app(ActionRunner::class)->run(
-            ['type' => 'report.email'],
+            ['type' => 'inspection_report.email'],
             $this->event($tenant),
             subject: $report->fresh(),
         ));
