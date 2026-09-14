@@ -2614,7 +2614,7 @@ and it costs a row saying "Typed here"; the rare state is the one that goes wron
 from is still with Jose via the deploy desk. That decides copy on the report side, not this
 screen. SES promises no date — the screen is theirs and next.
 
-### 17 · An automation stopped itself, and nobody was told — **DRAWN, awaiting Jose**
+### 17 · An automation stopped itself, and nobody was told — **DESKTOP 2 BUILT (`832709d2`); 5 came free**
 
 `docs/previews/automation-stopped-itself-layouts.html`. Automations asked for these after their
 own fix to entry 16's note: `noteFailure()` counts consecutive failures, disables the rule, **and
@@ -2645,7 +2645,32 @@ the wordiest and the glance the quietest.
 > So **2 and 3 are buildable today and 1 is not**, and Automations are not blocked unless they
 > pick 1.
 
-**Recommendation: 2 and 5.** The dashboard is the one screen people open without being sent
+> **BUILT, and mobile 5 needed no build at all — measured after the fact rather than assumed.**
+> Automations shipped desktop 2 at `832709d2`. I then checked whether the phone needed its own
+> version: `dashboard_screen.dart` lays glances out in a `Wrap` with **no width branch and no
+> `MediaQuery` read anywhere in the file**. So the same glance reflows to one column on a phone.
+> **Mobile 5 was never a second build — it is the same payload at a narrower width**, and the
+> sentence they wrote is already the short one the drawing called for, because the glance carries
+> no date (the organization's date format lives in the client, so a stamp composed in PHP would
+> be written in the wrong one).
+>
+> **The split is what unblocked it, and it was two questions wearing one coat.** *Who hears it* is
+> per person and still with Jose; *where the condition lives* is per scope and needed no
+> addressee. Automations verified the per-scope half rather than taking it — `AutomationsGlance`
+> is organization-scoped with no franchise filter, stated in the `Glance` interface docblock.
+> **They had been treating the audience problem as blocking the surface, and it only blocks one
+> surface.**
+>
+> **The "Turned back on" state is why the sentence is derived rather than stored.**
+> `AutomationsController:741` nulls `disabled_at` on re-enable, so a sentence computed from that
+> column lasts exactly as long as the condition and clears itself. **Had that column not been
+> cleared, the same sentence would have been a permanent false alarm on the dashboard** — the
+> opposite of what it was drawn for. There is a test asserting the clause disappears.
+>
+> **Still open:** the bell notification (blocked on Jose's audience answer) and desktop 3's
+> sidebar count, which pairs with 2 rather than competing.
+
+**Why 2 was the recommendation.** The dashboard is the one screen people open without being sent
 there, a glance persists exactly as long as the condition and clears itself, and it needs nobody
 to have decided the audience first. **3 pairs well with 2** — the glance is where you find out,
 the badge is what keeps it in view while you do not act on it. **6 is drawn to be judged rather
