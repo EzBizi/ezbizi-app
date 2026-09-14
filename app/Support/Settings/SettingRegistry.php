@@ -628,8 +628,9 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'notifications.email_enabled', label: 'Send email notifications',
                 type: SettingDefinition::TYPE_BOOL, default: true,
-                help: 'Every notification is shown in the app. With this on, the same words are '
-                    .'also emailed to each person it was for. Off leaves the bell working.',
+                help: 'With this on, a notification is also emailed to each person it was for, '
+                    .'in the same words the app shows. Off leaves the bell working. The two '
+                    .'channels are independent: neither one switched off silences the other.',
             ),
             new SettingDefinition(
                 key: 'notifications.push_enabled', label: 'Send push notifications',
@@ -640,8 +641,37 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'notifications.in_app_enabled', label: 'Show in-app notifications',
                 type: SettingDefinition::TYPE_BOOL, default: true,
-                help: 'The master switch. Off silences every notification below, including '
-                    .'the ones a company cannot otherwise turn off.',
+                /*
+                 * It called itself "the master switch. Off silences every
+                 * notification below, including the ones a company cannot
+                 * otherwise turn off." That was true and complete about a
+                 * system with ONE channel, and it stopped being true at
+                 * 94ab82a2, when the notifications module split the three
+                 * keys apart: the source toggles decide whether a
+                 * notification happens at all, this one writes the row, and
+                 * `notifications.email_enabled` sends the mail.
+                 *
+                 * Retracted by the session that wrote it, on the argument
+                 * that settles it: the key is NAMED `in_app_enabled`, and
+                 * somebody who unticks "Show in-app notifications" and
+                 * silently stops receiving MAIL has been lied to by the name.
+                 *
+                 * Nothing was lost by the split, including the case the old
+                 * sentence was protecting. `system` has no source toggle
+                 * deliberately -- it carries "your trial ends tomorrow" -- and
+                 * this was its only off switch; now its row is silenced here
+                 * and its mail by the email key, independently. The
+                 * cross-channel master that actually does the job is the
+                 * source map, which is channel-agnostic by construction.
+                 *
+                 * Nothing mechanical catches a help sentence going false --
+                 * the gate in a34bf5f4 watches `notYetInEffect`, not `help`.
+                 * This one was caught by the module that owns the behaviour
+                 * reading its own retraction back against my file.
+                 */
+                help: 'The bell inside the app. Off leaves email working, if this organization '
+                    .'sends notifications by email. To stop a kind of notification reaching '
+                    .'anybody at all, use the switches below.',
             ),
 
             /*
