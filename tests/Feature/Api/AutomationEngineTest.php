@@ -630,6 +630,14 @@ class AutomationEngineTest extends TestCase
         // automations_screen.dart:370 renders this string on the automation card;
         // both callers used to pass $e->getMessage() straight into it. The
         // assertion above cannot see that - it was green while the leak existed.
+        //
+        // MEASURED, not derived. fc4f200f's message called this red derived; it is
+        // not any more. Running the old formula - "Last error: {$reason}" - against
+        // the same text this test finds in automation_runs.error:
+        //     OLD contains 'internal address': true  -> assertStringNotContains FAILS
+        //     NEW contains 'internal address': false -> passes
+        // Done on a copy in a scratchpad rather than by reverting the model, because
+        // a sabotage on this tree is published to every session reading it.
         $error = $this->inTenant(fn () => AutomationRun::where('automation_id', $automation->id)
             ->where('status', AutomationRun::FAILED)
             ->first()?->error);
