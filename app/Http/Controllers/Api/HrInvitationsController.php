@@ -10,6 +10,7 @@ use App\Services\Hr\Invitations;
 use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Mail\MailStatus;
 use App\Support\Modules\PermissionCatalogue;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -418,11 +419,34 @@ class HrInvitationsController extends Controller
      */
     private function deliver(Invitation $invitation, string $token): bool
     {
+        // A handoff can SUCCEED while nothing leaves the building. `log`,
+        // `array` and `null` deliver nowhere and throw nothing, so the catch
+        // below never fires and this used to return true — the panel then told
+        // an administrator the invitation had been emailed, on exactly the
+        // demo and staging boxes where somebody tests the flow and concludes
+        // it works. `ses` with a blank credential is the same shape.
+        //
+        // Found by UI/UX (2026-09-14) as a fourth state their vocabulary was
+        // missing; they credited this method with already handling it, and it
+        // did not. The test below me asserted `emailed: true` under `array`
+        // and its comment said "this one genuinely sends", which was the same
+        // belief written down twice.
+        //
+        // Not an exception, because nothing went wrong: the box is configured
+        // not to send. It reports the outcome the inviter needs, which is the
+        // one they already act on — hand the link over yourself.
+        //
+        // Asked AFTER the handoff rather than instead of it. The message is
+        // still given to whatever transport is configured — that is what makes
+        // it observable to a `log` reader and to Notification::fake — and only
+        // the CLAIM depends on whether that transport goes anywhere. Skipping
+        // the send instead would have been a second behaviour to keep in step
+        // and would have made the mailable untestable on this box.
         try {
             Notification::route('mail', $invitation->email)
                 ->notify(new InvitationLink($invitation, $this->invitations->acceptUrl($token)));
 
-            return true;
+            return app(MailStatus::class)->delivers();
         } catch (Throwable $e) {
             // The invitation id, never the address and never the link. This line
             // exists to say the transport is broken, and a log is not a place to
