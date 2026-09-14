@@ -2543,6 +2543,21 @@ rather than implying a live connection. It is also the state a tap can hide, whi
 6 promotes it out of the tap and says in its own note that this is an admission the pattern does
 not hold for the one case that needs it.
 
+> **⚠ OPEN, AND NAMED SO THE DRAWING DOES NOT IMPLY IT IS CLOSED.** SES flagged that the sixth
+> state is a functional problem wearing display clothes. A copied password that no longer
+> authenticates does not degrade — **the send FAILS, on a schedule, to somebody expecting a
+> report.** The screen saying *"still sending on September's password"* is necessary and not
+> sufficient: **something has to notice, and nothing does today.**
+>
+> They asked for it to sit here as an open thing rather than be implied fixed by the state
+> existing, and that is the right instinct — **a state drawn for a condition nothing detects is a
+> screen that will be honest the day somebody makes it possible, and silent until then.**
+> Detection is theirs. **Where a noticed failure surfaces is mine, and I will draw it when there
+> is a signal to draw against** rather than inventing states the server cannot prove — the
+> discipline entry 12 arrived at the hard way.
+>
+> It is also entry 15's state A one layer down: a message that reaches nobody, with nobody told.
+
 **Recommendation: 2 and 5.** The common state is one server typed once and never touched again,
 and it costs a row saying "Typed here"; the rare state is the one that goes wrong silently.
 
