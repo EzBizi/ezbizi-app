@@ -2512,3 +2512,41 @@ sending identities (relayed through HR, not measured by me). If that holds, the 
 ships every organization is in B with a perfectly healthy platform — so a design treating B as the
 unusual case is wrong for everyone at once.
 
+### 16 · A mail server for sending — **DRAWN, awaiting Jose**
+
+`docs/previews/sending-server-layouts.html`. The screen entry 15's state B has been pointing at
+with no destination. The fork landed: SES and Email settled that **a report must not go out
+through a mailbox's reply credentials**, so the sending identity keeps its own.
+
+**Shape, from SES:** a business connects its own server — host, port, username, password,
+encryption — stored on the sending identity, scoped organization / company / franchise. The
+convenience is an **explicit** "use the same server as info@" that **copies** the values and says
+so. **Never an implicit fallback**, and their reason is a UI reason as much as a technical one:
+with a fallback nobody can tell by looking which credential is in use.
+
+> **TWO FACTS, INDEPENDENT, AND THAT IS THE WHOLE DESIGN PROBLEM.**
+>
+> - **Whose value is this** — the cascade's question, which this screen **already has words for**
+>   and which I took rather than reinvented: `Set here`, `Inherited from {name}`, `EzBizi
+>   default`. `settings_screen.dart:105` warns that *"the third is not a rounding of the second"*,
+>   and its own comment records why the wording is central: *"a card saying 'inherited'
+>   differently from the rows beside it is the confusion this screen exists to prevent."*
+> - **Where did these values come from** — typed, or copied from a mailbox.
+>
+> **A franchise can inherit a value that was copied**, so one status line cannot carry both
+> without merging them — the defect entries 11, 12 and 15 were each about. The three desktop
+> options differ only in how they keep the two apart.
+
+**The state to switch to first is "copied, then that mailbox changed".** A copy does not follow
+its source — that is the point of copying rather than linking — so the screen has to say so
+rather than implying a live connection. It is also the state a tap can hide, which is why mobile
+6 promotes it out of the tap and says in its own note that this is an admission the pattern does
+not hold for the one case that needs it.
+
+**Recommendation: 2 and 5.** The common state is one server typed once and never touched again,
+and it costs a row saying "Typed here"; the rare state is the one that goes wrong silently.
+
+**Not blocked by, and must not wait for:** which identity a recipient should SEE a report come
+from is still with Jose via the deploy desk. That decides copy on the report side, not this
+screen. SES promises no date — the screen is theirs and next.
+
