@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0201',
+      date: '14 Sep 2026',
+      items: [
+        'A computer reports how hard its graphics are working, alongside processor, memory and disk. The reading starts appearing on each machine once that machine has updated to this version - until then it shows a dash, the same as any reading a computer cannot supply.',
+        'Monitoring shows what Windows itself says about a computer antivirus, firewall and updates, including when another company antivirus is the one protecting it. A machine running Bitdefender with the built-in one correctly stood down reads as protected rather than as at risk.',
+        'Hovering a slice of a pie chart lifts it and shows what share it is.',
+        'A mailbox the mail service refuses is now retried for about a day before EzBizi asks somebody to reconnect it, instead of being disconnected on the first refusal.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0200',
       date: '11 Sep 2026',
       items: [
