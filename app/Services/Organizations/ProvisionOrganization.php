@@ -57,6 +57,27 @@ class ProvisionOrganization
         ?string $timezone = 'America/New_York',
         bool $isDemo = false,
         ?int $trialDays = null,
+        /*
+         * Has the administrator proved they can read that mailbox? (TODO #22)
+         *
+         * Defaults to TRUE because provisioning is a structural act - build an
+         * organization and its owner - and every caller but one already knows
+         * the answer is yes. The review seed invents its accounts, and a test
+         * fixture is scaffolding for a tenant that is supposed to already exist.
+         *
+         * The one caller that passes FALSE is self-serve signup, because that is
+         * the only route where somebody typed an address nobody has checked.
+         * Putting the decision in the caller rather than here is deliberate: how
+         * an owner arrived is something only the caller knows, and this service
+         * would have to guess.
+         *
+         * The unsafe direction of this default is somebody adding a second
+         * self-serve route and forgetting to pass false. SignupTest pins the
+         * signup path against exactly that - it asserts the new account cannot
+         * write and that email_verified_at is null - so the default cannot flip
+         * silently for the route that matters.
+         */
+        bool $administratorVerified = true,
     ): array {
         // Resolved before the transaction opens so the row this reads is the
         // same one an operator would edit, not something the transaction is
@@ -64,7 +85,8 @@ class ProvisionOrganization
         $trialDays ??= PlatformSubscriptionDefaults::trialDays();
 
         return DB::transaction(function () use (
-            $organizationName, $administrator, $companyName, $franchiseName, $timezone, $isDemo, $trialDays
+            $organizationName, $administrator, $companyName, $franchiseName, $timezone, $isDemo,
+            $trialDays, $administratorVerified
         ) {
             $organization = Organization::create([
                 'name'               => $organizationName,
@@ -87,7 +109,8 @@ class ProvisionOrganization
             // Everything below is tenant data, so it must run inside the tenant —
             // BelongsToTenant refuses to write without one, by design.
             return $this->tenant->run($organization, function () use (
-                $organization, $administrator, $companyName, $franchiseName, $timezone
+                $organization, $administrator, $companyName, $franchiseName, $timezone,
+                $administratorVerified
             ) {
                 $role = $this->createAdministratorRole($organization);
 
@@ -99,6 +122,26 @@ class ProvisionOrganization
                     'password'        => $administrator['password'],
                     'is_active'       => true,
                 ]);
+
+                /*
+                 * Written in BOTH directions on purpose, never left to a default.
+                 *
+                 * forceFill rather than a key in create() above, because
+                 * `email_verified_at` is deliberately absent from the model's
+                 * #[Fillable] list - a verification state must never be mass
+                 * assignable - so passing it there is silently discarded.
+                 *
+                 * The null branch is not redundant. The test harness fills this
+                 * in for any user created without one, so that several hundred
+                 * fixtures built with a bare User::create do not all fail on a
+                 * 403 that says nothing about them. Signup is the one path that
+                 * genuinely produces an unconfirmed account, and stating the null
+                 * explicitly is what keeps that true under the harness rather
+                 * than only in production.
+                 */
+                $admin->forceFill([
+                    'email_verified_at' => $administratorVerified ? now() : null,
+                ])->save();
 
                 $company = Company::create([
                     'organization_id' => $organization->id,

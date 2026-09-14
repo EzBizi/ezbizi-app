@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AccountDeletionController;
 use App\Http\Controllers\Api\AddressLookupController;
 use App\Http\Controllers\Api\AttachmentsController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\EmailVerificationController;
 use App\Http\Controllers\Api\AutomationsController;
 use App\Http\Controllers\Api\BlueskyConnectController;
 use App\Http\Controllers\Api\BrandingController;
@@ -207,6 +208,22 @@ Route::prefix('v1/auth')->group(function () {
     // can be used to discover which addresses are registered.
     Route::post('forgot', [PasswordController::class, 'forgot']);
     Route::post('reset', [PasswordController::class, 'reset']);
+
+    /*
+     * Confirming a signup address (TODO #22). Public by necessity: the link is
+     * opened from a mailbox, possibly on another device, by somebody with no
+     * session.
+     *
+     * POST rather than GET, with the token in the BODY. nginx logs the request
+     * line, which is how invitation credentials once ended up in an access log
+     * kept for weeks. The email links the CLIENT at /verify?token=..., and the
+     * client posts it here.
+     *
+     * `verify/resend` is throttled inside the controller, per address AND per
+     * IP, the same shape `forgot` uses.
+     */
+    Route::post('verify', [EmailVerificationController::class, 'verify']);
+    Route::post('verify/resend', [EmailVerificationController::class, 'resend']);
 });
 
 /*
@@ -544,7 +561,7 @@ Route::get('v1/ui-strings', [UiStringsController::class, 'show'])
 
 // ── Authenticated ────────────────────────────────────────────────
 Route::prefix('v1')
-    ->middleware(['auth:sanctum', 'tenant', 'subscription', 'two-factor', 'idle'])
+    ->middleware(['auth:sanctum', 'tenant', 'subscription', 'verified', 'two-factor', 'idle'])
     ->group(function () {
 
         Route::post('auth/logout', [AuthController::class, 'logout']);

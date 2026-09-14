@@ -7,8 +7,11 @@ use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Organization;
 use App\Models\User;
+use App\Notifications\EmailVerificationLink;
+use App\Services\Auth\EmailVerifications;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -328,9 +331,52 @@ class SignupTest extends TestCase
         $this->assertSame(array_keys($fresh->json()), array_keys($again->json()));
     }
 
-    // ── email verification, deliberately absent ──────────────────
+    // ── email verification (TODO #22) ────────────────────
 
-    public function test_the_account_can_read_and_write_immediately_with_no_verification_step(): void
+    public function test_a_new_account_may_read_but_may_not_write_until_it_confirms(): void
+    {
+        Notification::fake();
+
+        $token = $this->postJson('/api/v1/auth/signup', $this->payload())
+            ->assertCreated()->json('token');
+
+        // READS work. This is not incidental: /me is how the client learns who
+        // it is and what state it is in, so refusing it would leave a new
+        // account staring at a locked door with nothing to explain it.
+        $franchiseId = $this->withHeader('Authorization', "Bearer {$token}")
+            ->getJson('/api/v1/me')->assertOk()->json('data.franchises.0.id');
+
+        /*
+         * WRITES do not. This replaces a test that pinned the opposite, and the
+         * reason it pinned the opposite is worth keeping: nothing on this
+         * platform could send mail, so a verification gate would have locked out
+         * every account signup created. That was true until SES left the sandbox
+         * on 2026-09-14. The tripwire fired on exactly this line when the gate
+         * went in, which is what it was for.
+         */
+        $this->withHeader('Authorization', "Bearer {$token}")
+            ->postJson('/api/v1/customers', [
+                'owning_franchise_id' => $franchiseId,
+                'name'                => 'First Customer',
+            ])
+            ->assertForbidden()
+            ->assertJsonPath('code', 'email_unverified');
+
+        $organization = Organization::where('name', 'A-1 Chimney')->firstOrFail();
+
+        app(TenantContext::class)->run($organization, function () {
+            $this->assertNull(User::firstOrFail()->email_verified_at);
+        });
+
+        // And the message that lifts it was actually sent, to the address that
+        // signed up rather than to whoever happened to be first in the table.
+        Notification::assertSentOnDemand(
+            EmailVerificationLink::class,
+            fn ($notification, $channels, $notifiable) => $notifiable->routes['mail'] === 'jose@example.com',
+        );
+    }
+
+    public function test_confirming_the_address_lets_the_account_write(): void
     {
         $token = $this->postJson('/api/v1/auth/signup', $this->payload())
             ->assertCreated()->json('token');
@@ -338,28 +384,64 @@ class SignupTest extends TestCase
         $franchiseId = $this->withHeader('Authorization', "Bearer {$token}")
             ->getJson('/api/v1/me')->assertOk()->json('data.franchises.0.id');
 
+        $organization = Organization::where('name', 'A-1 Chimney')->firstOrFail();
+
+        // Mint a link the way signup does, rather than reaching into the table,
+        // so this exercises the path a real confirmation takes.
+        $verification = app(TenantContext::class)->run(
+            $organization,
+            fn () => app(EmailVerifications::class)->issue(User::firstOrFail()),
+        );
+
+        $this->postJson('/api/v1/auth/verify', ['token' => $verification['token']])
+            ->assertOk()
+            ->assertJsonPath('message', 'Your address is confirmed.');
+
         /*
-         * Nothing on this platform can send mail — AWS blocks outbound port 25 on
-         * both instances and SES has no credential (TODO #1). A verification gate
-         * would therefore lock out every account signup creates, which is why
-         * there is not one.
-         *
-         * Pinned as a test rather than only as a comment, so a later "fix" that
-         * adds the gate before the mail transport exists fails here instead of in
-         * front of a customer. A WRITE, not just a read: `verified` middleware
-         * would let /me through and refuse this.
+         * A test-harness artifact, not product behaviour. The application is not
+         * rebuilt between requests inside one test, so the auth guard still holds
+         * the User it resolved for the call above - the copy from before this
+         * address was confirmed. Production hands every request a new process and
+         * has nothing to forget. Same shape as the controller instance a route
+         * keeps for the life of a test file.
          */
+        $this->app['auth']->forgetGuards();
+
+        // The same write that was refused a moment ago.
         $this->withHeader('Authorization', "Bearer {$token}")
             ->postJson('/api/v1/customers', [
                 'owning_franchise_id' => $franchiseId,
                 'name'                => 'First Customer',
             ])->assertCreated();
 
+        app(TenantContext::class)->run($organization, function () {
+            $this->assertNotNull(User::firstOrFail()->email_verified_at);
+        });
+    }
+
+    public function test_a_confirmation_link_works_once(): void
+    {
+        $this->postJson('/api/v1/auth/signup', $this->payload())->assertCreated();
+
         $organization = Organization::where('name', 'A-1 Chimney')->firstOrFail();
 
-        app(TenantContext::class)->run($organization, function () {
-            $this->assertNull(User::firstOrFail()->email_verified_at);
-        });
+        $verification = app(TenantContext::class)->run(
+            $organization,
+            fn () => app(EmailVerifications::class)->issue(User::firstOrFail()),
+        );
+
+        $this->postJson('/api/v1/auth/verify', ['token' => $verification['token']])->assertOk();
+
+        // Spent. A link left in a mailbox is not a way back in later.
+        $this->postJson('/api/v1/auth/verify', ['token' => $verification['token']])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'verification_token_invalid');
+
+        // And a string that was never issued is refused identically, so the
+        // response cannot be used to sort real tokens from invented ones.
+        $this->postJson('/api/v1/auth/verify', ['token' => str_repeat('a', 48)])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'verification_token_invalid');
     }
 
     // ── throttling ───────────────────────────────────────────────

@@ -19,6 +19,13 @@ return Application::configure(basePath: dirname(__DIR__))
             'tenant'       => App\Http\Middleware\SetTenantContext::class,
             'subscription' => App\Http\Middleware\EnforceSubscriptionState::class,
 
+            // Same shape as `subscription` and for a related reason: both let
+            // you read and refuse you writes, and both key off the HTTP verb so
+            // a new endpoint is covered without anyone listing it. This one
+            // stands in front of an account whose address nobody has checked
+            // yet (TODO #22).
+            'verified'     => App\Http\Middleware\RequireVerifiedEmail::class,
+
             // The two halves of §6's security policy that are enforced per
             // REQUEST rather than at sign-in. Both read a setting against the
             // caller's organization, and both do so through a helper that enters
