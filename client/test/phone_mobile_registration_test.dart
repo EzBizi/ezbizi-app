@@ -267,12 +267,16 @@ void main() {
       // it is, so spending the real duration bought nothing and cost twenty
       // seconds of every full run.
       //
-      // The comment here used to say this test had been SEEN red under load.
-      // It had not. A peer misread which test a failure belonged to and told
-      // me it was this one, I shortened it, and I wrote their premise down as
-      // fact — so the file asserted an observation nobody had made. The reason
-      // above is the one that holds on its own: a test that waits on real
-      // wall-clock time is slow, and slow is enough.
+      // This comment has now been wrong in BOTH directions, which is why it
+      // no longer says anything about flaking. It first recorded a peer's
+      // report that the test had been seen red under load as though I had
+      // observed it; then recorded their retraction as though THAT were
+      // established. The retraction was itself retracted. My own full run had
+      // it green.
+      //
+      // I cannot settle it and do not need to. A test that waits out real
+      // wall-clock time is slow, slow is sufficient, and that much I measured
+      // myself.
       registrationTimeout: const Duration(milliseconds: 20),
     );
 

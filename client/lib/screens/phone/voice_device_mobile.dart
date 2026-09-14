@@ -66,8 +66,11 @@ class MobileVoiceDevice implements VoiceDevice {
     // pays it every time, and a test that waits on real time is a test whose
     // result can depend on the machine keeping up.
     //
-    // It had NOT been seen to fail; an earlier version of this note said it
-    // had, on a peer's report that turned out to name the wrong test.
+    // Whether it had ever actually FLAKED is not settled and this note no
+    // longer claims either way: it was reported red under load, retracted,
+    // and then un-retracted, and my own full run showed it green. The
+    // duration is the reason, it is mine, and it does not depend on
+    // settling that.
     //
     // Shortening it here costs the test nothing it was measuring: what is
     // under test is that the wait ENDS and says why, not how long it is.
