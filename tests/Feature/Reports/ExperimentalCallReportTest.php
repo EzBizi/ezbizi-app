@@ -164,13 +164,30 @@ class ExperimentalCallReportTest extends TestCase
 
     // ── the connections ──────────────────────────────────────────
 
+    /**
+     * Workiz is ONE TOKEN PER ACCOUNT - A-1 runs Nationwide plus nine state
+     * sub-accounts - so "configured" is a question about which accounts, not a
+     * boolean about whether a token exists. A reader built on one token returns
+     * real rows and silently omits eight states.
+     */
+    public function test_workiz_reports_which_accounts_it_holds_keys_for(): void
+    {
+        config()->set('experimental_reports.workiz.accounts', [
+            'Nationwide' => 'tok-1',
+            'NJ' => 'tok-2',
+        ]);
+
+        $this->assertSame(['Nationwide', 'NJ'], (new WorkizJobs)->accounts());
+        $this->assertTrue((new WorkizJobs)->configured());
+    }
+
     public function test_neither_vendor_reads_as_configured_without_credentials(): void
     {
         config()->set('experimental_reports.ringcentral', [
             'server' => 'https://platform.ringcentral.com',
             'client_id' => null, 'client_secret' => null, 'jwt' => null,
         ]);
-        config()->set('experimental_reports.workiz.token', null);
+        config()->set('experimental_reports.workiz.accounts', []);
 
         // Not connected and empty are different facts, and the screen shows
         // different sentences for each.
