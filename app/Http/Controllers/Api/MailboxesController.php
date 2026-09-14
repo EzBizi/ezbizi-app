@@ -177,8 +177,63 @@ class MailboxesController extends Controller
 
                 'imap_ports' => RemoteHostGuard::IMAP_PORTS,
                 'smtp_ports' => RemoteHostGuard::SMTP_PORTS,
+
+                /*
+                 * ── WHY the list is empty, published rather than guessed ──
+                 *
+                 * Same argument as `usable` above, one level down. The refusal
+                 * case was fixed by the `abort_unless` at the top of this
+                 * method -- somebody without the tab gets a sentence instead of
+                 * a 200 and an empty list. But an empty list STILL has three
+                 * different causes and the screen was guessing between them.
+                 *
+                 * It guessed scope, and told everybody to go and look in
+                 * another company: "An inbox added on another company stays
+                 * there -- switch to that company". On 2026-09-14 eight people
+                 * across two roles were reading that, and it was the wrong
+                 * errand for all eight. `mailbox_grants` is empty, so the
+                 * inboxes were in their view and in front of them; their role
+                 * simply held none. Nothing they could do in any company would
+                 * have changed it, and the one person who could fix it is an
+                 * administrator, who holds every inbox and never sees this
+                 * screen.
+                 *
+                 * This is the module's own bug family -- it succeeded, it
+                 * displayed, and it answered a different question from the one
+                 * the person had.
+                 *
+                 * `none_granted` reveals that inboxes EXIST without naming one.
+                 * That is the point: it is what turns a hunt into a sentence
+                 * somebody can take to an administrator.
+                 */
+                'empty_because' => $this->emptyBecause($user, $mailboxes->isEmpty()),
             ],
         ]);
+    }
+
+    /**
+     * Which of the three empty inboxes lists this is, or null if it is not empty.
+     *
+     * Ordered most-global first, because each answer is only true once the one
+     * before it has been ruled out: an organization with no inbox at all cannot
+     * have one out of view, and an inbox cannot be ungranted if it is not in
+     * view to begin with.
+     */
+    private function emptyBecause(User $user, bool $isEmpty): ?string
+    {
+        if (! $isEmpty) {
+            return null;
+        }
+
+        // Tenant-scoped by BelongsToTenant, so this is "in this organization".
+        if (Mailbox::query()->count() === 0) {
+            return 'none_connected';
+        }
+
+        $inView = Mailbox::query()->get()
+            ->filter(fn (Mailbox $m) => $this->access->inView($user, $m));
+
+        return $inView->isEmpty() ? 'none_in_view' : 'none_granted';
     }
 
     /**
