@@ -791,6 +791,20 @@ final class TwimlRenderer
         string $language,
         array $context,
     ): void {
+        // HOLD THEM, rather than send them to a machine.
+        //
+        // Jose asked for what RingCentral calls a call queue: "if everyone is
+        // on calls, it leaves callers waiting on a queue, so they don't go
+        // straight to voicemail". This is that answer, and it can only be
+        // reached once — `queued` is set on the way out of the queue, so a
+        // caller released to a ring that then fails takes the next answer down
+        // rather than rejoining the line they just left.
+        if ($group->overflow === 'queue' && ! ($context['queued'] ?? false)) {
+            $this->enqueue($response, $number, $group);
+
+            return;
+        }
+
         if ($group->overflow === 'forward' && is_string($group->overflow_number)
             && $group->overflow_number !== '') {
             $dial = $response->dial(null, $this->dialAttributes(
@@ -820,6 +834,48 @@ final class TwimlRenderer
         }
 
         $this->noneUsable($response, $number, $language, $context);
+    }
+
+    /**
+     * Put the caller in a line and let them hear where they are in it.
+     *
+     * ── Why a queue is two URLs and no background job ────────────
+     *
+     * `waitUrl` is re-requested by Twilio every time the document it returns
+     * runs out of verbs, which makes it a clock somebody else winds. So the
+     * wait document is where the decision lives: it is asked, every loop,
+     * whether anybody has become free, and it answers `<Leave>` when somebody
+     * has. Leaving fires `action`, which is the ordinary voice webhook, and
+     * the ring happens through the same code path as every other call.
+     *
+     * The alternative — originating a call to an agent and bridging them in
+     * with `<Dial><Queue>` — needs something watching presence and placing
+     * calls, which is a worker, a failure mode and a bill. This needs none of
+     * the three, because the caller's own hold loop is the thing that asks.
+     *
+     * `action` carries `queued=1`. Without it, a caller released to a ring
+     * that nobody answers reaches overflow again and rejoins the queue at the
+     * back, for ever, billed per loop.
+     */
+    private function enqueue(
+        VoiceResponse $response,
+        PhoneNumber $number,
+        PhoneRingGroup $group,
+    ): void {
+        $response->enqueue($group->queueName(), [
+            'waitUrl' => route('phone.queue.webhook', [
+                'organization' => $number->organization_id,
+                'connection' => $number->connection_id,
+                'number' => $number->id,
+                'group' => $group->id,
+            ]),
+            'waitUrlMethod' => 'POST',
+            'action' => route('phone.voice.webhook', [
+                'organization' => $number->organization_id,
+                'connection' => $number->connection_id,
+            ]).'?queued=1',
+            'method' => 'POST',
+        ]);
     }
 
     /**

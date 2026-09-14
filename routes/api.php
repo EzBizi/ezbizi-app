@@ -77,6 +77,7 @@ use App\Http\Controllers\Api\Phone\NumbersController as PhoneNumbersController;
 use App\Http\Controllers\Api\Phone\PortsController as PhonePortsController;
 use App\Http\Controllers\Api\Phone\PortWebhookController as PhonePortWebhookController;
 use App\Http\Controllers\Api\Phone\PresenceController as PhonePresenceController;
+use App\Http\Controllers\Api\Phone\QueueWaitWebhookController as PhoneQueueWaitWebhookController;
 use App\Http\Controllers\Api\Phone\RecordingWebhookController as PhoneRecordingWebhookController;
 use App\Http\Controllers\Api\Phone\ReportsController as PhoneReportsController;
 use App\Http\Controllers\Api\Phone\RingGroupsController as PhoneRingGroupsController;
@@ -540,6 +541,22 @@ Route::match(['get', 'post'], 'v1/phone/whisper/{organization}/{connection}/{num
 Route::match(['get', 'post'], 'v1/phone/answered/{organization}/{connection}/{user}', PhoneAnsweredWebhookController::class)
     ->middleware('throttle:240,1')
     ->name('phone.answered.webhook');
+
+/*
+| What a caller on hold hears, and where the queue decides to let them go.
+|
+| Twilio re-requests this for as long as somebody is in the queue — every time
+| the document it returns runs out of verbs — so it is requested far more often
+| than any other phone callback and the limit is raised to match: a single
+| caller holding for five minutes with a thirty-second music loop is ten
+| requests on their own.
+|
+| GET as well as POST for the same reason as the whisper: a callback that only
+| answers one verb is one nobody can look at in a browser.
+*/
+Route::match(['get', 'post'], 'v1/phone/queue/{organization}/{connection}/{number}/{group}', PhoneQueueWaitWebhookController::class)
+    ->middleware('throttle:600,1')
+    ->name('phone.queue.webhook');
 
 Route::post('v1/phone/status/{organization}/{connection}', PhoneStatusWebhookController::class)
     ->middleware('throttle:120,1')

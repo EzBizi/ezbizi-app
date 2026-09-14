@@ -64,6 +64,22 @@ class VoiceWebhookController extends Controller
 
         $context = $this->context($request, $connection, $outbound, $batch);
 
+        // OUT OF THE QUEUE, and it must not go back in.
+        //
+        // `<Enqueue action>` lands here when a caller leaves the line, whether
+        // because somebody became free or because they held for as long as the
+        // group allows. Both want the same thing: try the ring group now. The
+        // difference is decided a moment later by whether anybody is actually
+        // reachable, which is the same question the hold loop just asked.
+        //
+        // `queued` is what stops it being a circle. Without it a caller
+        // released to a ring that nobody answers reaches overflow again,
+        // rejoins the queue at the back, and holds for ever — billed per loop,
+        // and indistinguishable from hold music working.
+        if ($request->input('QueueResult') !== null) {
+            return $this->continueDial($request, $number, $context, null);
+        }
+
         if ($dialStatus !== null || $batch > 0) {
             return $this->continueDial($request, $number, $context, $dialStatus);
         }
@@ -269,7 +285,23 @@ class VoiceWebhookController extends Controller
             // reads its prompt, accepts a digit, and then does exactly what it
             // would have done for every other digit — which is not a menu.
             'digits' => (string) $request->input('Digits', ''),
-            'dial_action' => $this->voiceAction($connection, $batch + 1, $outbound),
+
+            // THIS CALLER HAS ALREADY BEEN IN THE QUEUE, and the fact has to
+            // outlive the request that learned it.
+            //
+            // Twilio sends `QueueResult` on the hop that leaves the queue, and
+            // on that hop alone. The ring that follows posts its own result to
+            // `dial_action`, which is a URL we build — so unless it is written
+            // into that URL, the next request looks exactly like a first
+            // attempt, reaches overflow, and puts the caller back in the line
+            // they just left. That is the loop, and it bills per pass.
+            'queued' => $this->hasQueued($request),
+            'dial_action' => $this->voiceAction(
+                $connection,
+                $batch + 1,
+                $outbound,
+                $this->hasQueued($request),
+            ),
             'recording_status_callback' => $this->webhookUrl($connection, 'recording'),
             'transcription_status_callback' => $this->webhookUrl($connection, 'transcription'),
         ];
@@ -542,10 +574,27 @@ class VoiceWebhookController extends Controller
         PhoneConnection $connection,
         int $batch,
         bool $outbound = false,
+        bool $queued = false,
     ): string {
         $url = $this->webhookUrl($connection, 'voice').'?batch='.$batch;
 
-        return $outbound ? $url.'&direction=outbound' : $url;
+        if ($outbound) {
+            $url .= '&direction=outbound';
+        }
+
+        return $queued ? $url.'&queued=1' : $url;
+    }
+
+    /**
+     * Whether this call has already stood in the queue.
+     *
+     * Twilio's own word on the hop out of the queue, ours on every hop after
+     * it — see the note on `queued` in context().
+     */
+    private function hasQueued(Request $request): bool
+    {
+        return $request->input('QueueResult') !== null
+            || $request->boolean('queued');
     }
 
     private function webhookUrl(PhoneConnection $connection, string $kind): string
