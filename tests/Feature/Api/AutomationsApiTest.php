@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Http\Controllers\Api\AutomationsController;
 use App\Models\Automation;
 use App\Models\Customer;
 use App\Models\Job;
@@ -11,6 +12,7 @@ use App\Support\Modules\ActionDefinition;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Modules\TriggerDefinition;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use ReflectionClass;
 use Tests\TestCase;
 
 /**
@@ -274,6 +276,57 @@ class AutomationsApiTest extends TestCase
 
         $this->assertContains('job.update_field', $implemented);
         $this->assertContains('customer.update_field', $implemented);
+    }
+
+    /**
+     * EVERY ARM THE RUNNER HAS IS AN ACTION SOMEBODY CAN CHOOSE.
+     *
+     * `IMPLEMENTED_ACTIONS` and `ActionRunner`'s match are two halves of one
+     * fact, and they drift in two directions with very different volumes.
+     *
+     * The const naming a type with no arm is LOUD: rules save, every run
+     * records FAILED, somebody complains within the week. That direction has
+     * been caught by hand twice.
+     *
+     * An ARM WITH NO CONST ENTRY IS SILENT. No exception, no failed run, no red
+     * test — the catalogue publishes `implemented: false`, the builder draws
+     * "Not built yet" and refuses the tap, and the only symptom is a feature
+     * nobody can switch on. `report.email` shipped that way: a working Mailable
+     * behind an action no customer could reach, and nothing in the suite asked.
+     *
+     * Only this direction is asserted. The reverse is legitimately allowed —
+     * `training.assign` deliberately sat in the const ahead of its arm so the
+     * two would land together — so a bidirectional test would have been red by
+     * design and someone would have loosened it.
+     *
+     * Read from source because a match statement cannot be reflected over.
+     * Anchored on `=> $this->` so a comment mentioning a key cannot be mistaken
+     * for an arm; that is the known weakness of a source-scanning guard and it
+     * is why the pattern is this tight rather than merely quoting the key.
+     */
+    public function test_every_action_the_runner_can_perform_can_also_be_chosen(): void
+    {
+        $source = file_get_contents(app_path('Support/Automations/ActionRunner.php'));
+
+        $match = preg_match('/return match \(\$type\) \{(.*?)\n        \};/s', $source, $m);
+        $this->assertSame(1, $match, 'the runner no longer has one match on $type — this guard needs rewriting, not deleting');
+
+        preg_match_all("/^\s+'([a-z0-9_.]+)' => \\\$this->/m", $m[1], $found);
+        $arms = $found[1];
+
+        $this->assertNotEmpty($arms, 'no arms were found, so this proves nothing about drift');
+
+        $implemented = (new ReflectionClass(AutomationsController::class))
+            ->getConstant('IMPLEMENTED_ACTIONS');
+
+        $missing = array_values(array_diff($arms, $implemented));
+
+        $this->assertSame([], $missing, implode("\n", [
+            'These actions have a working arm in ActionRunner and are NOT in',
+            'AutomationsController::IMPLEMENTED_ACTIONS, so the catalogue publishes them',
+            'as not built, the builder refuses to let anybody choose them, and nothing',
+            'anywhere reports it: '.implode(', ', $missing),
+        ]));
     }
 
     /**
