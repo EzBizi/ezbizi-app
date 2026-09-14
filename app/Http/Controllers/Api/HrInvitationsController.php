@@ -502,6 +502,27 @@ class HrInvitationsController extends Controller
      * was true while nothing could send and became a lie the day something could.
      */
     /**
+     * AND WHY IT SENDS AS EZBIZI, which is now a ruling rather than a default.
+     *
+     * Jose, 2026-09-14, asked directly: "invitations should come from ezbizi,
+     * password resets, etc." So this is deliberate and not a gap waiting for
+     * somebody to wire up tenant sending.
+     *
+     * It matters because of the ruling made in the same breath: a business with
+     * NO configured sending identity must now be refused rather than silently
+     * sent as EzBizi. That is about `MailDispatcher::asTenant`, whose resolver
+     * fell through to the platform identity — and the obvious way to implement
+     * it is a check applied to all outbound mail, which would break every
+     * invitation on every organization that has not configured a domain, which
+     * is all of them. This send is not tenant mail and must not acquire that
+     * refusal.
+     *
+     * The line between them is the one this module keeps drawing: content the
+     * CUSTOMER authors goes out under their identity or not at all, and mail
+     * that IS the mechanism — the invitation link, a password reset, an email
+     * verification — is EzBizi's own and always has been. The three notification
+     * classes in this app are all the second kind.
+     *
      * WHY THIS SEND IS HARDCODED, when Jose has ruled that email belongs in
      * automations — "it should be an option to be enabled on automations, never
      * hardcoded" (2026-09-14, relayed by Training).
