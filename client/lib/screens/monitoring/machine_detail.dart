@@ -15,6 +15,45 @@ import 'package:flutter/material.dart';
 /// tabs, and a viewer without `monitoring.screenshots.view` is not sent the
 /// screen context at all. Rendering "Browser tabs: none" in that last case
 /// would be a lie told to the person least able to check it.
+/// The wording for a machine whose defences Windows is unhappy with, shared
+/// by the card's badge and the panel's Security section so the roster cannot
+/// say one thing at a glance and another when opened.
+const String securityNeedsAttentionLabel = 'Needs attention';
+
+/// Whether this machine's `specs` describe defences somebody should look at.
+///
+/// TRUE only for a state Windows is actually complaining about:
+///
+///   `poor`     - Security Center says this is not protecting the machine.
+///   `snoozed`  - protection is real but deliberately paused.
+///
+/// and deliberately NOT for:
+///
+///   absent     - the machine has not reported a security block at all: an
+///                older agent, a non-Windows session, or one that has not
+///                sent its first beat. No badge is not a claim that the
+///                machine is fine; it is the absence of any claim, which is
+///                the only honest thing to show about a machine that has
+///                said nothing. The card's meters already read "—" for such
+///                a device, so it is not passing itself off as healthy.
+///   `not_monitored` - Windows is not WATCHING this area, which is normal on
+///                a domain-managed machine where policy handles it. Badging
+///                it would fire on a whole office at once, and a badge that
+///                cries wolf on 42 machines is worse than no badge: the one
+///                that matters arrives looking like the forty-one that did
+///                not. It still shows in the panel, where it is a fact
+///                rather than an alarm.
+bool securityNeedsAttention(Map<String, dynamic>? specs) {
+  final block = specs?['security'];
+  if (block is! Map) return false;
+
+  for (final area in const ['antivirus', 'firewall', 'updates']) {
+    final state = block[area];
+    if (state == 'poor' || state == 'snoozed') return true;
+  }
+  return false;
+}
+
 class MachineDetail extends StatelessWidget {
   const MachineDetail({
     super.key,
@@ -120,7 +159,7 @@ class MachineDetail extends StatelessWidget {
       case 'good':
         return 'On';
       case 'poor':
-        return 'Needs attention';
+        return securityNeedsAttentionLabel;
       case 'snoozed':
         return 'Paused';
       case 'not_monitored':

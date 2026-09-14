@@ -74,4 +74,40 @@ void main() {
         reason: 'An unknown state must never be rendered as protected.');
     expect(find.text('expired_licence'), findsOneWidget);
   });
+
+  group('securityNeedsAttention', () {
+    test('fires on what Windows is actually complaining about', () {
+      expect(securityNeedsAttention({'security': {'antivirus': 'poor'}}), isTrue);
+      expect(securityNeedsAttention({'security': {'firewall': 'poor'}}), isTrue);
+      expect(securityNeedsAttention({'security': {'updates': 'snoozed'}}), isTrue);
+    });
+
+    test('a machine that has said nothing is not a machine that is fine', () {
+      // The one the deploy desk flagged, and the same shape as the GPU dash:
+      // "no reading" and "a good reading" must not collapse into one answer.
+      // No badge is the absence of a claim, never a claim of protection.
+      expect(securityNeedsAttention(null), isFalse);
+      expect(securityNeedsAttention({}), isFalse);
+      expect(securityNeedsAttention({'ram_gb': 31}), isFalse);
+
+      // Control: the predicate CAN return true, so the falses above are it
+      // declining to speak rather than it being incapable of firing.
+      expect(securityNeedsAttention({'security': {'antivirus': 'poor'}}), isTrue);
+    });
+
+    test('not_monitored is a fact about Windows, not an alarm', () {
+      // Deliberate: it is normal on a domain-managed machine, so badging it
+      // would fire across a whole office at once — and a badge on 42 cards is
+      // how the one that matters stops being noticed.
+      expect(securityNeedsAttention({
+        'security': {'antivirus': 'not_monitored', 'firewall': 'not_monitored'},
+      }), isFalse);
+    });
+
+    test('a healthy machine carries no badge', () {
+      expect(securityNeedsAttention({
+        'security': {'antivirus': 'good', 'firewall': 'good', 'updates': 'good'},
+      }), isFalse);
+    });
+  });
 }
