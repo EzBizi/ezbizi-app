@@ -81,7 +81,7 @@ class SendSavedReportTest extends TestCase
         Mail::fake();
 
         $tenant = $this->provisionTenant('Alpha');
-        $this->ownSendingAddress($tenant);
+        $this->sendingIdentity($tenant, SendingState::Verified);
 
         $this->expectException(RuntimeException::class);
 
@@ -103,7 +103,7 @@ class SendSavedReportTest extends TestCase
         Mail::fake();
 
         $tenant = $this->provisionTenant('Alpha');
-        $this->ownSendingAddress($tenant);
+        $this->sendingIdentity($tenant, SendingState::Verified);
 
         $this->expectException(RuntimeException::class);
 
@@ -209,7 +209,6 @@ class SendSavedReportTest extends TestCase
         Mail::fake();
 
         $tenant = $this->provisionTenant('Alpha');
-        $this->sendingIdentity($tenant, SendingState::Verified);
 
         try {
             $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
@@ -272,31 +271,23 @@ class SendSavedReportTest extends TestCase
     }
 
     /**
-     * Give the tenant its own verified sending address.
+     * A sending identity in a given state.
      *
-     * Needed by every test that expects a send to SUCCEED, and its absence is
-     * what let six of them pass while sending from EzBizi's address. `state` is
-     * deliberately not fillable — the model says why — so a fixture has to
-     * force it, which is the correct amount of friction.
+     * MEASURED, because I nearly wrote the opposite: removing every call to
+     * this leaves all eight tests GREEN. Since `asTenant` refuses
+     * unconditionally, no identity state changes any outcome, so this fixture
+     * is not load-bearing for a single assertion.
+     *
+     * It is kept in exactly one place — the verified-tenant test — because it
+     * is what makes that test MEAN the distinguishing case. Without it the test
+     * reads "a tenant with no identity is refused", which was already true
+     * before the ruling. The fixture carries the intent, not the pass, and
+     * saying so is the difference between a control and decoration.
+     *
+     * There used to be a second helper beside this one, from the days when a
+     * verified identity made a send SUCCEED. Two fixtures for one job, one of
+     * them implying an outcome that no longer exists.
      */
-    private function ownSendingAddress(array $tenant): void
-    {
-        $this->inTenant($tenant['org'], function () use ($tenant) {
-            (new SendingIdentity([
-                'organization_id' => $tenant['org']->id,
-                'scope_type' => SendingIdentity::SCOPE_ORGANIZATION,
-                'scope_id' => $tenant['org']->id,
-                'from_address' => 'reports@alpha.test',
-                'from_name' => 'Alpha Chimney',
-                'transport' => MailTransport::VerifiedDomain->value,
-            ]))->forceFill([
-                'state' => SendingState::Verified->value,
-                'verified_at' => now(),
-            ])->save();
-        });
-    }
-
-    /** A sending identity in a given state, so a refusal is about the RULE. */
     private function sendingIdentity(array $tenant, SendingState $state): void
     {
         $this->inTenant($tenant['org'], function () use ($tenant, $state) {
