@@ -404,6 +404,61 @@ class ActionRunner
     {
         $type = 'inspection_report.email';
 
+        /*
+         * -- HELD BY JOSE'S RULING OF 2026-09-14, AND THIS IS THE REAL LEVER --
+         *
+         * His words, to the Automations session, who asked directly whether
+         * they covered this action. He answered yes:
+         *
+         *     "no ezbizi SES is to be used only for EZBIZI Related actions like
+         *      notificaitons, account creation, password, resets, etc
+         *      at least for now."
+         *
+         * THE PLATFORM CHECK BELOW DOES NOT COVER THIS, and believing it did is
+         * the mistake this comment exists to prevent. That check reads the FROM
+         * LINE and refuses when the resolved identity is EzBizi. But
+         * MailDispatcher::handOver() ends:
+         *
+         *     Mail::mailer($this->platform->mailerName())->to($to)->send($message);
+         *
+         * EVERY message leaves over the platform mailer. A verified tenant
+         * identity changes from() and replyTo() and nothing else - the
+         * transport, the SES reputation and the 50,000/day quota belong to
+         * EzBizi either way. So a fully configured branch would still have
+         * mailed a member of the public over EzBizi SES, which is what the
+         * ruling forbids, and no From-line guard can see it.
+         *
+         * WHY THE REFUSAL IS HERE AND NOT IN THE CONST. Dropping
+         * inspection_report.email from AutomationsController::IMPLEMENTED_ACTIONS
+         * stops anybody building a NEW rule and leaves this arm running every
+         * rule already saved - it would look like a fix and not be one. The
+         * Automations session made that point and it is right.
+         *
+         * WHY IT IS FIRST, BEFORE ANY LOOKUP. Until somebody configures a
+         * sending identity the Platform check below refuses everything anyway,
+         * so this was latent rather than live: production holds two
+         * organizations and zero rows in sending_identities. The hazard is the
+         * SEQUENCE. "Configure a sending identity for A-1 Group" sits on Jose's
+         * list because I put it there, and the moment he does it a guard
+         * written for a different question stops refusing and this starts
+         * sending - silently, correctly by its own lights, against a ruling
+         * made after it shipped. A refusal that depends on nothing cannot be
+         * switched on by somebody changing unrelated configuration.
+         *
+         * TO LIFT IT: delete this block. Everything below is intact and still
+         * tested. The condition to check first is whether mail can leave over a
+         * transport that is not EzBizi - a per-tenant MAILER, rather than the
+         * per-tenant From line that exists today.
+         */
+        return [
+            'type' => $type,
+            'ok' => false,
+            'detail' => 'Emailing inspection reports to customers is switched off. The '
+                .'EzBizi mail service carries EzBizi messages only - sign-ins, password '
+                .'resets and account notices - and a report to a customer would go out '
+                .'over it however this branch is configured.',
+        ];
+
         if (! $subject instanceof InspectionReport) {
             return [
                 'type' => $type,

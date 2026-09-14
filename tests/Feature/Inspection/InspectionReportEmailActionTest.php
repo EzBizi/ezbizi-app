@@ -35,13 +35,58 @@ use Tests\TestCase;
  * So: it must not send from the EzBizi address, it must not raise when the
  * tenant has not set an address up, and it must not invent a recipient. Each of
  * those returns a run-log line the tenant can act on, and writes nothing.
+*
+ * ── FOUR TESTS WERE REMOVED WITH THE HOLD, DELIBERATELY ─────────
+ *
+ * `emailInspectionReport` now returns Jose's ruling before it looks at
+ * anything, so every branch below it is unreachable and every test aimed at one
+ * passes no matter what that branch does. Four did:
+ *
+ *   - it refuses rather than sending from the platform address
+ *   - an unverified sending address is reported, not raised
+ *   - a customer with no email is reported and nothing is sent
+ *   - it declines a subject that is not a report
+ *
+ * Each was real and each proved something while the code could reach it. Kept
+ * as-is they would have been four green tests that cannot fail — the exact
+ * shape this module spent a week finding elsewhere — and worse than absent,
+ * because a suite listing them reads as though those refusals are still
+ * verified. They are not; they are merely unreachable.
+ *
+ * RESTORE THEM WHEN THE HOLD LIFTS. The fixtures they used are all still here
+ * — `verifiedIdentityFor`, `reportFor`, `runAction` — so each is a few lines,
+ * and `git log` on this file has the originals.
  */
 class InspectionReportEmailActionTest extends TestCase
 {
     use BuildsTenants;
     use RefreshDatabase;
 
-    public function test_it_emails_the_report_to_the_customer(): void
+
+
+
+
+    /**
+     * THE HOLD, AND THIS IS THE ONE TEST THAT CATCHES THE SEQUENCING HAZARD.
+     *
+     * The fixture is the FULLY CONFIGURED case on purpose: a verified sending
+     * identity and a customer with a real address. That is the state in which
+     * this action used to send, and it is the state production enters the
+     * moment somebody configures a sending identity for A-1 Group - which is on
+     * Jose's list because I put it there.
+     *
+     * Before the hold, everything was refused for an UNRELATED reason: every
+     * organization resolves to the Platform identity while sending_identities
+     * is empty, so the From-line guard caught it. That guard was never about
+     * the transport. A test leaning on it would have stayed green right up
+     * until somebody configured an address, and then started asserting a send.
+     * So this asserts against the one state where nothing else refuses.
+     *
+     * assertNothingQueued rather than the refusal wording, because the wording
+     * is what the code says about itself and the queue is what happened.
+     * Deleting the hold block fails this on the artefact.
+     */
+    public function test_it_is_held_and_nothing_leaves_even_with_a_verified_identity(): void
     {
         Mail::fake();
 
@@ -50,91 +95,10 @@ class InspectionReportEmailActionTest extends TestCase
 
         $result = $this->runAction($tenant, $this->reportFor($tenant, email: 'owner@example.test'));
 
-        $this->assertTrue($result['ok'], $result['detail']);
-        Mail::assertQueued(
-            InspectionReportMail::class,
-            fn (InspectionReportMail $mail) => $mail->hasTo('owner@example.test'),
-        );
-    }
-
-    /**
-     * The refusal that matters most: never from the EzBizi address.
-     *
-     * `MailIdentityResolver` falls back to the platform identity when no row
-     * exists, and that identity CAN send — `MailTransport::Platform` requires no
-     * domain proof. So `asTenant()` would have delivered this happily, from an
-     * address the recipient has never heard of, disclosing which software their
-     * chimney company runs. Nothing else in the codebase had called `asTenant`
-     * yet, so nothing had met that fallback.
-     *
-     * The tenant here has NO sending identity, which is the default state of
-     * every organization on the platform today.
-     */
-    public function test_it_refuses_rather_than_sending_from_the_platform_address(): void
-    {
-        Mail::fake();
-
-        $tenant = $this->provisionTenant('Alpha');
-
-        $result = $this->runAction($tenant, $this->reportFor($tenant, email: 'owner@example.test'));
-
         Mail::assertNothingQueued();
-        $this->assertFalse($result['ok']);
-        $this->assertStringContainsString('has not set up its own sending address', $result['detail']);
-    }
-
-    /**
-     * An unverified identity is reported, not raised.
-     *
-     * `asTenant` throws `CannotSendMail` by design — right for a controller,
-     * wrong for a queued action, where an exception kills the rule and tells the
-     * tenant nothing. The dispatcher's own sentence is carried into the run log
-     * instead, because it already says what to do about it.
-     */
-    public function test_an_unverified_sending_address_is_reported_not_raised(): void
-    {
-        Mail::fake();
-
-        $tenant = $this->provisionTenant('Alpha');
-        $this->verifiedIdentityFor($tenant, state: SendingState::Pending);
-
-        $result = $this->runAction($tenant, $this->reportFor($tenant, email: 'owner@example.test'));
-
-        Mail::assertNothingQueued();
-        $this->assertFalse($result['ok']);
-        $this->assertNotSame('', trim($result['detail']), 'the refusal must say something actionable');
-    }
-
-    /** A customer with no address is an ordinary case, not a fault. */
-    public function test_a_customer_with_no_email_is_reported_and_nothing_is_sent(): void
-    {
-        Mail::fake();
-
-        $tenant = $this->provisionTenant('Alpha');
-        $this->verifiedIdentityFor($tenant);
-
-        $result = $this->runAction($tenant, $this->reportFor($tenant, email: null));
-
-        Mail::assertNothingQueued();
-        $this->assertFalse($result['ok']);
-        $this->assertStringContainsString('no email address', $result['detail']);
-    }
-
-    /** Attached to the wrong trigger, it declines instead of guessing. */
-    public function test_it_declines_a_subject_that_is_not_a_report(): void
-    {
-        Mail::fake();
-
-        $tenant = $this->provisionTenant('Alpha');
-
-        $result = $this->inTenant($tenant['org'], fn () => app(ActionRunner::class)->run(
-            ['type' => 'inspection_report.email'],
-            $this->event($tenant),
-            subject: $tenant['admin'],
-        ));
-
-        Mail::assertNothingQueued();
-        $this->assertFalse($result['ok']);
+        Mail::assertNothingSent();
+        $this->assertFalse($result['ok'], 'the action is held by the 2026-09-14 ruling');
+        $this->assertStringContainsString('switched off', $result['detail']);
     }
 
     /**

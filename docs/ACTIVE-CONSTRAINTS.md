@@ -244,10 +244,21 @@ Raised by ezbizi-ea, who noticed the header contradicted the content.
 
 Jose ruled twice on 2026-09-14, carried by two sessions independently. Via
 Automations: *"no ezbizi SES is to be used only for EZBIZI Related actions like
-notificaitons, account creation, password, resets, etc at least for now."* Via HR:
-*"1 - yes, as they recommend."* Asked the sharper form afterwards - whether a
-CONFIGURED tenant sending tenant-authored content to a member of the public over
-EzBizi's SES is covered - he answered **yes**.
+notificaitons, account creation, password, resets, etc at least for now."* Via HR, asked a
+third time through a different door and answered in his own capitals:
+
+> *"No - Email should not be sent as EzBizi, EZBIZI EMAIL IS ONLY FOR EZBIZI
+> ACTIONS LIKE ACCOUNT RECOVERY, PASSWORD, RESERT, VERIFICAIONS, ETC"*
+
+That is the SERVICE reading, not the from-line reading: verifying a domain does
+not buy the right to send customer content through us. A customer's own mail goes
+through the customer's own provider, as newsletters already do via Mailchimp.
+
+**Citation corrected 2026-09-14.** This section first supported that with a bare
+relayed *"yes"*. Two other sessions then reported that the *"yes"* answered item 1
+of a different numbered list - the mail-health layout - so the ruling was right and
+my evidence for it was not. A one-word answer relayed without its question is not a
+quotation. The block above is his sentence, carried verbatim.
 
 `inspection_report.email` is shipped and selectable, and it mails a finished report
 to the customer through `asTenant()`. It is **latent, not live**, and the reason is

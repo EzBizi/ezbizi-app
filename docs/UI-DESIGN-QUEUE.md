@@ -2357,7 +2357,7 @@ foot beside the version. He complained about the sidebar, but the drawer's was e
 top", and after mobile 1 there is a version at the foot of both to sit next to. Applied to both
 surfaces deliberately; if he meant desktop only, that is one line back.
 
-### 15 · Mail health for an administrator — **DRAWN, awaiting Jose**
+### 15 · Mail health for an administrator — **DESKTOP 2 + MOBILE 5, one state still blocked**
 
 `docs/previews/mail-health-for-an-administrator-layouts.html`. Jose said yes to the question
 raised in entry 11: *"1 - yes add a health status"*. HR brought states rather than a layout, which
@@ -2407,6 +2407,49 @@ it; it is the constraint that rules out "the staff panel behind a different perm
 the obvious design and the fastest to scan — and its badge has to say one word about two facts
 with two owners and two remedies. "Not sending" covers both and names neither. That is the merge
 this entry exists to avoid, arriving through the badge rather than through the sentence.
+
+> **DECIDED 2026-09-14: desktop 2, mobile 5** — Jose, against a numbered list: *"1 - as you
+> recommend"*. A rides above the screen, where somebody wondering why a password reset never
+> arrived will meet it; B is a state of the sending-identity card, which already owns who your
+> mail comes from. Build is SES's (`MODULE-OWNERS:151` gives them Mail), not HR's.
+>
+> **Desktop 3 was drawn in order to be rejected and he rejected it.** Worth recording that the
+> tactic worked: the obvious design got looked at and turned down deliberately, rather than
+> arriving in six months as somebody's simplification.
+
+> **AND ONE STATE IS NOT YET WRITEABLE. The layout is approved; B's SENTENCE is not.**
+> SES put a question to Jose that he has not answered — whether his ruling is about the FROM
+> LINE or about what EzBizi's mail service may be used for at all. It decides which sentence B
+> carries:
+>
+> - **From line:** their authored mail goes out through EzBizi's service showing EzBizi as the
+>   sender until a domain is verified. B's remedy is *"verify a domain"*, and the card is exactly
+>   where it belongs.
+> - **Use at all:** a tenant may not send authored mail through EzBizi's service, verified or
+>   not. Then B is not a setting with a remedy — it is *"this cannot send yet, and it is not
+>   something you can turn on"*, and a **"Verify a domain ›" link on that card would be a remedy
+>   that does not remedy**, which is the exact defect this entry already corrected once.
+>
+> **ANSWERED the same day, and it is the second option: use at all.** Jose, plainly and with
+> visible impatience at being asked again: *"Email should not be sent as EzBizi, EZBIZI EMAIL IS
+> ONLY FOR EZBIZI ACTIONS LIKE ACCOUNT RECOVERY, PASSWORD, RESET, VERIFICATIONS, ETC."*
+>
+> So **"verify a domain" is not B's remedy** — verifying one does not make a tenant's own mail
+> EzBizi's to carry. A `Verify a domain ›` link on that card would be **a remedy that does not
+> remedy: the same defect this entry corrected in the same card's note three hours earlier.** It
+> came that close to shipping twice in one afternoon, through two different doors.
+>
+> B is now drawn as informational, with the tenant's own provider as the way out. **And B may not
+> be a health state at all** — a rule about what a service is *for* is not a fault, and a status
+> panel is the wrong shape for it. Left drawn rather than deleted because Jose approved a layout
+> containing it; whether it survives is the mail owner's call.
+>
+> **The consequence that outlives this entry, measured and handed over:** `asTenant` is called by
+> `ActionRunner:473`, `SendSavedReport:171` and `InspectionReportMail` — three paths sending
+> tenant-authored mail through EzBizi's transport, on the wrong side of the ruling. That is
+> `MODULE-OWNERS:151`'s to settle, not something to redesign around quietly. See
+> `ezbizi-never-sends-newsletters-itself`, now the whole-category rule rather than a newsletter
+> one.
 
 **Day one is state B for everybody.** The desk measured production at 2 organizations and 0
 sending identities (relayed through HR, not measured by me). If that holds, the day the refusal
