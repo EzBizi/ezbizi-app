@@ -191,7 +191,7 @@ void _transcriptTests() {
     );
 
     expect(
-      find.textContaining('Communication → Settings → Voicemail'),
+      find.textContaining('Communication → Settings → General'),
       findsOneWidget,
     );
   });
@@ -208,7 +208,7 @@ void _transcriptTests() {
 
     // And NOT sent to a screen they cannot open — the distinction is the
     // whole point of the branch.
-    expect(find.textContaining('Settings → Voicemail'), findsNothing);
+    expect(find.textContaining('Settings → General'), findsNothing);
   });
 }
 

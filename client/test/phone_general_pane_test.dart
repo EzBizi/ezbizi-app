@@ -33,10 +33,20 @@ void main() {
 
     await _pump(tester, seen: seen, bodies: bodies);
 
-    // Scrolled to first: the pane is a ListView and Save sits under the whole
-    // form, so at any realistic height it starts below the fold.
+    // SCROLLED TO, not merely made visible.
+    //
+    // The pane is a ListView and Save sits under the whole form, so it starts
+    // below the fold at any realistic height. `ensureVisible` was enough until
+    // the form grew by one switch: a ListView only builds children near the
+    // viewport, so Save stopped existing as an element at all and the call
+    // threw "Bad state: No element" rather than failing an assertion.
+    //
+    // `scrollUntilVisible` drags the list until the finder matches, so this
+    // test measures what it is about — where the save goes — instead of how
+    // tall the form happens to be that week. The assertions below are
+    // unchanged; only the way the button is reached is.
     final save = find.widgetWithText(FilledButton, 'Save');
-    await tester.ensureVisible(save);
+    await tester.scrollUntilVisible(save, 200, scrollable: find.byType(Scrollable).first);
     await tester.pumpAndSettle();
     await tester.tap(save);
     await tester.pumpAndSettle();

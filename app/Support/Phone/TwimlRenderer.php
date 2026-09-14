@@ -1047,7 +1047,7 @@ final class TwimlRenderer
         // down a live call, and a different switch on the line — `transcribe`
         // starts a real-time stream on the conversation and never touches the
         // recording somebody leaves after everyone has hung up.
-        if ($number->voicemail_transcribe || $box?->transcribe) {
+        if ($number->resolvedFlag('voicemail_transcribe') || $box?->transcribe) {
             $attributes['transcribe'] = true;
 
             if (is_string($context['transcription_status_callback'] ?? null)

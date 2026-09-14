@@ -74,6 +74,7 @@ class PhoneConnection extends Model implements HoldsSensitiveValues, StatesReten
         'default_flow_id', 'default_hours_schedule_id', 'default_ring_group_id',
         'default_voicemail_box_id', 'default_fallback_number',
         'default_recording_notice', 'default_record', 'default_transcribe',
+        'default_voicemail_transcribe',
         'default_after_hours', 'default_after_hours_number',
     ];
 
@@ -86,6 +87,7 @@ class PhoneConnection extends Model implements HoldsSensitiveValues, StatesReten
             'wrap_up_seconds' => 'integer',
             'default_record' => 'boolean',
             'default_transcribe' => 'boolean',
+            'default_voicemail_transcribe' => 'boolean',
         ];
     }
 

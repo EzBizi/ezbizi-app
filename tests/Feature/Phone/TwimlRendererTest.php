@@ -222,6 +222,63 @@ class TwimlRendererTest extends TestCase
     }
 
     /**
+     * ONE SWITCH FOR THE WHOLE COMPANY, because thirteen was the same as none.
+     *
+     * Voicemail transcription was per line and nothing else. Measured on the
+     * live account 2026-09-14: thirteen numbers, every one of them off, and 0
+     * of 92 voicemails ever transcribed — not because anybody decided against
+     * it, but because turning it on meant thirteen visits to thirteen screens.
+     *
+     * Jose: "we should be able to turn them all on or all off at the same
+     * time, not per line."
+     *
+     * `record` and live transcription already worked this way and this flag
+     * had simply been left out of the mechanism: `resolvedFlag()` looks for
+     * `default_<key>` on the connection, and the voicemail branch was reading
+     * the raw column instead. So the fix is one default and one resolver call.
+     *
+     * The line stays OFF throughout. If this test set the line's own flag it
+     * would pass with the company default ignored entirely, which is the
+     * defect it exists to catch.
+     */
+    public function test_a_company_default_transcribes_voicemail_on_every_line(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$off, $on, $lineFlag] = $this->inTenant($t['org'], function () use ($t) {
+            [$number] = $this->lineWithAvailableDesk($t, record: false);
+            $number->forceFill(['ring_group_id' => null])->save();
+
+            $renderer = new TwimlRenderer;
+            $before = $renderer->inbound($number->fresh(), []);
+
+            $number->connection->forceFill([
+                'default_voicemail_transcribe' => true,
+            ])->save();
+
+            return [
+                $before,
+                $renderer->inbound($number->fresh()->load('connection'), []),
+                (bool) $number->fresh()->voicemail_transcribe,
+            ];
+        });
+
+        $this->assertFalse(
+            $lineFlag,
+            'the line turned its own flag on, so this proves nothing about '
+            .'the company default',
+        );
+
+        $this->assertStringNotContainsString('transcribe="true"', $off);
+        $this->assertStringContainsString(
+            'transcribe="true"',
+            $on,
+            'the company said to write voicemails down and this line did not, '
+            .'so it is still thirteen switches wearing one',
+        );
+    }
+
+    /**
      * The Call Flow screen reads describe(); the caller hears inbound(). If
      * those two ever disagree the screen becomes a liar, which is exactly the
      * failure that let five production lines sit on ring_group_id = null while

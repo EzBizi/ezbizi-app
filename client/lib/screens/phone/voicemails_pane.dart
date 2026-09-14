@@ -376,6 +376,13 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
             // Same shape as the empty Dial pad: whoever can fix it is told
             // what to fix, and whoever cannot is told what to ask for.
             //
+            // It names GENERAL rather than Voicemail because the switch moved
+            // there the same day: per line, it was thirteen visits to thirteen
+            // screens, which is why it had never been turned on once. Jose
+            // asked for one switch — "all on or all off at the same time, not
+            // per line" — and a sentence pointing at the old place would send
+            // somebody to a screen that no longer decides it.
+            //
             // ponytail: still a guess in the rare case where transcription IS
             // on and Twilio returned nothing. Say which only when a row can
             // carry its own line's setting; today the list does not.
@@ -387,9 +394,9 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
                   ? message.transcript!
                   : (widget.session.me?.can('phone.edit') ?? false)
                   ? 'No transcript. Turn on "Write down voicemail messages" '
-                        'under Communication → Settings → Voicemail; Twilio '
-                        'charges for each one. The recording is the record '
-                        'either way.'
+                        'under Communication → Settings → General; it covers '
+                        'every line, and Twilio charges for each message '
+                        'transcribed. The recording is the record either way.'
                   : 'No transcript. An administrator can switch transcription '
                         'on in Communication settings. The recording is the '
                         'record either way.',
