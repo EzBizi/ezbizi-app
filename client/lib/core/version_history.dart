@@ -8,6 +8,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0207',
+      date: '14 Sep 2026',
+      items: [
+        'The EzBizi icon now stays in the notification area for as long as the app is running. It was only added at the moment you closed the window to the tray, so while the app was open there was no icon at all. The same gap silenced the notice that tells you your screen is being controlled by your company: that notice is carried on the icon, so it could only ever appear while the window was hidden, and never while somebody was sitting in front of the open app.',
+        'A Confirm your email button now sits at the top of the app, beside the two-factor prompt, for an account whose address has not been confirmed. It sends a fresh link, so the account can clear the condition itself instead of meeting a refusal on every save.',
+        'Every message in the customer panel now says who sent it and when. Each one was the same box in a column, told apart only by a faint tint. The name now sits above it, and the bubble takes the side and the full colour that Records already uses for the same conversation.',
+        'The availability icon now keeps itself up to date within a minute. Do Not Disturb set on the web reached the desktop immediately, but the icon only showed the change once you switched tabs.',
+        'The voicemail list now names the one reason a transcript is missing and says who can turn it on, instead of offering two possible causes and settling neither. Voicemail transcription is off on every number today, it is switched on per number, and the phone network charges for each one. The Records tab shows a different thing: the transcription of the whole call, including the menu the caller listened to before leaving a message.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0206',
       date: '14 Sep 2026',
       items: [
