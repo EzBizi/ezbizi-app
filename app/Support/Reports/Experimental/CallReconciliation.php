@@ -31,15 +31,48 @@ namespace App\Support\Reports\Experimental;
  *
  * ── The two systems do not agree on people's names ───────────────
  *
- * Measured the same day: seven of nine names matched exactly, and RingCentral's
+ * Measured 2026-09-14: seven of nine names matched exactly, and RingCentral's
  * "Adeline Pierre Louis-Aghaji" is Workiz's "Adeline Pierrelouis". Nothing here
  * fuzzy-matches them — a near-match rule that merged two similar names would
  * quietly attribute one person's work to another, which is worse than an
  * obvious duplicate row. The union of both name sets is returned and a person
  * who appears on only one side is visible as a row of zeroes on the other.
+ *
+ * ── AN ALIAS IS SOMEBODY'S ANSWER, NEVER A RESEMBLANCE ──────────
+ *
+ * `ALIASES` is how two spellings become one person, and every entry in it is a
+ * human saying so. Jose, asked whether the two Adelines were the same person:
+ * "YES". That is the only thing that may put a row in this list.
+ *
+ * It is deliberately not a similarity rule, not a normaliser, not an initials
+ * match. Those would work on this pair and would also merge two real people
+ * who happen to share a surname — silently, and in the direction where one
+ * person's work lands on another's row. A list of confirmed pairs cannot do
+ * that: it can only be incomplete, which is visible as a duplicate row.
  */
 final class CallReconciliation
 {
+    /**
+     * Spellings confirmed to be one person, mapped to the name to keep.
+     *
+     * Keyed by the RingCentral spelling because that is the one the phone
+     * directory holds; the value is the name the report shows. Add only on
+     * somebody's word.
+     */
+    public const ALIASES = [
+        // Jose, 2026-09-14, asked whether these are the same person: "YES".
+        'Adeline Pierre Louis-Aghaji' => 'Adeline Pierrelouis',
+    ];
+
+    private function canonical(?string $name): ?string
+    {
+        if ($name === null) {
+            return null;
+        }
+
+        return self::ALIASES[$name] ?? $name;
+    }
+
     /**
      * @param  list<array{from: ?string, queue: ?string, rang: list<string>, answered_by: ?string}>  $calls
      * @param  list<array{account: string, created_by: ?string, created_at: ?string}>  $jobs
@@ -68,6 +101,7 @@ final class CallReconciliation
             }
 
             foreach ($call['rang'] as $person) {
+                $person = $this->canonical($person);
                 $rang[$person] = ($rang[$person] ?? 0) + 1;
             }
 
@@ -79,7 +113,7 @@ final class CallReconciliation
                 $existingTotal++;
             }
 
-            $who = $call['answered_by'] ?? null;
+            $who = $this->canonical($call['answered_by'] ?? null);
 
             if ($who === null) {
                 continue;
@@ -100,7 +134,7 @@ final class CallReconciliation
         $made = [];
 
         foreach ($booked as $job) {
-            $person = $job['created_by'] ?? null;
+            $person = $this->canonical($job['created_by'] ?? null);
 
             // Null on 21 of the first 900 live rows. Bucketed by name rather
             // than skipped, so the people column still adds up to the total.
