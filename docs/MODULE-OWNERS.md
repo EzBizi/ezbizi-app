@@ -205,16 +205,19 @@ Name these rather than assuming a module covers them.
   the absence of a backup is unprovable from inside the repo — the next reader would
   otherwise re-derive the same alarm from the same evidence.
 
-- **`client/windows/runner/`** — the Windows desktop shell. **No module owner.**
-  `monitoring_specs.cpp` is Monitoring's and that is the whole of their claim on the
-  directory; `win32_window.cpp` and `main.cpp` answer to nobody. It matters more than an
-  unowned directory usually does, because this code decides behaviour no Dart test can
-  see: the single-instance mutex, close-to-tray instead of quit, and the tray icon that
-  the "your screen is being controlled by your company" notice is drawn ON. Until
-  `06dc4c81` the icon was added only at `WM_CLOSE`, so that notice could not appear at
-  all while the window was open — a privacy notice, off in the case that matters, found
-  only because Jose reported a missing icon. The deploy desk made that change on his
-  direct report and has asked Monitoring whether they want the row.
+- **`client/windows/runner/` is split per file, not per directory.** Monitoring owns
+  `monitoring_specs.cpp`, `monitoring_screenshot.cpp`, `monitoring_input.cpp` and
+  `monitoring_screenshot.h` — confirmed by them against their own commits, 2026-09-14.
+  **`win32_window.cpp` and `main.cpp` are deliberately owned by NOBODY.** They are the
+  generic Flutter shell every module's native behaviour passes through, and Monitoring
+  declined them on the reasoning that is worth keeping: making them Monitoring's would
+  mean needing their permission to fix a tray icon. It decides things no Dart test can
+  see — the single-instance mutex, close-to-tray instead of quit, and the tray icon the
+  "your screen is being controlled" notice was drawn on. Until `06dc4c81` that icon was
+  added only at `WM_CLOSE`, so the notice could not appear while the window was open;
+  `ee22c3a8` then gave it an in-app banner, because a tray balloon is a courtesy the OS
+  may decline while reporting success. Two sessions edited this file in one afternoon.
+  If you touch it, say so.
 
 ## Contested files, edited in regions
 
