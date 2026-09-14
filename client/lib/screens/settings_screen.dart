@@ -87,11 +87,15 @@ String? _notYetInEffect(Map<String, dynamic> setting) {
 
 // ── the cascade's vocabulary, back where it started ──────────────
 //
-// These three lived in sending_identity_panel.dart, whose own docblock called
-// them "the settings screen's own wording, lifted out of its row so that this
-// feature cannot grow a second dialect of it". The panel is gone (Jose,
-// 2026-09-14: "GET RID OF IT"); the reason for a single wording is not, and
-// every caller of these was on this screen the whole time.
+// These three were defined in the sending-identity panel until 2026-09-14,
+// because that card asked the same question about the same cascade and the
+// wording had to be ONE wording: a card saying "inherited" differently from the
+// rows beside it is the confusion this screen exists to prevent. The card is
+// gone on Jose's ruling ("GET RID OF IT", b32fc797); that reason is not, and
+// every caller of these three was on this screen the whole time anyway.
+//
+// The reason is written out rather than quoted from the old file's docblock,
+// which nobody can open any more.
 
 /// Where a value came from, in words an administrator can act on.
 ///
