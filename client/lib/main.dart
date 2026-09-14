@@ -9,6 +9,7 @@ import 'core/deployment.dart';
 import 'core/desktop_updater.dart';
 import 'core/files.dart';
 import 'core/live_view_service.dart';
+import 'core/mobile_view_window.dart';
 import 'core/module_screens.dart';
 import 'core/monitoring_heartbeat.dart';
 import 'core/permissions.dart';
@@ -1091,8 +1092,20 @@ class _HomeShellState extends State<HomeShell> {
                   tooltip: _mobileView
                       ? UiStrings.t('shell.exit_mobile_view')
                       : UiStrings.t('shell.mobile_view'),
-                  onPressed: () =>
-                      setState(() => _mobileView = !_mobileView),
+                  onPressed: () {
+                    final on = !_mobileView;
+                    setState(() => _mobileView = on);
+                    // Not awaited, and that is the point rather than
+                    // laziness: the layout has already changed by the line
+                    // above, and the window catching up is a separate,
+                    // fallible thing. Awaiting it would also hang a widget
+                    // test, where a plugin call never completes.
+                    unawaited(
+                      on
+                          ? MobileViewWindow.shrink(_phoneWidth)
+                          : MobileViewWindow.restore(),
+                    );
+                  },
                 ),
               // Light / dark, one tap, from anywhere.
               //
