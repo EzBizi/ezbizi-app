@@ -681,6 +681,17 @@ class _HomeShellState extends State<HomeShell> {
   /// as a one-line strip under the AppBar, same family as the two-factor chip.
   String? _timeClockNotice;
 
+  /// In-flight resend of the confirmation link, so a second tap cannot fire
+  /// another POST while the first is unanswered. The endpoint is throttled
+  /// server-side per address AND per IP; this stops a person burning that
+  /// allowance on their own double-click.
+  bool _resendingConfirmation = false;
+
+  /// Outcome of that resend. Its own strip rather than [_timeClockNotice]:
+  /// that one is named for the time clock and tinted as an error, and the
+  /// usual outcome here is success.
+  String? _confirmationNotice;
+
   void _show(_Rail rail, String id) => setState(() {
     _rail = rail;
     _selected = id;
@@ -699,6 +710,40 @@ class _HomeShellState extends State<HomeShell> {
   Future<void> _signOut() async {
     await widget.api.post('/auth/logout', {});
     widget.session.signOut();
+  }
+
+  /// Ask for another confirmation link.
+  ///
+  /// This exists because the server's refusal used to say "ask for another
+  /// link if it did not arrive" while nothing in this client called the
+  /// endpoint -- a sentence naming a control that was on no screen, which is
+  /// worse than a shorter one because the reader believes there is a way out
+  /// and goes looking for it.
+  ///
+  /// POST /auth/verify/resend answers identically whether or not the address
+  /// matched, so there is no success to read out of it -- only that it was
+  /// accepted. The sentence below says what we DID, never that it arrived.
+  Future<void> _resendConfirmation() async {
+    final me = widget.session.me;
+    if (me == null || _resendingConfirmation) return;
+
+    setState(() {
+      _resendingConfirmation = true;
+      _confirmationNotice = null;
+    });
+
+    final response = await widget.api.post('/auth/verify/resend', {
+      'email': me.email,
+    });
+
+    if (!mounted) return;
+
+    setState(() {
+      _resendingConfirmation = false;
+      _confirmationNotice = response.ok
+          ? 'We have sent another confirmation link to ${me.email}.'
+          : response.reason;
+    });
   }
 
   Future<void> _punch() async {
@@ -997,7 +1042,12 @@ class _HomeShellState extends State<HomeShell> {
               // of a healthy account.
               twoFactor: !wide && me.twoFactorEnrolmentRequired,
               readOnly: !wide && me.organization.isReadOnly,
+              // The third state this strip's own comment anticipated. It
+              // scrolls rather than wraps, so it does not push every screen
+              // down a row on a phone.
+              emailConfirmation: !wide && me.emailConfirmationRequired,
               onTwoFactor: _showProfile,
+              onEmailConfirmation: _resendConfirmation,
             ),
             leading: wide
                 ? IconButton(
@@ -1213,6 +1263,29 @@ class _HomeShellState extends State<HomeShell> {
                     onPressed: _showProfile,
                   ),
                 ),
+              // Same family as the two-factor chip above and for the same
+              // reason: every SAVE is answering 403 until this is done, so
+              // the chrome has to say why and offer the one action that
+              // helps. Reads still work, which is exactly why the app looks
+              // healthy until somebody tries to keep something.
+              if (wide && me.emailConfirmationRequired)
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: ActionChip(
+                    avatar: const Icon(Icons.mark_email_unread_outlined, size: 16),
+                    label: Text(
+                      _resendingConfirmation ? 'Sending...' : 'Confirm your email',
+                    ),
+                    tooltip:
+                        'We sent a confirmation link when you signed up. '
+                        'Saving anything is on hold until you open it. '
+                        'Press to send another.',
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.errorContainer.withValues(alpha: 0.4),
+                    onPressed: _resendingConfirmation ? null : _resendConfirmation,
+                  ),
+                ),
               if (wide && me.organization.isReadOnly)
                 Padding(
                   padding: const EdgeInsets.only(right: 12),
@@ -1414,6 +1487,26 @@ class _HomeShellState extends State<HomeShell> {
                 );
               },
             ),
+            if (_confirmationNotice != null)
+              Material(
+                color: Theme.of(
+                  context,
+                ).colorScheme.secondaryContainer.withValues(alpha: 0.5),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: Text(
+                      _confirmationNotice!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ),
             if (_timeClockNotice != null)
               Material(
                 color: Theme.of(
@@ -1729,14 +1822,18 @@ class _BarStates extends StatelessWidget implements PreferredSizeWidget {
   const _BarStates({
     required this.twoFactor,
     required this.readOnly,
+    required this.emailConfirmation,
     required this.onTwoFactor,
+    required this.onEmailConfirmation,
   });
 
   final bool twoFactor;
   final bool readOnly;
+  final bool emailConfirmation;
   final VoidCallback onTwoFactor;
+  final VoidCallback onEmailConfirmation;
 
-  bool get _any => twoFactor || readOnly;
+  bool get _any => twoFactor || readOnly || emailConfirmation;
 
   @override
   Size get preferredSize => Size.fromHeight(_any ? 49 : 1);
@@ -1769,6 +1866,19 @@ class _BarStates extends StatelessWidget implements PreferredSizeWidget {
                     label: const Text('Set up two-factor'),
                     backgroundColor: tint,
                     onPressed: onTwoFactor,
+                  ),
+                ),
+              if (emailConfirmation)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ActionChip(
+                    avatar: const Icon(
+                      Icons.mark_email_unread_outlined,
+                      size: 16,
+                    ),
+                    label: const Text('Confirm your email'),
+                    backgroundColor: tint,
+                    onPressed: onEmailConfirmation,
                   ),
                 ),
               if (readOnly)
