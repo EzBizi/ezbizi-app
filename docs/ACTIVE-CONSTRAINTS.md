@@ -318,3 +318,36 @@ Found by SES while building the transport and confirmed by Reports against their
 own fixture - which, had it carried a plausible hostname rather than an obvious
 one, would have begun dialling it in CI. It is a property of the shared test
 environment, so every future caller of `throughTenantProvider` inherits it.
+
+---
+
+## 8 · A private-index commit leaves a landmine in the SHARED index
+
+**After committing with `GIT_INDEX_FILE` pointed at a private index, clear the same
+paths out of `.git/index` - or the next person to type `git commit` reverts your work.**
+
+The mechanism, worked out by the SES session on 2026-09-14 after it had bitten four
+times in one afternoon: a private-index commit moves HEAD and does **not** touch
+`.git/index`, which still holds the PRE-COMMIT tree. `git status` then compares the
+two and reports your own new files as **staged deletions** and your own edits as
+**staged reverts**. So the discipline that stops you sweeping up a peer's uncommitted
+work creates a landmine aimed squarely at your own.
+
+What it nearly took, all in one afternoon:
+
+    a staged deletion of TenantSmtpHost.php - the tenant mail transport, hours old
+    a staged re-ADD of the sending-identity panel Jose had just asked be removed
+    a staged revert of Phone's inbound-call fix, mid-release
+
+Each was found by staging one file and reading `git diff --cached` BEFORE committing.
+None was found by anybody looking for it.
+
+**The missing step, every time:** after a private-index commit, `git restore --staged`
+the exact paths that commit touched, in a separate call, then confirm the shared index
+reads clean. Index only, never the working tree, and named paths only - anything
+broader clears somebody else's deliberate staging.
+
+`bash scripts/index-landmines.sh` is what makes this readable: it separates **stale**
+(a snapshot of an already-committed tree - safe to clear) from **live** (somebody's
+real work - do not touch). Run it in its own shell call, because a staged line
+outlives the check that did not look for it.
