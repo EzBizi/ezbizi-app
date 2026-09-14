@@ -2357,3 +2357,85 @@ foot beside the version. He complained about the sidebar, but the drawer's was e
 top", and after mobile 1 there is a version at the foot of both to sit next to. Applied to both
 surfaces deliberately; if he meant desktop only, that is one line back.
 
+### 15 · Mail health for an administrator — **DESKTOP 2 + MOBILE 5, one state still blocked**
+
+`docs/previews/mail-health-for-an-administrator-layouts.html`. Jose said yes to the question
+raised in entry 11: *"1 - yes add a health status"*. HR brought states rather than a layout, which
+is the ask working, and named the thing the design turns on.
+
+**Two facts that must not become one sentence.** (A) the platform transport is not sending —
+nothing reaches anybody, and the administrator **cannot** fix it. (B) this organization has no
+verified sending identity — their own authored mail refuses while EzBizi's invitations and resets
+keep working, and the remedy **is theirs**. One sentence covering both sends somebody to fix the
+wrong thing, which is entry 11's own finding.
+
+> **MEASURED BEFORE DRAWING, AND IT CHANGED THE BRIEF: B already has a home.**
+> `client/lib/widgets/sending_identity_panel.dart` is a card in the Settings screen today, with
+> the whole verification flow behind it and four routes live under `mail/sending-identity`. Its
+> own copy already draws HR's line — **in its second sentence. Its first sentence is false**, and
+> HR found that by measuring the very quote I had offered as evidence.
+>
+> The card says *"Newsletters and anything else your own people write go out from this address"*,
+> and **a newsletter never touches the sending identity at all**: `NewsletterSenders::for()` has
+> one arm, Mailchimp, and that client uses the tenant's own API key, so the from address is
+> whatever their Mailchimp account sends as. Measured callers of `asTenant`: `ActionRunner:473`,
+> `SendSavedReport:171`, `InspectionReportMail`.
+>
+> **So the card's headline example is the one thing verifying a domain does not change.** Somebody
+> does DNS work to fix their newsletters and nothing about their newsletters changes — a remedy
+> that does not remedy, arriving through an EXAMPLE rather than through the state sentence. It is
+> the shape this whole entry is about, one layer below where either of us was looking, and it was
+> found because a quote used as evidence got checked rather than repeated.
+>
+> So this is **not a new four-state panel**. B is a STATE that card gains; anywhere else gives
+> one fact two voices that can disagree. **A is the gap**, and the options differ on where it
+> goes — because "EzBizi is not delivering anything" is not a setting, and does not belong in a
+> settings card about your own address.
+
+**I nearly reported the opposite, twice.** My first grep used `sending-identities` (plural) and
+found no routes; my second searched the client for the class name and found no screen. Both were
+my search term, not the codebase — the route is `mail/sending-identity`, singular. **Both were
+caught by running a positive control** on a term I knew was present. Had either gone out, HR and
+SES would have been told to build a screen and an API that already exist.
+
+**Nothing in any option shows `missing`.** `MailStatus::summary()` carries it and it is a list of
+environment variable names — `AWS_ACCESS_KEY_ID`. Right for staff, wrong for a customer: EzBizi's
+infrastructure, a wire name on screen, and useless to somebody who cannot act on it. HR flagged
+it; it is the constraint that rules out "the staff panel behind a different permission".
+
+**Option 3 is drawn to be rejected, deliberately rather than never.** One card with one badge is
+the obvious design and the fastest to scan — and its badge has to say one word about two facts
+with two owners and two remedies. "Not sending" covers both and names neither. That is the merge
+this entry exists to avoid, arriving through the badge rather than through the sentence.
+
+> **DECIDED 2026-09-14: desktop 2, mobile 5** — Jose, against a numbered list: *"1 - as you
+> recommend"*. A rides above the screen, where somebody wondering why a password reset never
+> arrived will meet it; B is a state of the sending-identity card, which already owns who your
+> mail comes from. Build is SES's (`MODULE-OWNERS:151` gives them Mail), not HR's.
+>
+> **Desktop 3 was drawn in order to be rejected and he rejected it.** Worth recording that the
+> tactic worked: the obvious design got looked at and turned down deliberately, rather than
+> arriving in six months as somebody's simplification.
+
+> **AND ONE STATE IS NOT YET WRITEABLE. The layout is approved; B's SENTENCE is not.**
+> SES put a question to Jose that he has not answered — whether his ruling is about the FROM
+> LINE or about what EzBizi's mail service may be used for at all. It decides which sentence B
+> carries:
+>
+> - **From line:** their authored mail goes out through EzBizi's service showing EzBizi as the
+>   sender until a domain is verified. B's remedy is *"verify a domain"*, and the card is exactly
+>   where it belongs.
+> - **Use at all:** a tenant may not send authored mail through EzBizi's service, verified or
+>   not. Then B is not a setting with a remedy — it is *"this cannot send yet, and it is not
+>   something you can turn on"*, and a **"Verify a domain ›" link on that card would be a remedy
+>   that does not remedy**, which is the exact defect this entry already corrected once.
+>
+> **Not a gap in the gallery, and not something to guess.** The drawing holds either way; only
+> the words inside state B change. Whoever builds this should carry A first, which is unblocked,
+> rather than hold both for one sentence.
+
+**Day one is state B for everybody.** The desk measured production at 2 organizations and 0
+sending identities (relayed through HR, not measured by me). If that holds, the day the refusal
+ships every organization is in B with a perfectly healthy platform — so a design treating B as the
+unusual case is wrong for everyone at once.
+
