@@ -275,10 +275,27 @@ class MailDispatcher
              * privately for the connection. Everything approve() checks holds;
              * the re-resolution is the gap.
              *
-             * The real fix is to send through the Email module's hardened socket
-             * rather than Mail::build, and that decision belongs with the screen
-             * that will first write these credentials - nothing can write them
-             * today, so nothing reaches this line.
+             * DECIDED 2026-09-14: this moves to the Email module's socket, and
+             * it is not a close call because TWO unrelated needs point at it.
+             *
+             * Security, above. And DIAGNOSIS: their socket reads SMTP reply
+             * codes directly and already sorts them - AUTH not 235 and any 5xx
+             * become ImapFailure::rejected ("refused the user name or
+             * password"), 4xx becomes misbehaved ("not now"), a failed connect
+             * becomes unreachable. Mail::build hands the send to Symfony, which
+             * throws ONE TransportException with the code buried in its message,
+             * so classifying it means parsing somebody else's error string -
+             * which MailboxFault's docblock forbids by name: "the provider's own
+             * text is not a cause and must never be what somebody reads."
+             *
+             * That matters because a copied credential goes stale when the
+             * mailbox it was copied from changes its password, and the send then
+             * FAILS on a schedule to somebody expecting a report. Telling them
+             * "it did not work" when the server said 535 is the difference
+             * between a screen that names the fix and one that does not.
+             *
+             * Not done here because nothing can write these credentials yet, so
+             * this line is unreachable - it goes in with the screen.
              */
             'host'       => $approved->host,
             'port'       => $approved->port,
