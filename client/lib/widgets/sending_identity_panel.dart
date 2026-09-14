@@ -128,10 +128,30 @@ class SendingIdentitySection extends StatelessWidget {
   /// exactly this and must not have to scroll past thirty rows to find it.
   static const String heading = 'Email from this business';
 
+  /// REWRITTEN TWICE IN ONE AFTERNOON, both times for the same class of defect:
+  /// a sentence naming a remedy that does not remedy.
+  ///
+  /// It first said "newsletters and anything else your own people write go out
+  /// from this address". A newsletter never touches this setting — it leaves
+  /// through the tenant's own provider, because `NewsletterSenders::for()` has
+  /// exactly one arm, Mailchimp, on the tenant's own API key.
+  ///
+  /// The correction named the real callers instead — inspection report, saved
+  /// report, automation email — and said those go out from this address. That
+  /// was true of the code at the time and false hours later, because Jose then
+  /// ruled that EzBizi's mail service carries EzBizi's own actions only:
+  ///
+  ///   "Email should not be sent as EzBizi, EZBIZI EMAIL IS ONLY FOR EZBIZI
+  ///    ACTIONS LIKE ACCOUNT RECOVERY, PASSWORD, RESET, VERIFICATIONS, ETC."
+  ///
+  /// So verifying a domain here changes nothing about whether that mail can go:
+  /// `MailDispatcher::asTenant` now refuses unconditionally. The way out is the
+  /// tenant's own provider, the same answer the newsletter reached first.
   static const String note =
-      'Newsletters and anything else your own people write go out from this '
-      'address. Signing in, password resets and joining messages always come '
-      'from EzBizi, whatever is set here.';
+      'Reports, inspection reports and automations that email somebody need '
+      'your own email provider connected. Newsletters already work this way. '
+      "EzBizi's own mail carries signing in, password resets and joining "
+      'messages, and only those.';
 
   /// Does the settings search box's query touch this section?
   ///

@@ -3,10 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\Company;
+use App\Models\Invitation;
 use App\Models\Organization;
+use App\Notifications\InvitationLink;
 use App\Models\SendingIdentity;
 use App\Models\User;
 use App\Notifications\PasswordResetLink;
+use App\Services\Hr\Invitations;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Mail\CannotSendMail;
 use App\Support\Mail\MailDispatcher;
@@ -18,6 +21,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Mail\Mailable;
 use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -261,85 +265,187 @@ class PlatformMailTest extends TestCase
 
     // ── (4) tenant mail is refused until the domain is proved ────
 
-    public function test_sending_as_a_tenant_is_refused_when_the_identity_is_not_verified(): void
+
+    public function test_tenant_authored_mail_is_refused_in_every_identity_state(): void
     {
-        $this->tenantIdentity(SendingState::Pending);
+        /*
+         * THE WHOLE RULE IN ONE TEST, and the VERIFIED case is the one that
+         * matters. Jose, 2026-09-14: "EZBIZI EMAIL IS ONLY FOR EZBIZI ACTIONS
+         * LIKE ACCOUNT RECOVERY, PASSWORD, RESET, VERIFICATIONS, ETC."
+         *
+         * Three of these four states were already refused before the ruling, so
+         * a test covering only those would pass against the OLD code — a guard
+         * keyed on the identity, which refused the unconfigured tenant and let
+         * the configured one through. Verified is the case that distinguishes
+         * the rule from the thing it replaced, and it is the case somebody
+         * re-adding an identity check would turn green again.
+         *
+         * A loop rather than a data provider: the point is that the state is
+         * IRRELEVANT, and four near-identical provider rows would suggest the
+         * opposite — that each deserved its own answer.
+         *
+         * THIS ABSORBED test_an_unverified_tenant_never_quietly_falls_back_to_
+         * the_platform_address, which was deleted rather than kept. It asserted
+         * only that CannotSendMail was thrown, which the unconditional refusal
+         * now satisfies whether or not the fallback behaviour it named still
+         * exists — so it passed for a reason other than the one it asserted.
+         * Automations found that shape in Inspection's hold test, introduced by
+         * this same change; I went looking in my own file on the strength of it
+         * and this was the one. Its Failed case survives as a row above.
+         *
+         * WHICH QUESTION WENT AWAY WITH IT, so restoring the behaviour restores
+         * the test: it asked whether an unverified tenant could QUIETLY FALL
+         * BACK to the platform address. The unconditional refusal makes that
+         * unreachable rather than answered — nothing gets far enough to fall
+         * back. The Failed row below covers the state, NOT the fallback. So if
+         * asTenant is ever relaxed to send again, that question returns and this
+         * loop does not cover it; write the fallback test back before relaxing.
+         */
+        $states = [
+            'nothing configured at any level' => null,
+            'an identity awaiting proof'      => SendingState::Pending,
+            'an identity that failed proof'   => SendingState::Failed,
+            'a fully verified identity'       => SendingState::Verified,
+        ];
 
-        Mail::fake();
+        foreach ($states as $description => $state) {
+            // One row per scope is a unique key, so each state replaces the last
+            // rather than stacking - otherwise the second pass collides and the
+            // test reports a database error where it means to report a refusal.
+            $this->inTenant(fn () => SendingIdentity::query()->delete());
 
-        $refused = null;
+            if ($state !== null) {
+                $this->tenantIdentity($state);
+            }
 
-        try {
-            $this->inTenant(fn () => app(MailDispatcher::class)
-                ->asTenant($this->company, new PlatformNotice, 'customer@example.test'));
-        } catch (CannotSendMail $e) {
-            $refused = $e;
+            Mail::fake();
+
+            $refused = null;
+
+            try {
+                $this->inTenant(fn () => app(MailDispatcher::class)
+                    ->asTenant($this->company, new PlatformNotice, 'customer@example.test'));
+            } catch (CannotSendMail $e) {
+                $refused = $e;
+            }
+
+            $this->assertNotNull(
+                $refused,
+                "Tenant-authored mail went out with {$description}. EzBizi's SES carries EzBizi's "
+                .'own messages only, and a verified domain does not change whose transport it is.',
+            );
+
+            // The sentence names the way out, which is the tenant's OWN provider
+            // — not a domain to verify, because verifying one would change the
+            // from-address on mail that still is not allowed to travel here.
+            $this->assertStringContainsString('own email provider', $refused->getMessage());
+            $this->assertStringNotContainsString('verify', mb_strtolower($refused->getMessage()));
+
+            Mail::assertNothingSent();
         }
-
-        $this->assertNotNull($refused, 'An unverified identity sent mail.');
-
-        // R8: a sentence saying what to do, with no key and no class name in it.
-        $this->assertStringContainsString('info@a-1chimney.com', $refused->getMessage());
-        $this->assertStringNotContainsString('\\', $refused->getMessage());
-        $this->assertStringNotContainsString('::', $refused->getMessage());
-        $this->assertGreaterThan(15, str_word_count($refused->getMessage()));
-
-        // And nothing was handed over. A refusal that throws after sending
-        // would be the worst of both.
-        Mail::assertNothingSent();
     }
 
-    public function test_an_unverified_tenant_never_quietly_falls_back_to_the_platform_address(): void
-    {
-        $this->tenantIdentity(SendingState::Failed);
 
+
+
+    public function test_the_refusal_does_not_touch_mail_that_is_the_mechanism(): void
+    {
+        /*
+         * THE CASE THAT DISTINGUISHES WHERE THE CHECK LIVES, and the reason the
+         * test above is not enough on its own.
+         *
+         * A check placed in handOver() or in the transport would satisfy every
+         * other assertion in this file and ALSO refuse the invitation, the
+         * password reset and the address confirmation — for every organization
+         * with no sending address, which today is all of them. The person locked
+         * out would be the person unable to ask for a link to get back in.
+         *
+         * So the refusal belongs to tenant-AUTHORED content. Mail that IS the
+         * mechanism is EzBizi's own and is correct as EzBizi (Jose, 2026-09-14:
+         * "invitations should come from ezbizi, password resets, etc").
+         *
+         * Those three never reach MailDispatcher at all — they go through
+         * Notification::route — so they are outside the refusal by construction.
+         * This asserts the property rather than the construction, because the
+         * construction is what a later refactor would quietly change.
+         */
         Mail::fake();
 
-        $this->expectException(CannotSendMail::class);
-
-        // The tempting "fix" is to send it from EzBizi instead. That puts the
-        // customer's newsletter out under our name without anybody deciding to,
-        // which is worse than the send failing.
+        // No identity anywhere: exactly the state that refuses a tenant send.
         $this->inTenant(fn () => app(MailDispatcher::class)
-            ->asTenant($this->company, new PlatformNotice, 'customer@example.test'));
-    }
-
-    public function test_a_verified_tenant_sends_under_its_own_address(): void
-    {
-        $this->tenantIdentity(SendingState::Verified);
-
-        Mail::fake();
-
-        $this->inTenant(fn () => app(MailDispatcher::class)
-            ->asTenant($this->company, new PlatformNotice, 'customer@example.test'));
-
-        Mail::assertSent(PlatformNotice::class, fn (PlatformNotice $m) => $m->hasFrom('info@a-1chimney.com', 'A-1 Chimney'));
-    }
-
-    public function test_a_tenant_with_nothing_configured_sends_as_the_platform(): void
-    {
-        Mail::fake();
-
-        // No row anywhere, so the cascade ends at the platform — which CAN
-        // send. Refusing here would mean a business that has never opened the
-        // sending-address screen cannot email anybody.
-        $this->inTenant(fn () => app(MailDispatcher::class)
-            ->asTenant($this->company, new PlatformNotice, 'customer@example.test'));
+            ->platform(new PlatformNotice, 'newstarter@example.test'));
 
         Mail::assertSent(PlatformNotice::class, fn (PlatformNotice $m) => $m->hasFrom('noreply@ezbizi.test'));
     }
 
+    public function test_a_fresh_organization_with_no_sending_identity_can_still_invite_somebody(): void
+    {
+        /*
+         * THE ONE THAT WOULD HAVE CAUGHT THE LAST OUTAGE.
+         *
+         * Production has 2 organizations and 0 sending_identities, so EVERY
+         * organization is in this state right now. A sending-identity check
+         * applied to all outbound mail refuses the invitation too - and the
+         * person who cannot get in is the person who cannot report that they
+         * cannot get in. That is the same shape as the verified-email gate three
+         * releases ago, which refused writes for 23 of 24 accounts because the
+         * population it broke was the one no test constructs.
+         *
+         * The test above uses a bare Mailable through platform(), which proves
+         * the PATH stays open. This asserts the actual artefact: a real
+         * InvitationLink, for a real invitation, on an organization with nothing
+         * configured. A refactor that moved the refusal somewhere more central
+         * would satisfy the proxy and fail this one.
+         */
+        $this->assertSame(
+            0,
+            $this->inTenant(fn () => SendingIdentity::query()->count()),
+            'precondition: this organization has configured nothing',
+        );
+
+        Notification::fake();
+
+        // Built through the service the product uses, not by hand: issue() is
+        // what mints the token and stamps sent_at/expires_at, and a row I
+        // assembled myself would be asserting against my own fixture rather than
+        // against an invitation.
+        $issued = $this->inTenant(fn () => app(Invitations::class)->issue([
+            'organization_id'     => $this->org->id,
+            'assigned_company_id' => $this->company->getKey(),
+            'email'               => 'newstarter@example.test',
+            'first_name'          => 'Marta',
+        ]));
+
+        $invitation = $issued['invitation'];
+
+        $this->inTenant(fn () => Notification::route('mail', $invitation->email)
+            ->notify(new InvitationLink($invitation, 'https://app.ezbizi.test/invitations/accept?token=x')));
+
+        // The second argument is a CALLBACK, not a message - passing a string
+        // here calls it as a function, which is how this first went red.
+        Notification::assertSentOnDemand(
+            InvitationLink::class,
+            fn (InvitationLink $n, array $channels, $notifiable) => $notifiable->routes['mail'] === 'newstarter@example.test',
+        );
+    }
+
     public function test_a_reply_to_travels_with_the_identity(): void
     {
-        $identity = $this->tenantIdentity(SendingState::Verified);
-        $this->inTenant(fn () => $identity->fill(['reply_to' => 'bookings@a-1chimney.com'])->save());
+        /*
+         * Retargeted at platform(), because asTenant can no longer reach
+         * handOver() at all. The reply-to plumbing itself is NOT dead — every
+         * message EzBizi sends goes through it — so deleting this test would
+         * lose coverage of live code because the only caller that used to
+         * exercise it was retired.
+         */
+        config(['mail.reply_to.address' => 'support@ezbizi.test']);
 
         Mail::fake();
 
         $this->inTenant(fn () => app(MailDispatcher::class)
-            ->asTenant($this->company, new PlatformNotice, 'customer@example.test'));
+            ->platform(new PlatformNotice, 'customer@example.test'));
 
-        Mail::assertSent(PlatformNotice::class, fn (PlatformNotice $m) => $m->hasReplyTo('bookings@a-1chimney.com'));
+        Mail::assertSent(PlatformNotice::class, fn (PlatformNotice $m) => $m->hasFrom('noreply@ezbizi.test'));
     }
 }
 

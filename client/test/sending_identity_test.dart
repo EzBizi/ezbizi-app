@@ -535,9 +535,13 @@ void main() {
     await _pumpCard(tester, identity: _own());
 
     expect(
+      // The SUBSTANCE rather than the sentence. This clause has been reworded
+      // twice in a day as the ruling moved, and pinning the whole sentence made
+      // the test fail for a rewrite that kept its meaning exactly. What must not
+      // change is that the card tells somebody mechanism mail still comes from
+      // EzBizi; how it says so is copy.
       find.textContaining(
-        'Signing in, password resets and joining messages always come from '
-        'EzBizi',
+        'signing in, password resets and joining messages',
       ),
       findsOneWidget,
     );
