@@ -2,6 +2,9 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Models\Franchise;
+use App\Models\SocialConnection;
+use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsTenants;
@@ -89,7 +92,7 @@ class ExperimentalCallReportApiTest extends TestCase
     {
         $tenant = $this->provisionTenant('Alpha');
 
-        $this->connected();
+        $this->connected($tenant);
 
         $body = $this->signedInAs($tenant['admin'])
             ->getJson('/api/v1/reports/experimental/calls?day=2026-09-14&timezone=America/New_York')
@@ -112,7 +115,7 @@ class ExperimentalCallReportApiTest extends TestCase
     {
         $tenant = $this->provisionTenant('Alpha');
 
-        $this->connected();
+        $this->connected($tenant);
 
         $body = $this->signedInAs($tenant['admin'])
             ->getJson('/api/v1/reports/experimental/calls?day=2026-09-14&timezone=America/Chicago')
@@ -140,14 +143,24 @@ class ExperimentalCallReportApiTest extends TestCase
     {
         $tenant = $this->provisionTenant('Alpha');
 
-        $this->connected();
+        $this->connected($tenant);
 
         $body = $this->signedInAs($tenant['admin'])
             ->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')
             ->assertOk()
             ->json();
 
-        $this->assertSame(['Nationwide', 'NJ'], $body['workiz_accounts']);
+        $this->assertSame(
+            ['Nationwide', 'New Jersey'],
+            array_column($body['workiz_accounts'], 'name'),
+        );
+
+        // And each one carries the id that disconnects it. Nothing else
+        // publishes it - a data-source provider is excluded from the shared
+        // connections list on purpose.
+        foreach ($body['workiz_accounts'] as $account) {
+            $this->assertNotEmpty($account['id']);
+        }
     }
 
     /** One refused account must be named, not folded into a smaller number. */
@@ -155,14 +168,14 @@ class ExperimentalCallReportApiTest extends TestCase
     {
         $tenant = $this->provisionTenant('Alpha');
 
-        $this->connected(njRefuses: true);
+        $this->connected($tenant, njRefuses: true);
 
         $body = $this->signedInAs($tenant['admin'])
             ->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')
             ->assertOk()
             ->json();
 
-        $this->assertArrayHasKey('NJ', $body['workiz_failed']);
+        $this->assertArrayHasKey('New Jersey', $body['workiz_failed']);
         $this->assertArrayNotHasKey('Nationwide', $body['workiz_failed']);
 
         // And the calls still came through.
@@ -177,19 +190,20 @@ class ExperimentalCallReportApiTest extends TestCase
             'experimental_reports.ringcentral.client_id' => null,
             'experimental_reports.ringcentral.client_secret' => null,
             'experimental_reports.ringcentral.jwt' => null,
-            'experimental_reports.workiz.accounts' => [],
         ]);
     }
 
-    private function connected(bool $njRefuses = false): void
+    private function connected(array $tenant, bool $njRefuses = false): void
     {
         config([
             'experimental_reports.ringcentral.server' => 'https://platform.ringcentral.test',
             'experimental_reports.ringcentral.client_id' => 'id',
             'experimental_reports.ringcentral.client_secret' => 'secret',
             'experimental_reports.ringcentral.jwt' => 'jwt',
-            'experimental_reports.workiz.accounts' => ['Nationwide' => 'nat', 'NJ' => 'nj'],
         ]);
+
+        $this->workizBranch($tenant, 'Nationwide', 'nat');
+        $this->workizBranch($tenant, 'New Jersey', 'nj');
 
         Http::fake([
             '*/oauth/token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
@@ -219,5 +233,33 @@ class ExperimentalCallReportApiTest extends TestCase
                 ['Phone' => '2125551212', 'CreatedBy' => 'Trey Brannan', 'CreatedDate' => '2026-09-14 09:00:00'],
             ]]),
         ]);
+    }
+
+    /**
+     * A branch with a Workiz account attached, which is where the tokens live
+     * now — `scope_type = franchise`, per Jose's ruling.
+     */
+    private function workizBranch(array $tenant, string $name, string $token): void
+    {
+        $this->inTenant($tenant['org'], function () use ($tenant, $name, $token) {
+            $franchise = Franchise::create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+                'name' => $name,
+                'is_active' => true,
+            ]);
+
+            $connection = new SocialConnection;
+            $connection->forceFill([
+                'organization_id' => $tenant['org']->id,
+                'scope_type' => SocialConnection::SCOPE_FRANCHISE,
+                'scope_id' => $franchise->id,
+                'provider' => SocialProvider::Workiz->value,
+                'remote_id' => $franchise->id,
+                'display_name' => $name,
+            ]);
+            $connection->connect(['refresh_token' => $token, 'api_token' => $token]);
+            $connection->save();
+        });
     }
 }

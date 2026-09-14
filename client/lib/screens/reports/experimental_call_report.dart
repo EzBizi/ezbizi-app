@@ -41,6 +41,51 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   String? _error;
   bool _loading = true;
 
+  final TextEditingController _token = TextEditingController();
+  String? _disconnecting;
+  bool _connecting = false;
+  String? _connectError;
+  bool _showConnect = false;
+
+  @override
+  void dispose() {
+    _token.dispose();
+    super.dispose();
+  }
+
+  /// Attach one Workiz account to the branch currently in view.
+  ///
+  /// The server refuses outside a branch view and its sentence says so, which
+  /// is why nothing here tries to work out whether the view is right. One place
+  /// deciding beats two places agreeing.
+  Future<void> _connect() async {
+    setState(() {
+      _connecting = true;
+      _connectError = null;
+    });
+
+    final response = await widget.api.post('/reports/experimental/workiz', {
+      'api_token': _token.text.trim(),
+    });
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() {
+        _connecting = false;
+        _connectError = response.message;
+      });
+      return;
+    }
+
+    _token.clear();
+    setState(() {
+      _connecting = false;
+      _showConnect = false;
+    });
+    _load();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -58,10 +103,9 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       _error = null;
     });
 
-    final response = await widget.api.get(
-      '/reports/experimental/calls',
-      {'day': _dayKey},
-    );
+    final response = await widget.api.get('/reports/experimental/calls', {
+      'day': _dayKey,
+    });
 
     if (!mounted) return;
 
@@ -94,7 +138,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
   Widget _dayBar(BuildContext context) {
     final today = DateTime.now();
-    final isToday = _dayKey ==
+    final isToday =
+        _dayKey ==
         '${today.year.toString().padLeft(4, '0')}-'
             '${today.month.toString().padLeft(2, '0')}-'
             '${today.day.toString().padLeft(2, '0')}';
@@ -136,14 +181,18 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     final report = _report!;
 
     if (report['connected'] != true) {
-      return _notConnected(context, report['missing']?.toString() ?? 'A vendor');
+      return _notConnected(
+        context,
+        report['missing']?.toString() ?? 'A vendor',
+      );
     }
 
     final people = (report['people'] as List? ?? const [])
         .map((row) => (row as Map).cast<String, dynamic>())
         .toList();
 
-    final totals = (report['totals'] as Map? ?? const {}).cast<String, dynamic>();
+    final totals = (report['totals'] as Map? ?? const {})
+        .cast<String, dynamic>();
 
     return ListView(
       children: [
@@ -157,12 +206,12 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           LayoutBuilder(
             builder: (context, constraints) =>
                 constraints.maxWidth >= ExperimentalCallReport.tableAbove
-                    ? _table(context, people)
-                    : Column(
-                        children: [
-                          for (final person in people) _card(context, person),
-                        ],
-                      ),
+                ? _table(context, people)
+                : Column(
+                    children: [
+                      for (final person in people) _card(context, person),
+                    ],
+                  ),
           ),
       ],
     );
@@ -179,8 +228,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('$vendor is not connected.',
-                style: theme.textTheme.titleMedium),
+            Text(
+              '$vendor is not connected.',
+              style: theme.textTheme.titleMedium,
+            ),
             const SizedBox(height: 12),
             Text(
               'This report reads $vendor directly, and no credential is '
@@ -246,15 +297,17 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     final theme = Theme.of(context);
 
     final accounts = (report['workiz_accounts'] as List? ?? const [])
-        .map((a) => a.toString())
+        .map((a) => (a as Map).cast<String, dynamic>())
         .toList();
 
-    final failed = (report['workiz_failed'] as Map? ?? const {})
-        .keys
+    final failed = (report['workiz_failed'] as Map? ?? const {}).keys
         .map((k) => k.toString())
         .toList();
 
-    final covered = accounts.where((a) => !failed.contains(a)).toList();
+    final covered = accounts
+        .map((a) => '${a['name']}')
+        .where((name) => !failed.contains(name))
+        .toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -262,21 +315,133 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         Text(
           covered.isEmpty
               ? 'No Workiz account answered, so the jobs column is blank — '
-                  'that is not the same as nobody booking anything.'
+                    'that is not the same as nobody booking anything.'
               : 'Jobs cover ${covered.length} Workiz '
-                  '${covered.length == 1 ? 'account' : 'accounts'}: '
-                  '${covered.join(', ')}.',
+                    '${covered.length == 1 ? 'account' : 'accounts'}: '
+                    '${covered.join(', ')}.',
           style: theme.textTheme.bodySmall,
         ),
+        const SizedBox(height: 8),
+        // Each connected branch, with the way to remove it. This is the ONLY
+        // place a Workiz account's id is published: it is a data source, and
+        // the shared connections list excludes those on purpose, so without
+        // these chips a credential could be connected and never taken back.
+        if (accounts.isNotEmpty)
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              for (final account in accounts)
+                InputChip(
+                  label: Text('${account['name']}'),
+                  onDeleted: _disconnecting == account['id']
+                      ? null
+                      : () => _disconnect('${account['id']}'),
+                  deleteIcon: const Icon(Icons.close, size: 16),
+                  tooltip: 'Disconnect ${account['name']}',
+                ),
+            ],
+          ),
+        const SizedBox(height: 8),
+        _connectControl(context),
         if (failed.isNotEmpty) ...[
           const SizedBox(height: 4),
           Text(
             'Did not answer: ${failed.join(', ')}. The same people book into '
             'every account, so those numbers are low rather than incomplete.',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.error),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.error,
+            ),
           ),
         ],
+      ],
+    );
+  }
+
+  /// Take a branch's Workiz account back.
+  ///
+  /// Straight through the shared connections endpoint, which already gates on
+  /// this provider's own connect permission and needs nothing from here beyond
+  /// the id.
+  Future<void> _disconnect(String id) async {
+    setState(() => _disconnecting = id);
+
+    final response = await widget.api.delete('/social/connections/$id');
+
+    if (!mounted) return;
+
+    setState(() => _disconnecting = null);
+
+    if (!response.ok) {
+      setState(() => _error = response.message);
+      return;
+    }
+
+    _load();
+  }
+
+  /// The way a branch's Workiz account gets attached.
+  ///
+  /// It lives HERE rather than in Settings because the tokens and this report
+  /// are retired together, and a connect flow parked somewhere permanent
+  /// outlives the thing that needed it. It is also the entry point: without it
+  /// the report has no way to reach its first account, which is the kind of
+  /// dead end a screen full of stubbed rows never shows.
+  Widget _connectControl(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (!_showConnect) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          onPressed: () => setState(() => _showConnect = true),
+          icon: const Icon(Icons.add_link),
+          label: const Text('Connect a Workiz account'),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Switch to the branch this account belongs to, then paste its API '
+          'Token from the v1 tab of Workiz › Developer API.',
+          style: theme.textTheme.bodySmall,
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _token,
+                decoration: InputDecoration(
+                  labelText: 'Workiz API Token',
+                  border: const OutlineInputBorder(),
+                  errorText: _connectError,
+                ),
+                // Obscured: it is an account credential that can delete jobs,
+                // and it is being pasted on somebody's screen.
+                obscureText: true,
+                enabled: !_connecting,
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: _connecting ? null : _connect,
+              child: const Text('Connect'),
+            ),
+            TextButton(
+              onPressed: _connecting
+                  ? null
+                  : () => setState(() {
+                      _showConnect = false;
+                      _connectError = null;
+                    }),
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -296,15 +461,17 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         ],
         rows: [
           for (final person in people)
-            DataRow(cells: [
-              DataCell(Text('${person['person']}')),
-              DataCell(Text('${person['rang']}')),
-              DataCell(Text('${person['answered']}')),
-              DataCell(Text('${person['new_client']}')),
-              DataCell(Text('${person['existing_client']}')),
-              DataCell(Text('${person['jobs']}')),
-              DataCell(Text(_onlyIn(person) ?? '')),
-            ]),
+            DataRow(
+              cells: [
+                DataCell(Text('${person['person']}')),
+                DataCell(Text('${person['rang']}')),
+                DataCell(Text('${person['answered']}')),
+                DataCell(Text('${person['new_client']}')),
+                DataCell(Text('${person['existing_client']}')),
+                DataCell(Text('${person['jobs']}')),
+                DataCell(Text(_onlyIn(person) ?? '')),
+              ],
+            ),
         ],
       ),
     );
@@ -322,9 +489,12 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           children: [
             Text('${person['person']}', style: theme.textTheme.titleMedium),
             if (only != null)
-              Text(only,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.outline)),
+              Text(
+                only,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.outline,
+                ),
+              ),
             const SizedBox(height: 8),
             Text(
               '${person['answered']} answered of ${person['rang']} rung · '

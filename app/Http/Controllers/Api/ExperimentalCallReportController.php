@@ -78,12 +78,16 @@ class ExperimentalCallReportController extends Controller
         $legs = $calls->forDate($day->toIso8601String(), $day->endOfDay()->toIso8601String());
 
         $jobs = [];
-        $accounts = $workiz->accounts();
+        $accounts = $workiz->accounts($request->user());
         $failed = [];
 
-        if ($workiz->configured()) {
+        if ($workiz->configured($request->user())) {
             try {
-                $result = $workiz->all(1000, $day->subDays(self::LOOKBACK_DAYS)->toDateString());
+                $result = $workiz->all(
+                    $request->user(),
+                    1000,
+                    $day->subDays(self::LOOKBACK_DAYS)->toDateString(),
+                );
                 $jobs = $result['jobs'];
                 $failed = $result['failed'];
             } catch (RuntimeException $e) {

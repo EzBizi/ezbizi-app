@@ -141,6 +141,7 @@ use App\Http\Controllers\Api\Web\SitesController as WebSitesController;
 use App\Http\Controllers\Api\Web\SnippetController as WebSnippetController;
 use App\Http\Controllers\Api\Web\ValuesController as WebValuesController;
 use App\Http\Controllers\Api\Web\WidgetsController as WebWidgetsController;
+use App\Http\Controllers\Api\WorkizConnectController;
 use App\Models\PlatformStaffLink;
 use App\Support\Auth\PasswordPolicy;
 use App\Support\Auth\TwoFactorPolicy;
@@ -733,6 +734,7 @@ Route::prefix('v1')
          * Goes when the Experimental report does.
          */
         Route::get('reports/experimental/calls', [ExperimentalCallReportController::class, 'show']);
+        Route::post('reports/experimental/workiz', [WorkizConnectController::class, 'store']);
 
         Route::get('reports/fields', [ReportsController::class, 'fields']);
         Route::post('reports/{id}/run', [ReportsController::class, 'run']);

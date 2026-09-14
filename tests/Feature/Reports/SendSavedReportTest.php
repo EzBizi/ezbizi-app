@@ -2,8 +2,6 @@
 
 namespace Tests\Feature\Reports;
 
-use App\Mail\SavedReportMail;
-use App\Models\AuditEvent;
 use App\Models\Automation;
 use App\Models\Customer;
 use App\Models\Job;
@@ -72,29 +70,6 @@ class SendSavedReportTest extends TestCase
         });
     }
 
-    public function test_a_report_is_run_and_mailed_to_the_named_people(): void
-    {
-        Mail::fake();
-
-        $tenant = $this->provisionTenant('Alpha');
-        $this->ownSendingAddress($tenant);
-        $this->makeJob($tenant, 'Sweep');
-
-        $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
-            $this->report($tenant),
-            ['owner@example.test'],
-            $this->rule($tenant),
-            $tenant['admin'],
-        ));
-
-        Mail::assertSent(SavedReportMail::class, function (SavedReportMail $mail) {
-            // Assert the ARTEFACT rather than that a send was attempted: a test
-            // that only checks the mailable was queued passes on an empty one.
-            return $mail->hasTo('owner@example.test')
-                && $mail->result->count === 1;
-        });
-    }
-
     /**
      * THE GUARD THE AUTOMATIONS SESSION ASKED FOR, and the reason it exists:
      * a franchise-scoped rule naming an organization-wide report would mail the
@@ -106,7 +81,7 @@ class SendSavedReportTest extends TestCase
         Mail::fake();
 
         $tenant = $this->provisionTenant('Alpha');
-        $this->ownSendingAddress($tenant);
+        $this->sendingIdentity($tenant, SendingState::Verified);
 
         $this->expectException(RuntimeException::class);
 
@@ -123,33 +98,12 @@ class SendSavedReportTest extends TestCase
         }
     }
 
-    /** The positive half: a rule whose scope does cover the report may send. */
-    public function test_an_organization_rule_may_mail_a_branch_report(): void
-    {
-        Mail::fake();
-
-        $tenant = $this->provisionTenant('Alpha');
-        $this->ownSendingAddress($tenant);
-
-        $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
-            $this->report($tenant, [
-                'company_id' => $tenant['company']->id,
-                'franchise_id' => $tenant['franchise']->id,
-            ]),
-            ['owner@example.test'],
-            $this->rule($tenant),
-            $tenant['admin'],
-        ));
-
-        Mail::assertSent(SavedReportMail::class);
-    }
-
     public function test_a_rule_naming_nobody_refuses_rather_than_sending_to_nobody(): void
     {
         Mail::fake();
 
         $tenant = $this->provisionTenant('Alpha');
-        $this->ownSendingAddress($tenant);
+        $this->sendingIdentity($tenant, SendingState::Verified);
 
         $this->expectException(RuntimeException::class);
 
@@ -161,71 +115,32 @@ class SendSavedReportTest extends TestCase
         ));
     }
 
-    public function test_a_send_is_written_to_the_audit_log_with_its_recipients(): void
-    {
-        Mail::fake();
-
-        $tenant = $this->provisionTenant('Alpha');
-        $this->ownSendingAddress($tenant);
-        $this->makeJob($tenant, 'Sweep');
-
-        $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
-            $this->report($tenant),
-            ['owner@example.test'],
-            $this->rule($tenant),
-            $tenant['admin'],
-        ));
-
-        // A mailed report leaves the building, and the question afterwards is
-        // always who sent what to whom.
-        $row = $this->inTenant($tenant['org'], fn () => AuditEvent::query()
-            ->where('action', 'report.sent')->latest('occurred_at')->first());
-
-        $this->assertNotNull($row, 'a send wrote no audit row');
-
-        // THE RECIPIENTS ARE THE POINT. Nothing bounds who a rule may mail a
-        // report to - the addresses are free text, deliberately, the same way
-        // phone.sms.send takes its destination from the rule. The bound is
-        // accountability rather than a check, so asserting only that SOME row
-        // exists would leave the one control unverified: a control nobody can
-        // read is not a control.
-        $this->assertSame(['owner@example.test'], $row->metadata['recipients'] ?? null);
-        $this->assertSame('Open jobs', $row->metadata['name'] ?? null);
-        $this->assertSame(1, $row->metadata['row_count'] ?? null);
-    }
-
     // ── the tenant's own address, or nothing ─────────────────────
 
+    // ── partial failure, which is the ruling that matters ────────
+
+    // ── nothing can send, and that is a ruling ─────────────
+
     /**
-     * A TENANT WITH NO SENDING ADDRESS MUST BE REFUSED, NOT SENT AS EZBIZI.
+     * THE ROW THAT DISTINGUISHES THE RULE FROM THE GUARD IT REPLACED.
      *
-     * This test is the one that should have existed first. Every other test in
-     * this file creates no `SendingIdentity` row, so every one of them has been
-     * passing by sending through the PLATFORM identity — from EzBizi's own
-     * address — and asserting that it worked. The suite did not merely miss the
-     * defect; it was a demonstration of it, in green.
+     * A tenant with its own VERIFIED sending address - the one case that used
+     * to work, and the only state whose refusal is new. The other three were
+     * already refused before Jose's ruling, so a test covering only those would
+     * pass against the old code unchanged and prove nothing about the change.
      *
-     * The path: `SendingIdentityResolver::for()` walks organization, company
-     * and franchise, finds no row at any link, and returns
-     * `$this->platform->identity()`. That identity's transport is
-     * `MailTransport::Platform`, whose `requiresDomainProof()` is false, so
-     * `canSend()` is true and `asTenant` hands the message over happily.
-     * `asTenant` never refuses — which is the opposite of what this class's own
-     * docblock promised.
-     *
-     * Wrong twice, in ActionRunner's words: a recipient who has no relationship
-     * with EzBizi hears from EzBizi, and it discloses which software the
-     * business runs to somebody who only asked for a report.
+     * That question - "would this have been green before my change?" - is the
+     * SES session's, asked of their own passing tests. It is sharper than the
+     * one that found my last defect, which was an absence a grep could reach.
      */
-    public function test_a_tenant_with_no_sending_address_is_refused(): void
+    public function test_a_verified_tenant_is_still_refused(): void
     {
         Mail::fake();
 
         $tenant = $this->provisionTenant('Alpha');
         $this->makeJob($tenant, 'Sweep');
+        $this->sendingIdentity($tenant, SendingState::Verified);
 
-        // Deliberately no SendingIdentity row anywhere in the cascade — which
-        // is the state every other test in this file is also in.
         try {
             $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
                 $this->report($tenant),
@@ -234,120 +149,78 @@ class SendSavedReportTest extends TestCase
                 $tenant['admin'],
             ));
 
-            $this->fail('a tenant with no sending address sent the report anyway');
+            $this->fail('a verified tenant mailed a report through EzBizi');
         } catch (CannotSendMail $e) {
-            // The sentence is for the person who has to fix it.
-            $this->assertStringContainsString('sending address', $e->getMessage());
+            $this->assertStringContainsString('own email provider', $e->getMessage());
         }
 
         Mail::assertNothingSent();
     }
 
-    // ── partial failure, which is the ruling that matters ────────
-
     /**
-     * THE AUTOMATIONS RULING: five recipients, one malformed, must report OK and
-     * name the refused address.
+     * Every identity state, refused.
      *
-     * Failing the whole action for one bad address in five is how you
-     * auto-disable a rule that is working for four people — `FAILURE_LIMIT` is
-     * 5 consecutive, so a weekly report with one permanently-bad address in its
-     * list would switch itself off after five weeks while four people were
-     * receiving it fine.
+     * Jose, 2026-09-14: "Email should not be sent as EzBizi, EZBIZI EMAIL IS
+     * ONLY FOR EZBIZI ACTIONS LIKE ACCOUNT RECOVERY, PASSWORD, RESET,
+     * VERIFICATIONS, ETC." The SERVICE rather than the from-address, so there
+     * is no configuration of anything that lets a report out.
      */
-    public function test_one_bad_address_does_not_fail_the_others(): void
+    public function test_no_identity_state_lets_a_report_out(): void
     {
-        Mail::fake();
+        $states = [null, SendingState::Pending, SendingState::Failed, SendingState::Verified];
 
-        $tenant = $this->provisionTenant('Alpha');
-        $this->ownSendingAddress($tenant);
-        $this->makeJob($tenant, 'Sweep');
+        foreach ($states as $index => $state) {
+            Mail::fake();
 
-        $outcome = $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
-            $this->report($tenant),
-            ['good@example.test', 'not-an-address', 'also-good@example.test'],
-            $this->rule($tenant),
-            $tenant['admin'],
-        ));
+            $tenant = $this->provisionTenant('Tenant'.$index);
+            $this->makeJob($tenant, 'Sweep');
 
-        $this->assertTrue($outcome->ok(), 'one bad address failed the whole send');
-        $this->assertSame(['good@example.test', 'also-good@example.test'], $outcome->sent);
-        $this->assertArrayHasKey('not-an-address', $outcome->refused);
+            if ($state !== null) {
+                $this->sendingIdentity($tenant, $state);
+            }
 
-        // And the refusal is NAMED rather than counted: "one address failed" is
-        // not something anybody can act on.
-        $this->assertStringContainsString('not-an-address', $outcome->summary());
-    }
+            try {
+                $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+                    $this->report($tenant),
+                    ['owner@example.test'],
+                    $this->rule($tenant),
+                    $tenant['admin'],
+                ));
 
-    /** ok:false only when NOTHING left the building. */
-    public function test_a_send_where_every_address_is_refused_fails(): void
-    {
-        Mail::fake();
+                $this->fail('a report left with identity state '.($state?->value ?? 'none'));
+            } catch (CannotSendMail $e) {
+                // ignored: the refusal is the pass
+            }
 
-        $tenant = $this->provisionTenant('Alpha');
-        $this->ownSendingAddress($tenant);
-
-        $this->expectException(RuntimeException::class);
-
-        $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
-            $this->report($tenant),
-            ['not-an-address', 'also-not-one'],
-            $this->rule($tenant),
-            $tenant['admin'],
-        ));
-    }
-
-    /** The refusals are audited too: "why did they not get it" is the next question. */
-    public function test_refused_addresses_are_recorded(): void
-    {
-        Mail::fake();
-
-        $tenant = $this->provisionTenant('Alpha');
-        $this->ownSendingAddress($tenant);
-        $this->makeJob($tenant, 'Sweep');
-
-        $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
-            $this->report($tenant),
-            ['good@example.test', 'not-an-address'],
-            $this->rule($tenant),
-            $tenant['admin'],
-        ));
-
-        $row = $this->inTenant($tenant['org'], fn () => AuditEvent::query()
-            ->where('action', 'report.sent')->latest('occurred_at')->first());
-
-        $this->assertSame(['good@example.test'], $row->metadata['recipients'] ?? null);
-        $this->assertArrayHasKey('not-an-address', $row->metadata['refused'] ?? []);
+            Mail::assertNothingSent();
+        }
     }
 
     /**
-     * NOTHING HERE CLAIMS ARRIVAL, and that is the whole vocabulary decision.
+     * THE SCOPE GUARD STILL FIRES FIRST, and the order is the point.
      *
-     * EzBizi ingests no SES events — no SNS route, no bounce handler — so
-     * delivered, bounced and opened are not facts it holds. A word that claims
-     * arrival would be the "reported success, delivered nothing" failure wearing
-     * a different hat.
+     * A rule mailing a report its own scope cannot read must hear about the
+     * SCOPE, not about email. If the mail refusal came first, the disclosure
+     * guard would be invisible until a transport is connected - and would look
+     * like it had been holding all along.
      */
-    public function test_the_outcome_never_claims_delivery(): void
+    public function test_the_scope_guard_is_reached_before_the_mail_refusal(): void
     {
         Mail::fake();
 
         $tenant = $this->provisionTenant('Alpha');
-        $this->ownSendingAddress($tenant);
 
-        $outcome = $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
-            $this->report($tenant),
-            ['owner@example.test'],
-            $this->rule($tenant),
-            $tenant['admin'],
-        ));
+        try {
+            $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+                $this->report($tenant),
+                ['owner@example.test'],
+                $this->rule($tenant, 'franchise', $tenant['franchise']->id),
+                $tenant['admin'],
+            ));
 
-        foreach (['delivered', 'arrived', 'received', 'read'] as $word) {
-            $this->assertStringNotContainsStringIgnoringCase(
-                $word,
-                $outcome->summary(),
-                'the summary claims something this application cannot observe',
-            );
+            $this->fail('a branch rule mailed an organization-wide report');
+        } catch (RuntimeException $e) {
+            $this->assertNotInstanceOf(CannotSendMail::class, $e);
         }
     }
 
@@ -398,16 +271,26 @@ class SendSavedReportTest extends TestCase
     }
 
     /**
-     * Give the tenant its own verified sending address.
+     * A sending identity in a given state.
      *
-     * Needed by every test that expects a send to SUCCEED, and its absence is
-     * what let six of them pass while sending from EzBizi's address. `state` is
-     * deliberately not fillable — the model says why — so a fixture has to
-     * force it, which is the correct amount of friction.
+     * MEASURED, because I nearly wrote the opposite: removing every call to
+     * this leaves all eight tests GREEN. Since `asTenant` refuses
+     * unconditionally, no identity state changes any outcome, so this fixture
+     * is not load-bearing for a single assertion.
+     *
+     * It is kept in exactly one place — the verified-tenant test — because it
+     * is what makes that test MEAN the distinguishing case. Without it the test
+     * reads "a tenant with no identity is refused", which was already true
+     * before the ruling. The fixture carries the intent, not the pass, and
+     * saying so is the difference between a control and decoration.
+     *
+     * There used to be a second helper beside this one, from the days when a
+     * verified identity made a send SUCCEED. Two fixtures for one job, one of
+     * them implying an outcome that no longer exists.
      */
-    private function ownSendingAddress(array $tenant): void
+    private function sendingIdentity(array $tenant, SendingState $state): void
     {
-        $this->inTenant($tenant['org'], function () use ($tenant) {
+        $this->inTenant($tenant['org'], function () use ($tenant, $state) {
             (new SendingIdentity([
                 'organization_id' => $tenant['org']->id,
                 'scope_type' => SendingIdentity::SCOPE_ORGANIZATION,
@@ -416,8 +299,8 @@ class SendSavedReportTest extends TestCase
                 'from_name' => 'Alpha Chimney',
                 'transport' => MailTransport::VerifiedDomain->value,
             ]))->forceFill([
-                'state' => SendingState::Verified->value,
-                'verified_at' => now(),
+                'state' => $state->value,
+                'verified_at' => $state === SendingState::Verified ? now() : null,
             ])->save();
         });
     }

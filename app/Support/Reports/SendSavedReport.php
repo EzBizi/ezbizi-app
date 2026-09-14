@@ -11,7 +11,6 @@ use App\Support\Automations\EventScope;
 use App\Support\Mail\CannotSendMail;
 use App\Support\Mail\MailDispatcher;
 use App\Support\Mail\MailStatus;
-use App\Support\Mail\MailTransport;
 use RuntimeException;
 
 /**
@@ -56,6 +55,27 @@ use RuntimeException;
  * and the change is a policy about addresses rather than a change to the scope
  * guard — they answer different questions and fixing one will not fix the other.
  *
+ * ── NOTHING CAN ACTUALLY SEND TODAY, and that is a ruling ───────
+ *
+ * Jose, 2026-09-14: "Email should not be sent as EzBizi, EZBIZI EMAIL IS ONLY
+ * FOR EZBIZI ACTIONS LIKE ACCOUNT RECOVERY, PASSWORD, RESET, VERIFICATIONS,
+ * ETC." The SERVICE, not the from-address — so `MailDispatcher::asTenant` now
+ * refuses unconditionally and there is no identity state that lets a report
+ * through.
+ *
+ * This class is left intact rather than gutted. The scope guard, the
+ * one-address-at-a-time rule and the audit row are all correct for whatever
+ * transport replaces `asTenant` — the shape the product already reached
+ * independently is the TENANT's own provider, the way a newsletter leaves
+ * through their Mailchimp key and never touches EzBizi's SES. Deleting the
+ * machinery would throw away three rulings to save a file.
+ *
+ * I also deleted my own guard here, which used to refuse a tenant with no
+ * sending identity before the loop. It was redundant once `asTenant` refused
+ * everything — and worse than redundant: its sentence said "set one up under
+ * Settings, Sending Identity", and that panel is being retired. Confident,
+ * specific, wrong, and FIRST, which makes it the one somebody would read.
+ *
  * ── It is run as somebody, and that somebody matters ─────────────
  *
  * `ReportRunner` scopes every table to the CALLER's view and reach, so the rows
@@ -81,13 +101,13 @@ final class SendSavedReport
      * @throws RuntimeException when the rule's scope does not cover the report,
      *                          when it names nobody, or when NOTHING left the
      *                          building
-     * @throws CannotSendMail when this tenant would not be sending as ITSELF —
-     *                        either it has no sending address at all, in which
-     *                        case the guard below refuses rather than let the
-     *                        report leave as EzBizi, or it has one that is not
-     *                        verified yet, which `asTenant` refuses. This line
-     *                        claimed the first of those for a while before it
-     *                        was true; see the guard.
+     * @throws CannotSendMail ALWAYS, at the first recipient, until a business
+     *                        connects its own email provider. Jose's ruling,
+     *                        2026-09-14: "EZBIZI EMAIL IS ONLY FOR EZBIZI
+     *                        ACTIONS LIKE ACCOUNT RECOVERY, PASSWORD, RESET,
+     *                        VERIFICATIONS, ETC." `asTenant` now refuses
+     *                        unconditionally, so this method reaches the
+     *                        transport and is turned away there.
      */
     public function send(SavedReport $report, array $recipients, Automation $rule, User $as): SentReport
     {
@@ -99,44 +119,6 @@ final class SendSavedReport
 
         $result = $this->runner->run($report->definition, $as);
         $scope = $report->franchise ?? $report->company ?? $as->organization;
-
-        /*
-         * REFUSE RATHER THAN SEND AS EZBIZI, and `asTenant` does not do this.
-         *
-         * My docblock claimed `@throws CannotSendMail when this tenant has no
-         * sending identity at all`. It does not. `SendingIdentityResolver::for()`
-         * walks organization, company and franchise, finds no row at any link,
-         * and returns the PLATFORM identity — whose transport's
-         * `requiresDomainProof()` is false, so `canSend()` is true and
-         * `asTenant` hands the message over. A tenant who has configured
-         * nothing would have their recipient receive the report from EzBizi's
-         * own address.
-         *
-         * Wrong twice, and the second reason is ActionRunner's rather than
-         * mine: the recipient has no relationship with EzBizi, and it discloses
-         * which software the business runs to somebody who only asked for a
-         * report. `MailTransport::Platform`'s own label is the word "EzBizi".
-         *
-         * Refusing here rather than in the shared dispatcher, following
-         * ActionRunner::emailInspectionReport — the newsletter may reasonably
-         * want a different answer and that is Marketing's call.
-         *
-         * Thrown rather than collected per address, and BEFORE the loop: no
-         * address would work, so this is the persistent configuration fault
-         * that the engine's consecutive-failure count exists to auto-disable.
-         *
-         * Whether a business with no sending address should send as EzBizi or
-         * be refused is Jose's to rule. Built as refuse because an email that
-         * has left is not recallable, and this is one condition to delete if he
-         * rules the other way.
-         */
-        if ($this->mail->identityFor($scope)->transport === MailTransport::Platform) {
-            throw new CannotSendMail(
-                'This organization has not set up its own sending address, and a report '
-                .'must not reach anybody from the EzBizi address. Set one up under '
-                .'Settings, Sending Identity.'
-            );
-        }
 
         $sent = [];
         $refused = [];
