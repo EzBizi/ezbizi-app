@@ -95,10 +95,39 @@ class InspectionReportEmailActionTest extends TestCase
 
         $result = $this->runAction($tenant, $this->reportFor($tenant, email: 'owner@example.test'));
 
+        /*
+         * THE STRING IS LOAD-BEARING. DO NOT TIDY IT AWAY AS REDUNDANT.
+         *
+         * The three assertions below it are now VACUOUS, and were not when this
+         * was written. The SES session made `MailDispatcher::asTenant` throw
+         * unconditionally, so with the hold deleted the arm proceeds, calls
+         * asTenant, catches CannotSendMail and returns ok=false having queued
+         * nothing. `assertNothingQueued`, `assertNothingSent` and `assertFalse`
+         * are then all satisfied by the DISPATCHER refusing rather than by the
+         * hold — an absence two different mechanisms produce.
+         *
+         * Only the sentence tells them apart: this one is the hold's, and the
+         * other is SES's about connecting an email provider. Measured, not
+         * reasoned — with the hold removed and their dispatcher in place, this
+         * assertion is the one that fires and the other three pass.
+         *
+         * Asserted FIRST so the failure names the hold rather than a queue.
+         * Pinning prose is a cost I took deliberately; the alternative is a
+         * non-prose marker on the result, which changes a shape the run log
+         * shares with every other action. If this string ever changes, change
+         * it here in the same commit.
+         */
+        $this->assertStringContainsString(
+            'switched off',
+            $result['detail'],
+            'the refusal must be the HOLD, not the mail dispatcher declining for its own reasons',
+        );
+
+        // Kept because they will distinguish again the day a per-tenant mailer
+        // exists and asTenant stops refusing everything.
         Mail::assertNothingQueued();
         Mail::assertNothingSent();
         $this->assertFalse($result['ok'], 'the action is held by the 2026-09-14 ruling');
-        $this->assertStringContainsString('switched off', $result['detail']);
     }
 
     /**
