@@ -1,0 +1,315 @@
+<!doctype html><meta charset="utf-8">
+<title>An automation stopped itself &mdash; layouts</title>
+<style>
+:root{--ink:#060808;--muted:#5B6672;--line:rgba(6,8,8,.10);--primary:#00708F;
+      --bad:#BA1A1A;--warn:#8A5A00;--ok:#1B6B4A;--paper:#fff;--ground:#f4f6f7;
+      --fill:rgba(6,8,8,.04)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+     font:14px/1.45 -apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:20px 24px 6px}
+h1{margin:0;font-size:18px;font-weight:700;letter-spacing:-.3px}
+.sub{color:var(--muted);font-size:13px;margin:8px 0 0;max-width:840px}
+.sub b{color:var(--ink)}
+#nums,#ctl{display:flex;flex-wrap:wrap;gap:8px;padding:12px 24px 0}
+#ctl{padding-bottom:16px;align-items:center;font-size:13px}
+button{font:inherit;font-weight:600;background:var(--paper);color:var(--ink);
+  border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
+#nums button[aria-current=true]{background:var(--primary);color:#fff;border-color:var(--primary)}
+#ctl button{border-radius:8px;padding:5px 10px}
+#ctl button[aria-current=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+#stage{padding:0 24px 56px}
+.cap{font-size:13px;color:var(--muted);margin:0 0 14px}
+.win{width:620px;background:var(--paper);border:1px solid var(--line);
+     border-radius:14px;overflow:hidden;position:relative}
+.phone{width:340px;background:var(--paper);border:1px solid var(--line);
+       border-radius:24px;overflow:hidden;position:relative}
+.bar{display:flex;align-items:center;gap:10px;padding:0 14px;height:48px;
+     border-bottom:1px solid var(--line)}
+.brand{font-weight:800;color:var(--primary);letter-spacing:-.4px}
+.grow{flex:1}
+.ico{position:relative;width:30px;height:30px;border-radius:8px;display:flex;
+     align-items:center;justify-content:center;color:var(--muted)}
+.dot{position:absolute;top:3px;right:3px;width:8px;height:8px;border-radius:50%;
+     background:var(--bad)}
+.body{display:flex;min-height:230px}
+.rail{width:150px;border-right:1px solid var(--line);background:var(--fill);
+      padding:8px;font-size:12.5px;color:var(--muted)}
+.rail div{padding:6px 8px;border-radius:7px;display:flex;align-items:center;gap:6px}
+.rail .badge{margin-left:auto;background:var(--bad);color:#fff;border-radius:999px;
+             font-size:10px;font-weight:700;padding:1px 6px}
+.page{flex:1;padding:14px 16px}
+.h2{font-weight:700;margin-bottom:6px}
+.ln{height:9px;background:var(--fill);border-radius:4px;margin:7px 0}
+.ln.s{width:52%}
+.glance{border:1px solid var(--line);border-radius:12px;padding:13px;margin-bottom:12px}
+.glance.bad{border-color:rgba(186,26,26,.35);background:rgba(186,26,26,.04)}
+.glance .t{font-weight:700;font-size:13px;margin-bottom:3px}
+.glance .s{font-size:12.5px;color:var(--muted);line-height:1.5}
+.glance .a{margin-top:9px;font-size:12.5px;font-weight:700;color:var(--primary)}
+.pop{position:absolute;right:12px;top:52px;width:300px;background:var(--paper);
+     border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.16);
+     padding:6px 0;z-index:3}
+.pop .hd{padding:8px 14px;font-weight:700;font-size:12.5px;color:var(--muted);
+         border-bottom:1px solid var(--line)}
+.pop .row{padding:10px 14px;border-bottom:1px solid var(--line);font-size:12.5px}
+.pop .row:last-child{border-bottom:0}
+.pop .row b{display:block;margin-bottom:2px}
+.pop .row small{color:var(--muted)}
+.strip{display:flex;gap:9px;align-items:flex-start;padding:11px 13px;
+       border-radius:10px;font-size:12.5px;line-height:1.5;margin-bottom:12px;
+       background:rgba(186,26,26,.06);border:1px solid rgba(186,26,26,.3)}
+.strip b{display:block}
+.card{border:1px solid var(--line);border-radius:12px;padding:13px;font-size:12.5px}
+.card .t{font-weight:700;font-size:13.5px}
+.card .off{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 7px;
+           border-radius:999px;background:rgba(186,26,26,.1);color:var(--bad);
+           margin-left:8px;vertical-align:middle}
+.card .why{color:var(--muted);margin-top:7px;line-height:1.5}
+.note{margin:16px 0 0;padding:13px 15px;border:1px solid var(--line);
+      border-radius:10px;font-size:13px;background:var(--paper);max-width:700px;
+      line-height:1.55}
+.note b{font-weight:700}
+code{font:12px ui-monospace,Consolas,monospace;background:var(--ground);
+     border:1px solid var(--line);border-radius:4px;padding:0 4px}
+</style>
+<header>
+  <h1>An automation stopped itself &mdash; pick one desktop and one mobile</h1>
+  <p class="sub">Automations asked for these. Today <code>noteFailure()</code> counts
+  consecutive failures, disables the rule, <b>and tells nobody</b> &mdash; the card is
+  the only place it appears, and it is a card you would open only if you already
+  suspected. So a thing somebody relies on stops, and the way they find out is that
+  a customer did not get something.</p>
+  <p class="sub" style="margin-top:10px"><b>The spine of all six: a notification is a
+  MOMENT and a stopped automation is a CONDITION.</b> A bell row is read once and
+  goes away; the rule is still off. Anything that only announces is wrong for
+  something that persists until somebody acts &mdash; so the question each option
+  answers differently is <b>what remains on screen for as long as the rule is
+  off</b>, and whether the moment is worth announcing at all.</p>
+  <p class="sub" style="margin-top:10px"><b>MEASURED, and it decides what the words
+  may claim.</b> Automations: <code>automation_runs</code> keeps the thrown text and a
+  status per run, but <code>consecutive_failures</code> is a <b>live counter, not a
+  history</b>. So <i>&ldquo;it failed 5 times in a row&rdquo;</i> is provable at the
+  moment of disabling and <b>cannot be reconstructed afterwards</b>. A sentence
+  composed later may honestly say <i>when</i> it stopped and <i>what the last error
+  was</i>, and may not mention the run of failures &mdash; unless it was written at
+  disable time and stored. <b>Every option below says only what its own moment can
+  support.</b></p>
+  <p class="sub" style="margin-top:10px"><b>AND THE AUDIENCE QUESTION IS NOT
+  INDEPENDENT OF THIS CHOICE, which is worth knowing while it sits with Jose.</b>
+  A bell notification is <i>per person</i> and cannot be written until somebody
+  decides who — owner, franchise admins, or whoever last edited the rule — and
+  <code>audienceFor(null)</code> falling through to every active user makes a wrong
+  answer worse than the gap. <b>A glance and a badge are per SCOPE and need no
+  addressee at all.</b> So <b>2 and 3 are buildable today and 1 is not.</b></p>
+</header>
+<div id="nums"></div>
+<div id="ctl"><b style="font-weight:700">State:</b></div>
+<div id="stage"></div>
+<script>
+var S = 'just';
+var STATES = {
+  just: {l:'Stopped today'},
+  old:  {l:'Stopped 12 days ago, still off'},
+  many: {l:'Three stopped'},
+  back: {l:'Turned back on'}
+};
+function off(){ return S !== 'back'; }
+function n(){ return S === 'many' ? 3 : 1; }
+function when(){ return S === 'old' ? '2 September' : 'today at 09:14'; }
+function ago(){ return S === 'old' ? '12 days ago' : 'today'; }
+
+/* Composed AT disable time, so it may name the run of failures. A sentence
+   written later may not -- consecutive_failures is a counter, not a history. */
+function momentBody(){
+  return 'It failed 5 times in a row and stopped itself ' + when() + '. ' +
+    'Nothing has run since.';
+}
+/* Rendered later from stored fields, so it claims only the timestamp. */
+function conditionBody(){
+  return n() > 1
+    ? n() + ' automations stopped themselves and have not run since. The oldest ' +
+      'stopped 12 days ago.'
+    : '<b>Overdue invoice chase</b> stopped itself ' + ago() +
+      ' and has not run since.';
+}
+function bell(){
+  return '<span class="ico">&#128276;' + (off() ? '<span class="dot"></span>' : '') +
+    '</span>';
+}
+function bar(){
+  return '<div class="bar"><span class="brand">EzBizi</span><span class="grow">' +
+    '</span>' + bell() + '<span class="ico">&#9679;</span></div>';
+}
+function rail(badge){
+  return '<div class="rail"><div>Dashboard</div>' +
+    '<div>Customers</div><div>Jobs</div>' +
+    '<div>Automations' + (badge && off()
+      ? '<span class="badge">' + n() + '</span>' : '') + '</div>' +
+    '<div>Reports</div></div>';
+}
+function page(){
+  return '<div class="page"><div class="h2">Dashboard</div>' +
+    '<div class="ln"></div><div class="ln s"></div><div class="ln"></div></div>';
+}
+function popup(){
+  return '<div class="pop"><div class="hd">Notifications</div>' +
+    (off() ? '<div class="row"><b>An automation stopped itself</b>' +
+      momentBody() + '<small><br>Overdue invoice chase</small></div>' : '') +
+    '<div class="row"><b>Jess accepted your invitation</b>' +
+    '<small>yesterday</small></div></div>';
+}
+function glance(){
+  if (!off()) return '<div class="glance"><div class="t">Automations</div>' +
+    '<div class="s">All running. Nothing has stopped itself.</div></div>';
+  return '<div class="glance bad"><div class="t">' +
+    (n() > 1 ? n() + ' automations have stopped themselves'
+             : 'An automation has stopped itself') + '</div>' +
+    '<div class="s">' + conditionBody() + '</div>' +
+    '<div class="a">Look at ' + (n() > 1 ? 'them' : 'it') + ' &rsaquo;</div></div>';
+}
+function offCard(){
+  return '<div class="card"><span class="t">Overdue invoice chase</span>' +
+    (off() ? '<span class="off">Stopped itself</span>' : '') +
+    '<div class="why">' + (off()
+      ? 'Stopped itself ' + when() + ' after 5 failures in a row. Nothing has ' +
+        'run since. Turn it back on to try again, or tell us and we will look.'
+      : 'Running. Last ran today at 11:02.') + '</div></div>';
+}
+
+/* 1 — the bell, and nothing else. */
+function D1(){
+  return '<div class="win">' + bar() + popup() +
+    '<div class="body">' + rail(false) + page() + '</div></div>' +
+    '<div class="note"><b>The house pattern, and the cheapest thing that could ' +
+    'possibly tell somebody.</b> A notification already carries a subject, so ' +
+    'the row opens the rule it is about. It is also the only option that can ' +
+    'honestly say <i>&ldquo;5 times in a row&rdquo;</i>, because it is composed ' +
+    'at the moment that fact is still true.<br><br><b>And it is the one I would ' +
+    'argue against on its own.</b> A bell row is a MOMENT: read once, cleared, ' +
+    'gone — while the rule stays off. Miss it on a busy Tuesday and the app ' +
+    'never mentions it again. <b>It also cannot be built yet</b>: a ' +
+    'notification is per person and nobody has decided who.</div>';
+}
+
+/* 2 — a glance: the condition, on the screen people open daily. */
+function D2(){
+  return '<div class="win">' + bar() +
+    '<div class="body">' + rail(false) +
+    '<div class="page"><div class="h2">Dashboard</div>' + glance() +
+    '<div class="ln"></div><div class="ln s"></div></div></div></div>' +
+    '<div class="note"><b>A condition, on the one screen people open without ' +
+    'being sent there.</b> It persists exactly as long as the rule is off and ' +
+    'clears itself when somebody turns it back on — switch to <i>Turned back ' +
+    'on</i> and it stops being an alarm rather than becoming a dismissed one. ' +
+    '<b>It needs no addressee</b>, so it is buildable while the audience ' +
+    'question is still with Jose.<br><br><b>The cost is what it may say.</b> ' +
+    'Rendered later from stored fields, it can claim the timestamp and not the ' +
+    'run of failures — so it is quieter than the bell row by exactly the amount ' +
+    'that is no longer provable. <b>This is the one I would build.</b></div>';
+}
+
+/* 3 — at the point of use. */
+function D3(){
+  return '<div class="win">' + bar() +
+    '<div class="body">' + rail(true) +
+    '<div class="page"><div class="h2">Automations</div>' +
+    (off() ? '<div class="strip"><span>!</span><span>' +
+      '<b>' + (n() > 1 ? n() + ' of these have stopped themselves.'
+                       : 'One of these has stopped itself.') + '</b>' +
+      'They are not running and will not until you turn them back on.</span>' +
+      '</div>' : '') + offCard() + '</div></div></div>' +
+    '<div class="note"><b>The count rides the sidebar, so it is visible from ' +
+    'every screen without being an event</b>, and the module itself leads with ' +
+    'the condition rather than burying it in a card among forty.<br><br>' +
+    '<b>The cost is the current defect, softened rather than removed:</b> a ' +
+    'badge is seen by somebody whose eye passes the sidebar, which is better ' +
+    'than a card nobody opens and worse than a screen everybody opens. ' +
+    '<b>Strongest paired with 2</b> — the glance is where you find out, the ' +
+    'badge is what keeps it in view while you do not act on it.</div>';
+}
+
+/* 4 — mobile: the bell. */
+function M4(){
+  return '<div class="phone">' +
+    '<div class="bar"><span class="brand">EzBizi</span><span class="grow">' +
+    '</span>' + bell() + '</div>' +
+    '<div class="pop" style="right:8px;width:300px">' +
+    '<div class="hd">Notifications</div>' +
+    (off() ? '<div class="row"><b>An automation stopped itself</b>' +
+      momentBody() + '</div>' : '') +
+    '<div class="row"><b>Jess accepted your invitation</b><small>yesterday' +
+    '</small></div></div>' +
+    '<div style="height:200px"></div></div>' +
+    '<div class="note">Desktop 1 on a phone, with the same objection and one ' +
+    'more: a phone bell is where every notification in the product lands, so ' +
+    'a rule going quiet sits between an accepted invitation and a new enquiry, ' +
+    'reading as news rather than as something still true.</div>';
+}
+
+/* 5 — mobile: the glance. */
+function M5(){
+  return '<div class="phone">' +
+    '<div class="bar"><span class="brand">EzBizi</span><span class="grow">' +
+    '</span>' + bell() + '</div>' +
+    '<div style="padding:14px">' + '<div class="h2">Dashboard</div>' +
+    glance() + '<div class="ln"></div><div class="ln s"></div></div></div>' +
+    '<div class="note">Desktop 2 on a phone, and the argument is stronger here: ' +
+    'the dashboard is most of what a phone is used for, and a card that ' +
+    'persists survives a small screen better than a row in a list that has to ' +
+    'be opened.<br><br>The sentence is shortened to the two facts a stored ' +
+    'record can support &mdash; which one, and since when.</div>';
+}
+
+/* 6 — mobile: the module says it, the tab carries the count. */
+function M6(){
+  return '<div class="phone">' +
+    '<div class="bar"><span class="ico">&#9776;' +
+    (off() ? '<span class="dot"></span>' : '') + '</span>' +
+    '<span class="brand">EzBizi</span><span class="grow"></span>' + bell() +
+    '</div>' +
+    '<div style="padding:14px"><div class="h2">Automations</div>' +
+    (off() ? '<div class="strip"><span>!</span><span><b>' +
+      (n() > 1 ? n() + ' have stopped themselves.' : 'One has stopped itself.') +
+      '</b>Not running until you turn them back on.</span></div>' : '') +
+    offCard() + '</div></div>' +
+    '<div class="note"><b>The drawer icon carries the mark</b>, because a phone ' +
+    'has no sidebar to badge and the drawer is the only thing on screen that ' +
+    'stands for &ldquo;everywhere else&rdquo;.<br><br><b>The cost is the one ' +
+    'that decides it:</b> a dot on a hamburger says <i>something, somewhere</i> ' +
+    '&mdash; it cannot say what, and a phone user has to open the drawer and ' +
+    'read a list to find out. <b>Drawn so the option is judged rather than ' +
+    'assumed</b>; I would take 5.</div>';
+}
+
+var OPT = {
+  1:['1 &middot; Desktop &mdash; a notification in the bell', D1],
+  2:['2 &middot; Desktop &mdash; a dashboard glance that persists', D2],
+  3:['3 &middot; Desktop &mdash; sidebar count and a strip in the module', D3],
+  4:['4 &middot; Mobile &mdash; the bell', M4],
+  5:['5 &middot; Mobile &mdash; the glance on the dashboard', M5],
+  6:['6 &middot; Mobile &mdash; a mark on the drawer, the module says it', M6]
+};
+var nums=document.getElementById('nums'), stage=document.getElementById('stage'),
+    ctl=document.getElementById('ctl'), cur=1;
+function show(k){
+  cur=k;
+  stage.innerHTML='<p class="cap">'+OPT[k][0]+'</p>'+OPT[k][1]();
+  Array.prototype.forEach.call(nums.children,function(b){
+    b.setAttribute('aria-current', b.dataset.k===String(k));});
+}
+Object.keys(OPT).forEach(function(k){
+  var b=document.createElement('button');
+  b.textContent=(k<4?'Desktop ':'Mobile ')+k; b.dataset.k=k;
+  b.onclick=function(){show(+k);}; nums.appendChild(b);});
+Object.keys(STATES).forEach(function(s){
+  var b=document.createElement('button');
+  b.textContent=STATES[s].l; b.dataset.s=s;
+  b.onclick=function(){S=s;
+    Array.prototype.forEach.call(ctl.querySelectorAll('button'),function(x){
+      x.setAttribute('aria-current',x.dataset.s===s);});
+    show(cur);};
+  ctl.appendChild(b);});
+ctl.querySelector('button').setAttribute('aria-current','true');
+show(1);
+</script>

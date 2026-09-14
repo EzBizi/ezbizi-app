@@ -2614,3 +2614,40 @@ and it costs a row saying "Typed here"; the rare state is the one that goes wron
 from is still with Jose via the deploy desk. That decides copy on the report side, not this
 screen. SES promises no date — the screen is theirs and next.
 
+### 17 · An automation stopped itself, and nobody was told — **DRAWN, awaiting Jose**
+
+`docs/previews/automation-stopped-itself-layouts.html`. Automations asked for these after their
+own fix to entry 16's note: `noteFailure()` counts consecutive failures, disables the rule, **and
+notifies nobody**. The card is the only place it surfaces, and it is a card somebody opens only
+if they already suspect. A thing a business relies on stops, and the way they find out is that a
+customer did not get something.
+
+> **THE SPINE: a notification is a MOMENT, a stopped automation is a CONDITION.** A bell row is
+> read once and cleared; the rule is still off. Anything that only announces is the wrong shape
+> for something that persists until somebody acts. So the question each option answers
+> differently is **what stays on screen for as long as the rule is off** — and the "Turned back
+> on" state is the one to check, because a condition display has to *clear itself* rather than be
+> dismissed.
+
+**MEASURED, and it bounds what each option may claim.** Automations: `automation_runs` keeps the
+thrown text and a status per run, but `consecutive_failures` is a **live counter, not a history**.
+So *"it failed 5 times in a row"* is provable **at the moment of disabling** and cannot be
+reconstructed afterwards. A sentence composed later may honestly say *when* it stopped and *what
+the last error was*, and may not mention the run — unless it was written at disable time and
+stored. **Each option says only what its own moment can support**, which is why the bell row is
+the wordiest and the glance the quietest.
+
+> **AND THE AUDIENCE QUESTION IS NOT INDEPENDENT OF THE SURFACE, which is worth knowing while it
+> sits with Jose.** A bell notification is **per person** and cannot be written until somebody
+> decides who — owner, franchise admins, or whoever last edited the rule — and
+> `NotificationDispatcher::audienceFor(null)` falling through to every active user makes a wrong
+> answer worse than the gap. **A glance and a badge are per SCOPE and need no addressee at all.**
+> So **2 and 3 are buildable today and 1 is not**, and Automations are not blocked unless they
+> pick 1.
+
+**Recommendation: 2 and 5.** The dashboard is the one screen people open without being sent
+there, a glance persists exactly as long as the condition and clears itself, and it needs nobody
+to have decided the audience first. **3 pairs well with 2** — the glance is where you find out,
+the badge is what keeps it in view while you do not act on it. **6 is drawn to be judged rather
+than assumed**: a dot on a phone's drawer icon says *something, somewhere* and cannot say what.
+
