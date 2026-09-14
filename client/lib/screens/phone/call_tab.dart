@@ -690,6 +690,19 @@ class _CallTabState extends State<CallTab> {
                 ),
               ),
             ),
+            // The way out, where the way out is not a retry.
+            //
+            // Android will not let the app carry a call until the user has
+            // enabled it under Calling accounts, and no amount of pressing
+            // Try again reaches that screen. Same rule as the one below,
+            // applied to the opposite case: offer the control that CAN
+            // succeed, and only where it can.
+            if (_service.needsCallingAccount)
+              TextButton(
+                onPressed: () => _service.openCallingSettings(),
+                child: const Text('Open settings'),
+              ),
+
             // No Retry where retrying cannot succeed. A control that can
             // only ever fail is worse than none: it reads as "not yet".
             if (_service.supported)

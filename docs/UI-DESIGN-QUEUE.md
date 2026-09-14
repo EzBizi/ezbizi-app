@@ -2117,11 +2117,25 @@ lie the day something could."* **That is this entry's rule having already gone w
 opposite direction.** A sentence does not have to be edited to become false; the world can edit
 it — and the method underneath that sentence had quietly become false the same way.
 
-**The gap, measured: the installation-level fact reaches EzBizi staff and nobody else.**
-`MailStatus` surfaces in exactly one client file, `screens/staff/health_screen.dart:261`. An
-administrator sending invitations on a box pointed at the log mailer is told "Sent" and has
-nowhere to learn otherwise. Whether a non-staff surface should say so is a **new element**, so it
-is a question for Jose rather than something decided here — raised, not drawn.
+**~~The gap, measured: the installation-level fact reaches EzBizi staff and nobody else.~~
+CLOSED by Jose, 2026-09-14, and his answer was a question: *"why would an installation not send
+mail im confused"*.**
+
+He was right to be confused, and the confusion is the answer. **It is not a customer state.**
+`MailStatus::delivers()` is false for a `log`, `array` or `null` mailer, or `ses` with a blank
+credential — every one of which is a development or staging box. EzBizi is one production
+installation with SES configured, so **no administrator will ever see this**, and an
+administrator-facing surface for it would be chrome built for a state that cannot occur.
+
+**What it was worth is entirely internal, and that half stays.** The reason it surfaced at all
+is that *we* test invitations on exactly those boxes, and were being told "Sent" when nothing
+left — the defect HR fixed at `8a0ef426`. The per-message truth matters; the banner does not.
+`screens/staff/health_screen.dart:261` remains the right and only home for the installation-level
+fact, because staff are the only people who can be on such a box.
+
+> **The generalisable half: a state reachable only in development is worth a TRUTHFUL message and
+> never a designed surface.** Drawing chrome for it spends product space on a condition no
+> customer can reach, and — worse — makes the next person believe it is a thing that happens.
 
 **The precedent, from Email the same day.** An empty state read *"an inbox added on another
 company stays there, switch to that company"* — a correct sentence about the wrong problem. The
@@ -2131,7 +2145,7 @@ cause is worse than a vague one**, because it sends somebody hunting. Email's fi
 which of three reasons applies rather than assuming one, and that is the shape every failure
 state here should take.
 
-### 12 · HR · the invitation panel, and the two failures that read the same — **DRAWN, awaiting Jose**
+### 12 · HR · the invitation panel, and the two failures that read the same — **PICKED: 2 and 5**
 
 `docs/previews/invitation-sent-states-layouts.html`. Three desktop, three mobile, with a **state
 switcher** — the two failures are the whole reason it is drawn, and an option looked at only in
@@ -2219,7 +2233,7 @@ blind**, which is exactly the send where somebody is standing in front of this p
 - **"Has been emailed to them" should become "Sent to them."** HR flagged it themselves. It is a
   handoff claim wearing arrival's clothes, and it is the sentence entry 11 exists to prevent.
 
-### 13 · Developer · switch between desktop and mobile view — **DRAWN, awaiting Jose**
+### 13 · Developer · switch between desktop and mobile view — **BUILT: 1 and 4** (`4b6ee87b`)
 
 `docs/previews/mobile-view-switch-layouts.html`. Jose, 2026-09-14: *"can we add a developer only
 icon on the top bar next to the phone icon, that let's u switch between desktop view and mobile
@@ -2263,4 +2277,56 @@ unmistakable the state is, and each one borrows something different to say it:
 
 **Session state, not a preference.** It is a mode you are in for a minute, and saving it to an
 account would mean signing in on a desktop to a mobile layout with no memory of asking for one.
+
+> **What it is NOT, in the words of the session that owns the real device problems.** Phone
+> (`local_d95f72da`), on taking it up: *"I will not treat it as a device — Android's Telecom
+> behaviour, CallKit, and push are none of them a viewport question, and the bug I shipped this
+> afternoon was invisible at every width. For layout it saves me a resize; for anything about
+> being a phone it proves nothing."*
+>
+> Recorded here rather than in a code comment because **the risk with this control is somebody
+> treating a 390px column as a device and concluding from it** — and that warning carries more
+> from the session that owns Telecom and push than from the one that built the column.
+
+### 14 · Where the version lives — **DRAWN, awaiting Jose**
+
+`docs/previews/version-on-a-phone-layouts.html`. Jose, 2026-09-14: *"on phone i noticed there's
+nowhere you can see the current version"*. He is right, measured.
+
+`BuildStamp` has **two** call sites: `main.dart:2384`, the foot of the sidebar, and
+`auth_shell.dart` (271, 332), the sign-in screen. A phone has no sidebar and you are signed in,
+so neither is reachable. **Its own docblock says it sits in *"the two places somebody already is
+when they wonder whether the app has updated"*** — true when written, false the day the phone
+layout shipped. The fourth true-when-written sentence this week, and the first one Jose found
+before any of us did.
+
+**A second gap, found looking for the first.** The stamp is drawn `if (expanded)`, so a
+**collapsed desktop sidebar** has nowhere either. That is why 4, 5 and 6 exist; without it this
+would be a phone-only question and the "three desktop options" half of the standing rule would be
+padding.
+
+> **The existing comment is the strongest argument in the file and options 4 and 5 disagree about
+> it.** *"At 80px it would truncate, and half a build id is worse than none — it invites people to
+> compare the wrong characters and conclude they are up to date when they are not."* 4 respects
+> it and does nothing. 5 argues that `201` is not *half* of `0.0.0201` — it is the only part that
+> ever changes and the only part anybody compares. That is the whole judgement, and it is his.
+
+**What separates the three mobile options is where the cost falls, not where the number goes.**
+
+- **1** puts it at the foot of the drawer — the same widget in the same conceptual place, one
+  line — and the drawer is a scrolling list of up to twenty-one modules plus two groups, so the
+  foot is *below all of them*. On desktop the sidebar is as tall as the window and the stamp is
+  free; in a drawer it is a place you only arrive at deliberately.
+- **2** puts it under the wordmark, visible the instant the drawer opens. On a phone the brand is
+  dropped from the top bar (Jose, 2026-09-10), so the drawer header is the only place the product
+  names itself — and a version belongs with the name. It is also in the way of the thing the
+  drawer was opened for, every time, for a fact wanted twice a month.
+- **3** puts it in Your account, following **his own precedent**: the theme cycle was removed from
+  the phone bar and left to Your account, so *"things about the app rather than about the work
+  live in Your account on a phone"* is an established rule rather than one I invented. It is the
+  only option with room for the long form and for *"What's been built"* as a named row rather
+  than a tap-target nobody knows is tappable — **a stamp in a drawer looks like a label.**
+
+**If 6 is picked, keep the sidebar stamp too.** A version is a fact rather than a control, and two
+places showing one fact is only a problem when they can disagree.
 

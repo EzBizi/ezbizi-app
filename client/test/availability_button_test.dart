@@ -217,6 +217,16 @@ Future<void> _pump(
 }
 
 class _FakeDevice implements VoiceDevice {
+  // Android's Telecom account. Settable so a test can put the desk into the
+  // one state a retry cannot fix, rather than only the happy one.
+  @override
+  bool needsCallingAccount = false;
+
+  var openedCallingSettings = 0;
+
+  @override
+  Future<void> openCallingSettings() async => openedCallingSettings++;
+
   @override
   void Function()? onAnswered;
 
