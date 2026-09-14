@@ -9,6 +9,7 @@ use App\Models\Job;
 use App\Models\SavedReport;
 use App\Models\SendingIdentity;
 use App\Support\Mail\CannotSendMail;
+use App\Support\Mail\MailDispatcher;
 use App\Support\Mail\MailTransport;
 use App\Support\Mail\SendingState;
 use App\Support\Reports\ReportCsv;
@@ -23,10 +24,23 @@ use Tests\TestCase;
 /**
  * `report.send` — running a saved report and mailing it.
  *
- * Unblocked 2026-09-14: Automations built the scheduled trigger, and SES left
- * the sandbox. Under the sandbox this was the worst possible shape — a send
- * that fails on a timer, reports success, and whose only symptom is somebody
- * quietly not receiving something they had stopped noticing.
+ * ── EVERY SEND IN HERE IS A REFUSAL, and the file says why ──────
+ *
+ * Jose, 2026-09-14: "Email should not be sent as EzBizi, EZBIZI EMAIL IS ONLY
+ * FOR EZBIZI ACTIONS LIKE ACCOUNT RECOVERY, PASSWORD, RESET, VERIFICATIONS,
+ * ETC." So a report leaves through the BUSINESS's own mail server or not at
+ * all, and nothing can connect one yet — that screen is the SES session's and
+ * is next. Until it lands, "refused" is the correct outcome of every path here
+ * rather than a broken test waiting to be fixed.
+ *
+ * ── DO NOT ADD A TEST THAT REACHES THE DISPATCH ────────────────
+ *
+ * `MailFake` has no `build()` override, so `Mail::build()` forwards to the real
+ * manager: a test that fakes mail and gets as far as sending would open an
+ * ACTUAL SOCKET to whatever host its fixture named, looking exactly like a
+ * faked send. `Mail::fake()` appears below only to prove nothing left; the
+ * refusals are asserted against `MailDispatcher::smtpConfigFor()`, which
+ * decides everything and touches no network.
  */
 class SendSavedReportTest extends TestCase
 {
@@ -116,11 +130,7 @@ class SendSavedReportTest extends TestCase
         ));
     }
 
-    // ── the tenant's own address, or nothing ─────────────────────
-
-    // ── partial failure, which is the ruling that matters ────────
-
-    // ── nothing can send, and that is a ruling ─────────────
+    // ── nothing can send yet, and that is a ruling ─────────
 
     /**
      * THE ROW THAT DISTINGUISHES THE RULE FROM THE GUARD IT REPLACED.
@@ -152,7 +162,7 @@ class SendSavedReportTest extends TestCase
 
             $this->fail('a verified tenant mailed a report through EzBizi');
         } catch (CannotSendMail $e) {
-            $this->assertStringContainsString('own email provider', $e->getMessage());
+            $this->assertStringContainsString('its own mail server', $e->getMessage());
         }
 
         Mail::assertNothingSent();
@@ -203,6 +213,33 @@ class SendSavedReportTest extends TestCase
 
             Mail::assertNothingSent();
         }
+    }
+
+    /**
+     * ASSERTED THROUGH `smtpConfigFor`, NEVER THROUGH `Mail::fake()`.
+     *
+     * `MailFake` has no `build()` override, so `__call` forwards `Mail::build()`
+     * to the real manager: a test that fakes mail and reaches the dispatch would
+     * open an ACTUAL SOCKET to whatever host its fixture named, silently, while
+     * looking like a faked send. The SES session found that before it could bite
+     * anybody and split the decision out so it can be asserted without a network.
+     *
+     * This is the caller's stake in it: every refusal a report can meet is
+     * decided here, so this is the thing worth pinning rather than the send.
+     */
+    public function test_the_refusal_is_decided_without_touching_the_network(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->sendingIdentity($tenant, SendingState::Verified);
+
+        // A VerifiedDomain identity is the old EzBizi-SES path. It is exactly
+        // the row that used to send, and it must not produce a config.
+        $this->expectException(CannotSendMail::class);
+
+        $this->inTenant(
+            $tenant['org'],
+            fn () => app(MailDispatcher::class)->smtpConfigFor($tenant['org']),
+        );
     }
 
     /**
