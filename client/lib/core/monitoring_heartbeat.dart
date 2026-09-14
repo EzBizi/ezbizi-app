@@ -217,7 +217,22 @@ class MonitoringHeartbeat {
     };
 
     await _api.post('/monitoring/heartbeat', body);
+
+    // Somebody else wanted a minute to have passed.
+    //
+    // This object already owns the only periodic timer the shell runs, and a
+    // second one costs more than the tick it produces: every `Timer.periodic`
+    // alive in a widget test makes `pumpAndSettle` wait for ever, so a new one
+    // has to be defused in every test that renders the app bar. Handing out
+    // the beat that already happens costs nothing and adds no timer.
+    //
+    // Deliberately carries NOTHING about what beat or why. This is a clock,
+    // not a channel — the listener is expected to go and ask its own question.
+    onBeat?.call();
   }
+
+  /// Called after each keep-alive beat. See [_post].
+  void Function()? onBeat;
 
   /// Stops the keep-alive timer. Call this when whatever owns this instance
   /// goes away — otherwise the timer keeps this object, and everything it

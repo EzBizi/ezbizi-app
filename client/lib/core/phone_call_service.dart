@@ -152,6 +152,17 @@ class PhoneCallService extends ChangeNotifier {
   int get presenceToken => _presenceToken;
   int _presenceToken = 0;
 
+  /// Somebody else may have changed this person's availability.
+  ///
+  /// Availability belongs to the PERSON, and they can be signed in on a
+  /// laptop, a desktop and a phone at once. Every one of those writes the
+  /// server; none of them hears about the others. Whoever is holding a clock
+  /// calls this and anything reading presence goes and asks again.
+  void presenceMayHaveChanged() {
+    _presenceToken++;
+    notifyListeners();
+  }
+
   /// The desk answered Twilio and can take a call.
   bool get registered => _device?.registered ?? false;
 

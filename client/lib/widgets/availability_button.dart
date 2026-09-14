@@ -78,17 +78,25 @@ class _AvailabilityButtonState extends State<AvailabilityButton>
   /// desktop showing a green dot indefinitely. Jose reported exactly that:
   /// web away, desktop available, and a call arriving while the two disagreed.
   ///
-  /// ── Why the app coming forward and not a timer ───────────────────
+  /// ── This is not enough on its own, and I said it was ────────────
   ///
-  /// The moment the answer matters is the moment somebody looks, and that is
-  /// what this is. A periodic refresh would also work and costs more than it
-  /// buys: it polls every desk in the company all day to catch a change that
-  /// only matters when a person is reading the icon, and `Timer.periodic`
-  /// makes `pumpAndSettle` wait for ever, so it would have to be defused in
-  /// every test that renders the app bar — which is most of them.
+  /// I wrote here that switching windows counts — "two apps side by side, and
+  /// clicking between them is what brings this one forward". It does not.
+  /// `AppLifecycleState.resumed` tracks whether the app is VISIBLE, not
+  /// whether it has focus, and two windows side by side are both visible the
+  /// whole time. So this fires when an app is minimised and restored, or a
+  /// browser tab is left and returned to, and never in the arrangement the
+  /// report was actually about.
   ///
-  /// Switching windows counts. That is the case in the report: two apps side
-  /// by side, and clicking between them is what brings this one forward.
+  /// Jose read the consequence straight off the screen: "the status now syncs
+  /// across devices, which is good, but only displays the change once you
+  /// change tabs." Changing tabs rebuilt the widget. Nothing else asked.
+  ///
+  /// What covers it is a clock, and the shell hands this one the beat it
+  /// already has rather than starting a second — see
+  /// `MonitoringHeartbeat.onBeat` and [PhoneCallService.presenceMayHaveChanged].
+  /// This hook stays because it is still the fastest path for the cases it
+  /// does catch, and it costs one request.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) _load();

@@ -478,6 +478,25 @@ class _HomeShellState extends State<HomeShell> {
       widget.api,
       screenMonitoringExempt: exempt,
     );
+
+    // The availability icon, given a minute hand.
+    //
+    // Do Not Disturb set on the web now reaches the desktop's SERVER state
+    // immediately, and the desktop's ICON found out only when something else
+    // made it look — which in practice meant changing tabs. Jose: "the status
+    // now syncs across devices, which is good, but only displays the change
+    // once you change tabs."
+    //
+    // I had claimed the app coming forward would cover it. It does not, and
+    // his report is what showed that: two windows side by side never leave
+    // the screen, so `AppLifecycleState.resumed` never fires and the hook
+    // watching for it can only wait. That claim is corrected where I made it.
+    //
+    // A minute is the wrong answer for a phone ringing and the right one for
+    // an icon: what it prevents is somebody reading a stale dot for the rest
+    // of the afternoon. Anything that must be immediate — a call starting or
+    // ending — already notifies in the same frame.
+    _heartbeat.onBeat = PhoneCallService.current.presenceMayHaveChanged;
     if (!exempt) {
       // The capture service tells the heartbeat how each attempt went, and
       // the beat carries it to the server — otherwise a device that cannot
