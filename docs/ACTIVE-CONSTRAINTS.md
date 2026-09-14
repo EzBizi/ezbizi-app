@@ -237,10 +237,19 @@ Raised by ezbizi-ea, who noticed the header contradicted the content.
 
 ---
 
-## 6 · Configuring a sending identity ARMS a shipped action
+## 6 · Configuring a sending identity ARMED a shipped action — CLOSED
 
-**Before you configure a sending identity for any organisation, settle
-`inspection_report.email` first.** They are linked, and nothing in the code says so.
+**Closed 2026-09-14 by `6e0d7e98`, hours after this section was written.**
+Inspection now refuses `inspection_report.email` unconditionally, and the refusal
+returns ABOVE the Platform check rather than relying on it, so it no longer depends
+on what is in `sending_identities`. Configuring a sending identity is safe again.
+The catalogue entry stays and says SWITCHED OFF, so a rule somebody already saved
+records why on every run - which is the case removing the row would have missed.
+
+**Kept, not deleted, and re-read before you lift that refusal.** The mechanism below
+is what made a correct guard unsafe, and it comes back the moment the refusal goes.
+It is also the general shape: a check that passes because a table is empty is a fact
+about the DATA wearing the clothes of a fact about the CODE.
 
 Jose ruled twice on 2026-09-14, carried by two sessions independently. Via
 Automations: *"no ezbizi SES is to be used only for EZBIZI Related actions like
