@@ -105,9 +105,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        final canExperiment = widget.session.me?.can('reports.build') ?? false;
         final canBuildHere =
-            (widget.session.me?.can('reports.build') ?? false) &&
-            constraints.maxWidth >= ReportsScreen.buildAbove;
+            canExperiment && constraints.maxWidth >= ReportsScreen.buildAbove;
 
         return Padding(
           padding: const EdgeInsets.all(16),
@@ -117,7 +117,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
               _header(context, canBuildHere: canBuildHere),
               const SizedBox(height: 12),
               TabBarLike(
-                labels: _chipLabels(canBuildHere: canBuildHere),
+                labels: _chipLabels(
+                  canBuildHere: canBuildHere,
+                  canExperiment: canExperiment,
+                ),
                 selected: _chip,
                 onSelected: (i) => setState(() {
                   _chip = i;
@@ -138,18 +141,30 @@ class _ReportsScreenState extends State<ReportsScreen> {
   /// `reports.build`, and below the split where a phone runs what a desk
   /// built. The same rule as the New report control: a chip leading to a
   /// refusal tells somebody the app is for other people.
-  List<(String, IconData)> _chipLabels({required bool canBuildHere}) {
+  ///
+  /// Experimental follows the same rule on the PERMISSION but not on the
+  /// width. Its endpoint is gated on `reports.build` because the report names
+  /// every member of staff and how many calls they took, so a chip shown to
+  /// somebody holding only `reports.view` would lead straight to a refusal.
+  /// It stays on a phone because reading a table is not building one.
+  List<(String, IconData)> _chipLabels({
+    required bool canBuildHere,
+    required bool canExperiment,
+  }) {
     return [
       ('Reports', Icons.list_alt_outlined),
       if (canBuildHere) ('Builder', Icons.build_outlined),
-      ('Experimental', Icons.science_outlined),
+      if (canExperiment) ('Experimental', Icons.science_outlined),
     ];
   }
 
   /// The chips shift when Builder is absent, so a stored index would point at
   /// the wrong destination. Resolved by NAME rather than by number.
-  String _chipName({required bool canBuildHere}) {
-    final labels = _chipLabels(canBuildHere: canBuildHere);
+  String _chipName({required bool canBuildHere, required bool canExperiment}) {
+    final labels = _chipLabels(
+      canBuildHere: canBuildHere,
+      canExperiment: canExperiment,
+    );
 
     return _chip < labels.length ? labels[_chip].$1 : 'Reports';
   }
@@ -185,11 +200,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget _body(BuildContext context, BoxConstraints constraints) {
     // In place rather than a dialog: the development rules allow screens and
     // side panels only, and a table inside a modal is unreadable on a phone.
+    final canExperiment = widget.session.me?.can('reports.build') ?? false;
     final canBuildHere =
-        (widget.session.me?.can('reports.build') ?? false) &&
-        constraints.maxWidth >= ReportsScreen.buildAbove;
+        canExperiment && constraints.maxWidth >= ReportsScreen.buildAbove;
 
-    switch (_chipName(canBuildHere: canBuildHere)) {
+    switch (_chipName(
+      canBuildHere: canBuildHere,
+      canExperiment: canExperiment,
+    )) {
       case 'Builder':
         return ReportBuilder(
           api: widget.api,
@@ -223,10 +241,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     // "you may not", which is a different fact from "there is nothing", and a
     // reader who cannot tell them apart learns nothing from either.
     if (_error != null) {
-      return Align(
-        alignment: Alignment.topCenter,
-        child: ErrorNote(_error!),
-      );
+      return Align(alignment: Alignment.topCenter, child: ErrorNote(_error!));
     }
 
     final reports = _reports ?? const <SavedReportSummary>[];
