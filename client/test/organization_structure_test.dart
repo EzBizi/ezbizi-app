@@ -245,7 +245,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Move it'));
+      await tester.tap(find.text('Change what it sits under'));
       await tester.pumpAndSettle();
 
       expect(
@@ -255,6 +255,7 @@ void main() {
             'It is already at the top level. Offering that is a choice that '
             'moves nothing and reports "Moved".',
       );
+      expect(find.text('Currently at the top level.'), findsOneWidget);
 
       await tester.tap(find.text('Under Everdoors'));
       await tester.pumpAndSettle();
@@ -293,13 +294,15 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Move it'));
+      await tester.tap(find.text('Change what it sits under'));
       await tester.pumpAndSettle();
 
       expect(find.text('Top level, under Everdoors Group'), findsOneWidget);
 
-      // Not its current parent, which is where it already is.
+      // Not its current parent, which is where it already is -- and the one
+      // line that says so, because an absence is not a label.
       expect(find.text('Under Everdoors'), findsNothing);
+      expect(find.text('Currently under Everdoors.'), findsOneWidget);
 
       // Sideways: from Everdoors to the other top-level company, without
       // passing through the top level first.

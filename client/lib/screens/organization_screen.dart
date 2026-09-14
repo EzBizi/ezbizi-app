@@ -532,10 +532,40 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
       return;
     }
 
+    // Where it is NOW, as a line under the title rather than a row in the list.
+    //
+    // Leaving the current place out of the choices is right — picking it moves
+    // nothing, and the server answers that with a deliberate no-op, so the
+    // screen would say "Moved" and nothing would have happened. But an absence
+    // is not a label: without this the picker stopped saying where the thing
+    // sits, which is the one fact somebody needs to choose. UI/UX's fix, and
+    // better than either shape I had weighed.
+    final parent = parentId == null
+        ? null
+        : (tree['companies'] as List<dynamic>)
+              .cast<Map<String, dynamic>>()
+              .firstWhere(
+                (c) => c['id'] == parentId,
+                orElse: () => <String, dynamic>{},
+              )['name'] as String?;
+
     final chosen = await showDialog<({String? id, String label})>(
       context: context,
       builder: (context) => SimpleDialog(
-        title: Text('Move ${company['name']}'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Move ${company['name']}'),
+            const SizedBox(height: 4),
+            Text(
+              parent == null
+                  ? 'Currently at the top level.'
+                  : 'Currently under $parent.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
+        ),
         children: [
           for (final d in destinations)
             SimpleDialogOption(

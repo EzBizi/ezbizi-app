@@ -121,15 +121,25 @@ class CompanyActionsMenu extends StatelessWidget {
             label: 'Add a sub company',
             reason: noAddSub,
           ),
-        // "Move" rather than two entries. Which direction it goes is the
-        // picker's question, and a menu offering "Make it a sub company" beside
-        // "Make it a company again" would have one of the two greyed out on
-        // every company in the business, permanently, explaining a rule about
-        // where it already is.
+        // One entry rather than two. Which direction it goes is the picker's
+        // question, and a menu offering "Make it a sub company" beside "Make it
+        // a company again" would have one of the two greyed out on every
+        // company in the business, permanently, explaining a rule about where
+        // it already is.
+        //
+        // NOT "Move it", which was the first wording and collided with a verb
+        // this product has already spent. This menu is drawn on the canvas as
+        // well as the list, and `structure_canvas.dart` is a drag whose whole
+        // design is that repositioning a box changes the PICTURE and not the
+        // business -- "the connector never detaches ... that is the picture
+        // saying, in the only language it has, that the business did not move",
+        // and its cursor is `move` for precisely that reason. One verb for two
+        // operations on the same object, three inches apart. Raised by UI/UX,
+        // who own the decision and read the canvas before saying so.
         refusedMenuItem(
           context,
           value: 'move',
-          label: 'Move it',
+          label: 'Change what it sits under',
           reason: noMove,
         ),
         refusedMenuItem(
