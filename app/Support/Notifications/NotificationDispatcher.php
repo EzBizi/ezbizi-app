@@ -5,6 +5,7 @@ namespace App\Support\Notifications;
 use App\Models\Assignment;
 use App\Models\Franchise;
 use App\Models\Notification;
+use App\Notifications\NotificationNotice;
 use App\Models\User;
 use App\Support\Access\ScopeReach;
 use App\Support\Automations\CarriesAutomationScope;
@@ -92,7 +93,9 @@ class NotificationDispatcher
             return 0;
         }
 
-        $rows = $recipients->take(self::MAX_RECIPIENTS)->map(fn (User $user) => [
+        $told = $recipients->take(self::MAX_RECIPIENTS);
+
+        $rows = $told->map(fn (User $user) => [
             'id' => (string) Str::uuid7(),
             'organization_id' => $this->tenant->idOrFail(),
             'user_id' => $user->getKey(),
@@ -110,7 +113,73 @@ class NotificationDispatcher
         // runs inside a queue worker handling every event on the platform.
         Notification::insert($rows);
 
+        $this->alsoByEmail($told, $title, $body, $subject);
+
         return count($rows);
+    }
+
+    /**
+     * The same notification again, as mail, when the organization asks for it.
+     *
+     * -- This is the half the settings screen has been promising --
+     *
+     * `notifications.email_enabled` has existed since August with a sentence
+     * shown to administrators: "Takes effect when notifications can be sent by
+     * email. They are only shown inside the app today, so switching this off
+     * changes nothing." It was true until SES came out of the sandbox on
+     * 2026-09-14 and Jose asked for the path to be built. Until then a send
+     * reached only hand-verified addresses and reported success for every other
+     * recipient, so wiring this earlier would have been worse than not having
+     * it: silence that looks like delivery.
+     *
+     * -- Same audience, same ceiling, same scope, no second decision --
+     *
+     * It takes the collection dispatch() already resolved and already capped,
+     * rather than asking who should hear a second time. Two derivations of "who
+     * hears about this" is the disagreement `franchiseIdFor` exists to prevent
+     * one level up, and here it would mail somebody the bell deliberately
+     * skipped.
+     *
+     * The source toggles and the in-app master are not re-asked either:
+     * allows() has already refused everything it refuses, so a source switched
+     * off sends neither a row nor a letter, and `notifications.in_app_enabled`
+     * stays the master its own help calls it ("Off silences every notification
+     * below"). A company that wants the email and not the bell is a different
+     * feature from the one the screen describes, and inventing it here would
+     * make that help text wrong.
+     *
+     * -- One thing deliberately left alone --
+     *
+     * `dispatchUnique` does not get this. It has NO callers: measured across
+     * app/ and tests/, only this file and docs/notifications-contract.md
+     * mention it at all. Wiring mail into it would be delivery nobody can
+     * reach, and its own question -- does a suppressed duplicate still mail? --
+     * has no caller to answer it. It goes to whoever gives it one.
+     *
+     * @param  Collection<int, User>  $recipients  already capped by the caller
+     */
+    private function alsoByEmail(Collection $recipients, string $title, ?string $body, ?Model $subject): void
+    {
+        $scope = $this->settingsScope($subject);
+
+        if (! (bool) $this->settings->get('notifications.email_enabled', $scope)) {
+            return;
+        }
+
+        // Resolved here rather than inside the queued notice: reading it there
+        // would read it at DELIVERY time, minutes after the decision it belongs
+        // to, so a reply-to changed in between would apply retroactively to
+        // mail that was already on its way.
+        $replyTo = trim((string) $this->settings->get('notifications.reply_to_email', $scope));
+
+        $notice = new NotificationNotice($title, $body, $replyTo === '' ? null : $replyTo);
+
+        foreach ($recipients as $recipient) {
+            // notify() rather than the Notification facade: the model class in
+            // this file is App\Models\Notification, and aliasing a facade beside
+            // it to save one loop is how somebody later writes the wrong one.
+            $recipient->notify($notice);
+        }
     }
 
     /**

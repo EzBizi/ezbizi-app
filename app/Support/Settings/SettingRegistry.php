@@ -628,8 +628,8 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'notifications.email_enabled', label: 'Send email notifications',
                 type: SettingDefinition::TYPE_BOOL, default: true,
-                notYetInEffect: 'Takes effect when notifications can be sent by email. They are '
-                    .'only shown inside the app today, so switching this off changes nothing.',
+                help: 'Every notification is shown in the app. With this on, the same words are '
+                    .'also emailed to each person it was for. Off leaves the bell working.',
             ),
             new SettingDefinition(
                 key: 'notifications.push_enabled', label: 'Send push notifications',
@@ -688,9 +688,14 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'notifications.reply_to_email', label: 'Reply-to address',
                 type: SettingDefinition::TYPE_STRING, default: '',
-                help: 'Blank uses the franchise contact address.',
-                notYetInEffect: 'Takes effect when notifications can be sent by email. There is '
-                    .'no message yet for a reply to come back to.',
+                // It said "Blank uses the franchise contact address", and a
+                // franchise has no contact address -- name, timezone, currency
+                // and the two ids, and nothing else. The sentence described a
+                // column that has never existed, which nobody could find out
+                // while nothing sent mail. Blank now says what actually
+                // happens.
+                help: 'Where replies to a notification email should go. Blank sends them back to '
+                    .'the address EzBizi sends from.',
             ),
         ];
     }

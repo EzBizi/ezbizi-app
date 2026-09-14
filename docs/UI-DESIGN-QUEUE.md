@@ -2141,17 +2141,41 @@ HR brought states rather than a layout, which is the ask working. The panel is
 `client/lib/screens/hr/invitations_tab.dart:495`, shown the one moment the raw token exists,
 switching on a server `emailed` bool.
 
-**The gap is not that the failure is unnamed. It is that the REMEDY differs and the sentence does
-not.** Today a failure reads *"The email could not be sent, so nothing has reached them. Copy the
+> **REVISED 2026-09-14, and the revision removes a state I drew.** HR measured what the server
+> can actually prove and answered the question I asked them — are there more than two remedies?
+> **Two are knowable, and the third is not knowable at handoff at all.**
+> `MailStatus::delivers()` is reliable: it answers before anything is attempted and `missing()`
+> names the credential. A thrown handoff is reliable *that it failed* and that is where
+> reliability stops. **The invitation is a PLATFORM send** — `Notification::route`
+> (`HrInvitationsController:446`) rather than `MailDispatcher::asTenant` — so it never produces
+> `CannotSendMail`, the class carrying a human sentence, which is referenced only by
+> `MailDispatcher`. What it gets is a raw Symfony transport exception, and splitting "address
+> refused" from "transport down" means **string-matching a vendor's error text**.
+>
+> **So "address refused" is no longer drawn as a send state.** The failure mode of guessing wrong
+> is telling somebody to fix a perfectly good address — a confident sentence naming the wrong
+> cause, which is the defect this entry exists to avoid. I drew it anyway, and HR caught it.
+>
+> **The design answer is better than the state was.** The address is now correctable in EVERY
+> state, including success, because HR's other correction stands regardless of diagnosis: the
+> invitation keeps that address on record, so the next invite goes to the same typo. An
+> always-available fix does not depend on knowing why anything failed. *"This address is wrong"*
+> gets said once there is a typed bounce event to say it with — which is what makes option 2
+> stronger rather than weaker: the strip carries three states today and gains `bounced` later,
+> and the one state whose evidence was fragile is never drawn at all.
+
+**The gap as I first stated it — that the REMEDY differs and the sentence does not — was right
+about the problem and wrong about the split:** Today a failure reads *"The email could not be sent, so nothing has reached them. Copy the
 link and get it to them yourself."*
 
 - **Transport down** — copy the link, hand it over, and the invitation is perfectly good.
 - **Address refused** — handing the link over still works, *and* the invitation now carries a
   typo nobody has corrected, so the same person is invited to the same wrong address next week.
 
-Same sentence today, two different actions. The server knows which (`deliver()` catches and logs
-the exception) but the response carries only a bool, so this is a server change of HR's as well
-as a screen.
+Same sentence today, two different actions — **but only one of the two causes is provable.** The
+first is, and gets its own state. The second is not, and gets an always-available fix instead of
+a diagnosis. The response still needs more than a bool, so this remains a server change of HR's
+as well as a screen; it just carries *which of the provable states*, never a parsed cause.
 
 > **In every failing case the address IS the problem, and today it is the panel SUBTITLE** — the
 > one thing on screen that cannot be acted on. That observation is what separates the three
