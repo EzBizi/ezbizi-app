@@ -917,9 +917,17 @@ class ModuleServiceProvider extends ServiceProvider
                     .'This states a defect, not a decision, and it is not permission to stay '
                     .'this way — see TODO #35 for how to close it and delete this line.',
                 actions: ModuleDefinition::DEFAULT_ACTIONS,
-                automationExemptBecause: 'Nothing is scheduled yet — this module is a shell. '
-                    .'Replace this with real triggers when Availability becomes real; do not '
-                    .'read it as a ruling that scheduling has nothing to automate.',
+                automationExemptBecause: 'Still exempt, but not for the reason this line '
+                    .'used to give. It said "this module is a shell" and told the reader to '
+                    .'add triggers "when Availability becomes real" — Availability and '
+                    .'Settings shipped in 0.0.0174, so the condition it named had already '
+                    .'been met and nothing said so. The real reason: this module holds '
+                    .'CONFIGURATION. A service area changes when somebody deliberately edits '
+                    .'it in Settings, which is not an event another module waits for. The '
+                    .'events worth automating are all about a BOOKING — a slot taken, a slot '
+                    .'filled, capacity run out — and nothing books a slot yet, because Job '
+                    .'has scheduled_for and no link to a service area. They arrive with '
+                    .'Scheduled Jobs, and THAT is the condition to revisit this on.',
             ),
 
             /*

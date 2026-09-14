@@ -195,6 +195,37 @@ leads for a customer. Code that calls an endpoint is not a lead that landed. Kee
 the compliance page as it is, and keep the story off the landing page until
 somebody confirms a row.
 
+## SES production access changed nothing on this site (checked 2026-09-14)
+
+The deploy desk broadcast that SES left the sandbox and flagged the marketing
+site as "the one that matters most", because a contact form that is accepted and
+silently never delivered is the worst shape of that bug. **Checked, and the site
+was never in that population. No change was made and none is needed.**
+
+- **There is no form anywhere in `www/`.** The only submission-shaped thing is
+  `download/index.html`'s `fetch('/download/windows.json')`, which reads a version
+  and posts nothing. Contact is `mailto:` only — the visitor's own mail client.
+- **The visitor enquiry forms described under "Enquiries from your websites" are
+  not ours and do not email.** They live on a customer's own site and post to
+  `POST v1/web/chat`; `WebsiteEnquiries` creates a `Lead` and emits `lead.received`
+  — the same trigger Google and Thumbtack raise. **Zero mail send paths across
+  `app/Support/Web/` and `app/Http/Controllers/Api/Web/`** (`Mail::`,
+  `Notification::`, `->notify(`, `toMail`), against a pattern that matches 17
+  files elsewhere in `app/` — so the absence is measured, not assumed. The page
+  says the enquiry "arrives as an enquiry the organization can read and reply to",
+  which claims no email and stays true.
+- **The Newsletter card names Mailchimp, not us** — "your list, your sending
+  reputation". It never depended on SES.
+- The only SES mention on the site is the subprocessor line, true before and after.
+
+**What WILL need a line here, and is not on the site yet.** Email verification is
+in flight uncommitted (`EmailVerificationController`, `RequireVerifiedEmail`,
+`EmailVerificationLink`, `create_email_verifications_table`) — TODO #22, which the
+sandbox blocked. When it ships, `/privacy/` should say EzBizi emails a
+verification link to the address you sign in with. **Do not write it before it is
+on production**; the test is whether the middleware is registered in a deployed
+release, not whether the files exist in this tree.
+
 ## Live, and safe to sell
 
 Customers · Field operations · Fleet · Inventory · People (users, HR onboarding,

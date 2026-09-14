@@ -2040,3 +2040,121 @@ kept in the gallery rather than deleted, because what was chosen over what is th
 > My call: one wedge and one row labelled with its count, or keep the wedges and collapse the
 > legend to a single row. Both separate is the one option that is not available. With Dashboard.
 
+### 11 · Email states · one vocabulary for two modules — **RULE SET, no screens yet**
+
+SES production access granted 2026-09-14, so Automations and HR are both about to wire sending.
+Two modules building email screens at the same time is how a product ends up with two words for
+one idea, so the vocabulary is decided before either draws anything. Sent to both sessions
+verbatim; **no screens are queued and none are drawn.**
+
+**Measured 2026-09-14, not assumed: EzBizi cannot observe email delivery.** No SNS route in
+`routes/api.php`, no bounce or complaint handler, and the `delivered_at` columns a grep turns up
+are the audit outbox (`create_audit_events_table`) and the workflow event bus
+(`create_workflow_tables:133`) — neither is email. The two observable facts are **handed to SES**
+and **SES refused it at handoff**.
+
+> **Never print a claim the app cannot observe.** "Delivered" is a sentence nothing in the
+> codebase can support. If SES event destinations are ever wired this changes — and it must
+> change *visibly*, by a screen gaining a state, not by a word quietly becoming true.
+
+The words:
+
+- **"Sent"** — the handoff. True, plain, and never paired with a promise of arrival.
+- **"Couldn't send"** — refused at handoff, and it must say WHICH: not an address, unverified
+  sending identity, rate limit. That is the half somebody can act on.
+- **Nothing** between them. A "Pending" for a handoff that already completed is a spinner that
+  never resolves.
+
+**Automations has one extra state and HR does not.** An automation action can be *queued* long
+before it is attempted, and that IS observable — its own event bus carries `available_at`,
+`attempts` and `failed_at`. Worth drawing, and it must be named for what it is: **waiting to
+run, not waiting to arrive.** The two look identical on screen and mean opposite things to
+somebody working out why a customer never heard from them.
+
+**A FOURTH STATE, found by Automations verifying the rule rather than taking it.** `MailStatus`
+knows whether this installation delivers **at all** — `NON_DELIVERING = ['log','array','null']`,
+and `missing()` names the credential when the transport is `ses` with an empty key. Its own
+docblock is the argument: *"`MAIL_MAILER=log` accepts every message and returns success... which
+is how somebody ends up waiting for a password reset that was never going anywhere."*
+
+So a handoff can succeed while nothing leaves the building, and **"Sent" would then be a
+confident sentence naming the wrong outcome** — this rule finding its own fourth case rather than
+an exception to it. Rare in production, routine on a demo or staging box, which is exactly where
+somebody tests a rule, reads "Sent", and concludes the feature works.
+
+> **Two different things, and they do not go in the same place.** *Did this message leave* is
+> per-message and belongs on the row. *This installation is not sending mail* is ONE fact about
+> the box, and printing it per row is repeating it N times.
+
+**HR has already solved the per-message half, and the comment is the best statement of this whole
+rule in the codebase.** `HrInvitationsController::deliver()` returns whether the message actually
+left, because the one person who needs to know is the inviter in front of the dialog — they
+either hand the link over themselves or they do not. Its closing line: *"The panel used to assert
+'nothing has been emailed' unconditionally, which was true while nothing could send and became a
+lie the day something could."* **That is this entry's rule having already gone wrong once, in the
+opposite direction.** A sentence does not have to be edited to become false; the world can edit
+it.
+
+**The gap, measured: the installation-level fact reaches EzBizi staff and nobody else.**
+`MailStatus` surfaces in exactly one client file, `screens/staff/health_screen.dart:261`. An
+administrator sending invitations on a box pointed at the log mailer is told "Sent" and has
+nowhere to learn otherwise. Whether a non-staff surface should say so is a **new element**, so it
+is a question for Jose rather than something decided here — raised, not drawn.
+
+**The precedent, from Email the same day.** An empty state read *"an inbox added on another
+company stays there, switch to that company"* — a correct sentence about the wrong problem. The
+eight people who saw it had a permission problem, the inboxes were already in their view, and
+the only person who could fix it never sees that screen. **A confident sentence naming the wrong
+cause is worse than a vague one**, because it sends somebody hunting. Email's fix was to publish
+which of three reasons applies rather than assuming one, and that is the shape every failure
+state here should take.
+
+### 12 · HR · the invitation panel, and the two failures that read the same — **DRAWN, awaiting Jose**
+
+`docs/previews/invitation-sent-states-layouts.html`. Three desktop, three mobile, with a **state
+switcher** — the two failures are the whole reason it is drawn, and an option looked at only in
+its success state hides the problem.
+
+HR brought states rather than a layout, which is the ask working. The panel is
+`client/lib/screens/hr/invitations_tab.dart:495`, shown the one moment the raw token exists,
+switching on a server `emailed` bool.
+
+**The gap is not that the failure is unnamed. It is that the REMEDY differs and the sentence does
+not.** Today a failure reads *"The email could not be sent, so nothing has reached them. Copy the
+link and get it to them yourself."*
+
+- **Transport down** — copy the link, hand it over, and the invitation is perfectly good.
+- **Address refused** — handing the link over still works, *and* the invitation now carries a
+  typo nobody has corrected, so the same person is invited to the same wrong address next week.
+
+Same sentence today, two different actions. The server knows which (`deliver()` catches and logs
+the exception) but the response carries only a bool, so this is a server change of HR's as well
+as a screen.
+
+> **In every failing case the address IS the problem, and today it is the panel SUBTITLE** — the
+> one thing on screen that cannot be acted on. That observation is what separates the three
+> desktop options: fold the reason into the sentence (1), put it in a status strip (2), or
+> promote the address to the subject of the panel (3).
+
+**Designed knowing a state is coming.** HR measured that SES event ingestion is being built —
+the SNS subscription is currently EMAIL protocol to a human mailbox, so events reach a person and
+not the app, and HTTPS ingestion into a table keyed by recipient and message id is in progress.
+So **delivered and bounced become knowable soon**, and per entry 11's own rule that must arrive
+as a screen gaining a state rather than a word quietly becoming true. Every option is drawn with
+a place to put `bounced`; option 2's is the cleanest seam, because the strip changes and the body
+does not.
+
+**One asymmetry worth knowing before reading the options.** The account suppression list means
+the FIRST send to a typo bounces silently and a SECOND send to the same address is refused at
+handoff. So a resend already produces "Couldn't send" correctly today — **only the first send is
+blind**, which is exactly the send where somebody is standing in front of this panel.
+
+**Two judgements HR asked for, given here so they are not re-litigated:**
+
+- **The `null` state survives the rule.** *"Copy the link and get it to them yourself if you are
+  not certain the email reached them."* It is a server older than the field, it claims neither
+  outcome, and it says what to do. That is the rule obeyed, not bent — and it is deliberately not
+  drawn in red.
+- **"Has been emailed to them" should become "Sent to them."** HR flagged it themselves. It is a
+  handoff claim wearing arrival's clothes, and it is the sentence entry 11 exists to prevent.
+
