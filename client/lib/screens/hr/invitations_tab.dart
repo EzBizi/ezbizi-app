@@ -604,9 +604,15 @@ class _InvitationsTabState extends State<InvitationsTab> {
       // on the strength of it. Found by UI/UX reading the switch rather than
       // my description of it, after I told them a state was handled here that
       // was not.
+      // UI/UX's wording, taken over mine: it names the CAUSE — an unknown
+      // state means this app is behind the server, which is a fact about the
+      // reader's app rather than about their invitation — and then gives the
+      // remedy for that cause rather than only the fallback. "Build" was our
+      // word; nobody thinks in builds.
       _ => (
-        'This build cannot read what the server said about this message. '
-            'Hand the link over if you need to be sure it arrived.',
+        'This app is older than the server and cannot read what it said about '
+            'this message. Update the app, or hand the link over if you need '
+            'to be sure it arrived.',
         true,
       ),
     };
