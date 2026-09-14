@@ -67,7 +67,11 @@ enum MailTransport: string
      *
      * The credential that makes this work is the reason `credentials` on
      * sending_identities has been an encrypted column with nothing in it since
-     * August. The host it names is a trust boundary; {@see TenantSmtpHost}.
+     * August. The host it names is a trust boundary, checked by
+     * {@see \App\Support\Email\RemoteHostGuard} — the one guard for any host a
+     * customer typed. It is NOT checked by TenantSmtpHost, which this line used
+     * to name: I wrote that, it duplicated the guard above, and it was deleted
+     * in 7e1d00ac hours after it shipped.
      */
     case Smtp = 'smtp';
 
