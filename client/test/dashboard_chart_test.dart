@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/dashboard_screen.dart';
 import 'package:ezbizi_client/widgets/dashboard_chart.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -630,6 +631,97 @@ void main() {
     expect(find.text('4 more'), findsNothing);
   });
 
+  /// Jose, 2026-09-14: hovering a fraction of the pie should highlight it and
+  /// show the percentage.
+  ///
+  /// Four equal slices, so the arithmetic is unambiguous and a wrong total or
+  /// a wrong wedge both show up as a wrong number rather than as a near miss.
+  /// Wedges start at twelve o'clock and run clockwise, so the first quarter is
+  /// the top-right and a point up-and-right of centre lands in it.
+  testWidgets('hovering a wedge shows its share', (tester) async {
+    await _pumpPie(tester, const [
+      {'label': 'Scheduled', 'total': 1},
+      {'label': 'In progress', 'total': 1},
+      {'label': 'Completed', 'total': 1},
+      {'label': 'Cancelled', 'total': 1},
+    ]);
+
+    expect(find.textContaining('%'), findsNothing, reason: 'Not hovering yet.');
+
+    final hover = await _pointerOver(tester);
+
+    await hover(const Offset(38, -38));
+    expect(find.text('25% · Scheduled'), findsOneWidget);
+
+    // The wedge a quarter turn on is a different one, and says so.
+    await hover(const Offset(38, 38));
+    expect(find.text('25% · In progress'), findsOneWidget);
+    expect(find.text('25% · Scheduled'), findsNothing);
+  });
+
+  /// The share is the slice's, not a quarter by luck.
+  testWidgets('an uneven pie reports each wedge honestly', (tester) async {
+    await _pumpPie(tester, const [
+      {'label': 'Big', 'total': 75},
+      {'label': 'Small', 'total': 25},
+    ]);
+
+    final hover = await _pointerOver(tester);
+
+    // Three quarters of the circle, so the top-right is inside Big.
+    await hover(const Offset(38, -38));
+    expect(find.text('75% · Big'), findsOneWidget);
+
+    // Small occupies 270 degrees to 360, which is the arc from nine o'clock
+    // back up to twelve — the TOP-left. Bottom-left is 225 degrees and still
+    // inside Big; I had this wrong and the test said so, which is the whole
+    // reason the fixture is 75/25 rather than something that could be near.
+    await hover(const Offset(-38, -38));
+    expect(find.text('25% · Small'), findsOneWidget);
+  });
+
+  /// Off the ring is not a wedge — the hole and the corners are not hits.
+  testWidgets('the hole and the corners show nothing', (tester) async {
+    await _pumpPie(tester, const [
+      {'label': 'Scheduled', 'total': 1},
+      {'label': 'Completed', 'total': 1},
+    ]);
+
+    final hover = await _pointerOver(tester);
+
+    await hover(const Offset(38, -38));
+    expect(find.textContaining('%'), findsOneWidget, reason: 'A control.');
+
+    await hover(Offset.zero);
+    expect(find.textContaining('%'), findsNothing, reason: 'The donut hole.');
+  });
+
+  /// A wedge too small to round up says so rather than claiming to be absent.
+  testWidgets('a sliver reads as less than one percent', (tester) async {
+    await _pumpPie(tester, const [
+      {'label': 'Bulk', 'total': 1000},
+      {'label': 'Sliver', 'total': 1},
+    ]);
+
+    expect(_chartSemantics(tester), contains('Sliver 1 (<1%)'));
+  });
+
+  /// HOVER ENHANCES, IT DOES NOT GATE.
+  ///
+  /// `MouseRegion` never fires on a touch screen, so on a phone this layer
+  /// does nothing. That is only acceptable while every number the pointer can
+  /// reveal is reachable without one — so the shares are spoken too.
+  testWidgets('every share is reachable without a pointer', (tester) async {
+    await _pumpPie(tester, const [
+      {'label': 'Scheduled', 'total': 3},
+      {'label': 'Completed', 'total': 1},
+    ]);
+
+    final spoken = _chartSemantics(tester);
+    expect(spoken, contains('Scheduled 3 (75%)'));
+    expect(spoken, contains('Completed 1 (25%)'));
+  });
+
   testWidgets('coming soon has no how-to-draw menu', (tester) async {
     await _pumpDashboard(tester, _comingSoon());
 
@@ -919,4 +1011,49 @@ String _chartSemantics(WidgetTester tester) {
   expect(label, isNotEmpty, reason: 'The chart exposed no semantics at all.');
 
   return label;
+}
+
+/// A pie on its own, sized so the geometry in the tests is predictable.
+Future<void> _pumpPie(
+  WidgetTester tester,
+  List<Map<String, dynamic>> slices,
+) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: Scaffold(
+        body: DashboardChart(presentation: 'pie', slices: slices),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+/// A single mouse, already on the chart, that the test can move.
+///
+/// ONE pointer per test, not one per move: `addPointer` twice without a
+/// remove between trips a MouseTracker assertion, so a helper that creates its
+/// own gesture each call works for the first hover of a test and throws on the
+/// second. Returns a mover so the pointer outlives the call.
+///
+/// A mouse specifically — `MouseRegion.onHover` is what this feature hangs on,
+/// and a synthetic touch pointer would never fire it. A test using one would
+/// pass against a feature no real mouse has.
+Future<Future<void> Function(Offset)> _pointerOver(WidgetTester tester) async {
+  final paint = find
+      .descendant(
+        of: find.byType(DashboardChart),
+        matching: find.byType(CustomPaint),
+      )
+      .first;
+  final centre = tester.getCenter(paint);
+
+  final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+  await gesture.addPointer(location: Offset.zero);
+  addTearDown(gesture.removePointer);
+
+  return (Offset fromCentre) async {
+    await gesture.moveTo(centre + fromCentre);
+    await tester.pumpAndSettle();
+  };
 }

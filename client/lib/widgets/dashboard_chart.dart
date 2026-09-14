@@ -16,7 +16,7 @@ import 'package:flutter/material.dart';
 /// the very code it warned against, since `tertiaryContainer` on the generated
 /// scheme is the violet. Structural colours — the axis track, the ring between
 /// marks — still come off [ThemeData.colorScheme], and should.
-class DashboardChart extends StatelessWidget {
+class DashboardChart extends StatefulWidget {
   const DashboardChart({
     super.key,
     required this.presentation,
@@ -58,13 +58,25 @@ class DashboardChart extends StatelessWidget {
   }
 
   @override
+  State<DashboardChart> createState() => _DashboardChartState();
+}
+
+class _DashboardChartState extends State<DashboardChart> {
+  /// Which wedge the pointer is on, or null. Pie only.
+  int? _hovered;
+
+  /// Where the pointer is, in the paint box's own coordinates.
+  Offset _pointer = Offset.zero;
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final presentation = widget.presentation;
     // Two lists on purpose: the picture folds, the reading does not.
     // `_foldTail`'s docblock has the argument.
-    final allSlices = _readSlices(slices);
+    final allSlices = _readSlices(widget.slices);
     final parsedSlices = _foldTail(allSlices);
-    final parsedSeries = _readSeries(series);
+    final parsedSeries = _readSeries(widget.series);
     final colors = _colorsFor(
       scheme,
       slots: math.max(parsedSlices.length, parsedSeries.length),
@@ -75,6 +87,7 @@ class DashboardChart extends StatelessWidget {
       spokenSlices: allSlices,
       series: parsedSeries,
       colors: colors,
+      highlighted: _hovered,
       track: scheme.outlineVariant,
       onLine: scheme.surface,
     );
@@ -115,9 +128,11 @@ class DashboardChart extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
-              height: height,
+              height: DashboardChart.height,
               width: double.infinity,
-              child: CustomPaint(painter: painter),
+              child: presentation == 'pie'
+                  ? _hoverable(painter, parsedSlices)
+                  : CustomPaint(painter: painter),
             ),
             // ── DO NOT DROP THIS TO SAVE VERTICAL SPACE ──────────────
             //
@@ -140,6 +155,83 @@ class DashboardChart extends StatelessWidget {
               _ChartLegend(labels: legendLabels, colors: colors),
             ],
           ],
+        ),
+      ),
+    );
+  }
+
+  /// The pie, with a pointer layer over it.
+  ///
+  /// Pie only. A bar chart's marks are already separated and labelled along an
+  /// axis; a donut's are not, which is the whole reason a share is hard to read
+  /// off one. Jose asked for this on the pie (2026-09-14) and it is where it
+  /// earns its place.
+  ///
+  /// **Hover is a mouse fact.** `MouseRegion` never fires on a touch screen, so
+  /// on a phone or tablet this layer does nothing at all. That is a real gap
+  /// and it is NOT papered over with a tap handler: a tap inside a dashboard
+  /// card competes with the card's own gestures, and a tooltip that must be
+  /// dismissed is a different design rather than the same one ported. The
+  /// percentages are in the semantics label for exactly this reason — see
+  /// [_DashboardChartPainter.semanticsLabel]. The number is reachable without
+  /// a mouse; only the convenience is not.
+  Widget _hoverable(_DashboardChartPainter painter, List<_Slice> slices) {
+    // The paint box's OWN size, not `context.size`. The State's context is the
+    // whole column — chart plus gap plus legend — so its height is not the
+    // donut's. The widths happen to agree today, which is exactly the kind of
+    // coincidence that reads as correct until a layout changes underneath it.
+    return LayoutBuilder(
+      builder: (context, constraints) => MouseRegion(
+        onHover: (event) =>
+            _moveTo(event.localPosition, constraints.biggest, slices),
+        onExit: (_) {
+          if (_hovered != null) setState(() => _hovered = null);
+        },
+        child: Stack(
+          children: [
+            Positioned.fill(child: CustomPaint(painter: painter)),
+            if (_hovered != null && _hovered! < slices.length)
+              _tooltipFor(slices, _hovered!),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _moveTo(Offset position, Size size, List<_Slice> slices) {
+    final found = _sliceAt(position, size, slices);
+
+    if (found != _hovered || _pointer != position) {
+      setState(() {
+        _hovered = found;
+        _pointer = position;
+      });
+    }
+  }
+
+  /// Value first, label after — the reader already has the wedge under the
+  /// pointer and wants the number, which is the legend's hierarchy inverted.
+  Widget _tooltipFor(List<_Slice> slices, int index) {
+    final theme = Theme.of(context);
+    final total = slices.fold<double>(0, (sum, s) => sum + s.total);
+    final slice = slices[index];
+
+    return Positioned(
+      left: math.max(0, math.min(_pointer.dx + 12, 240)),
+      top: math.max(0, _pointer.dy - 34),
+      child: IgnorePointer(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.inverseSurface,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            '${_shareOf(slice.total, total)} · ${slice.label}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onInverseSurface,
+            ),
+          ),
         ),
       ),
     );
@@ -187,6 +279,98 @@ class _ChartLegend extends StatelessWidget {
       ],
     );
   }
+}
+
+/// The donut's geometry, defined ONCE.
+///
+/// The painter needs it to draw and the hit test needs it to answer "which
+/// wedge is under the pointer". Two copies of a centre and a radius is how the
+/// picture and the pointer come to disagree by a few pixels at the rim, and
+/// this file has spent a week removing exactly that shape — a second
+/// definition of one rule, agreeing today.
+class _PieGeometry {
+  const _PieGeometry(this.center, this.ringRadius, this.thickness);
+
+  /// Centre of the donut.
+  final Offset center;
+
+  /// Radius of the stroked arc's CENTRELINE, not its outer edge.
+  final double ringRadius;
+
+  final double thickness;
+
+  static _PieGeometry? of(Size size) {
+    if (size.width <= 0 || size.height <= 0) return null;
+
+    final outer = math.min(size.width, size.height) / 2 - 2;
+    final thickness = outer * 0.42;
+
+    return _PieGeometry(
+      Offset(size.width / 2, size.height / 2),
+      math.max(outer - thickness / 2, 1.0),
+      thickness,
+    );
+  }
+
+  Rect get rect => Rect.fromCircle(center: center, radius: ringRadius);
+
+  /// Whether a point is on the ring, with room to spare.
+  ///
+  /// The band is padded by 6 logical pixels each way because **the hit target
+  /// must be bigger than the mark**: a reader aiming at a ~25px band with a
+  /// mouse should not have to be inside the paint. Padding is symmetric, so it
+  /// never makes the hole or the outside hittable by more than that margin.
+  bool holds(Offset point) {
+    final distance = (point - center).distance;
+    const slack = 6.0;
+
+    return distance >= ringRadius - thickness / 2 - slack &&
+        distance <= ringRadius + thickness / 2 + slack;
+  }
+}
+
+/// Which wedge sits under [point], or null.
+///
+/// Walks the same cumulative sweeps the painter walks, from the same start
+/// angle, off the same geometry — so the answer cannot drift from the drawing.
+int? _sliceAt(Offset point, Size size, List<_Slice> slices) {
+  final geometry = _PieGeometry.of(size);
+  if (geometry == null || !geometry.holds(point)) return null;
+
+  final total = slices.fold<double>(0, (sum, s) => sum + s.total);
+  if (total <= 0) return null;
+
+  // Wedges start at twelve o'clock, which is -pi/2 in canvas angles.
+  var fromStart =
+      math.atan2(point.dy - geometry.center.dy, point.dx - geometry.center.dx) +
+          math.pi / 2;
+  while (fromStart < 0) {
+    fromStart += 2 * math.pi;
+  }
+
+  var walked = 0.0;
+  for (var i = 0; i < slices.length; i++) {
+    final sweep = (slices[i].total / total) * 2 * math.pi;
+    if (sweep <= 0) continue;
+    if (fromStart >= walked && fromStart < walked + sweep) return i;
+    walked += sweep;
+  }
+
+  return null;
+}
+
+/// A slice's share, as a reader would say it.
+///
+/// Whole percents, because a dashboard box is a glance and nobody acts on the
+/// first decimal. A non-zero slice that rounds to nothing says "<1%" rather
+/// than "0%", which would be a wedge on screen claiming to be absent.
+String _shareOf(double value, double total) {
+  if (total <= 0) return '0%';
+
+  final percent = value / total * 100;
+  if (percent > 0 && percent < 0.5) return '<1%';
+
+  return '${percent.round()}%';
 }
 
 /// Everything past the eighth slice becomes ONE tail, named for its count.
@@ -427,6 +611,7 @@ class _DashboardChartPainter extends CustomPainter {
     required this.colors,
     required this.track,
     required this.onLine,
+    this.highlighted,
   });
 
   final String presentation;
@@ -455,13 +640,24 @@ class _DashboardChartPainter extends CustomPainter {
   final Color track;
   final Color onLine;
 
+  /// The wedge under the pointer, drawn thicker so it answers the hover.
+  final int? highlighted;
+
   bool get isDrawable => _drawable(presentation, slices, series);
 
   String get semanticsLabel {
     if (presentation == 'pie' || presentation == 'bar') {
+      // The SHARE is spoken as well as the total, because hover is a mouse
+      // fact and a tooltip must enhance rather than gate. Every number a
+      // pointer can reveal is reachable without a pointer — which is the only
+      // thing that makes the touch gap in `_hoverable` an inconvenience
+      // instead of a feature somebody cannot have.
+      final total = spokenSlices.fold<double>(0, (sum, s) => sum + s.total);
+
       return [
         for (final slice in spokenSlices)
-          '${slice.label} ${slice.total.round()}',
+          '${slice.label} ${slice.total.round()} '
+              '(${_shareOf(slice.total, total)})',
       ].join(', ');
     }
 
@@ -494,13 +690,8 @@ class _DashboardChartPainter extends CustomPainter {
     final total = slices.fold<double>(0, (sum, s) => sum + s.total);
     if (total <= 0) return;
 
-    final center = Offset(size.width / 2, size.height / 2);
-    final outer = math.min(size.width, size.height) / 2 - 2;
-    final thickness = outer * 0.42;
-    final rect = Rect.fromCircle(
-      center: center,
-      radius: math.max(outer - thickness / 2, 1.0),
-    );
+    final geometry = _PieGeometry.of(size);
+    if (geometry == null) return;
 
     var start = -math.pi / 2;
 
@@ -508,14 +699,21 @@ class _DashboardChartPainter extends CustomPainter {
       final sweep = (slices[i].total / total) * 2 * math.pi;
       if (sweep <= 0) continue;
 
+      // The hovered wedge grows on BOTH sides of the same centreline, so it
+      // reads as lifted without moving: no angle changes, nothing overlaps a
+      // neighbour, and the shares on screen stay the shares in the data.
+      // Deliberately not a colour change — the palette is validated as a set
+      // and a lightened member is a value nobody checked.
+      final lifted = i == highlighted;
+
       canvas.drawArc(
-        rect,
+        geometry.rect,
         start,
         sweep,
         false,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = thickness
+          ..strokeWidth = geometry.thickness * (lifted ? 1.22 : 1.0)
           ..strokeCap = StrokeCap.butt
           ..color = colors[i],
       );
@@ -654,6 +852,7 @@ class _DashboardChartPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _DashboardChartPainter old) =>
       old.presentation != presentation ||
+      old.highlighted != highlighted ||
       old.track != track ||
       old.onLine != onLine ||
       !_sameSlices(old.slices, slices) ||
