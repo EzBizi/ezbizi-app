@@ -92,6 +92,85 @@ class AutomationsGlanceTest extends TestCase
         });
     }
 
+    private function stoppedRule(string $name): Automation
+    {
+        return $this->inTenant(function () use ($name) {
+            $rule = Automation::create([
+                'organization_id' => $this->alpha['org']->id,
+                'name' => $name,
+                'trigger_key' => 'job.created',
+                'is_active' => false,
+            ]);
+
+            $rule->forceFill([
+                'disabled_at' => now(),
+                'disabled_reason' => 'Disabled after 5 consecutive failures.',
+            ])->save();
+
+            return $rule;
+        });
+    }
+
+    private function sentences(): array
+    {
+        $data = app(AutomationsGlance::class)->resolve(
+            $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), []
+        )->toArray()['data'];
+
+        return ($data['empty'] ?? false) ? [$data['sentence']] : ($data['sentences'] ?? []);
+    }
+
+    /**
+     * A stopped rule is a CONDITION, so the box says so for as long as it is off.
+     *
+     * The failure this guards is not the sentence being wrong, it is the sentence
+     * never appearing on the branch nobody looks at: an organization whose only
+     * automation stopped has no runs, so it takes the EMPTY branch, where the
+     * client renders `sentence` alone and drops `sentences` entirely.
+     */
+    public function test_a_stopped_rule_is_said_on_the_empty_branch_too(): void
+    {
+        $this->stoppedRule('Chase completions');
+
+        $this->assertSame(
+            ["No automations have run. 'Chase completions' stopped itself and is still off."],
+            $this->sentences(),
+        );
+    }
+
+    public function test_a_stopped_rule_is_said_alongside_runs(): void
+    {
+        $this->runWithStatus(AutomationRun::SUCCEEDED);
+        $this->stoppedRule('Chase completions');
+
+        $this->assertContains(
+            "'Chase completions' stopped itself and is still off.",
+            $this->sentences(),
+        );
+    }
+
+    /**
+     * Turning it back on clears it, with nothing to dismiss.
+     *
+     * This is the assertion that makes the box a condition rather than an alarm.
+     * If it fails, the sentence is derived from something that does not clear and
+     * the dashboard carries a permanent false alarm.
+     */
+    public function test_the_sentence_clears_itself_when_the_rule_is_turned_back_on(): void
+    {
+        $rule = $this->stoppedRule('Chase completions');
+
+        $this->assertNotSame([], $this->sentences(), 'nothing to clear, so this proves nothing');
+
+        $this->inTenant(fn () => $rule->forceFill([
+            'is_active' => true, 'disabled_at' => null, 'disabled_reason' => null,
+        ])->save());
+
+        // Not assertSame([]) - with no runs the box is still on its empty branch
+        // and still says so. What must be gone is the stopped clause.
+        $this->assertSame(['No automations have run.'], $this->sentences());
+    }
+
     public function test_idle_is_a_sentence_not_zero_over_zero(): void
     {
         $payload = app(AutomationsGlance::class)->resolve(
