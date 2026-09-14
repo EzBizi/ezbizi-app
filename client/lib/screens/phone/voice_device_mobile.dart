@@ -6,6 +6,28 @@ import 'package:twilio_voice/twilio_voice.dart';
 
 import 'voice_device.dart';
 
+/// Why Android will or will not let this app carry a call.
+///
+/// Three answers rather than a bool, because two of the failures need
+/// different sentences AND different actions from the person reading them.
+/// Collapsing them sent somebody to the Calling accounts screen to fix a
+/// permission that is not on it.
+enum CallingAccountState {
+  /// Registered with Telecom and switched on. Calls can be carried.
+  ready,
+
+  /// `READ_PHONE_STATE` / `READ_PHONE_NUMBERS` were refused. These are runtime
+  /// permissions, so declaring them in the manifest grants nothing, and
+  /// without them `hasRegisteredPhoneAccount()` cannot even answer — the whole
+  /// check below is blind rather than false. Asking again is what fixes it,
+  /// which is the button the desk already has.
+  needsPermission,
+
+  /// Registered, and the user has not switched it on under Calling accounts.
+  /// Only they can, and only on that screen.
+  needsEnabling,
+}
+
 /// The softphone on Android, iOS and macOS, through the native Twilio SDKs.
 ///
 /// ── Why a plugin here and a WebView on Windows ───────────────────
@@ -34,14 +56,14 @@ class MobileVoiceDevice implements VoiceDevice {
   MobileVoiceDevice({
     Future<bool?> Function(String token, String? deviceToken)? register,
     Future<String?> Function()? readDeviceToken,
-    Future<bool> Function()? ensureCallingAccount,
+    Future<CallingAccountState> Function()? ensureCallingAccount,
   }) : _register = register ?? _registerWithPlugin,
        _readDeviceToken = readDeviceToken ?? _readFcmToken,
        _ensureCallingAccount = ensureCallingAccount ?? _telecomAccountReady;
 
   final Future<bool?> Function(String token, String? deviceToken) _register;
   final Future<String?> Function() _readDeviceToken;
-  final Future<bool> Function() _ensureCallingAccount;
+  final Future<CallingAccountState> Function() _ensureCallingAccount;
 
   /// Can this phone place and accept calls at all, as far as Android is
   /// concerned?
@@ -72,16 +94,55 @@ class MobileVoiceDevice implements VoiceDevice {
   /// rather than registering and assuming. Returning true off Android is the
   /// plugin's own behaviour and is repeated here so the intent is readable
   /// without going to look.
-  static Future<bool> _telecomAccountReady() async {
-    if (defaultTargetPlatform != TargetPlatform.android) return true;
+  static Future<CallingAccountState> _telecomAccountReady() async {
+    if (defaultTargetPlatform != TargetPlatform.android) {
+      return CallingAccountState.ready;
+    }
 
     final instance = TwilioVoicePlatform.instance;
+
+    // FIRST, and this is the half the first version missed.
+    //
+    // `READ_PHONE_STATE` and `READ_PHONE_NUMBERS` are DANGEROUS permissions.
+    // They are in the merged manifest — the plugin declares them — and that
+    // grants nothing on its own; Android hands them over only when the user
+    // says yes to a dialog. Nothing had ever asked. Measured on the emulator
+    // at 0.0.0203, with the phone-account fix already in:
+    //
+    //     LOG|hasRegisteredPhoneAccount
+    //     E No read phone state permission, call
+    //       `requestReadPhoneStatePermission()` first
+    //     E hasRegisteredPhoneAccount: No read phone numbers permission…
+    //
+    // So the check below was not returning false, it was unable to answer —
+    // and an unanswerable check reads exactly like a negative one. The
+    // emulator only got past it because Android granted both by hand with
+    // `adb shell pm grant`, which is a test shim and not something a person
+    // installing the app can do.
+    if (!await instance.hasReadPhoneStatePermission()) {
+      await instance.requestReadPhoneStatePermission();
+    }
+
+    if (!await instance.hasReadPhoneNumbersPermission()) {
+      await instance.requestReadPhoneNumbersPermission();
+    }
+
+    // ASKED AGAIN rather than trusting what the request returned. A person can
+    // decline, and can have declined permanently on a previous launch — in
+    // which case the dialog never appears and the request answers without
+    // anything having changed.
+    if (!await instance.hasReadPhoneStatePermission() ||
+        !await instance.hasReadPhoneNumbersPermission()) {
+      return CallingAccountState.needsPermission;
+    }
 
     if (!await instance.hasRegisteredPhoneAccount()) {
       await instance.registerPhoneAccount();
     }
 
-    return instance.isPhoneAccountEnabled();
+    return await instance.isPhoneAccountEnabled()
+        ? CallingAccountState.ready
+        : CallingAccountState.needsEnabling;
   }
 
   static Future<bool?> _registerWithPlugin(String token, String? deviceToken) =>
@@ -237,12 +298,27 @@ class MobileVoiceDevice implements VoiceDevice {
     // Twilio refused, and sharing a catch would report it in the other one's
     // words.
     try {
-      if (!await _ensureCallingAccount().timeout(_registrationTimeout)) {
+      final account = await _ensureCallingAccount().timeout(
+        _registrationTimeout,
+      );
+
+      if (account != CallingAccountState.ready) {
         _registered = false;
-        _needsCallingAccount = true;
-        _registrationError =
+
+        // The BUTTON only for the case the button can fix. Opening Calling
+        // accounts does not grant a refused permission, so offering it there
+        // sends somebody to a screen where the thing they need is not.
+        _needsCallingAccount = account == CallingAccountState.needsEnabling;
+
+        _registrationError = switch (account) {
+          CallingAccountState.needsEnabling =>
             'Android has not been given permission for this app to make and '
-            'take calls. Open Calling accounts and switch EzBizi on.';
+                'take calls. Open Calling accounts and switch EzBizi on.',
+          CallingAccountState.needsPermission =>
+            'This app needs the phone permissions Android asked about before '
+                'it can place or take calls. Try again to be asked once more.',
+          CallingAccountState.ready => null,
+        };
 
         return;
       }
